@@ -1643,15 +1643,15 @@ provenance string.
   (flex), then the composer (1..8 rows plus a "… n more lines" row) inside a
   square frame two rows taller, whose rules carry regions: the `working`
   one on top, which gets the whole rule between the corners (the shipped
-  `working` widget: the snail mascot fixed in the left corner on a plain
-  rule, the state in its eyes alone: swapping while the model thinks or
+  `working` widget: the snail mascot a cell in from the left corner, a cell of
+  rule either side of it, the state in its eyes alone: swapping while the model thinks or
   tools run, `??` while the user is asked, then for a few seconds `^^`
   when the turn finished ok, `><` when it failed and idle eyes when it was
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
   that run's agent with `esc back` in its place, both on an idle
-  rule too, and that run's own clock while it runs. The block ends the rule,
-  flush with the corner, so nothing to its
+  rule too, and that run's own clock while it runs. The block ends a cell off
+  the rule's end, a cell of rule either side of it, so nothing to its
   right ever moves and the cells a part grows into come out of the rule on its
   left; a narrow rule sheds the least worth first, sized by the cells a part
   can grow to; the running call names

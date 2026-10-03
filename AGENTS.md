@@ -954,9 +954,9 @@ would answer) and main prints it to the shell. Code below builtin may not add to
 lands outside zemi's chrome, beside the resume command a user copies (`ctx.resume`, which
 `hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag). A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
-(`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left corner holds the
-snail of `tui/snail.lua`, its eyes showing the state, how a turn ended included
-(`ctx.ended`), and whose middle holds the turn's status), which is where the shipped layout keeps the mascot and the statusline: agent
+(`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left end holds the
+snail of `tui/snail.lua` a cell off the corner, its eyes showing the state, how a turn ended included
+(`ctx.ended`), and whose right end holds the turn's status), which is where the shipped layout keeps the mascot and the statusline: agent
 state changes what a rule says, never how many rows the frame takes, so nothing above it
 reflows. The statusline clusters draw from their outer edges by widget priority and a short
 row drops the highest first (`fitClusters`), so what lasts sits outermost and never moves.

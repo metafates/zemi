@@ -1,5 +1,5 @@
 -- zemi's mascot: a snail whose shell is the "@". Text only, and only the
--- shell takes a color, the Snail group's. It never leaves the left corner: the state shows in
+-- shell takes a color, the Snail group's. It stays at the left end of the rule: the state shows in
 -- its eyes, stepped by the 50ms frame clock (still with ui.animations off).
 ---@class zemi.tui.snail
 local M = {}
@@ -27,7 +27,7 @@ function M.eyes(state, frame)
 	return heads[math.floor(frame / heads.ticks) % #heads + 1]
 end
 
---- The snail at the left of a plain rule of `room` cells.
+--- The snail set a cell off a plain rule of `room` cells.
 ---@param state zemi.tui.SnailState
 ---@param frame integer                   frames since the state began
 ---@param room  integer
@@ -37,7 +37,8 @@ function M.rule(state, frame, room)
 	return {
 		{ text = "@", hl = "Snail", copy = false },
 		{ text = head, hl = "Normal", copy = false },
-		{ text = string.rep("─", math.max(room - 1 - zemi.ui.width(head), 0)), hl = "Rule", copy = false },
+		{ text = " ", hl = "Rule", copy = false },
+		{ text = string.rep("─", math.max(room - 2 - zemi.ui.width(head), 0)), hl = "Rule", copy = false },
 	}
 end
 

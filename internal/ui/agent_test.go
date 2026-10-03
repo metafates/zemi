@@ -1688,11 +1688,12 @@ func TestReasoningPane(t *testing.T) {
 // running call nowhere: that is the chat row's job.
 func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	// the block ends the rule, so the corner follows it whatever it says
+	// the block keeps a cell off the rule's end, so the corner follows a space
+	// whatever it says
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now┐`}, {4 * time.Second, ` esc interrupt · next try in \ds┐`}} {
+	}{{0, ` esc interrupt · retrying now ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -1725,28 +1726,28 @@ func TestWorkingRowMascot(t *testing.T) {
 		return ansi.Strip(app.renderSegs(segs, 80))
 	}
 	// idle is the snail and a plain rule, whatever the frame
-	want := "@··" + strings.Repeat("─", 75)
+	want := " @·· " + strings.Repeat("─", 73)
 	if a, b := row(0), row(7000); a != want || b != want {
 		t.Fatalf("idle rule moved: %q then %q", a, b)
 	}
 	// working drifts the two eye dots in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.· ─") {
 		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
 	}
 	// a long command keeps the working drift, there is no waiting state
 	long := []hostapi.StreamTool{{Name: "shell", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@.·─") {
+	if a, b := row(0), row(300); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.· ─") {
 		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
 	}
 	long[0].Name = "read"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
+	if a, b := row(0), row(800); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.. ─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
-	// the block ends the rule: its right end stays put whatever the clock
-	// reads, the digits it gains eating into the rule on its left
+	// the block ends a cell off the rule: its right end stays put whatever the
+	// clock reads, the digits it gains eating into the rule on its left
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
@@ -1754,25 +1755,25 @@ func TestWorkingRowMascot(t *testing.T) {
 	if at := strings.Index(r, " esc interrupt · 10m 05s"); at <= len(r)/2 {
 		t.Fatalf("the status does not end the rule: %q", r)
 	}
-	if !strings.HasSuffix(short, "esc interrupt · 5s") || !strings.HasSuffix(r, "esc interrupt · 10m 05s") {
+	if !strings.HasSuffix(short, "esc interrupt · 5s ") || !strings.HasSuffix(r, "esc interrupt · 10m 05s ") {
 		t.Fatalf("the block does not end the rule as the clock reads: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.shell", Arg: "make"}}
-	if r := row(1000); r != "@??"+strings.Repeat("─", 75) {
+	if r := row(1000); r != " @?? "+strings.Repeat("─", 73) {
 		t.Fatalf("the snail does not ask while the user is asked: %q", r)
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
 	t.Logf("active=%v", host.AgentActive())
-	if r := row(2500); !strings.HasPrefix(r, "@··─") {
+	if r := row(2500); !strings.HasPrefix(r, " @·· ─") {
 		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
 	}
 	for _, c := range []struct {
 		msg  turnDoneMsg
 		eyes string
-	}{{turnDoneMsg{}, "@^^─"}, {turnDoneMsg{err: "boom"}, "@><─"}, {turnDoneMsg{stopped: true}, "@··─"}} {
+	}{{turnDoneMsg{}, " @^^ ─"}, {turnDoneMsg{err: "boom"}, " @>< ─"}, {turnDoneMsg{stopped: true}, " @·· ─"}} {
 		// the host can still read active a frame after the turn reported
 		host.SeedStream(hostapi.StreamSnapshot{Active: true})
 		app.AgentStream()
@@ -1787,7 +1788,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// thinking blinks in place, its cycle starting with the state
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm", Thinking: true})
-	if a, b := row(3210), row(3610); !strings.HasPrefix(a, "@.?") || !strings.HasPrefix(b, "@?.") {
+	if a, b := row(3210), row(3610); !strings.HasPrefix(a, " @.?") || !strings.HasPrefix(b, " @?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
 	// a narrow rule drops the clock before the interrupt key
@@ -1827,19 +1828,19 @@ func TestWorkingRowAgentView(t *testing.T) {
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
 	// idle: the run and the key that leaves it, where the rule was bare before,
-	// both ending the rule so nothing at the right ever moves
-	if r := row(80); !strings.HasSuffix(r, " viewing explore · esc back") {
+	// both ending a cell off the rule so nothing at the right ever moves
+	if r := row(80); !strings.HasSuffix(r, " viewing explore · esc back ") {
 		t.Fatalf("the idle rule does not name the viewed run: %q", r)
 	}
 	// the rule reports the run on screen, never the session's turn: a running
 	// session moves neither the clock nor the key while a finished run shows
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
+	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back ") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
 		t.Fatalf("a session turn leaks into the view's rule: %q", r)
 	}
 	// width sheds the name first, never the key
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(26); !strings.HasSuffix(r, " esc back") || strings.Contains(r, "viewing") {
+	if r := row(26); !strings.HasSuffix(r, " esc back ") || strings.Contains(r, "viewing") {
 		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
 	}
 }

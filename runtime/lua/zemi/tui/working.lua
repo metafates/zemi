@@ -4,9 +4,10 @@ local snail = require("zemi.tui.snail")
 ---@type table<string, boolean>
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
 
--- The composer frame's top rule, all ctx.width cells of it: the mascot in the
--- left corner in the state of the turn and, at the right end of the rule, the
--- interrupt key and the elapsed time. The block ends the rule, so nothing to
+-- The composer frame's top rule, all ctx.width cells of it: the mascot a cell
+-- off the left corner in the state of the turn and, at the right end of the
+-- rule, the interrupt key and the elapsed time. The block keeps a cell of rule
+-- on either side and ends a cell off the rule's end, so nothing to
 -- its right ever moves and the cells a part grows into come out of the rule on
 -- its left. The block stays away for the first 300ms so instant turns do not
 -- flash it, and the eyes say how the turn ended for a few seconds after. A
@@ -119,8 +120,9 @@ zemi.ui.widget.add({
 			return n
 		end
 		local span = ctx.width
-		-- the snail keeps six cells of rule before a part goes
-		while #parts > 0 and room() + 6 > span do
+		-- the snail, its cells of rule and the block's own keep eight cells
+		-- before a part goes
+		while #parts > 0 and room() + 8 > span do
 			local least = 1
 			for i, p in ipairs(parts) do
 				if p[2] < parts[least][2] then least = i end
@@ -137,19 +139,24 @@ zemi.ui.widget.add({
 				after[#after + 1] = sg
 			end
 		end
-		-- the block ends the rule: its last cell is the rule's last, so the
-		-- key and the clock keep their right end whatever the clock reads and
-		-- whatever a view adds to the left
-		local block = #after > 0 and fmt.cells(after) + 1 or 0
+		-- the block keeps a cell of rule on either side, as the statusline's
+		-- clusters do, and ends at the rule's last cell but one: the key and the
+		-- clock keep their right end whatever the clock reads and whatever a view
+		-- adds to the left
+		local block = #after > 0 and fmt.cells(after) + 2 or 0
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		local row = snail.rule(state, ctx.frame - since, span - block)
+		local row = { { text = " ", hl = "Rule", copy = false } }
+		for _, sg in ipairs(snail.rule(state, ctx.frame - since, span - block - 1)) do
+			row[#row + 1] = sg
+		end
 		if block > 0 then
-			row[#row + 1] = { text = " ", hl = "Dim" }
+			row[#row + 1] = { text = " ", hl = "Dim", copy = false }
 			for _, sg in ipairs(after) do
 				row[#row + 1] = sg
 			end
+			row[#row + 1] = { text = " ", hl = "Dim", copy = false }
 		end
 		return { row }
 	end,
