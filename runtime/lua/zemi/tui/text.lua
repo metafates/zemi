@@ -194,9 +194,9 @@ M.PROSE = 80
 ---@return string
 function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) or "thought" end
 
---- What rows[first..last] of a turn fold into, the chat's digest and the
---- thinking pane's header: "6 files, 8 commands · thought 8s", a run holding
---- thinking alone as "thought 8s"; "" when it holds neither, so its rail stays.
+--- What rows[first..last] of a turn fold into, the chat's digest row:
+--- "6 files, 8 commands · thought 8s", a run holding thinking alone as
+--- "thought 8s"; "" when it holds neither, so its rail stays.
 ---@param rows zemi.TranscriptRow[]
 ---@param first integer
 ---@param last integer

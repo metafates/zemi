@@ -80,7 +80,7 @@ zemi.composer.complete({ id = "demo.snips", trigger = "#", items = names })
 
 zemi.keymap.set("ctrl+x d", M.pick, { desc = "send a snippet" })
 zemi.keymap.set("ctrl+x h", "help", { desc = "zemi's help, a Go command" })
-zemi.keymap.set("ctrl+x r", "zemi.ui.reasoning.toggle", { desc = "a host action" })
+zemi.keymap.set("ctrl+x r", "zemi.ui.scroll.bottom", { desc = "a host action" })
 
 zemi.tool.add({
 	name = "weather_now",

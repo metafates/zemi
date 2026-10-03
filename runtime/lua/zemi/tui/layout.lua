@@ -5,58 +5,28 @@
 -- SLACK cells, so the working block and the statusline keep their widgets.
 local SLACK = 24
 
--- the chat and the thinking pane, each a spacer above the composer, so the
--- separator meets the composer's top rule; prompts, overlays, toasts and
--- completion popups go over the stage
+-- the chat and a spacer, so the transcript's last row stands a row above the
+-- composer's frame; prompts, overlays, toasts and completion popups go over the
+-- stage
 local stage = {
 	kind = "box",
-	dir = "row",
-	sep = true,
+	dir = "col",
 	stage = true,
 	weight = 1000,
+	min = 63,
 	max = 100,
 	children = {
 		{
-			kind = "box",
-			dir = "col",
-			weight = 1000,
-			min = 63,
-			max = 100,
-			children = {
-				{
-					kind = "region",
-					id = "chat",
-					region = "chat",
-					scroll = "bottom",
-					-- rows scrolled past fade in under the pinned headers
-					fade = 4,
-					size = "fill",
-					min = 3,
-				},
-				{ kind = "spacer" },
-			},
+			kind = "region",
+			id = "chat",
+			region = "chat",
+			scroll = "bottom",
+			-- rows scrolled past fade in under the pinned headers
+			fade = 4,
+			size = "fill",
+			min = 3,
 		},
-		{
-			kind = "box",
-			dir = "col",
-			weight = 1,
-			min = 36,
-			max = 56,
-			collapse = true,
-			hidden = true,
-			children = {
-				{ kind = "region", region = "thinking.head" },
-				{
-					kind = "region",
-					id = "thinking",
-					region = "thinking",
-					scroll = "bottom",
-					fade = 4,
-					size = "fill",
-				},
-				{ kind = "spacer" },
-			},
-		},
+		{ kind = "spacer" },
 	},
 }
 
@@ -104,18 +74,4 @@ local layout = {
 	},
 }
 
-local column = layout.root.children[2]
-local pane = stage.children[2]
-
--- ui.reasoning = "pane" draws the thinking pane, and the column grows by
--- what the pane takes
-local function set()
-	local on = zemi.config.get("ui.reasoning") == "pane"
-	local wide = on and 157 or 100
-	stage.max, column.max, pane.hidden = wide, wide + SLACK, not on
-	zemi.ui.layout.set(layout)
-end
-set()
--- a layout user config set owns the screen, and setting this one over it
--- raises
-zemi.config.watch("ui.reasoning", function() pcall(set) end)
+zemi.ui.layout.set(layout)

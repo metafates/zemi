@@ -695,7 +695,7 @@ Config values from `init.lua` merge with the defaults in Go's schema.
 runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, ctrl+o, `-m`) is not reverted
+so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
@@ -1818,13 +1818,10 @@ provenance string.
   row/col, size) in list order. A render's `ctx.regions` names the regions this
   frame's solve draws, so a widget knows whether another is on screen. The shipped
   `tui/layout.lua` sets the default: the main column, the composer's frame, centered
-  past 124 cells (181 with the thinking pane), and in it the chat beside the thinking
-  pane (regions `thinking.head` and `thinking`, 36 to 56 cells), the row holding both
-  the stage, centered past 100 cells (157 with the pane), whose separator meets the
-  composer's top rule, the composer's rules running wider than the stage so their
-  widgets fit; the working rule's key and clock sit at its right end, whatever the pane
-  does; the pane is hidden unless
-  `ui.reasoning` is `pane` and collapses under 100 columns. User config may replace the layout, plugin and
+  past 124 cells, and in it the header, then the stage, the chat column, centered
+  past 100 cells and a row above the
+  composer's frame, the composer's rules running wider than the stage so their
+  widgets fit; the working rule's key and clock sit at its right end. User config may replace the layout, plugin and
   project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default as it boots
@@ -1936,29 +1933,18 @@ provenance string.
   and listed plainly once it ends. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
   hides lines above them, and only while its own reasoning block is open, so a
-  thought that ended does not go on spinning over the calls that follow it,
-  unless the thinking pane draws them: in
-  `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
-  the chat (`tui/thinking.lua`), its text two cells in from the separator (the
-  chat's scrollbar where the chat has one) and a blank short of its scroll bar,
-  streams the turn's thoughts under a header whose
-  state words are a `Title` over a blank row, each thought under its own
-  `✻ thought 4.2s`, and follows the tail until the wheel moves it; a turn's end
-  moves it nowhere, and an inspected run, drawn without the rail's bars, reads
-  from the top. Turning the pane on closes the
-  thoughts unrolled in the chat, and turning it off reopens none. A click on a
+  thought that ended does not go on spinning over the calls that follow it.
+  A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back and closes what was opened in it, with the
-  rest of the transcript untouched;
-  with the pane drawn the opened run also reads there, every row and thought
-  open, and folding it, or the next turn, goes back to the live thinking. A
+  rest of the transcript untouched. A
   thought row's click unrolls its text at most 80 cells wide, a bar-only row
-  above and below text of two or more lines (with the pane, it shows the run
-  there instead); a step row's opens its calls nested two cells under it,
+  above and below text of two or more lines; a step row's opens its calls
+  nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of eight or
   more rows keeps its last six and folds the earlier ones behind one dim
   row, `… 2 earlier`, whose click shows the whole run and then folds it back
-  (a printed run and the pane's inspector list everything). A click on any
+  (a printed run lists everything). A click on any
   other row opens that one row, command, diff and output. The reply that ends an
   exchange carries its readout: how long its turn ran, its tokens out and the
   clock; a sentence the model says between runs carries none of it, and each
@@ -1983,9 +1969,8 @@ provenance string.
   Go-reserved cancel and reload triggers, §6.2): `enter` sends, `esc`
   twice within 2s or `ctrl+c` once interrupts the turn (`esc` in an agent
   view goes back; idle, `ctrl+c` moves a draft into the history, and on an
-  empty composer twice within 2s quits), `ctrl+o` flips `ui.reasoning`
-  between the thinking inline and the thinking pane (a runtime pick, §6.1),
-  `pgup`/`pgdown`, `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
+  empty composer twice within 2s quits), `pgup`/`pgdown`,
+  `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
   next prompt or opened run; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
@@ -2034,13 +2019,12 @@ provenance string.
   pickers, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a digest (`turn:<first
-  index>`, opens or folds the run under it or shows it in the thinking pane),
-  a rail's or a notice burst's fold row (`more:<first index>`, shows what it
-  hides and folds it back), a rail's step and thought rows (`step:<idx>`,
-  `thought:<idx>`, which with the pane drawn show their run there; an opened
-  step's rows are each `tool:<idx>`), the live thinking row
-  (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
-  from the row's `run` field, opens that run's transcript) and a tool row
+  index>`, opens or folds the run under it), a rail's or a notice burst's fold
+  row (`more:<first index>`, shows what it hides and folds it back), a rail's
+  step and thought rows (`step:<idx>`,
+  `thought:<idx>`; an opened step's rows are each `tool:<idx>`), an agent tool
+  row (`agent:<run id>`, from the row's `run` field, opens that run's
+  transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or
   switch to a project, and its tip's keys run their command or fill the composer (a `fill
   <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The stuck
@@ -2165,7 +2149,7 @@ provenance string.
   A scrolled view sinks the rows at an edge content lies past toward the
   surface it sits on: a region's toward the canvas, a box's toward its panel,
   which the fill a box puts its rows on carries. A region fades the `fade`
-  rows its layout node sets (the shipped chat and pane use 4), a box two, and
+  rows its layout node sets (the shipped chat uses 4), a box two, and
   neither more than a third of the view; deepest at the edge - under the pins
   while rows are scrolled above, and at the bottom while scrolled up - so each
   edge says there is more, easing off as the last rows come into view. The

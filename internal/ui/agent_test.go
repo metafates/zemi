@@ -132,22 +132,13 @@ func BenchmarkColdChatRender(b *testing.B) {
 	app, host := bootAgentApp(b, 140, 40)
 	seedResumedChat(host, 500)
 	chat := host.Widgets.Get("chat")
-	for b.Loop() {
-		host.ToggleReasoning() // every unit renders again
+	for i := 0; b.Loop(); i++ {
+		// the theme is part of the units cache key: flipping it renders every unit again
+		host.SetLightTerminal(i%2 == 0)
 		if _, _, err := host.RenderWidget(b.Context(), chat, 138, 30, app.uiState()); err != nil {
 			b.Fatal(err)
 		}
 	}
-}
-
-// frozenClock is one instant that never moves: a golden pinning a duration a
-// seeded turn counts from now reads the same seconds on every run.
-type frozenClock struct{ at time.Time }
-
-func (c frozenClock) Now() time.Time { return c.at }
-
-func (c frozenClock) AfterFunc(d time.Duration, f func()) func() bool {
-	return time.AfterFunc(d, f).Stop
 }
 
 // lagClock is a machine so slow or loaded that every read of the clock is
@@ -222,7 +213,8 @@ func TestColdChatRender(t *testing.T) {
 	app.Frame()
 	st := app.scrolls[app.scrollDef]
 	top, anchor := st.top, slices.Clone(st.anchor)
-	host.ToggleReasoning()
+	// the theme is part of the units cache key: flipping it renders every unit again
+	host.SetLightTerminal(true)
 	app.frameGen++
 	for more := true; more; app.Frame() {
 		var lines [][]hostapi.Segment
@@ -1547,142 +1539,6 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 }
 
-// TestReasoningPane: in pane mode a screen 100 columns or wider draws the
-// thinking pane, whose header names the live thought and whose body follows
-// its tail while the chat keeps only the thinking row; a click on a digest
-// shows that run there, every row and thought open, and a second one goes
-// back. A narrower screen has no pane: the tail stays inline and the click
-// opens the run's rail under the digest.
-func TestReasoningPane(t *testing.T) {
-	var thought []string
-	for i := range 40 {
-		thought = append(thought, fmt.Sprintf("line%02d", i))
-	}
-	for _, c := range []struct {
-		name          string
-		width, height int
-		pane          bool
-	}{
-		{"wide", 120, 30, true},
-		{"narrow", 80, 24, false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			app, host := bootAgentApp(t, c.width, c.height)
-			if err := host.ToggleReasoning(); err != nil {
-				t.Fatal(err)
-			}
-			// the shipped layout's config watch sets the pane's layout
-			waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
-			host.AppendMessage("user", "look around")
-			appendReasoning(host, "where to start", hostapi.TurnStat{ThoughtMS: 1200})
-			host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
-			host.AppendMessage("user", "and now?")
-			host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: strings.Join(thought, "\n"), Thought: 4200 * time.Millisecond, Thinking: true})
-			app.renderSync(t)
-			frame := ansi.Strip(app.Frame())
-			th, drawn := app.LayoutRects()["thinking"]
-			// the chat's columns, left of the pane's separator
-			chat := func(frame string) string {
-				if !drawn {
-					return frame
-				}
-				var b strings.Builder
-				for row := range strings.SplitSeq(frame, "\r\n") {
-					b.WriteString(ansi.Cut(row, 0, th.X-1) + "\n")
-				}
-				return b.String()
-			}
-			if drawn != c.pane || strings.Contains(frame, "thinking · 4.2s") != c.pane || strings.Contains(chat(frame), "│   line39") == c.pane ||
-				!strings.Contains(frame, "line39") || strings.Contains(frame, "line00") || !strings.Contains(chat(frame), " thinking") {
-				t.Fatalf("live, pane %v:\n%s", drawn, frame)
-			}
-
-			host.SeedStream(hostapi.StreamSnapshot{})
-			t.Logf("active=%v", host.AgentActive())
-			app.renderSync(t)
-			x, y := findCell(t, app, "· 1 file · thought 1.2s")
-			clickAt(app, x+2, y)
-			for app.Pump() {
-			}
-			app.renderSync(t)
-			frame = ansi.Strip(app.Frame())
-			// the run opens in the chat either way; with the pane it reads there too
-			if strings.Contains(frame, "turn · 1 file · thought 1.2s") != c.pane || strings.Contains(frame, "where to start") != c.pane ||
-				!strings.Contains(chat(frame), "│ read a.go") || !strings.Contains(chat(frame), "· 1 file · thought 1.2s") {
-				t.Fatalf("a digest clicked:\n%s", frame)
-			}
-			if c.pane {
-				// the inspector reads from the top under its header, whose state
-				// word is a Title over a blank row that stays when the body
-				// scrolls, then the run's rows without their rail: the pane's
-				// separator is the only vertical line
-				var pane []string
-				for row := range strings.SplitSeq(frame, "\r\n") {
-					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
-				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "", "  ✻ thought 1.2s", "  where to start"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
-					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
-				}
-				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
-					t.Fatalf("the header's state word is not a Title: %+v", app.lastRows[th.Y-2])
-				}
-				// the second click folds the run and returns the pane to live (the
-				// opened rows moved the bottom-anchored digest up, so find it again)
-				x, y = findCell(t, app, "· 1 file · thought 1.2s")
-				clickAt(app, x+2, y)
-				for app.Pump() {
-				}
-				app.renderSync(t)
-				if frame = ansi.Strip(app.Frame()); strings.Contains(frame, "turn · ") || strings.Contains(chat(frame), "│ read a.go") {
-					t.Fatalf("the digest clicked again stays open:\n%s", frame)
-				}
-			}
-		})
-	}
-	// thought text lives in the pane: turning it on closes a thought unrolled
-	// in the chat, its opened run staying open, and turning it off reopens none
-	t.Run("toggle", func(t *testing.T) {
-		app, host := bootAgentApp(t, 120, 30)
-		host.AppendMessage("user", "look around")
-		appendReasoning(host, "deep thought text", hostapi.TurnStat{ThoughtMS: 8000})
-		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
-		appendReply(host, "done", hostapi.TurnStat{})
-		chat := func() string {
-			app.renderSync(t)
-			frame := ansi.Strip(app.Frame())
-			th, drawn := app.LayoutRects()["thinking"]
-			var b strings.Builder
-			for row := range strings.SplitSeq(frame, "\r\n") {
-				if drawn {
-					row = ansi.Cut(row, 0, th.X-1)
-				}
-				b.WriteString(row + "\n")
-			}
-			return b.String()
-		}
-		for _, text := range []string{"· 1 file · thought 8.0s", "✻ thought 8.0s"} {
-			chat()
-			x, y := findCell(t, app, text)
-			clickAt(app, x+2, y)
-			for app.Pump() {
-			}
-		}
-		if got := chat(); !strings.Contains(got, "deep thought text") {
-			t.Fatalf("the thought did not unroll:\n%s", got)
-		}
-		for _, on := range []bool{true, false} {
-			if err := host.ToggleReasoning(); err != nil {
-				t.Fatal(err)
-			}
-			waitPrompt(t, app, func() bool { return host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden != on })
-			chat()
-			if got := chat(); strings.Contains(got, "deep thought text") || !strings.Contains(got, "✻ thought 8.0s") {
-				t.Fatalf("pane %v: the thought should stay closed in its open run:\n%s", on, got)
-			}
-		}
-	})
-}
-
 // TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
 // with a countdown so the turn does not look stuck, and the rule names the
 // running call nowhere: that is the chat row's job.
@@ -2319,33 +2175,6 @@ func TestStreamEventsCoalesce(t *testing.T) {
 	}
 }
 
-// TestReasoningPaneAirRows: a run whose thought wraps to two lines draws air
-// rows in its rail, whose bar the pane strips: they keep a segment, since an
-// empty widget line is an error.
-func TestReasoningPaneAirRows(t *testing.T) {
-	app, host := bootAgentApp(t, 120, 30)
-	if err := host.ToggleReasoning(); err != nil {
-		t.Fatal(err)
-	}
-	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
-	host.AppendMessage("user", "look around")
-	appendReasoning(host, "where to start\nand where to go", hostapi.TurnStat{ThoughtMS: 1200})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
-	appendReply(host, "done", hostapi.TurnStat{})
-	app.renderSync(t)
-	x, y := findCell(t, app, "· 1 file · thought 1.2s")
-	clickAt(app, x+2, y)
-	for app.Pump() {
-	}
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "and where to go") {
-		t.Fatalf("the pane did not draw the inspected run:\n%s", frame)
-	}
-	if err := host.RT.ExecuteChunk(t.Context(), `local n = #zemi.errors.list(); assert(n == 0, "errors: " .. n)`, "t.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestWidgetErrorRecordedOnce: a widget whose render raises is recorded in
 // /errors once, not once per frame.
 func TestWidgetErrorRecordedOnce(t *testing.T) {
@@ -2401,50 +2230,5 @@ func TestPermTitle(t *testing.T) {
 		if title, target := permTitle(c.req), strings.Join(words, " "); title != c.title || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
-	}
-}
-
-// TestPaneInspectsEarlierTurn: with the pane drawn, a click on an earlier
-// turn's thought row shows that run in the pane, also when the pane already
-// shows it; only the digest's fold returns the pane to the live turn.
-func TestPaneInspectsEarlierTurn(t *testing.T) {
-	app, host := bootAgentApp(t, 120, 30)
-	if err := host.ToggleReasoning(); err != nil {
-		t.Fatal(err)
-	}
-	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
-	host.AppendMessage("user", "first")
-	appendReasoning(host, "alpha thinking", hostapi.TurnStat{ThoughtMS: 1500})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
-	appendReasoning(host, "alpha two", hostapi.TurnStat{ThoughtMS: 2500})
-	appendReply(host, "one", hostapi.TurnStat{})
-	host.AppendMessage("user", "second")
-	appendReasoning(host, "beta thinking", hostapi.TurnStat{ThoughtMS: 1500})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
-	appendReply(host, "two", hostapi.TurnStat{})
-	app.renderSync(t)
-	click := func(text string) string {
-		// in the chat, left of the pane
-		lines := strings.Split(ansi.Strip(app.Frame()), "\r\n")
-		x, y := -1, -1
-		for i, l := range lines {
-			if j := strings.Index(ansi.Cut(l, 0, 80), text); j >= 0 {
-				x, y = j, i
-				break
-			}
-		}
-		if x < 0 {
-			t.Fatalf("no %q in the chat", text)
-		}
-		clickAt(app, x+2, y)
-		for app.Pump() {
-		}
-		app.renderSync(t)
-		return ansi.Strip(app.Frame())
-	}
-	click("· 1 file · thought 4.0s") // open turn 1, which the pane then shows
-	// a thought inside that run: the pane keeps showing the run
-	if frame := click("✻ thought 2.5s"); !strings.Contains(frame, "alpha two") || strings.Contains(frame, "last turn") {
-		t.Fatalf("turn 1's thought did not open in the pane:\n%s", frame)
 	}
 }

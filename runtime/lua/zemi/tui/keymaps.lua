@@ -5,8 +5,6 @@
 -- ("zemi.ui.scroll.up sidebar"); without one it moves the stage's scrolled
 -- region.
 
-zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "thinking pane" })
-
 -- ctrl+y flips to yolo and back. The mode it left is remembered here, so the
 -- next press restores it whatever the mode list holds.
 local before

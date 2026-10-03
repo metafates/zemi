@@ -685,7 +685,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":              func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.ui.reasoning.toggle":  func(h *Host, _ string) error { return h.ToggleReasoning() },
 		"zemi.model.pick":           func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
 		"zemi.ui.focus.set":         func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next":        func(h *Host, _ string) error { return h.cycleFocus(1) },
@@ -984,16 +983,6 @@ func describeRHS(rhs RHS) string {
 	default:
 		return "<function>"
 	}
-}
-
-// ToggleReasoning flips ui.reasoning between the thinking inline and the
-// thinking pane (ctrl+o, §8), kept like any runtime pick.
-func (h *Host) ToggleReasoning() error {
-	next := "pane"
-	if h.Settings.Str("ui.reasoning") == "pane" {
-		next = "inline"
-	}
-	return h.setWatched("ui.reasoning", next)
 }
 
 // host -> Lua event plumbing
@@ -2072,7 +2061,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.118.0"))
+	api.RawSetString("version", glua.LString("0.119.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -853,7 +853,7 @@ const (
 )
 
 // boxArea is what a modal box centers over: the stage (the shipped layout's
-// is the row holding chat and pane, so a box centers on the column), or the
+// holds the chat, so a box centers on the chat's column), or the
 // w by h screen when the stage is too small for a prompt.
 func boxArea(stage uv.Rectangle, w, h int) uv.Rectangle {
 	if stage.Dx() < 40 || stage.Dy() < 8 {

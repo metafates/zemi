@@ -207,7 +207,7 @@ function debug.traceback(msg) end
 --- The regions the default layout draws, plus "exit", which no layout draws: its
 --- widgets print once to the shell after zemi quits, foreground colors only, and code
 --- below user config may not add one. A layout may draw any other name.
----@alias zemi.Region "header"|"chat"|"thinking.head"|"thinking"|"working"|"statusline.left"|"statusline.right"|"exit"|string
+---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|"exit"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
@@ -333,7 +333,6 @@ function zemi.config.schema() end
 --- The host actions a keymap may name; some take an argument after a space.
 ---@alias zemi.HostAction
 ---| "zemi.ui.help"
----| "zemi.ui.reasoning.toggle"
 ---| "zemi.ui.scroll.up"
 ---| "zemi.ui.scroll.down"
 ---| "zemi.ui.scroll.top"
@@ -388,7 +387,7 @@ zemi.keymap = {}
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text> (these user config only),
---- zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
+--- zemi.ui.help, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
 --- zemi.ui.focus.set [id],
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
@@ -879,7 +878,7 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
----@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.thinking` says whether the thinking pane is on screen. Empty in a printed run.
+---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
@@ -1122,7 +1121,7 @@ function zemi.ui.widget.list() end
 ---@field region zemi.Region
 ---@field scroll? zemi.LayoutScroll Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it.
 ---@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
----@field fade? integer Rows at an edge content lies past that fade toward the canvas (needs scroll); the shipped chat and pane use 4.
+---@field fade? integer Rows at an edge content lies past that fade toward the canvas (needs scroll); the shipped chat uses 4.
 
 --- One row: the first line of each widget in `left`, then Go's pills (boot
 --- failed, stuck, errors), then `right` aligned to the right edge, truncated
@@ -1446,14 +1445,6 @@ function zemi.ui.screenshot() end
 
 --- Open the /help overlay.
 function zemi.ui.help() end
-
----@class zemi.ui.reasoning
-zemi.ui.reasoning = {}
-
---- Flip `ui.reasoning` between the thinking inline and the thinking pane
---- (ctrl+o), kept for the next start like /config. User or builtin origin
---- only.
-function zemi.ui.reasoning.toggle() end
 
 -- zemi.notify and zemi.log
 

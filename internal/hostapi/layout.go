@@ -171,26 +171,18 @@ type Rect struct{ X, Y, Width, Height int }
 
 // DefaultLayout is what zemi draws when no config set a layout (before the
 // shipped UI loads, or after a reload that set none). It matches the
-// shipped tui/layout.lua as it boots, the thinking inline: the main column
-// centered; in it the header, the chat beside the hidden thinking pane
-// centered inside it, and the framed composer wider than both, whose rules
-// carry the mascot and the statusline.
+// shipped tui/layout.lua as it boots: the main column centered; in it the
+// header, the stage centered inside it, and the framed composer wider than
+// the stage, whose rules carry the mascot and the statusline.
 var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 	{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 	{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 30, Max: 124, Children: []*LayoutNode{
 		{Kind: LayoutRegion, Region: "header"},
 		{Kind: LayoutBox, Dir: DirRow, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 			{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
-			{Kind: LayoutBox, Dir: DirRow, Sep: true, Stage: true, Size: Size{Kind: SizeFill, N: 1000}, Max: 100, Children: []*LayoutNode{
-				{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 63, Max: 100, Children: []*LayoutNode{
-					{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Fade: 4, Size: Size{Kind: SizeFill}, Min: 3},
-					{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
-				}},
-				{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1}, Min: 36, Max: 56, Collapse: true, Hidden: true, Children: []*LayoutNode{
-					{Kind: LayoutRegion, Region: "thinking.head"},
-					{ID: "thinking", Kind: LayoutRegion, Region: "thinking", Scroll: EdgeBottom, Fade: 4, Size: Size{Kind: SizeFill}},
-					{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
-				}},
+			{Kind: LayoutBox, Dir: DirCol, Stage: true, Size: Size{Kind: SizeFill, N: 1000}, Min: 63, Max: 100, Children: []*LayoutNode{
+				{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Fade: 4, Size: Size{Kind: SizeFill}, Min: 3},
+				{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
 			}},
 			{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 		}},

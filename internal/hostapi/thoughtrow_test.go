@@ -68,9 +68,8 @@ func widgetText(t *testing.T, h *Host, id string, state UIState) string {
 // TestThoughtRowGrowsInPlace: a reasoning chunk that lands after the call
 // below it started grows the thought's row where it stands, so the epoch the
 // chat widget drops the reader's opened rows by must not move: the row the
-// reader opened keeps its place and draws the grown text, in the chat and in
-// the thinking pane, which read the same rows. A row landing before the next
-// render must not hide the chunk either.
+// reader opened keeps its place and draws the grown text. A row landing before
+// the next render must not hide the chunk either.
 func TestThoughtRowGrowsInPlace(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -84,10 +83,8 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 			hk := h.streamHooks()
 			hk.ReasoningDelta("ponder")
 			hk.ToolCallPending("t1", "grep")
-			pane := UIState{Regions: &map[string]bool{"thinking": true}}
-			// the first renders settle each widget's cache
+			// the first render settles the widget's cache
 			widgetText(t, h, "chat", UIState{})
-			widgetText(t, h, "thinking", pane)
 			// the reader opens the thought row while the call runs, in the two
 			// clicks the rail's rows take: its run, then the row itself
 			for _, id := range []string{"turn:1", "thought:1"} {
@@ -119,9 +116,6 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 			}
 			if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "pondering.") {
 				t.Fatalf("the joined chunk is not drawn:\n%s", got)
-			}
-			if got := widgetText(t, h, "thinking", pane); !strings.Contains(got, "pondering.") {
-				t.Fatalf("the pane draws the thought as it was:\n%s", got)
 			}
 		})
 	}
