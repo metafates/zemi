@@ -997,23 +997,17 @@ func (a *App) compose(w, h int) string {
 	}
 	// The toasts are one tray at the top of the stage, over every window: a
 	// notification is the one thing that must never sit behind a box, so it
-	// draws last and stays undimmed. It hugs the stage's right edge, four cells
-	// over it, the rest in the margin, and stays inside the screen.
+	// draws last and stays undimmed. It hugs the stage's right edge, three cells
+	// over it, the rest in the margin, and stays inside the screen. A toast
+	// covers its own cells, so no box border takes a gap where one stands on it.
 	toasts := func() {
 		tray := toastTray(a.toasts, stage.Dx(), stage.Dy())
 		if len(tray) == 0 {
 			return
 		}
-		x := max(min(stage.Max.X-4, w-hostapi.SegsWidth(tray[0])-2), 0)
+		x := max(min(stage.Max.X-3, w-hostapi.SegsWidth(tray[0])-1), 0)
 		for i, line := range tray {
-			y := stage.Min.Y + i
-			var row []hostapi.Segment
-			if y >= 0 && y < len(rows) {
-				row = rows[y]
-			}
-			placed := append(blanked(row, x, 1), line...)
-			placed = append(placed, blanked(row, x+1+hostapi.SegsWidth(line), 1)...)
-			placeBox(rows, [][]hostapi.Segment{placed}, x, y, w)
+			placeBox(rows, [][]hostapi.Segment{line}, x, stage.Min.Y+i, w)
 		}
 	}
 	for i, place := range modals {

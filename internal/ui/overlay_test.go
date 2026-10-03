@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -311,8 +312,32 @@ func TestBoxAreaFallsBackToTheScreen(t *testing.T) {
 }
 
 func TestModalDimsBackground(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
+	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "hello there")
+	for i := range 20 { // a chat full of text for the box to stand over
+		appendReply(host, fmt.Sprintf("answer %d %s", i, strings.Repeat("xyz ", 17)), hostapi.TurnStat{})
+	}
+	glyph := func(row []hostapi.Segment, x int) rune {
+		cells := dropCells(row, x)
+		if len(cells) == 0 {
+			return ' '
+		}
+		c, _ := utf8.DecodeRuneInString(cells[0].Text)
+		return c
+	}
+	runes := func(rows [][]hostapi.Segment) [][]rune {
+		out := make([][]rune, len(rows))
+		for y, row := range rows {
+			out[y] = make([]rune, 0, app.width)
+			for x := range app.width {
+				out[y] = append(out[y], glyph(row, x))
+			}
+		}
+		return out
+	}
+	app.renderSync(t)
+	app.Frame()
+	backdrop := runes(app.lastRows)
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a"}})
 	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
 	seg := func(text string) hostapi.Segment {
@@ -331,15 +356,23 @@ func TestModalDimsBackground(t *testing.T) {
 	if s := seg("hello"); s.Fade != modalFade || s.HL == hostapi.ChromeDim {
 		t.Fatalf("under an overlay: %+v", s)
 	}
-	// the blank columns the box keeps beside itself keep the backdrop's style:
-	// a stripe of the terminal's own background there reads as a groove cut
-	// into the screen
+	// a box covers its own cells and nothing else: every glyph the backdrop drew
+	// outside it stays where it was, so no word of the chat is cut short, and the
+	// cells beside it keep the backdrop's own style, so no stripe of the
+	// terminal's background digs into what the box stands over
 	r := app.chromeRect
-	for _, x := range []int{r.Min.X - 1, r.Min.X, r.Max.X - 1, r.Max.X} {
-		s := dropCells(app.lastRows[r.Min.Y+1], x)[0]
-		if s.HL == "" || s.Fade != modalFade || strings.TrimSpace(s.Text) != "" {
-			t.Fatalf("the gutter at column %d: %+v", x, s)
+	for y := r.Min.Y; y < r.Max.Y && y < len(app.lastRows); y++ {
+		for x := range app.width {
+			if x >= r.Min.X && x < r.Max.X {
+				continue
+			}
+			if got := glyph(app.lastRows[y], x); got != backdrop[y][x] {
+				t.Fatalf("the box rewrote the backdrop at %d,%d: %q, was %q", x, y, got, backdrop[y][x])
+			}
 		}
+	}
+	if s := dropCells(app.lastRows[r.Min.Y+1], r.Min.X-1)[0]; s.HL == "" || s.Fade != modalFade {
+		t.Fatalf("the chat beside the box: %+v", s)
 	}
 	if s := seg("Copied"); s.Fade != 0 {
 		t.Fatalf("the overlay faded a toast: %+v", s)

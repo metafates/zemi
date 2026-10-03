@@ -1831,7 +1831,7 @@ provenance string.
   (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
   stage node, or the whole screen when it is under 40 columns or 8 rows; the live toasts (five at
-  most) are one tray of a fixed width at the stage's top, hugging its right edge (four
+  most) are one tray of a fixed width at the stage's top, hugging its right edge (three
   cells over it, the rest in the margin, inside the screen), newest first, a section
   per level and title with one row per toast, each leaving when its own time runs out
   (4 s for info, 8 s for a warning or an error), drawn after every other layer: a
@@ -2113,11 +2113,10 @@ provenance string.
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, keeps its own styles sunk toward the canvas to the same
-  ambient depth (`modalFade`), and a centered box keeps a
-  blank gutter column of its own each side plus one more, so no text
-  outside it runs up to its border; a gutter column is the backdrop's own
-  cell with its text blanked, so no stripe of the terminal's background digs
-  into what the box stands over; at any other time a plugin
+  ambient depth (`modalFade`), and a box covers its own cells and nothing
+  else: the backdrop behind it keeps its text and style, sunk with the rest
+  of the screen, so no word of it is cut short and no stripe of the
+  terminal's background digs into what the box stands over; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
   a question batch's tabs, a detail view, the palette as you type), and a

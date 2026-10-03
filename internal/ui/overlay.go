@@ -1034,15 +1034,11 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Recta
 	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
 	lo, hi := w, 0
 	for i := range bh {
-		// a blank gutter column each side is part of the box (the rect reports
-		// it); one more blank column outside keeps chat text off it
-		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 2)
+		// the box covers its own cells: the backdrop beside it keeps its own text
 		bw := hostapi.SegsWidth(box[i])
-		y := y0 + i
-		line := append(blanked(rows[y], x0-2, 2), box[i]...)
-		line = append(line, blanked(rows[y], x0+bw, 2)...)
-		placeBox(rows, [][]hostapi.Segment{line}, x0-2, y, w)
-		lo, hi = min(lo, x0-1), max(hi, x0+bw+1)
+		x0 := area.Min.X + max((area.Dx()-bw)/2, 2)
+		placeBox(rows, [][]hostapi.Segment{box[i]}, x0, y0+i, w)
+		lo, hi = min(lo, x0), max(hi, x0+bw)
 	}
 	return uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
@@ -1053,10 +1049,10 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Recta
 // and its top rule is at most a row under area and wider than the box, the
 // box stands on it: the rule's cells under the box become its bottom border,
 // joined at its edges (App.join), and the label that rule carries gives way
-// to it. What it does not cover stays visible, one cell off its inner side.
-// Its lines, and the rule cells it stands on, take the rule group: a composer
-// popup's is the draft's tint of that rule. It reports the cells the box
-// took, that border included.
+// to it. The box covers its own cells: what it does not cover stays visible,
+// the rule and the rows beside it included. Its lines, and the rule cells it
+// stands on, take the rule group: a composer popup's is the draft's tint of
+// that rule. It reports the cells the box took, that border included.
 func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, rule string, w int) uv.Rectangle {
 	for _, row := range box {
 		for i := range row {
@@ -1091,11 +1087,7 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, frame
 	}
 	y0 := max(area.Min.Y, end-len(box))
 	for i := y0; i < end && i-y0 < drawn; i++ {
-		if right {
-			placeBox(rows, [][]hostapi.Segment{append(blanked(rows[i], x-1, 1), box[i-y0]...)}, x-1, i, w)
-		} else {
-			placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), blanked(rows[i], x+bw, 1)...)}, x, i, w)
-		}
+		placeBox(rows, [][]hostapi.Segment{box[i-y0]}, x, i, w)
 	}
 	return uv.Rect(x, y0, bw, max(end-y0, 0))
 }
@@ -1113,31 +1105,6 @@ func ruleAt(rows [][]hostapi.Segment, frame uv.Rectangle) bool {
 	}
 	r, _ := utf8.DecodeRuneInString(c[0].Text)
 	return armsOf(r)&(armR|armD) == armR|armD
-}
-
-// blanked returns the n cells of row from x on with their text turned to
-// blanks and their style kept: what a box leaves uncovered beside itself stays
-// the backdrop's, so no stripe of the canvas runs down its side. A row shorter
-// than that pads with plain blanks, which the frame clips.
-func blanked(row []hostapi.Segment, x, n int) []hostapi.Segment {
-	var out []hostapi.Segment
-	used := 0
-	for _, s := range dropCells(row, x) {
-		if used >= n {
-			break
-		}
-		w := min(ansi.StringWidth(s.Text), n-used)
-		if w <= 0 {
-			continue
-		}
-		s.Text = strings.Repeat(" ", w)
-		out = append(out, s)
-		used += w
-	}
-	if used < n {
-		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", n-used)})
-	}
-	return out
 }
 
 // dropCells removes the first n display cells of a row.
