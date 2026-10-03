@@ -45,10 +45,9 @@ zemi.ui.widget.add({
 		elseif ctx.interrupt_armed then
 			verb = "again to interrupt"
 		end
-		-- the run the chat shows, whose it is, and the key that leaves it, which
-		-- is what esc means there: the name takes the row's centre, the key the
-		-- rule's right end, and the key is worth more than the name so a narrow
-		-- rule keeps the way out
+		-- the run the chat shows and the key that leaves it, which is what esc
+		-- means there: the name takes the row's centre, the key the rule's right
+		-- end, and the key is worth more than the name so a narrow rule keeps it
 		if ctx.view then
 			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5, center = true }
 			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
@@ -112,10 +111,8 @@ zemi.ui.widget.add({
 			if tick then parts[#parts + 1] = tick end
 		end
 		local span = ctx.width
-		-- what the row holds: the snail in its corner, the block at the right
-		-- end, and the part it centres, which takes a cell of rule on either
-		-- side of it; sized by what a part grows to, so a ticking clock never
-		-- sheds one mid-turn
+		-- the row holds the snail, the block and the part it centres, a cell of
+		-- rule on either side of it
 		---@return boolean
 		local function fit()
 			local room, w, block = 0, 0, 0
@@ -128,15 +125,13 @@ zemi.ui.widget.add({
 					block = block + (block > 0 and 3 or 0) + cells
 				end
 			end
+			-- the snail, its cells of rule and the block's own keep eight cells
 			if room + 8 > span then return false end
 			if w == 0 then return true end
-			-- the snail and a cell of rule, the centred part, a cell of rule
-			-- and the block
+			-- the snail, a cell of rule, the centred part, a cell, the block
 			local start = math.floor((span - w) / 2) + 1
 			return start >= 6 and start + w <= span - block - 2
 		end
-		-- the least worth part goes first, so a narrow rule keeps the snail and
-		-- what matters most
 		while #parts > 0 and not fit() do
 			local least = 1
 			for i, p in ipairs(parts) do
@@ -169,12 +164,11 @@ zemi.ui.widget.add({
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		-- the centred part sits at the row's middle, which fit has left the rule
-		-- either side of
+		-- the centred part at the row's middle, in the rule fit left for it
 		local w = mid and fmt.cells(mid) + 2 or 0
 		local start = w > 0 and math.floor((span - w) / 2) + 1 or 0
 		local row = { { text = " ", hl = "Rule", copy = false } }
-		-- the rule runs from the snail to the centred part and on to the block
+		-- the rule from the snail to the centred part
 		local left = mid and start - 2 or span - block - 1
 		for _, sg in ipairs(snail.rule(state, ctx.frame - since, left)) do
 			row[#row + 1] = sg

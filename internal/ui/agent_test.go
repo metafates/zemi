@@ -1687,18 +1687,12 @@ func TestWorkingRowAgentView(t *testing.T) {
 	// the block at the rule's end
 	centred := func(r string) bool {
 		left, right, ok := strings.Cut(r, "viewing explore")
-		if !ok {
-			return false
-		}
-		rule, tail, ok := strings.Cut(right, " esc back ")
-		if !ok || strings.Trim(rule, "─ ") != "" || tail != "" {
+		rule, tail, found := strings.Cut(right, " esc back ")
+		if !ok || !found || strings.Trim(rule, "─ ") != "" || tail != "" {
 			return false
 		}
 		a, b := ansi.StringWidth(left), ansi.StringWidth(right)
-		if b < a {
-			a, b = b, a
-		}
-		return b-a <= 1
+		return max(a, b)-min(a, b) <= 1
 	}
 	// idle: the run and the key that leaves it, where the rule was bare before
 	if r := row(80); !centred(r) {
