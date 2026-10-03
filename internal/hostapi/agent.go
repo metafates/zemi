@@ -381,7 +381,9 @@ func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipelin
 // one misspelling does not leave the agent toolless; a "-name" one fails,
 // since the tool it meant to drop may run under another name.
 func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
-	out, unknown := h.toolsFor(h.PipelineFor(), p)
+	pipe := h.PipelineFor()
+	pipe.Images = func() bool { return h.takesImages(h.currentModelID(p)) }
+	out, unknown := h.toolsFor(pipe, p)
 	var want []string
 	if p != nil {
 		want = p.Tools
@@ -395,20 +397,16 @@ func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 	return out, nil
 }
 
-// toolsFor builds one run's tool set over a pipeline it owns. nil lists no
-// profile: a fork keeps the caller's own set, which it selects by name.
+// toolsFor builds one run's tool set over a pipeline it owns, whose Images says
+// which model the set is built for. nil lists no profile: a fork keeps the
+// caller's own set, which it selects by name.
 func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTool, unknown []string) {
 	var skip map[string]bool
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
 	build := h.toolBuilder(p, h.toolSkip(skip))
-	// the model this set is built for, which read's description, its image
-	// check and the pin key all judge; a running turn's may be another
-	id := h.currentModelID(p)
-	pipe.Images = func() bool { return h.takesImages(id) }
 	out, unknown = build(pipe)
-	// the lua tool reaches the same set from a script
 	wireLua(out, build)
 	return out, unknown
 }

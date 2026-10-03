@@ -305,8 +305,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.sessionID = sid
 		run.mu.Unlock()
 	}
-	// the run's own session keys its cache, and a fork keeps its caller's:
-	// that is the key the provider cached the conversation under
+	// a fork keeps the caller's session: that is what the conversation is cached under
 	cache := cmp.Or(setup.cache, sid)
 	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), cache), agent.SessionHeaders(cache)
 	seedLoaded(setup.loaded, runner.History)
@@ -324,20 +323,19 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	prompt = setup.prompt
-	if setup.base == len(runner.History) && pipe.Pad != "" && setup.writes {
+	if run.forkBase == len(runner.History) && pipe.Pad != "" && setup.writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
-	// a fork's history opens with the conversation it continued: what it
-	// reports is only what it said itself
-	base := setup.base
-	base, err = h.sendPruning(ctx, runner, modelID, prompt, base)
+	// a fork reports only what it said, not the conversation it opened with
+	own := run.forkBase
+	own, err = h.sendPruning(ctx, runner, modelID, prompt, own)
 	for next := run.followUp(err); next != ""; next = run.followUp(err) {
-		base, err = h.sendPruning(ctx, runner, modelID, next, base)
+		own, err = h.sendPruning(ctx, runner, modelID, next, own)
 	}
-	run.forkBase = base
-	said := func() []fantasy.Message { return runner.History[min(base, len(runner.History)):] }
+	run.forkBase = own
+	said := func() []fantasy.Message { return runner.History[min(own, len(runner.History)):] }
 	// NOTE: tools.Validate checks required fields and types, not every
 	// keyword (enum, bounds); a deeper validator is the upgrade.
 	var report string
@@ -350,7 +348,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			err = fmt.Errorf("the report is not the JSON asked for: %w", bad)
 			break
 		}
-		base, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", base)
+		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
 	}
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
@@ -380,6 +378,46 @@ func forkNested(run *agentRun) string {
 	return "a fork continues the live conversation, and this call is a run of it: do the work here, or report what you cannot"
 }
 
+// runPipeline is the pipeline a run's tool calls go through: the live one, bound
+// to the session the run belongs to (a background run outlives it) and stripped
+// of what only the main agent may do.
+func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline {
+	pipe := h.PipelineFor()
+	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	pipe.Images = func() bool { return h.takesImages(modelID) }
+	if run.parent != "" {
+		pipe.Pad = h.scratchFor(run.parent)
+	}
+	parent := cmp.Or(run.parent, "lua")
+	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
+		return h.memoryTool(p, parent, scope, text, quote, replaces)
+	}
+	h.labelAsks(pipe, run, name)
+	return pipe
+}
+
+// capRun caps a run's steps and output and ends its turn when the window fills.
+func (h *Host) capRun(runner *agent.Runner, modelID string) {
+	runner.MaxOutputTokens = h.maxOutput(modelID)
+	runner.MaxSteps = h.Settings.Int("agent.max_steps")
+	window := h.contextWindow(modelID)
+	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+}
+
+// writesFiles reports tools that can change files: the run's task then names the
+// pad directory it owns.
+func writesFiles(kept []fantasy.AgentTool) bool {
+	return hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit)
+}
+
+// copyMap is a snapshot of m, for what a run inherits from the conversation and
+// must keep its own.
+func copyMap(m *sync.Map) *sync.Map {
+	out := new(sync.Map)
+	m.Range(func(k, v any) bool { out.Store(k, v); return true })
+	return out
+}
+
 // runSetup is what a run's tail needs, however its runner was built.
 type runSetup struct {
 	runner  *agent.Runner
@@ -387,14 +425,8 @@ type runSetup struct {
 	modelID string
 	// loaded is the MCP tools this run offers: the names a step sends.
 	loaded *sync.Map
-	// cache is the session the run's calls key on, "" for its own child session:
-	// a fork keeps the caller's, which the conversation is cached under.
-	cache string
-	// base is where the run's own messages start in its history, 0 for a run
-	// that continued none of its caller's.
-	base int
-	// writes reports tools that can change files: the run's task then names
-	// the pad directory it owns.
+	// cache is the session keying the run's calls, "" for its own child session.
+	cache  string
 	writes bool
 	prompt string
 }
@@ -417,9 +449,7 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 		return nil, err
 	}
 	modelID := h.currentModelID(prof)
-	pipe := h.PipelineFor()
-	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
-	pipe.Images = func() bool { return h.takesImages(modelID) }
+	pipe := h.runPipeline(run, def.Name, modelID)
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	var sent sync.Map       // likewise the instruction files its reads carried
 	pipe.Instructions = func(path string) string {
@@ -431,18 +461,6 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 	// a run the planner starts is read-only too, whatever its definition says
 	readOnly := def.ReadOnly || pipe.Plan()
 	pipe.Plan = func() bool { return readOnly }
-	// its session's pad even when the live session moved on (a background
-	// run, a continuation after /new)
-	if run.parent != "" {
-		pipe.Pad = h.scratchFor(run.parent)
-	}
-	// memories name the session this run belongs to, not whichever is live
-	// when a background run gets to them
-	parent := cmp.Or(run.parent, "lua")
-	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
-		return h.memoryTool(p, parent, scope, text, quote, replaces)
-	}
-	h.labelAsks(pipe, run, def.Name)
 	kept, unknown := childTools(h, pipe, def.Tools)
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
@@ -452,13 +470,10 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
 	runner := agent.NewRunner(model, kept, sys)
 	runner.Context, runner.ActiveTools = ctxMsg, active
-	runner.MaxOutputTokens = h.maxOutput(modelID)
-	runner.MaxSteps = h.Settings.Int("agent.max_steps")
-	window := h.contextWindow(modelID)
-	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	h.capRun(runner, modelID)
 	return &runSetup{
 		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, prompt: prompt,
-		writes: hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit),
+		writes: writesFiles(kept),
 	}, nil
 }
 
@@ -479,18 +494,15 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 	case prev == nil && run.sessionID != "":
 		// its rows hold the fork's own work, never the conversation it opened with
 		return nil, errors.New("zemi no longer holds this fork's conversation: continue it while it still does, or start a new fork")
-	case from == nil:
-		return nil, errors.New("nothing to fork yet: a fork continues the conversation as the model last saw it")
-	case prev == nil && !active:
-		return nil, errors.New("no turn is running: a fork continues the live conversation, so ask while it runs")
+	case from == nil || prev == nil && !active:
+		return nil, errors.New("a fork continues the turn that is running: it needs a message already sent, and that turn still going")
 	}
 	modelID := h.sessionModelID()
 	if prev != nil {
 		modelID = cmp.Or(run.model, modelID)
 	}
 	infos := from.Tools()
-	pipe := h.PipelineFor()
-	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	pipe := h.runPipeline(run, forkAgent, modelID)
 	prompted := h.pinFiles()
 	var sent sync.Map
 	pipe.Instructions = func(path string) string {
@@ -499,93 +511,62 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 			return dup
 		})
 	}
-	seen := new(sync.Map)
-	if log, _ := h.sessionLogs(); log != nil {
-		log.Range(func(k, v any) bool { seen.Store(k, v); return true })
-	}
-	pipe.Seen = seen
-	if run.parent != "" {
-		pipe.Pad = h.scratchFor(run.parent)
-	}
-	parent := cmp.Or(run.parent, "lua")
-	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
-		return h.memoryTool(p, parent, scope, text, quote, replaces)
-	}
-	h.labelAsks(pipe, run, forkAgent)
-	kept, loaded, offers, err := h.forkTools(pipe, infos)
+	// the fork inherits the conversation's reads; its own stay its own
+	reads, loaded := h.sessionLogs()
+	pipe.Seen = copyMap(reads)
+	kept, offers, err := h.forkTools(pipe, infos, copyMap(loaded))
 	if err != nil {
 		return nil, err
 	}
-	pipe.Images = func() bool { return h.takesImages(modelID) }
 	runner, err := from.Fork(kept)
 	if err != nil {
 		return nil, err
 	}
 	runner.ActiveTools = offers
-	runner.MaxOutputTokens = h.maxOutput(modelID)
-	runner.MaxSteps = h.Settings.Int("agent.max_steps")
-	window := h.contextWindow(modelID)
-	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	h.capRun(runner, modelID)
 	if run.forkBase == 0 {
 		run.forkBase = len(runner.History)
 	}
 	run.model = modelID
 	return &runSetup{
-		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, base: run.forkBase,
-		// the conversation's own session keys its cache, not the fork's child
-		cache:  run.parent,
-		writes: hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit),
+		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, cache: run.parent,
+		writes: writesFiles(kept),
 		prompt: forkTask + "\n\n" + prompt,
 	}, nil
 }
 
-// forkTools builds a fork's tool set over its own pipeline: the tools the caller
-// sent, in its order and with its schemas, since any difference there is a
-// prefix the provider writes instead of reading.
-func (h *Host) forkTools(pipe *tools.Pipeline, infos []fantasy.ToolInfo) (kept []fantasy.AgentTool, loaded *sync.Map, active func() []string, err error) {
-	names := make([]string, len(infos))
-	for i, info := range infos {
-		names[i] = info.Name
-	}
-	loaded = new(sync.Map)
-	if session, _ := h.sessionLogs(); session != nil {
-		// the tools the conversation loaded, so the fork offers what the caller
-		// offered; what the fork loads stays its own
-		session.Range(func(k, v any) bool { loaded.Store(k, v); return true })
-	}
+// forkTools builds a fork's tool set over its own pipeline: the caller's tools,
+// in its order, since any difference there is a prefix the provider writes
+// instead of reading.
+func (h *Host) forkTools(pipe *tools.Pipeline, infos []fantasy.ToolInfo, loaded *sync.Map) ([]fantasy.AgentTool, func() []string, error) {
 	build := func(p *tools.Pipeline) ([]fantasy.AgentTool, []string) {
 		all, unknown := h.toolsFor(p, nil)
 		all, _ = h.deferMCP(all, loaded)
-		out, _ := pickTools(all, names) // the run refused already if a name is gone
+		out, _ := pickTools(all, infos) // the run refused already if a name is gone
 		return out, unknown
 	}
 	all, _ := h.toolsFor(pipe, nil)
 	wireLua(all, build)
-	all, active = h.deferMCP(all, loaded)
-	if all, err = pickTools(all, names); err != nil {
-		return nil, nil, nil, err
-	}
-	out := make([]fantasy.AgentTool, len(all))
-	for i, t := range all {
-		out[i] = pinnedTool{t, infos[i]}
-	}
-	return out, loaded, active, nil
+	all, active := h.deferMCP(all, loaded)
+	kept, err := pickTools(all, infos)
+	return kept, active, err
 }
 
-// pickTools is a fork's tool array: the tools the caller sent, in its order. A
-// name this run cannot build refuses the fork rather than sending another array.
-func pickTools(all []fantasy.AgentTool, names []string) ([]fantasy.AgentTool, error) {
+// pickTools is a fork's tool array: the tools the caller sent, in its order and
+// with its schemas. A name this run cannot build refuses the fork rather than
+// sending another array, which would write the cache the fork exists to read.
+func pickTools(all []fantasy.AgentTool, infos []fantasy.ToolInfo) ([]fantasy.AgentTool, error) {
 	by := make(map[string]fantasy.AgentTool, len(all))
 	for _, t := range all {
 		by[t.Info().Name] = t
 	}
-	out := make([]fantasy.AgentTool, len(names))
-	for i, n := range names {
-		t, ok := by[n]
+	out := make([]fantasy.AgentTool, len(infos))
+	for i, info := range infos {
+		t, ok := by[info.Name]
 		if !ok {
-			return nil, fmt.Errorf("no tool is named %s any more: the tool set changed while this turn ran, so a fork cannot send the caller's own request", n)
+			return nil, fmt.Errorf("no tool is named %s any more: the tool set changed while this turn ran, so a fork cannot send the caller's own request", info.Name)
 		}
-		out[i] = t
+		out[i] = pinnedTool{t, info}
 	}
 	return out, nil
 }
@@ -611,11 +592,11 @@ func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
 // refuses is dropped once. A subagent has no summarizer: its history is its
 // own and only its report leaves the run, so pruning is all it needs. With
 // nothing to clear it drops the middle of the history, once: the task and a
-// recent tail stay. base is where the run's own messages start and moves with
+// recent tail stay. own is where the run's own messages start and moves with
 // what a drop takes from the front.
-// NOTE: a drop that reaches past base can leave the caller's own last message
+// NOTE: a drop that reaches past own can leave the caller's own last message
 // as the run's report, where a run's opening outgrew the window.
-func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string, base int) (int, error) {
+func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string, own int) (int, error) {
 	for dropped := 0; ; {
 		err := runner.Send(ctx, text)
 		text = "" // history holds the prompt from here on
@@ -631,20 +612,20 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 				// with a message a provider accepts after the task.
 				start := 1 + tailStart(history[1:], tailKeep(compactThreshold(window)))
 				if dropped > 0 || start == 1 {
-					return base, err // nothing left to drop: the report is what it has
+					return own, err // nothing left to drop: the report is what it has
 				}
 				// NOTE: the dropped steps are lost unsummarized, a follow-up
 				// message older than the tail among them, and a run that
 				// fills the window again ends with the error.
 				h.Log.Warn("subagent context full, dropping history", "origin", "agent", "messages", start-1)
 				dropped, history = start-1, append(history[:1:1], history[start:]...)
-				if base > 0 {
-					base = max(1, base-dropped)
+				if own > 0 {
+					own = max(1, own-dropped)
 				}
 			}
 			runner.History = history
 		default:
-			return base, err
+			return own, err
 		}
 	}
 }
@@ -1055,9 +1036,8 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		return fantasy.NewTextErrorResponse("agent is required: " + strings.Join(t.names(), ", ")), nil
 	}
 	if in.Agent == forkAgent {
-		// a fork continues the conversation the turn is sending, so a run of it
-		// has nothing of its own to fork, and a detached one would start after
-		// that turn ended
+		// a run of the conversation has nothing of its own to fork, and a
+		// detached one would start after the turn it should continue
 		if run := runOf(ctx); run != nil {
 			return fantasy.NewTextErrorResponse(forkNested(run)), nil
 		}

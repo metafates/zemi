@@ -1005,28 +1005,26 @@ for byte - the same tools in the same order with the same schemas, the same
 system prompt and context message, the same messages - plus one task message
 holding a preamble and the caller's prompt, and its calls carry the caller's
 own provider cache key (`prompt_cache_key`, `x-session-affinity`, §10.7), so
-the provider reads that prefix out of its cache instead of writing it again,
-which is what makes a fork cheap to start. Everything else is an ordinary
-subagent run: an `agentRun` in `taskReg`, a child session whose `profile` is
-`fork`, `send_to`, `/agents`, `/export`, the same permission pipeline, the same
-billing. It is not a definition: `forkAgent` holds a name
-and a description only, so the tool's enum, its agent list and
-`zemi.agent.list()` name it, while a user's `agents/fork.md` is ignored with a
-recorded error and `/agents open fork` says there is nothing to edit. A fork
-gets its own `tools.Pipeline` (its own pad, its own read log seeded from the
-caller's, its own MCP loaded set, `TodosRead`/`TodosWrite`/`Question`/
-`ApprovePlan` nil) and rebuilds its tools over it, then keeps the caller's
-names, order and `Info` (`pinnedTool`): a name the rebuild lacks refuses the
-fork, since another array would write the cache it exists to read. The array
-has to stay identical, so a fork lists `agent`, `workflow`, `todos`,
-`question`, `plan` and `lua`, which a subagent never gets, and not `update`,
-which a subagent does (the harness still streams a fork's progress into the
-caller's tool row): todos, question and plan refuse through the nils, while
-`agent` and `workflow` work, since a fork is the main agent continued. A fork
-continues the live conversation, so `forkSetup` refuses one whose call is
-already a run of it, one asked after the turn ended, one the tool asked for
-with `background` (its context is the turn that is running), and one this
-process forgot: its stored rows are its own work, never the conversation it
+the provider reads that prefix out of its cache instead of writing it again.
+Everything else is an ordinary subagent run: an `agentRun` in `taskReg`, a child
+session whose `profile` is `fork`, `send_to`, `/agents`, `/export`, the same
+permission pipeline, the same billing. It is no definition: `forkAgent` holds a
+name and a description only, so the tool's enum, its agent list and
+`zemi.agent.list()` name it, while a user's `agents/fork.md` is ignored with an
+error and `/agents open fork` says there is nothing to edit. A fork gets its own
+`tools.Pipeline` (its own pad, the conversation's read log and MCP loads,
+`TodosRead`/`TodosWrite`/`Question`/`ApprovePlan` nil) and rebuilds its tools
+over it, keeping the caller's names, order and `Info` (`pinnedTool`): another
+array would write the cache it exists to read, so a name the rebuild lacks
+refuses the fork. That array is also the caller's, so a fork lists `agent`,
+`workflow`, `todos`, `question`, `plan` and `lua`, which a subagent never gets,
+and not `update`, which a subagent does (the harness still streams a fork's
+progress into the caller's tool row): todos, question and plan refuse through
+the nils, while `agent` and `workflow` work, since a fork is the main agent
+continued. A fork continues the live conversation, so `forkSetup` refuses one
+whose call is already a run of it, one asked after the turn ended, one the tool
+asked for with `background` (its context is the turn that is running), and one
+this process forgot: its stored rows are its own work, never the conversation it
 opened with. Its task says what it is, so a model does not spend steps asking
 for what only a live turn can give it.
 `/agents new` has the main agent write a definition: it sends the typed

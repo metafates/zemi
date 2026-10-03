@@ -847,6 +847,10 @@ func TestSubagentUpdatePrompt(t *testing.T) {
 // conversation from its cache instead of writing it out again.
 func TestForkContinuesTheCallersPrefix(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	var mu sync.Mutex
 	var calls []fantasy.Call
 	m := &scriptModel{record: func(c fantasy.Call) {
@@ -860,6 +864,11 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 			return textParts("the fork's report")
 		case toolResult:
 			return textParts("parent saw: " + last)
+		}
+		// a definition written now must not move the fork's tool array: it
+		// sends the caller's own schemas
+		if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "agents", "extra.md"), []byte("---\ndescription: late\n---\nbody"), 0o644); err != nil {
+			t.Error(err)
 		}
 		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
 	}
@@ -904,7 +913,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		{"max output tokens", fork.MaxOutputTokens, caller.MaxOutputTokens},
 	} {
 		if !reflect.DeepEqual(c.got, c.want) {
-			t.Fatalf("the fork's %s differ from the caller's: %v vs %v", c.what, c.got, c.want)
+			t.Fatalf("the fork's %s differ from the caller's: %.200s vs %.200s", c.what, fmt.Sprint(c.got), fmt.Sprint(c.want))
 		}
 	}
 	// the caller's own next step still opens with the prefix it had cached
@@ -1032,14 +1041,12 @@ func TestForkRefusals(t *testing.T) {
 			t.Fatalf("the detached fork said %q", last.Text)
 		}
 	})
-	t.Run("nothing sent yet", func(t *testing.T) {
+	t.Run("a fork needs the turn that is running", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
-		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), "nothing to fork yet") {
+		want := "continues the turn that is running"
+		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("a fork of a session that sent nothing = %v", err)
 		}
-	})
-	t.Run("no turn is running", func(t *testing.T) {
-		h, _ := newTestHostDB(t)
 		h.modelFn = func() (fantasy.LanguageModel, error) {
 			return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
 				return textParts("done")
@@ -1049,7 +1056,8 @@ func TestForkRefusals(t *testing.T) {
 			t.Fatal(err)
 		}
 		waitIdle(t, h)
-		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), "no turn is running") {
+		// the runner outlives the turn, so only active says one is running
+		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("a fork after the turn ended = %v", err)
 		}
 	})
@@ -1092,7 +1100,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a tool the caller sent is gone", func(t *testing.T) {
-		if _, err := pickTools(nil, []string{"read"}); err == nil || !strings.Contains(err.Error(), "no tool is named read") {
+		if _, err := pickTools(nil, []fantasy.ToolInfo{{Name: "read"}}); err == nil || !strings.Contains(err.Error(), "no tool is named read") {
 			t.Fatalf("a fork missing a caller tool = %v", err)
 		}
 	})
