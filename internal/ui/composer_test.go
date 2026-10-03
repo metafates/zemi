@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -341,27 +340,6 @@ func TestCompletionScan(t *testing.T) {
 	}
 }
 
-// TestCompletionPartialNote: a scan that filled the cap says the list is
-// partial instead of claiming the repo holds no match.
-func TestCompletionPartialNote(t *testing.T) {
-	app := newTestApp(t, t.TempDir())
-	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
-	files := make([]string, scanMaxFiles)
-	for i := range files {
-		files[i] = "pkg/f" + strconv.Itoa(i) + ".go"
-	}
-	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
-	app.composerKey("q", tea.KeyPressMsg{Text: "q"}) // a letter no path holds
-	rows := app.completionRows(76, 10, 0)
-	if len(rows) == 0 {
-		t.Fatal("no popup rows")
-	}
-	last := rows[len(rows)-1][0].Text
-	if !strings.Contains(last, "more files") {
-		t.Fatalf("last row = %q, want the partial note", last)
-	}
-}
-
 // TestCompletionListWidth: the popup keeps its width while the selection
 // scrolls away from its widest path, which a narrow one cuts at the head,
 // and lists at most listMaxFiles.
@@ -379,8 +357,8 @@ func TestCompletionListWidth(t *testing.T) {
 	}
 	app.completion.selected = app.completion.count() - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(hostapi.SegsText(rows[len(rows)-1]), "more files") {
-		t.Fatalf("width %d then %d, %d items, last row %q", first, w, app.completion.count(), hostapi.SegsText(rows[len(rows)-1]))
+	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles {
+		t.Fatalf("width %d then %d, %d items", first, w, app.completion.count())
 	}
 }
 

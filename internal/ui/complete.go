@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -30,12 +29,10 @@ type fileCompleter struct {
 	size     boxSize // typing never narrows or shortens the popup
 
 	scanning bool
-	walkGen  int  // bumps so stale scan results are dropped
-	partial  bool // files match that the list leaves out, hence the note
+	walkGen  int // bumps so stale scan results are dropped
 }
 
 // scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
-// A repo that passes it loses the paths listed last, hence the note.
 const scanMaxFiles = 50000
 
 // listMaxFiles caps the matches the popup lists: every frame builds the
@@ -150,7 +147,6 @@ func (f *fileCompleter) title() string {
 func (f *fileCompleter) rematch() {
 	if f.token == "" {
 		f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
-		f.partial = len(f.files) > listMaxFiles || len(f.files) >= scanMaxFiles
 		f.selected = max(0, min(f.selected, f.count()-1))
 		return
 	}
@@ -158,24 +154,20 @@ func (f *fileCompleter) rematch() {
 	// token has in a big tree takes longer than a keystroke may on one core
 	const chunk = 8192
 	best := make([][]hostapi.Hit, (len(f.files)+chunk-1)/chunk)
-	var hits atomic.Int64
 	var wg sync.WaitGroup
 	for c := range best {
 		wg.Go(func() {
-			var n int
-			best[c], n = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
-			hits.Add(int64(n))
+			best[c] = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
 		})
 	}
 	wg.Wait()
-	f.partial = hits.Load() > listMaxFiles || len(f.files) >= scanMaxFiles
 	f.matches = hostapi.Rank(slices.Concat(best...), f.files, listMaxFiles)
 	f.selected = max(0, min(f.selected, f.count()-1))
 }
 
 // matchFiles matches the token against files[lo:hi]: the best listMaxFiles
-// hits, indexed into files, and how many there were.
-func (f *fileCompleter) matchFiles(lo, hi int) ([]hostapi.Hit, int) {
+// hits, indexed into files.
+func (f *fileCompleter) matchFiles(lo, hi int) []hostapi.Hit {
 	files, bases := f.files[lo:hi], f.bases[lo:hi]
 	names := hostapi.Match(f.token, bases, nil)
 	rest := slices.Clone(files) // blanked where the name matched: "" matches nothing
@@ -193,7 +185,7 @@ func (f *fileCompleter) matchFiles(lo, hi int) ([]hostapi.Hit, int) {
 	for i := range hits {
 		hits[i].Index += lo
 	}
-	return hostapi.Rank(hits, f.files, listMaxFiles), len(hits)
+	return hostapi.Rank(hits, f.files, listMaxFiles)
 }
 
 // candRows are completion candidates as list rows; a path keeps its tail
@@ -255,24 +247,14 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{note("scanning files…")}
 	}
-	partial := note("more files than the list holds · type more of the path")
-	switch {
-	case f.count() == 0 && f.partial:
-		return [][]hostapi.Segment{partial}
-	case f.count() == 0:
+	if f.count() == 0 {
 		return emptyRows("No matches.", maxW)
-	case f.partial:
-		room--
 	}
 	items := append([]listItem(nil), f.extra...)
 	for _, m := range f.matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, row: hostapi.OverlayItem{Tail: true}})
 	}
-	rows := listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
-	if f.partial {
-		rows = append(rows, partial)
-	}
-	return rows
+	return listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
 }
 
 // scanFilesCmd lists the project's files off the UI goroutine.
