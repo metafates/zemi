@@ -12,7 +12,7 @@ local READS = { read = true, grep = true, glob = true, fetch = true, web_search 
 -- its left. The block stays away for the first 300ms so instant turns do not
 -- flash it, and the eyes say how the turn ended for a few seconds after. A
 -- busy job shows the same way while idle; an agent view names the run it shows
--- and leaves on esc where the interrupt key stands.
+-- in the middle of the rule and leaves on esc where the interrupt key stands.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -30,7 +30,7 @@ zemi.ui.widget.add({
 		-- each part with its worth and the cells it grows to: a narrow rule
 		-- sheds the least worth first, sized by what a part grows to, so a
 		-- ticking clock never sheds one mid-turn
-		---@type { [1]: zemi.Line, [2]: integer, [3]: integer? }[]
+		---@type { [1]: zemi.Line, [2]: integer, [3]: integer?, center: boolean? }[]
 		local parts = {}
 		---@param text string
 		---@param hl string?
@@ -46,11 +46,11 @@ zemi.ui.widget.add({
 			verb = "again to interrupt"
 		end
 		-- the run the chat shows, whose it is, and the key that leaves it, which
-		-- is what esc means there: a rule with nothing else to say draws them
-		-- alone, and the key is worth more than the name so a narrow rule keeps
-		-- the way out
+		-- is what esc means there: the name takes the row's centre, the key the
+		-- rule's right end, and the key is worth more than the name so a narrow
+		-- rule keeps the way out
 		if ctx.view then
-			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5 }
+			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5, center = true }
 			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
 		end
 		if not ctx.agent_active then
@@ -130,13 +130,20 @@ zemi.ui.widget.add({
 			table.remove(parts, least)
 		end
 		-- the parts join as a footer joins its keys, each in the highlight it
-		-- draws in, a space between the block and the rule
+		-- draws in, a space between the block and the rule; the part the row
+		-- centres stands in the middle of the rule instead
 		---@type zemi.Line
 		local after = {}
-		for i, p in ipairs(parts) do
-			if i > 1 then after[#after + 1] = { text = " · ", hl = "Dim" } end
-			for _, sg in ipairs(p[1]) do
-				after[#after + 1] = sg
+		---@type zemi.Line?
+		local mid
+		for _, p in ipairs(parts) do
+			if p.center then
+				mid = p[1]
+			else
+				if #after > 0 then after[#after + 1] = { text = " · ", hl = "Dim" } end
+				for _, sg in ipairs(p[1]) do
+					after[#after + 1] = sg
+				end
 			end
 		end
 		-- the block keeps a cell of rule on either side, as the statusline's
@@ -147,9 +154,26 @@ zemi.ui.widget.add({
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
+		-- the centred part takes a cell of rule on either side and drops out when
+		-- the rule cannot hold it between the snail and the block
+		local w = mid and fmt.cells(mid) + 2 or 0
+		local start = w > 0 and math.floor((span - w) / 2) + 1 or 0
+		if w > 0 and (start < 7 or start + w > span - block) then
+			mid, w, start = nil, 0, 0
+		end
 		local row = { { text = " ", hl = "Rule", copy = false } }
-		for _, sg in ipairs(snail.rule(state, ctx.frame - since, span - block - 1)) do
+		-- the rule runs from the snail to the centred part and on to the block
+		local left = mid and start - 2 or span - block - 1
+		for _, sg in ipairs(snail.rule(state, ctx.frame - since, left)) do
 			row[#row + 1] = sg
+		end
+		if mid then
+			row[#row + 1] = { text = " ", hl = "Rule", copy = false }
+			for _, sg in ipairs(mid) do
+				row[#row + 1] = sg
+			end
+			row[#row + 1] = { text = " ", hl = "Rule", copy = false }
+			row[#row + 1] = { text = string.rep("─", span - block - (start + w - 1)), hl = "Rule", copy = false }
 		end
 		if block > 0 then
 			row[#row + 1] = { text = " ", hl = "Dim", copy = false }

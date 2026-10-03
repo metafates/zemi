@@ -1656,9 +1656,9 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 }
 
-// TestWorkingRowAgentView: an agent view names the run the chat shows and the
-// key that leaves it on the rule, alone while nothing runs, and keeps that key
-// once the name is dropped for width.
+// TestWorkingRowAgentView: an agent view names the run the chat shows in the
+// middle of the rule and the key that leaves it at the rule's end, alone while
+// nothing runs, and keeps that key once the name is dropped for width.
 func TestWorkingRowAgentView(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
@@ -1683,15 +1683,26 @@ func TestWorkingRowAgentView(t *testing.T) {
 		}
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
-	// idle: the run and the key that leaves it, where the rule was bare before,
-	// both ending a cell off the rule so nothing at the right ever moves
-	if r := row(80); !strings.HasSuffix(r, " viewing explore · esc back ") {
-		t.Fatalf("the idle rule does not name the viewed run: %q", r)
+	// the name on the rule, at most a cell more on either side of it
+	centred := func(r string) bool {
+		left, right, ok := strings.Cut(r, "viewing explore")
+		if !ok {
+			return false
+		}
+		l, rr := ansi.StringWidth(left), ansi.StringWidth(right)
+		if rr < l {
+			l, rr = rr, l
+		}
+		return rr-l <= 1
+	}
+	// idle: the run and the key that leaves it, where the rule was bare before
+	if r := row(80); !centred(r) || !strings.HasSuffix(r, " esc back ") {
+		t.Fatalf("the idle rule does not centre the viewed run: %q", r)
 	}
 	// the rule reports the run on screen, never the session's turn: a running
 	// session moves neither the clock nor the key while a finished run shows
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back ") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
+	if r := row(80); !centred(r) || !strings.HasSuffix(r, " esc back ") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
 		t.Fatalf("a session turn leaks into the view's rule: %q", r)
 	}
 	// width sheds the name first, never the key
