@@ -286,8 +286,14 @@ end
 ---@type string
 M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 
---- Text cut to room cells, ending with an ellipsis when it cuts, never
---- after a space.
+--- A cut that lands inside a word drops the fragment it would keep when that
+--- is at most this many cells, so its ellipsis follows a whole word.
+---@type integer
+local FRAGMENT = 12
+
+--- Text cut to room cells, ending with an ellipsis when it cuts, never after a
+--- space and never inside a word short enough to drop whole (FRAGMENT): a path
+--- or an identifier, holding no space, keeps its cut.
 ---@param text string
 ---@param room integer
 ---@return string
@@ -296,12 +302,32 @@ function M.clip(text, room)
 	if room < 1 then return "" end
 	---@type string[]
 	local chars = {}
+	---@type string?
+	local cut
 	local w = 0
 	for ch in text:gmatch(M.UTF8_CHAR) do
 		local cw = zemi.ui.width(ch)
-		if w + cw > room - 1 then break end
+		if w + cw > room - 1 then
+			cut = ch
+			break
+		end
 		chars[#chars + 1] = ch
 		w = w + cw
+	end
+	if cut ~= " " then
+		local at, frag = nil, 0
+		for i = #chars, 1, -1 do
+			if chars[i] == " " then
+				at = i
+				break
+			end
+			frag = frag + zemi.ui.width(chars[i])
+		end
+		if at and frag <= FRAGMENT then
+			for i = at, #chars do
+				chars[i] = nil
+			end
+		end
 	end
 	return (table.concat(chars):gsub("%s+$", "")) .. "…"
 end

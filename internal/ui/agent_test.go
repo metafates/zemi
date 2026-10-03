@@ -274,7 +274,7 @@ func TestAgentViewFolds(t *testing.T) {
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
 		t.Fatal(err)
 	}
-	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ read main.go") {
+	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ ✓ read main.go") {
 		t.Fatalf("the digest's click does not open the rail:\n%s", strings.Join(open, "\n"))
 	}
 }
@@ -486,10 +486,10 @@ func TestRailWindow(t *testing.T) {
 	rows() // the first render forgets what was opened before it
 	// the opened run shows its last six entries behind one for the rest
 	got := click("turn:2")
-	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "│ list dir 3") || !slices.Contains(got, "│ list dir 4") || !slices.Contains(got, "│ list dir 9") {
+	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "✓ list dir 3") || !slices.Contains(got, "│ ✓ list dir 4") || !slices.Contains(got, "│ ✓ list dir 9") {
 		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
 	}
-	if got = click("more:2"); !slices.Contains(got, "│ … show the rest") || !slices.Contains(got, "│ list dir 0") {
+	if got = click("more:2"); !slices.Contains(got, "│ … show the rest") || !slices.Contains(got, "│ ✓ list dir 0") {
 		t.Fatalf("the window does not open:\n%s", strings.Join(got, "\n"))
 	}
 	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
@@ -537,7 +537,7 @@ func TestChatExpandSettledRow(t *testing.T) {
 	// framed above and below, running or done
 	open := click("turn:2")
 	at := slices.Index(open, digest)
-	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ run make", "│", "│ ✻ thought 0.4s", "│"}
+	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ ✓ run make", "│", "│ ✻ thought 0.4s", "│"}
 	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
 	}
@@ -1512,7 +1512,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.AgentStream()
-	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
+	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ ✓ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ ✓ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1528,7 +1528,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.AgentStream()
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
-	closed = append(closed, "│ read c.go")
+	closed = append(closed, "│ ✓ read c.go")
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
@@ -1855,7 +1855,7 @@ func TestFileRowClickIDs(t *testing.T) {
 			"│ 7 - old":              "tool:-1",
 			"│ 7 + new":              "tool:-1",
 			"│ 8 keep":               "tool:-1",
-			"│ read 2 files":         "step:-2",
+			"│ ✓ read 2 files":       "step:-2",
 		}},
 		{"read 2 files", map[string]string{"│ ├ read c.go": "tool:-2", "│ └ read d.go": "tool:-3"}},
 		// a nested call's own rows keep the line under its branch mark
@@ -1888,7 +1888,7 @@ func TestFileRowClickIDs(t *testing.T) {
 	for app.Pump() { // the click reaches the widget through Lua
 	}
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "├ read c.go") || !strings.Contains(frame, "│ read 2 files") {
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "├ read c.go") || !strings.Contains(frame, "│ ✓ read 2 files") {
 		t.Fatalf("a second click on the step does not close its calls:\n%s", frame)
 	}
 }
@@ -1950,7 +1950,7 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"│ read 2 files", "│ vet the code", "│ search pattern pattern pattern", "│ ⧗ build it", "│     running as job-1", "│ ⧗ start dev server", "│     running as job-2",
+		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│     running as job-1", "│ ⧗ start dev server", "│     running as job-2",
 		"│     … 27 more lines", "│     l4", "│     l6", "│ ✓ edit a.go", "+1 -1", "│ ✗ run the unit tests", "│   ⎿ go test ./...", "│     --- FAIL: TestX",
 		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",
@@ -1980,7 +1980,7 @@ func TestToolRows(t *testing.T) {
 	}
 	frame = printedChat(t, host, 98)
 	// every call, nested under its step's row behind its branch mark
-	if !strings.Contains(frame, "│ └ read b.go") || !strings.Contains(frame, "│ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
+	if !strings.Contains(frame, "│ └ read b.go") || !strings.Contains(frame, "│ ✓ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
 		t.Fatalf("--reasoning must list every call:\n%s", frame)
 	}
 	// an open row keeps a multi-line command's lines, each a detail row
@@ -2040,7 +2040,7 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"│ ⠋ gitlab get commit abc123", "│ called 2 gitlab tools"} {
+	for _, want := range []string{"│ ⠋ gitlab get commit abc123", "│ ✓ called 2 gitlab tools"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}

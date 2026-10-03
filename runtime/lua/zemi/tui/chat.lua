@@ -47,6 +47,10 @@ local unfolded = {}
 ---@type table<integer, true>
 local whole = {}
 local RAIL_KEEP = 6
+-- The air a rail row keeps after the text it cuts, so an ellipsis reads as the
+-- row's own and never runs into the window's edge; a row's right-aligned tail
+-- keeps the measure's edge instead
+local RAIL_EDGE = 4
 -- notice rows of one burst kept in view, the older ones behind a fold row
 local NOTICES_KEEP = 3
 -- the transcript those tables belong to: its epoch, or the agent run on screen
@@ -75,8 +79,8 @@ local function mark(kind, click)
 	return { text = m.glyph .. " ", hl = m.hl, copy = false, hover = false, effect = effect, click = click }
 end
 
--- The rail a turn's activity stands on: column 0, its rows' marks and text
--- from column 2.
+-- The rail a turn's activity stands on: column 0, its rows' marks from column
+-- 2 and their text from column 4.
 ---@param pad string?
 ---@return zemi.Segment
 local function bar(pad) return { text = "│ " .. (pad or ""), hl = "ThinkingBar", copy = false, hover = false } end
@@ -318,11 +322,15 @@ local function builder(ctx, width)
 		return table.concat(parts, ", ")
 	end
 	-- A step's unlabelled counted calls as one rail row saying what they
-	-- did.
+	-- did, marked as they are: every call it counts went well.
 	---@param group zemi.tui.Tool[]
 	---@param click string
 	function B.group(group, click)
-		push({ bar(), { text = fmt.clip(said(group), width - 2), hl = "Normal", click = click } })
+		push({
+			bar(),
+			mark("ok", click),
+			{ text = fmt.clip(said(group), width - 4 - RAIL_EDGE), hl = "Normal", click = click },
+		})
 	end
 
 	-- One call as its own row: the verb and the label or input, what it
@@ -370,7 +378,7 @@ local function builder(ctx, width)
 		local sw = fmt.cells(tail)
 		local verb, rest = fmt.head(name, label, input, t.status)
 		verb = fmt.lower(verb)
-		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1)
+		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1 + RAIL_EDGE)
 		-- expanded rows wrap (the widget wraps), collapsed ones stay one line
 		---@param text string
 		---@param n integer
@@ -389,7 +397,7 @@ local function builder(ctx, width)
 		local click = (t.run or "") ~= "" and ((name == "workflow" and "workflow:" or "agent:") .. t.run)
 			or o.click
 			or ("tool:" .. idx)
-		-- a counted call reads as its step's row, no bold verb
+		-- a call that only looked around reads plainly, as its step's row does
 		local vhl = dim and "Dim" or fmt.looks(t) and "Normal" or "AgentToolName"
 		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = vhl } }
 		if code and label == "" then
@@ -403,8 +411,9 @@ local function builder(ctx, width)
 		for _, sg in ipairs(head) do
 			sg.click = click
 		end
-		-- an ok counted call has no mark, as its step's row
-		if fmt.looks(t) then
+		-- the bar opens every row and the mark follows it; a nested row hangs by
+		-- its branch mark where its own would stand, its step's state for it
+		if pad then
 			head[1] = bar(pad)
 		else
 			table.insert(head, 1, bar(pad))
@@ -440,12 +449,12 @@ local function builder(ctx, width)
 			more = {}
 		elseif label ~= "" and input ~= "" and (open or not fmt.looks(t)) then
 			-- a labelled counted call on the rail shows its command once opened
-			detail(code and code[1] or fit(input, inner - 6), "Dim")
+			detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
 		end
 		for i, l in ipairs(more) do
 			detail(code and code[i + 1] or l, "Dim")
 		end
-		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 6), "Dim") end
+		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
 		local job = t.status == "bg"
 			and (
 				(t.output or ""):match("moved to the background as (job%-%d+)")
@@ -541,7 +550,7 @@ local function builder(ctx, width)
 		local click = "turn:" .. first
 		push({
 			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
-			{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
+			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
 		})
 		if not opened then return end
 		local at = #B.lines

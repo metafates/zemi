@@ -1919,18 +1919,24 @@ provenance string.
   printed run keeps them all, so a fleet of agents reporting at once never
   takes the chat over; an error or compaction row is a block of its own. The
   live turn and a printed run draw the whole rail, one
-  row per step, a continuous bar in column 0 with every mark in column 2
+  row per step, a continuous bar in column 0, every row's own state mark in
+  column 2 and its text from column 4
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ⠋ waiting on workflow review` while the
-  turn waits on a call whose work is another agent loop, `│ ✻ thought 8s`) and
-  nested text in
-  column 4, a wrapped row keeping the bar: a step's unlabelled counted
-  calls, two or more of them, as one row saying what they did, each hanging off
-  it behind a `├` or `└`, the bar kept under a `├` for the rows that follow it
+  turn waits on a call whose work is another agent loop, `│ ✻ thought 8s`),
+  a row nested under its step hanging by its `├` or `└` branch in the mark's
+  place, the step's state standing for it: a step's unlabelled counted
+  calls, two or more of them, as one row saying what they did, marked with
+  their own state, each behind a `├` or `└`, the bar kept under a `├` for the
+  rows that follow it
   and a gap under the last, its output behind the `⎿` under that, a lone one
   as its own row, a labelled call a row of its own, its label (its command shows
   once opened), a thought a row of its own, framed by a bar-only row above and
   below whether it is running or done, as a call is framed only while it runs
-  and listed plainly once it ends. While the model thinks its last lines show
+  and listed plainly once it ends. Text a row cuts ends in an `…` with a few
+  cells of air after it, so the cut reads as the row's own and never runs into
+  the window's edge, while what a row hangs at its right, a diff's counts or a
+  running call's clock, keeps the measure's edge. While the model thinks its
+  last lines show
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
   hides lines above them, and only while its own reasoning block is open, so a
   thought that ended does not go on spinning over the calls that follow it.
