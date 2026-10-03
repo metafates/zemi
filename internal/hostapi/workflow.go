@@ -212,7 +212,9 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		return nil, Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, limit)
 	}
 	if spec.background {
-		ctx = context.Background()
+		// the flow outlives the turn, but a run it starts must know where it
+		// came from
+		ctx = context.WithoutCancel(ctx)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{

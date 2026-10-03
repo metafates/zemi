@@ -65,6 +65,9 @@ type agentRun struct {
 	model      string
 	background bool
 	cancel     context.CancelFunc
+	// forkBase is where a fork's own messages start in its history: the
+	// conversation it opened with is not its report. 0 for any other run.
+	forkBase int
 
 	mu        sync.Mutex
 	started   time.Time     // the last start: a continuation counts its own time
@@ -498,8 +501,10 @@ func (run *agentRun) finish(h *Host, err error) {
 
 // startBackgroundAgent launches def on prompt detached from the turn and
 // returns the run id.
-func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (string, error) {
-	run, ctx := h.newRun(context.Background(), def, description, prompt, true)
+func (h *Host) startBackgroundAgent(ctx context.Context, def AgentDef, description, prompt string) (string, error) {
+	// values survive the detach, so a run knows where it came from; cancellation
+	// does not, so it outlives the turn
+	run, ctx := h.newRun(context.WithoutCancel(ctx), def, description, prompt, true)
 	if err := h.tasks.add(run); err != nil {
 		run.cancel()
 		return "", err

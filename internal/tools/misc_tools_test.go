@@ -89,7 +89,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 
 	broken := &Pipeline{Store: new(perm.Store)}
 	resp = call(t, toolNamed(t, "todos", broken), `{}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "todos unavailable") {
+	if !resp.IsError || !strings.Contains(resp.Content, "no todo list in this run") {
 		t.Fatalf("nil read hook: %+v", resp)
 	}
 }

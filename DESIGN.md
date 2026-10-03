@@ -992,10 +992,43 @@ definition (builtin `explore`, `general`, `web` and `plan`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
-`parent_id`. Subagents never get `agent`, `workflow`, `todos`,
-`question`, `plan` or `lua`, so nesting stops at depth 1, and `zemi.agent.run`
+`parent_id`. A subagent never gets `agent`, `workflow`, `todos`, `question`,
+`plan` or `lua`, so it starts no subagent of its own, and `zemi.agent.run`
 is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
+Nesting stays bounded because only a live turn starts a fork, and a fork
+cannot fork again: a run it delegates to is a leaf like any other.
+
+A fork (`agent = "fork"`, subagent.go) continues the caller's conversation
+instead of starting fresh. Its first request is the caller's last request byte
+for byte - the same tools in the same order with the same schemas, the same
+system prompt and context message, the same messages - plus one task message
+holding a preamble and the caller's prompt, and its calls carry the caller's
+own provider cache key (`prompt_cache_key`, `x-session-affinity`, §10.7), so
+the provider reads that prefix out of its cache instead of writing it again,
+which is what makes a fork cheap to start. Everything else is an ordinary
+subagent run: an `agentRun` in `taskReg`, a child session whose `profile` is
+`fork`, `send_to`, `/agents`, `/export`, the same permission pipeline, the same
+billing. It is not a definition: `forkAgent` holds a name
+and a description only, so the tool's enum, its agent list and
+`zemi.agent.list()` name it, while a user's `agents/fork.md` is ignored with a
+recorded error and `/agents open fork` says there is nothing to edit. A fork
+gets its own `tools.Pipeline` (its own pad, its own read log seeded from the
+caller's, its own MCP loaded set, `TodosRead`/`TodosWrite`/`Question`/
+`ApprovePlan` nil) and rebuilds its tools over it, then keeps the caller's
+names, order and `Info` (`pinnedTool`): a name the rebuild lacks refuses the
+fork, since another array would write the cache it exists to read. The array
+has to stay identical, so a fork lists `agent`, `workflow`, `todos`,
+`question`, `plan` and `lua`, which a subagent never gets, and not `update`,
+which a subagent does (the harness still streams a fork's progress into the
+caller's tool row): todos, question and plan refuse through the nils, while
+`agent` and `workflow` work, since a fork is the main agent continued. A fork
+continues the live conversation, so `forkSetup` refuses one whose call is
+already a run of it, one asked after the turn ended, one the tool asked for
+with `background` (its context is the turn that is running), and one this
+process forgot: its stored rows are its own work, never the conversation it
+opened with. Its task says what it is, so a model does not spend steps asking
+for what only a live turn can give it.
 `/agents new` has the main agent write a definition: it sends the typed
 line with a short prompt pointing at the New agent steps in the zemi skill.
 Each ready prompt (`/agents new`, `/workflows new`, `/plugins new` and
@@ -1163,7 +1196,8 @@ same `<instructions>` block a read uses, unless the model read or wrote
 that version itself, and again after a rewind cuts that message. It is
 checked like the prompt's own files first, so a file that became a link
 out of the repository or to a secret sends nothing. Subagents build
-their prompt once per run.
+their prompt once per run; a fork sends the caller's own text and tools
+instead, which is the cache it reads (§10.7).
 
 ### 6.4 Tools
 
@@ -1229,7 +1263,9 @@ zemi allows or starts a program outside the sandbox, §9), and `update` (what
 a subagent tells its caller mid-run, §6.3; only a subagent holds it).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
 `lua` (§6.3); `update` joins their set after the `tools` allowlist is read,
-so no agent file can take away the way back to its caller. Every tool, Go or Lua, passes through the
+so no agent file can take away the way back to its caller. A fork holds the
+caller's own set instead, `lua` included and `update` not, since its cache
+requires the same array. Every tool, Go or Lua, passes through the
 same pipeline:
 
 ```
@@ -2985,7 +3021,12 @@ injected verbatim) + the project's skills and recipes + the environment +
 **memory digest** (every live memory, this project then
 every project, newest first, each scope cut at a 3 KB budget the write
 gate keeps it under (§10.4), each line prefixed with id, origin and age in
-days; no relevance ranking). The whole prompt, tool descriptions and the
+days; no relevance ranking). Each send keys its calls on the session
+(`prompt_cache_key`, `x-session-affinity`). A fork (§6.3) sends the caller's
+own prefix under the caller's own key, tools by name and schema, system
+prompt and context message included, so the provider reads that conversation
+out of its cache instead of writing it again; that pinning is what makes a
+fork cheap to start. The whole prompt, tool descriptions and the
 context message included, is pinned at session start (§6.3) and rebuilt
 with a fresh environment and digest at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache

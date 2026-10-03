@@ -381,27 +381,10 @@ func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipelin
 // one misspelling does not leave the agent toolless; a "-name" one fails,
 // since the tool it meant to drop may run under another name.
 func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
+	out, unknown := h.toolsFor(h.PipelineFor(), p)
 	var want []string
 	if p != nil {
 		want = p.Tools
-	}
-	var skip map[string]bool
-	if h.hooks() == nil {
-		skip = headlessExcluded
-	}
-	skip = h.toolSkip(skip)
-	pipe := h.PipelineFor()
-	build := h.toolBuilder(p, skip)
-	// the model this set is built for, which read's description, its image
-	// check and the pin key all judge; a running turn's may be another
-	id := h.currentModelID(p)
-	pipe.Images = func() bool { return h.takesImages(id) }
-	out, unknown := build(pipe)
-	// the lua tool reaches the same set from a script
-	for _, t := range out {
-		if lt, ok := t.(*luaEvalTool); ok {
-			lt.build = build
-		}
 	}
 	if dropped := slices.DeleteFunc(slices.Clone(unknown), func(n string) bool { return !slices.Contains(want, "-"+n) }); len(dropped) > 0 {
 		return nil, fmt.Errorf("profile %s drops %s, which no tool is named", p.Name, strings.Join(dropped, ", "))
@@ -410,6 +393,34 @@ func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 		h.RecordError("profile "+p.Name, "no tool is named "+strings.Join(unknown, ", "))
 	}
 	return out, nil
+}
+
+// toolsFor builds one run's tool set over a pipeline it owns. nil lists no
+// profile: a fork keeps the caller's own set, which it selects by name.
+func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTool, unknown []string) {
+	var skip map[string]bool
+	if h.hooks() == nil {
+		skip = headlessExcluded
+	}
+	build := h.toolBuilder(p, h.toolSkip(skip))
+	// the model this set is built for, which read's description, its image
+	// check and the pin key all judge; a running turn's may be another
+	id := h.currentModelID(p)
+	pipe.Images = func() bool { return h.takesImages(id) }
+	out, unknown = build(pipe)
+	// the lua tool reaches the same set from a script
+	wireLua(out, build)
+	return out, unknown
+}
+
+// wireLua gives each lua tool the builder its script's calls come from, so a
+// script reaches exactly the set the model has.
+func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)) {
+	for _, t := range out {
+		if lt, ok := t.(*luaEvalTool); ok {
+			lt.build = build
+		}
+	}
 }
 
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
@@ -3276,13 +3287,18 @@ func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 	}
 }
 
+// pinFiles are the files the pinned prompt carries: a run whose reads are its
+// own still sees them as given.
+func (h *Host) pinFiles() []string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return slices.Collect(maps.Keys(h.agents.pin.parts.files))
+}
+
 // mainInstructions is the main agent's Instructions hook: its prompt holds
 // the files the pin read.
 func (h *Host) mainInstructions(path string) string {
-	h.agents.mu.Lock()
-	prompted := slices.Collect(maps.Keys(h.agents.pin.parts.files))
-	h.agents.mu.Unlock()
-	return h.nearestInstructions(path, prompted, h.instructionSent)
+	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent)
 }
 
 // afterWrite is the pipeline's AfterWrite hook. The recipe check comes first:

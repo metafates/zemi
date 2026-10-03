@@ -115,6 +115,9 @@ type Runner struct {
 	cut    bool
 	cancel context.CancelFunc
 	tools  []fantasy.AgentTool
+	// system is the prompt this runner was built with: a fork continues on the
+	// same one, and rebuilding that text would send a different prefix
+	system string
 	// live is the running step's input, which holds the turn's finished steps
 	live []fantasy.Message
 	// sent and key are the messages and the prefix key the last step sent
@@ -170,7 +173,7 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
-	r := &Runner{last: &LastErr{LanguageModel: model}}
+	r := &Runner{last: &LastErr{LanguageModel: model}, system: system}
 	opts := []fantasy.AgentOption{}
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
@@ -480,6 +483,37 @@ func (r *Runner) Snapshot() []fantasy.Message {
 		return r.live
 	}
 	return slices.Clone(r.History)
+}
+
+// Tools is the tool set the last request sent, in order: a fork rebuilds it so
+// the prefix the provider cached still matches.
+func (r *Runner) Tools() []fantasy.ToolInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]fantasy.ToolInfo, len(r.tools))
+	for i, t := range r.tools {
+		out[i] = t.Info()
+	}
+	return out
+}
+
+// Fork builds the runner a fork of this conversation sends on: this runner's
+// model, system prompt, context message and request options, tools of its own,
+// and the messages this one last sent as its history. Hooks, Persist, Steer,
+// ActiveTools and Full belong to the run, so the caller sets them.
+func (r *Runner) Fork(tools []fantasy.AgentTool) (*Runner, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.live == nil {
+		return nil, errors.New("agent: nothing sent yet")
+	}
+	f := NewRunner(r.last.LanguageModel, tools, r.system)
+	f.Context, f.Temperature, f.TextOnly = r.Context, r.Temperature, r.TextOnly
+	f.ProviderOptions, f.Headers = r.ProviderOptions, r.Headers
+	// sent is the history itself: keepSigned compares the two, and a fork sends
+	// the same bytes, the signed thinking included
+	f.History, f.sent, f.key = slices.Clone(r.live), slices.Clone(r.live), r.key
+	return f, nil
 }
 
 // Aside answers text after history without joining it (/btw): one step on

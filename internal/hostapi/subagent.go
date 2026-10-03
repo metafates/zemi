@@ -52,7 +52,17 @@ type AgentDef struct {
 // agent's lua tool. Listing one in an agent file drops it.
 var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow: true, tools.ToolTodos: true, tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolLua: true}
 
+// forkAgent is the run that continues the caller's conversation instead of
+// starting fresh: not a definition but the same agent carried on, so only its
+// name and description below are read.
+const forkAgent = "fork"
+
 var builtinAgents = []AgentDef{
+	{
+		Name:        forkAgent,
+		Description: "Continues this conversation instead of starting fresh, so it needs no briefing.",
+		Source:      lua.OriginBuiltin,
+	},
 	{
 		Name:        "explore",
 		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
@@ -98,6 +108,10 @@ const maxAgentFileBytes = 1 << 20
 func (h *Host) agentDefs() []AgentDef {
 	defs := slices.Clone(builtinAgents)
 	h.layerFiles("agents", ".md", func(f layerFile) bool {
+		if f.name == forkAgent {
+			h.RecordErrorOnce("agents", f.path+" is ignored: fork continues the caller's conversation, so there is no definition to write")
+			return false
+		}
 		d, err := parseAgentFile(f.name, f.path, f.origin)
 		if err != nil {
 			h.RecordErrorOnce("agents", err.Error())
@@ -250,65 +264,17 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		h.refresh()
 	}()
 	h.refresh()
-	prof := &Profile{Model: h.subagentModelID(def)}
-	model, err := h.resolveModel(prof)
+	run.mu.Lock()
+	prev := run.runner
+	run.mu.Unlock()
+	setup, err := h.runSetup(ctx, run, prev, def, prompt)
 	if err != nil {
 		return "", err
 	}
-	modelID := h.currentModelID(prof)
-	pipe := h.PipelineFor()
-	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
-	pipe.Images = func() bool { return h.takesImages(modelID) }
-	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
-	var sent sync.Map       // likewise the instruction files its reads carried
-	pipe.Instructions = func(path string) string {
-		return h.nearestInstructions(path, h.instructionFiles(), func(p string) bool {
-			_, dup := sent.LoadOrStore(p, true)
-			return dup
-		})
-	}
-	// a run the planner starts is read-only too, whatever its definition says
-	readOnly := def.ReadOnly || pipe.Plan()
-	pipe.Plan = func() bool { return readOnly }
-	// its session's pad even when the live session moved on (a background
-	// run, a continuation after /new)
-	if run.parent != "" {
-		pipe.Pad = h.scratchFor(run.parent)
-	}
-	// A run outside any session (Lua at idle) still gets a parent, so
-	// /sessions never lists it as a top-level session.
-	parent := cmp.Or(run.parent, "lua")
-	// memories name the session this run belongs to, not whichever is live
-	// when a background run gets to them
-	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
-		return h.memoryTool(p, parent, scope, text, quote, replaces)
-	}
-	if ask := pipe.Ask; ask != nil {
-		who := def.Name + " agent"
-		if f := h.tasks.flow(run.workflow); f != nil {
-			who = "workflow " + f.id + " · " + who // its descriptions are the model's words
-		}
-		pipe.Ask = func(req tools.Request) (bool, string, string) {
-			req.Agent = who
-			return ask(req)
-		}
-	}
-	kept, unknown := childTools(h, pipe, def.Tools)
-	if len(unknown) > 0 {
-		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
-	}
-	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
-	kept, active := h.deferMCP(kept, loaded)
-	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
-	runner := agent.NewRunner(model, kept, sys)
-	runner.Context, runner.ActiveTools = ctxMsg, active
-	runner.MaxOutputTokens = h.maxOutput(modelID)
-	runner.MaxSteps = h.Settings.Int("agent.max_steps")
-	window := h.contextWindow(modelID)
-	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	runner, modelID, pipe := setup.runner, setup.modelID, setup.pipe
 
 	run.mu.Lock()
-	prev, sid, base := run.runner, run.sessionID, run.calls
+	sid, calls := run.sessionID, run.calls
 	run.runner = runner
 	run.mu.Unlock()
 	var rows []*store.Message
@@ -331,7 +297,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		// the run id is the session id, so send_to finds the rows of a run
 		// the process no longer holds (a resume, or one past maxKeptRuns)
 		sid = run.id
-		if err := h.DB.CreateSession(sid, parent, run.description, def.Name); err != nil {
+		if err := h.DB.CreateSession(sid, cmp.Or(run.parent, "lua"), run.description, def.Name); err != nil {
 			h.Log.Warn("subagent session not recorded", "origin", "agents", "error", err)
 			sid = ""
 		}
@@ -339,12 +305,14 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.sessionID = sid
 		run.mu.Unlock()
 	}
-	// the run's own session keys its cache: its prompt is not the parent's
-	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), sid), agent.SessionHeaders(sid)
-	seedLoaded(loaded, runner.History)
+	// the run's own session keys its cache, and a fork keeps its caller's:
+	// that is the key the provider cached the conversation under
+	cache := cmp.Or(setup.cache, sid)
+	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), cache), agent.SessionHeaders(cache)
+	seedLoaded(setup.loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	ctx = context.WithValue(ctx, runKey{}, run)
-	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}
+	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: calls}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(msg fantasy.Message) error {
@@ -355,35 +323,39 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)})
 		}
 	}
-	// in the task, not the system prompt, which runs of one agent share
-	writes := hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit)
-	if len(runner.History) == 0 && pipe.Pad != "" && writes {
+	prompt = setup.prompt
+	if setup.base == len(runner.History) && pipe.Pad != "" && setup.writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
-	err = h.sendPruning(ctx, runner, modelID, prompt)
+	// a fork's history opens with the conversation it continued: what it
+	// reports is only what it said itself
+	base := setup.base
+	base, err = h.sendPruning(ctx, runner, modelID, prompt, base)
 	for next := run.followUp(err); next != ""; next = run.followUp(err) {
-		err = h.sendPruning(ctx, runner, modelID, next)
+		base, err = h.sendPruning(ctx, runner, modelID, next, base)
 	}
+	run.forkBase = base
+	said := func() []fantasy.Message { return runner.History[min(base, len(runner.History)):] }
 	// NOTE: tools.Validate checks required fields and types, not every
 	// keyword (enum, bounds); a deeper validator is the upgrade.
 	var report string
 	for tries := 0; err == nil && run.schema != nil; tries++ {
 		var bad error
-		if report, bad = schemaReport(run.schema, lastAssistantText(runner.History)); bad == nil {
+		if report, bad = schemaReport(run.schema, lastAssistantText(said())); bad == nil {
 			break
 		}
 		if tries == 2 {
 			err = fmt.Errorf("the report is not the JSON asked for: %w", bad)
 			break
 		}
-		err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.")
+		base, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", base)
 	}
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
-	text = lastAssistantText(runner.History)
+	text = lastAssistantText(said())
 	if n := run.droppedCount(); n > 0 {
 		text = strings.TrimSpace(fmt.Sprintf("%s\n\n(%d message(s) sent to it were never read: the run ended first)", text, n))
 	}
@@ -399,14 +371,252 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	return text, nil
 }
 
+// forkNested is why a run cannot start a fork: the conversation it would
+// continue is the one it already runs.
+func forkNested(run *agentRun) string {
+	if run.agent == forkAgent {
+		return "this run is already a fork of the conversation: a fork cannot fork again, so do the work here and put what you cannot do in your report"
+	}
+	return "a fork continues the live conversation, and this call is a run of it: do the work here, or report what you cannot"
+}
+
+// runSetup is what a run's tail needs, however its runner was built.
+type runSetup struct {
+	runner  *agent.Runner
+	pipe    *tools.Pipeline
+	modelID string
+	// loaded is the MCP tools this run offers: the names a step sends.
+	loaded *sync.Map
+	// cache is the session the run's calls key on, "" for its own child session:
+	// a fork keeps the caller's, which the conversation is cached under.
+	cache string
+	// base is where the run's own messages start in its history, 0 for a run
+	// that continued none of its caller's.
+	base int
+	// writes reports tools that can change files: the run's task then names
+	// the pad directory it owns.
+	writes bool
+	prompt string
+}
+
+// runSetup builds the runner a run sends on: a fresh subagent, or a fork that
+// continues the caller's conversation.
+func (h *Host) runSetup(ctx context.Context, run *agentRun, prev *agent.Runner, def AgentDef, prompt string) (*runSetup, error) {
+	if def.Name == forkAgent {
+		return h.forkSetup(ctx, run, prev, prompt)
+	}
+	return h.subagentSetup(run, def, prompt)
+}
+
+// subagentSetup builds a fresh run: its own prompt, its own tool set, its own
+// pipeline over the same permission gate.
+func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSetup, error) {
+	prof := &Profile{Model: h.subagentModelID(def)}
+	model, err := h.resolveModel(prof)
+	if err != nil {
+		return nil, err
+	}
+	modelID := h.currentModelID(prof)
+	pipe := h.PipelineFor()
+	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	pipe.Images = func() bool { return h.takesImages(modelID) }
+	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
+	var sent sync.Map       // likewise the instruction files its reads carried
+	pipe.Instructions = func(path string) string {
+		return h.nearestInstructions(path, h.instructionFiles(), func(p string) bool {
+			_, dup := sent.LoadOrStore(p, true)
+			return dup
+		})
+	}
+	// a run the planner starts is read-only too, whatever its definition says
+	readOnly := def.ReadOnly || pipe.Plan()
+	pipe.Plan = func() bool { return readOnly }
+	// its session's pad even when the live session moved on (a background
+	// run, a continuation after /new)
+	if run.parent != "" {
+		pipe.Pad = h.scratchFor(run.parent)
+	}
+	// memories name the session this run belongs to, not whichever is live
+	// when a background run gets to them
+	parent := cmp.Or(run.parent, "lua")
+	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
+		return h.memoryTool(p, parent, scope, text, quote, replaces)
+	}
+	h.labelAsks(pipe, run, def.Name)
+	kept, unknown := childTools(h, pipe, def.Tools)
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
+	}
+	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
+	kept, active := h.deferMCP(kept, loaded)
+	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
+	runner := agent.NewRunner(model, kept, sys)
+	runner.Context, runner.ActiveTools = ctxMsg, active
+	runner.MaxOutputTokens = h.maxOutput(modelID)
+	runner.MaxSteps = h.Settings.Int("agent.max_steps")
+	window := h.contextWindow(modelID)
+	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	return &runSetup{
+		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, prompt: prompt,
+		writes: hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit),
+	}, nil
+}
+
+// forkSetup builds the runner a fork sends on: the caller's own prompt, tools,
+// model and request options over the conversation as the model last sent it, so
+// the first call reads the cache of that request instead of writing its prefix.
+func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner, prompt string) (*runSetup, error) {
+	// a fork continues the live conversation, and a run of it has none of its own
+	if run := runOf(ctx); run != nil {
+		return nil, errors.New(forkNested(run))
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	live, active := ag.runner, ag.active
+	ag.mu.Unlock()
+	from := cmp.Or(prev, live)
+	switch {
+	case prev == nil && run.sessionID != "":
+		// its rows hold the fork's own work, never the conversation it opened with
+		return nil, errors.New("zemi no longer holds this fork's conversation: continue it while it still does, or start a new fork")
+	case from == nil:
+		return nil, errors.New("nothing to fork yet: a fork continues the conversation as the model last saw it")
+	case prev == nil && !active:
+		return nil, errors.New("no turn is running: a fork continues the live conversation, so ask while it runs")
+	}
+	modelID := h.sessionModelID()
+	if prev != nil {
+		modelID = cmp.Or(run.model, modelID)
+	}
+	infos := from.Tools()
+	pipe := h.PipelineFor()
+	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
+	prompted := h.pinFiles()
+	var sent sync.Map
+	pipe.Instructions = func(path string) string {
+		return h.nearestInstructions(path, prompted, func(p string) bool {
+			_, dup := sent.LoadOrStore(p, true)
+			return dup
+		})
+	}
+	seen := new(sync.Map)
+	if log, _ := h.sessionLogs(); log != nil {
+		log.Range(func(k, v any) bool { seen.Store(k, v); return true })
+	}
+	pipe.Seen = seen
+	if run.parent != "" {
+		pipe.Pad = h.scratchFor(run.parent)
+	}
+	parent := cmp.Or(run.parent, "lua")
+	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
+		return h.memoryTool(p, parent, scope, text, quote, replaces)
+	}
+	h.labelAsks(pipe, run, forkAgent)
+	kept, loaded, offers, err := h.forkTools(pipe, infos)
+	if err != nil {
+		return nil, err
+	}
+	pipe.Images = func() bool { return h.takesImages(modelID) }
+	runner, err := from.Fork(kept)
+	if err != nil {
+		return nil, err
+	}
+	runner.ActiveTools = offers
+	runner.MaxOutputTokens = h.maxOutput(modelID)
+	runner.MaxSteps = h.Settings.Int("agent.max_steps")
+	window := h.contextWindow(modelID)
+	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	if run.forkBase == 0 {
+		run.forkBase = len(runner.History)
+	}
+	run.model = modelID
+	return &runSetup{
+		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, base: run.forkBase,
+		// the conversation's own session keys its cache, not the fork's child
+		cache:  run.parent,
+		writes: hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit),
+		prompt: forkTask + "\n\n" + prompt,
+	}, nil
+}
+
+// forkTools builds a fork's tool set over its own pipeline: the tools the caller
+// sent, in its order and with its schemas, since any difference there is a
+// prefix the provider writes instead of reading.
+func (h *Host) forkTools(pipe *tools.Pipeline, infos []fantasy.ToolInfo) (kept []fantasy.AgentTool, loaded *sync.Map, active func() []string, err error) {
+	names := make([]string, len(infos))
+	for i, info := range infos {
+		names[i] = info.Name
+	}
+	loaded = new(sync.Map)
+	if session, _ := h.sessionLogs(); session != nil {
+		// the tools the conversation loaded, so the fork offers what the caller
+		// offered; what the fork loads stays its own
+		session.Range(func(k, v any) bool { loaded.Store(k, v); return true })
+	}
+	build := func(p *tools.Pipeline) ([]fantasy.AgentTool, []string) {
+		all, unknown := h.toolsFor(p, nil)
+		all, _ = h.deferMCP(all, loaded)
+		out, _ := pickTools(all, names) // the run refused already if a name is gone
+		return out, unknown
+	}
+	all, _ := h.toolsFor(pipe, nil)
+	wireLua(all, build)
+	all, active = h.deferMCP(all, loaded)
+	if all, err = pickTools(all, names); err != nil {
+		return nil, nil, nil, err
+	}
+	out := make([]fantasy.AgentTool, len(all))
+	for i, t := range all {
+		out[i] = pinnedTool{t, infos[i]}
+	}
+	return out, loaded, active, nil
+}
+
+// pickTools is a fork's tool array: the tools the caller sent, in its order. A
+// name this run cannot build refuses the fork rather than sending another array.
+func pickTools(all []fantasy.AgentTool, names []string) ([]fantasy.AgentTool, error) {
+	by := make(map[string]fantasy.AgentTool, len(all))
+	for _, t := range all {
+		by[t.Info().Name] = t
+	}
+	out := make([]fantasy.AgentTool, len(names))
+	for i, n := range names {
+		t, ok := by[n]
+		if !ok {
+			return nil, fmt.Errorf("no tool is named %s any more: the tool set changed while this turn ran, so a fork cannot send the caller's own request", n)
+		}
+		out[i] = t
+	}
+	return out, nil
+}
+
+// labelAsks names the run behind its tool calls, so the user reads who asks.
+func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
+	ask := pipe.Ask
+	if ask == nil {
+		return
+	}
+	who := name + " agent"
+	if f := h.tasks.flow(run.workflow); f != nil {
+		who = "workflow " + f.id + " · " + who // its descriptions are the model's words
+	}
+	pipe.Ask = func(req tools.Request) (bool, string, string) {
+		req.Agent = who
+		return ask(req)
+	}
+}
+
 // sendPruning runs one subagent turn inside the context window: a run that
 // fills it clears its old tool output and goes on, and a cap the model
 // refuses is dropped once. A subagent has no summarizer: its history is its
 // own and only its report leaves the run, so pruning is all it needs. With
 // nothing to clear it drops the middle of the history, once: the task and a
-// recent tail stay.
-func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string) error {
-	for dropped := false; ; {
+// recent tail stay. base is where the run's own messages start and moves with
+// what a drop takes from the front.
+// NOTE: a drop that reaches past base can leave the caller's own last message
+// as the run's report, where a run's opening outgrew the window.
+func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string, base int) (int, error) {
+	for dropped := 0; ; {
 		err := runner.Send(ctx, text)
 		text = "" // history holds the prompt from here on
 		switch {
@@ -420,18 +630,21 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 				// tailStart never lands on a tool result, so the tail opens
 				// with a message a provider accepts after the task.
 				start := 1 + tailStart(history[1:], tailKeep(compactThreshold(window)))
-				if dropped || start == 1 {
-					return err // nothing left to drop: the report is what it has
+				if dropped > 0 || start == 1 {
+					return base, err // nothing left to drop: the report is what it has
 				}
 				// NOTE: the dropped steps are lost unsummarized, a follow-up
 				// message older than the tail among them, and a run that
 				// fills the window again ends with the error.
 				h.Log.Warn("subagent context full, dropping history", "origin", "agent", "messages", start-1)
-				dropped, history = true, append(history[:1:1], history[start:]...)
+				dropped, history = start-1, append(history[:1:1], history[start:]...)
+				if base > 0 {
+					base = max(1, base-dropped)
+				}
 			}
 			runner.History = history
 		default:
-			return err
+			return base, err
 		}
 	}
 }
@@ -759,6 +972,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	if t.h.hooks() != nil {
 		b.WriteString(" Set background for long work you need not wait on. send_to continues a run, running or finished, by its run id.")
 	}
+	b.WriteString(" Set agent to \"fork\" to continue this conversation in parallel instead of starting fresh.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -774,7 +988,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	params := map[string]any{
 		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
 		"prompt":      map[string]any{"type": "string", "description": "the full task"},
-		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "explore for reading and searching, general only when it must run commands or edit" + required},
+		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "explore for reading and searching, general only when it must run commands or edit, fork to continue this conversation in parallel" + required},
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
@@ -840,13 +1054,24 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		// the agent with the most tools
 		return fantasy.NewTextErrorResponse("agent is required: " + strings.Join(t.names(), ", ")), nil
 	}
+	if in.Agent == forkAgent {
+		// a fork continues the conversation the turn is sending, so a run of it
+		// has nothing of its own to fork, and a detached one would start after
+		// that turn ended
+		if run := runOf(ctx); run != nil {
+			return fantasy.NewTextErrorResponse(forkNested(run)), nil
+		}
+		if in.Background {
+			return fantasy.NewTextErrorResponse("a fork starts from the turn that is running, so it cannot be detached: call it in the foreground, or set background for a fresh agent"), nil
+		}
+	}
 	def, err := t.h.agentDef(in.Agent)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	in.Description = cmp.Or(strings.TrimSpace(in.Description), def.Name)
 	if in.Background && t.h.hooks() != nil {
-		id, err := t.h.startBackgroundAgent(def, in.Description, in.Prompt)
+		id, err := t.h.startBackgroundAgent(ctx, def, in.Description, in.Prompt)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
@@ -1047,6 +1272,8 @@ func (h *Host) openAgentFile(name string) error {
 	switch {
 	case err != nil:
 		return Usagef("%v", err)
+	case d.Name == forkAgent:
+		return Usagef("fork is not a file: it continues the conversation it is asked from, so there is nothing to edit")
 	case d.Path == "":
 		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, perm.TildePath(h.Dirs.ConfigHome))
 	}
@@ -1089,13 +1316,17 @@ func (h *Host) openAgents() error {
 		if d.ReadOnly {
 			access = "read only"
 		}
+		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "access", access}
+		if d.Name == forkAgent {
+			// nothing of its own to describe: it sends the caller's own
+			fields = []string{"source", h.sourceOf(d.Source, d.Path), "prompt, tools, model", "the caller's"}
+		}
 		item := map[string]any{
 			"text":    d.Name,
 			"desc":    listDesc(d.Description),
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
 			"detail":  d.Description,
 		}
-		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "access", access}
 		if d.Path != "" {
 			fields = append(fields, "path", perm.TildePath(d.Path))
 			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
@@ -1137,7 +1368,9 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		if desc == "" {
 			desc = clipRunes(prompt, 40)
 		}
-		ctx, cancel := context.WithCancel(context.Background())
+		// the run outlives the call that started it, but not its origin: a run
+		// told to fork must see the run it was asked from
+		ctx, cancel := context.WithCancel(context.WithoutCancel(cmp.Or(L.Context(), context.Background())))
 		at := h.callerOf(L)
 		stopID := h.stops.add(cancel) // a reload cancels it, like a job
 		h.GoSafe("zemi.agent.run", func() {

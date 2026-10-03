@@ -494,7 +494,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	}
 	parent := seedSession(t, h)
 	def, _ := h.agentDef("explore")
-	id, err := h.startBackgroundAgent(def, "left behind", "look")
+	id, err := h.startBackgroundAgent(context.Background(), def, "left behind", "look")
 	if err != nil {
 		t.Fatal(err)
 	}

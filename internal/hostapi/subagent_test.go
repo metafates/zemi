@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +29,8 @@ import (
 // calls fail.
 type scriptModel struct {
 	script func(system, last string, toolResult bool) []fantasy.StreamPart
+	// record, when set, sees every call the host makes, real ones only.
+	record func(fantasy.Call)
 }
 
 func (m *scriptModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
@@ -36,6 +40,9 @@ func (m *scriptModel) Generate(context.Context, fantasy.Call) (*fantasy.Response
 func (m *scriptModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	if sideCall(call) {
 		return nil, errors.New("not implemented")
+	}
+	if m.record != nil {
+		m.record(call)
 	}
 	var system, last string
 	toolResult := false
@@ -203,12 +210,14 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		name     string
 		history  []fantasy.Message
 		refusals int
+		base     int // where the run's own messages start
+		wantBase int
 		check    func([]fantasy.Message) bool
 	}{
 		{
 			"old tool output is cleared",
 			[]fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)},
-			1,
+			1, 0, 0,
 			func(h []fantasy.Message) bool {
 				return toolText(h[1].Content[0].(fantasy.ToolResultPart)) == clearedOutput
 			},
@@ -216,12 +225,17 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		{
 			"nothing to clear drops the middle, not the task",
 			[]fantasy.Message{agent.UserMessage("look"), big},
-			1,
+			1, 0, 0,
 			func(h []fantasy.Message) bool {
 				return concatText(h[0].Content) == "look" && estTokens(h...) < 1_000
 			},
 		},
-		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, nil},
+		{
+			"the drop carries the run's own opening with it",
+			[]fantasy.Message{agent.UserMessage("look"), big, agent.UserMessage("more")},
+			1, 3, 2, nil,
+		},
+		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, 0, 0, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -235,10 +249,13 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 			runner := agent.NewRunner(model, nil, "sys")
 			runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
 			runner.History = c.history
-			err := h.sendPruning(context.Background(), runner, "p/m", "go")
+			base, err := h.sendPruning(context.Background(), runner, "p/m", "go", c.base)
 			wantErr := c.refusals > 1
 			if (err != nil) != wantErr || sends != 2 {
 				t.Fatalf("send: %v (streams %d)", err, sends)
+			}
+			if base != c.wantBase {
+				t.Fatalf("the run's own messages start at %d, want %d", base, c.wantBase)
 			}
 			if !wantErr && lastAssistantText(runner.History) != "report" || c.check != nil && !c.check(runner.History) {
 				t.Fatalf("history after the retry: %d messages, last text %q", len(runner.History), lastAssistantText(runner.History))
@@ -417,8 +434,12 @@ func TestAgentDefs(t *testing.T) {
 		return out
 	}
 
-	if builtinAgents[1].Name != "general" {
+	if builtinAgents[0].Name != forkAgent {
 		t.Fatal("builtinAgents order changed; fix the general row below")
+	}
+	general := slices.IndexFunc(builtinAgents, func(d AgentDef) bool { return d.Name == "general" })
+	if general < 0 {
+		t.Fatal("no general agent among the builtins")
 	}
 	defs := get()
 	if _, ok := defs["tester"]; ok {
@@ -435,7 +456,7 @@ func TestAgentDefs(t *testing.T) {
 	}{
 		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh.", true},
 		{"explore", "user", "my explorer", "read", "mine", false},
-		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System, false},
+		{"general", "builtin", builtinAgents[general].Description, "", builtinAgents[general].System, false},
 		{"tester", "project", "runs tests", "", "x", false},
 	} {
 		d, ok := defs[c.name]
@@ -818,4 +839,261 @@ func TestSubagentUpdatePrompt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestForkContinuesTheCallersPrefix: a fork sends the caller's own request -
+// its tools, system prompt, context message and messages, under its cache key -
+// and then its task. That prefix is what makes the provider read the
+// conversation from its cache instead of writing it out again.
+func TestForkContinuesTheCallersPrefix(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	var mu sync.Mutex
+	var calls []fantasy.Call
+	m := &scriptModel{record: func(c fantasy.Call) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, c)
+	}}
+	m.script = func(_, last string, toolResult bool) []fantasy.StreamPart {
+		switch {
+		case strings.Contains(last, forkTask):
+			return textParts("the fork's report")
+		case toolResult:
+			return textParts("parent saw: " + last)
+		}
+		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
+	}
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	if err := h.AgentSend("hello"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(calls) != 3 {
+		for i, c := range calls {
+			last := c.Prompt[len(c.Prompt)-1]
+			t.Logf("call %d: %d messages, last %s %q", i, len(c.Prompt), last.Role, concatText(last.Content))
+		}
+		t.Fatalf("calls = %d, want the caller's step, the fork's and the caller's next", len(calls))
+	}
+	caller, fork, next := calls[0], calls[1], calls[2]
+	if len(fork.Prompt) != len(caller.Prompt)+1 {
+		t.Fatalf("the fork sent %d messages, want the caller's %d plus its task", len(fork.Prompt), len(caller.Prompt))
+	}
+	// the cache breakpoints ride on the last two messages of a request, so they
+	// move with the fork's task and are not part of what it continues
+	for i, msg := range caller.Prompt {
+		if msg.Role != fork.Prompt[i].Role || !reflect.DeepEqual(msg.Content, fork.Prompt[i].Content) {
+			t.Fatalf("message %d is not the caller's:\ncaller %+v\nfork   %+v", i, msg, fork.Prompt[i])
+		}
+	}
+	task := concatText(fork.Prompt[len(fork.Prompt)-1].Content)
+	if !strings.HasPrefix(task, forkTask) || !strings.Contains(task, "review what we did") {
+		t.Fatalf("the fork's task = %q", task)
+	}
+	for _, c := range []struct {
+		what      string
+		got, want any
+	}{
+		{"tools", fork.Tools, caller.Tools},
+		{"provider options", fork.ProviderOptions, caller.ProviderOptions},
+		{"headers", fork.Headers, caller.Headers},
+		{"temperature", fork.Temperature, caller.Temperature},
+		{"max output tokens", fork.MaxOutputTokens, caller.MaxOutputTokens},
+	} {
+		if !reflect.DeepEqual(c.got, c.want) {
+			t.Fatalf("the fork's %s differ from the caller's: %v vs %v", c.what, c.got, c.want)
+		}
+	}
+	// the caller's own next step still opens with the prefix it had cached
+	for i, msg := range caller.Prompt {
+		if msg.Role != next.Prompt[i].Role || !reflect.DeepEqual(msg.Content, next.Prompt[i].Content) {
+			t.Fatalf("the caller's next step changed message %d:\nbefore %+v\nnext   %+v", i, msg, next.Prompt[i])
+		}
+	}
+
+	var reply string
+	for _, m := range h.Session().Transcript {
+		if m.Role == "assistant" && m.Kind == "" {
+			reply = m.Text
+		}
+	}
+	if !strings.Contains(reply, "the fork's report") {
+		t.Fatalf("reply = %q", reply)
+	}
+	runs := h.tasks.runsOf(h.AgentSessionID())
+	if len(runs) != 1 || runs[0].agent != forkAgent {
+		t.Fatalf("runs = %+v", runs)
+	}
+	sess, err := h.DB.GetSession(runs[0].sessionID)
+	if err != nil || sess.Profile != forkAgent || sess.ParentID != h.AgentSessionID() {
+		t.Fatalf("fork session = %+v %v", sess, err)
+	}
+}
+
+// TestForkKnowsItIsAFork: a fork that asks for another fork is refused in the
+// words that tell it what it is, and the refusal is stored in its own session
+// like any other tool result, so it reads it and does the work itself.
+func TestForkKnowsItIsAFork(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case toolResult:
+				return textParts("after the tool: " + last)
+			case strings.Contains(last, forkTask):
+				return toolCallParts("c2", "agent", `{"description":"again","prompt":"more","agent":"fork"}`)
+			}
+			return toolCallParts("c1", "agent", `{"description":"check it","prompt":"review","agent":"fork"}`)
+		}}, nil
+	}
+	if err := h.AgentSend("hello"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+
+	runs := h.tasks.runsOf(h.AgentSessionID())
+	if len(runs) != 1 {
+		t.Fatalf("runs = %d, want one fork and no fork of it", len(runs))
+	}
+	rows, err := h.DB.Messages(runs[0].sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said string
+	for _, row := range rows {
+		said += row.PartsJSON
+	}
+	if !strings.Contains(said, "already a fork") || !strings.Contains(said, "after the tool") {
+		t.Fatalf("the fork read %q", said)
+	}
+	var reply string
+	for _, m := range h.Session().Transcript {
+		if m.Role == fantasy.MessageRoleAssistant && m.Kind == "" {
+			reply = m.Text
+		}
+	}
+	if !strings.Contains(reply, "after the tool") {
+		t.Fatalf("reply = %q", reply)
+	}
+}
+
+// TestForkRefusals: a fork continues the live conversation, so a run, an idle
+// session, a fork the process forgot and a tool set that moved all answer no,
+// in words the caller and the model can act on.
+func TestForkRefusals(t *testing.T) {
+	t.Run("a run cannot fork", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		run := func(agent string) error {
+			ctx := context.WithValue(context.Background(), runKey{}, &agentRun{agent: agent})
+			_, err := h.forkSetup(ctx, &agentRun{}, nil, "p")
+			return err
+		}
+		if err := run(forkAgent); err == nil || !strings.Contains(err.Error(), "already a fork") {
+			t.Fatalf("a fork asking for a fork = %v", err)
+		}
+		if err := run("explore"); err == nil || !strings.Contains(err.Error(), "is a run of it") {
+			t.Fatalf("a subagent asking for a fork = %v", err)
+		}
+	})
+	t.Run("a fork cannot be detached", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		h.SetUIHooks(&fakeUI{})
+		tool := h.agentTool(h.PipelineFor())
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "c1", Input: `{"prompt":"p","agent":"fork","background":true}`})
+		if err != nil || !resp.IsError || !strings.Contains(resp.Content, "cannot be detached") {
+			t.Fatalf("a detached fork = %+v %v", resp, err)
+		}
+	})
+	t.Run("a detached run keeps its origin", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		def, err := h.agentDef(forkAgent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// the run a detached fork is asked from must survive the detach, or the
+		// fork would continue the conversation from outside itself
+		ctx := context.WithValue(context.Background(), runKey{}, &agentRun{agent: forkAgent})
+		id, err := h.startBackgroundAgent(ctx, def, "d", "p")
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := h.tasks.find(id)
+		waitFor(t, func() error {
+			if run.isRunning() {
+				return errors.New("the detached run is still running")
+			}
+			return nil
+		})
+		tr := run.transcript()
+		if last := tr[len(tr)-1]; !strings.Contains(last.Text, "already a fork") {
+			t.Fatalf("the detached fork said %q", last.Text)
+		}
+	})
+	t.Run("nothing sent yet", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), "nothing to fork yet") {
+			t.Fatalf("a fork of a session that sent nothing = %v", err)
+		}
+	})
+	t.Run("no turn is running", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		h.modelFn = func() (fantasy.LanguageModel, error) {
+			return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+				return textParts("done")
+			}}, nil
+		}
+		if err := h.AgentSend("hello"); err != nil {
+			t.Fatal(err)
+		}
+		waitIdle(t, h)
+		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), "no turn is running") {
+			t.Fatalf("a fork after the turn ended = %v", err)
+		}
+	})
+	t.Run("a forgotten fork cannot be continued", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		if err := h.DB.CreateSession("forgotten", "gone", "the task", forkAgent); err != nil {
+			t.Fatal(err)
+		}
+		run, err := h.loadRun("forgotten")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.continueRun(context.Background(), run, "more", nil); err == nil || !strings.Contains(err.Error(), "no longer holds this fork's conversation") {
+			t.Fatalf("continuing a forgotten fork = %v", err)
+		}
+	})
+	t.Run("agents/fork.md is ignored", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		h.Dirs.ConfigHome = t.TempDir()
+		dir := filepath.Join(h.Dirs.ConfigHome, "agents")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(dir, "fork.md")
+		if err := os.WriteFile(file, []byte("---\ndescription: mine\n---\nbody"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		def, err := h.agentDef(forkAgent)
+		if err != nil || def.Path != "" {
+			t.Fatalf("agents/fork.md shadowed the builtin: %+v %v", def, err)
+		}
+		n := 0
+		for _, d := range h.agentDefs() {
+			if d.Name == forkAgent {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("fork is listed %d times", n)
+		}
+	})
+	t.Run("a tool the caller sent is gone", func(t *testing.T) {
+		if _, err := pickTools(nil, []string{"read"}); err == nil || !strings.Contains(err.Error(), "no tool is named read") {
+			t.Fatalf("a fork missing a caller tool = %v", err)
+		}
+	})
 }

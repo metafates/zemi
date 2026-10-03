@@ -975,3 +975,40 @@ func TestSignedThinking(t *testing.T) {
 		})
 	}
 }
+
+// TestRunnerForkContinuesTheLastRequest: a fork sends the runner's own prefix -
+// its system prompt, context message, request options and the messages it last
+// sent - so what the provider has cached is read instead of written again.
+func TestRunnerForkContinuesTheLastRequest(t *testing.T) {
+	m := &mockModel{parts: textParts("ok")}
+	r := NewRunner(m, nil, "the system prompt")
+	r.Hooks = newRecHooks()
+	r.Context = "the context"
+	temp := 0.5
+	r.Temperature = &temp
+	if _, err := r.Fork(nil); err == nil {
+		t.Fatal("a runner that sent nothing cannot be forked")
+	}
+	if err := r.Send(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	f, err := r.Fork(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.system != r.system || f.Context != r.Context || f.key != r.key {
+		t.Fatalf("the fork's prompt differs: %q %q %q", f.system, f.Context, f.key)
+	}
+	if f.Temperature != r.Temperature || f.MaxOutputTokens != r.MaxOutputTokens {
+		t.Fatal("the fork's request options differ")
+	}
+	if fmt.Sprint(f.History) != fmt.Sprint(r.live) || fmt.Sprint(f.sent) != fmt.Sprint(r.live) {
+		t.Fatalf("the fork's history is not what the caller sent: %+v vs %+v", f.History, r.live)
+	}
+	// its own conversation: growing the fork leaves the caller's as it was
+	n := len(r.live)
+	f.History = append(f.History, UserMessage("more"))
+	if len(r.live) != n || len(r.History) != n+1 || len(f.sent) != n {
+		t.Fatalf("the fork wrote into the caller's history: %d %d %d", len(r.live), len(r.History), len(f.sent))
+	}
+}

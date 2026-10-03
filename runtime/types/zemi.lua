@@ -1699,7 +1699,7 @@ function zemi.model.pick(role) end
 
 ---@class zemi.AgentRunSpec
 ---@field prompt string
----@field agent? string A name from `zemi.agent.list()`; "general" by default.
+---@field agent? string A name from `zemi.agent.list()`, or "fork" to continue the live conversation, which needs a turn running; "general" by default.
 ---@field description? string Shown while it runs.
 
 ---@class zemi.RunHandle
@@ -1771,7 +1771,7 @@ function zemi.agent.run(spec, on_done) end
 ---@field id string The run's id, as /workflows shows it.
 
 ---@class zemi.WorkflowAgentOpts
----@field agent? string Agent definition, default "general".
+---@field agent? string An agent definition, or "fork" to continue the live conversation; default "general".
 ---@field description? string Row label; default the prompt's first line.
 ---@field phase? string Group for this agent; default the last phase().
 ---@field model? string A role or provider/model id.

@@ -127,7 +127,7 @@ func (h *Host) zemiPrompt() string {
 const delegationPrompt = `
 
 # Delegating
-Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it".`
+Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it". Fork when the work needs what this conversation already holds: a review of a change just made, a second opinion on what you just read. A fork re-sends the conversation every step, so a search is cheaper fresh.`
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
 func (h *Host) InitProject() error {
@@ -497,7 +497,11 @@ const (
 	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
-	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md in the recipes directory (under Environment): yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
+	// forkTask opens the only message a fork receives, after the conversation
+	// it continues: the caller's own prompt says it may ask and delegate, and
+	// this run may do neither.
+	forkTask   = "You are a fork of the conversation above, running in parallel with the agent that started you: everything it has sent and read is already here. You are not that agent: nobody answers you here (the question and plan tools refuse, and there is no todo list), and a fork cannot fork again, so an agent call with fork is refused. Do the work here, and make your final message a complete, concise report of what the caller needs, citing path:line where it matters: it sees only that."
+	recipesUse = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md in the recipes directory (under Environment): yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
 // environmentFor gives the rules for the run's scratchpad, recipes and the

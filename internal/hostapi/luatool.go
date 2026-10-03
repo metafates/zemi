@@ -280,11 +280,11 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	// callback the script registered cannot drive tools, and so a call still
 	// running when the script ends stops with it
 	if t.build != nil {
-		pipe := h.PipelineFor()
+		pipe := *t.pipe
 		pipe.Script = rel
 		// a call's progress (a command's last line) shows on this tool's row
 		pipe.Progress = func(_, line string) { h.setToolDetail(call.ID, sanitize.String(line)) }
-		set, _ := t.build(pipe)
+		set, _ := t.build(&pipe)
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		script := &luaScript{ctx: sctx, id: call.ID, tools: map[string]fantasy.AgentTool{}, calls: newLuaCalls(luaToolCallsMax)}

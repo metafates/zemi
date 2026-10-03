@@ -806,11 +806,21 @@ lua-language-server is installed.
   `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   They never get `agent`, `workflow`, `todos`, `question`,
-  `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`) named by the run's id;
+  `plan` or `lua` (nesting depth 1: only the live turn forks). A run is a child session (`parent_id`) named by the run's id;
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
-  `delegationPrompt`: without it models rarely delegate.
+  `delegationPrompt`: without it models rarely delegate. The fork is the one run that is no
+  definition: `agent = "fork"` (`forkAgent`, and `agents/fork.md` is ignored with an error)
+  continues the caller's conversation off the live `Runner.Fork` - the caller's model, system
+  prompt, context message and request options, with the history it last sent - over a pipe of its
+  own, where `forkTools` rebuilds the caller's own names and order (`Runner.Tools`) and
+  `pinnedTool` sends the caller's `Info`, so the array stays identical; its calls also keep the
+  caller's session key, so the provider reads the prefix it cached. It lists `agent`, `workflow`,
+  `todos`, `question`, `plan` and `lua` and not `update`, since that array is the caller's.
+  `forkSetup` refuses a fork asked from inside a run, one asked after the turn
+  ended and one the tool asked for with `background`, so only the live turn
+  starts one; its task says what it is, so it does not ask for another.
 - **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
   tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`, `research`,
   `hunt` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
@@ -835,7 +845,10 @@ lua-language-server is installed.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
-  the session's, and a submit while it runs goes to it through `MessageAgent`. A run's queue is
+  the session's, and a submit while it runs goes to it through `MessageAgent`. A fork is an
+  `agentRun` too (`profile` `fork`), and its `forkBase` is where its own messages start in the
+  history: the conversation it opened with is not its report, and `send_to` refuses a fork this
+  process forgot, whose rows hold its own work alone. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. A background run past `agent.max_background`
@@ -1023,9 +1036,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
   when it is built, and a hit costs no file read and no Lua. The one exception, an instruction
   file edited by hand, rides the next user message once (`instructionEdits`, DESIGN §6.3).
-  Subagents build theirs once per run (`systemWith`). `TestPromptBudget` caps what the default
-  request carries before the first message (system text and tool definitions); raise it only
-  with a reason.
+  Subagents build theirs once per run (`systemWith`); a fork sends the caller's own text and
+  tools instead, which is the cache its cheap start reads (`Runner.Fork`, `pinnedTool`).
+  `TestPromptBudget` caps what the default request carries before the first message (system text
+  and tool definitions); raise it only with a reason.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything
   else.
