@@ -124,6 +124,11 @@ type Runner struct {
 	// (signed), kept across turns and carried by Continue
 	sent []fantasy.Message
 	key  string
+	// offered is the tool names the last request offered, and carried the
+	// caller's own, which a fork's first request offers instead of its own set:
+	// another tools array is a prefix the provider has not cached
+	offered []string
+	carried []string
 }
 
 // Continue carries prev's conversation into r, a runner built for the next
@@ -431,6 +436,10 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		if active != nil {
 			res.ActiveTools = active()
 		}
+		// a fork's first request offers the caller's own list, once
+		if r.carried != nil {
+			res.ActiveTools, r.carried = r.carried, nil
+		}
 		res.Messages = withCacheBreakpoints(r.signed(msgs, res.ActiveTools, true))
 		return ctx, res, nil
 	}
@@ -499,8 +508,9 @@ func (r *Runner) Tools() []fantasy.ToolInfo {
 
 // Fork builds the runner a fork of this conversation sends on: this runner's
 // model, system prompt, context message and request options, tools of its own,
-// and the messages this one last sent as its history. Hooks, Persist, Steer,
-// ActiveTools and Full belong to the run, so the caller sets them.
+// and the messages and tool names this one last sent, which its first request
+// repeats. Hooks, Persist, Steer, ActiveTools and Full belong to the run, so
+// the caller sets them.
 func (r *Runner) Fork(tools []fantasy.AgentTool) (*Runner, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -513,6 +523,8 @@ func (r *Runner) Fork(tools []fantasy.AgentTool) (*Runner, error) {
 	// sent is the history itself: keepSigned compares the two, and a fork sends
 	// the same bytes, the signed thinking included
 	f.History, f.sent, f.key = slices.Clone(r.live), slices.Clone(r.live), r.key
+	// the tools that request offered, which the fork's first request repeats
+	f.carried = slices.Clone(r.offered)
 	return f, nil
 }
 
@@ -710,7 +722,7 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 	defer r.mu.Unlock()
 	out, rec := keepSigned(msgs, r.sent, key.String() == r.key)
 	if record {
-		r.sent, r.key, r.live = rec, key.String(), out
+		r.sent, r.key, r.live, r.offered = rec, key.String(), out, names
 	}
 	return slices.Concat(sys, out)
 }

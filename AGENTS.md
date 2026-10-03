@@ -815,7 +815,8 @@ lua-language-server is installed.
   continues the caller's conversation off the live `Runner.Fork` - the caller's model, system
   prompt, context message and request options, with the history it last sent - over a pipe of its
   own, where `forkTools` rebuilds the caller's own names and order (`Runner.Tools`) and pins the
-  caller's `Info`, so the array stays identical; its calls also keep the caller's session key, so
+  caller's `Info`, and its first request offers the names the caller's own request offered
+  (`Runner.carried`), so the array stays identical; its calls also keep the caller's session key, so
   the provider reads the prefix it cached. It lists `agent`, `workflow`, `todos`, `question`,
   `plan` and `lua` and not `update`, since that array is the caller's.
   `forkSetup` refuses a fork asked from inside a run, one asked after the turn

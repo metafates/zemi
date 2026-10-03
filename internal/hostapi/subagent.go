@@ -511,10 +511,12 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 			return dup
 		})
 	}
-	// the fork inherits the conversation's reads; its own stay its own
-	reads, loaded := h.sessionLogs()
+	// the fork inherits the conversation's reads and MCP loads; what it reads and
+	// loads itself stays its own, out of the caller's live maps
+	reads, session := h.sessionLogs()
+	loaded := copyMap(session)
 	pipe.Seen = copyMap(reads)
-	kept, offers, err := h.forkTools(pipe, infos, copyMap(loaded))
+	kept, offers, err := h.forkTools(pipe, infos, loaded)
 	if err != nil {
 		return nil, err
 	}
@@ -547,6 +549,14 @@ func (h *Host) forkTools(pipe *tools.Pipeline, infos []fantasy.ToolInfo, loaded 
 	}
 	all, _ := h.toolsFor(pipe, nil)
 	wireLua(all, build)
+	// the caller's own set decides what a step offers, deferral included: those
+	// names are the prefix key, so this run's own next step would send another
+	// array than the request it continues
+	names := make([]string, len(infos))
+	for i, info := range infos {
+		names[i] = info.Name
+	}
+	all, _ = filterTools(all, names, nil)
 	all, active := h.deferMCP(all, loaded)
 	kept, err := pickTools(all, infos)
 	return kept, active, err
