@@ -1683,31 +1683,36 @@ func TestWorkingRowAgentView(t *testing.T) {
 		}
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
-	// the name on the rule, at most a cell more on either side of it
+	// centred: the run's name on the rule, a cell of rule either side of it and
+	// the block at the rule's end
 	centred := func(r string) bool {
 		left, right, ok := strings.Cut(r, "viewing explore")
 		if !ok {
 			return false
 		}
-		l, rr := ansi.StringWidth(left), ansi.StringWidth(right)
-		if rr < l {
-			l, rr = rr, l
+		rule, tail, ok := strings.Cut(right, " esc back ")
+		if !ok || strings.Trim(rule, "─ ") != "" || tail != "" {
+			return false
 		}
-		return rr-l <= 1
+		a, b := ansi.StringWidth(left), ansi.StringWidth(right)
+		if b < a {
+			a, b = b, a
+		}
+		return b-a <= 1
 	}
 	// idle: the run and the key that leaves it, where the rule was bare before
-	if r := row(80); !centred(r) || !strings.HasSuffix(r, " esc back ") {
+	if r := row(80); !centred(r) {
 		t.Fatalf("the idle rule does not centre the viewed run: %q", r)
 	}
 	// the rule reports the run on screen, never the session's turn: a running
 	// session moves neither the clock nor the key while a finished run shows
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !centred(r) || !strings.HasSuffix(r, " esc back ") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
+	if r := row(80); !centred(r) || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
 		t.Fatalf("a session turn leaks into the view's rule: %q", r)
 	}
 	// width sheds the name first, never the key
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(26); !strings.HasSuffix(r, " esc back ") || strings.Contains(r, "viewing") {
+	if r := row(26); strings.Contains(r, "viewing") || !strings.HasSuffix(r, " esc back ") {
 		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
 	}
 }

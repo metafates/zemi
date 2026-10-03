@@ -111,18 +111,33 @@ zemi.ui.widget.add({
 			-- the left
 			if tick then parts[#parts + 1] = tick end
 		end
-		---@return integer
-		local function room()
-			local n = 0
-			for _, p in ipairs(parts) do
-				n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0)
-			end
-			return n
-		end
 		local span = ctx.width
-		-- the snail, its cells of rule and the block's own keep eight cells
-		-- before a part goes
-		while #parts > 0 and room() + 8 > span do
+		-- what the row holds: the snail in its corner, the block at the right
+		-- end, and the part it centres, which takes a cell of rule on either
+		-- side of it; sized by what a part grows to, so a ticking clock never
+		-- sheds one mid-turn
+		---@return boolean
+		local function fit()
+			local room, w, block = 0, 0, 0
+			for _, p in ipairs(parts) do
+				local cells = math.max(fmt.cells(p[1]), p[3] or 0)
+				room = room + 3 + cells
+				if p.center then
+					w = fmt.cells(p[1]) + 2
+				else
+					block = block + (block > 0 and 3 or 0) + cells
+				end
+			end
+			if room + 8 > span then return false end
+			if w == 0 then return true end
+			-- the snail and a cell of rule, the centred part, a cell of rule
+			-- and the block
+			local start = math.floor((span - w) / 2) + 1
+			return start >= 6 and start + w <= span - block - 2
+		end
+		-- the least worth part goes first, so a narrow rule keeps the snail and
+		-- what matters most
+		while #parts > 0 and not fit() do
 			local least = 1
 			for i, p in ipairs(parts) do
 				if p[2] < parts[least][2] then least = i end
@@ -154,13 +169,10 @@ zemi.ui.widget.add({
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		-- the centred part takes a cell of rule on either side and drops out when
-		-- the rule cannot hold it between the snail and the block
+		-- the centred part sits at the row's middle, which fit has left the rule
+		-- either side of
 		local w = mid and fmt.cells(mid) + 2 or 0
 		local start = w > 0 and math.floor((span - w) / 2) + 1 or 0
-		if w > 0 and (start < 7 or start + w > span - block) then
-			mid, w, start = nil, 0, 0
-		end
 		local row = { { text = " ", hl = "Rule", copy = false } }
 		-- the rule runs from the snail to the centred part and on to the block
 		local left = mid and start - 2 or span - block - 1
