@@ -157,7 +157,7 @@ func netGate(p *Pipeline, u *url.URL, reason string) error {
 	if err := checkFetchHost(p, u); err != nil {
 		return err
 	}
-	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
+	v := p.CheckDenied(Request{Tool: ToolFetch, Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
 	if v.Decision != perm.Allow {
 		return errors.New(DeniedText(v, "net."+u.Hostname()+" "+u.String()))
 	}

@@ -626,7 +626,39 @@ func TestMemoryExamplesStore(t *testing.T) {
 	}
 	for _, m := range examples {
 		if learn.InstructionShaped(m[1]) {
-			t.Errorf("example reads as an instruction: %q", m[1])
+			t.Errorf("example reads as instruction: %q", m[1])
 		}
+	}
+}
+
+// TestDeniedOutsideRun: the tools that gate themselves fire the same
+// tool.denied notification Run gives a gated one, so a handler sees every
+// refusal (DESIGN §6.2).
+func TestDeniedOutsideRun(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		run  func(t *testing.T, p *Pipeline)
+		want string
+	}{
+		{"a refused skill read", func(t *testing.T, p *Pipeline) {
+			call(t, toolNamed(t, "skill", p), `{"name":"x"}`)
+		}, ToolSkill},
+		{"a refused fetch redirect hop", func(t *testing.T, p *Pipeline) {
+			if err := netGate(p, &url.URL{Scheme: "https", Host: "example.com", Path: "/x"}, "fetch redirect"); err == nil {
+				t.Fatal("a hop no rule allows must be refused")
+			}
+		}, ToolFetch},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p, _ := testPipeline(t, false)
+			// a skill outside the free zone, or the read is allowed before any ask
+			p.Skills = func() []SkillInfo { return []SkillInfo{{Name: "x", Path: outsideTemp(t)}} }
+			var tools []string
+			p.Denied = func(tool string, _ Request, _ Verdict) { tools = append(tools, tool) }
+			c.run(t, p)
+			if !slices.Equal(tools, []string{c.want}) {
+				t.Fatalf("tool.denied for %v, want %q", tools, c.want)
+			}
+		})
 	}
 }

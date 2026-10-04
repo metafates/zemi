@@ -1344,7 +1344,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				return fantasy.NewTextResponse(out), nil
 			}),
 
-		mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP),
+		gated(mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP)),
 
 		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone, and not for a skill already loaded.",
 			true,
