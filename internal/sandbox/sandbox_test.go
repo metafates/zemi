@@ -238,6 +238,12 @@ func TestPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sock.Close()
+	// a listener of the pad's own, which a confined command may dial
+	padSock, err := net.Listen("unix", filepath.Join(scratch, "s2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer padSock.Close()
 	shm := fmt.Sprintf("/dev/shm/zemi-sandbox-%d", os.Getpid())
 	t.Cleanup(func() { os.Remove(shm) })
 	cases := []struct {
@@ -316,10 +322,11 @@ func TestPolicy(t *testing.T) {
 		// the shapes match names, so no write root may be exempt from them
 		{"read a .env moved into the scratchpad", "moveread", filepath.Join(root, "backend") + "|" + filepath.Join(scratch, "b"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
-		// seatbelt filters a bind by socket path; Landlock cannot, so there
-		// every AF_UNIX socket is refused outright
+		// seatbelt filters a socket by path; Landlock cannot, so there every
+		// AF_UNIX socket is refused outright
 		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), true, runtime.GOOS == "linux"},
 		{"bind a unix socket outside the roots", "bindunix", filepath.Join(outside, "s"), false, false},
+		{"dial a unix socket in the pad", "unix", padSock.Addr().String(), true, runtime.GOOS == "linux"},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
 		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},
 		// Landlock has no right for these, see seccomp

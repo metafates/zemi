@@ -83,9 +83,9 @@ func homes() []string {
 // (UV_CACHE_DIR, npm_config_cache) at a dir in the pad, never the user's
 // cache. The system temp dir is not writable for the same reason: macOS
 // keeps xcrun_db there, which picks the binary /usr/bin/make or git runs.
-// Seatbelt allows binding a unix socket under the pad alone, where tmux and a
-// dev server put one; Landlock plus seccomp refuses AF_UNIX outright, since a
-// pathname socket's connect cannot be told from its bind.
+// Seatbelt allows a unix socket under the pad alone, bound and dialed, which is
+// where a dev server puts one; Landlock plus seccomp refuses AF_UNIX outright,
+// since a pathname socket's connect cannot be told from its bind.
 func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 	return h.policyWalk(readOnly, pad, true)
 }
@@ -305,7 +305,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 		}
 		b.WriteString("\n- Network: localhost only.")
 		if pol.Env["TMPDIR"] != "" {
-			b.WriteString(" A unix socket you bind in $TMPDIR works (tmux); dialing one outside it, the ssh agent's or docker's, does not.")
+			b.WriteString(" A unix socket in $TMPDIR binds and dials; one outside it, the ssh agent's or docker's, does not.")
 		}
 	case backend.EnforcesProtect:
 		b.WriteString("\n- Network: the sandbox's own localhost only, so servers already running here are unreachable.")

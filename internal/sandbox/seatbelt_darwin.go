@@ -146,13 +146,15 @@ func profile(p Policy) (string, []string) {
 	for _, r := range rules {
 		b.WriteString(r.text + "\n")
 	}
-	// A unix socket binds in the command's own temp dir alone ($TMPDIR, the
-	// pad), which is where tmux and a dev server put one; the filter resolves
-	// the path, so a ".." in a socket path reaches no further than this rule,
-	// and the file rules still say whether the socket may appear there at all.
+	// A unix socket binds and is dialed in the command's own temp dir alone
+	// ($TMPDIR, the pad), which is where a dev server puts one; the filters
+	// resolve the path, so a ".." in a socket path reaches no further than
+	// these rules, and the file rules still say whether one may appear there.
 	// NOTE: resolved, since the file rules were too: /tmp is /private/tmp.
 	if v := p.Env["TMPDIR"]; v != "" {
-		fmt.Fprintf(&b, "(allow network-bind (local unix-socket (subpath %s)))\n", param("BIND", 0, cmp.Or(perm.RealPath(v), v)))
+		pad := cmp.Or(perm.RealPath(v), v)
+		fmt.Fprintf(&b, "(allow network-bind (local unix-socket (subpath %s)))\n", param("BIND", 0, pad))
+		fmt.Fprintf(&b, "(allow network-outbound (remote unix-socket (subpath %s)))\n", param("DIAL", 0, pad))
 	}
 	// realpath and cargo stat every parent of a root, so the hidden parents of
 	// a root or a path Read or List opens (the state dir over the sandbox
