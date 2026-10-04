@@ -39,7 +39,7 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 |---|---|
 | `charm.land/fantasy` | Agent core: multi-provider LLM abstraction, agent loop, tool protocol, streaming callbacks, retries, stop conditions, provider-defined tools (web search) |
 | `charm.land/bubbletea/v2` | TUI program, event loop, key/mouse input |
-| `charmbracelet/ultraviolet` (+ `x/ansi`, `x/term`, `x/termios`, `colorprofile`, runewidth, uniseg, terminfo, displaywidth, uax29) | Cell-based rendering primitives under bubbletea v2; used for widget buffers and golden tests |
+| `charmbracelet/ultraviolet` (+ `x/ansi`, `x/term`, `colorprofile`; `runewidth`, `uniseg`, `x/termios`, `displaywidth`, `uax29` and `terminfo` are ultraviolet's own, never imported here) | Cell-based rendering primitives under bubbletea v2; used for widget buffers and golden tests |
 | `github.com/yuin/gopher-lua` | The embedded Lua 5.1 VM: interpreter thread, sandbox, `require`, coroutines |
 | `github.com/goccy/go-yaml` | SKILL.md and `agents/*.md` frontmatter parsing |
 
