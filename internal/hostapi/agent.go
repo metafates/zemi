@@ -329,6 +329,13 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return append(tools.All(pipe), h.agentTool(pipe), h.workflowTool(pipe), h.luaEvalTool(pipe))
 }
 
+// allTools is every tool a run could get, in one order: the builtins, the
+// Lua tools, then the MCP ones. A caller filters out what its run may not
+// have.
+func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
+	return append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+}
+
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a zemi run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
@@ -376,7 +383,7 @@ func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipelin
 		want = p.Tools
 	}
 	return func(pipe *tools.Pipeline) ([]fantasy.AgentTool, []string) {
-		all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+		all := h.allTools(pipe)
 		return filterTools(all, want, skip)
 	}
 }
@@ -1823,33 +1830,48 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// storeMessage writes one message as a row of session sid, and for a
+// reasoning message the thinking-time row beside it: the message does not
+// keep that, and historyFrom reads it back from the row.
+func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Duration) (*store.Message, error) {
+	parts, err := json.Marshal(msg, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
+	if err := h.DB.AddMessage(row); err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
+		return row, nil
+	}
+	parts, _ = json.Marshal(map[string]any{"thought_ms": thought.Milliseconds()}, json.Deterministic(true))
+	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
+// stepThinking is how long the step now running has thought.
+func (h *Host) stepThinking() time.Duration {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	d := ag.stepThinking
+	if ag.thinking {
+		d += h.now().Sub(ag.thinkStart)
+	}
+	return d
+}
+
 func (h *Host) persistMessage(msg fantasy.Message) error {
 	sid := h.AgentSessionID()
 	if h.DB == nil || sid == "" {
 		return nil
 	}
-	parts, err := json.Marshal(msg, json.Deterministic(true))
+	row, err := h.storeMessage(sid, msg, h.stepThinking())
 	if err != nil {
 		return err
-	}
-	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
-	if err := h.DB.AddMessage(row); err != nil {
-		return err
-	}
-	// how long the step thought, which the message does not keep: a resume
-	// reads it back (historyFrom)
-	if slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
-		ag := h.agents
-		ag.mu.Lock()
-		d := ag.stepThinking
-		if ag.thinking {
-			d += h.now().Sub(ag.thinkStart)
-		}
-		ag.mu.Unlock()
-		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()}, json.Deterministic(true))
-		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
-			return err
-		}
 	}
 	if msg.Role == fantasy.MessageRoleUser {
 		h.agents.mu.Lock()

@@ -176,6 +176,68 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	}
 }
 
+// TestSubagentStoresThinkingTime: a run's stored reasoning row carries the
+// run's own thinking time, like a session's, so a run read back from the
+// store (/agents) shows it.
+func TestSubagentStoresThinkingTime(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) { return thoughtModel{gap: 5 * time.Millisecond}, nil }
+	def, err := h.agentDef("explore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, text, err := h.runSubagent(t.Context(), def, "d", "look")
+	if err != nil || text != "the report" {
+		t.Fatalf("run: %v %q", err, text)
+	}
+	forgetRun(h, id)
+	run, err := h.loadRun(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range run.transcript() {
+		if m.Kind == RowReasoning && m.Stat != nil && m.Stat.ThoughtMS >= 5 {
+			return
+		}
+	}
+	t.Fatalf("the stored run keeps no thinking time: %+v", run.transcript())
+}
+
+// thoughtModel streams a thought, waits its gap, then the report: a run's
+// thinking time is wall time, so a test needs a gap the clock can see.
+type thoughtModel struct{ gap time.Duration }
+
+func (m thoughtModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return func(yield func(fantasy.StreamPart) bool) {
+		for _, p := range reasoningParts("thinking about it") {
+			if !yield(p) {
+				return
+			}
+		}
+		time.Sleep(m.gap)
+		for _, p := range textParts("the report") {
+			if !yield(p) {
+				return
+			}
+		}
+	}, nil
+}
+
+func (thoughtModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) Provider() string { return "stub" }
+func (thoughtModel) Model() string    { return "script-1" }
+
 // TestSubagentFailureKeepsReport: a step failing after the agent already
 // reported something returns that partial report with the error, instead of
 // throwing the finished work away.

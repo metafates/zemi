@@ -127,13 +127,13 @@ type agentRun struct {
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
 	calls     int
-	tokens    int64         // billed input and output of its steps
-	cost      float64       // 0 when the model has no prices
-	tr        []ChatMessage // the prompt, tool rows and replies so far
-	text      string        // reply text streamed since the last row
-	reason    string        // thinking streamed since the last row, drawn live until it settles
-	thinkAt   time.Time     // when the open reasoning block began, zero when none is
-	thought   time.Duration // closed reasoning blocks since the last row
+	tokens    int64          // billed input and output of its steps
+	cost      float64        // 0 when the model has no prices
+	tr        []ChatMessage  // the prompt, tool rows and replies so far
+	text      string         // reply text streamed since the last row
+	reason    string         // thinking streamed since the last row, drawn live until it settles
+	thinkAt   time.Time      // when the open reasoning block began, zero when none is
+	thought   time.Duration  // closed reasoning blocks since the last row
 	rows      map[string]int // tool call id -> tr index
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost

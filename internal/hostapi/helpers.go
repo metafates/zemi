@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/skill"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // waitHandle is a handle's wait(): it suspends the task until done closes,
@@ -125,6 +128,47 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 		}
 	})
 	return out
+}
+
+// truncOutput cuts a host tool's output to what a result may carry and
+// saves the whole text to pad, the scratchpad of the pipeline that made the
+// call, so the rest is one read away instead of gone.
+func (h *Host) truncOutput(pad, name, s string) string {
+	cut := tools.TruncOut(s, 30000)
+	if cut == s {
+		return s
+	}
+	return cut + tools.Spill(pad, name, s)
+}
+
+// readRegularFile reads a config file, refusing symlinks and oversized files.
+func readRegularFile(path string) (string, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("%s: not a regular file", path)
+	}
+	if fi.Size() > maxAgentFileBytes {
+		return "", fmt.Errorf("%s: exceeds %d bytes", path, maxAgentFileBytes)
+	}
+	data, err := os.ReadFile(path)
+	return string(data), err
+}
+
+// readFrontmatterFile reads a markdown file with an optional leading
+// `---` yaml block (symlinks and oversized files refused).
+func readFrontmatterFile(path string) (block, body string, err error) {
+	data, err := readRegularFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	block, body, err = skill.SplitFrontmatter(data)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", path, err)
+	}
+	return block, body, nil
 }
 
 // appendLast appends v and keeps the newest n: the recent-entry logs.

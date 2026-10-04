@@ -1511,17 +1511,6 @@ func (f *flowRun) reportAs() (attr, status, report string) {
 	return attr, status, report
 }
 
-// truncOutput cuts a host tool's output to what a result may carry and
-// saves the whole text to pad, the scratchpad of the pipeline that made the
-// call, so the rest is one read away instead of gone.
-func (h *Host) truncOutput(pad, name, s string) string {
-	cut := tools.TruncOut(s, 30000)
-	if cut == s {
-		return s
-	}
-	return cut + tools.Spill(pad, name, s)
-}
-
 // /workflows and zemi.workflow
 
 var workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open", "new"}
