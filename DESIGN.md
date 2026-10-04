@@ -2572,7 +2572,9 @@ provenance string.
   target; on seatbelt only what runs code, below), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
   (an activated `.venv/bin`: zemi runs git, the shell, language servers and
   clipboard helpers unconfined by name) stay read-only (the scratchpad and
-  cache re-allowed); localhost network only. Seatbelt's localhost is the
+  cache re-allowed); localhost network only, with a unix socket bound in the
+  pad alone (seatbelt filters a bind by socket path, so tmux and a dev server
+  work confined). Seatbelt's localhost is the
   machine's; the namespace variant has a loopback of its own, so servers
   already running on the machine are unreachable (the model is told so),
   and it binds only protected paths that exist, which is why a created one
@@ -2585,8 +2587,9 @@ provenance string.
   sandboxed runs (a build that writes it gets the hint and escalates) and
   every inet socket is refused. Known ceilings: other tools' caches
   (`~/.cache/uv`, `~/.npm`) stay read-only, so uv and npm fail confined
-  until each gets a per-session cache variable, and seatbelt denies
-  binding a unix socket.
+  until each gets a per-session cache variable, and a unix socket is refused
+  there too, a bind included (a pathname socket's connect cannot be told from
+  its bind, and Landlock mediates neither).
   The git dir (`Policy.Git`): on seatbelt, when the writable project is
   the repository root with a real `.git` directory, `.git` opens to
   confined commands, so commit, add, checkout, switch, branch, tag, stash,

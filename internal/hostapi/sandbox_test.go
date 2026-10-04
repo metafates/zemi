@@ -722,7 +722,7 @@ func TestSandboxPrompt(t *testing.T) {
 			".git and .agents are read-only to them: write .agents files with the write tool",
 			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
 			"secret-shaped files (.env, *.pem, *.key), in $TMPDIR too",
-			"Network: localhost only. network: true adds the network, sandbox: false drops every limit",
+			"Network: localhost only. A unix socket you bind in $TMPDIR works (tmux); dialing one outside it, the ssh agent's or docker's, does not. network: true adds the network, sandbox: false drops every limit",
 			"a browser, GUI app, docker or the keychain fails or crashes (Abort trap: 6). Run one with sandbox: false.",
 		}, []string{"read-only to this agent"}},
 		{"trusted with a .git dir", true, true, false, true, true, []string{

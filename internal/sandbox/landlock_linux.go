@@ -498,7 +498,8 @@ var seccompArch = map[string]uint32{"amd64": unix.AUDIT_ARCH_X86_64, "arm64": un
 // allows those two families here as well, and there the namespace is zemi's
 // own: the inet socket is the point. Landlock does not mediate
 // connect() on a pathname unix socket (docker.sock, $SSH_AUTH_SOCK, the
-// systemd user bus), so AF_UNIX is denied in both.
+// systemd user bus), so AF_UNIX is denied in both, where seatbelt's socket
+// filters are by path and it allows a bind under the pad.
 // NOTE: kill is not filtered, so before Landlock v6 scopes signals the
 // seccomp variant can signal any process of the user, zemi and an editor
 // with unsaved work included. Requiring v6 (linux 6.12) would turn the

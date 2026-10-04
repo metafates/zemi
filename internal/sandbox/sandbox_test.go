@@ -128,6 +128,13 @@ func act(verb, arg string) error {
 			c.Close()
 		}
 		return err
+	case "bindunix":
+		_ = os.Remove(arg) // a socket file of the last run would be in use
+		l, err := net.Listen("unix", arg)
+		if err != nil {
+			return err
+		}
+		return l.Close()
 	case "loopback":
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -216,7 +223,7 @@ func TestPolicy(t *testing.T) {
 		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
 		List:     []string{plugin},
 		Loopback: true,
-		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
+		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on", "TMPDIR": scratch},
 	}
 	_, caseFolds := os.Stat(filepath.Join(root, ".GIT"))
 	gd, seatbelt := filepath.Join(root, ".git"), b.Name == "seatbelt"
@@ -309,6 +316,10 @@ func TestPolicy(t *testing.T) {
 		// the shapes match names, so no write root may be exempt from them
 		{"read a .env moved into the scratchpad", "moveread", filepath.Join(root, "backend") + "|" + filepath.Join(scratch, "b"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
+		// seatbelt filters a bind by socket path; Landlock cannot, so there
+		// every AF_UNIX socket is refused outright
+		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), true, runtime.GOOS == "linux"},
+		{"bind a unix socket outside the roots", "bindunix", filepath.Join(outside, "s"), false, false},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
 		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},
 		// Landlock has no right for these, see seccomp

@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"cmp"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // sandboxExec is never looked up on PATH: a planted one would run unconfined.
@@ -142,6 +145,14 @@ func profile(p Policy) (string, []string) {
 	slices.SortStableFunc(rules, func(a, b rule) int { return len(a.path) - len(b.path) })
 	for _, r := range rules {
 		b.WriteString(r.text + "\n")
+	}
+	// A unix socket binds in the command's own temp dir alone ($TMPDIR, the
+	// pad), which is where tmux and a dev server put one; the filter resolves
+	// the path, so a ".." in a socket path reaches no further than this rule,
+	// and the file rules still say whether the socket may appear there at all.
+	// NOTE: resolved, since the file rules were too: /tmp is /private/tmp.
+	if v := p.Env["TMPDIR"]; v != "" {
+		fmt.Fprintf(&b, "(allow network-bind (local unix-socket (subpath %s)))\n", param("BIND", 0, cmp.Or(perm.RealPath(v), v)))
 	}
 	// realpath and cargo stat every parent of a root, so the hidden parents of
 	// a root or a path Read or List opens (the state dir over the sandbox
