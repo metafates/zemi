@@ -887,12 +887,8 @@ otherwise return a decision table:
 
 - `tool.pre`: `{ decision = "deny", reason = "..." }` blocks the call (the
   reason becomes the tool's error result); `{ decision = "rewrite", input =
-  <patched input> }` shallow-merges over the original JSON and the rewritten
-  input re-enters the pipeline at schema validation and the permission gate;
-  on re-entry the `tool.pre` handlers run again in deny-only mode (deny
-  decisions are re-checked against the rewritten input; rewrite and halt
-  do not re-fire), so a rewrite cannot silence another origin's deny hook
-  and re-entry still terminates (§6.4);
+  <patched input> }` shallow-merges over the original JSON and re-enters the
+  pipeline (§6.4);
   `{ decision = "halt", reason = "..." }` ends the turn after this tool call
   (fantasy `StopTurn`). There is no `allow`
   decision: absence of denial is the only pass, so a Lua hook can never
