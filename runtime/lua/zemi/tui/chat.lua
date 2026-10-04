@@ -547,6 +547,15 @@ local function builder(ctx, width)
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
+	-- The label and click target of the one row that stands for a folded run:
+	-- a notice burst and a rail fold the same way.
+	---@param key integer
+	---@param n integer
+	---@return string, string
+	local function foldRow(key, n)
+		return whole[key] and "… show the rest" or "… " .. n .. " earlier", "more:" .. key
+	end
+
 	-- A burst of notice rows as one block, no blank row between them: reports
 	-- and updates arrive together, and the older ones of a long burst sit
 	-- behind one row a click opens, as a long rail's do.
@@ -558,8 +567,7 @@ local function builder(ctx, width)
 		local hidden = last - first + 1 - NOTICES_KEEP
 		-- a printed run lists every row: its fold row would have nothing to click
 		if hidden > 1 and not ctx.headless then
-			local click = "more:" .. first
-			local label = whole[first] and "… show the rest" or "… " .. hidden .. " earlier"
+			local label, click = foldRow(first, hidden)
 			B.lines[#B.lines + 1] = {
 				{ text = "  ", copy = false, hover = false },
 				{ text = label, hl = "Dim", click = click },
@@ -597,8 +605,7 @@ local function builder(ctx, width)
 		local key = o.live and 0 or o.run or first
 		local n = #B.heads - RAIL_KEEP
 		if o.open or ctx.headless or n < 2 then return end
-		local click = "more:" .. key
-		local label = whole[key] and "… show the rest" or "… " .. n .. " earlier"
+		local label, click = foldRow(key, n)
 		if not whole[key] then
 			for _ = at + 1, B.heads[n + 1] - 1 do
 				table.remove(B.lines, at + 1)
