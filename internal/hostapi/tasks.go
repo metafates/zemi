@@ -87,6 +87,11 @@ type agentRun struct {
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
 	dropped   int            // queued messages the run ended before reading
+	// detached is a foreground call's report going to the session as a message
+	// instead of back to the caller, set by the call's handoff and read by the
+	// run's end: a run finishing in the same instant as the user's message must
+	// be one or the other, never both.
+	detached bool
 }
 
 type taskReg struct {
@@ -121,12 +126,12 @@ func (r *taskReg) detached(advice string) error {
 	limit := r.maxBackground()
 	n := 0
 	for _, x := range r.runs {
-		if x.background && x.isRunning() {
+		if x.counts() {
 			n++
 		}
 	}
 	for _, f := range r.flows {
-		if f.background && f.isRunning() {
+		if f.counts() {
 			n++
 		}
 	}
@@ -326,6 +331,37 @@ func (run *agentRun) isRunning() bool {
 	return run.status == RunRunning
 }
 
+// counts reports whether the run takes one of agent.max_background's slots: a
+// detached report owes the session a message either way, so a run the user's
+// message handed off counts as one.
+func (run *agentRun) counts() bool {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return (run.background || run.detached) && run.status == RunRunning
+}
+
+// detach hands a foreground run to its session, so its end delivers the report
+// as a message instead of answering the call that started it. False when the
+// run already ended: the caller reports its result inline, so the report is
+// never lost and never delivered twice.
+func (run *agentRun) detach() bool {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if run.status != RunRunning {
+		return false
+	}
+	run.detached = true
+	return true
+}
+
+// handedOff reports whether the run's report goes to the session as a message:
+// a background start, or a foreground call the user's message took.
+func (run *agentRun) handedOff() bool {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.background || run.detached
+}
+
 // prompt is the task the run was given, "" for a stored run with none.
 func (run *agentRun) prompt() string {
 	run.mu.Lock()
@@ -514,7 +550,9 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 	}
 	run.status, run.closed, run.started, run.finished, run.dropped = RunRunning, false, time.Now(), time.Time{}, 0
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
-	ctx, run.cancel = context.WithCancel(ctx)
+	// a continuation outlives the call like any run: the call that started it
+	// hands it off when the user speaks, and cancels it through run.cancel
+	ctx, run.cancel = context.WithCancel(context.WithoutCancel(ctx))
 	run.mu.Unlock()
 	return h.runAgent(ctx, run, def, prompt, progress)
 }
@@ -578,16 +616,22 @@ func (h *Host) startBackgroundAgent(ctx context.Context, def AgentDef, descripti
 		// report or not (a cancelled run has none, a finished one's joins the turn)
 		defer h.drainQueue()
 		text, err := h.runAgent(ctx, run, def, prompt, nil)
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		report := text
-		if err != nil {
-			report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
-		}
-		h.deliverReport(run.parent, run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil], description, report, "")
+		h.deliverAgent(run, text, err)
 	})
 	return run.id, nil
+}
+
+// deliverAgent hands a run's result to the session that started it, as its
+// report: a run the user stopped has none.
+func (h *Host) deliverAgent(run *agentRun, text string, err error) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
+	report := text
+	if err != nil {
+		report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
+	}
+	h.deliverReport(run.parent, run.id, run.agent, map[bool]string{true: "finished", false: "failed"}[err == nil], run.description, report, "")
 }
 
 // deliverReport hands a detached run's report to the session that started

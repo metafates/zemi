@@ -274,7 +274,14 @@ Contracts that make this safe:
   invalidates the frame, so at most one waits in its hook queue.
 - **Steering.** Messages sent while a turn runs queue in arrival order
   and join the running turn as user-role messages at the next step
-  boundary (before the next model call). Whatever is still queued when
+  boundary (before the next model call). A foreground `agent` or
+  `workflow` call waiting on its run cannot hold the turn past the user's
+  own message (§6.3): the message hands the run off, the call answers at
+  once, and the run's report arrives as a message when it ends. Only the
+  user's typed line raises that signal (the composer, or a command-line
+  prompt), never a report, a plugin send or a loop, and it is spent once
+  the queue is read at a step boundary, so a later call waits as usual.
+  Whatever is still queued when
   the turn ends starts one follow-up turn; with nothing queued, a set goal
   is checked and may start the next (§6.3). `up` on an empty composer
   takes the queue back for editing; a second `esc` within 2s or `ctrl+c`
@@ -1041,8 +1048,9 @@ joins the run at its next step boundary, or starts one more turn of it
 when its last step already began, and is stored in its child session. It
 talks back the same way: the run's `update` tool sends its caller a line
 mid-run, which joins the caller's turn at its next step boundary and
-draws a notice row naming the run, so a caller blocked on the run reads
-it there and can steer on it. A run that fails or is cancelled cannot
+draws a notice row naming the run, so a caller waiting on the run reads
+it there and can steer on it (the user's own message hands the run off
+instead, §4). A run that fails or is cancelled cannot
 read what is still queued, so its report says how many messages it never
 read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,
@@ -1061,7 +1069,10 @@ with `run` sets a running one's limit (1-16, at the next dispatch);
 `/workflows restart` cancels one running agent and queues the same call
 again, counting toward the 100-agent cap. `background` delivers the result
 like a background agent's report, and a failed run's result says how to
-rerun it. `agent`'s `schema`
+rerun it. A call without `background` waits for its run, and the user's own
+message hands the run off: the call answers with the background text and the
+result arrives as a message like that one, since a call cannot hold the turn
+past a message the user sent (§4). `agent`'s `schema`
 asks in the task for a JSON object and the reply's outermost `{...}` is
 validated, asking again at most twice; the script gets a table. A run
 writes its script and a journal (a header, one line per agent that ended,
@@ -2006,7 +2017,9 @@ provenance string.
   A prompt glyph opens every row, dimmed after the first, so a
   multi-line draft reads as one block. The composer stays editable during
   a turn: a submit while the turn runs queues as steering (§4) instead of
-  spawning a second turn, and the queued messages the user typed show above it.
+  spawning a second turn, and hands off any foreground agent or workflow call
+  waiting on its run, so the turn reads the message instead of waiting for it.
+  The queued messages the user typed show above it.
   A background report or a plugin send waiting in that queue draws a notice
   row naming it rather than the user's own words, since the whole of it is the
   model's.

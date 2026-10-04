@@ -551,7 +551,9 @@ func TestPromptBudget(t *testing.T) {
 	// 23500: the fork option - the agent tool's description, its enum and its
 	// agent line say agent="fork" continues this conversation, and the
 	// delegating paragraph says when that pays (447 chars).
-	const ceiling = 23500
+	// 24000: the agent and workflow tool descriptions say a foreground call
+	// hands its run off on the user's message, so the turn reads it (291 chars).
+	const ceiling = 24000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

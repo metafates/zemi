@@ -61,8 +61,18 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   process forgot, whose rows hold its own work alone. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
-  message is never accepted and then dropped. A background run past `agent.max_background`
-  (4 by default, workflows counted with agents) is refused (`taskReg.detached`). What the chat
+  message is never accepted and then dropped. A foreground `agent` or `workflow` call waits for
+  its run off the turn's goroutine (a workflow run is `startFlow` and its `flowRun.done`); the
+  user's own typed line (`Host.UserSpoke`, from `sendMessage` in
+  palette.go or `sendPrompt` in cli.go, and never a report, a plugin send or a loop) hands the
+  run off: the call answers with the background text and the run's end delivers its report as a
+  message. `flowRun.detach`/`agentRun.detach` take the handoff under the run's own lock and
+  answer false once it ended, so the result is the caller's and is never both or neither; the
+  signal is one channel re-armed where the queue is read at a step boundary, so a later call in
+  the turn waits as usual, and headless (no UI hooks) raises none. A background run past
+  `agent.max_background`
+  (4 by default, workflows counted with agents, a handed-off run counted too) is refused
+  (`taskReg.detached`). What the chat
   draws of a queue is one row per message (`queuedRows`): the user's own words as typed, and a
   subagent's report, update or plugin send as a notice row naming it, since the whole of that
   message is the model's. Background runs report through

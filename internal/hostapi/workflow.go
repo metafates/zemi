@@ -148,6 +148,7 @@ type flowRun struct {
 	cancel                context.CancelFunc
 	wake                  chan struct{}    // buffered: a control that lets more agents start
 	progress              func(f *flowRun) // a foreground run's row, nil for none
+	done                  chan struct{}    // closed when the run has ended and reported
 	script                string           // the script's file in the parent's pad, "" with no session
 	src                   string           // the script as approved and run: the pad's copy is the model's to rewrite
 	// journal is the held fd the scheduler appends to, never the path: a
@@ -165,6 +166,11 @@ type flowRun struct {
 	restart  map[string]bool // agent run ids flowControl cancelled to run again
 	result   string          // the script's value: strings as is, anything else JSON
 	err      error
+	// detached is a foreground call's report going to the session as a message
+	// instead of back to the caller, set by the call's handoff and read by the
+	// run's end: a run finishing in the same instant as the user's message must
+	// be one or the other, never both.
+	detached bool
 }
 
 // flowAgent is one zemi.workflow.agent call: queued until run is set, or
@@ -183,14 +189,16 @@ type flowSpec struct {
 	from                   string // a run of this session whose journal answers identical calls
 	advice                 string // a refusal past the cap: the caller's own, "" the model's foreground one
 	progress               func(*flowRun)
-	done                   func(*flowRun) // a background run's end
+	done                   func(*flowRun) // the end of a run whose report goes to the session
 
 	cache map[string][]journalLine // from's finished agents by agentKey, in file order
 }
 
-// startFlow registers a run of spec and runs it to its end on the caller's
-// goroutine, or detached from ctx when spec.background, calling spec.done
-// once it ends. The error is a start's; the run's own is f.err.
+// startFlow registers a run of spec and runs it to its end on its own
+// goroutine, closing f.done where it ends. A caller that means to wait does so
+// on f.done: the run outlives the call that started it, since a foreground one
+// hands off to the user's message (f.detach) and spec.done then delivers its
+// report as a message. The error is a start's; the run's own is f.err.
 func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	parent := h.AgentSessionID()
 	pad := h.scratchFor(parent)
@@ -211,16 +219,14 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	if limit < 1 || limit > workflowMaxConcurrency {
 		return nil, Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, limit)
 	}
-	if spec.background {
-		// the flow outlives the turn, but a run it starts must know where it
-		// came from
-		ctx = context.WithoutCancel(ctx)
-	}
-	ctx, cancel := context.WithCancel(ctx)
+	// the flow outlives the turn it was started in, a background one from the
+	// start and a foreground one from its handoff, but a run it starts must
+	// know where it came from
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	f := &flowRun{
 		id: store.ShortID(), name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
-		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
+		done: make(chan struct{}), status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
 	}
 	if spec.name != "" {
 		f.about = leadingComment(spec.src)
@@ -245,18 +251,48 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	spec.cache = cache
 	h.watchFlows()
-	if !spec.background {
-		h.runFlow(ctx, f, spec)
-		return f, nil
-	}
 	h.GoSafe("workflow", func() {
 		defer h.drainQueue() // this run no longer holds a queued report back
+		// closed even when the run or its report panics, so nothing waiting
+		// on the run is left hanging
+		defer close(f.done)
 		h.runFlow(ctx, f, spec)
-		if spec.done != nil {
+		if spec.done != nil && f.handedOff() {
 			spec.done(f)
 		}
 	})
 	return f, nil
+}
+
+// handedOff reports whether the run's report goes to the session as a
+// message: a background start, or a foreground call the user's message took.
+func (f *flowRun) handedOff() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.background || f.detached
+}
+
+// detach hands a foreground run to its session, so its end delivers the report
+// as a message instead of answering the call that started it. False when the
+// run already ended: the caller reports its result inline, so the report is
+// never lost and never delivered twice.
+func (f *flowRun) detach() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.status != RunRunning {
+		return false
+	}
+	f.detached = true
+	return true
+}
+
+// counts reports whether the run takes one of agent.max_background's slots: a
+// detached report owes the session a message either way, so a run the user's
+// message handed off counts as one.
+func (f *flowRun) counts() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return (f.background || f.detached) && f.status == RunRunning
 }
 
 // wfTask is one coroutine: the script body or a parallel() branch.
@@ -1289,6 +1325,16 @@ return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 // background, whose row reads as still running (toolStatus).
 const bgWorkflowStarted = "Started workflow "
 
+// bgFlowText is what a call whose run reports as a message answers: a
+// background start, or a foreground call the user's message handed off.
+func bgFlowText(f *flowRun) string {
+	where := ""
+	if f.script != "" {
+		where = " (" + f.script + ")"
+	}
+	return bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."
+}
+
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	tui := t.h.hooks() != nil
 	var desc strings.Builder
@@ -1304,7 +1350,8 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	}
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {
-		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; status lists the run ids of its agents.")
+		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; status lists the run ids of its agents." +
+			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
 		actions = []string{string(actStatus), string(actPause), string(actResume), string(actStop), "rerun"}
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
 	}
@@ -1389,23 +1436,34 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
+	spec.done = h.deliverFlow("")
 	if spec.background {
-		spec.done = h.deliverFlow("")
 		f, err := h.startFlow(ctx, spec)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = "background "+f.id+" (/workflows)", f.id })
-		where := ""
-		if f.script != "" {
-			where = " (" + f.script + ")"
-		}
-		return fantasy.NewTextResponse(bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."), nil
+		return fantasy.NewTextResponse(bgFlowText(f)), nil
 	}
 	spec.progress = func(f *flowRun) { h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = f.summary(), f.id }) }
 	f, err := h.startFlow(ctx, spec)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	// The run outlives this call: the user's own message hands it off, so the
+	// turn reads that message instead of waiting for the run (its report then
+	// arrives as one). Only the run's end and esc keep the call attached, and a
+	// handoff that lost the race to the end reads the result inline.
+	select {
+	case <-f.done:
+	case <-ctx.Done():
+		f.cancel()
+		<-f.done
+	case <-h.userSpoke():
+		if f.detach() {
+			return fantasy.NewTextResponse(bgFlowText(f)), nil
+		}
+		<-f.done
 	}
 	report, ok := f.report()
 	if !ok {
@@ -1705,8 +1763,18 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 	h.GoSafe("workflow", func() {
 		defer h.endTurnAfterPanic()
 		f, err := h.startFlow(scope.ctx, spec)
-		if err == nil && errors.Is(f.err, context.Canceled) {
-			err = f.err
+		if err == nil {
+			// ctrl+c cancels the claim: the run is the caller's, not the
+			// step's, so nothing else would stop it
+			select {
+			case <-f.done:
+			case <-scope.ctx.Done():
+				f.cancel()
+				<-f.done
+			}
+			if errors.Is(f.err, context.Canceled) {
+				err = f.err
+			}
 		}
 		if err != nil {
 			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: sanitize.String(h.errorRowText(err))})

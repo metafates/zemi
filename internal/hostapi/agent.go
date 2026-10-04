@@ -128,8 +128,13 @@ type agentHost struct {
 	stepThought          time.Duration
 	tools                []StreamTool
 	steering             []string
-	modelSeed            string
-	turnModel            string // model id the runner was built with, "" for a bare one: its price, and compact's cached prefix
+	// spoke is closed when the user's own message arrives during a turn
+	// (UserSpoke): a foreground call waiting on a long run hands it off
+	// instead of holding the turn past the message. Re-armed where the queue
+	// is read, so a spent signal never detaches a later call.
+	spoke     chan struct{}
+	modelSeed string
+	turnModel string // model id the runner was built with, "" for a bare one: its price, and compact's cached prefix
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
@@ -752,8 +757,47 @@ func (h *Host) claim() *turnScope {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &turnScope{ctx: ctx, cancel: cancel}
 	h.agents.active = true
+	h.agents.spoke = nil // a new turn: the last one's spoken signal is spent
 	h.turn.Store(t)
 	return t
+}
+
+// userSpoke is the channel a foreground call waits on for the user's own
+// message, created on first use so a call started outside a turn hears it too.
+func (h *Host) userSpoke() <-chan struct{} {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return ag.spokeLocked()
+}
+
+// spokeLocked is the signal in force, a fresh open one when none is (ag.mu held).
+func (ag *agentHost) spokeLocked() chan struct{} {
+	if ag.spoke == nil {
+		ag.spoke = make(chan struct{})
+	}
+	return ag.spoke
+}
+
+// UserSpoke marks the user's own typed message: a foreground agent or
+// workflow call waiting on a long run hands it off, so the turn reads the
+// message instead of waiting for the run. Every waiting call hears it, since
+// the result of one call alone cannot release the turn. Only the composer and
+// a command-line prompt raise it, never a report, a plugin send or a loop,
+// and headless nothing does: a detached report would outlive the run.
+func (h *Host) UserSpoke() {
+	if h.hooks() == nil {
+		return
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ch := ag.spokeLocked()
+	select {
+	case <-ch: // this turn's calls already heard it
+	default:
+		close(ch)
+	}
 }
 
 // persistTurnStat keeps a turn's readout for a resume. The stored messages
@@ -1024,6 +1068,9 @@ func (h *Host) deliverSteering() []string {
 		return nil
 	}
 	ag.steering, ag.todoNag = nil, ""
+	if len(msgs) > 0 {
+		ag.spoke = nil // the message is read: a later call is not detached by it
+	}
 	h.flushOutput(TurnStat{})
 	ag.mu.Unlock()
 	for _, m := range msgs {

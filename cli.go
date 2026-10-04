@@ -821,8 +821,17 @@ func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string, text bool) 
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return ctx.Err()
 	}
+	var err error
 	if text {
-		return h.AgentSend(prompt)
+		err = h.AgentSend(prompt)
+	} else {
+		err = h.SendPrompt(prompt)
 	}
-	return h.SendPrompt(prompt)
+	if err == nil {
+		// the command line's prompt is the user's own: a call waiting on a long
+		// run hands it off, so the message reaches the turn. Headless this
+		// raises nothing, since no UI would take the report a handoff delivers.
+		h.UserSpoke()
+	}
+	return err
 }

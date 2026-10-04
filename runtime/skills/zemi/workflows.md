@@ -2,7 +2,7 @@
 
 Run a workflow inline: pass the script to the `workflow` tool, whose description is the API. Nothing needs saving first. The script runs in its own sandbox with Lua's string, table and math, `zemi.json` and `zemi.workflow`, nothing else of zemi; a bare `agent` or `print` raises naming the `zemi.workflow` spelling.
 
-- `concurrency` (1-16, default 5) is how many agents run at once; 100 start at most per run. `background` runs it detached, and its result arrives as a message.
+- `concurrency` (1-16, default 5) is how many agents run at once; 100 start at most per run. `background` runs it detached, and its result arrives as a message. A call without it waits for the run, unless the user sends a message while it runs: the run then hands off and its result arrives as a message too.
 - `run` with `action` acts on a run of this session: `status` lists its agents by phase with their ids, `pause` lets running agents finish and starts no more, `resume`, `stop`, `concurrency` with a number changes it while it runs. The agent tool's `send_to` messages one of its agents.
 - Every run keeps its script and a journal in the session's scratchpad as `workflow-<id>.lua` and `.jsonl`; the result names the script. To change a run, edit that file (or pass `script` with it) and pass `run` with action `rerun`: agent calls identical to its finished ones (same agent, model, schema and prompt) answer at once from the journal, in order, even when the files they read changed since.
 - `agent(prompt)` runs `general`; pass `{ agent = "explore" }` for a read-only look.

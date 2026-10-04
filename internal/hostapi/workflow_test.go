@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,11 +60,18 @@ func echoAgents(h *Host) *atomic.Int32 {
 	return &peak
 }
 
-// runFlow runs src in the foreground and returns its value.
+// runFlow runs src in the foreground, as a call does: it waits for the run, or
+// cancels it when ctx ends first.
 func runFlow(ctx context.Context, h *Host, src string, args any) (string, error) {
 	f, err := h.startFlow(ctx, flowSpec{src: src, args: args})
 	if err != nil {
 		return "", err
+	}
+	select {
+	case <-f.done:
+	case <-ctx.Done():
+		f.cancel()
+		<-f.done
 	}
 	return f.result, f.err
 }
@@ -510,8 +518,12 @@ func TestWorkflowRerun(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, err := h.startFlow(context.Background(), flowSpec{src: wf + c.first, args: c.args})
-			if err != nil || f.err != nil {
-				t.Fatal(err, f.err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-f.done
+			if f.err != nil {
+				t.Fatal(f.err)
 			}
 			if old, err := h.loadFlow("s1", f.id); err != nil || old.result != f.result || len(old.agents) != len(f.agents) || old.status != RunDone {
 				t.Fatalf("loadFlow = %+v, %v", old, err)
@@ -544,6 +556,7 @@ func TestWorkflowRerun(t *testing.T) {
 					}
 					return
 				}
+				<-g.done
 				v := g.view()
 				reused := 0
 				for _, a := range v.agents {
@@ -674,8 +687,263 @@ func TestWorkflowToolInput(t *testing.T) {
 	}
 }
 
-// TestWorkflowBackgroundReports: a background run answers at once, its row
-// reads as still running, and its result reaches the model as a report.
+// TestWorkflowCallHandsOff: a foreground workflow call hands its run off when
+// the user's own message arrives, so the turn reads that message instead of
+// waiting: the call answers with the background text, the run stays live, and
+// its report arrives as exactly one message. esc still cancels an attached
+// run, and headless - no UI would take a handoff's report - keeps the call
+// attached to the end.
+func TestWorkflowCallHandsOff(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		hooks       bool
+		act         func(*Host, context.CancelFunc)
+		wantBG      bool
+		wantStopped bool
+	}{
+		{
+			name: "the user's message hands the run off", hooks: true,
+			act: func(h *Host, _ context.CancelFunc) { h.UserSpoke() }, wantBG: true,
+		},
+		{
+			name: "esc cancels an attached run", hooks: true,
+			act: func(_ *Host, cancel context.CancelFunc) { cancel() }, wantStopped: true,
+		},
+		{
+			name: "headless keeps the call attached",
+			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() },
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			if c.hooks {
+				h.SetUIHooks(&fakeUI{})
+			}
+			seedSession(t, h)
+			gate := make(chan struct{})
+			// the agent's call blocks until the test releases it, so the run is
+			// live while the call waits
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
+					if strings.Contains(system, "a subagent of zemi") {
+						<-gate
+						return textParts("worked")
+					}
+					return textParts("ok") // the turn a report starts
+				}}, nil
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			calls := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := h.workflowTool(h.PipelineFor()).Run(ctx,
+					fantasy.ToolCall{ID: "1", Name: tools.ToolWorkflow, Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')"}`})
+				calls <- resp
+			}()
+			f := waitLiveFlow(t, h)
+			c.act(h, cancel)
+			if c.wantBG {
+				resp := waitCall(t, calls)
+				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
+					t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
+				}
+				if !f.isRunning() {
+					t.Fatal("the run ended with the call that was handed off")
+				}
+				close(gate)
+				waitFor(t, func() error {
+					if f.isRunning() {
+						return errors.New("the run never ended")
+					}
+					return nil
+				})
+				waitIdle(t, h)
+				if n := reportRows(h, f.id); n != 1 {
+					t.Fatalf("%d report rows for %s, want exactly 1", n, f.id)
+				}
+				return
+			}
+			close(gate)
+			resp := waitCall(t, calls)
+			switch {
+			case c.wantStopped:
+				if !resp.IsError || !strings.Contains(resp.Content, "the user stopped it") {
+					t.Fatalf("an interrupted call = %q (error %v), want the stopped result", resp.Content, resp.IsError)
+				}
+			case resp.IsError || !strings.Contains(resp.Content, "[workflow "+f.id):
+				t.Fatalf("an attached call = %q (error %v), want its report inline", resp.Content, resp.IsError)
+			}
+			if n := reportRows(h, f.id); n != 0 {
+				t.Fatalf("%d report rows for a call that read its result, want none", n)
+			}
+		})
+	}
+}
+
+// TestSpentSignalDoesNotDetachCall: the typed message is spent once the turn
+// reads it at a step boundary, so a call started after that drain waits for its
+// run instead of handing it off.
+func TestSpentSignalDoesNotDetachCall(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	h.agents.mu.Lock()
+	h.agents.steering = []string{"why is it so slow?"}
+	h.agents.mu.Unlock()
+	if msgs := h.deliverSteering(); len(msgs) != 1 {
+		t.Fatalf("the step boundary read %d messages, want the one queued", len(msgs))
+	}
+	select { // the spent signal must not wake a call started later in the turn
+	case <-h.userSpoke():
+		t.Fatal("the spent signal still wakes a later call")
+	default:
+	}
+	gate := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
+			if strings.Contains(system, "a subagent of zemi") {
+				<-gate
+				return textParts("worked")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	calls := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.workflowTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "1", Name: tools.ToolWorkflow, Input: `{"script":"-- late\nreturn zemi.workflow.agent('y')"}`})
+		calls <- resp
+	}()
+	f := waitLiveFlow(t, h)
+	close(gate)
+	resp := waitCall(t, calls)
+	if resp.IsError || !strings.Contains(resp.Content, "[workflow "+f.id) || reportRows(h, f.id) != 0 {
+		t.Fatalf("a call after the drain = %q (error %v), want its report inline and no message", resp.Content, resp.IsError)
+	}
+}
+
+// TestEndedRunIsNotHandedOff: a run that already ended cannot be handed off, so
+// its report stays the caller's - delivered exactly once, and never lost.
+func TestEndedRunIsNotHandedOff(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	f, err := h.startFlow(context.Background(), flowSpec{src: "return 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-f.done
+	h.UserSpoke() // the message arrives after the run is over
+	if f.detach() {
+		t.Fatal("a run that ended was handed off after the fact")
+	}
+	report, ok := f.report()
+	if !ok || !strings.Contains(report, "\n\n1") {
+		t.Fatalf("the ended run's report = %q, %v", report, ok)
+	}
+	if n := reportRows(h, f.id); n != 0 {
+		t.Fatalf("%d report rows for a run whose caller read it, want none", n)
+	}
+}
+
+// TestTurnReadsTheUsersMessageWhileARunWaits: the turn's step is blocked on a
+// foreground workflow call, and the user's own message still reaches the next
+// step instead of waiting for the run - the deadlock the handoff exists for.
+func TestTurnReadsTheUsersMessageWhileARunWaits(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	var read bool
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{
+			record: func(call fantasy.Call) {
+				for _, msg := range call.Prompt {
+					for _, p := range msg.Content {
+						if txt, ok := p.(fantasy.TextPart); ok && strings.Contains(txt.Text, "how long will it take?") {
+							mu.Lock()
+							read = true
+							mu.Unlock()
+						}
+					}
+				}
+			},
+			script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+				switch {
+				case strings.Contains(system, "a subagent of zemi"):
+					<-gate
+					return textParts("worked")
+				case strings.Contains(last, "<agent-report"): // the run's report arrives
+					return textParts("noted")
+				case !toolResult:
+					return toolCallParts("c1", tools.ToolWorkflow, `{"script":"-- wait\nreturn zemi.workflow.agent('x')"}`)
+				}
+				return textParts("read it")
+			},
+		}, nil
+	}
+	seedSession(t, h)
+	if err := h.AgentSend("start a workflow"); err != nil {
+		t.Fatal(err)
+	}
+	f := waitLiveFlow(t, h)
+	// the user types while the step waits on the run
+	if err := h.AgentSend("how long will it take?"); err != nil {
+		t.Fatal(err)
+	}
+	h.UserSpoke()
+	waitFor(t, func() error {
+		if !f.isRunning() {
+			return errors.New("the run ended with the message")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if !read {
+			return errors.New("the turn never read the message")
+		}
+		return nil
+	})
+	close(gate)
+	waitIdle(t, h)
+}
+
+// waitLiveFlow waits for the one workflow run this session started to be live.
+func waitLiveFlow(t *testing.T, h *Host) *flowRun {
+	t.Helper()
+	var f *flowRun
+	waitFor(t, func() error {
+		flows := h.tasks.flowsOf(h.AgentSessionID())
+		if len(flows) != 1 {
+			return fmt.Errorf("%d runs started, want one", len(flows))
+		}
+		if f = flows[0]; !f.isRunning() {
+			return errors.New("the run ended before the call was answered")
+		}
+		return nil
+	})
+	return f
+}
+
+// waitCall waits for a tool call to answer, which a call waiting on a run that
+// never ends would do never.
+func waitCall(t *testing.T, calls <-chan fantasy.ToolResponse) fantasy.ToolResponse {
+	t.Helper()
+	select {
+	case resp := <-calls:
+		return resp
+	case <-time.After(10 * time.Second):
+		t.Fatal("the call did not answer")
+		return fantasy.ToolResponse{}
+	}
+}
+
+// reportRows counts the notice rows a run's report drew in the session.
+func reportRows(h *Host, id string) int {
+	return len(slices.DeleteFunc(slices.Clone(h.Session().Transcript), func(m ChatMessage) bool {
+		return m.Kind != RowNotice || !strings.Contains(m.Text, " "+id+" ")
+	}))
+}
+
 func TestWorkflowBackgroundReports(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
@@ -796,15 +1064,14 @@ func TestWorkflowCancel(t *testing.T) {
 func TestWorkflowPanicEnds(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
-	var f *flowRun
-	func() {
-		defer func() { _ = recover() }()
-		f, _ = h.startFlow(context.Background(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(r *flowRun) {
-			f = r
-			panic("boom")
-		}})
-	}()
-	if f == nil || f.isRunning() || h.tasks.runningFor(f.parent) != 0 {
+	f, err := h.startFlow(context.Background(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(*flowRun) {
+		panic("boom")
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-f.done
+	if f.isRunning() || h.tasks.runningFor(f.parent) != 0 {
 		t.Fatalf("a panicked run is still live: %+v", f)
 	}
 }
@@ -877,6 +1144,7 @@ func TestSavedWorkflows(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		<-f.done
 		runs = append(runs, f)
 	}
 	f := runs[0]

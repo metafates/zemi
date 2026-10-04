@@ -979,7 +979,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. send_to continues a run, running or finished, by its run id.")
+		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id.")
 	}
 	b.WriteString(" Set agent to \"fork\" to continue this conversation in parallel instead of starting fresh.")
 	b.WriteString("\n\nAgents:")
@@ -1084,9 +1084,11 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
-		return fantasy.NewTextResponse(bgAgentStarted + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
+		return fantasy.NewTextResponse(bgAgentText(id)), nil
 	}
-	run, rctx := t.h.newRun(ctx, def, in.Description, in.Prompt, false)
+	// the run outlives the call: a foreground one hands off to the user's
+	// message, so its context cannot be the call's own
+	run, rctx := t.h.newRun(context.WithoutCancel(ctx), def, in.Description, in.Prompt, false)
 	_ = t.h.tasks.add(run)
 	t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
 	return t.foreground(rctx, call.ID, run, func(ctx context.Context, progress func(string)) (string, error) {
@@ -1094,34 +1096,66 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	})
 }
 
+// bgAgentText is what a call whose run reports as a message answers: a
+// background start, or a foreground call the user's message handed off.
+func bgAgentText(id string) string {
+	return bgAgentStarted + id + ". Its report will arrive as a message when it finishes; do not wait for it."
+}
+
 // foreground waits for a run and answers with its report, the row's
 // detail following its progress; the run id heads the report (the tail
-// may be the spill file's name) so the model can continue the run.
+// may be the spill file's name) so the model can continue the run. The run
+// outlives the call: the user's own message hands it off, and its report then
+// arrives as one. Only the run's end and esc keep the call attached, and a
+// handoff that lost the race to the end reads the result inline.
 func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun, do func(context.Context, func(string)) (string, error)) (fantasy.ToolResponse, error) {
 	start := time.Now()
 	var last atomic.Value
-	text, err := do(ctx, func(line string) {
-		last.Store(line)
-		t.h.setToolDetail(callID, line)
+	type answer struct {
+		text string
+		err  error
+	}
+	answers := make(chan answer, 1)
+	t.h.GoSafe("agent run", func() {
+		text, err := do(ctx, func(line string) {
+			last.Store(line)
+			t.h.setToolDetail(callID, line)
+		})
+		if run.handedOff() {
+			t.h.deliverAgent(run, text, err)
+		}
+		answers <- answer{text, err}
 	})
+	var a answer
+	select {
+	case a = <-answers:
+	case <-ctx.Done():
+		run.cancel()
+		a = <-answers
+	case <-t.h.userSpoke():
+		if run.detach() {
+			return fantasy.NewTextResponse(bgAgentText(run.id)), nil
+		}
+		a = <-answers
+	}
 	summary, _ := last.Load().(string)
 	if summary == "" {
 		summary = run.agent
 	}
 	t.h.setToolDetail(callID, summary+" · "+fmtDuration(time.Since(start)))
-	if err != nil {
+	if a.err != nil {
 		// the chat draws a failure's output, so the id rides its first line rather than a [run] head
-		msg := "agent " + run.id + " failed: " + t.h.friendlyError(err)
-		if errors.Is(err, context.Canceled) {
+		msg := "agent " + run.id + " failed: " + t.h.friendlyError(a.err)
+		if errors.Is(a.err, context.Canceled) {
 			// only the user cancels a run: /agents stop, or esc
 			msg = "agent " + run.id + ": the user stopped this agent; do not start it again unless they ask"
 		}
-		if text != "" {
-			msg += "\n\nIts last message before that:\n" + text
+		if a.text != "" {
+			msg += "\n\nIts last message before that:\n" + a.text
 		}
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput(t.pipe.Pad, "agent", text)), nil
+	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput(t.pipe.Pad, "agent", a.text)), nil
 }
 
 // the update tool

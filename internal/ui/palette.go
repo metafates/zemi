@@ -242,7 +242,11 @@ func (a *App) sendMessage(text string) {
 		a.composer.text = draft
 		a.composer.moveEnd()
 		a.publishComposer()
+		return
 	}
+	// the user's own line: a call waiting on a long run hands it off, so this
+	// message reaches the turn instead of waiting for that run
+	a.host.UserSpoke()
 }
 
 // restoreQueue moves queued steering messages back into the composer,

@@ -1186,3 +1186,59 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 }
+
+// TestAgentToolHandsOff: a foreground agent call hands its run off when the
+// user's own message arrives, so the turn reads that message instead of waiting
+// on the run: the call answers with the background text, the run stays live,
+// and its report arrives as exactly one message.
+func TestAgentToolHandsOff(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	gate := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
+			if strings.Contains(system, "a subagent of zemi") {
+				<-gate
+				return textParts("looked around")
+			}
+			return textParts("ok") // the turn the report starts
+		}}, nil
+	}
+	calls := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "c1", Input: `{"description":"look around","agent":"explore","prompt":"look"}`})
+		calls <- resp
+	}()
+	var run *agentRun
+	waitFor(t, func() error {
+		runs := h.tasks.runsOf(h.AgentSessionID())
+		if len(runs) != 1 {
+			return fmt.Errorf("%d runs started, want one", len(runs))
+		}
+		if run = runs[0]; !run.isRunning() {
+			return errors.New("the run ended before the call was answered")
+		}
+		return nil
+	})
+	h.UserSpoke()
+	resp := waitCall(t, calls)
+	if !strings.HasPrefix(resp.Content, bgAgentStarted) || toolStatus(tools.ToolAgent, !resp.IsError, resp.Content, false) != CallBG {
+		t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
+	}
+	if !run.isRunning() {
+		t.Fatal("the run ended with the call that was handed off")
+	}
+	close(gate)
+	waitFor(t, func() error {
+		if run.isRunning() {
+			return errors.New("the run never ended")
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	if n := reportRows(h, run.id); n != 1 {
+		t.Fatalf("%d report rows for %s, want exactly 1", n, run.id)
+	}
+}
