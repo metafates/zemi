@@ -161,6 +161,9 @@ func (f *listFilter) filterHints(hints []hintPair, esc string) []hintPair {
 	return append(hints, hintPair{"esc", esc})
 }
 
+// noMatches is how a filtered list with no hit reads, everywhere one reports it.
+const noMatches = "No matches."
+
 // emptyRows is how every empty list or view reads: a sentence in the hint
 // grey, wrapped to w.
 func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, hostapi.ChromeHint, w) }
@@ -811,7 +814,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				head = [][]hostapi.Segment{st.filterRow()}
 			}
 			if len(st.visible) == 0 {
-				listPH, fixed = nil, emptyRows("No matches.", inner)
+				listPH, fixed = nil, emptyRows(noMatches, inner)
 			}
 		case bodyN == 0 || st.o.Empty != "":
 			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), inner)

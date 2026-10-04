@@ -433,6 +433,11 @@ func cutBar(r []hostapi.Segment) (row, bar []hostapi.Segment) {
 	return r, nil
 }
 
+// clipFragment is how many cells a fragment the cut leaves may take: one that
+// short is dropped whole, so the ellipsis lands after a word rather than
+// inside it. tui/text.lua's clip names the same number FRAGMENT.
+const clipFragment = 12
+
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
 // when one is close. Trailing blanks are padding and cut without one.
 func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
@@ -442,7 +447,7 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	out := truncateSegs(segs, w-1)
 	if n := len(out); n > 0 {
 		last := out[n-1]
-		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= 12 {
+		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= clipFragment {
 			last.Text = strings.TrimRight(last.Text[:i], " ,;:-·.")
 		}
 		dots := last

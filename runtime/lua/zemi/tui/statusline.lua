@@ -16,7 +16,9 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		local mode = ctx.permission_mode or "auto"
-		local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[ctx.permission_mode_base or mode] or "ModeAuto"
+		-- the base is auto or yolo (zemi.permission.mode.add refuses others),
+		-- the pair ui/composer.go colors the prompt with
+		local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[ctx.permission_mode_base]
 		return { { { text = mode, hl = hl, click = "mode" } } }
 	end,
 })

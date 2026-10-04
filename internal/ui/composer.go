@@ -352,12 +352,11 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	// one cell stays free for the cursor mark at the end of a full row
 	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - 3)
 	start := max(0, cursorRow-composerMaxRows+1)
-	// The prompt takes the permission mode's color; a shell draft (!) says so
+	// The prompt takes the permission mode's color, one of the two groups: a
+	// mode's base is auto or yolo (zemi.permission.mode.add refuses others),
+	// and tui/statusline.lua reads the same pair. A shell draft (!) says so
 	// with its own glyph, since it never reaches the model.
 	prefix, promptHL := "> ", map[string]string{"auto": "ModeAuto", "yolo": "ModeYolo"}[a.modeBase()]
-	if promptHL == "" {
-		promptHL = "Dim"
-	}
 	if glyph, hl, _ := a.draftMode(); glyph != "" && len(rows) > 0 && len(rows[0]) > 0 {
 		// the glyph stands for the draft's own first character, so the row leaves it out
 		prefix, promptHL = glyph+" ", hl
