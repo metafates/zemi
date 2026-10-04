@@ -40,7 +40,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`Host.Focus`, counted only while the last frame drew it); commands are slash commands typed
   in the composer. Keymaps are keys or key sequences (`<leader>` is `keymap.leader`; a key name
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
-  the composer - scrolling is on `pgup`/`pgdown`/`shift+up`/`shift+down`/`ctrl+k`/`ctrl+j`/`ctrl+home`/`ctrl+end`/`alt+up`/`alt+down` - and chrome, an open
+  the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome, an open
   palette and completion popups keep their keys before keymaps are consulted; a `list = true`
   binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go), but for a move a typed
   line edits with while one types (`lineKey`, `App.typing`). A focused node
