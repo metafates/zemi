@@ -1,148 +1,34 @@
-# zemi
+# zemi @··
 
-A coding agent for the terminal. It learns how you work between sessions, keeps
-the prompt cheap, and its UI is Lua.
+> There are many agent harnesses, but this one takes _the best from them_
+
+Zemi is a (coding) agent harness that...
+
+- learns like [hermes](https://github.com/nousresearch/hermes-agent)
+- fast and native like [crush](https://github.com/charmbracelet/crush)
+- extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
+- batteries included like [codex](https://github.com/openai/codex) & [claude-code](https://github.com/anthropics/claude-code)
+- has a nice TUI like [opencode](https://github.com/anomalyco/opencode)
+
+...and can be whatever you want it to be.
 
 ## Install
 
 ```sh
 go install github.com/metafates/zemi@latest
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, ...
+
+# or ANTHROPIC_API_KEY, OPENAI_API_KEY, +33 providers.
+# zemi will guide you if not set
+export DEEPSEEK_API_KEY=...
+
 zemi
 ```
 
-## It learns
+## Features
 
-After a session, zemi keeps what would have cost a question next time: how you
-test, how you commit. A memory about you must quote you. A procedure it worked
-out for a repo becomes a recipe there.
-
-`/memory` shows what it kept. `/rewind` takes a turn back, lessons included.
-
-## Few tokens
-
-The prompt is pinned per session, so the provider cache hits every turn. Skills
-are an index until one is used. Past ten MCP tools, they load by search. Titles,
-summaries and the learning pass can each run on a cheaper model (`/model roles`).
-
-## On its own, or with a question
-
-| runs on its own             | asks first                          |
-| --------------------------- | ----------------------------------- |
-| reads and edits the project | `rm -rf` and friends                |
-| builds, tests, scripts      | `git push`, a rebase, `.git/config` |
-| read-only MCP tools         | the network, leaving the sandbox    |
-
-Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden.
-On macOS a commit, a branch or a stash runs confined; on Linux every git
-write asks. Commands are read as POSIX sh, and bash-only syntax fails with
-its POSIX form before it runs.
-`ctrl+y` is yolo. `ctrl+t` is the planner: it reads and proposes, you approve.
-
-## The UI is Lua
-
-```lua
-zemi.keymap.set("ctrl+t", "zemi.agent.profile.next")
-```
-
-Keys, commands, widgets, layout, permission rules: one file, reloaded on save,
-like Neovim. Or ask zemi to edit it.
-
-## Plugins
-
-```sh
-zemi plugins install https://github.com/someone/zemi-git-status
-```
-
-A plugin is a git repository shaped like the config dir. zemi checks out its
-newest `vX.Y.Z` tag, and `zemi plugins update` stays in that major version.
-Write your own in `~/.local/share/zemi/plugins/local/<name>/`, or type
-`/plugins new <what it should do>` to have the agent write it, and pick
-Modify in a local plugin's `/plugins` entry to have it change one. `/plugins`
-turns them on and off. `zemi plugins test <name>` runs a plugin's
-`tests/*.lua`, each case in a throwaway zemi with a fake clock and no
-network or processes.
-
-## Command line
-
-```
-zemi [prompt...]                    open the TUI; a prompt is sent first
-zemi run [prompt... | -]            one turn: the run on stderr, the answer on stdout
-zemi sessions [export [--full] <id>]
-                                    this project's sessions; one as markdown
-zemi projects                       every project zemi keeps state for, last used first
-zemi models [update]                the ids -m takes; fetch the latest catalog
-zemi plugins [install|update|check|enable|disable|delete|test]
-zemi health                         the /health checks; 1 if any failed
-zemi completion bash|zsh|fish
-```
-
-```sh
-zemi run "explain main.go"
-git diff | zemi run "review this"
-zemi run - < task.md                # the prompt itself from stdin, never a /command
-zemi run "/goal make check is clean" # turns until it holds; 1 if blocked
-zemi -C ~/code/app run -c "and the tests?"
-zemi -C "$(zemi projects | fzf | cut -c36-)"   # open a project picked from the list
-zemi run -q "write the commit message for the staged diff" | git commit -F -
-```
-
-`zemi run` puts the answer on stdout and nothing else: the run's last message,
-plain. stderr shows the run as the chat draws it, live on a terminal and as
-plain lines in a log; where both streams are one terminal the answer is drawn
-once. `-q` keeps stderr to what went wrong, and `--reasoning` prints every
-thought and call whole. Nobody can approve a call, so one the mode leaves to the user is denied,
-and stderr ends with those asks and what would let them through. The first
-ctrl+c stops the turn, the second leaves. Exit status: 0 done, 1 the send or
-the turn failed, 2 usage, 130 interrupted.
-
-`--json` turns the view off and stdout into one JSON object per line, `done`
-always last, so `tail -n1` is the report. A field a line does not carry is left
-out, and every string is what the chat row holds:
-
-| type | fields | when |
-|---|---|---|
-| `start` | `session`, `model`, `profile`, `mode`, `trusted`, `cwd` | once the run's session exists |
-| `reasoning` | `text`, `ms` | a thinking block settled |
-| `message` | `text` | an assistant message settled, narration or the answer |
-| `tool_start` | `id`, `tool`, `input`, `label` | a call started running |
-| `tool_end` | `id`, `tool`, `input`, `label`, `status` (`ok`, `err`, `stopped`, `bg`), `output`, `error`, `diff`, `detail` | a call finished |
-| `ask` | `tool`, `subject`, `arg`, `reason`, `why` (`approval`, `outside_sandbox`, `network`, `needs_tui`) | an ask nobody could answer was denied, a subagent's too |
-| `notice` | `text` | a notice row: a background report, the plan nudge |
-| `compact` | `text` | the conversation was compacted or old tool output cleared |
-| `retry` | `attempt` (the one about to run, 2 for the first retry), `in_ms`, `error` | the provider call failed and is retried |
-| `error` | `text` | the turn ended with an error |
-| `done` | `result`, `is_error`, `error`, `session`, `duration_ms`, `usage` (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`), `compactions`, `denied` (the `ask` fields), `tools` (`id`, `tool`, `input`, `status`, `error`) | last, a failed boot or send included |
-
-`input` is the argument a person reads first, `label` the model's own words
-for a command, `output` the result's last lines, `detail` an agent's or a
-workflow's progress. Pair tool events by `id`: a `tool_end` goes out once the
-call finishes, while a message or a thought goes out once no provider retry
-can take it back, one model step later, so narration can follow the next
-call's `tool_start`. A subagent or a workflow is one call; its own calls are
-not events.
-
-`sessions`, `projects`, `plugins` and `health` take `--json` too: one object
-per line, nothing for an empty list. On a terminal their columns are colored
-and headed; through a pipe they are plain, so `cut` and `awk` read them as is.
-
-| command | fields |
-|---|---|
-| `sessions` | `id`, `title` (`""` untitled), `updated` (RFC 3339), `cost_usd` |
-| `projects` | `root`, `trust` (`trusted`, `untrusted`, `undecided`, `missing`), `used` (RFC 3339, left out when unknown), `sessions`, `memories` |
-| `plugins` | `name`, `version`, `local`, `enabled`, `source` (the git URL, or the dir of a local one) |
-| `health` | `level` (`ok`, `warn`, `error`), `name`, `detail` |
-
-Shell completion, with session ids, plugin names, models, profiles and modes:
-
-```sh
-source <(zemi completion bash)                     # in ~/.bashrc
-zemi completion zsh > "${fpath[1]}/_zemi"
-zemi completion fish > ~/.config/fish/completions/zemi.fish
-```
-
-`zemi <command> --help` says more.
-
-`/help` lists every key and command. [DESIGN.md](DESIGN.md) is the spec,
-[AGENTS.md](AGENTS.md) the rules and the commands, and the internals live in the area skills
-under [.agents/skills/](.agents/skills/).
+- Keeps prompts small, cache hit rates high
+- Knows when to shut up
+- Tools to make cheap models suck less, smart ones do more: subagents, workflows, forks, lsp, parallel tool calls... _yada yada_
+- Fully scriptable with Lua and knows how to modify itself
+- Learns from previous sessions
+- Sandbox and deterministic permission resolution - you'll see "allow/deny" prompts way less
