@@ -17,7 +17,7 @@ Zemi is a (coding) agent harness that...
 ```sh
 go install github.com/metafates/zemi@latest
 
-# or ANTHROPIC_API_KEY, OPENAI_API_KEY, +33 providers.
+# or ANTHROPIC_API_KEY, OPENAI_API_KEY, or any other provider zemi supports.
 # zemi will guide you if not set
 export DEEPSEEK_API_KEY=...
 
