@@ -1,4 +1,4 @@
-// main.go is wiring only: resolve dirs, build the runtime + host + UI,
+// main.go is wiring only: build the runtime + host + UI over this run's dirs,
 // assemble the boot steps, run the bubbletea program.
 
 // Command zemi is a self-improving, Lua-extensible AI agent harness for the
@@ -81,16 +81,11 @@ func launch(o options) int {
 		return 1
 	}
 	ctx := context.Background()
-	dirs, err := config.ResolveDirs()
-	if err == nil {
-		err = dirs.Ensure()
-	}
+	host, trust, log, closeLog, err := bootHost(o, false)
 	if err != nil {
 		return fail(err)
 	}
-	log, closeLog := logging.New(dirs.LogDir())
 	defer closeLog()
-	host, trust := newHost(dirs, log, o)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	// a prompt or a resumed session fills the transcript, so no splash offers projects
@@ -109,7 +104,7 @@ func launch(o options) int {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Error(fmt.Sprintf("boot panicked: %v", r), "origin", "panic", "stack", string(debug.Stack()))
-				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, dirs.LogDir()))
+				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, host.Dirs.LogDir()))
 			}
 		}()
 		err := host.RT.Boot(ctx, steps)
@@ -249,34 +244,43 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 		app != nil)
 }
 
-// bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
-// stops what boot started (MCP and language servers) and closes the log.
-// stderr gets its diagnostics, notice the untrusted-project line. An inert
-// boot (zemi models, completion) only reads config: no store, no log file,
-// no process, and Host.Inert's guards.
-func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Host, func(), error) {
-	dirs, err := config.ResolveDirs()
-	if err == nil && !inert {
-		err = dirs.Ensure()
-	}
-	if err != nil {
-		return nil, nil, err
+// bootHost is the prologue a TUI and a headless run share: this run's dirs,
+// the log, the host and the trust gate its steps read. An inert boot (zemi
+// models, a completion) only reads config: no store, no log file, no process.
+// closeLog releases the log and, for an inert boot, the process refusal.
+func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
+	dirs := o.dirs
+	if !inert {
+		if err := dirs.Ensure(); err != nil {
+			return nil, nil, nil, nil, err
+		}
 	}
 	hostDirs, logDir, release := dirs, dirs.LogDir(), func() {}
 	if inert {
 		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
 	}
 	log, closeLog := logging.New(logDir)
-	h, trust := newHost(hostDirs, log, o)
+	host, trust := newHost(hostDirs, log, o)
+	// the saved decision reads this run's dirs, which an inert boot did not open
+	trust.dirs = dirs
+	return host, trust, log, func() { closeLog(); release() }, nil
+}
+
+// bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
+// stops what boot started (MCP and language servers) and closes the log.
+// stderr gets its diagnostics, notice the untrusted-project line.
+func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Host, func(), error) {
+	h, trust, _, closeLog, err := bootHost(o, inert)
+	if err != nil {
+		return nil, nil, err
+	}
 	h.Inert, h.Stderr = inert, stderr
-	trust.dirs = dirs // the saved decision; a headless answer saves none
 	// a project with no saved decision runs untrusted instead of asking; say
 	// so, or the run looks like it applied the project's setup
 	trust.ask = headlessTrust(notice)
 	done := func() {
 		proc.KillAll()
 		closeLog()
-		release()
 	}
 	steps := hostSteps(h, trust, nil)
 	markConfig := func() {}
@@ -512,20 +516,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
 			return h.SetGoal(args)
-		}, GoComplete: func(h *hostapi.Host, lead, line string) []string {
-			if _, ok := h.Goal(); ok {
-				return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
-			}
-			return nil
-		}},
+		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Goal(); return ok })},
 		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
 			return h.SetLoop(args)
-		}, GoComplete: func(h *hostapi.Host, lead, line string) []string {
-			if _, ok := h.Loop(); ok {
-				return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
-			}
-			return nil
-		}},
+		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Loop(); return ok })},
 		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.Btw(args)
 		}},
@@ -544,6 +538,16 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return h.SetPermMode(args)
 		}, GoComplete: func(h *hostapi.Host, _, _ string) []string { return modeNames(h) }},
+	}
+}
+
+// stopCompleter offers the "stop" argument to a command while it is set.
+func stopCompleter(set func(*hostapi.Host) bool) func(h *hostapi.Host, lead, line string) []string {
+	return func(h *hostapi.Host, lead, line string) []string {
+		if !set(h) {
+			return nil
+		}
+		return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
 	}
 }
 
