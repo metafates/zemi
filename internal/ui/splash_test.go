@@ -194,6 +194,24 @@ func TestSplashProjects(t *testing.T) {
 	}
 }
 
+// TestFarewellWraps: an exit widget that asks to wrap prints wrapped at the
+// terminal's width, as the run view draws the region, not one over-long row.
+func TestFarewellWraps(t *testing.T) {
+	app, _ := bootAgentApp(t, 40, 20)
+	runLua(t, app, `zemi.ui.widget.add({ id = "exit.wide", region = "exit", wrap = true, render = function()
+  return { { { text = string.rep("word ", 20) } } }
+end })`)
+	rows := strings.Split(strings.TrimRight(app.Farewell(), "\n"), "\n")
+	if len(rows) < 2 {
+		t.Fatalf("a wrapping exit widget printed %d row(s):\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	for _, r := range rows {
+		if w := ansi.StringWidth(r); w > 40 {
+			t.Fatalf("a row is %d cells wide, want 40 at most: %q", w, r)
+		}
+	}
+}
+
 // TestFarewell: what zemi prints to the shell on quit, the exit region.
 func TestFarewell(t *testing.T) {
 	for _, c := range []struct {
