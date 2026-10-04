@@ -238,12 +238,12 @@ func TestPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sock.Close()
-	// a listener of the pad's own, which a confined command may dial; its path
-	// is capped near 103 bytes, so a deep temp dir has no room for the pad
-	// cases, which then skip rather than fail the whole table
+	// a unix socket path over this machine's cap cannot be bound or dialed at
+	// all, so the rows that need one skip rather than fail the whole table
+	const sockPathMax = 104
+	// a listener of the pad's own, which a confined command may dial
 	padSockPath := filepath.Join(scratch, "s2")
-	padFits := len(padSockPath) < 104
-	if padFits {
+	if len(padSockPath) < sockPathMax {
 		padSock, err := net.Listen("unix", padSockPath)
 		if err != nil {
 			t.Fatal(err)
@@ -253,7 +253,7 @@ func TestPolicy(t *testing.T) {
 	// the symlink a command can plant in its own pad, pointing at the listener
 	// above: dialing it must not reach a socket outside the pad
 	padLink := filepath.Join(scratch, "link")
-	if padFits {
+	if len(padLink) < sockPathMax {
 		if err := os.Symlink(sock.Addr().String(), padLink); err != nil {
 			t.Fatal(err)
 		}
@@ -339,11 +339,11 @@ func TestPolicy(t *testing.T) {
 		// seatbelt filters a socket by path, so it takes the resolved one and
 		// only the pad's; Landlock cannot filter one at all, so every AF_UNIX
 		// socket is refused there, a pad one included
-		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), runtime.GOOS != "linux", !padFits},
+		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), runtime.GOOS != "linux", false},
 		{"bind a unix socket in another root", "bindunix", filepath.Join(root, "s"), false, false},
 		{"bind a unix socket outside the roots", "bindunix", filepath.Join(outside, "s"), false, false},
-		{"dial a unix socket in the pad", "unix", padSockPath, runtime.GOOS != "linux", !padFits},
-		{"dial the pad through a symlink out of it", "unix", padLink, false, !padFits},
+		{"dial a unix socket in the pad", "unix", padSockPath, runtime.GOOS != "linux", false},
+		{"dial the pad through a symlink out of it", "unix", padLink, false, false},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
 		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},
 		// Landlock has no right for these, see seccomp
@@ -357,6 +357,11 @@ func TestPolicy(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if c.skip {
 				t.Skipf("%s does not enforce this", b.Name)
+			}
+			// nothing can bind or dial a path over the cap, so say that instead
+			// of blaming the backend for a deep temp dir
+			if (c.verb == "unix" || c.verb == "bindunix") && len(c.arg) >= sockPathMax {
+				t.Skipf("no room for a %d-byte socket path", len(c.arg))
 			}
 			out, err := run(t, p, c.verb, c.arg)
 			if c.allowed && err != nil {
