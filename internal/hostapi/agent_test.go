@@ -94,26 +94,17 @@ func TestCommandSendsTypedLine(t *testing.T) {
 }
 
 // runExpectErr runs src as a user chunk and asserts it raises, matching
-// every substring in want. The timeout guard turns an interpreter wedge
-// into a loud failure (same contract as runUser).
+// every substring in want.
 func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- r.ExecuteChunk(ctx, src, "test.lua", lua.OriginUser) }()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatalf("expected error containing %q, got success", want)
+	err := runChunk(t, r, src)
+	if err == nil {
+		t.Fatalf("expected error containing %q, got success", want)
+	}
+	for _, w := range want {
+		if !strings.Contains(err.Error(), w) {
+			t.Fatalf("error %q does not contain %q", err.Error(), w)
 		}
-		for _, w := range want {
-			if !strings.Contains(err.Error(), w) {
-				t.Fatalf("error %q does not contain %q", err.Error(), w)
-			}
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("chunk did not complete within 3s (interpreter deadlock?)")
 	}
 }
 

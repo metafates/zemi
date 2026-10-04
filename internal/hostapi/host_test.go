@@ -85,11 +85,11 @@ func outsideTemp(t *testing.T) string {
 	return perm.RealPath(dir)
 }
 
-// runUser executes src as a user-origin chunk and fails the test on error.
-// A slice gets 30s, not the interpreter's 1s ceiling, which a loaded machine
-// reaches on a chunk that starts processes. The select guard turns an
+// runChunk runs src as a user chunk off the test goroutine and returns its
+// error: a slice gets 30s, not the interpreter's own ceiling, which a loaded
+// machine reaches on a chunk that starts processes. The select guard turns an
 // interpreter deadlock into a loud failure instead of a hung test binary.
-func runUser(t *testing.T, r *lua.Runtime, src string) {
+func runChunk(t *testing.T, r *lua.Runtime, src string) error {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -100,11 +100,18 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 	}()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("user chunk: %v", err)
-		}
+		return err
 	case <-time.After(30 * time.Second):
-		t.Fatal("user chunk did not complete within 30s (interpreter deadlock?)")
+		t.Fatal("chunk did not complete within 30s (interpreter deadlock?)")
+		return nil
+	}
+}
+
+// runUser executes src as a user-origin chunk and fails the test on error.
+func runUser(t *testing.T, r *lua.Runtime, src string) {
+	t.Helper()
+	if err := runChunk(t, r, src); err != nil {
+		t.Fatalf("user chunk: %v", err)
 	}
 }
 
