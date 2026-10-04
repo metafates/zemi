@@ -176,6 +176,42 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	}
 }
 
+// TestSeedStreamSeedsEveryField: a field a caller seeds must read back from
+// AgentStream, or a golden silently draws the live turn's zero instead. The
+// skips are the fields the read derives rather than holds.
+func TestSeedStreamSeedsEveryField(t *testing.T) {
+	h, _ := newTestHost(t)
+	s := StreamSnapshot{
+		Active: true, ByLoop: true, Text: "t", Reasoning: "r", Thinking: true,
+		Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
+		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
+		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
+		Retries: 9, Compacting: true, CheckingGoal: true,
+		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
+	}
+	h.SeedStream(s)
+	// Profile is config, not turn state; CtxWindow falls back to the model's;
+	// Model to the live one; Thought, Elapsed and RetryIn count from the seed
+	// on the host clock; Steering takes AgentSend, which builds the queue.
+	derived := map[string]string{
+		"Profile": "read from the settings", "Model": "empty seeds the live model",
+		"CtxWindow": "0 seeds the model's window", "Thought": "counts from the seed",
+		"Elapsed": "counts from the seed", "RetryIn": "counts from the seed",
+		"Steering": "AgentSend builds it",
+	}
+	got := h.AgentStream()
+	want, have := reflect.ValueOf(s), reflect.ValueOf(got)
+	for i := range want.NumField() {
+		name := want.Type().Field(i).Name
+		if _, ok := derived[name]; ok {
+			continue
+		}
+		if !reflect.DeepEqual(want.Field(i).Interface(), have.Field(i).Interface()) {
+			t.Errorf("SeedStream does not seed %s: %v, want %v", name, have.Field(i).Interface(), want.Field(i).Interface())
+		}
+	}
+}
+
 // TestSubagentStoresThinkingTime: a run's stored reasoning row carries the
 // run's own thinking time, like a session's, so a run read back from the
 // store (/agents) shows it.

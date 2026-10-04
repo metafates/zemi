@@ -2281,6 +2281,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 // golden tests and UI development: the next AgentStream read returns the
 // seeded state until a real turn resets it. A queued message is not seeded
 // with it: a test queues one with AgentSend, which a seeded active turn takes.
+// TestSeedStreamSeedsEveryField holds this to every field a snapshot has.
 func (h *Host) SeedStream(s StreamSnapshot) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -2300,16 +2301,19 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	}
 	ag.sessIn = s.SessionIn
 	ag.sessOut = s.SessionOut
+	ag.sessCost = s.SessionCost
+	ag.cacheRead, ag.cacheBilled = s.CacheRead, s.CacheBilled
 	ag.lastIn = s.LastIn
 	ag.ctxWin = s.CtxWindow
+	ag.checkingGoal = s.CheckingGoal
 	if s.Elapsed > 0 && s.Active {
 		ag.turnStart = h.now().Add(-s.Elapsed)
 	} else {
 		ag.turnStart = time.Time{}
 	}
-	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
+	ag.retries, ag.retryAt, ag.retryWhy, ag.compacting = s.Retries, time.Time{}, "", s.Compacting
 	if s.Retrying {
-		ag.retryAt = h.now().Add(s.RetryIn)
+		ag.retryAt, ag.retryWhy = h.now().Add(s.RetryIn), s.RetryWhy
 	}
 }
 
