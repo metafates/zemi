@@ -833,7 +833,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran = ""
 				a.openOverlay(hostapi.Overlay{ID: "q", Origin: lua.OriginPlugin, Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}})
 				a.overlayKey("p", "p")
-				return fail(ran == "", "a plugin list's key ran " + ran)
+				return fail(ran == "", "a plugin list's key ran "+ran)
 			},
 		},
 		{
@@ -861,7 +861,7 @@ func TestOverlayNavigation(t *testing.T) {
 				o.Refresh = true
 				a.openOverlay(o)
 				a.overlayKey("x", "x")
-				return fail(ran == "stop", "the second press ran " + ran)
+				return fail(ran == "stop", "the second press ran "+ran)
 			},
 		},
 		{
@@ -1330,22 +1330,12 @@ for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { action
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
 	assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
-	// the fields the rows and the key handling read, each from the Lua above
+	// the fields the row renderer and the key handling read, from the Lua above
 	it := app.overlays[0].items[0].row
-	for _, c := range []struct {
-		name string
-		got  any
-		want any
-	}{
-		{"text", it.Text, "t"}, {"desc", it.Desc, "d"}, {"key", it.Key, "k"}, {"section", it.Section, "s"},
-		{"detail", it.Detail, "x"}, {"verb", it.Verb, "v"}, {"hotkey", it.Hotkey, "h"}, {"fill", it.Fill, "f"},
-		{"copy", it.Copy, "c"}, {"run", it.Run, "r"}, {"id", it.ID, "i"}, {"danger", it.Danger, true},
-		{"tail", it.Tail, true}, {"switch", it.Switch, true}, {"locked", it.Locked, true},
-		{"actions", fmt.Sprint(it.Actions), "[a]"}, {"fields", fmt.Sprint(it.Fields), "[{a b}]"},
-	} {
-		if c.got != c.want {
-			t.Errorf("item %s = %v, want %v", c.name, c.got, c.want)
-		}
+	if it.Text != "t" || it.Desc != "d" || it.Key != "k" || it.Section != "s" || it.Detail != "x" ||
+		it.Verb != "v" || it.Hotkey != "h" || it.Fill != "f" || it.Copy != "c" || it.Run != "r" || it.ID != "i" ||
+		!it.Danger || !it.Tail || !it.Switch || !it.Locked || fmt.Sprint(it.Actions, it.Fields) != "[a] [{a b}]" {
+		t.Fatalf("row %+v", it)
 	}
 }
 
