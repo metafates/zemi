@@ -250,7 +250,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	if f.count() == 0 {
 		return emptyRows(noMatches, maxW)
 	}
-	items := append([]listItem(nil), f.extra...)
+	items := slices.Clone(f.extra)
 	for _, m := range f.matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, row: hostapi.OverlayItem{Tail: true}})
 	}

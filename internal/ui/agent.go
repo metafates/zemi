@@ -978,7 +978,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 	// what the user approves
 	parts := func(s string) []hostapi.Segment {
 		var segs []hostapi.Segment
-		for _, p := range strings.SplitAfter(s, "/") {
+		for p := range strings.SplitAfterSeq(s, "/") {
 			segs = append(segs, hostapi.Segment{Text: p, HL: hostapi.ChromeValue})
 		}
 		return segs

@@ -316,8 +316,7 @@ func (a *App) highlightSelection(rows [][]hostapi.Segment, w int) {
 
 // restyle changes the style of cells [from, to) of a row.
 func restyle(row []hostapi.Segment, from, to int, style func(*hostapi.Segment)) []hostapi.Segment {
-	mid := truncateSegs(dropCells(row, from), to-from)
-	mid = append([]hostapi.Segment(nil), mid...)
+	mid := slices.Clone(truncateSegs(dropCells(row, from), to-from))
 	for i := range mid {
 		if !strings.ContainsRune(mid[i].Text, kitty.Placeholder) { // its color names the image
 			style(&mid[i])

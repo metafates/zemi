@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // TestRunView: what zemi run prints on stderr for a run, frame by frame.
@@ -53,12 +51,7 @@ func TestRunView(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, h := bootAgentApp(t, 100, 30)
-			db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { db.Close() })
-			h.DB = db
+			db := testStore(t, h)
 			const sid = "7hq2m4xk"
 			if err := db.CreateSession(sid, "", "t", ""); err != nil {
 				t.Fatal(err)

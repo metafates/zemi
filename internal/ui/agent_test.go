@@ -81,6 +81,19 @@ func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Hos
 	return app, host
 }
 
+// testStore gives the host a session store of its own: the harness boots with
+// no project dir, so no project store came with it.
+func testStore(t testing.TB, host *hostapi.Host) *store.DB {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	return db
+}
+
 // seedLongChat fills the session with turns of reasoning, tool rows, a diff
 // and a markdown reply.
 func seedLongChat(host *hostapi.Host, turns int) {
@@ -235,12 +248,7 @@ func TestColdChatRender(t *testing.T) {
 // opens the rail under it.
 func TestAgentViewFolds(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	id := store.ShortID()
 	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
 		t.Fatal(err)
@@ -284,12 +292,7 @@ func TestAgentViewFolds(t *testing.T) {
 // it was opened in, so showing another run draws folded rows again.
 func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	ids := make([]string, 2)
 	for i := range ids {
 		ids[i] = store.ShortID()
@@ -977,12 +980,8 @@ func TestInterruptKeys(t *testing.T) {
 				}
 			}
 			if c.view {
-				db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { db.Close() })
-				host.DB, clock = db, clock.Add(time.Hour)
+				db := testStore(t, host)
+				clock = clock.Add(time.Hour)
 				if err := db.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
 					t.Fatal(err)
 				}
@@ -1662,12 +1661,7 @@ func TestWorkingRowMascot(t *testing.T) {
 // nothing runs, and keeps that key once the name is dropped for width.
 func TestWorkingRowAgentView(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	id := store.ShortID()
 	if err := db.CreateSession(id, store.ShortID(), "explore the repo", "explore"); err != nil {
 		t.Fatal(err)
@@ -2109,15 +2103,9 @@ func TestTodoRowsKeepTheLiveItem(t *testing.T) {
 
 func todoRows(t *testing.T, h int, want []string) {
 	app, host := bootAgentApp(t, 100, h)
-	// the test host has no project dir, so no project store came with it
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	sid := store.ShortID()
-	if err := host.DB.CreateSession(sid, "", "t", ""); err != nil {
+	if err := db.CreateSession(sid, "", "t", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.ResumeSession(sid); err != nil {

@@ -218,12 +218,7 @@ func TestFarewell(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, c.width, 30)
 			app.colors = c.profile
-			db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { db.Close() })
-			host.DB = db
+			db := testStore(t, host)
 			if c.send {
 				sid := store.ShortID()
 				if err := db.CreateSession(sid, "", c.title, ""); err != nil {

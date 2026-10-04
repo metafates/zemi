@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"encoding/json/v2"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,13 +22,7 @@ func TestGoldenMemory(t *testing.T) {
 	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}
-	// the test host has no project dir, so no project store came with it
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	testStore(t, host)
 	frame := func(name string) {
 		t.Helper()
 		for app.Pump() {
