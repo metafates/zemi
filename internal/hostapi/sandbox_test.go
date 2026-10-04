@@ -723,14 +723,16 @@ func TestWorktreesDir(t *testing.T) {
 
 // TestSandboxPrompt: every clause of the Sandbox block follows the policy
 // and the escapes the run has; without them no UI can answer an ask either.
+// A run with no scratchpad has no $TMPDIR, so no clause may promise one.
 func TestSandboxPrompt(t *testing.T) {
 	for _, c := range []struct {
 		name                            string
 		trusted, live, readOnly, escape bool
 		gitDir                          bool
+		noPad                           bool
 		want, unwanted                  []string
 	}{
-		{"trusted", true, true, false, true, false, []string{
+		{"trusted", true, true, false, true, false, false, []string{
 			"They write only the project, the temp dirs, $TMPDIR and $GOCACHE.\n",
 			".git and .agents are read-only to them: write .agents files with the write tool",
 			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
@@ -738,19 +740,23 @@ func TestSandboxPrompt(t *testing.T) {
 			"Network: localhost only. A unix socket in $TMPDIR binds and dials; one outside it, the ssh agent's or docker's, does not. network: true adds the network, sandbox: false drops every limit",
 			"a browser, GUI app, docker or the keychain fails or crashes (Abort trap: 6). Run one with sandbox: false.",
 		}, []string{"read-only to this agent"}},
-		{"trusted with a .git dir", true, true, false, true, true, []string{
+		{"trusted with a .git dir", true, true, false, true, true, false, []string{
 			".agents and .git's config and hooks are read-only to them",
 			"git commit, checkout and stash run confined; git config, remote, rebase, push and fetch ask the user first.",
 		}, []string{"change .git"}},
-		{"read-only agent", true, true, true, true, false, []string{
+		{"read-only agent", true, true, true, true, false, false, []string{
 			"They write only the temp dirs, $TMPDIR and $GOCACHE: the project is read-only to this agent.\n",
 			"network: true adds the network (needs approval).", "Do not run one: say what you could not check.",
 		}, []string{"sandbox: false", ".git and .agents"}},
-		{"nobody to approve", true, true, false, false, false, []string{"Nobody can approve more in this run.", "Do not run one", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
-		{"untrusted", false, true, false, true, false, []string{"this project is not trusted", "ask the user first, and run unconfined"}, []string{"sandbox: false"}},
-		{"untrusted with nobody to approve", false, true, false, false, false, []string{"other commands need the user's approval, which nobody can give"}, []string{"ask the user", "unconfined"}},
-		{"no backend", true, false, false, true, false, []string{"none on this machine", "ask the user first"}, []string{"sandbox: false"}},
-		{"no backend with nobody to approve", true, false, false, false, false, []string{"which nobody can give in this run"}, []string{"ask the user first"}},
+		{"nobody to approve", true, true, false, false, false, false, []string{"Nobody can approve more in this run.", "Do not run one", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
+		{"untrusted", false, true, false, true, false, false, []string{"this project is not trusted", "ask the user first, and run unconfined"}, []string{"sandbox: false"}},
+		{"untrusted with nobody to approve", false, true, false, false, false, false, []string{"other commands need the user's approval, which nobody can give"}, []string{"ask the user", "unconfined"}},
+		{"no backend", true, false, false, true, false, false, []string{"none on this machine", "ask the user first"}, []string{"sandbox: false"}},
+		{"no backend with nobody to approve", true, false, false, false, false, false, []string{"which nobody can give in this run"}, []string{"ask the user first"}},
+		{
+			name: "no pad", trusted: true, live: true, noPad: true,
+			unwanted: []string{"A unix socket in $TMPDIR", "Other tools' caches"},
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHost(t)
@@ -768,7 +774,11 @@ func TestSandboxPrompt(t *testing.T) {
 				os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755)
 			}
 			h.SetProjectTrusted(c.trusted)
-			got := h.sandboxPrompt(tools.All(&tools.Pipeline{SandboxParam: c.escape}), c.readOnly, h.ScratchDir())
+			pad := h.ScratchDir()
+			if c.noPad {
+				pad = ""
+			}
+			got := h.sandboxPrompt(tools.All(&tools.Pipeline{SandboxParam: c.escape}), c.readOnly, pad)
 			for _, w := range c.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("lacks %q:\n%s", w, got)
@@ -780,20 +790,5 @@ func TestSandboxPrompt(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestSandboxPromptNoPad: a run with no scratchpad has no $TMPDIR, so the
-// block promises neither a socket there nor a cache to point at.
-func TestSandboxPromptNoPad(t *testing.T) {
-	h, _ := newTestHost(t)
-	h.agents.sessionID = "s1"
-	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
-	h.SetProjectTrusted(true)
-	got := h.sandboxPrompt(tools.All(&tools.Pipeline{}), false, "")
-	for _, w := range []string{"A unix socket in $TMPDIR", "Other tools' caches"} {
-		if strings.Contains(got, w) {
-			t.Errorf("a run without a pad says %q:\n%s", w, got)
-		}
 	}
 }
