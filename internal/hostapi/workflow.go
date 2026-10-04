@@ -30,7 +30,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -143,8 +142,6 @@ type flowRun struct {
 	id, name, description string
 	about                 string // a saved workflow's leading comment, "" for an inline script
 	parent                string // the session that started it, its agents' parent too
-	background            bool
-	started               time.Time
 	cancel                context.CancelFunc
 	wake                  chan struct{}    // buffered: a control that lets more agents start
 	progress              func(f *flowRun) // a foreground run's row, nil for none
@@ -155,22 +152,16 @@ type flowRun struct {
 	// sandboxed command can plant a link at the name. nil with no session.
 	journal *os.File
 
-	mu       sync.Mutex
-	status   RunStatus
-	paused   bool
-	limit    int
-	finished time.Time
-	phase    string
-	log      []string
-	agents   []*flowAgent    // in call order
-	restart  map[string]bool // agent run ids flowControl cancelled to run again
-	result   string          // the script's value: strings as is, anything else JSON
-	err      error
-	// detached is a foreground call's report going to the session as a message
-	// instead of back to the caller, set by the call's handoff and read by the
-	// run's end: a run finishing in the same instant as the user's message must
-	// be one or the other, never both.
-	detached bool
+	runState
+
+	paused  bool
+	limit   int
+	phase   string
+	log     []string
+	agents  []*flowAgent    // in call order
+	restart map[string]bool // agent run ids flowControl cancelled to run again
+	result  string          // the script's value: strings as is, anything else JSON
+	err     error
 }
 
 // flowAgent is one zemi.workflow.agent call: queued until run is set, or
@@ -266,35 +257,6 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 
 // handedOff reports whether the run's report goes to the session as a
 // message: a background start, or a foreground call the user's message took.
-func (f *flowRun) handedOff() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.background || f.detached
-}
-
-// detach hands a foreground run to its session, so its end delivers the report
-// as a message instead of answering the call that started it. False when the
-// run already ended: the caller reports its result inline, so the report is
-// never lost and never delivered twice.
-func (f *flowRun) detach() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.status != RunRunning {
-		return false
-	}
-	f.detached = true
-	return true
-}
-
-// counts reports whether the run takes one of agent.max_background's slots: a
-// detached report owes the session a message either way, so a run the user's
-// message handed off counts as one.
-func (f *flowRun) counts() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return (f.background || f.detached) && f.status == RunRunning
-}
-
 // wfTask is one coroutine: the script body or a parallel() branch.
 type wfTask struct {
 	co      *glua.LState
@@ -902,12 +864,6 @@ func ended(rows []agentRow) int {
 		}
 	}
 	return n
-}
-
-func (f *flowRun) isRunning() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.status == RunRunning
 }
 
 // summary is the row's detail: the phase, the agents and the last log line
