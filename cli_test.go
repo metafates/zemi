@@ -149,6 +149,7 @@ func TestCLI(t *testing.T) {
 		}
 		sameTrust := (got.trust == nil) == (c.want.trust == nil) && (got.trust == nil || *got.trust == *c.want.trust)
 		got.trust, c.want.trust = nil, nil
+		got.dirs, c.want.dirs = config.Dirs{}, config.Dirs{} // the environment, not the flags
 		if *got != *c.want || !sameTrust {
 			t.Errorf("%s: launched %+v", c.name, *got)
 		}

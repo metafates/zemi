@@ -1,0 +1,459 @@
+package hostapi
+
+import (
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"slices"
+	"strings"
+	"time"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/tools"
+)
+
+// The stream adapter: agent.StreamHooks into UI events and stream state, and
+// the snapshot the widgets read while a turn runs.
+
+// streamHooks adapts agent.StreamHooks into UI events and stream state.
+func (h *Host) streamHooks() agent.StreamHooks {
+	return &streamAdapter{h: h}
+}
+
+type streamAdapter struct{ h *Host }
+
+func (s *streamAdapter) TextDelta(text string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.endThinking()
+	ag.retryAt = time.Time{}
+	ag.textBuf += text
+	ag.mu.Unlock()
+	s.h.agentStream()
+	// NOTE: one queue round trip per delta; fine for the few configs that
+	// listen, coalesce here if one ever streams into something slow.
+	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
+}
+
+func (s *streamAdapter) StepStart() {
+	rows := len(s.h.Session().Transcript)
+	ag := s.h.agents
+	ag.mu.Lock()
+	// capped, so a pending row appended later cannot write into the saved slice
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought
+	ag.stepThinking = 0
+	ag.mu.Unlock()
+}
+
+// Retrying also takes back what a call opened in the failed attempt moved
+// into the transcript (openToolRow), or its text shows twice above a failed row.
+func (s *streamAdapter) Retrying(err error, delay time.Duration) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false, 0
+	rows := ag.stepRows
+	ag.retries++
+	ag.retryAt = s.h.now().Add(delay)
+	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
+	ag.mu.Unlock()
+	s.h.cutAssistantRows(rows)
+	s.h.Log.Warn("provider retry", "origin", "agent", "error", errString(err), "delay_ms", delay.Milliseconds())
+	s.h.agentStream()
+}
+
+func (s *streamAdapter) ReasoningDelta(text string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	// a new step thinks: what the last one showed goes above it. Reasoning
+	// after text with no call between, or while the step's calls are still
+	// open, is a late chunk of the same thought (providers send the last
+	// token after the reply or the call starts), so it joins the block above
+	// and neither the reply nor the thought is cut. Only a finished call
+	// closes a thought: a step cannot end while one of its calls runs.
+	// NOTE: reasoning a provider interleaves after a call still open in the
+	// same step draws above that call live and below it on resume; an
+	// ordered live list would fix it.
+	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != CallRun && t.Status != CallWait }) {
+		s.h.flushOutput(TurnStat{})
+	}
+	// reasonBuf first: with a thought open the chunk is its own, not a late one
+	if ag.reasonBuf != "" || !s.h.joinReasoning(text) {
+		ag.beginThinking()
+		ag.reasonBuf += text
+	}
+	ag.retryAt = time.Time{}
+	ag.mu.Unlock()
+	s.h.agentStream()
+	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
+}
+
+// ToolCallPending shows the call while the model is still streaming its
+// arguments: a write's file body or a long heredoc takes seconds that a
+// spinner alone says nothing about.
+func (s *streamAdapter) ToolCallPending(id, name string) {
+	s.openToolRow(StreamTool{ID: id, Name: name, Status: CallWait})
+}
+
+func (s *streamAdapter) ToolCallStart(id, name, input string) {
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
+	ag := s.h.agents
+	ag.mu.Lock()
+	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
+	if i < 0 {
+		ag.mu.Unlock()
+		s.openToolRow(row) // this provider reports no input start
+		return
+	}
+	ag.tools[i] = row
+	ag.mu.Unlock()
+	s.h.agentStream()
+}
+
+// ToolCallRunning starts a row's clock: until then it draws no timer, so a
+// call queued behind a serial one does not count time it has not run.
+func (s *streamAdapter) ToolCallRunning(id string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == CallWait }); i >= 0 {
+		ag.tools[i].Status, ag.tools[i].Started = CallRun, s.h.now()
+	}
+	ag.mu.Unlock()
+	s.h.agentStream()
+}
+
+// openToolRow appends a live tool row. Text streamed before the call
+// belongs above it: it and the earlier (finished) tool rows move into the
+// transcript, in order, so the next step's text starts its own block
+// instead of running on.
+func (s *streamAdapter) openToolRow(row StreamTool) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	ag.endThinking()
+	ag.retryAt = time.Time{}
+	// the thought the call closes belongs above it, with the call rather than
+	// later with the run's digest
+	s.h.flushOutput(TurnStat{})
+	ag.tools = append(ag.tools, row)
+	ag.mu.Unlock()
+	s.h.agentStream()
+}
+
+func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
+	ag := s.h.agents
+	t := s.h.turn.Load()
+	status := toolStatus(name, ok, output, t != nil && t.ctx.Err() != nil)
+	row := StreamTool{ID: id, Name: name}
+	ag.mu.Lock()
+	for i := len(ag.tools) - 1; i >= 0; i-- {
+		t := &ag.tools[i]
+		if t.ID == id && (t.Status == CallRun || t.Status == CallWait) {
+			t.Status, t.Output = status, rowOutput(name, output)
+			if !ok {
+				t.Diff = "" // the change did not happen
+			}
+			if changed != "" {
+				t.Diff = changed // shell: what the command changed, failed or not
+			}
+			if name == tools.ToolShell {
+				t.Detail = "" // its last output line, which the result now holds
+			}
+			row = *t
+			break
+		}
+	}
+	ag.mu.Unlock()
+	s.h.agentStream()
+	s.h.recordToolCall(s.h.AgentSessionID(), row, ok)
+	if name == tools.ToolTodos {
+		ag.mu.Lock()
+		ag.todoTouched = true
+		ag.mu.Unlock()
+	}
+}
+
+// StreamDone bills a model call as its stream finishes, so the token count
+// moves during the turn instead of only at TurnDone.
+func (s *streamAdapter) StreamDone(u fantasy.Usage) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	sid, model := ag.sessionID, s.h.turnModelID()
+	ag.mu.Unlock()
+	s.h.bill(sid, model, u)
+}
+
+// StepDone counts the step for the todo nag unless a todos call ran in it.
+func (s *streamAdapter) StepDone(st agent.Step) {
+	h := s.h
+	ag := h.agents
+	ag.mu.Lock()
+	sid, model, touched := ag.sessionID, h.turnModelID(), ag.todoTouched
+	ag.todoTouched = false
+	ag.mu.Unlock()
+	h.emitStep(sid, model, st)
+	if !touched {
+		h.maybeNagTodos()
+	}
+}
+
+func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
+	h := s.h
+	ag := h.agents
+	ag.mu.Lock()
+	// sendCompacting resends a held error or reports it; the steps before it
+	// still ran, so their usage and rows are kept
+	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
+	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
+	// a Full cut ends the send, not the turn: sendCompacting compacts and
+	// sends again, so the finish, the notification and the title wait, and
+	// the cut steps' usage joins the final payload
+	if err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
+		ag.cutUsage = addUsage(ag.cutUsage, usage)
+		hold = true
+	} else {
+		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
+	}
+	ag.holdCut = false
+	now := h.now()
+	model := h.turnModelID()
+	text, tools := ag.textBuf, ag.tools
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix()}
+	if !ag.turnStart.IsZero() {
+		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
+	}
+	ag.turnStart = time.Time{}
+	// a call still open here was cut off: by the user, or by the error that
+	// ended the turn
+	for i, t := range ag.tools {
+		if t.Status == CallRun || t.Status == CallWait {
+			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
+		}
+	}
+	h.flushOutput(stat)
+	sid := ag.sessionID
+	ag.mu.Unlock()
+	h.refresh()
+	if hold {
+		return
+	}
+	// the readout rides a telemetry row, and only a turn that ended on text
+	// has a reply row for a resume to attach it to
+	if strings.TrimSpace(text) != "" {
+		h.persistTurnStat(sid, stat)
+	}
+	ui := h.hooks()
+	if ui != nil {
+		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
+		ui.TurnDone(h.friendlyError(err), stopped)
+	}
+	// a zemi run exits before a title call answers: no UI, no title
+	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
+		ag.mu.Lock()
+		first := !ag.titled && ag.sessionID == sid
+		ag.titled = true
+		user := ag.firstUser
+		ag.mu.Unlock()
+		if first {
+			h.autoTitle(sid, user, text)
+		}
+	}
+	if err != nil {
+		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
+		// The failure stays in the transcript: a toast expires, and a turn
+		// that ended silently looks like zemi ignored the message.
+		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
+		if errors.Is(err, context.Canceled) {
+			row.Status = CallCancelled
+		}
+		h.AppendChat(row)
+	} else {
+		h.EmitAsync("agent.finish", map[string]any{"session": sid, "model": model, "usage": map[string]any{
+			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
+			"cost": h.turnCost(model, usage),
+		}})
+	}
+}
+
+// ToolInputDelta labels a pending row as soon as "about" has streamed: a
+// long command or heredoc takes seconds to arrive after it.
+func (s *streamAdapter) ToolInputDelta(id, delta string) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
+	if i < 0 || ag.tools[i].Label != "" || len(ag.tools[i].partial) > 1024 {
+		ag.mu.Unlock()
+		return
+	}
+	t := &ag.tools[i]
+	t.partial += delta
+	var label string
+	if m := aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
+		t.Label = clipLine(label, 80)
+	}
+	labelled := t.Label != ""
+	ag.mu.Unlock()
+	if labelled {
+		s.h.agentStream()
+	}
+}
+
+// StreamSnapshot is the live stream state for widgets.
+type StreamSnapshot struct {
+	Active     bool
+	Text       string
+	Reasoning  string
+	Thinking   bool // a reasoning block is open: the model thinks right now
+	Tools      []StreamTool
+	Model      string
+	Profile    string
+	Steering   []Queued      // what waits for the turn's next step boundary, oldest first
+	Thought    time.Duration // wall time spent in reasoning blocks
+	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
+	Retrying   bool          // a provider retry waits or is under way
+	RetryIn    time.Duration // time until the next provider retry, 0 once it is under way
+	Retries    int           // provider retries this turn
+	RetryWhy   string        // what failed, for the retry countdown
+	Compacting bool          // history is being summarized before the turn
+	// the goal is being checked after a turn (/goal); the agent stays active
+	CheckingGoal bool
+	// the running or last chain of turns began with a loop run, which no one
+	// waits on: its end arms no recap and sends no alert
+	ByLoop bool
+
+	// usage tally (DESIGN §8 statusline): session totals, the last prompt
+	// size (the current-context estimate), and the context window used for
+	// the percent readout.
+	SessionIn   int64
+	SessionOut  int64
+	LastIn      int64
+	CtxWindow   int64
+	SessionCost float64
+	// prompt cache tokens read, over the input billed alongside them: the
+	// session's own, restored with its stored rows so a resume shows the same
+	// share
+	CacheRead   int64
+	CacheBilled int64
+}
+
+func (h *Host) AgentStream() StreamSnapshot {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.streamLocked()
+}
+
+// liveView is the transcript and the live turn read together, as
+// flushOutput changes them.
+func (h *Host) liveView() (Session, StreamSnapshot) {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.Session(), h.streamLocked()
+}
+
+// RunFrame is what a printed run shows at one moment, read like liveView.
+type RunFrame struct {
+	Settled []ChatMessage // rows from the asked index on that no retry can cut
+	Pending []ChatMessage // the rows after them, which the running step may still cut
+	Stream  StreamSnapshot
+	Next    int // the index after Settled
+}
+
+// RunFrame reads the transcript from index from on. A provider retry cuts
+// the rows its step moved in (Retrying), so while a turn runs only the rows
+// before the step's start are settled. Next never falls below from: a claim
+// with no beginTurn yet leaves a stale step start.
+// NOTE: a row settles one step after it was flushed, so a plain log lags the
+// model by a step; a terminal's live tail shows the pending rows meanwhile.
+func (h *Host) RunFrame(from int) RunFrame {
+	ag := h.agents
+	ag.mu.Lock()
+	tr, stream := h.Session().Transcript, h.streamLocked()
+	from = min(max(from, 0), len(tr))
+	end := len(tr)
+	if ag.active {
+		end = max(from, min(end, ag.stepRows))
+	}
+	ag.mu.Unlock()
+	return RunFrame{Settled: tr[from:end], Pending: tr[end:], Stream: stream, Next: end}
+}
+
+// streamLocked is AgentStream with ag.mu held.
+func (h *Host) streamLocked() StreamSnapshot {
+	ag := h.agents
+	// the host's clock, never time.Now: a seeded stream, a golden included,
+	// must read the same seconds however loaded the machine is
+	now := h.now()
+	thought := ag.thought
+	if ag.thinking {
+		thought += now.Sub(ag.thinkStart)
+	}
+	// milliseconds, as the settled row stores it, so both read alike
+	thought = thought.Truncate(time.Millisecond)
+	var elapsed time.Duration
+	if ag.active && !ag.turnStart.IsZero() {
+		elapsed = now.Sub(ag.turnStart)
+	}
+	out := StreamSnapshot{
+		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
+		Profile: h.Settings.Str("agent.profile"),
+		Thought: thought, Elapsed: elapsed,
+		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
+		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
+		CtxWindow: ag.ctxWin, ByLoop: ag.byLoop,
+	}
+	out.Model = ag.modelSeed
+	if out.Model == "" {
+		out.Model = h.liveModelID()
+	}
+	if out.CtxWindow == 0 {
+		out.CtxWindow = h.contextWindow(out.Model)
+	}
+	out.Steering = queuedRows(ag.steering)
+	out.Tools = append(out.Tools, ag.tools...)
+	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
+	if !ag.retryAt.IsZero() {
+		out.Retrying, out.RetryIn, out.RetryWhy = true, max(ag.retryAt.Sub(now), 0), ag.retryWhy
+	}
+	return out
+}
+
+// SeedStream installs a stream snapshot directly (no turn runs). It backs
+// golden tests and UI development: the next AgentStream read returns the
+// seeded state until a real turn resets it. A queued message is not seeded
+// with it: a test queues one with AgentSend, which a seeded active turn takes.
+// TestSeedStreamSeedsEveryField holds this to every field a snapshot has.
+func (h *Host) SeedStream(s StreamSnapshot) {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.active = s.Active
+	ag.byLoop = s.ByLoop
+	ag.textBuf = s.Text
+	ag.reasonBuf = s.Reasoning
+	ag.tools = s.Tools
+	ag.modelSeed = s.Model
+	ag.thought = s.Thought
+	ag.thinking = s.Thinking
+	// an open block counts from now, so the stream reads the seeded total
+	ag.thinkStart = time.Time{}
+	if s.Thinking {
+		ag.thinkStart = h.now()
+	}
+	ag.sessIn = s.SessionIn
+	ag.sessOut = s.SessionOut
+	ag.sessCost = s.SessionCost
+	ag.cacheRead, ag.cacheBilled = s.CacheRead, s.CacheBilled
+	ag.lastIn = s.LastIn
+	ag.ctxWin = s.CtxWindow
+	ag.checkingGoal = s.CheckingGoal
+	if s.Elapsed > 0 && s.Active {
+		ag.turnStart = h.now().Add(-s.Elapsed)
+	} else {
+		ag.turnStart = time.Time{}
+	}
+	ag.retries, ag.retryAt, ag.retryWhy, ag.compacting = s.Retries, time.Time{}, "", s.Compacting
+	if s.Retrying {
+		ag.retryAt, ag.retryWhy = h.now().Add(s.RetryIn), s.RetryWhy
+	}
+}

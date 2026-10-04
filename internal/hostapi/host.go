@@ -293,6 +293,19 @@ func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, Plural(n, "line", "lines"))
 }
 
+// jobRe is the id of a call that went on in the background: the handoff note
+// a timed-out command carries and the job tool's answer name it the same way.
+var jobRe = regexp.MustCompile(`\bjob-\d+\b`)
+
+// jobOf is the job a finished call handed off to, "" for any other call: the
+// row carries the id, so a widget never reads it out of the result's prose.
+func jobOf(status CallStatus, output string) string {
+	if status != CallBG {
+		return ""
+	}
+	return jobRe.FindString(output)
+}
+
 // rowOutput is a tool result as its transcript row shows it, else
 // shortOutput: a plan's verdict and an answered question call's
 // "question\tanswer\tnote" lines, since their results are written for the model.
@@ -1145,22 +1158,18 @@ func eventTable(name, from string, payload map[string]any) map[string]any {
 // callEvent runs one handler fn(ev) under its origin with the deadline armed
 // at start and returns its first result. A handler that ran past the
 // deadline reports timedOut and no result, even if it returned.
-func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (ret glua.LValue, timedOut bool, err error) {
+func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (glua.LValue, bool, error) {
 	if hd.Once && !h.Events.drop(hd) {
 		return glua.LNil, false, nil
 	}
-	defer h.RT.PushFrame(L, hd.Origin, hd.Path)()
 	handlerCtx, restore := setHandlerContext(L)
 	defer restore()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(hd.Fn)
-	L.Push(lua.FromGo(L, ev))
-	err = L.PCall(1, 1, nil)
-	if timedOut = handlerCtx.Err() != nil; timedOut || err != nil {
+	rets, err := h.callFn(L, luaCaller{gen: h.currentGen(), origin: hd.Origin, path: hd.Path}, hd.Fn, 1, lua.FromGo(L, ev))
+	timedOut := handlerCtx.Err() != nil
+	if timedOut || err != nil {
 		return glua.LNil, timedOut, err
 	}
-	return L.Get(-1), false, nil
+	return rets[0], false, nil
 }
 
 func (h *Host) logHandlerError(hd *EventHandler, err error) {
@@ -1254,21 +1263,16 @@ func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, s
 		// trust prompt)
 		h.rendering.Store(true)
 		defer h.rendering.Store(false)
-		defer h.RT.PushFrame(L, w.Origin, w.Path)()
-		base := L.GetTop()
-		L.Push(w.Render)
 		ctxTb, done := h.widgetCtxTable(L, width, height, state)
 		defer done()
 		if over != nil {
 			over.ForEach(ctxTb.RawSet)
 		}
-		L.Push(ctxTb)
-		if err := L.PCall(1, 2, nil); err != nil {
-			L.SetTop(base)
+		rets, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.Render, 2, ctxTb)
+		if err != nil {
 			return nil, err
 		}
-		ret, more := L.Get(-2), L.Get(-1) == glua.LTrue
-		L.SetTop(base)
+		ret, more := rets[0], rets[1] == glua.LTrue
 		if lines, ok := w.tableSegments(ret); ok {
 			return []any{lines, more}, nil
 		}
@@ -1402,12 +1406,7 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 		if w == nil || w.OnClick == nil || w.Gen != h.currentGen() {
 			return nil, lua.ErrReloaded
 		}
-		defer h.RT.PushFrame(L, w.Origin, w.Path)()
-		base := L.GetTop()
-		L.Push(w.OnClick)
-		L.Push(lua.FromGo(L, ev))
-		err := L.PCall(1, 0, nil)
-		L.SetTop(base)
+		_, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.OnClick, 0, lua.FromGo(L, ev))
 		return nil, err
 	})
 	return err
@@ -1857,6 +1856,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
 		row.RawSetString("run", glua.LString(t.Run))
+		row.RawSetString("job", glua.LString(jobOf(t.Status, t.Output)))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
 		if !t.Started.IsZero() {
 			row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
@@ -1881,6 +1881,7 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 		row.RawSetString("status", glua.LString(m.Status))
 		row.RawSetString("detail", glua.LString(m.Detail))
 		row.RawSetString("run", glua.LString(m.Run))
+		row.RawSetString("job", glua.LString(jobOf(m.Status, m.Output)))
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		row.RawSetString("output", glua.LString(m.Output))
@@ -1907,17 +1908,22 @@ func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	return u
 }
 
+// contextPct is how full the model's context window is, in percent; 0 when
+// the window is unknown. Always a number, never a division.
+func contextPct(lastIn, window int64) float64 {
+	if window <= 0 {
+		return 0
+	}
+	return float64(lastIn) / float64(window) * 100
+}
+
 // contextTable is the current-context estimate: the last prompt size
 // against the model's context window, with the percent for the statusline.
 func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	c := L.CreateTable(0, 3)
 	c.RawSetString("tokens", glua.LNumber(s.LastIn))
 	c.RawSetString("window", glua.LNumber(s.CtxWindow))
-	pct := 0.0
-	if s.CtxWindow > 0 {
-		pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
-	}
-	c.RawSetString("pct", glua.LNumber(pct))
+	c.RawSetString("pct", glua.LNumber(contextPct(s.LastIn, s.CtxWindow)))
 	return c
 }
 

@@ -151,6 +151,9 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
 	h.Commands.Add(&Command{Name: "gocmd", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
+	for _, name := range []string{"mode", "profile"} {
+		h.Commands.Add(&Command{Name: name, GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
+	}
 	t.Setenv("ZEMI_TEST_API_KEY", "k")
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
@@ -167,6 +170,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("auto")`,
 		`zemi.keymap.set("<leader>y", "zemi.permission.mode.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`,
 		`zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`, `assert(zemi.command.run("gocmd"))`,
+		`zemi.keymap.set("<leader>y", "mode")`, `zemi.keymap.set("<leader>y", "profile")`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
 		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {

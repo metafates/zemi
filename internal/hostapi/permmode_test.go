@@ -422,6 +422,27 @@ func TestPermModeDecide(t *testing.T) {
 	}
 }
 
+// TestModeDecideStaleGeneration: the ask copies the mode def before the
+// reload window closes, so a purge moves the list out from under the copied
+// Decide; it must not answer for the new generation.
+func TestModeDecideStaleGeneration(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.permission.mode.add("review", { base = "yolo", decide = function() return "allow" end })`)
+	if err := h.SetPermMode("review"); err != nil {
+		t.Fatal(err)
+	}
+	def := h.permModeDef()
+	if def.Decide == nil {
+		t.Fatal("the mode has no decide")
+	}
+	if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.modeDecide(def, tools.Request{Subject: "tool.shell", Arg: "ls"}); got != "" {
+		t.Fatalf("a stale decide answered %q", got)
+	}
+}
+
 // TestAskWaitsOutReload: mid-reload the config's modes are purged, so an
 // ask judged then, like one that waited behind a prompt, waits for the
 // replay instead of falling back to auto.

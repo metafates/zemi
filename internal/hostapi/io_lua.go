@@ -440,14 +440,8 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 					if h.currentGen() != at.gen {
 						return nil, nil
 					}
-					defer h.RT.PushFrame(L, at.origin, at.path)()
-					base := L.GetTop()
-					L.Push(fn)
-					if err := L.PCall(0, 0, nil); err != nil {
-						L.SetTop(base)
-						return nil, err
-					}
-					return nil, nil
+					_, err := h.callFn(L, at, fn, 0)
+					return nil, err
 				})
 				if !repeat {
 					h.refresh() // a repeating timer redraws itself with zemi.ui.redraw
@@ -854,6 +848,27 @@ func (h *Host) callerOf(L *glua.LState) luaCaller {
 	return luaCaller{gen: h.currentGen(), origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L)}
 }
 
+// callFn runs fn(args...) on L with at's frame pushed and returns what the
+// caller asks for, nret values (gopher-lua pads a missing one with nil and
+// restores the stack itself on every path).
+func (h *Host) callFn(L *glua.LState, at luaCaller, fn *glua.LFunction, nret int, args ...glua.LValue) ([]glua.LValue, error) {
+	defer h.RT.PushFrame(L, at.origin, at.path)()
+	base := L.GetTop()
+	L.Push(fn)
+	for _, a := range args {
+		L.Push(a)
+	}
+	if err := L.PCall(len(args), nret, nil); err != nil {
+		return nil, err
+	}
+	rets := make([]glua.LValue, nret)
+	for i := range rets {
+		rets[i] = L.Get(base + 1 + i)
+	}
+	L.SetTop(base)
+	return rets, nil
+}
+
 // luaTask calls fn(args...) as a task under at; one handed over before a
 // reload is dropped.
 func (h *Host) luaTask(class lua.Class, at luaCaller, fn *glua.LFunction, args ...any) lua.Task {
@@ -977,10 +992,8 @@ func (s *lineSink) deliver(lines []string) {
 		if s.h.currentGen() != s.at.gen {
 			return nil, nil
 		}
-		defer s.h.RT.PushFrame(L, s.at.origin, s.at.path)()
-		L.Push(s.fn)
-		L.Push(lua.FromGo(L, lines))
-		return nil, L.PCall(1, 0, nil)
+		_, err := s.h.callFn(L, s.at, s.fn, 0, lua.FromGo(L, lines))
+		return nil, err
 	})
 	s.h.callbackDone(s.what, err)
 }

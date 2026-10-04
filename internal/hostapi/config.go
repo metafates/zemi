@@ -485,11 +485,7 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 }
 
 func (h *Host) callWatch(L *glua.LState, rec watchRec, old, new any) error {
-	defer h.RT.PushFrame(L, rec.origin, rec.src)()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(rec.fn)
-	L.Push(lua.FromGo(L, new))
-	L.Push(lua.FromGo(L, old))
-	return L.PCall(2, 0, nil)
+	_, err := h.callFn(L, luaCaller{gen: rec.gen, origin: rec.origin, path: rec.src}, rec.fn, 0,
+		lua.FromGo(L, new), lua.FromGo(L, old))
+	return err
 }

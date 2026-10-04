@@ -60,6 +60,9 @@ type options struct {
 	text             bool   // the prompt came from stdin after -: a leading / is text, never a command
 	dir              string // -C
 	trust            *bool  // --trust for this run; nil when not given
+	// dirs are this run's, resolved once by the root's hook after -C; a
+	// completion resolves its own, since cobra runs no hook there.
+	dirs config.Dirs
 }
 
 // exitError is the error of a command that printed its own diagnostic.
@@ -89,6 +92,13 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 			}
 		}
 		parsed = true
+		// -C has run, so one resolution serves every command in this run; a
+		// failure here is not a usage error
+		dirs, err := config.ResolveDirs()
+		if err != nil {
+			return err
+		}
+		o.dirs = dirs
 		return nil
 	}
 	root.SetArgs(args)
@@ -180,7 +190,7 @@ and stderr lists them at the end.`,
 		Short: "run the /health checks; 1 if any failed",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(options{}, false, os.Stderr, io.Discard) // the trust row says it
+			h, done, err := bootHeadless(*o, false, os.Stderr, io.Discard) // the trust row says it
 			if err != nil {
 				return err
 			}
@@ -190,7 +200,7 @@ and stderr lists them at the end.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(run, sessionsCommand(), projectsCommand(), pluginsCommand(), modelsCommand(), health)
+	root.AddCommand(run, sessionsCommand(o), projectsCommand(o), pluginsCommand(o), modelsCommand(o), health)
 	return root
 }
 
@@ -210,13 +220,15 @@ func turnFlags(c *cobra.Command, o *options) {
 }
 
 // completeBooted offers what only config knows (models, profiles, modes),
-// read by an inert boot.
+// read by an inert boot. The dirs are resolved here: cobra runs no hook
+// before a completion.
 func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
 	return func(c *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		if _, err := completionDirs(c); err != nil {
+		dirs, err := completionDirs(c)
+		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		h, done, err := bootHeadless(options{}, true, os.Stderr, io.Discard)
+		h, done, err := bootHeadless(options{dirs: dirs}, true, os.Stderr, io.Discard)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -332,7 +344,7 @@ func nargs(maxN int) cobra.PositionalArgs {
 
 // pluginsCommand is zemi plugins: no Lua boot, TUI, trust or store, so it
 // works beside a running TUI, whose config watcher reloads on the change.
-func pluginsCommand() *cobra.Command {
+func pluginsCommand(o *options) *cobra.Command {
 	yes := false
 	var asJSON *bool
 	// git clones and fetches: an interrupt stops them and exits with 130
@@ -344,9 +356,9 @@ func pluginsCommand() *cobra.Command {
 		}
 		ctx, stop := signalContext()
 		defer stop()
-		dirs, err := config.ResolveDirs()
+		dirs := o.dirs
+		var err error
 		switch {
-		case err != nil:
 		case c.Name() == "plugins":
 			var ps []plugin.Plugin
 			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
@@ -411,17 +423,14 @@ func pluginsCommand() *cobra.Command {
 	return cmd
 }
 
-func sessionsCommand() *cobra.Command {
+func sessionsCommand(o *options) *cobra.Command {
 	var asJSON *bool
 	cmd := &cobra.Command{
 		Use:   "sessions",
 		Short: "list this project's sessions, newest first",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			dirs, err := config.ResolveDirs()
-			if err != nil {
-				return err
-			}
+			dirs := o.dirs
 			var list []*store.Session
 			db, err := projectStore(dirs)
 			if err == nil {
@@ -460,10 +469,7 @@ func sessionsCommand() *cobra.Command {
 		Short:             "print a session as markdown",
 		Args:              nargs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			dirs, err := config.ResolveDirs()
-			if err != nil {
-				return err
-			}
+			dirs := o.dirs
 			db, err := projectStore(dirs)
 			md := ""
 			if err == nil {
@@ -484,18 +490,14 @@ func sessionsCommand() *cobra.Command {
 
 // projectsCommand is zemi projects: one line per project, the path last and
 // absolute at column 36, so cut -c36- hands it to zemi -C.
-func projectsCommand() *cobra.Command {
+func projectsCommand(o *options) *cobra.Command {
 	var asJSON *bool
 	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "list the projects zemi keeps state for, last used first",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			dirs, err := config.ResolveDirs()
-			if err != nil {
-				return err
-			}
-			ps := hostapi.ListProjects(dirs, true)
+			ps := hostapi.ListProjects(o.dirs, true)
 			if len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
 			}
@@ -527,13 +529,13 @@ func projectsCommand() *cobra.Command {
 	return cmd
 }
 
-func modelsCommand() *cobra.Command {
+func modelsCommand(o *options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "models",
 		Short: "list the models -m takes",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(options{}, true, os.Stderr, io.Discard)
+			h, done, err := bootHeadless(*o, true, os.Stderr, io.Discard)
 			if err != nil {
 				return err
 			}
@@ -556,11 +558,7 @@ func modelsCommand() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			ctx, stop := signalContext()
 			defer stop()
-			dirs, err := config.ResolveDirs()
-			if err != nil {
-				return err
-			}
-			cat, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, dirs.DataHome, os.Getenv)
+			cat, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, o.dirs.DataHome, os.Getenv)
 			switch {
 			case ctx.Err() != nil:
 				return exitError(130)

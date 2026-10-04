@@ -52,8 +52,62 @@ var RunMarks = map[string]string{
 	string(RunFailed): "err", string(RunCancelled): "stop",
 }
 
-// agentRun is one subagent run. The fields above mu never change once the
-// run is registered, but cancel, which a continuation renews.
+// runState is the lifecycle agentRun and flowRun share: both are registered,
+// counted against agent.max_background, handed off and asked whether they
+// still run, and the two must not drift.
+type runState struct {
+	mu       sync.Mutex
+	status   RunStatus
+	started  time.Time // an agent run's last start: a continuation counts its own time
+	finished time.Time
+	// background is a start that asked not to be waited on.
+	background bool
+	// detached is a foreground call's report going to the session as a message
+	// instead of back to the caller, set by the call's handoff and read by the
+	// run's end: a run finishing in the same instant as the user's message must
+	// be one or the other, never both.
+	detached bool
+}
+
+func (s *runState) isRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.status == RunRunning
+}
+
+// counts reports whether the run takes one of agent.max_background's slots: a
+// detached report owes the session a message either way, so a run the user's
+// message handed off counts as one.
+func (s *runState) counts() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return (s.background || s.detached) && s.status == RunRunning
+}
+
+// detach hands a foreground run to its session, so its end delivers the report
+// as a message instead of answering the call that started it. False when the
+// run already ended: the caller reports its result inline, so the report is
+// never lost and never delivered twice.
+func (s *runState) detach() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status != RunRunning {
+		return false
+	}
+	s.detached = true
+	return true
+}
+
+// handedOff reports whether the run's report goes to the session as a message:
+// a background start, or a foreground call the user's message took.
+func (s *runState) handedOff() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.background || s.detached
+}
+
+// agentRun is one subagent run. The fields above runState never change once
+// the run is registered, but cancel, which a continuation renews.
 type agentRun struct {
 	id, agent, description string
 	parent                 string         // the session that started the run
@@ -62,19 +116,16 @@ type agentRun struct {
 	// the model reference it started on
 	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
 	// model: sessions keep no model column.
-	model      string
-	background bool
-	cancel     context.CancelFunc
+	model  string
+	cancel context.CancelFunc
 	// forkBase is where a fork's own messages start in its history: the
 	// conversation it opened with is not its report. 0 for any other run.
 	forkBase int
 
-	mu        sync.Mutex
-	started   time.Time     // the last start: a continuation counts its own time
+	runState
+
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
-	status    RunStatus
-	finished  time.Time
 	calls     int
 	tokens    int64          // billed input and output of its steps
 	cost      float64        // 0 when the model has no prices
@@ -87,11 +138,6 @@ type agentRun struct {
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
 	dropped   int            // queued messages the run ended before reading
-	// detached is a foreground call's report going to the session as a message
-	// instead of back to the caller, set by the call's handoff and read by the
-	// run's end: a run finishing in the same instant as the user's message must
-	// be one or the other, never both.
-	detached bool
 }
 
 type taskReg struct {
@@ -323,43 +369,6 @@ func (run *agentRun) startedAt() time.Time {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.started
-}
-
-func (run *agentRun) isRunning() bool {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	return run.status == RunRunning
-}
-
-// counts reports whether the run takes one of agent.max_background's slots: a
-// detached report owes the session a message either way, so a run the user's
-// message handed off counts as one.
-func (run *agentRun) counts() bool {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	return (run.background || run.detached) && run.status == RunRunning
-}
-
-// detach hands a foreground run to its session, so its end delivers the report
-// as a message instead of answering the call that started it. False when the
-// run already ended: the caller reports its result inline, so the report is
-// never lost and never delivered twice.
-func (run *agentRun) detach() bool {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	if run.status != RunRunning {
-		return false
-	}
-	run.detached = true
-	return true
-}
-
-// handedOff reports whether the run's report goes to the session as a message:
-// a background start, or a foreground call the user's message took.
-func (run *agentRun) handedOff() bool {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	return run.background || run.detached
 }
 
 // prompt is the task the run was given, "" for a stored run with none.

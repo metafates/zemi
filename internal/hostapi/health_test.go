@@ -66,6 +66,29 @@ func TestHealthListFromLua(t *testing.T) {
 	`)
 }
 
+// TestHealthAction: a row's action label and key come from its Run, and a
+// run the table does not label takes no action.
+func TestHealthAction(t *testing.T) {
+	label, key, ok := healthAction("memory")
+	if !ok || label != "Review memories" || key != "r" {
+		t.Errorf("memory = %q, %q, %v", label, key, ok)
+	}
+	if _, _, ok := healthAction("nothing"); ok {
+		t.Error("a run with no label took an action")
+	}
+}
+
+// TestHealthActionCoversRuns: every Run a check sets names a label, so the
+// row it belongs to keeps its detail action.
+func TestHealthActionCoversRuns(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range h.goHealthRows() {
+		if _, _, ok := healthAction(c.Run); c.Run != "" && !ok {
+			t.Errorf("check %q runs %q, which has no label", c.Name, c.Run)
+		}
+	}
+}
+
 func TestHealthChecks(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.reflectErr = fmt.Errorf("%w: no JSON object in the output", errNoProposal)

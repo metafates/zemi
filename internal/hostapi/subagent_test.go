@@ -176,6 +176,104 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	}
 }
 
+// TestSeedStreamSeedsEveryField: a field a caller seeds must read back from
+// AgentStream, or a golden silently draws the live turn's zero instead. The
+// skips are the fields the read derives rather than holds.
+func TestSeedStreamSeedsEveryField(t *testing.T) {
+	h, _ := newTestHost(t)
+	s := StreamSnapshot{
+		Active: true, ByLoop: true, Text: "t", Reasoning: "r", Thinking: true,
+		Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
+		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
+		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
+		Retries: 9, Compacting: true, CheckingGoal: true,
+		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
+	}
+	h.SeedStream(s)
+	// Profile is config, not turn state; CtxWindow falls back to the model's;
+	// Model to the live one; Thought, Elapsed and RetryIn count from the seed
+	// on the host clock; Steering takes AgentSend, which builds the queue.
+	derived := map[string]string{
+		"Profile": "read from the settings", "Model": "empty seeds the live model",
+		"CtxWindow": "0 seeds the model's window", "Thought": "counts from the seed",
+		"Elapsed": "counts from the seed", "RetryIn": "counts from the seed",
+		"Steering": "AgentSend builds it",
+	}
+	got := h.AgentStream()
+	want, have := reflect.ValueOf(s), reflect.ValueOf(got)
+	for i := range want.NumField() {
+		name := want.Type().Field(i).Name
+		if _, ok := derived[name]; ok {
+			continue
+		}
+		if !reflect.DeepEqual(want.Field(i).Interface(), have.Field(i).Interface()) {
+			t.Errorf("SeedStream does not seed %s: %v, want %v", name, have.Field(i).Interface(), want.Field(i).Interface())
+		}
+	}
+}
+
+// TestSubagentStoresThinkingTime: a run's stored reasoning row carries the
+// run's own thinking time, like a session's, so a run read back from the
+// store (/agents) shows it.
+func TestSubagentStoresThinkingTime(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) { return thoughtModel{gap: 5 * time.Millisecond}, nil }
+	def, err := h.agentDef("explore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, text, err := h.runSubagent(t.Context(), def, "d", "look")
+	if err != nil || text != "the report" {
+		t.Fatalf("run: %v %q", err, text)
+	}
+	forgetRun(h, id)
+	run, err := h.loadRun(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range run.transcript() {
+		if m.Kind == RowReasoning && m.Stat != nil && m.Stat.ThoughtMS >= 5 {
+			return
+		}
+	}
+	t.Fatalf("the stored run keeps no thinking time: %+v", run.transcript())
+}
+
+// thoughtModel streams a thought, waits its gap, then the report: a run's
+// thinking time is wall time, so a test needs a gap the clock can see.
+type thoughtModel struct{ gap time.Duration }
+
+func (m thoughtModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return func(yield func(fantasy.StreamPart) bool) {
+		for _, p := range reasoningParts("thinking about it") {
+			if !yield(p) {
+				return
+			}
+		}
+		time.Sleep(m.gap)
+		for _, p := range textParts("the report") {
+			if !yield(p) {
+				return
+			}
+		}
+	}, nil
+}
+
+func (thoughtModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (thoughtModel) Provider() string { return "stub" }
+func (thoughtModel) Model() string    { return "script-1" }
+
 // TestSubagentFailureKeepsReport: a step failing after the agent already
 // reported something returns that partial report with the error, instead of
 // throwing the finished work away.

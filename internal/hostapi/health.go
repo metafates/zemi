@@ -122,16 +122,12 @@ func (h *Host) inlineHealthRows(L *glua.LState) []HealthRow {
 		}
 		row := HealthRow{Level: HealthOK, Name: c.name}
 		func() {
-			defer h.RT.PushFrame(L, c.origin, c.path)()
-			base := L.GetTop()
-			L.Push(c.fn)
-			if err := L.PCall(0, 1, nil); err != nil {
-				L.SetTop(base)
+			rets, err := h.callFn(L, luaCaller{gen: c.gen, origin: c.origin, path: c.path}, c.fn, 1)
+			if err != nil {
 				row.Level, row.Detail = HealthError, sanitize.String(err.Error())
 				return
 			}
-			v, err := lua.ToGo(L.Get(-1))
-			L.SetTop(base)
+			v, err := lua.ToGo(rets[0])
 			if err == nil {
 				row.Level, row.Detail, err = healthResult(v)
 			}
@@ -543,6 +539,16 @@ func (h *Host) WaitMCP(ctx context.Context) {
 // is the key.
 var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "memory": "Review memories", "plugins": "Open plugins"}
 
+// healthAction is what a check's Run resolves to. A run the table does not
+// label takes no action rather than reading a missing label.
+func healthAction(run string) (label, key string, ok bool) {
+	label, ok = healthActions[run]
+	if !ok || label == "" {
+		return "", "", false
+	}
+	return label, strings.ToLower(label[:1]), true
+}
+
 // OpenHealth shows the checks in the list overlay.
 func (h *Host) OpenHealth() error {
 	ui, err := h.Screen()
@@ -571,8 +577,9 @@ func (h *Host) healthItems() []any {
 			item["detail"] = c.Detail
 		}
 		if c.Run != "" {
-			label := healthActions[c.Run]
-			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.Run}}
+			if label, key, ok := healthAction(c.Run); ok {
+				item["actions"] = []any{map[string]any{"text": label, "hotkey": key, "run": c.Run}}
+			}
 		}
 		if c.Level == HealthOK {
 			ok = append(ok, item)

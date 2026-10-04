@@ -429,7 +429,7 @@ func (h *Host) OpenUsage() error {
 		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: ChromeRule, NoCopy: true}}
 	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
-		pct := s.LastIn * 100 / s.CtxWindow
+		pct := contextPct(s.LastIn, s.CtxWindow)
 		hl := ChromeHintKey
 		if pct >= 95 {
 			hl = ChromeDanger
@@ -438,7 +438,7 @@ func (h *Host) OpenUsage() error {
 		}
 		section("Context", "")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), pct))))
+			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), int(pct)))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", "  "+fmtTokens(total)+" sent with every request")

@@ -27,7 +27,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -202,36 +201,6 @@ func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
 	return d, nil
 }
 
-// readRegularFile reads a config file, refusing symlinks and oversized files.
-func readRegularFile(path string) (string, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("%s: not a regular file", path)
-	}
-	if fi.Size() > maxAgentFileBytes {
-		return "", fmt.Errorf("%s: exceeds %d bytes", path, maxAgentFileBytes)
-	}
-	data, err := os.ReadFile(path)
-	return string(data), err
-}
-
-// readFrontmatterFile reads a markdown file with an optional leading
-// `---` yaml block (symlinks and oversized files refused).
-func readFrontmatterFile(path string) (block, body string, err error) {
-	data, err := readRegularFile(path)
-	if err != nil {
-		return "", "", err
-	}
-	block, body, err = skill.SplitFrontmatter(data)
-	if err != nil {
-		return "", "", fmt.Errorf("%s: %w", path, err)
-	}
-	return block, body, nil
-}
-
 // runSubagent runs def on prompt to completion as a tracked run (/agents)
 // and returns its id and final message.
 func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string) (string, string, error) {
@@ -315,11 +284,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(msg fantasy.Message) error {
-			parts, err := json.Marshal(msg, json.Deterministic(true))
-			if err != nil {
-				return err
-			}
-			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)})
+			run.mu.Lock()
+			thought := run.thinkTime()
+			run.mu.Unlock()
+			_, err := h.storeMessage(sid, msg, thought)
+			return err
 		}
 	}
 	prompt = setup.prompt
@@ -889,8 +858,7 @@ func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (
 // Naming update there, or -update, is accepted and ignored: every run holds it.
 func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
 	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == tools.ToolUpdate })
-	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
-	kept, unknown = filterTools(all, want, h.toolSkip(subagentExcluded))
+	kept, unknown = filterTools(h.allTools(pipe), want, h.toolSkip(subagentExcluded))
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 

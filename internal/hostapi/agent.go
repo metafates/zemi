@@ -329,6 +329,13 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return append(tools.All(pipe), h.agentTool(pipe), h.workflowTool(pipe), h.luaEvalTool(pipe))
 }
 
+// allTools is every tool a run could get, in one order: the builtins, the
+// Lua tools, then the MCP ones. A caller filters out what its run may not
+// have.
+func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
+	return append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+}
+
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a zemi run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
@@ -376,7 +383,7 @@ func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipelin
 		want = p.Tools
 	}
 	return func(pipe *tools.Pipeline) ([]fantasy.AgentTool, []string) {
-		all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+		all := h.allTools(pipe)
 		return filterTools(all, want, skip)
 	}
 }
@@ -1241,52 +1248,6 @@ func (h *Host) agentStream() {
 	}
 }
 
-// streamHooks adapts agent.StreamHooks into UI events and stream state.
-func (h *Host) streamHooks() agent.StreamHooks {
-	return &streamAdapter{h: h}
-}
-
-type streamAdapter struct{ h *Host }
-
-func (s *streamAdapter) TextDelta(text string) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	ag.endThinking()
-	ag.retryAt = time.Time{}
-	ag.textBuf += text
-	ag.mu.Unlock()
-	s.h.agentStream()
-	// NOTE: one queue round trip per delta; fine for the few configs that
-	// listen, coalesce here if one ever streams into something slow.
-	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
-}
-
-func (s *streamAdapter) StepStart() {
-	rows := len(s.h.Session().Transcript)
-	ag := s.h.agents
-	ag.mu.Lock()
-	// capped, so a pending row appended later cannot write into the saved slice
-	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought
-	ag.stepThinking = 0
-	ag.mu.Unlock()
-}
-
-// Retrying also takes back what a call opened in the failed attempt moved
-// into the transcript (openToolRow), or its text shows twice above a failed row.
-func (s *streamAdapter) Retrying(err error, delay time.Duration) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false, 0
-	rows := ag.stepRows
-	ag.retries++
-	ag.retryAt = s.h.now().Add(delay)
-	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
-	ag.mu.Unlock()
-	s.h.cutAssistantRows(rows)
-	s.h.Log.Warn("provider retry", "origin", "agent", "error", errString(err), "delay_ms", delay.Milliseconds())
-	s.h.agentStream()
-}
-
 // cutAssistantRows drops the assistant rows past the first n. A !command row
 // that landed meanwhile stays.
 func (h *Host) cutAssistantRows(n int) {
@@ -1302,39 +1263,6 @@ func (h *Host) cutAssistantRows(n int) {
 	h.refresh()
 }
 
-func (s *streamAdapter) ReasoningDelta(text string) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	// a new step thinks: what the last one showed goes above it. Reasoning
-	// after text with no call between, or while the step's calls are still
-	// open, is a late chunk of the same thought (providers send the last
-	// token after the reply or the call starts), so it joins the block above
-	// and neither the reply nor the thought is cut. Only a finished call
-	// closes a thought: a step cannot end while one of its calls runs.
-	// NOTE: reasoning a provider interleaves after a call still open in the
-	// same step draws above that call live and below it on resume; an
-	// ordered live list would fix it.
-	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != CallRun && t.Status != CallWait }) {
-		s.h.flushOutput(TurnStat{})
-	}
-	// reasonBuf first: with a thought open the chunk is its own, not a late one
-	if ag.reasonBuf != "" || !s.h.joinReasoning(text) {
-		ag.beginThinking()
-		ag.reasonBuf += text
-	}
-	ag.retryAt = time.Time{}
-	ag.mu.Unlock()
-	s.h.agentStream()
-	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
-}
-
-// ToolCallPending shows the call while the model is still streaming its
-// arguments: a write's file body or a long heredoc takes seconds that a
-// spinner alone says nothing about.
-func (s *streamAdapter) ToolCallPending(id, name string) {
-	s.openToolRow(StreamTool{ID: id, Name: name, Status: CallWait})
-}
-
 // inputDiff is a file tool's change as its input describes it, before it
 // runs. It reads the file: call it outside the locks UI readers share.
 func inputDiff(name, input string) string {
@@ -1346,83 +1274,6 @@ func inputDiff(name, input string) string {
 		return ""
 	}
 	return capLines(tools.ChangeDiff(name, in), 24)
-}
-
-func (s *streamAdapter) ToolCallStart(id, name, input string) {
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
-	ag := s.h.agents
-	ag.mu.Lock()
-	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
-	if i < 0 {
-		ag.mu.Unlock()
-		s.openToolRow(row) // this provider reports no input start
-		return
-	}
-	ag.tools[i] = row
-	ag.mu.Unlock()
-	s.h.agentStream()
-}
-
-// ToolCallRunning starts a row's clock: until then it draws no timer, so a
-// call queued behind a serial one does not count time it has not run.
-func (s *streamAdapter) ToolCallRunning(id string) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == CallWait }); i >= 0 {
-		ag.tools[i].Status, ag.tools[i].Started = CallRun, s.h.now()
-	}
-	ag.mu.Unlock()
-	s.h.agentStream()
-}
-
-// openToolRow appends a live tool row. Text streamed before the call
-// belongs above it: it and the earlier (finished) tool rows move into the
-// transcript, in order, so the next step's text starts its own block
-// instead of running on.
-func (s *streamAdapter) openToolRow(row StreamTool) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	ag.endThinking()
-	ag.retryAt = time.Time{}
-	// the thought the call closes belongs above it, with the call rather than
-	// later with the run's digest
-	s.h.flushOutput(TurnStat{})
-	ag.tools = append(ag.tools, row)
-	ag.mu.Unlock()
-	s.h.agentStream()
-}
-
-func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
-	ag := s.h.agents
-	t := s.h.turn.Load()
-	status := toolStatus(name, ok, output, t != nil && t.ctx.Err() != nil)
-	row := StreamTool{ID: id, Name: name}
-	ag.mu.Lock()
-	for i := len(ag.tools) - 1; i >= 0; i-- {
-		t := &ag.tools[i]
-		if t.ID == id && (t.Status == CallRun || t.Status == CallWait) {
-			t.Status, t.Output = status, rowOutput(name, output)
-			if !ok {
-				t.Diff = "" // the change did not happen
-			}
-			if changed != "" {
-				t.Diff = changed // shell: what the command changed, failed or not
-			}
-			if name == tools.ToolShell {
-				t.Detail = "" // its last output line, which the result now holds
-			}
-			row = *t
-			break
-		}
-	}
-	ag.mu.Unlock()
-	s.h.agentStream()
-	s.h.recordToolCall(s.h.AgentSessionID(), row, ok)
-	if name == tools.ToolTodos {
-		ag.mu.Lock()
-		ag.todoTouched = true
-		ag.mu.Unlock()
-	}
 }
 
 // toolStatus is a finished call's row status: stopped when the user
@@ -1443,16 +1294,6 @@ func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus 
 	return CallErr
 }
 
-// StreamDone bills a model call as its stream finishes, so the token count
-// moves during the turn instead of only at TurnDone.
-func (s *streamAdapter) StreamDone(u fantasy.Usage) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	sid, model := ag.sessionID, s.h.turnModelID()
-	ag.mu.Unlock()
-	s.h.bill(sid, model, u)
-}
-
 // turnModelID is the model the running turn bills to (ag.mu held); a turn
 // the host did not start (tests) bills to the chat role.
 func (h *Host) turnModelID() string {
@@ -1460,20 +1301,6 @@ func (h *Host) turnModelID() string {
 		return m
 	}
 	return h.currentModelID(nil)
-}
-
-// StepDone counts the step for the todo nag unless a todos call ran in it.
-func (s *streamAdapter) StepDone(st agent.Step) {
-	h := s.h
-	ag := h.agents
-	ag.mu.Lock()
-	sid, model, touched := ag.sessionID, h.turnModelID(), ag.todoTouched
-	ag.todoTouched = false
-	ag.mu.Unlock()
-	h.emitStep(sid, model, st)
-	if !touched {
-		h.maybeNagTodos()
-	}
 }
 
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
@@ -1487,84 +1314,6 @@ func (h *Host) emitStep(sid, model string, st agent.Step) {
 			"cost": h.turnCost(model, u),
 		},
 	})
-}
-
-func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
-	h := s.h
-	ag := h.agents
-	ag.mu.Lock()
-	// sendCompacting resends a held error or reports it; the steps before it
-	// still ran, so their usage and rows are kept
-	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
-	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
-	// a Full cut ends the send, not the turn: sendCompacting compacts and
-	// sends again, so the finish, the notification and the title wait, and
-	// the cut steps' usage joins the final payload
-	if err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
-		ag.cutUsage = addUsage(ag.cutUsage, usage)
-		hold = true
-	} else {
-		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
-	}
-	ag.holdCut = false
-	now := h.now()
-	model := h.turnModelID()
-	text, tools := ag.textBuf, ag.tools
-	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix()}
-	if !ag.turnStart.IsZero() {
-		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
-	}
-	ag.turnStart = time.Time{}
-	// a call still open here was cut off: by the user, or by the error that
-	// ended the turn
-	for i, t := range ag.tools {
-		if t.Status == CallRun || t.Status == CallWait {
-			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
-		}
-	}
-	h.flushOutput(stat)
-	sid := ag.sessionID
-	ag.mu.Unlock()
-	h.refresh()
-	if hold {
-		return
-	}
-	// the readout rides a telemetry row, and only a turn that ended on text
-	// has a reply row for a resume to attach it to
-	if strings.TrimSpace(text) != "" {
-		h.persistTurnStat(sid, stat)
-	}
-	ui := h.hooks()
-	if ui != nil {
-		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
-		ui.TurnDone(h.friendlyError(err), stopped)
-	}
-	// a zemi run exits before a title call answers: no UI, no title
-	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
-		ag.mu.Lock()
-		first := !ag.titled && ag.sessionID == sid
-		ag.titled = true
-		user := ag.firstUser
-		ag.mu.Unlock()
-		if first {
-			h.autoTitle(sid, user, text)
-		}
-	}
-	if err != nil {
-		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
-		// The failure stays in the transcript: a toast expires, and a turn
-		// that ended silently looks like zemi ignored the message.
-		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
-		if errors.Is(err, context.Canceled) {
-			row.Status = CallCancelled
-		}
-		h.AppendChat(row)
-	} else {
-		h.EmitAsync("agent.finish", map[string]any{"session": sid, "model": model, "usage": map[string]any{
-			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
-			"cost": h.turnCost(model, usage),
-		}})
-	}
 }
 
 // billedInput is a step's input tokens with cache reads and writes: the
@@ -1685,29 +1434,6 @@ func toolLabel(input string) string {
 // aboutArg is a call's leading "about" argument in input that is still streaming.
 var aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
 
-// ToolInputDelta labels a pending row as soon as "about" has streamed: a
-// long command or heredoc takes seconds to arrive after it.
-func (s *streamAdapter) ToolInputDelta(id, delta string) {
-	ag := s.h.agents
-	ag.mu.Lock()
-	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
-	if i < 0 || ag.tools[i].Label != "" || len(ag.tools[i].partial) > 1024 {
-		ag.mu.Unlock()
-		return
-	}
-	t := &ag.tools[i]
-	t.partial += delta
-	var label string
-	if m := aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
-		t.Label = clipLine(label, 80)
-	}
-	labelled := t.Label != ""
-	ag.mu.Unlock()
-	if labelled {
-		s.h.agentStream()
-	}
-}
-
 // toolSummary picks the argument a person reads first (a command, path or
 // query) out of a tool's JSON input; anything else stays raw.
 func toolSummary(tool, input string) string {
@@ -1823,33 +1549,48 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// storeMessage writes one message as a row of session sid, and for a
+// reasoning message the thinking-time row beside it: the message does not
+// keep that, and historyFrom reads it back from the row.
+func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Duration) (*store.Message, error) {
+	parts, err := json.Marshal(msg, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
+	if err := h.DB.AddMessage(row); err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
+		return row, nil
+	}
+	parts, _ = json.Marshal(map[string]any{"thought_ms": thought.Milliseconds()}, json.Deterministic(true))
+	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
+// stepThinking is how long the step now running has thought.
+func (h *Host) stepThinking() time.Duration {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	d := ag.stepThinking
+	if ag.thinking {
+		d += h.now().Sub(ag.thinkStart)
+	}
+	return d
+}
+
 func (h *Host) persistMessage(msg fantasy.Message) error {
 	sid := h.AgentSessionID()
 	if h.DB == nil || sid == "" {
 		return nil
 	}
-	parts, err := json.Marshal(msg, json.Deterministic(true))
+	row, err := h.storeMessage(sid, msg, h.stepThinking())
 	if err != nil {
 		return err
-	}
-	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
-	if err := h.DB.AddMessage(row); err != nil {
-		return err
-	}
-	// how long the step thought, which the message does not keep: a resume
-	// reads it back (historyFrom)
-	if slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
-		ag := h.agents
-		ag.mu.Lock()
-		d := ag.stepThinking
-		if ag.thinking {
-			d += h.now().Sub(ag.thinkStart)
-		}
-		ag.mu.Unlock()
-		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()}, json.Deterministic(true))
-		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
-			return err
-		}
 	}
 	if msg.Role == fantasy.MessageRoleUser {
 		h.agents.mu.Lock()
@@ -2136,161 +1877,6 @@ func (h *Host) AgentSessionID() string {
 	return ag.sessionID
 }
 
-// StreamSnapshot is the live stream state for widgets.
-type StreamSnapshot struct {
-	Active     bool
-	Text       string
-	Reasoning  string
-	Thinking   bool // a reasoning block is open: the model thinks right now
-	Tools      []StreamTool
-	Model      string
-	Profile    string
-	Steering   []Queued      // what waits for the turn's next step boundary, oldest first
-	Thought    time.Duration // wall time spent in reasoning blocks
-	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
-	Retrying   bool          // a provider retry waits or is under way
-	RetryIn    time.Duration // time until the next provider retry, 0 once it is under way
-	Retries    int           // provider retries this turn
-	RetryWhy   string        // what failed, for the retry countdown
-	Compacting bool          // history is being summarized before the turn
-	// the goal is being checked after a turn (/goal); the agent stays active
-	CheckingGoal bool
-	// the running or last chain of turns began with a loop run, which no one
-	// waits on: its end arms no recap and sends no alert
-	ByLoop bool
-
-	// usage tally (DESIGN §8 statusline): session totals, the last prompt
-	// size (the current-context estimate), and the context window used for
-	// the percent readout.
-	SessionIn   int64
-	SessionOut  int64
-	LastIn      int64
-	CtxWindow   int64
-	SessionCost float64
-	// prompt cache tokens read, over the input billed alongside them: the
-	// session's own, restored with its stored rows so a resume shows the same
-	// share
-	CacheRead   int64
-	CacheBilled int64
-}
-
-func (h *Host) AgentStream() StreamSnapshot {
-	h.agents.mu.Lock()
-	defer h.agents.mu.Unlock()
-	return h.streamLocked()
-}
-
-// liveView is the transcript and the live turn read together, as
-// flushOutput changes them.
-func (h *Host) liveView() (Session, StreamSnapshot) {
-	h.agents.mu.Lock()
-	defer h.agents.mu.Unlock()
-	return h.Session(), h.streamLocked()
-}
-
-// RunFrame is what a printed run shows at one moment, read like liveView.
-type RunFrame struct {
-	Settled []ChatMessage // rows from the asked index on that no retry can cut
-	Pending []ChatMessage // the rows after them, which the running step may still cut
-	Stream  StreamSnapshot
-	Next    int // the index after Settled
-}
-
-// RunFrame reads the transcript from index from on. A provider retry cuts
-// the rows its step moved in (Retrying), so while a turn runs only the rows
-// before the step's start are settled. Next never falls below from: a claim
-// with no beginTurn yet leaves a stale step start.
-// NOTE: a row settles one step after it was flushed, so a plain log lags the
-// model by a step; a terminal's live tail shows the pending rows meanwhile.
-func (h *Host) RunFrame(from int) RunFrame {
-	ag := h.agents
-	ag.mu.Lock()
-	tr, stream := h.Session().Transcript, h.streamLocked()
-	from = min(max(from, 0), len(tr))
-	end := len(tr)
-	if ag.active {
-		end = max(from, min(end, ag.stepRows))
-	}
-	ag.mu.Unlock()
-	return RunFrame{Settled: tr[from:end], Pending: tr[end:], Stream: stream, Next: end}
-}
-
-// streamLocked is AgentStream with ag.mu held.
-func (h *Host) streamLocked() StreamSnapshot {
-	ag := h.agents
-	// the host's clock, never time.Now: a seeded stream, a golden included,
-	// must read the same seconds however loaded the machine is
-	now := h.now()
-	thought := ag.thought
-	if ag.thinking {
-		thought += now.Sub(ag.thinkStart)
-	}
-	// milliseconds, as the settled row stores it, so both read alike
-	thought = thought.Truncate(time.Millisecond)
-	var elapsed time.Duration
-	if ag.active && !ag.turnStart.IsZero() {
-		elapsed = now.Sub(ag.turnStart)
-	}
-	out := StreamSnapshot{
-		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
-		Profile: h.Settings.Str("agent.profile"),
-		Thought: thought, Elapsed: elapsed,
-		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
-		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
-		CtxWindow: ag.ctxWin, ByLoop: ag.byLoop,
-	}
-	out.Model = ag.modelSeed
-	if out.Model == "" {
-		out.Model = h.liveModelID()
-	}
-	if out.CtxWindow == 0 {
-		out.CtxWindow = h.contextWindow(out.Model)
-	}
-	out.Steering = queuedRows(ag.steering)
-	out.Tools = append(out.Tools, ag.tools...)
-	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
-	if !ag.retryAt.IsZero() {
-		out.Retrying, out.RetryIn, out.RetryWhy = true, max(ag.retryAt.Sub(now), 0), ag.retryWhy
-	}
-	return out
-}
-
-// SeedStream installs a stream snapshot directly (no turn runs). It backs
-// golden tests and UI development: the next AgentStream read returns the
-// seeded state until a real turn resets it. A queued message is not seeded
-// with it: a test queues one with AgentSend, which a seeded active turn takes.
-func (h *Host) SeedStream(s StreamSnapshot) {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	ag.active = s.Active
-	ag.byLoop = s.ByLoop
-	ag.textBuf = s.Text
-	ag.reasonBuf = s.Reasoning
-	ag.tools = s.Tools
-	ag.modelSeed = s.Model
-	ag.thought = s.Thought
-	ag.thinking = s.Thinking
-	// an open block counts from now, so the stream reads the seeded total
-	ag.thinkStart = time.Time{}
-	if s.Thinking {
-		ag.thinkStart = h.now()
-	}
-	ag.sessIn = s.SessionIn
-	ag.sessOut = s.SessionOut
-	ag.lastIn = s.LastIn
-	ag.ctxWin = s.CtxWindow
-	if s.Elapsed > 0 && s.Active {
-		ag.turnStart = h.now().Add(-s.Elapsed)
-	} else {
-		ag.turnStart = time.Time{}
-	}
-	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
-	if s.Retrying {
-		ag.retryAt = h.now().Add(s.RetryIn)
-	}
-}
-
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes
 // any open block into the accumulated thought time.
 func (ag *agentHost) beginThinking() {
@@ -2328,167 +1914,6 @@ func strs[T ~string](vals []T) []string {
 		out[i] = string(v)
 	}
 	return out
-}
-
-func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.provider.add: only user config may register providers")
-		}
-		spec, err := providerSpecFromLua(L, 1)
-		if err != nil {
-			L.RaiseError("zemi.provider.add: %v", err)
-		}
-		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key")); err != nil {
-			L.RaiseError("zemi.provider.add: %v", err)
-		}
-		return 0
-	}))
-	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.provider.del: only user config may remove providers")
-		}
-		h.Providers.Delete(L.CheckString(1))
-		return 0
-	}))
-	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
-	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
-		for _, s := range h.Providers.List() {
-			row := L.NewTable()
-			row.RawSetString("id", glua.LString(s.ID))
-			row.RawSetString("kind", glua.LString(s.Kind))
-			row.RawSetString("base_url", glua.LString(s.BaseURL))
-			row.RawSetString("builtin", glua.LBool(s.Builtin))
-			out.Append(row)
-		}
-		L.Push(out)
-		return 1
-	}))
-	return tb
-}
-
-func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
-	tb, ok := L.Get(idx).(*glua.LTable)
-	if !ok {
-		return agent.Spec{}, errors.New("spec must be a table")
-	}
-	raw, err := lua.ToGo(tb)
-	if err != nil {
-		return agent.Spec{}, fmt.Errorf("spec: %w", err)
-	}
-	fields, _ := raw.(map[string]any)
-	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models"); err != nil {
-		return agent.Spec{}, err
-	}
-	spec := agent.Spec{
-		ID:      rawString(L, tb, "id"),
-		Kind:    agent.Kind(rawString(L, tb, "kind")),
-		BaseURL: rawString(L, tb, "base_url"),
-		Headers: rawStringMap(L, tb, "headers"),
-	}
-	switch b := fields["body"].(type) {
-	case map[string]any:
-		if !slices.Contains(agent.KindsWithBody, spec.Kind) {
-			return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(strs(agent.KindsWithBody), ", "))
-		}
-		spec.Body = b
-	case []any:
-		return agent.Spec{}, errors.New("body must be a table of named fields")
-	}
-	// an empty table marshals as a map
-	models, ok := fields["models"].([]any)
-	if m, isMap := fields["models"].(map[string]any); !ok && fields["models"] != nil && (!isMap || len(m) > 0) {
-		return agent.Spec{}, errors.New("models must be a list of model entries")
-	}
-	for i, v := range models {
-		at := fmt.Sprintf("models[%d]", i+1)
-		e, ok := v.(map[string]any)
-		if !ok {
-			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
-		}
-		if err := onlyKeys(e, at, "id", "display", "context_window", "max_output", "vision",
-			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read"); err != nil {
-			return agent.Spec{}, err
-		}
-		positive := func(key string) float64 {
-			n, _ := e[key].(float64)
-			return max(n, 0)
-		}
-		id, _ := e["id"].(string)
-		display, _ := e["display"].(string)
-		spec.Models = append(spec.Models, agent.Model{
-			ID:                  id,
-			Display:             display,
-			ContextWindow:       int64(positive("context_window")),
-			MaxOutput:           int64(positive("max_output")),
-			CostPer1MIn:         positive("cost_per_1m_in"),
-			CostPer1MOut:        positive("cost_per_1m_out"),
-			CostPer1MCacheWrite: positive("cost_per_1m_cache_write"),
-			CostPer1MCacheRead:  positive("cost_per_1m_cache_read"),
-			TextOnly:            e["vision"] == false,
-		})
-	}
-	if spec.ID == "" || spec.Kind == "" {
-		return agent.Spec{}, errors.New("provider needs id and kind")
-	}
-	return spec, nil
-}
-
-func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out, ids := L.NewTable(), h.roleIDs()
-		for _, s := range h.Providers.List() {
-			for _, m := range s.Models {
-				id := s.ID + "/" + m.ID
-				var on []string
-				for i, r := range roles {
-					if ids[i] == id {
-						on = append(on, r.Name)
-					}
-				}
-				row := L.NewTable()
-				row.RawSetString("id", glua.LString(id))
-				row.RawSetString("display", glua.LString(m.Display))
-				row.RawSetString("has_key", glua.LBool(h.Providers.HasKey(s.ID)))
-				row.RawSetString("roles", lua.FromGo(L, on))
-				out.Append(row)
-			}
-		}
-		L.Push(out)
-		return 1
-	}))
-	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "model.set")
-		id := L.CheckString(1)
-		if err := h.modelSetErr("chat", id); err != nil {
-			L.RaiseError("zemi.model.set: %v", err)
-		}
-		if h.cfgReplayed("models.chat", id) {
-			return 0
-		}
-		fired, err := h.writeSetting("models.chat", id)
-		if err != nil {
-			L.RaiseError("zemi.model.set: %v", err)
-		}
-		h.deliverFired(L, fired)
-		h.warnUnlisted(id)
-		return 0
-	}))
-	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
-	tb.RawSetString("role", enumTable(L, roleNames()...))
-	tb.RawSetString("effort", enumTable(L, agent.Efforts...))
-	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		role := L.OptString(1, "")
-		if role != "" && !isRole(role) {
-			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, strings.Join(roleNames(), ", "))
-		}
-		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
-		return 0
-	}))
-	return tb
 }
 
 // roleIDs is the model id each role runs on, in roles order. chat is
@@ -3107,211 +2532,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	h.agentRunFns(L, tb)
-	return tb
-}
-
-func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-
-	rule := L.NewTable()
-	rule.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		spec, ok := L.Get(1).(*glua.LTable)
-		if !ok {
-			L.RaiseError("zemi.permission.rule.add: rule must be a table")
-		}
-		r := perm.Rule{
-			Subject:  rawString(L, spec, "subject"),
-			Pattern:  rawString(L, spec, "pattern"),
-			Decision: perm.Decision(rawString(L, spec, "decision")),
-			NotMatch: rawString(L, spec, "not_match"),
-		}
-		switch rawString(L, spec, "scope") {
-		case "", "session":
-		case "permanent":
-			L.RaiseError(`zemi.permission.rule.add: scope "permanent" was removed; a rule in init.lua applies on every start, so drop the scope field`)
-		default:
-			L.RaiseError(`zemi.permission.rule.add: scope must be "session"`)
-		}
-		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
-		// user config only; every other origin may only add deny/ask rules,
-		// which match every principal, so none can aim at another plugin.
-		if origin := h.RT.CurrentOrigin(L); origin != lua.OriginUser {
-			if r.Decision == perm.Allow {
-				L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
-			}
-			if rawString(L, spec, "principal") != "" {
-				L.RaiseError("zemi.permission.rule.add: only user config scopes a rule to a principal")
-			}
-			r.Source = string(origin)
-		}
-		if p := rawString(L, spec, "principal"); p != "" {
-			if name, ok := perm.CutPluginPrincipal(p); !ok || name == "" {
-				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
-			}
-			r.Principal = p
-		}
-		if err := h.validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
-			L.RaiseError("zemi.permission.rule.add: %v", err)
-		}
-		h.addPermissionRule(r)
-		return 0
-	}))
-
-	tb.RawSetString("mode", h.modeNamespace(L))
-
-	rule.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
-		for _, r := range h.Perm.Rules() {
-			row := L.NewTable()
-			row.RawSetString("subject", glua.LString(r.Subject))
-			row.RawSetString("pattern", glua.LString(r.Pattern))
-			row.RawSetString("decision", glua.LString(r.Decision))
-			row.RawSetString("not_match", glua.LString(r.NotMatch))
-			if r.Principal != "" {
-				row.RawSetString("principal", glua.LString(r.Principal))
-			}
-			out.Append(row)
-		}
-		L.Push(out)
-		return 1
-	}))
-	tb.RawSetString("rule", rule)
-	tb.RawSetString("decision", enumTable(L, perm.Allow, perm.Ask, perm.Deny))
-	return tb
-}
-
-// askingSubjects are the builtin tools' own subjects; every other builtin
-// asks under fs., net. or memory., if at all.
-var askingSubjects = []string{"tool.*", perm.SubjectShell, perm.SubjectLua, perm.SubjectWorkflow}
-
-// toolSubjects are the tool.* subjects a request can carry: the builtin
-// tools' and the Lua tools'.
-func (h *Host) toolSubjects() []string {
-	subjects := slices.Clone(askingSubjects)
-	for _, t := range h.luaTools.list() {
-		subjects = append(subjects, "tool."+t.Name)
-	}
-	return subjects
-}
-
-// ruleShape checks what every rule intake needs: a subject in a known
-// family, a pattern and a decision. A tool.<builtin> subject no builtin asks
-// as raises here; any other tool.<name> may be a Lua tool config adds later,
-// so CheckToolNames judges it once boot is done.
-func (h *Host) ruleShape(r perm.Rule) error {
-	name, isTool := strings.CutPrefix(r.Subject, "tool.")
-	switch {
-	case r.Subject == "" || r.Pattern == "":
-		return errors.New("subject and pattern are required")
-	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
-		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
-	case isTool && slices.Contains(h.builtinToolNames(), name) && !slices.Contains(askingSubjects, r.Subject):
-		return fmt.Errorf("no tool asks as %q: tool subjects are %s and tool.<a Lua tool>", r.Subject, strings.Join(askingSubjects, " "))
-	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
-		return errors.New("decision must be allow, ask or deny")
-	}
-	return nil
-}
-
-// CheckToolNames records each tool.* rule and tool override no tool answers
-// to, once boot has added every Lua tool: the tool one names may come from a
-// project or a plugin, so the call that adds it cannot tell.
-func (h *Host) CheckToolNames() {
-	subjects := h.toolSubjects()
-	rules := h.Perm.Rules()
-	for _, m := range h.PermModeList() {
-		if m.Rules != nil {
-			rules = append(rules, m.Rules.Rules()...)
-		}
-	}
-	for _, r := range rules {
-		if strings.HasPrefix(r.Subject, "tool.") && !slices.Contains(subjects, r.Subject) {
-			h.RecordErrorOnce("permissions", fmt.Sprintf("no tool asks as %q, so its rule never matches: tool subjects are %s", r.Subject, strings.Join(subjects, " ")))
-		}
-	}
-	names := h.builtinToolNames()
-	for _, t := range h.luaTools.list() {
-		names = append(names, t.Name)
-	}
-	for _, name := range h.luaTools.overridden() {
-		if !slices.Contains(names, name) && !strings.HasPrefix(name, "mcp_") {
-			h.RecordErrorOnce("tools", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, " ")))
-		}
-	}
-}
-
-// validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
-// the pattern without being excluded, the not_match example must be
-// excluded; a guard needs both examples.
-func (h *Host) validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
-	if err := h.ruleShape(*r); err != nil {
-		return err
-	}
-	if r.NotMatch == "" {
-		if matchEx == "" {
-			return fmt.Errorf(`rule %s %q needs a match example: add match = "<an argument the pattern should match>"`, r.Subject, r.Pattern)
-		}
-		if !perm.Match(r.Pattern, matchEx) {
-			return fmt.Errorf("match example %q does not match pattern %q", matchEx, r.Pattern)
-		}
-		return nil
-	}
-	if matchEx == "" || notMatchEx == "" {
-		return fmt.Errorf("rule %s %q with not_match needs both examples: match and not_match_example", r.Subject, r.Pattern)
-	}
-	if !perm.Match(r.Pattern, matchEx) || perm.Match(r.NotMatch, matchEx) {
-		return fmt.Errorf("match example %q must match %q and not be excluded by %q", matchEx, r.Pattern, r.NotMatch)
-	}
-	if perm.Match(r.Pattern, notMatchEx) && !perm.Match(r.NotMatch, notMatchEx) {
-		return fmt.Errorf("not_match example %q must be excluded by %q", notMatchEx, r.NotMatch)
-	}
-	return nil
-}
-
-func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("id", L.NewFunction(func(L *glua.LState) int {
-		L.Push(glua.LString(h.AgentSessionID()))
-		return 1
-	}))
-	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
-		L.Push(glua.LString(h.Session().Title))
-		return 1
-	}))
-	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
-		title := L.CheckString(1)
-		h.tMu.Lock()
-		h.session.Title = title
-		h.tMu.Unlock()
-		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
-			_ = h.DB.RenameSession(sid, title)
-		}
-		h.refresh()
-		return 0
-	}))
-	tb.RawSetString("messages", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
-		sid := h.AgentSessionID()
-		if sid != "" && h.DB != nil {
-			msgs, _ := h.DB.Messages(sid)
-			for _, m := range msgs {
-				row := L.NewTable()
-				row.RawSetString("id", glua.LString(m.ID))
-				row.RawSetString("role", glua.LString(m.Role))
-				// the text parts joined: reading a reply must not mean
-				// decoding the provider's wire shape by hand
-				var msg fantasy.Message
-				if json.Unmarshal([]byte(m.PartsJSON), &msg) == nil {
-					row.RawSetString("text", glua.LString(concatText(msg.Content)))
-				}
-				row.RawSetString("json", glua.LString(m.PartsJSON))
-				out.Append(row)
-			}
-		}
-		L.Push(out)
-		return 1
-	}))
-	h.sessionExtraFns(L, tb)
 	return tb
 }
 

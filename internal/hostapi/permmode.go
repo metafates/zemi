@@ -35,10 +35,12 @@ type PermModeDef struct {
 	Name, Base, Description, Prompt string
 	Rules                           *perm.Store
 	// Decide answers an ask the rules left open: "allow", "deny" or
-	// anything else to leave it to the user. It dies with its generation
-	// (PurgeGeneration clears the list), so no reload check is needed.
+	// anything else to leave it to the user. An ask copies the def out of
+	// the list before it awaits, so the function outlives a purge and Gen
+	// is what refuses it (0 for a builtin, which has no decide).
 	Decide *glua.LFunction
 	Origin lua.Origin
+	Gen    Gen
 }
 
 var builtinModes = []PermModeDef{
@@ -360,7 +362,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		gate(L, "add")
 		def := PermModeDef{
 			Name: name, Base: rawString(L, spec, "base"), Description: rawString(L, spec, "description"), Prompt: rawString(L, spec, "prompt"),
-			Origin: h.RT.CurrentOrigin(L),
+			Origin: h.RT.CurrentOrigin(L), Gen: h.currentGen(),
 		}
 		def.Decide, _ = opt[*glua.LFunction](L, spec, "decide")
 		if !modeName.MatchString(name) {
@@ -738,6 +740,9 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 	out, err := h.RT.RunTask(ctx, lua.Task{
 		Class: lua.ClassAgent, Ceiling: modeDecideCeiling, Origin: def.Origin, Path: "permission.mode." + def.Name,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			if def.Gen != 0 && h.currentGen() != def.Gen {
+				return nil, nil, lua.ErrReloaded
+			}
 			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
 				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
 				"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
@@ -749,7 +754,9 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 		},
 	})
 	if err != nil {
-		h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
+		if !errors.Is(err, lua.ErrReloaded) {
+			h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
+		}
 		return ""
 	}
 	if len(out) == 0 {
@@ -757,4 +764,162 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 	}
 	s, _ := out[0].(string)
 	return s
+}
+
+func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+
+	rule := L.NewTable()
+	rule.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		spec, ok := L.Get(1).(*glua.LTable)
+		if !ok {
+			L.RaiseError("zemi.permission.rule.add: rule must be a table")
+		}
+		r := perm.Rule{
+			Subject:  rawString(L, spec, "subject"),
+			Pattern:  rawString(L, spec, "pattern"),
+			Decision: perm.Decision(rawString(L, spec, "decision")),
+			NotMatch: rawString(L, spec, "not_match"),
+		}
+		switch rawString(L, spec, "scope") {
+		case "", "session":
+		case "permanent":
+			L.RaiseError(`zemi.permission.rule.add: scope "permanent" was removed; a rule in init.lua applies on every start, so drop the scope field`)
+		default:
+			L.RaiseError(`zemi.permission.rule.add: scope must be "session"`)
+		}
+		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
+		// user config only; every other origin may only add deny/ask rules,
+		// which match every principal, so none can aim at another plugin.
+		if origin := h.RT.CurrentOrigin(L); origin != lua.OriginUser {
+			if r.Decision == perm.Allow {
+				L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
+			}
+			if rawString(L, spec, "principal") != "" {
+				L.RaiseError("zemi.permission.rule.add: only user config scopes a rule to a principal")
+			}
+			r.Source = string(origin)
+		}
+		if p := rawString(L, spec, "principal"); p != "" {
+			if name, ok := perm.CutPluginPrincipal(p); !ok || name == "" {
+				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
+			}
+			r.Principal = p
+		}
+		if err := h.validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
+			L.RaiseError("zemi.permission.rule.add: %v", err)
+		}
+		h.addPermissionRule(r)
+		return 0
+	}))
+
+	tb.RawSetString("mode", h.modeNamespace(L))
+
+	rule.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		for _, r := range h.Perm.Rules() {
+			row := L.NewTable()
+			row.RawSetString("subject", glua.LString(r.Subject))
+			row.RawSetString("pattern", glua.LString(r.Pattern))
+			row.RawSetString("decision", glua.LString(r.Decision))
+			row.RawSetString("not_match", glua.LString(r.NotMatch))
+			if r.Principal != "" {
+				row.RawSetString("principal", glua.LString(r.Principal))
+			}
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+	tb.RawSetString("rule", rule)
+	tb.RawSetString("decision", enumTable(L, perm.Allow, perm.Ask, perm.Deny))
+	return tb
+}
+
+// askingSubjects are the builtin tools' own subjects; every other builtin
+// asks under fs., net. or memory., if at all.
+var askingSubjects = []string{"tool.*", perm.SubjectShell, perm.SubjectLua, perm.SubjectWorkflow}
+
+// toolSubjects are the tool.* subjects a request can carry: the builtin
+// tools' and the Lua tools'.
+func (h *Host) toolSubjects() []string {
+	subjects := slices.Clone(askingSubjects)
+	for _, t := range h.luaTools.list() {
+		subjects = append(subjects, "tool."+t.Name)
+	}
+	return subjects
+}
+
+// ruleShape checks what every rule intake needs: a subject in a known
+// family, a pattern and a decision. A tool.<builtin> subject no builtin asks
+// as raises here; any other tool.<name> may be a Lua tool config adds later,
+// so CheckToolNames judges it once boot is done.
+func (h *Host) ruleShape(r perm.Rule) error {
+	name, isTool := strings.CutPrefix(r.Subject, "tool.")
+	switch {
+	case r.Subject == "" || r.Pattern == "":
+		return errors.New("subject and pattern are required")
+	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
+		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
+	case isTool && slices.Contains(h.builtinToolNames(), name) && !slices.Contains(askingSubjects, r.Subject):
+		return fmt.Errorf("no tool asks as %q: tool subjects are %s and tool.<a Lua tool>", r.Subject, strings.Join(askingSubjects, " "))
+	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
+		return errors.New("decision must be allow, ask or deny")
+	}
+	return nil
+}
+
+// CheckToolNames records each tool.* rule and tool override no tool answers
+// to, once boot has added every Lua tool: the tool one names may come from a
+// project or a plugin, so the call that adds it cannot tell.
+func (h *Host) CheckToolNames() {
+	subjects := h.toolSubjects()
+	rules := h.Perm.Rules()
+	for _, m := range h.PermModeList() {
+		if m.Rules != nil {
+			rules = append(rules, m.Rules.Rules()...)
+		}
+	}
+	for _, r := range rules {
+		if strings.HasPrefix(r.Subject, "tool.") && !slices.Contains(subjects, r.Subject) {
+			h.RecordErrorOnce("permissions", fmt.Sprintf("no tool asks as %q, so its rule never matches: tool subjects are %s", r.Subject, strings.Join(subjects, " ")))
+		}
+	}
+	names := h.builtinToolNames()
+	for _, t := range h.luaTools.list() {
+		names = append(names, t.Name)
+	}
+	for _, name := range h.luaTools.overridden() {
+		if !slices.Contains(names, name) && !strings.HasPrefix(name, "mcp_") {
+			h.RecordErrorOnce("tools", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, " ")))
+		}
+	}
+}
+
+// validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
+// the pattern without being excluded, the not_match example must be
+// excluded; a guard needs both examples.
+func (h *Host) validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+	if err := h.ruleShape(*r); err != nil {
+		return err
+	}
+	if r.NotMatch == "" {
+		if matchEx == "" {
+			return fmt.Errorf(`rule %s %q needs a match example: add match = "<an argument the pattern should match>"`, r.Subject, r.Pattern)
+		}
+		if !perm.Match(r.Pattern, matchEx) {
+			return fmt.Errorf("match example %q does not match pattern %q", matchEx, r.Pattern)
+		}
+		return nil
+	}
+	if matchEx == "" || notMatchEx == "" {
+		return fmt.Errorf("rule %s %q with not_match needs both examples: match and not_match_example", r.Subject, r.Pattern)
+	}
+	if !perm.Match(r.Pattern, matchEx) || perm.Match(r.NotMatch, matchEx) {
+		return fmt.Errorf("match example %q must match %q and not be excluded by %q", matchEx, r.Pattern, r.NotMatch)
+	}
+	if perm.Match(r.Pattern, notMatchEx) && !perm.Match(r.NotMatch, notMatchEx) {
+		return fmt.Errorf("not_match example %q must be excluded by %q", notMatchEx, r.NotMatch)
+	}
+	return nil
 }

@@ -434,7 +434,7 @@ local function builder(ctx, width)
 		local output = t.output or ""
 		local answered = name == "question" and output:find("\t") ~= nil
 		-- the command a description stands for, then progress, then the job
-		-- a timed-out command went on as (the phrase is tools.JobHandoff)
+		-- a timed-out command went on as, which the row carries
 		if answered then
 			more = {}
 		elseif label ~= "" and input ~= "" and (open or not fmt.looks(t)) then
@@ -445,12 +445,7 @@ local function builder(ctx, width)
 			detail(code and code[i + 1] or l, "Dim")
 		end
 		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
-		local job = t.status == "bg"
-			and (
-				(t.output or ""):match("moved to the background as (job%-%d+)")
-				or (t.output or ""):match("^started (job%-%d+)")
-			)
-		if job then detail("running as " .. job, "Dim") end
+		if (t.job or "") ~= "" then detail("running as " .. t.job, "Dim") end
 		-- an open file tool shows what it changed as numbered, tinted rows, four
 		-- cells in; a diff row is body: no hover, but the click folds like the head
 		if open then
@@ -547,6 +542,15 @@ local function builder(ctx, width)
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
+	-- The label and click target of the one row that stands for a folded run:
+	-- a notice burst and a rail fold the same way.
+	---@param key integer
+	---@param n integer
+	---@return string, string
+	local function foldRow(key, n)
+		return whole[key] and "… show the rest" or "… " .. n .. " earlier", "more:" .. key
+	end
+
 	-- A burst of notice rows as one block, no blank row between them: reports
 	-- and updates arrive together, and the older ones of a long burst sit
 	-- behind one row a click opens, as a long rail's do.
@@ -558,8 +562,7 @@ local function builder(ctx, width)
 		local hidden = last - first + 1 - NOTICES_KEEP
 		-- a printed run lists every row: its fold row would have nothing to click
 		if hidden > 1 and not ctx.headless then
-			local click = "more:" .. first
-			local label = whole[first] and "… show the rest" or "… " .. hidden .. " earlier"
+			local label, click = foldRow(first, hidden)
 			B.lines[#B.lines + 1] = {
 				{ text = "  ", copy = false, hover = false },
 				{ text = label, hl = "Dim", click = click },
@@ -597,8 +600,7 @@ local function builder(ctx, width)
 		local key = o.live and 0 or o.run or first
 		local n = #B.heads - RAIL_KEEP
 		if o.open or ctx.headless or n < 2 then return end
-		local click = "more:" .. key
-		local label = whole[key] and "… show the rest" or "… " .. n .. " earlier"
+		local label, click = foldRow(key, n)
 		if not whole[key] then
 			for _ = at + 1, B.heads[n + 1] - 1 do
 				table.remove(B.lines, at + 1)

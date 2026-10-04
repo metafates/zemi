@@ -366,3 +366,164 @@ func (h *Host) maxOutput(modelID string) int64 {
 	}
 	return 0
 }
+
+func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
+			L.RaiseError("zemi.provider.add: only user config may register providers")
+		}
+		spec, err := providerSpecFromLua(L, 1)
+		if err != nil {
+			L.RaiseError("zemi.provider.add: %v", err)
+		}
+		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key")); err != nil {
+			L.RaiseError("zemi.provider.add: %v", err)
+		}
+		return 0
+	}))
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		if h.RT.CurrentOrigin(L) != lua.OriginUser {
+			L.RaiseError("zemi.provider.del: only user config may remove providers")
+		}
+		h.Providers.Delete(L.CheckString(1))
+		return 0
+	}))
+	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		for _, s := range h.Providers.List() {
+			row := L.NewTable()
+			row.RawSetString("id", glua.LString(s.ID))
+			row.RawSetString("kind", glua.LString(s.Kind))
+			row.RawSetString("base_url", glua.LString(s.BaseURL))
+			row.RawSetString("builtin", glua.LBool(s.Builtin))
+			out.Append(row)
+		}
+		L.Push(out)
+		return 1
+	}))
+	return tb
+}
+
+func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
+	tb, ok := L.Get(idx).(*glua.LTable)
+	if !ok {
+		return agent.Spec{}, errors.New("spec must be a table")
+	}
+	raw, err := lua.ToGo(tb)
+	if err != nil {
+		return agent.Spec{}, fmt.Errorf("spec: %w", err)
+	}
+	fields, _ := raw.(map[string]any)
+	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models"); err != nil {
+		return agent.Spec{}, err
+	}
+	spec := agent.Spec{
+		ID:      rawString(L, tb, "id"),
+		Kind:    agent.Kind(rawString(L, tb, "kind")),
+		BaseURL: rawString(L, tb, "base_url"),
+		Headers: rawStringMap(L, tb, "headers"),
+	}
+	switch b := fields["body"].(type) {
+	case map[string]any:
+		if !slices.Contains(agent.KindsWithBody, spec.Kind) {
+			return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(strs(agent.KindsWithBody), ", "))
+		}
+		spec.Body = b
+	case []any:
+		return agent.Spec{}, errors.New("body must be a table of named fields")
+	}
+	// an empty table marshals as a map
+	models, ok := fields["models"].([]any)
+	if m, isMap := fields["models"].(map[string]any); !ok && fields["models"] != nil && (!isMap || len(m) > 0) {
+		return agent.Spec{}, errors.New("models must be a list of model entries")
+	}
+	for i, v := range models {
+		at := fmt.Sprintf("models[%d]", i+1)
+		e, ok := v.(map[string]any)
+		if !ok {
+			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
+		}
+		if err := onlyKeys(e, at, "id", "display", "context_window", "max_output", "vision",
+			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read"); err != nil {
+			return agent.Spec{}, err
+		}
+		positive := func(key string) float64 {
+			n, _ := e[key].(float64)
+			return max(n, 0)
+		}
+		id, _ := e["id"].(string)
+		display, _ := e["display"].(string)
+		spec.Models = append(spec.Models, agent.Model{
+			ID:                  id,
+			Display:             display,
+			ContextWindow:       int64(positive("context_window")),
+			MaxOutput:           int64(positive("max_output")),
+			CostPer1MIn:         positive("cost_per_1m_in"),
+			CostPer1MOut:        positive("cost_per_1m_out"),
+			CostPer1MCacheWrite: positive("cost_per_1m_cache_write"),
+			CostPer1MCacheRead:  positive("cost_per_1m_cache_read"),
+			TextOnly:            e["vision"] == false,
+		})
+	}
+	if spec.ID == "" || spec.Kind == "" {
+		return agent.Spec{}, errors.New("provider needs id and kind")
+	}
+	return spec, nil
+}
+
+func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
+		out, ids := L.NewTable(), h.roleIDs()
+		for _, s := range h.Providers.List() {
+			for _, m := range s.Models {
+				id := s.ID + "/" + m.ID
+				var on []string
+				for i, r := range roles {
+					if ids[i] == id {
+						on = append(on, r.Name)
+					}
+				}
+				row := L.NewTable()
+				row.RawSetString("id", glua.LString(id))
+				row.RawSetString("display", glua.LString(m.Display))
+				row.RawSetString("has_key", glua.LBool(h.Providers.HasKey(s.ID)))
+				row.RawSetString("roles", lua.FromGo(L, on))
+				out.Append(row)
+			}
+		}
+		L.Push(out)
+		return 1
+	}))
+	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "model.set")
+		id := L.CheckString(1)
+		if err := h.modelSetErr("chat", id); err != nil {
+			L.RaiseError("zemi.model.set: %v", err)
+		}
+		if h.cfgReplayed("models.chat", id) {
+			return 0
+		}
+		fired, err := h.writeSetting("models.chat", id)
+		if err != nil {
+			L.RaiseError("zemi.model.set: %v", err)
+		}
+		h.deliverFired(L, fired)
+		h.warnUnlisted(id)
+		return 0
+	}))
+	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
+	tb.RawSetString("role", enumTable(L, roleNames()...))
+	tb.RawSetString("effort", enumTable(L, agent.Efforts...))
+	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
+		role := L.OptString(1, "")
+		if role != "" && !isRole(role) {
+			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, strings.Join(roleNames(), ", "))
+		}
+		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
+		return 0
+	}))
+	return tb
+}
