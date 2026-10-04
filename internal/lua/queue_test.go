@@ -75,8 +75,7 @@ func TestQueuePriorityOrder(t *testing.T) {
 			return nil, nil
 		}
 		var wg sync.WaitGroup
-		wg.Add(4)
-		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, sleepDo) }()
+		wg.Go(func() { _, _ = r.Do(context.Background(), ClassIO, 0, 0, sleepDo) })
 
 		select {
 		case <-started:
@@ -84,9 +83,9 @@ func TestQueuePriorityOrder(t *testing.T) {
 			t.Fatal("sleeper never started")
 		}
 		// Enqueued in reverse priority order while the interpreter is busy.
-		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassAgent, 0, 0, record("agent")) }()
-		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassIO, 0, 0, record("io")) }()
-		go func() { defer wg.Done(); _, _ = r.Do(context.Background(), ClassUI, 0, 0, record("ui")) }()
+		wg.Go(func() { _, _ = r.Do(context.Background(), ClassAgent, 0, 0, record("agent")) })
+		wg.Go(func() { _, _ = r.Do(context.Background(), ClassIO, 0, 0, record("io")) })
+		wg.Go(func() { _, _ = r.Do(context.Background(), ClassUI, 0, 0, record("ui")) })
 
 		done := make(chan struct{})
 		go func() { wg.Wait(); close(done) }()

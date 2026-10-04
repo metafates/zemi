@@ -150,7 +150,8 @@ func sweepSnaps(tmp string) {
 		if !ok {
 			continue
 		}
-		if pid, err := strconv.Atoi(strings.Split(rest, "-")[0]); err != nil || pid == os.Getpid() || processGone(pid) {
+		head, _, _ := strings.Cut(rest, "-")
+		if pid, err := strconv.Atoi(head); err != nil || pid == os.Getpid() || processGone(pid) {
 			os.RemoveAll(filepath.Join(tmp, e.Name()))
 		}
 	}

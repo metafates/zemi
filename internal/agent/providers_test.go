@@ -199,14 +199,13 @@ func TestGoogleUsage(t *testing.T) {
 func TestModelErrorFinal(t *testing.T) {
 	refused := &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}}
 	reset := &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "read", Err: syscall.ECONNRESET}}
-	var ne net.Error
 	for _, c := range []struct {
 		err   error
 		retry bool
 	}{{refused, false}, {reset, true}, {&net.DNSError{Name: "x"}, false}} {
 		err := ModelError{"p", c.err}
-		if errors.As(err, &ne) != c.retry || !errors.Is(err, c.err) {
-			t.Errorf("%v: net.Error %v, want %v", c.err, errors.As(err, &ne), c.retry)
+		if _, isNet := errors.AsType[net.Error](err); isNet != c.retry || !errors.Is(err, c.err) {
+			t.Errorf("%v: net.Error %v, want %v", c.err, isNet, c.retry)
 		}
 	}
 }

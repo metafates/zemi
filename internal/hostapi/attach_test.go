@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/png"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,7 +118,7 @@ func TestDropsSweptAfterTTL(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 		t.Fatalf("a drop attached again was swept: %v", err)
 	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+	if _, err := os.Stat(stale); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("stale drop survived: %v", err)
 	}
 }

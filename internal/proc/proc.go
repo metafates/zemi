@@ -8,13 +8,13 @@
 package proc
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -227,7 +227,7 @@ func (b *Buffer) str() string {
 	if dropped == 0 {
 		return string(b.head) + string(tail)
 	}
-	var s bytes.Buffer
+	var s strings.Builder
 	s.Write(b.head)
 	fmt.Fprintf(&s, "\n... (%d bytes of output skipped) ...\n", dropped)
 	s.Write(tail)

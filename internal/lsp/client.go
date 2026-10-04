@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -567,7 +568,7 @@ func (c *Client) Others(path string) map[string][]Diagnostic {
 func (c *Client) Diagnostics(path string) []Diagnostic {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return append([]Diagnostic(nil), c.diags[normPath(path)]...)
+	return slices.Clone(c.diags[normPath(path)])
 }
 
 // Published reports whether the server has published diagnostics for path.

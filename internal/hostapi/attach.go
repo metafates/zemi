@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -239,7 +240,7 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 			t := time.Now()
 			_ = os.Chtimes(target, t, t) // attaching it again keeps it alive
 			return name, nil
-		case os.IsNotExist(err):
+		case errors.Is(err, fs.ErrNotExist):
 			return name, os.WriteFile(target, data, 0o600)
 		case err != nil:
 			return "", err

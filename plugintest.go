@@ -100,7 +100,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		bctx, cancel := context.WithTimeout(ctx, caseTimeout)
 		defer cancel()
 		err := h.RT.Boot(bctx, bootSteps(h, mainCommands(idle, idle), nil, h.PluginsStep(), []lua.BootStep{pt.Step()}, false))
-		if step, ok := errors.AsType[*lua.StepError](err); ok && bctx.Err() == context.DeadlineExceeded {
+		if step, ok := errors.AsType[*lua.StepError](err); ok && errors.Is(bctx.Err(), context.DeadlineExceeded) {
 			// Lua names where the deadline stopped it
 			step.Err = errors.New(strings.Replace(step.Err.Error(), bctx.Err().Error(), "timed out after "+caseTimeout.String(), 1))
 		}
