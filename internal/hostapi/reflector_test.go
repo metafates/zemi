@@ -157,6 +157,17 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 	}
 }
 
+// addSession stores another session with material, not the live one.
+func addSession(t *testing.T, h *Host) string {
+	t.Helper()
+	sid := store.ShortID()
+	if err := h.DB.CreateSession(sid, "", "test", ""); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	seedTranscript(t, h, sid)
+	return sid
+}
+
 // addText stores a text message the way persistMessage does.
 func addText(t *testing.T, h *Host, sid, role, text string) {
 	t.Helper()
@@ -583,7 +594,7 @@ func TestReflectTimeout(t *testing.T) {
 // reflectNow is reflectIfDue run inline: it reports whether a run
 // happened.
 func reflectNow(h *Host, sid string) bool {
-	claim := h.claimReflect(sid, h.reflectDue(sid))
+	claim := h.claimReflect(sid, h.reflectPending(sid))
 	return claim != "" && h.reflectClaimed(sid, claim)
 }
 
@@ -604,8 +615,9 @@ func setSeen(t *testing.T, h *Host, sid string) {
 
 // TestReflectTrigger pins when a session is reflected: the delta since the
 // seen count needs two user messages and a tool call or one failed tool
-// call, the startup sweep takes only idle sessions, a claim runs once
-// across windows and runs, and a failed delta is given up on.
+// call, the startup sweep takes only idle sessions and reflects one of them,
+// a close skips a session still at the count the sweep listed, a claim runs
+// once across windows and runs, and a failed delta is given up on.
 func TestReflectTrigger(t *testing.T) {
 	exchange := func(t *testing.T, h *Host, sid string) {
 		addText(t, h, sid, "user", "hi")
@@ -676,10 +688,54 @@ func TestReflectTrigger(t *testing.T) {
 		{name: "sweep runs an idle due session", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			h.reflectSweep(time.Now().Add(time.Minute))
 		}, calls: 1},
+		{name: "one startup sweep reflects one session per process", seed: func(t *testing.T, h *Host, sid string) {
+			seedTranscript(t, h, sid)
+			setSeen(t, h, sid) // the other two are what the sweep has to choose between
+			addSession(t, h)
+			addSession(t, h)
+		}, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectSweep(time.Now().Add(time.Minute))
+		}, calls: 1},
+		{name: "a close spends no call on a session the sweep listed unchanged", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			// listed, but skipped as touched a minute ago: the sweep read its count
+			h.reflectSweep(time.Now().Add(-time.Minute))
+			if err := h.NewSession(); err != nil {
+				t.Fatal(err)
+			}
+			if h.reflectPending(sid) != 0 {
+				t.Error("the close would spend a second call on rows the sweep judged")
+			}
+		}, due: true},
+		{name: "a close reflects a session that grew since the sweep", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectSweep(time.Now().Add(-time.Minute))
+			twoUsers(t, h, sid)
+			addTool(t, h, sid, true)
+			h.reflectIfDue(sid)
+			waitFor(t, func() error {
+				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+					return errors.New("still reflecting")
+				}
+				return nil
+			})
+		}, calls: 1},
+		{name: "a session the sweep never listed reflects on close", seed: func(t *testing.T, h *Host, sid string) {
+			seedTranscript(t, h, sid)
+			setSeen(t, h, sid)
+		}, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.reflectSweep(time.Now().Add(-time.Minute))
+			h.reflectIfDue(addSession(t, h))
+			waitFor(t, func() error {
+				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+					return errors.New("still reflecting")
+				}
+				return nil
+			})
+		}, calls: 1},
 		{name: "an idle live session reflects once, and its close not again", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			h.ReflectLive()
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); h.reflectDue(sid) != 0 || label != "" {
+				due, _ := h.reflectDue(sid)
+				if label, _, _ := h.BusyNow(); due != 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -696,7 +752,10 @@ func TestReflectTrigger(t *testing.T) {
 		}, calls: 1},
 		{name: "two provider errors set seen", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			m.err = errors.New("boom")
-			if !reflectNow(h, sid) || h.reflectDue(sid) == 0 {
+			if !reflectNow(h, sid) {
+				t.Fatal("the first failed run did not happen")
+			}
+			if due, _ := h.reflectDue(sid); due == 0 {
 				t.Fatal("the first failure must leave the delta due")
 			}
 			reflectNow(h, sid)
@@ -752,13 +811,13 @@ func TestReflectTrigger(t *testing.T) {
 		{name: "a fork reflects only what it adds", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			setSeen(t, h, sid)
 			fork, err := h.ForkSession()
-			if err != nil || h.reflectDue(fork) != 0 {
-				t.Fatalf("fork %v due %d", err, h.reflectDue(fork))
+			if due, _ := h.reflectDue(fork); err != nil || due != 0 {
+				t.Fatalf("fork %v due %d", err, due)
 			}
 			addText(t, h, fork, "user", "and now")
 			addText(t, h, fork, "user", "this too")
 			addTool(t, h, fork, true)
-			if h.reflectDue(fork) == 0 {
+			if due, _ := h.reflectDue(fork); due == 0 {
 				t.Fatal("what the fork added is not due")
 			}
 		}},
@@ -793,7 +852,8 @@ func TestReflectTrigger(t *testing.T) {
 			if c.act != nil {
 				c.act(t, h, sid, m)
 			}
-			if due := h.reflectDue(sid) != 0; due != c.due {
+			due, _ := h.reflectDue(sid)
+			if (due != 0) != c.due {
 				t.Errorf("due = %v, want %v", due, c.due)
 			}
 			if m.calls.Load() != c.calls {

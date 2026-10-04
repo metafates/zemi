@@ -2800,9 +2800,14 @@ Triggered on `session.close` (`/new`, `/resume`), once an open zemi's session
 has had no turn for ten minutes (the same idle the sweep waits for, so the
 close finds the delta seen), and by a startup sweep
 (once per process, not on a reload) over the newest sessions nothing has
-touched for ten minutes, at most three, so quitting never waits on a model
+touched for ten minutes, one model call, so quitting never waits on a model
 call and a session a quit, a crash or a `zemi run` left behind is still read;
-`/reflect` runs it by hand. It reads the delta since the seen count (kv
+`/reflect` runs it by hand. The sweep records every session it listed with
+the message count it held then, and a close skips a session still at that
+count: one process reads a session's rows once, so a sweep plus a `/resume`
+and a `/new` that added nothing cost one round rather than two, while a
+session that grew still reflects at its close.
+It reads the delta since the seen count (kv
 `reflector.seen.<sid>`, clamped when a rewind cuts below it, a fork starting
 past its copied history), and only when that delta holds two user messages
 (compaction summaries do not count) and a tool call, or one failed tool

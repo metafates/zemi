@@ -78,8 +78,12 @@ const (
 	// startup sweep or an open zemi reflects it: a shorter pause is someone
 	// reading, and each run pays the prompt's fixed overhead again.
 	ReflectIdle = 10 * time.Minute
-	// reflectSweepMax bounds the model calls one startup makes.
-	reflectSweepMax = 3
+	// reflectSweepMax bounds the model calls one process's startup makes.
+	// NOTE: one, since the sweep records every session it listed and a
+	// session that grew is reflected at its close: a backlog a crash or a
+	// `zemi run` left drains one session per process, deferred, never lost,
+	// since the next sweep still sees it.
+	reflectSweepMax = 1
 	// reflectTries is how many failed runs a delta gets before it is marked
 	// seen, so a provider that refuses it does not cost a call at every close.
 	// NOTE: counted per session, not per delta: a delta that grows between
@@ -89,11 +93,24 @@ const (
 
 // reflectIfDue reflects a closed or idle session when it has messages the
 // reflector has not seen. The cross-process claim makes two windows on the
-// same repository reflect those messages once between them, not once each.
+// same repository reflect those messages once between them, not once each,
+// and this process's startup sweep keeps it to one round over the rows it
+// already listed.
 func (h *Host) reflectIfDue(sid string) {
-	if claim := h.claimReflect(sid, h.reflectDue(sid)); claim != "" {
+	if claim := h.claimReflect(sid, h.reflectPending(sid)); claim != "" {
 		h.GoSafe("reflector", func() { h.reflectClaimed(sid, claim) })
 	}
+}
+
+// reflectPending is what reflectIfDue claims on: a session's message count
+// when its delta is worth a call, 0 when it is not or when this process's
+// startup sweep has already listed that very count.
+func (h *Host) reflectPending(sid string) int {
+	due, count := h.reflectDue(sid)
+	if h.sweptUnchanged(sid, count) {
+		return 0
+	}
+	return due
 }
 
 // ReflectLive reflects the live session; the TUI calls it once the session
@@ -101,12 +118,14 @@ func (h *Host) reflectIfDue(sid string) {
 func (h *Host) ReflectLive() { h.GoSafe("reflector", func() { h.reflectIfDue(h.AgentSessionID()) }) }
 
 // ReflectSweep runs at startup, in the background so quitting never waits
-// on a model call (DESIGN §10.3): the newest due sessions that no window
-// has touched for ReflectIdle are reflected in turn, which covers what a
-// quit, a crash or a zemi run left unreflected.
+// on a model call (DESIGN §10.3): the newest due session no window has
+// touched for ReflectIdle is reflected, which covers what a quit, a crash
+// or a zemi run left unreflected, and every session the sweep listed is
+// recorded, so this process's closes do not read those rows again.
 func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-ReflectIdle)) }
 
-// reflectSweep reflects the due sessions quiet since before idle.
+// reflectSweep reflects the due sessions quiet since before idle and
+// records the count each listed session held, the ones it skips included.
 func (h *Host) reflectSweep(idle time.Time) {
 	if h.DB == nil {
 		return
@@ -117,16 +136,35 @@ func (h *Host) reflectSweep(idle time.Time) {
 	}
 	runs := 0
 	for _, s := range list {
-		if runs == reflectSweepMax {
-			return
-		}
-		if s.UpdatedAt > idle.UnixMilli() {
+		due, count := h.reflectDue(s.ID)
+		h.markSwept(s.ID, count)
+		if runs == reflectSweepMax || s.UpdatedAt > idle.UnixMilli() {
 			continue
 		}
-		if claim := h.claimReflect(s.ID, h.reflectDue(s.ID)); claim != "" && h.reflectClaimed(s.ID, claim) {
+		if claim := h.claimReflect(s.ID, due); claim != "" && h.reflectClaimed(s.ID, claim) {
 			runs++
 		}
 	}
+}
+
+// markSwept remembers what the startup sweep saw.
+func (h *Host) markSwept(sid string, count int) {
+	h.sweptMu.Lock()
+	defer h.sweptMu.Unlock()
+	if h.swept == nil {
+		h.swept = map[string]int{}
+	}
+	h.swept[sid] = count
+}
+
+// sweptUnchanged reports whether this process's startup sweep listed sid
+// while it held this count: those rows were judged, so a close of it now
+// would spend the sitting's second round on what the sweep already read.
+func (h *Host) sweptUnchanged(sid string, count int) bool {
+	h.sweptMu.Lock()
+	defer h.sweptMu.Unlock()
+	swept, listed := h.swept[sid]
+	return listed && swept == count
 }
 
 // reflectDelta returns a session's messages, how many of them the
@@ -151,23 +189,24 @@ func (h *Host) reflectDelta(sid string) (msgs []*store.Message, seen int, after 
 	return msgs, seen, after, nil
 }
 
-// reflectDue returns a session's message count when what came after the
-// seen count is worth a model call, 0 otherwise: two user messages and a
-// tool call, or one failed tool call. One exchange that went fine teaches
-// nothing, and a compaction summary is not the user speaking.
-func (h *Host) reflectDue(sid string) int {
+// reflectDue returns whether a session's delta is worth a model call (two
+// user messages and a tool call, or one failed tool call) and its message
+// count either way: one exchange that went fine teaches nothing and a
+// compaction summary is not the user speaking, and the sweep records the
+// count of every session it asks about.
+func (h *Host) reflectDue(sid string) (due, count int) {
 	if h.DB == nil {
-		return 0
+		return 0, 0
 	}
 	// the sweep asks about many sessions and nearly all are seen: count
 	// before loading a transcript over the store's one connection
 	count, err := h.DB.MessageCount(sid)
 	if seen, _ := h.DB.GetKV(reflectSeenKey(sid)); err != nil || seen == strconv.Itoa(count) {
-		return 0
+		return 0, count
 	}
 	msgs, seen, after, err := h.reflectDelta(sid)
 	if err != nil || seen == len(msgs) {
-		return 0
+		return 0, count
 	}
 	users := 0
 	for _, m := range msgs[seen:] {
@@ -181,9 +220,9 @@ func (h *Host) reflectDue(sid string) int {
 		calls, failed = calls+s.Calls, failed+s.Failed
 	}
 	if failed > 0 || (users >= 2 && calls > 0) {
-		return len(msgs)
+		return len(msgs), count
 	}
-	return 0
+	return 0, count
 }
 
 // claimReflect atomically claims the right to reflect sid up to its n-th

@@ -428,6 +428,10 @@ type Host struct {
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3)
 	reflectMu sync.Mutex
+	// sweptMu guards swept: the message count each session held when this
+	// process's startup sweep listed it, so one sitting reads a session once.
+	sweptMu sync.Mutex
+	swept   map[string]int
 	// cutMu orders a rewind's cut against a reflector run's writes, so a run
 	// never stores what it read from rows a rewind removed.
 	cutMu    sync.Mutex

@@ -298,10 +298,13 @@ is refused with its path, to delete (the owner is the only user).
   (`ReflectSweep`, once per process, not on a reload), never on quit. `reflectDue` reads the
   delta past kv `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the
   copied history) and holds a floor, since one exchange that went fine would cost a model call
-  at every launch; `/reflect` skips it. `claimReflect` takes an atomic kv claim per session
-  (`reflector.claim.<sid>`, leased), so two windows never reflect it at once. A reply that is
-  not the JSON document asked for marks the delta seen and is the `/health` reflector row's
-  news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
+  at every launch; `/reflect` skips it. The sweep records every session it listed with the count
+  it held (`Host.swept`), and `reflectPending` skips a session still at that count, so one
+  process reflects a session's rows once; the sweep itself runs at most one call
+  (`reflectSweepMax`), a backlog a crash or a `zemi run` left draining one per process.
+  `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so two
+  windows never reflect it at once. A reply that is not the JSON document asked for marks the
+  delta seen and is the `/health` reflector row's news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
   and `gateMemory` like the `memory` tool's, and an entry with empty text and `replaces`
   queues a forget proposal, never auto-applied. There is no config-patch pipeline, the agent
   edits config files directly. `digestFor()` renders every live memory, newest first per
