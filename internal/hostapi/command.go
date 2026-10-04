@@ -142,10 +142,8 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		if o := h.RT.CurrentOrigin(L); cmd.Origin.Rank() > o.Rank() {
 			return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run %s command /%s", o, cmd.Origin, name))
 		}
-		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
-		L.Push(cmd.Fn)
-		L.Push(lua.FromGo(L, commandArgs(args)))
-		return luaResult(L, L.PCall(1, 0, nil))
+		_, err := h.callFn(L, luaCaller{gen: cmd.Gen, origin: cmd.Origin, path: cmd.Path}, cmd.Fn, 0, lua.FromGo(L, commandArgs(args)))
+		return luaResult(L, err)
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
@@ -182,7 +180,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			if h.currentGen() != cmd.Gen {
 				return nil, lua.ErrReloaded
 			}
-			items, err := h.callCompleter(L, cmd.Complete, cmd.Origin, cmd.Path, lead, line)
+			items, err := h.callCompleter(L, cmd.Complete, luaCaller{gen: cmd.Gen, origin: cmd.Origin, path: cmd.Path}, lead, line)
 			return []any{items}, err
 		})
 		if err != nil {

@@ -295,7 +295,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 			if s.gen != h.currentGen() || len(out) >= maxCompletions {
 				continue
 			}
-			items, err := h.callCompleter(L, s.fn, s.origin, s.path, lead, line)
+			items, err := h.callCompleter(L, s.fn, luaCaller{gen: s.gen, origin: s.origin, path: s.path}, lead, line)
 			if err != nil {
 				h.Log.Error("completion source failed", "origin", "ui", "id", s.id, "error", err)
 				h.RecordError("completion "+s.id, err.Error())
@@ -309,17 +309,12 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 }
 
 // callCompleter runs a Lua completer fn(lead, line) under its origin.
-func (h *Host) callCompleter(L *glua.LState, fn *glua.LFunction, origin lua.Origin, path, lead, line string) ([]CompletionItem, error) {
-	defer h.RT.PushFrame(L, origin, path)()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(fn)
-	L.Push(glua.LString(lead))
-	L.Push(glua.LString(line))
-	if err := L.PCall(2, 1, nil); err != nil {
+func (h *Host) callCompleter(L *glua.LState, fn *glua.LFunction, at luaCaller, lead, line string) ([]CompletionItem, error) {
+	rets, err := h.callFn(L, at, fn, 1, glua.LString(lead), glua.LString(line))
+	if err != nil {
 		return nil, err
 	}
-	v, err := lua.ToGo(L.Get(-1))
+	v, err := lua.ToGo(rets[0])
 	if err != nil {
 		return nil, err
 	}

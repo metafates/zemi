@@ -122,16 +122,12 @@ func (h *Host) inlineHealthRows(L *glua.LState) []HealthRow {
 		}
 		row := HealthRow{Level: HealthOK, Name: c.name}
 		func() {
-			defer h.RT.PushFrame(L, c.origin, c.path)()
-			base := L.GetTop()
-			L.Push(c.fn)
-			if err := L.PCall(0, 1, nil); err != nil {
-				L.SetTop(base)
+			rets, err := h.callFn(L, luaCaller{gen: c.gen, origin: c.origin, path: c.path}, c.fn, 1)
+			if err != nil {
 				row.Level, row.Detail = HealthError, sanitize.String(err.Error())
 				return
 			}
-			v, err := lua.ToGo(L.Get(-1))
-			L.SetTop(base)
+			v, err := lua.ToGo(rets[0])
 			if err == nil {
 				row.Level, row.Detail, err = healthResult(v)
 			}

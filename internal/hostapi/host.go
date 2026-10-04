@@ -1145,22 +1145,18 @@ func eventTable(name, from string, payload map[string]any) map[string]any {
 // callEvent runs one handler fn(ev) under its origin with the deadline armed
 // at start and returns its first result. A handler that ran past the
 // deadline reports timedOut and no result, even if it returned.
-func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (ret glua.LValue, timedOut bool, err error) {
+func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (glua.LValue, bool, error) {
 	if hd.Once && !h.Events.drop(hd) {
 		return glua.LNil, false, nil
 	}
-	defer h.RT.PushFrame(L, hd.Origin, hd.Path)()
 	handlerCtx, restore := setHandlerContext(L)
 	defer restore()
-	base := L.GetTop()
-	defer L.SetTop(base)
-	L.Push(hd.Fn)
-	L.Push(lua.FromGo(L, ev))
-	err = L.PCall(1, 1, nil)
-	if timedOut = handlerCtx.Err() != nil; timedOut || err != nil {
+	rets, err := h.callFn(L, luaCaller{gen: h.currentGen(), origin: hd.Origin, path: hd.Path}, hd.Fn, 1, lua.FromGo(L, ev))
+	timedOut := handlerCtx.Err() != nil
+	if timedOut || err != nil {
 		return glua.LNil, timedOut, err
 	}
-	return L.Get(-1), false, nil
+	return rets[0], false, nil
 }
 
 func (h *Host) logHandlerError(hd *EventHandler, err error) {
@@ -1254,21 +1250,16 @@ func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, s
 		// trust prompt)
 		h.rendering.Store(true)
 		defer h.rendering.Store(false)
-		defer h.RT.PushFrame(L, w.Origin, w.Path)()
-		base := L.GetTop()
-		L.Push(w.Render)
 		ctxTb, done := h.widgetCtxTable(L, width, height, state)
 		defer done()
 		if over != nil {
 			over.ForEach(ctxTb.RawSet)
 		}
-		L.Push(ctxTb)
-		if err := L.PCall(1, 2, nil); err != nil {
-			L.SetTop(base)
+		rets, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.Render, 2, ctxTb)
+		if err != nil {
 			return nil, err
 		}
-		ret, more := L.Get(-2), L.Get(-1) == glua.LTrue
-		L.SetTop(base)
+		ret, more := rets[0], rets[1] == glua.LTrue
 		if lines, ok := w.tableSegments(ret); ok {
 			return []any{lines, more}, nil
 		}
@@ -1402,12 +1393,7 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 		if w == nil || w.OnClick == nil || w.Gen != h.currentGen() {
 			return nil, lua.ErrReloaded
 		}
-		defer h.RT.PushFrame(L, w.Origin, w.Path)()
-		base := L.GetTop()
-		L.Push(w.OnClick)
-		L.Push(lua.FromGo(L, ev))
-		err := L.PCall(1, 0, nil)
-		L.SetTop(base)
+		_, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.OnClick, 0, lua.FromGo(L, ev))
 		return nil, err
 	})
 	return err

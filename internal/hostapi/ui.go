@@ -696,12 +696,9 @@ func overlayItems(v any) ([]any, error) {
 func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []any) [][]Segment {
 	out := make([][]Segment, len(items))
 	for i, item := range items {
-		base := L.GetTop()
-		L.Push(fn)
-		L.Push(lua.FromGo(L, item))
-		err := L.PCall(1, 1, nil)
+		rets, err := h.callFn(L, h.callerOf(L), fn, 1, lua.FromGo(L, item))
 		if err == nil {
-			switch v := L.Get(-1).(type) {
+			switch v := rets[0].(type) {
 			case *glua.LTable:
 				var line any
 				if line, err = lua.ToGo(v); err == nil {
@@ -719,7 +716,6 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 			h.Log.Debug("overlay render_item failed", "origin", "ui", "id", id, "error", err)
 			out[i] = []Segment{{Text: fmt.Sprint(item)}}
 		}
-		L.SetTop(base)
 	}
 	return out
 }
