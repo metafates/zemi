@@ -37,15 +37,16 @@ end
 
 // TestViewedRunIsTheLiveOne: while an agent run is shown the ctx reports that
 // run's own state, not the session's, so the chat draws its last activity run
-// live and the working rule clocks it; the session's stream, queue and todos
-// stay out of it.
+// live, its thinking tail included, and the working rule clocks it; the
+// session's stream, queue and todos stay out of it.
 func TestViewedRunIsTheLiveOne(t *testing.T) {
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
-	const src = `string.format("%s|%s|%d|%d|%d|%s", ctx.agent_active and "active" or "idle",
+	const src = `string.format("%s|%s|%d|%d|%d|%s|%s|%s", ctx.agent_active and "active" or "idle",
 	  (ctx.agent or {}).text or "", #((ctx.agent or {}).tools or {}),
 	  #((ctx.agent or {}).steering or {}), #(ctx.todos or {}),
-	  ((ctx.agent or {}).elapsed or 0) > 60 and "slow" or "")`
+	  ((ctx.agent or {}).elapsed or 0) > 60 and "slow" or "",
+	  (ctx.agent or {}).reasoning or "", (ctx.agent or {}).thinking and "thinking" or "")`
 	if err := h.RT.ExecuteChunk(context.Background(),
 		`zemi.ui.widget.add({ id = "probe", region = "statusline.right", render = function(ctx) return { { { text = `+src+` } } } end })`,
 		"probe.lua", lua.OriginUser); err != nil {
@@ -59,29 +60,34 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 		}
 		return SegsText(lines[0])
 	}
-	// the session's own turn, its queue and its todos, which a view never reports
+	// the session's own turn, its thinking, its queue and its todos, which a
+	// view never reports
 	h.agents.mu.Lock()
 	h.agents.textBuf, h.agents.steering = "session reply", []string{"hold on"}
+	h.agents.reasonBuf, h.agents.thinking = "session thought", true
 	h.agents.tools = []StreamTool{{Name: "read", Status: CallRun}}
 	h.agents.mu.Unlock()
 	h.todoMu.Lock()
 	h.todoSID, h.todos = h.AgentSessionID(), []store.Todo{{Content: "a session todo", Status: "pending"}}
 	h.todoMu.Unlock()
-	const session = "idle|session reply|1|1|1|"
+	const session = "idle|session reply|1|1|1||session thought|thinking"
 	if got := probe(); got != session {
 		t.Fatalf("the session's ctx reads %q, want %q", got, session)
 	}
-	// a run of this process, started a minute and a half ago
+	// a run of this process, started a minute and a half ago, thinking now
 	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "d", "look", true)
 	run.started = time.Now().Add(-90 * time.Second)
+	run.mu.Lock()
+	run.reason, run.thinkAt = "run thought", time.Now()
+	run.mu.Unlock()
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.ViewAgent(run.id); err != nil {
 		t.Fatal(err)
 	}
-	if got := probe(); got != "active||0|0|0|slow" {
-		t.Fatalf("the viewed running run reads %q, want its own active state and clock", got)
+	if got := probe(); got != "active||0|0|0|slow|run thought|thinking" {
+		t.Fatalf("the viewed running run reads %q, want its own active state, clock and thinking", got)
 	}
 	if err := h.ViewAgent(""); err != nil {
 		t.Fatal(err)

@@ -165,7 +165,7 @@ func TestBackgroundAgent(t *testing.T) {
 			if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
 				t.Fatalf("report head drawn as a user row: %+v", m)
 			}
-			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(explore) finished") {
+			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(slow @main.go search) finished") {
 				n++
 			}
 		}
@@ -212,8 +212,8 @@ func TestReportHeadsNameTheLine(t *testing.T) {
 		want       []string
 	}{
 		{
-			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="d"`, "found it"),
-			want: []string{"Background agent r1 (explore) finished"},
+			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found it"),
+			want: []string{"Background agent r1 (look around) finished"},
 		},
 		// an element quoted in a body is still the user's text: only one
 		// right behind the marker is a report
@@ -244,13 +244,13 @@ not a report
 // while the markup stays queued for the model.
 func TestMixedMessageRows(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	markup := agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="d"`, "found")
+	markup := agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found")
 	h.agents.mu.Lock()
 	h.agents.active = true
 	h.agents.steering = []string{"look at this" + markup}
 	h.agents.mu.Unlock()
 
-	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (explore) finished", Notice: true}}
+	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (look around) finished", Notice: true}}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("rows = %+v, want %+v", st.Steering, want)
 	}
@@ -262,6 +262,46 @@ func TestMixedMessageRows(t *testing.T) {
 	h.agents.mu.Unlock()
 	if len(left) != 1 || !strings.Contains(left[0], "<agent-report ") {
 		t.Fatalf("queue after taking it back = %q", left)
+	}
+}
+
+// TestViewedRunTakesItsQueueBack: up-arrow while the chat shows a run hands
+// back what waits for that run, leaving the session's own queue alone, and a
+// report riding it stays queued for the model.
+func TestViewedRunTakesItsQueueBack(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "look around", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	markup := agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found")
+	h.agents.mu.Lock()
+	h.agents.steering = []string{"the session's own"}
+	h.agents.mu.Unlock()
+	if err := h.MessageAgent(run.id, "look at this"+markup); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "look at this" {
+		t.Fatalf("handed back = %q", q)
+	}
+	if q := run.queued(); len(q) != 1 || !strings.Contains(q[0], "<agent-report ") {
+		t.Fatalf("the run's queue after taking it back = %q", q)
+	}
+	h.agents.mu.Lock()
+	left := slices.Clone(h.agents.steering)
+	h.agents.mu.Unlock()
+	if len(left) != 1 || left[0] != "the session's own" {
+		t.Fatalf("the session's queue = %q", left)
+	}
+	if err := h.ViewAgent(""); err != nil {
+		t.Fatal(err)
+	}
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "the session's own" {
+		t.Fatalf("the session's queue after leaving the view = %q", q)
 	}
 }
 
@@ -419,7 +459,8 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := fmt.Sprint(h.agentRunItems())
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look · from Other work") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
+	// the row is named by the run's label and its desc keeps the definition
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
@@ -512,7 +553,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	if err := h.ResumeSession(parent); err != nil {
 		t.Fatal(err)
 	}
-	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished", "") {
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished", "left behind") {
 		t.Fatalf("resume lacks the report: %+v", tr)
 	}
 	if err := h.AgentSend("next"); err != nil {

@@ -921,7 +921,7 @@ func TestGoldenAgentStream(t *testing.T) {
 	if err := host.AgentSend("also check go.mod"); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.AgentSend(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>"); err != nil {
+	if err := host.AgentSend(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"look around\">\nfound it\n</agent-report>\n</attached-files>"); err != nil {
 		t.Fatal(err)
 	}
 	// A stream event lands through the hook path, bumping the frame.
@@ -1669,7 +1669,7 @@ func TestWorkingRowAgentView(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	host.DB = db
 	id := store.ShortID()
-	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+	if err := db.CreateSession(id, store.ShortID(), "explore the repo", "explore"); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.ViewAgent(id); err != nil {
@@ -1684,10 +1684,10 @@ func TestWorkingRowAgentView(t *testing.T) {
 		}
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
-	// centred: the run's name on the rule, a cell of rule either side of it and
-	// the block at the rule's end
+	// centred: the run's own name on the rule, not the agent that ran it, a cell
+	// of rule either side of it and the block at the rule's end
 	centred := func(r string) bool {
-		left, right, ok := strings.Cut(r, "viewing explore")
+		left, right, ok := strings.Cut(r, "viewing explore the repo")
 		rule, tail, found := strings.Cut(right, " esc back ")
 		if !ok || !found || strings.Trim(rule, "─ ") != "" || tail != "" {
 			return false

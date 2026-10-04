@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,5 +119,52 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 				t.Fatalf("the joined chunk is not drawn:\n%s", got)
 			}
 		})
+	}
+}
+
+// TestViewedRunThinksLive: a run the chat shows streams its thinking the way
+// the session's turn does - the tail under a live thinking row - and the
+// thought settles as one row where the call that ends it lands.
+func TestViewedRunThinksLive(t *testing.T) {
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{})
+	def := AgentDef{Name: "explore"}
+	run, _ := h.newRun(context.Background(), def, "look around", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	hk := &subagentHooks{h: h, def: def, run: run}
+	hk.ReasoningDelta("pondering the")
+	hk.ReasoningDelta(" cause")
+	got := widgetText(t, h, "chat", UIState{})
+	if !strings.Contains(got, "⠋ thinking") || !strings.Contains(got, "pondering the cause") {
+		t.Fatalf("the run's live thinking tail is not drawn:\n%s", got)
+	}
+	if strings.Contains(got, "✻ thought") {
+		t.Fatalf("the run's thought settled before the call that ends it:\n%s", got)
+	}
+	hk.ToolCallStart("c1", "read", `{"path":"a.go"}`)
+	if rows := run.transcript(); len(rows) != 3 || rows[1].Kind != RowReasoning || rows[1].Text != "pondering the cause" || rows[2].Kind != RowTool {
+		t.Fatalf("rows = %+v, want one thought above the call", run.transcript())
+	}
+	// a late chunk joins the thought the call left above, as the session's does
+	hk.ReasoningDelta(" I see")
+	if rows := run.transcript(); len(rows) != 3 || rows[1].Text != "pondering the cause I see" {
+		t.Fatalf("rows = %+v, want the late chunk joined", run.transcript())
+	}
+	hk.ToolCallEnd("c1", "read", true, "package a", "")
+	hk.TextDelta("it reads a.go")
+	run.finish(h, nil)
+	rows := run.transcript()
+	if len(rows) != 4 || rows[2].Kind != RowTool || rows[3].Text != "it reads a.go" {
+		t.Fatalf("rows = %+v, want the reply under the call", run.transcript())
+	}
+	// settled, the run folds into its digest: its one Thought row is behind it
+	// rather than a live tail
+	if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "· 1 file") || strings.Contains(got, "thinking") {
+		t.Fatalf("the settled run does not fold into its digest:\n%s", got)
 	}
 }

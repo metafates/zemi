@@ -729,8 +729,8 @@ function zemi.event.stats() end
 ---@field active boolean True while the turn runs; while ctx.view is set, while that run does.
 ---@field model string
 ---@field text string Reply text so far.
----@field reasoning string Thinking text so far.
----@field thinking boolean A reasoning block is open: the model is thinking right now, and the text above is that of the open block.
+---@field reasoning string Thinking text so far; while ctx.view is set, the shown run's open block.
+---@field thinking boolean A reasoning block is open: the model is thinking right now, and the text above is that of the open block; while ctx.view is set, the shown run's.
 ---@field tools zemi.ToolCall[]
 ---@field steering zemi.QueuedMessage[] Messages waiting for the turn's next step boundary, oldest first; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
@@ -865,7 +865,7 @@ function zemi.event.stats() end
 ---@field permission_mode_base string
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
----@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running.
+---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running, and `agent` is that run's name, the model's description or the definition's when it wrote none.
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.

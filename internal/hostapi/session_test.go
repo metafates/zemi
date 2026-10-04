@@ -44,7 +44,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 			return append(step, toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
 		}}, nil
 	}
-	if err := h.AgentSend("go" + agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"); err != nil {
+	if err := h.AgentSend("go" + agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"look around\">\nr\n</agent-report>\n</attached-files>"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
@@ -57,7 +57,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 	}
 	live := shape(h.Session().Transcript)
 	want := `user/   "go"
-assistant/notice   "Background agent a1 (explore) finished"
+assistant/notice   "Background agent a1 (look around) finished"
 assistant/reasoning   "look first"
 assistant/   "I will look first."
 assistant/tool glob err "*.go"

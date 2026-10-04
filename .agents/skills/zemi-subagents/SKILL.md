@@ -52,7 +52,10 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
-  the session's, and a submit while it runs goes to it through `MessageAgent`. A fork is an
+  the session's, and a submit while it runs goes to it through `MessageAgent`, with up-arrow on
+  an empty composer taking that run's waiting queue back (`AgentTakeQueue`, the session's
+  untouched). Its thinking buffers as the session's does and settles as one Thought row where
+  the call or the reply that ends it lands (`flush`). A fork is an
   `agentRun` too (`profile` `fork`), and its `forkBase` is where its own messages start in the
   history: the conversation it opened with is not its report, and `send_to` refuses a fork this
   process forgot, whose rows hold its own work alone. A run's queue is
@@ -70,7 +73,10 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   blank row between them and the older ones of a long burst behind one click-to-open row, so
   a fleet of runs reporting at once cannot take the transcript over. A report a
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
-  (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
+  (`notifyReport`). A run's notice and its `/agents` row are named by the run's label
+  (`agentRun.label`: the model's description, or the definition's name when it wrote none),
+  the row's desc keeping the definition. `/agents` lists the live session's runs and,
+  under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
   `fromSession`): they block `/rewind`, so their stop must be reachable. Every run, agent and job
   row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`,

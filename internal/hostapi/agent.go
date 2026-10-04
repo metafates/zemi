@@ -1035,26 +1035,40 @@ func (h *Host) deliverSteering() []string {
 // AgentTakeQueue removes and returns the messages still waiting for a step
 // boundary, so the UI can hand them back to the composer. What is the model's
 // (a report, an update, a plugin send) stays queued for the next turn, and a
-// message carrying both keeps its markup and gives back the typed line.
+// message carrying both keeps its markup and gives back the typed line. While
+// a run is shown, its queue is the one waiting: the session's belongs to the
+// conversation the view is not showing.
 func (h *Host) AgentTakeQueue() []string {
-	ag := h.agents
-	ag.mu.Lock()
-	var q, waiting []string
-	for _, m := range ag.steering {
-		head, tail, _ := strings.Cut(m, agent.AttachMarker)
-		if len(reportHeads(tail)) > 0 {
-			waiting = append(waiting, agent.AttachMarker+tail)
-		}
-		if shown := shownText(head); shown != "" {
-			q = append(q, shown)
-		}
+	var q []string
+	if run := h.viewedRun(); run != nil {
+		run.mu.Lock()
+		q, run.queue = takeQueued(run.queue)
+		run.mu.Unlock()
+	} else {
+		ag := h.agents
+		ag.mu.Lock()
+		q, ag.steering = takeQueued(ag.steering)
+		ag.mu.Unlock()
 	}
-	ag.steering = waiting
-	ag.mu.Unlock()
 	if len(q) > 0 {
 		h.refresh()
 	}
 	return q
+}
+
+// takeQueued splits a queue into the messages the user typed, which go back to
+// the composer, and the model's own, which stay queued for it.
+func takeQueued(msgs []string) (taken, kept []string) {
+	for _, m := range msgs {
+		head, tail, _ := strings.Cut(m, agent.AttachMarker)
+		if len(reportHeads(tail)) > 0 {
+			kept = append(kept, agent.AttachMarker+tail)
+		}
+		if shown := shownText(head); shown != "" {
+			taken = append(taken, shown)
+		}
+	}
+	return taken, kept
 }
 
 // shownText is the user's own words ahead of agent.AttachMarker, "" when they

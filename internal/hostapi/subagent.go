@@ -693,16 +693,16 @@ func lastAssistantText(history []fantasy.Message) string {
 // progress lines, and adds its token usage to the session tally (not to the
 // context estimate).
 type subagentHooks struct {
-	h        *Host
-	def      AgentDef
-	run      *agentRun
-	modelID  string
-	progress func(string)
-	sid      string
-	ctx      context.Context // the run's: cancelled, a call cut off was stopped
-	stepText int             // len(run.text) when the step began, where a retry restarts
-	thinkAt  time.Time       // when the Thought row being streamed began, zero once it ended
-	base     int             // run.calls before this send: a continuation's row counts its own
+	h          *Host
+	def        AgentDef
+	run        *agentRun
+	modelID    string
+	progress   func(string)
+	sid        string
+	ctx        context.Context // the run's: cancelled, a call cut off was stopped
+	stepText   int             // len(run.text) when the step began, where a retry restarts
+	stepReason int             // len(run.reason) then, for the same retry
+	base       int             // run.calls before this send: a continuation's row counts its own
 }
 
 func (s *subagentHooks) report(line string) {
@@ -713,48 +713,61 @@ func (s *subagentHooks) report(line string) {
 
 func (s *subagentHooks) TextDelta(text string) {
 	s.run.mu.Lock()
-	s.endThinking()
+	s.run.endThinking()
 	s.run.text += text
 	s.run.mu.Unlock()
 	s.h.refreshViewed(s.run)
 }
 
-// ReasoningDelta keeps one collapsed Thought row per stretch of thinking,
-// under what streamed before it. A chunk after text with no call between
-// joins the row above, as the main agent's does, so the reply stays whole.
+// ReasoningDelta buffers a stretch of thinking: it settles as the one Thought
+// row above the call or the reply that ends it, so the chat streams the tail
+// of it the way the session's does, and a thought that ended never goes on
+// spinning over the calls that follow it.
 func (s *subagentHooks) ReasoningDelta(text string) {
 	run := s.run
 	run.mu.Lock()
-	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != RowReasoning {
-		run.flush()
+	if run.reason == "" {
+		// a late chunk joins the Thought row above it, as the session's does: a
+		// provider sends a thought's last token after the call that ends it
+		// started. A chunk over anything finished is a thought of its own, with
+		// what streamed before it settled first.
+		if !run.joinThought(text) {
+			run.flush()
+			run.beginThinking()
+			run.reason += text
+		}
+	} else {
+		run.reason += text
 	}
-	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != RowReasoning {
-		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning})
-		s.thinkAt = time.Now()
-	}
-	run.tr[len(run.tr)-1].Text += text
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
+}
+
+// joinThought appends a late reasoning chunk to the Thought row above it when
+// only calls of the step that have not finished lie between (run.mu held).
+func (run *agentRun) joinThought(text string) bool {
+	for i := len(run.tr) - 1; i >= 0; i-- {
+		m := &run.tr[i]
+		if m.Kind == RowReasoning {
+			m.Text += text
+			return true
+		}
+		if m.Kind != RowTool || (m.Status != CallRun && m.Status != CallWait) {
+			return false
+		}
+	}
+	return false
 }
 
 // a run's row carries the command, which only the finished input holds
 func (s *subagentHooks) ToolCallPending(string, string) {}
 func (s *subagentHooks) ToolInputDelta(string, string)  {}
 
-// endThinking times the Thought row the next text or call ends, as the
-// main agent's is timed (run.mu held).
-func (s *subagentHooks) endThinking() {
-	if n := len(s.run.tr); !s.thinkAt.IsZero() && n > 0 && s.run.tr[n-1].Kind == RowReasoning {
-		s.run.tr[n-1].Stat = &TurnStat{ThoughtMS: time.Since(s.thinkAt).Milliseconds()}
-	}
-	s.thinkAt = time.Time{}
-}
-
 func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	diff := inputDiff(name, input)
 	run := s.run
 	run.mu.Lock()
-	s.endThinking()
+	run.endThinking()
 	run.flush()
 	run.calls++
 	n := run.calls - s.base
@@ -799,13 +812,18 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) 
 
 func (s *subagentHooks) StepStart() {
 	s.run.mu.Lock()
-	s.stepText = len(s.run.text)
+	s.stepText, s.stepReason = len(s.run.text), len(s.run.reason)
 	s.run.mu.Unlock()
 }
 
 func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	s.run.mu.Lock()
 	s.run.text = s.run.text[:min(s.stepText, len(s.run.text))]
+	s.run.reason = s.run.reason[:min(s.stepReason, len(s.run.reason))]
+	if s.run.reason == "" {
+		// the failed attempt's open thought goes with its text
+		s.run.thinkAt = time.Time{}
+	}
 	s.run.mu.Unlock()
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, fmtDuration(delay)))
 }

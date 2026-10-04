@@ -1611,15 +1611,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	transcript := sess.Transcript
 	var view *glua.LTable
 	if run != nil {
-		status, _, took, _ := run.state()
+		status, rows, live := run.view(stream)
+		transcript, stream = rows, live
 		v := L.NewTable()
 		v.RawSetString("id", glua.LString(run.id))
-		v.RawSetString("agent", glua.LString(run.agent))
+		v.RawSetString("agent", glua.LString(sanitize.String(run.label())))
 		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
 		v.RawSetString("status", glua.LString(status))
-		stream.Active, stream.Elapsed = status == RunRunning, took
-		transcript = run.transcript()
-		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, queuedRows(run.queued())
 		view = v
 	}
 	tb = L.CreateTable(0, 33)

@@ -692,14 +692,14 @@ func TestSteeringQueue(t *testing.T) {
 	// a report's markup stays out of the composer and draws a notice row of its
 	// own; joining keeps every typed part ahead of the marker readers cut at
 	report := func(run string) string {
-		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"
+		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"look around\">\nr\n</agent-report>\n</attached-files>"
 	}
 	scope = claim()
 	send(report("x"), "d", report("y"))
 	want := []Queued{
-		{Text: "Background agent x (explore) finished", Notice: true},
+		{Text: "Background agent x (look around) finished", Notice: true},
 		{Text: "d"},
-		{Text: "Background agent y (explore) finished", Notice: true},
+		{Text: "Background agent y (look around) finished", Notice: true},
 	}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("queued rows = %+v, want %+v", st.Steering, want)
@@ -727,13 +727,13 @@ func TestSteeringQueue(t *testing.T) {
 	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope, nil)
-	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (explore) finished") {
+	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (find \"x\") finished") {
 		t.Fatalf("no waiting notice: %q", notes())
 	}
 	if err := h.closeSession(nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(notes(), "Background agent a1 (explore) finished: find \"x\"\nx is in y.go") {
+	if !strings.Contains(notes(), "Background agent a1 (find \"x\") finished: find \"x\"\nx is in y.go") {
 		t.Fatalf("closing dropped the report: %q", notes())
 	}
 
@@ -746,7 +746,7 @@ func TestSteeringQueue(t *testing.T) {
 func TestJoinedReportsDrawHeads(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	headless := func(run string) string {
-		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>"
+		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"look around\">\nfound it\n</agent-report>\n</attached-files>"
 	}
 	h.agents.mu.Lock()
 	scope := h.claim()
@@ -767,7 +767,7 @@ func TestJoinedReportsDrawHeads(t *testing.T) {
 		}
 		heads = append(heads, row.Text)
 	}
-	want := []string{"Background agent a2 (explore) finished", "Background agent a3 (explore) finished"}
+	want := []string{"Background agent a2 (look around) finished", "Background agent a3 (look around) finished"}
 	if !slices.Equal(heads, want) {
 		t.Fatalf("notice rows = %q, want %q", heads, want)
 	}
@@ -1846,6 +1846,27 @@ func TestRetryRestreamsStep(t *testing.T) {
 	main.Retrying(nil, 0)
 	if h.agents.thought != time.Second {
 		t.Errorf("the retry left thought at %v, want the step start's 1s", h.agents.thought)
+	}
+}
+
+// TestRunRetryDropsItsThought: the retry of a subagent's step drops the
+// thinking the failed attempt streamed, as it drops its text, so the thought
+// that settles is the retried step's own.
+func TestRunRetryDropsItsThought(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	hk := &subagentHooks{h: h, def: builtinAgents[0], run: run}
+	hk.StepStart()
+	hk.ReasoningDelta("half a thought")
+	hk.ReasoningDelta(" and the rest of it")
+	hk.Retrying(nil, 0)
+	hk.ReasoningDelta("the real one")
+	run.mu.Lock()
+	run.flush()
+	got := slices.Clone(run.tr[1:])
+	run.mu.Unlock()
+	if len(got) != 1 || got[0].Kind != RowReasoning || got[0].Text != "the real one" {
+		t.Fatalf("rows = %+v, want the retried step's thought alone", got)
 	}
 }
 

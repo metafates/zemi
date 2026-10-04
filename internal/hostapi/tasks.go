@@ -80,6 +80,9 @@ type agentRun struct {
 	cost      float64        // 0 when the model has no prices
 	tr        []ChatMessage  // the prompt, tool rows and replies so far
 	text      string         // reply text streamed since the last row
+	reason    string         // thinking streamed since the last row, drawn live until it settles
+	thinkAt   time.Time      // when the open reasoning block began, zero when none is
+	thought   time.Duration  // closed reasoning blocks since the last row
 	rows      map[string]int // tool call id -> tr index
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
@@ -343,17 +346,30 @@ func (run *agentRun) usage() (int64, float64) {
 func (run *agentRun) state() (status RunStatus, calls int, took time.Duration, sessionID string) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	took = time.Since(run.started)
+	return run.status, run.calls, run.took(), run.sessionID
+}
+
+// label names the run for the user: what the model said it does, or its
+// definition's name when it wrote none.
+func (run *agentRun) label() string { return cmp.Or(run.description, run.agent) }
+
+// took is how long the run has run: to now while it runs (run.mu held).
+func (run *agentRun) took() time.Duration {
 	if !run.finished.IsZero() {
-		took = run.finished.Sub(run.started)
+		return run.finished.Sub(run.started)
 	}
-	return run.status, run.calls, took, run.sessionID
+	return time.Since(run.started)
 }
 
 // transcript copies the rows, with the reply still streaming last.
 func (run *agentRun) transcript() []ChatMessage {
 	run.mu.Lock()
 	defer run.mu.Unlock()
+	return run.transcriptLocked()
+}
+
+// transcriptLocked is transcript with run.mu held.
+func (run *agentRun) transcriptLocked() []ChatMessage {
 	tr := slices.Clone(run.tr)
 	if strings.TrimSpace(run.text) != "" {
 		tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
@@ -361,12 +377,60 @@ func (run *agentRun) transcript() []ChatMessage {
 	return tr
 }
 
-// flush moves the streamed reply into a row (run.mu held).
+// view is what the chat draws while this run is shown: its transcript and the
+// live stream of its own turn, read under one lock. base is the session's
+// snapshot, for what belongs to the process rather than to a turn: the model,
+// the profile and the usage tally.
+func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, StreamSnapshot) {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	base.Active, base.Elapsed = run.status == RunRunning, run.took()
+	base.Reasoning, base.Thinking, base.Thought = run.reason, !run.thinkAt.IsZero(), run.thinkTime()
+	base.Steering = queuedRows(run.queue)
+	// the run's calls and its reply are rows of its transcript, and a run
+	// neither retries for the provider nor compacts on its own
+	base.Text, base.Tools = "", nil
+	base.Retries, base.Retrying, base.RetryIn, base.RetryWhy = 0, false, 0, ""
+	base.Compacting, base.CheckingGoal = false, false
+	return run.status, run.transcriptLocked(), base
+}
+
+// flush moves the streamed thinking and reply into rows, in the order they
+// streamed: the run's flushOutput (run.mu held).
 func (run *agentRun) flush() {
+	run.endThinking()
+	if strings.TrimSpace(run.reason) != "" {
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: run.reason, Stat: &TurnStat{ThoughtMS: run.thought.Milliseconds()}})
+	}
 	if strings.TrimSpace(run.text) != "" {
 		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
 	}
-	run.text = ""
+	run.reason, run.text, run.thought = "", "", 0
+}
+
+// beginThinking opens a reasoning block (run.mu held).
+func (run *agentRun) beginThinking() {
+	if run.thinkAt.IsZero() {
+		run.thinkAt = time.Now()
+	}
+}
+
+// endThinking closes an open reasoning block into the accumulated time.
+func (run *agentRun) endThinking() {
+	if run.thinkAt.IsZero() {
+		return
+	}
+	run.thought += time.Since(run.thinkAt)
+	run.thinkAt = time.Time{}
+}
+
+// thinkTime is how long the run has spent reasoning: the closed blocks plus
+// the one open now (run.mu held).
+func (run *agentRun) thinkTime() time.Duration {
+	if run.thinkAt.IsZero() {
+		return run.thought
+	}
+	return run.thought + time.Since(run.thinkAt)
 }
 
 // message queues text for the run's next step boundary (Steer), or for one
@@ -567,14 +631,15 @@ func (h *Host) updateMessage(pad, id, agentName, text string) string {
 	return agent.AttachMarker + fmt.Sprintf("\n<agent-update run=%q agent=%q>\n", id, agentName) + h.truncOutput(pad, "agent", text) + "\n</agent-update>\n</attached-files>"
 }
 
-// reportHead is the one line the user sees of a background report; a
-// workflow's agent attribute is "workflow" or "workflow:<saved name>", and
-// its description names it, since runs of one script differ by no name.
+// reportHead is the one line the user sees of a background report, named by
+// the run's label, as the chat names it. A workflow's agent attribute is
+// "workflow" or "workflow:<saved name>", and its description names it, since
+// runs of one script differ by no name.
 func reportHead(id, agent, status, description string) string {
 	if agent == "workflow" || strings.HasPrefix(agent, "workflow:") {
 		return fmt.Sprintf("Workflow %s (%s) %s", id, clipRunes(sanitize.Line(description), 60), status)
 	}
-	return fmt.Sprintf("Background agent %s (%s) %s", id, agent, status)
+	return fmt.Sprintf("Background agent %s (%s) %s", id, clipRunes(sanitize.Line(cmp.Or(description, agent)), 60), status)
 }
 
 // reportMessage is the user message a report reaches the model as. The whole
@@ -794,12 +859,14 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 
 // agentRunItems are the /agents rows for the live session's runs, the
 // stored ones this process does not hold included; enter shows a transcript.
+// A row is named by the run's label and carries the definition it ran in its
+// desc, next to the status, the clock and the calls.
 func (h *Host) agentRunItems() []any {
 	sid := h.AgentSessionID()
 	var running, flows, earlier []any
-	row := func(id string, status RunStatus, agent string, took time.Duration, desc, calls string) {
+	row := func(id string, status RunStatus, label string, took time.Duration, desc, calls string) {
 		item := map[string]any{
-			"text":    agent,
+			"text":    label,
 			"desc":    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
 			"run":     "agents view " + id,
 			"section": "Earlier in this session",
@@ -822,21 +889,21 @@ func (h *Host) agentRunItems() []any {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
 		if run.workflow == "" {
-			row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
+			row(run.id, status, run.label(), took, run.agent, fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
 		}
 	}
 	// a run another session started (/new leaves a background run behind)
 	// still writes files and blocks /rewind, so it is listed, named by that session
 	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
-		row(run.id, status, run.agent, took, run.description+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
+		row(run.id, status, run.label(), took, run.agent+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
 			if !held[c.ID] && !inFlows[c.ID] {
-				row(c.ID, RunDone, c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
+				row(c.ID, RunDone, cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, "")
 			}
 		}
 	}
