@@ -769,3 +769,18 @@ func TestSandboxPrompt(t *testing.T) {
 		})
 	}
 }
+
+// TestSandboxPromptNoPad: a run with no scratchpad has no $TMPDIR, so the
+// block promises neither a socket there nor a cache to point at.
+func TestSandboxPromptNoPad(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.agents.sessionID = "s1"
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
+	h.SetProjectTrusted(true)
+	got := h.sandboxPrompt(tools.All(&tools.Pipeline{}), false, "")
+	for _, w := range []string{"A unix socket in $TMPDIR", "Other tools' caches"} {
+		if strings.Contains(got, w) {
+			t.Errorf("a run without a pad says %q:\n%s", w, got)
+		}
+	}
+}

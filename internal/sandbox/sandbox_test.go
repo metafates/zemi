@@ -238,12 +238,26 @@ func TestPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sock.Close()
-	// a listener of the pad's own, which a confined command may dial
-	padSock, err := net.Listen("unix", filepath.Join(scratch, "s2"))
-	if err != nil {
-		t.Fatal(err)
+	// a listener of the pad's own, which a confined command may dial; its path
+	// is capped near 103 bytes, so a deep temp dir has no room for the pad
+	// cases, which then skip rather than fail the whole table
+	padSockPath := filepath.Join(scratch, "s2")
+	padFits := len(padSockPath) < 104
+	if padFits {
+		padSock, err := net.Listen("unix", padSockPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer padSock.Close()
 	}
-	defer padSock.Close()
+	// the symlink a command can plant in its own pad, pointing at the listener
+	// above: dialing it must not reach a socket outside the pad
+	padLink := filepath.Join(scratch, "link")
+	if padFits {
+		if err := os.Symlink(sock.Addr().String(), padLink); err != nil {
+			t.Fatal(err)
+		}
+	}
 	shm := fmt.Sprintf("/dev/shm/zemi-sandbox-%d", os.Getpid())
 	t.Cleanup(func() { os.Remove(shm) })
 	cases := []struct {
@@ -322,11 +336,14 @@ func TestPolicy(t *testing.T) {
 		// the shapes match names, so no write root may be exempt from them
 		{"read a .env moved into the scratchpad", "moveread", filepath.Join(root, "backend") + "|" + filepath.Join(scratch, "b"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
-		// seatbelt filters a socket by path; Landlock cannot, so there every
-		// AF_UNIX socket is refused outright
-		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), true, runtime.GOOS == "linux"},
+		// seatbelt filters a socket by path, so it takes the resolved one and
+		// only the pad's; Landlock cannot filter one at all, so every AF_UNIX
+		// socket is refused there, a pad one included
+		{"bind a unix socket in the pad", "bindunix", filepath.Join(scratch, "s"), runtime.GOOS != "linux", !padFits},
+		{"bind a unix socket in another root", "bindunix", filepath.Join(root, "s"), false, false},
 		{"bind a unix socket outside the roots", "bindunix", filepath.Join(outside, "s"), false, false},
-		{"dial a unix socket in the pad", "unix", padSock.Addr().String(), true, runtime.GOOS == "linux"},
+		{"dial a unix socket in the pad", "unix", padSockPath, runtime.GOOS != "linux", !padFits},
+		{"dial the pad through a symlink out of it", "unix", padLink, false, !padFits},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
 		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},
 		// Landlock has no right for these, see seccomp

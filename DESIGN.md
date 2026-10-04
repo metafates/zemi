@@ -2572,9 +2572,10 @@ provenance string.
   target; on seatbelt only what runs code, below), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
   (an activated `.venv/bin`: zemi runs git, the shell, language servers and
   clipboard helpers unconfined by name) stay read-only (the scratchpad and
-  cache re-allowed); localhost network only, with a unix socket in the pad
-  alone bound and dialed (seatbelt filters both by socket path, which is what a
-  dev server needs). Seatbelt's localhost is the
+  cache re-allowed); localhost network only, and on seatbelt a unix socket in
+  the policy's own temp dir alone (the scratchpad, or a language server's
+  cache) bound and dialed, since seatbelt filters both by socket path and
+  Landlock can filter neither. Seatbelt's localhost is the
   machine's; the namespace variant has a loopback of its own, so servers
   already running on the machine are unreachable (the model is told so),
   and it binds only protected paths that exist, which is why a created one

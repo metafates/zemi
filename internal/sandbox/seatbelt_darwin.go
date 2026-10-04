@@ -146,10 +146,11 @@ func profile(p Policy) (string, []string) {
 	for _, r := range rules {
 		b.WriteString(r.text + "\n")
 	}
-	// A unix socket binds and is dialed in the command's own temp dir alone
-	// ($TMPDIR, the pad), which is where a dev server puts one; the filters
-	// resolve the path, so a ".." in a socket path reaches no further than
-	// these rules, and the file rules still say whether one may appear there.
+	// A unix socket binds and is dialed in the policy's own temp dir alone
+	// (its $TMPDIR: the scratchpad, or an LSP's cache temp), which is where a
+	// dev server puts one; the filters resolve the path, so a ".." in a socket
+	// path reaches no further than these rules, and the file rules still say
+	// whether one may appear there.
 	// NOTE: resolved, since the file rules were too: /tmp is /private/tmp.
 	if v := p.Env["TMPDIR"]; v != "" {
 		pad := cmp.Or(perm.RealPath(v), v)
