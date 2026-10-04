@@ -1964,9 +1964,11 @@ provenance string.
   rows that follow it
   and a gap under the last, its output behind the `⎿` under that, a lone one
   as its own row, a labelled call a row of its own, its label (its command shows
-  once opened), a thought a row of its own, framed by a bar-only row above and
-  below whether it is running or done, as a call is framed only while it runs
-  and listed plainly once it ends. Text a row cuts ends in an `…` with a few
+  once opened), a thought a row of its own. The rail itself opens and closes on
+  a bar-only row, and another stands between two entries of different kinds or
+  on either side of a call that failed or that the user stopped; entries of one
+  kind, running or settled, stand together.
+  Text a row cuts ends in an `…` with a few
   cells of air after it, so the cut reads as the row's own and never runs into
   the window's edge, while what a row hangs at its right, a diff's counts or a
   running call's clock, keeps the measure's edge. While the model thinks its

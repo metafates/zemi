@@ -1,9 +1,11 @@
 ▌ why does TestFlushOrder fail?
 
+│
 │ ✗ [1mrun[m the flush tests
 │   ⎿ go test ./internal/hostapi
 │     --- FAIL: TestFlushOrder
 │     exit status 1
+│
 
   resume   zemi -r 7hq2m4xk
 

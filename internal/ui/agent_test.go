@@ -1512,7 +1512,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.AgentStream()
-	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ ✓ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ ✓ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
+	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ ✓ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ ✓ list the data", "│", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1528,7 +1528,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.AgentStream()
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
-	closed = append(closed, "│ ✓ read c.go")
+	closed = append(closed, "│", "│ ✓ read c.go", "│")
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}

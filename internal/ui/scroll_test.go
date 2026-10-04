@@ -689,7 +689,7 @@ func TestChatStickyDigest(t *testing.T) {
 	}{
 		{"list dir 5", []string{prompt, digest}},
 		{"list dir 9", []string{prompt, digest}},
-		{"list dir 10", []string{prompt}},
+		{"list dir 11", []string{prompt}},
 		{"answer 2", []string{prompt}},
 	} {
 		if got := pins(c.at); !slices.EqualFunc(got, c.want, strings.HasPrefix) {

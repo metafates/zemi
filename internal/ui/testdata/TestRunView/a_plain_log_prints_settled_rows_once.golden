@@ -4,10 +4,12 @@
 │ ✻ thought 2.4s
 │
 
+│
 │ ✗ run the flush tests
 │   ⎿ go test ./internal/hostapi
 │     --- FAIL: TestFlushOrder
 │     exit status 1
+│
 
   It fails because the reply lands first.
 

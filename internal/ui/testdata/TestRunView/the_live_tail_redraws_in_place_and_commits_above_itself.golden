@@ -20,6 +20,7 @@
 │   ⎿ go test ./internal/hostapi
 │     --- FAIL: TestFlushOrder
 │     exit status 1
+│
 
   It fails because the reply lands first.
 [?25l @·· ─────────────────────────────────────────────────────────────────────────────────────────────[?2026l[J[?25h

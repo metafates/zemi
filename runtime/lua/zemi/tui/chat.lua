@@ -158,8 +158,8 @@ local function builder(ctx, width)
 	local B = { lines = {} }
 	---@param row zemi.Line
 	local function push(row) B.lines[#B.lines + 1] = row end
-	-- The bar-only row that frames a running entry: never two in a row, so two
-	-- entries that run at once share the one between them.
+	-- The bar-only row that bounds the rail and sets its entries apart; never
+	-- two in a row, so a rail opening on one draws no second.
 	local function frame()
 		local prev = B.lines[#B.lines]
 		if prev and #prev == 1 and prev[1].text == "│" then return end
@@ -257,24 +257,19 @@ local function builder(ctx, width)
 		end
 		return #body - from + 1
 	end
-	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row frames
-	-- the thought above and below, once it is done as well as while it runs, and
-	-- one between the header and prose of two or more lines so it breathes.
+	-- "│ ✻ thought 8s", with the text under it when given, and one bar-only row
+	-- between the header and prose of two or more lines so it breathes.
 	---@param secs number
 	---@param click string
 	---@param text string?
 	function B.thought(secs, click, text)
-		frame()
 		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if not text then
-			frame()
-			return
-		end
+		if not text then return end
 		local at = #B.lines + 1
 		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
-		frame()
 	end
-	-- The model thinking now.
+	-- The model thinking now: drawn outside the rail's own loop, so it frames
+	-- itself as an entry does.
 	---@param tail string? The thinking so far, whose last lines show under it.
 	function B.thinking(tail)
 		frame()
@@ -418,11 +413,6 @@ local function builder(ctx, width)
 		else
 			table.insert(head, 1, bar(pad))
 		end
-		-- a call still running, or with its arguments still streaming, is framed
-		-- by a bar-only row above and below while it runs, and listed plainly
-		-- once it is done; a row waiting on the user is not one of them
-		local running = not asked and (t.status == "run" or t.status == "wait")
-		if running then frame() end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
 		-- under the head one corner, every later row the same cells in, two less
@@ -529,7 +519,6 @@ local function builder(ctx, width)
 		for n = first + 1, #B.lines do
 			table.insert(B.lines[n], 1, bar(below))
 		end
-		if running then frame() end
 	end
 
 	-- A folded run is its digest alone, a click away from its whole rail: what
@@ -597,9 +586,11 @@ local function builder(ctx, width)
 	---@param last integer
 	---@param o { open: boolean?, live: boolean?, run: integer? } o.open draws every row and thought of the run starting at run, whose rows a click leaves.
 	function B.rail(list, first, last, o)
+		frame()
 		local at = #B.lines
 		B.heads = {}
 		B.steps(list, first, last, o)
+		frame()
 		-- a long rail keeps its last entries in view, each with the rows under
 		-- it, the earlier ones behind one row that a click opens or closes; a
 		-- printed run lists everything
@@ -607,14 +598,14 @@ local function builder(ctx, width)
 		local n = #B.heads - RAIL_KEEP
 		if o.open or ctx.headless or n < 2 then return end
 		local click = "more:" .. key
-		if whole[key] then
-			table.insert(B.lines, at + 1, { bar(), { text = "… show the rest", hl = "Dim", click = click } })
-			return
+		local label = whole[key] and "… show the rest" or "… " .. n .. " earlier"
+		if not whole[key] then
+			for _ = at + 1, B.heads[n + 1] - 1 do
+				table.remove(B.lines, at + 1)
+			end
 		end
-		for _ = at + 1, B.heads[n + 1] - 1 do
-			table.remove(B.lines, at + 1)
-		end
-		table.insert(B.lines, at + 1, { bar(), { text = "… " .. n .. " earlier", hl = "Dim", click = click } })
+		table.insert(B.lines, at + 1, { bar(), { text = label, hl = "Dim", click = click } })
+		table.insert(B.lines, at + 2, air())
 	end
 
 	-- the rows a rail's entries start at: a thought, a step or a call, with
@@ -632,14 +623,21 @@ local function builder(ctx, width)
 		---@param t zemi.tui.Tool
 		local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
 		local i = first
+		-- The rail opens on a bar and closes on one; between entries one stands
+		-- where their kinds differ, and around one that failed or was stopped.
+		local prev, prev_fail = nil, false
 		while i <= last do
 			local t = list[i]
 			local idx = o.live and -i or i
 			-- a counted call with no sibling is its own row: a "read 1 file"
 			-- row over it would hide which file
 			local lone = grouped(t) and not grouped(list[i + 1] or {})
+			local kind = t.kind == "reasoning" and "thought" or fmt.tool(t)
+			local fail = t.status == "err" or t.status == "stopped"
+			if prev ~= kind or prev_fail or fail then frame() end
+			prev, prev_fail = kind, fail
+			head()
 			if t.kind == "reasoning" then
-				head()
 				B.thought(t.thought or 0, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 				i = i + 1
 			elseif grouped(t) and not lone then
@@ -650,7 +648,6 @@ local function builder(ctx, width)
 				end
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
-				head()
 				B.group(group, "step:" .. idx)
 				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
@@ -664,7 +661,6 @@ local function builder(ctx, width)
 				end
 				i = i + #group
 			else
-				head()
 				B.tool(t, idx, { open = o.open, click = fold })
 				i = i + 1
 			end
@@ -979,7 +975,7 @@ zemi.ui.widget.add({
 			-- the thinking shows while the model thinks: a reasoning block of its own
 			-- is open, so a thought that ended does not go on spinning over the
 			-- calls that follow it. Each finished thought is a rail row of its own,
-			-- framed by a bar-only row above and below like the running entry.
+			-- framed as an entry is.
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
