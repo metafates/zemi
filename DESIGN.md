@@ -1933,9 +1933,8 @@ provenance string.
   (cached per block id and width; a frame never re-runs glamour). The
   view word-wraps (the widget sets `wrap`), so long lines stay visible
   instead of truncating, and starts at its top row: a transcript shorter
-  than the view leaves the blank under it. Scrollback (`pgup`/`pgdown`,
-  `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport
-  off the tail;
+  than the view leaves the blank under it. Scrollback (the scroll keys in Default
+  keymaps below, and the mouse wheel) moves the viewport off the tail;
   a scrolled view stays anchored while new lines fill underneath, and a
   click on a row leaves the tail too: a digest opening over its rail or a
   thought unrolling redraws the rows under the reader's place, never
