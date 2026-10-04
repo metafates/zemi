@@ -278,13 +278,14 @@ func (a *App) Farewell() string {
 	// a hot or wedged runtime prints nothing rather than hold the exit
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
+	width := cmp.Or(a.width, 80)
 	for _, w := range a.host.Widgets.InRegion(hostapi.RegionExit) {
-		lines, _, err := a.host.RenderWidget(ctx, w, cmp.Or(a.width, 80), 0, a.uiState())
+		lines, _, err := a.host.RenderWidget(ctx, w, width, 0, a.uiState())
 		if err != nil {
 			a.log.Warn("exit widget failed", "origin", "ui", "widget", w.ID, "error", err)
 			continue
 		}
-		printLines(&b, a.thm, a.colors, lines)
+		printLines(&b, a.thm, a.colors, widgetRows(lines, w.Wrap, width))
 	}
 	return b.String()
 }
@@ -1312,9 +1313,7 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		}
 		lines := c.lines
 		if !wgt.Wrap {
-			for _, line := range expandTabs(lines) {
-				out = append(out, truncateSegs(line, width))
-			}
+			out = append(out, widgetRows(lines, false, width)...)
 			continue
 		}
 		// Word-wrap instead of truncating; the transcript shows the
@@ -1350,6 +1349,22 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 			continue
 		}
 		out = append(out, c.wrapped...)
+	}
+	return out
+}
+
+// widgetRows maps one widget's lines to the rows the layout draws them as: a
+// wrapping widget word-wrapped at width, the rest tab-expanded and cut to it.
+func widgetRows(lines [][]hostapi.Segment, wrap bool, width int) [][]hostapi.Segment {
+	var out [][]hostapi.Segment
+	if wrap {
+		for _, line := range lines {
+			out = append(out, hostapi.WrapSegs(line, width)...)
+		}
+		return out
+	}
+	for _, line := range expandTabs(lines) {
+		out = append(out, truncateSegs(line, width))
 	}
 	return out
 }
