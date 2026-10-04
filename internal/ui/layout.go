@@ -810,13 +810,13 @@ func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
 		}
 	}
 	want := st.top*st.rows/prevRows + st.anchorOff
-	best := -1
+	best, bestD := -1, 0
 	for i := range lines {
 		if !anchoredAt(lines, i, st.anchor) {
 			continue
 		}
-		if best < 0 || abs(i-want) < abs(best-want) {
-			best = i
+		if d := max(i-want, want-i); best < 0 || d < bestD {
+			best, bestD = i, d
 		}
 	}
 	if best < 0 {
@@ -836,13 +836,6 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 		}
 	}
 	return true
-}
-
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
 }
 
 // scrollOf is a scrolled region's state, a "bottom" one following its tail
