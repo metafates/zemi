@@ -238,12 +238,16 @@ func TestPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sock.Close()
-	// a unix socket path over this machine's cap cannot be bound or dialed at
-	// all, so the rows that need one skip rather than fail the whole table
-	const sockPathMax = 104
+	// a unix socket path cannot exceed the kernel's sockaddr_un (103 usable
+	// bytes on darwin, 107 on linux): over it nothing can bind or dial, so a
+	// row that needs one skips rather than failing the whole table
+	sockPathMax := 103
+	if runtime.GOOS == "linux" {
+		sockPathMax = 107
+	}
 	// a listener of the pad's own, which a confined command may dial
 	padSockPath := filepath.Join(scratch, "s2")
-	if len(padSockPath) < sockPathMax {
+	if len(padSockPath) <= sockPathMax {
 		padSock, err := net.Listen("unix", padSockPath)
 		if err != nil {
 			t.Fatal(err)
@@ -253,7 +257,7 @@ func TestPolicy(t *testing.T) {
 	// the symlink a command can plant in its own pad, pointing at the listener
 	// above: dialing it must not reach a socket outside the pad
 	padLink := filepath.Join(scratch, "link")
-	if len(padLink) < sockPathMax {
+	if len(padLink) <= sockPathMax {
 		if err := os.Symlink(sock.Addr().String(), padLink); err != nil {
 			t.Fatal(err)
 		}
@@ -360,7 +364,7 @@ func TestPolicy(t *testing.T) {
 			}
 			// nothing can bind or dial a path over the cap, so say that instead
 			// of blaming the backend for a deep temp dir
-			if (c.verb == "unix" || c.verb == "bindunix") && len(c.arg) >= sockPathMax {
+			if (c.verb == "unix" || c.verb == "bindunix") && len(c.arg) > sockPathMax {
 				t.Skipf("no room for a %d-byte socket path", len(c.arg))
 			}
 			out, err := run(t, p, c.verb, c.arg)
