@@ -2,7 +2,6 @@ package main
 
 import (
 	"cmp"
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -180,12 +179,12 @@ func printHost(t *testing.T) *hostapi.Host {
 	srv := httptest.NewServer(http.HandlerFunc(fakeOpenAI))
 	t.Cleanup(srv.Close)
 	_, h, r := newTrustGate(t)
-	if err := r.Boot(context.Background(), coreSteps(h, mainCommands(func() {}, func() {}))); err != nil {
+	if err := r.Boot(t.Context(), coreSteps(h, mainCommands(func() {}, func() {}))); err != nil {
 		t.Fatal(err)
 	}
 	cfg := fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT, api_key = "x", base_url = %q, models = { { id = "m", context_window = 128000 } } })
 		zemi.config.set("models.chat", "fake/m")`, srv.URL+"/v1")
-	if err := r.ExecuteChunk(context.Background(), cfg, "init.lua", lua.OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), cfg, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	return h

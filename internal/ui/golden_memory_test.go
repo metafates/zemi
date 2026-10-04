@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"encoding/json/v2"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ import (
 // and a typed forget armed; an action applies at once and u undoes it.
 func TestGoldenMemory(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}

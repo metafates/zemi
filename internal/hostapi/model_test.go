@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -133,7 +132,7 @@ func TestInertBoot(t *testing.T) {
 		t.Error("an inert boot called a model")
 		return nil, errors.New("no")
 	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, `

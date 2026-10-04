@@ -39,7 +39,7 @@ func TestStoppable(t *testing.T) {
 			t.Parallel()
 			pidFile := filepath.Join(t.TempDir(), "pid")
 			script := strings.ReplaceAll(c.script, "%s", pidFile)
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			cmd := CommandContext(ctx, "sh", "-c", script)
 			if cmd.WaitDelay == 0 {

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -68,7 +67,7 @@ func TestRunView(t *testing.T) {
 				// the actor holds the write while Show goes on to render
 				v.size = sync.OnceValues(func() (int, int) {
 					writing := make(chan struct{})
-					go h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
+					go h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
 						close(writing)
 						fmt.Fprintln(v, "zemi: warning: tick")
 						return nil, nil

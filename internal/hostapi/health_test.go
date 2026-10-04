@@ -27,7 +27,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		zemi.health.add("number", function() return { level = 3 } end)
 		zemi.health.add("unset", function() return { detail = "fine" } end)
 	`)
-	err := r.ExecuteChunk(context.Background(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
+	err := r.ExecuteChunk(t.Context(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "registered by user config") {
 		t.Errorf("plugin replacing a user check: %v", err)
 	}
@@ -208,11 +208,11 @@ func TestWaitMCP(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	s := &mcpServer{status: "starting"}
 	h.mcp.servers["a"] = s
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	h.WaitMCP(ctx) // returns: ctx is done
 	done := make(chan struct{})
-	go func() { h.WaitMCP(context.Background()); close(done) }()
+	go func() { h.WaitMCP(t.Context()); close(done) }()
 	select {
 	case <-done:
 		t.Fatal("returned while a server is starting")

@@ -28,7 +28,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.ProjectDir = outsideTemp(t)
 	h.agents.sessionID = "s1"
-	ctx := context.Background()
+	ctx := t.Context()
 
 	out, err := h.runModelLua(ctx, `print("hi", 1 + 1) leak = 1 return { n = #zemi.agent.list() }`, luaToolChunk)
 	if err != nil || out != "hi\t2\nreturn: {\"n\":5}" {
@@ -90,7 +90,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
 		h.SetUIHooks(ui)
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": strings.ReplaceAll(script, "MARKER", marker)}, json.Deterministic(true))
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		{"model call", `zemi.model.ask({ prompt = "x" })`, "zemi.model.ask", "model.ask"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := h.runModelLua(context.Background(), c.script, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
+			if _, err := h.runModelLua(t.Context(), c.script, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
 				t.Errorf("unapproved run: %v", err)
 			}
 			ui, out := run(c.script, false)
@@ -168,7 +168,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 			}
 		}
 	}
-	out, err := h.runModelLua(context.Background(), `local open, n = {}, 0
+	out, err := h.runModelLua(t.Context(), `local open, n = {}, 0
 		for _, m in ipairs({ `+strings.Join(members, ", ")+` }) do
 			local v = zemi
 			for part in m:gmatch("[^.]+") do v = v[part] end
@@ -206,7 +206,7 @@ func TestLuaToolCeiling(t *testing.T) {
 	} {
 		luaToolCeiling = c.ceiling
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script}, json.Deterministic(true))
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) ||
 			(c.named && !strings.Contains(resp.Content, "error: "+luaToolChunk+"#")) || strings.Contains(resp.Content, "context canceled") {
 			t.Errorf("%s: %+v (%v)", c.script, resp, err)
@@ -242,7 +242,7 @@ func TestLuaToolPath(t *testing.T) {
 		ui := &fakeUI{askBy: "user"}
 		h.SetUIHooks(ui)
 		input, _ := json.Marshal(map[string]string{"about": "x", "path": c.path}, json.Deterministic(true))
-		resp, _ := h.luaEvalTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		resp, _ := h.luaEvalTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != c.asks {
 			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
 		}
@@ -290,10 +290,10 @@ func TestLuaToolReloads(t *testing.T) {
 					return errors.New("init.lua:3: unexpected symbol")
 				}
 				step := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return c.step(h) }}
-				return h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), step})
+				return h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), step})
 			}, func() bool { return changed })
 			input, _ := json.Marshal(map[string]string{"about": "x", "script": `return zemi.config.get("ui.mouse")`}, json.Deterministic(true))
-			resp, err := h.luaEvalTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+			resp, err := h.luaEvalTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 			if err != nil || resp.Content != c.want || changed {
 				t.Fatalf("%q (%v), still changed %v", resp.Content, err, changed)
 			}

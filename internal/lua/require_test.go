@@ -29,7 +29,7 @@ func newRequireRuntime(t *testing.T) (*Runtime, string, string) {
 		},
 		RuntimeFS: fstest.MapFS{},
 	})
-	if err := r.Boot(context.Background(), nil); err != nil {
+	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	return r, cfg, plugin
@@ -50,7 +50,7 @@ func TestRequireResolvesRuntimepath(t *testing.T) {
 	writeFile(t, filepath.Join(cfg, "lua", "mymod.lua"),
 		"local M = {}\nM.x = 42\nreturn M\n")
 
-	if err := r.ExecuteChunk(context.Background(), `
+	if err := r.ExecuteChunk(t.Context(), `
 		local m = require("mymod")
 		assert(m.x == 42, "module body did not run")
 		assert(require("mymod") == m, "module result not cached")
@@ -66,7 +66,7 @@ func TestRequireZemiNamespaceNotShadowable(t *testing.T) {
 	writeFile(t, filepath.Join(cfg, "lua", "zemi", "evil.lua"),
 		"ZEMI_EVIL_LOADED = true\n")
 
-	if err := r.ExecuteChunk(context.Background(), `
+	if err := r.ExecuteChunk(t.Context(), `
 		local ok, err = pcall(require, "zemi.evil")
 		assert(not ok, "user file shadowed a zemi.* module")
 		assert(err:find("not found in embedded runtime", 1, true),
@@ -82,7 +82,7 @@ func TestRequireCycleDetection(t *testing.T) {
 	writeFile(t, filepath.Join(cfg, "lua", "cyc", "a.lua"), `require("cyc.b") return {}`)
 	writeFile(t, filepath.Join(cfg, "lua", "cyc", "b.lua"), `require("cyc.a") return {}`)
 
-	if err := r.ExecuteChunk(context.Background(), `
+	if err := r.ExecuteChunk(t.Context(), `
 		local ok, err = pcall(require, "cyc.a")
 		assert(not ok, "circular require succeeded")
 		assert(err:find("circular require", 1, true),
@@ -108,7 +108,7 @@ func TestRequireRelative(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(cfg, "lua", "escape.lua"), `return require("./`+filepath.ToSlash(toPlugin)+`")`)
 
-	if err := r.ExecuteChunk(context.Background(), `
+	if err := r.ExecuteChunk(t.Context(), `
 		local app = require("./lua/app")
 		assert(app.util.v == 1, "relative module did not load")
 		assert(require("app.util") == app.util, "dotted and relative names loaded twice")
@@ -127,14 +127,14 @@ func TestRequireProjectModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := NewRuntime(RuntimeOptions{PathClass: PathClasses{{Prefix: proj, Origin: OriginProject}}, RuntimeFS: fstest.MapFS{}})
-	if err := r.Boot(context.Background(), nil); err != nil {
+	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(proj, "lua", "pmod.lua"), `return { v = 3 }`)
-	if err := r.ExecuteChunk(context.Background(), `assert(require("pmod").v == 3)`, filepath.Join(proj, "init.lua"), OriginProject); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `assert(require("pmod").v == 3)`, filepath.Join(proj, "init.lua"), OriginProject); err != nil {
 		t.Fatalf("project require: %v", err)
 	}
-	if err := r.ExecuteChunk(context.Background(), `assert(not pcall(require, "pmod"), "user code loaded a project module")`, "init.lua", OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `assert(not pcall(require, "pmod"), "user code loaded a project module")`, "init.lua", OriginUser); err != nil {
 		t.Fatalf("user require: %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestLoadFileStepOrigin(t *testing.T) {
 		{path, OriginUser, true},
 		{path, OriginProject, false},
 	} {
-		err := LoadFileStep("init", c.path, c.origin).Run(context.Background(), r, r.current())
+		err := LoadFileStep("init", c.path, c.origin).Run(t.Context(), r, r.current())
 		if (err == nil) != c.ok {
 			t.Errorf("LoadFileStep(%s as %s) = %v", filepath.Base(c.path), c.origin, err)
 		}
@@ -216,10 +216,10 @@ func TestOriginFollowsCode(t *testing.T) {
 		g.Plugins = []string{dir}
 		return nil
 	}}
-	if err := r.Boot(context.Background(), []BootStep{boot}); err != nil {
+	if err := r.Boot(t.Context(), []BootStep{boot}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ExecuteChunk(context.Background(), `
+	if err := r.ExecuteChunk(t.Context(), `
 		require("omod").setup(function() print("callback") end)
 		require("zemi.util").call(function() print("via builtin") end)
 	`, filepath.Join(cfg, "init.lua"), OriginUser); err != nil {
@@ -249,7 +249,7 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{PathClass: pc, RuntimeFS: fstest.MapFS{
 		"lua/zemi/util.lua": {Data: []byte(`return { nested = {} }`)},
 	}})
-	if err := r.Boot(context.Background(), nil); err != nil {
+	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	var lines []string
@@ -260,7 +260,7 @@ func TestRequireInstancePerOrigin(t *testing.T) {
 	writeFile(t, filepath.Join(cfg, "lua", "hub.lua"), `local fns = {} return { on = function(f) fns[#fns + 1] = f end, fire = function() for _, f in ipairs(fns) do f() end end }`)
 	run := func(src string, o Origin) {
 		t.Helper()
-		if err := r.ExecuteChunk(context.Background(), src, filepath.Join(dirs[o], "init.lua"), o); err != nil {
+		if err := r.ExecuteChunk(t.Context(), src, filepath.Join(dirs[o], "init.lua"), o); err != nil {
 			t.Fatalf("%s chunk: %v", o, err)
 		}
 	}

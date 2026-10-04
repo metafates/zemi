@@ -212,7 +212,7 @@ func TestUntrustedModes(t *testing.T) {
 			h.SetProfile("default")
 		}
 		h.SetProjectTrusted(c.trusted)
-		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"about":"x","script":"return 1"}`})
+		resp, err := lua.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"about":"x","script":"return 1"}`})
 		if err != nil || strings.Contains(resp.Content, "return: 1") != c.ran {
 			t.Errorf("Lua %s trusted=%v readOnly=%v: %q %v", c.mode, c.trusted, c.readOnly, resp.Content, err)
 		}
@@ -457,7 +457,7 @@ func TestAskWaitsOutReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	steps := []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	if err := r.Boot(context.Background(), steps); err != nil {
+	if err := r.Boot(t.Context(), steps); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.SetPermMode("review"); err != nil {
@@ -475,7 +475,7 @@ func TestAskWaitsOutReload(t *testing.T) {
 			for h.AsksWaiting() < 2 {
 				runtime.Gosched()
 			}
-			go func() { reloaded <- h.ForceReload(context.Background(), []lua.BootStep{steps[0], probe, steps[1]}) }()
+			go func() { reloaded <- h.ForceReload(t.Context(), []lua.BootStep{steps[0], probe, steps[1]}) }()
 			<-reloading
 		}
 		return false, "user:once"
@@ -677,7 +677,7 @@ func TestYoloToggle(t *testing.T) {
 			runUser(t, h.RT, c.setup)
 			for i, want := range c.want {
 				if i > 0 {
-					if err := h.RunRHS(context.Background(), h.Keymaps.Lookup("", "ctrl+y")); err != nil {
+					if err := h.RunRHS(t.Context(), h.Keymaps.Lookup("", "ctrl+y")); err != nil {
 						t.Fatal(err)
 					}
 				}

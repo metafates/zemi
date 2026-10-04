@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -179,7 +178,7 @@ func sandboxedShell(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string
 				t.Fatalf("shell has no %s parameter with a live backend", prop)
 			}
 		}
-		resp, err := shell.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "shell", Input: string(input)})
+		resp, err := shell.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "shell", Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +250,7 @@ func TestSandboxedShell(t *testing.T) {
 		all := tools.All(h.PipelineFor())
 		read := all[slices.IndexFunc(all, func(tl fantasy.AgentTool) bool { return tl.Info().Name == tools.ToolRead })]
 		input, _ := json.Marshal(map[string]any{"path": private, "limit": 0}, json.Deterministic(true))
-		resp, err := read.Run(context.Background(), fantasy.ToolCall{ID: "2", Name: tools.ToolRead, Input: string(input)})
+		resp, err := read.Run(t.Context(), fantasy.ToolCall{ID: "2", Name: tools.ToolRead, Input: string(input)})
 		if err != nil || resp.IsError || len(ui.asked) > 0 {
 			t.Errorf("read %s: %v %s, asked %+v", private, err, resp.Content, ui.asked)
 		}

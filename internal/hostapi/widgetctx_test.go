@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,14 +46,14 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 	  #((ctx.agent or {}).steering or {}), #(ctx.todos or {}),
 	  ((ctx.agent or {}).elapsed or 0) > 60 and "slow" or "",
 	  (ctx.agent or {}).reasoning or "", (ctx.agent or {}).thinking and "thinking" or "")`
-	if err := h.RT.ExecuteChunk(context.Background(),
+	if err := h.RT.ExecuteChunk(t.Context(),
 		`zemi.ui.widget.add({ id = "probe", region = "statusline.right", render = function(ctx) return { { { text = `+src+` } } } end })`,
 		"probe.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	probe := func() string {
 		t.Helper()
-		lines, _, err := h.RenderWidget(context.Background(), h.Widgets.Get("probe"), 60, 1, UIState{})
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +74,7 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 		t.Fatalf("the session's ctx reads %q, want %q", got, session)
 	}
 	// a run of this process, started a minute and a half ago, thinking now
-	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "d", "look", true)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "d", "look", true)
 	run.started = time.Now().Add(-90 * time.Second)
 	run.mu.Lock()
 	run.reason, run.thinkAt = "run thought", time.Now()
@@ -106,10 +105,10 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: b.TempDir()})
-			if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+			if err := r.Boot(b.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				b.Fatal(err)
 			}
-			if err := r.ExecuteChunk(context.Background(), `zemi.ui.widget.add({ id = "m", region = "statusline.right", render = function(ctx) return { { { text = ctx.model } } } end })`, "b.lua", lua.OriginUser); err != nil {
+			if err := r.ExecuteChunk(b.Context(), `zemi.ui.widget.add({ id = "m", region = "statusline.right", render = function(ctx) return { { { text = ctx.model } } } end })`, "b.lua", lua.OriginUser); err != nil {
 				b.Fatal(err)
 			}
 			diff := strings.Repeat("- old line of code here\n+ new line of code here\n", 20)
@@ -121,7 +120,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			}
 			w := h.Widgets.Get("m")
 			for b.Loop() {
-				if _, _, err := h.RenderWidget(context.Background(), w, 40, 1, UIState{}); err != nil {
+				if _, _, err := h.RenderWidget(b.Context(), w, 40, 1, UIState{}); err != nil {
 					b.Fatal(err)
 				}
 			}

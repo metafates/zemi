@@ -65,7 +65,7 @@ func TestAgentFinishUsage(t *testing.T) {
 func TestUsageCountsCache(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
-	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	u := fantasy.Usage{InputTokens: 1, CacheReadTokens: 10, CacheCreationTokens: 100, OutputTokens: 5}
 	h.streamHooks().StreamDone(u)
 	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).TurnDone(nil, u)
@@ -98,7 +98,7 @@ func TestStreamBillsLiveTally(t *testing.T) {
 	seedSession(t, h)
 	u := fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3}
 	h.streamHooks().StreamDone(u)
-	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).StreamDone(u)
 	if tok, _ := run.usage(); tok != 18 {
 		t.Fatalf("run tokens after one call = %d, want 18", tok)

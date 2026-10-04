@@ -569,7 +569,7 @@ func TestReflectBadOutput(t *testing.T) {
 	seedTranscript(t, h, sid)
 	for _, out := range []string{"no json here at all", `{"memories": [`} {
 		reflectStub(t, h, out)
-		if _, err := h.reflectSession(context.Background(), sid); !errors.Is(err, errNoProposal) {
+		if _, err := h.reflectSession(t.Context(), sid); !errors.Is(err, errNoProposal) {
 			t.Fatalf("%q: %v, want errNoProposal", out, err)
 		}
 	}
@@ -584,7 +584,7 @@ func TestReflectTimeout(t *testing.T) {
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, `{"memories":[]}`)
 	m.block = time.Hour
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	if _, err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("want deadline exceeded, got %v", err)

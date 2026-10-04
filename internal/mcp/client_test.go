@@ -34,7 +34,7 @@ func TestClient(t *testing.T) {
 		"http":  {URL: srv.URL},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			c, err := Start(ctx, cfg)
 			if err != nil {
@@ -99,7 +99,7 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 	// handler parked there; defers run last in, first out.
 	defer close(release)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c, err := Start(ctx, Config{URL: srv.URL})
 	if err != nil {
@@ -129,7 +129,7 @@ func TestHTTPSessionExpired(t *testing.T) {
 		{"caller gives up mid-handshake", false, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			callCtx, giveUp := context.WithCancel(context.Background())
+			callCtx, giveUp := context.WithCancel(t.Context())
 			defer giveUp()
 			var (
 				mu    sync.Mutex
@@ -170,7 +170,7 @@ func TestHTTPSessionExpired(t *testing.T) {
 				w.Write(resp)
 			}))
 			defer srv.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			cl, err := Start(ctx, Config{URL: srv.URL})
 			if err != nil {
@@ -236,12 +236,12 @@ func TestCallCancelNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := Start(context.Background(), Config{URL: srv.URL})
+	c, err := Start(t.Context(), Config{URL: srv.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	if _, err := c.CallTool(ctx, "echo", map[string]any{"text": "hi"}); err == nil {
 		t.Fatal("a call against a silent server returned no error")
@@ -261,7 +261,7 @@ func TestStdioBroken(t *testing.T) {
 		"oversize": "head -c 40000000 /dev/zero; sleep 30",
 	} {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			if _, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", script}}); err == nil {
 				t.Fatal("start against a broken server must fail")
@@ -281,7 +281,7 @@ func TestStdioEarlyMessages(t *testing.T) {
 	script := `printf '%s\n' '{"jsonrpc":"2.0","id":"p","method":"ping"}'
 while read l; do case $l in *'"id":"p"'*'"result":{}'*) break;; esac; done
 printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'`
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	_, _ = Start(ctx, Config{Command: "sh", Args: []string{"-c", script}, OnToolsChanged: func() { changed <- struct{}{} }})
 	select {
@@ -304,7 +304,7 @@ func TestSSEEventCap(t *testing.T) {
 // reaps the server, which would otherwise keep running unwaited.
 func TestStdioReaderPanic(t *testing.T) {
 	script := `read l; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{}}'; read l; printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'; sleep 30`
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	c, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", script}, OnToolsChanged: func() { panic("boom") }})
 	if err != nil {
@@ -322,7 +322,7 @@ func TestStdioReaderPanic(t *testing.T) {
 }
 
 func TestTransportErrorRedactsURL(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	start := func(u string) error { _, err := Start(ctx, Config{URL: u}); return err }
 	token := func(u string) error { _, err := tokenRequest(ctx, &Token{TokenURL: u}, url.Values{}); return err }

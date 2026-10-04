@@ -245,7 +245,7 @@ func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	if other {
 		steps = []lua.BootStep{h.NamespacesStep(), (&PluginTest{h: h}).Step(), capture}
 	}
-	if err := r.Boot(context.Background(), steps); err != nil {
+	if err := r.Boot(t.Context(), steps); err != nil {
 		t.Fatal(err)
 	}
 	if !other {

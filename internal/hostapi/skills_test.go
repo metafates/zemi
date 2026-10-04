@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"cmp"
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -30,7 +29,7 @@ import (
 func newTestHostSkills(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	h, r := newTestHostSkillsNoBoot(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, r
@@ -147,7 +146,7 @@ func TestSkillsEnableGate(t *testing.T) {
 		end
 	`)
 
-	err := r.ExecuteChunk(context.Background(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject)
+	err := r.ExecuteChunk(t.Context(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project-origin enable: %v", err)
 	}
@@ -166,7 +165,7 @@ func TestSkillsUserHooksStep(t *testing.T) {
 		zemi.command.add("booted-cmd", function() end, { desc = "from user hook" })
 	`)
 	h.syncSkills()
-	if err := r.Boot(context.Background(), []lua.BootStep{
+	if err := r.Boot(t.Context(), []lua.BootStep{
 		h.NamespacesStep(), h.SkillsUserHooksStep(),
 	}); err != nil {
 		t.Fatalf("boot: %v", err)
@@ -244,9 +243,9 @@ func TestSkillCommands(t *testing.T) {
 			var reloads atomic.Int32
 			h.SetReload(func() error {
 				defer reloads.Add(1)
-				return h.ForceReload(context.Background(), steps)
+				return h.ForceReload(t.Context(), steps)
 			}, nil)
-			if err := r.Boot(context.Background(), steps); err != nil {
+			if err := r.Boot(t.Context(), steps); err != nil {
 				t.Fatal(err)
 			}
 			h.SetUIHooks(&fakeUI{})
@@ -324,7 +323,7 @@ func TestLearnListAndDecide(t *testing.T) {
 	`)
 	runExpectErr(t, r, `zemi.learn.decide("x", "maybe")`, "accept or reject")
 
-	err := r.ExecuteChunk(context.Background(),
+	err := r.ExecuteChunk(t.Context(),
 		`zemi.learn.decide("whatever", "accept")`, "project.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project-origin decide: %v", err)
@@ -348,7 +347,7 @@ func TestSkillsUse(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.MarkdownCommandsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.MarkdownCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
 	reflectStub(t, h, "ok")
@@ -370,7 +369,7 @@ func TestSkillsUse(t *testing.T) {
 		{"the skill's own command", "review-pr 12" + stdin, "/review-pr 12", []string{"Review PR 12.", stdin}},
 	} {
 		name, args, _ := strings.Cut(c.args, " ")
-		if err := h.RunCommand(context.Background(), name, args); err != nil {
+		if err := h.RunCommand(t.Context(), name, args); err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
 		}
@@ -576,7 +575,7 @@ func TestRecipes(t *testing.T) {
 			ui.asked = nil
 			all := tools.All(h.PipelineFor())
 			i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == c.call })
-			resp, err := all[i].Run(context.Background(), fantasy.ToolCall{ID: "t", Name: c.call, Input: c.input})
+			resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: c.call, Input: c.input})
 			if err != nil || resp.IsError || !strings.Contains(resp.Content, c.out) {
 				t.Errorf("%s: %v %q, want %q", c.name, err, resp.Content, c.out)
 			}

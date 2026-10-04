@@ -36,7 +36,7 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 		StateHome:  t.TempDir(),
 		ProjectDir: t.TempDir(),
 	})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, r
@@ -137,7 +137,7 @@ func TestMaxStepsSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err == nil || !strings.Contains(err.Error(), "stopped at the 1-step limit (agent.max_steps)") {
+	if _, _, err := h.runSubagent(t.Context(), def, "d", "look"); err == nil || !strings.Contains(err.Error(), "stopped at the 1-step limit (agent.max_steps)") {
 		t.Fatalf("a subagent run past its step limit = %v", err)
 	}
 }
@@ -224,7 +224,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 		assert(rules[1].decision == "allow", "decision=" .. rules[1].decision)
 	`)
 
-	err := r.ExecuteChunk(context.Background(), `zemi.permission.rule.add({
+	err := r.ExecuteChunk(t.Context(), `zemi.permission.rule.add({
 		subject = "tool.shell", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`, "plugin.lua", lua.OriginPlugin)
@@ -267,7 +267,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 	runExpectErr(t, r, `zemi.permission.rule.add({
 		subject = "lua.model.ask", pattern = "*", decision = "allow", match = "x", principal = "model",
 	})`, `principal must be "plugin:<name>"`)
-	err = r.ExecuteChunk(context.Background(), `zemi.permission.rule.add({
+	err = r.ExecuteChunk(t.Context(), `zemi.permission.rule.add({
 		subject = "lua.model.ask", pattern = "*", decision = "deny", match = "x", principal = "plugin:b",
 	})`, "plugin.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "only user config scopes a rule") {
@@ -410,7 +410,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	initLua := filepath.Join(dir, "init.lua")
@@ -443,7 +443,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 		return nil
 	}}
 	steps := []lua.BootStep{h.NamespacesStep(), probe, lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	if err := h.ForceReload(context.Background(), steps); err != nil {
+	if err := h.ForceReload(t.Context(), steps); err != nil {
 		t.Fatal(err)
 	}
 	<-done
@@ -457,7 +457,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	if err := os.WriteFile(initLua, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
 		t.Fatal(err)
 	}
 	if d := decision("rm x"); d == perm.Deny {
@@ -975,7 +975,7 @@ func TestMemoryToolThroughPipeline(t *testing.T) {
 		t.Helper()
 		for _, ag := range tools.All(h.PipelineFor()) {
 			if ag.Info().Name == name {
-				resp, err := ag.Run(context.Background(), fantasy.ToolCall{ID: "t", Name: name, Input: input})
+				resp, err := ag.Run(t.Context(), fantasy.ToolCall{ID: "t", Name: name, Input: input})
 				if err != nil {
 					t.Fatalf("%s: %v", name, err)
 				}
@@ -1009,7 +1009,7 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 			continue
 		}
 		var err error
-		resp, err = ag.Run(context.Background(), fantasy.ToolCall{
+		resp, err = ag.Run(t.Context(), fantasy.ToolCall{
 			ID: "t1", Name: "question",
 			Input: `{"questions":[{"type":"single_choice","question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`,
 		})
@@ -1172,7 +1172,7 @@ func TestTodoNag(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
 		engage(h, todoNagAfter)
@@ -1265,7 +1265,7 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(1_000_000_000, 0)}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	h.SetUIHooks(&fakeUI{})
@@ -1722,7 +1722,7 @@ func TestProfileSwitch(t *testing.T) {
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
 		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
 		{"zemi.model.set under it", func() error {
-			return r.ExecuteChunk(context.Background(), `zemi.model.set("a/main")`, "test.lua", lua.OriginUser)
+			return r.ExecuteChunk(t.Context(), `zemi.model.set("a/main")`, "test.lua", lua.OriginUser)
 		}, "profile cheap sets its model"},
 	} {
 		err := c.do()
@@ -1802,7 +1802,7 @@ func TestConcurrentSendsQueue(t *testing.T) {
 // shown twice or as a failed call that never ran.
 func TestRetryRestreamsStep(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	epoch := h.trEpoch.Load()
 	for name, c := range map[string]struct {
 		hooks agent.StreamHooks
@@ -1853,7 +1853,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 // that settles is the retried step's own.
 func TestRunRetryDropsItsThought(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	hk := &subagentHooks{h: h, def: builtinAgents[0], run: run}
 	hk.StepStart()
 	hk.ReasoningDelta("half a thought")
@@ -2309,7 +2309,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		},
 		"subagent": func() string {
 			h, _ := newTestHostDB(t)
-			run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+			run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 			stream(&subagentHooks{h: h, def: builtinAgents[0], run: run})
 			run.mu.Lock()
 			defer run.mu.Unlock()

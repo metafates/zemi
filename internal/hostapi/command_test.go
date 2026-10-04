@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,10 +23,10 @@ func TestCompleteCommand(t *testing.T) {
 		})
 		zemi.command.add("boom", function() end, { nargs = "*", complete = function() error("nope") end })
 	`)
-	if got := fmt.Sprint(h.CompleteCommand(context.Background(), "greet", "b", "/greet b")); got != "[{b } {bob builder}]" {
+	if got := fmt.Sprint(h.CompleteCommand(t.Context(), "greet", "b", "/greet b")); got != "[{b } {bob builder}]" {
 		t.Fatalf("lua complete = %s", got)
 	}
-	if got := h.CompleteCommand(context.Background(), "boom", "", "/boom "); got != nil || !strings.Contains(h.errs.entries[0].msg, "nope") {
+	if got := h.CompleteCommand(t.Context(), "boom", "", "/boom "); got != nil || !strings.Contains(h.errs.entries[0].msg, "nope") {
 		t.Fatalf("failing completer = %v, errors %+v", got, h.errs.entries)
 	}
 
@@ -92,7 +91,7 @@ func TestNargsOK(t *testing.T) {
 	} {
 		h.Commands.Add(&Command{Name: "foo", NArgs: NArgs(c.nargs), GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin, Gen: h.currentGen()})
 		got := ""
-		if err := h.RunCommand(context.Background(), "foo", c.args); err != nil {
+		if err := h.RunCommand(t.Context(), "foo", c.args); err != nil {
 			got = err.Error()
 		}
 		if got != c.want {
@@ -108,7 +107,7 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 	h, r := newTestHost(t)
 	called := 0
 	var fn *glua.LFunction
-	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		fn = L.NewFunction(func(*glua.LState) int { called++; return 0 })
 		return nil, nil
 	}); err != nil {
@@ -117,12 +116,12 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 	b := &KeyBinding{Key: "x", RHS: RHS{Fn: fn}, Origin: lua.OriginUser, Gen: h.currentGen()}
 	cmd := &Command{Name: "x", Fn: fn, NArgs: "*", Origin: lua.OriginUser, Gen: h.currentGen()}
 	run := func() []error {
-		return []error{h.RunRHS(context.Background(), b), h.runLuaCommand(context.Background(), cmd, "")}
+		return []error{h.RunRHS(t.Context(), b), h.runLuaCommand(t.Context(), cmd, "")}
 	}
 	if errs := run(); errs[0] != nil || errs[1] != nil || called != 2 {
 		t.Fatalf("live: errs=%v called=%d", errs, called)
 	}
-	if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+	if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
 		t.Fatal(err)
 	}
 	for _, err := range run() {
@@ -131,7 +130,7 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 		}
 	}
 	h.Commands.Add(&Command{Name: "stale", Complete: fn, Origin: lua.OriginUser, Gen: cmd.Gen})
-	if got := h.CompleteCommand(context.Background(), "stale", "", "/stale "); got != nil {
+	if got := h.CompleteCommand(t.Context(), "stale", "", "/stale "); got != nil {
 		t.Errorf("stale complete = %q", got)
 	}
 	if called != 2 {

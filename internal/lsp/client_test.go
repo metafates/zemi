@@ -62,7 +62,7 @@ func serveBlocking(in io.Reader, out io.Writer) {
 func TestServerRequestWhileWriting(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c, err := lsp.Start(ctx, lsp.Config{Command: os.Args[0], Env: append(os.Environ(), "ZEMI_LSP_FAKE=blocking"), Root: root})
 	if err != nil {
@@ -101,7 +101,7 @@ func start(t *testing.T, ctx context.Context, root string) *lsp.Client {
 func TestBadFrameEndsServer(t *testing.T) {
 	t.Parallel()
 	for _, length := range []string{"999999999999", "12abc"} {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		_, err := lsp.Start(ctx, lsp.Config{Command: "sh", Args: []string{"-c", `printf 'Content-Length: ` + length + `\r\n\r\n'; sleep 30`}, Root: t.TempDir()})
 		if err == nil || ctx.Err() != nil {
@@ -115,7 +115,7 @@ func TestBadFrameEndsServer(t *testing.T) {
 func TestTouchNoPublishReturnsEarly(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	path := filepath.Join(root, "a.quiet")
@@ -136,7 +136,7 @@ func TestTouchNoPublishReturnsEarly(t *testing.T) {
 func TestTouchConcurrentVersions(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	path := filepath.Join(root, "a.txt")
@@ -162,7 +162,7 @@ func TestTouchConcurrentVersions(t *testing.T) {
 func TestOthers(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
@@ -189,7 +189,7 @@ func TestOthers(t *testing.T) {
 func TestTouch(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	path := filepath.Join(root, "a.txt")
@@ -218,7 +218,7 @@ func TestTouch(t *testing.T) {
 func TestSaveAfterLoad(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	path := filepath.Join(root, "a.txt")
@@ -251,7 +251,7 @@ func TestTouchSymlinkSpellings(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skip(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	c := start(t, ctx, real)
 	for _, step := range []struct{ path, text string }{
@@ -296,7 +296,7 @@ func TestOffsetPos(t *testing.T) {
 func TestRefreshStaleDocuments(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
@@ -325,7 +325,7 @@ func TestRefreshStaleDocuments(t *testing.T) {
 func TestWatchedFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	c := start(t, ctx, root)
 	a, b, g := filepath.Join(root, "a.txt"), filepath.Join(root, "..b.txt"), filepath.Join(root, "c.go")

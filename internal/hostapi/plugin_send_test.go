@@ -44,7 +44,7 @@ func TestPluginText(t *testing.T) {
 			}
 			h.Perm.Add(perm.Rule{Subject: "lua.agent.send", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
 			sid := seedSession(t, h)
-			err := chunkAs(h, r, c.origin, c.src)
+			err := chunkAs(t.Context(), h, r, c.origin, c.src)
 			if c.err != "" {
 				if err == nil || !strings.Contains(err.Error(), c.err) {
 					t.Fatalf("err = %v, want %q", err, c.err)
@@ -55,7 +55,7 @@ func TestPluginText(t *testing.T) {
 				t.Fatal(err)
 			}
 			if c.rewrite {
-				ctx, marked := context.Background(), sid
+				ctx, marked := t.Context(), sid
 				if c.inRun {
 					marked = store.ShortID()
 					if err := h.DB.CreateSession(marked, "", "run", ""); err != nil {

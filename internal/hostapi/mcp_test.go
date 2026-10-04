@@ -43,7 +43,7 @@ func TestMCPBridge(t *testing.T) {
 	defer h.mcp.stopParked()
 	defer h.mcp.park()
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, enabled_tools = { "echo", "shot", "fail", "serach" }, disabled_tools = { "fail" } })`, srv.URL))
-	if err := r.ExecuteChunk(context.Background(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
 		t.Fatal("project config must not add MCP servers")
 	}
 
@@ -70,7 +70,7 @@ func TestMCPBridge(t *testing.T) {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
-		resp, err := list[i].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
+		resp, err := list[i].Run(t.Context(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -48,7 +47,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 // bootAgentAppOn is bootAgentApp on clock, nil for the wall clock.
 func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Host) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
 	resolve := func(p string) string {
 		r, err := filepath.EvalSymlinks(p)
@@ -826,7 +825,7 @@ func TestGoldenModelPicker(t *testing.T) {
 		zemi.model.set("anthropic/claude-sonnet-4-5")`)
 	done := make(chan error, 1)
 	go func() {
-		done <- host.RT.ExecuteChunk(context.Background(), `zemi.model.pick()`, "test.lua", lua.OriginUser)
+		done <- host.RT.ExecuteChunk(t.Context(), `zemi.model.pick()`, "test.lua", lua.OriginUser)
 	}()
 	select {
 	case err := <-done:
@@ -1042,7 +1041,7 @@ func TestLuaSelect(t *testing.T) {
 // runLua runs src as user config and delivers the hooks it posted.
 func runLua(t *testing.T, app *App, src string) {
 	t.Helper()
-	if err := app.host.RT.ExecuteChunk(context.Background(), src, "test.lua", lua.OriginUser); err != nil {
+	if err := app.host.RT.ExecuteChunk(t.Context(), src, "test.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	for app.Pump() {
@@ -2146,7 +2145,7 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	run := func(src string) {
 		t.Helper()
-		if err := host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
+		if err := host.RT.ExecuteChunk(t.Context(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -28,11 +28,11 @@ func TestLuaToolAfterReload(t *testing.T) {
 		h.Perm.Add(perm.Rule{Subject: "tool.weather", Pattern: "*", Decision: perm.Allow})
 		runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 		tool := h.luaFantasyTools(h.PipelineFor())[0]
-		if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}
 		runUser(t, r, c.reloaded)
-		if resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"}); err != nil || resp.Content != c.want {
+		if resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"}); err != nil || resp.Content != c.want {
 			t.Errorf("reloaded %q: %+v, %v", c.reloaded, resp, err)
 		}
 	}
@@ -46,7 +46,7 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	h.SetUIHooks(ui)
 	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	input := `{"city":"` + strings.Repeat("a", 400) + `b"}`
-	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: input}); err != nil {
+	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: input}); err != nil {
 		t.Fatal(err)
 	}
 	if len(ui.asked) != 1 || ui.asked[0].Preview != input {
@@ -93,12 +93,12 @@ func TestLuaToolFailures(t *testing.T) {
 		`{"id":"a","n":"one"}`:         `field "n" must be integer`,
 		`{"id":"a","n":1.5}`:           `field "n" must be integer`,
 	} {
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: input})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: input})
 		if err != nil || !resp.IsError || !strings.HasSuffix(resp.Content, want) {
 			t.Errorf("%s: resp = %+v, %v, want an error ending in %q", input, resp, err, want)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 	if resp, err := tool.Run(ctx, fantasy.ToolCall{Input: `{"id":"spin"}`}); err != nil || !resp.IsError {
 		t.Errorf("interrupted: resp = %+v, %v, want an error result", resp, err)
@@ -150,7 +150,7 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.ExecuteChunk(context.Background(), src, "project-chunk", lua.OriginProject); err != nil {
+			if err := r.ExecuteChunk(t.Context(), src, "project-chunk", lua.OriginProject); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
@@ -194,16 +194,16 @@ func TestLuaToolWaitFreesInterpreter(t *testing.T) {
 			tool := h.luaFantasyTools(h.PipelineFor())[0]
 			done := make(chan fantasy.ToolResponse, 1)
 			go func() {
-				resp, _ := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 				done <- resp
 			}()
 			// a command runs while execute waits
-			waitFor(t, func() error { return h.RunCommand(context.Background(), "ready", "") })
+			waitFor(t, func() error { return h.RunCommand(t.Context(), "ready", "") })
 			var err error
 			if c.act == "reload" {
-				err = r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration)
+				err = r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration)
 			} else {
-				err = h.RunCommand(context.Background(), "release", "")
+				err = h.RunCommand(t.Context(), "release", "")
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -241,11 +241,11 @@ func TestToolPostRewrite(t *testing.T) {
 			h.Perm.Add(perm.Rule{Subject: "tool.echo", Pattern: "*", Decision: perm.Allow})
 			runUser(t, r, `zemi.tool.add({ name = "echo", description = "echo", execute = function() return "x" end })`+c.user)
 			if c.project != "" {
-				if err := r.ExecuteChunk(context.Background(), c.project, "project-chunk", lua.OriginProject); err != nil {
+				if err := r.ExecuteChunk(t.Context(), c.project, "project-chunk", lua.OriginProject); err != nil {
 					t.Fatal(err)
 				}
 			}
-			resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+			resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 			if err != nil || resp.Content != c.want {
 				t.Fatalf("output %q, %v; want %q", resp.Content, err, c.want)
 			}

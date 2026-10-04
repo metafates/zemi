@@ -61,7 +61,7 @@ func TestJobReadSandboxHint(t *testing.T) {
 		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, pol, func() string { return "\nguard note" })
 		out.Write([]byte("touch: /elsewhere/x: Operation not permitted\n"))
 		read := func() string {
-			res, _ := runJobRead(context.Background(), p, map[string]any{"id": id})
+			res, _ := runJobRead(t.Context(), p, map[string]any{"id": id})
 			return res.Content
 		}
 		if got := read(); !strings.Contains(got, "not permitted") {
@@ -88,10 +88,10 @@ func TestJobReadSandboxHint(t *testing.T) {
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(c) }()
 	id := p.Jobs.Adopt("sleep 100", c, &proc.Buffer{Max: 1 << 20}, 0, wait, &sandbox.Policy{}, func() string { return "" })
-	runJobKill(context.Background(), p, map[string]any{"id": id})
+	runJobKill(t.Context(), p, map[string]any{"id": id})
 	j, _ := p.Jobs.Get(id)
 	<-j.done
-	if res, _ := runJobRead(context.Background(), p, map[string]any{"id": id}); strings.Contains(res.Content, "Sandbox:") {
+	if res, _ := runJobRead(t.Context(), p, map[string]any{"id": id}); strings.Contains(res.Content, "Sandbox:") {
 		t.Errorf("a killed job got the hint: %q", res.Content)
 	}
 }
@@ -236,7 +236,7 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 func TestShellTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
 	p := &Pipeline{Jobs: NewJobs()}
-	res, _ := runShell(context.Background(), p, map[string]any{
+	res, _ := runShell(t.Context(), p, map[string]any{
 		"command": "echo started; sleep 30", "timeout_ms": float64(400),
 	})
 	if res.IsError || !strings.Contains(res.Content, JobHandoff+"job-1") {
@@ -245,10 +245,10 @@ func TestShellTimeoutBecomesJob(t *testing.T) {
 	if !strings.Contains(res.Content, "started") {
 		t.Fatalf("output from before the timeout must survive: %q", res.Content)
 	}
-	if out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"}); !strings.Contains(out.Content, "running") {
+	if out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"}); !strings.Contains(out.Content, "running") {
 		t.Fatalf("the job must still be running: %q", out.Content)
 	}
-	runJobKill(context.Background(), p, map[string]any{"id": "job-1"})
+	runJobKill(t.Context(), p, map[string]any{"id": "job-1"})
 	j, _ := p.Jobs.Get("job-1")
 	select {
 	case <-j.done:
@@ -261,7 +261,7 @@ func TestShellTimeoutBecomesJob(t *testing.T) {
 // pipe exited 0; the child is stopped and named, not reported as a failure.
 func TestShellOrphanIsNotAnError(t *testing.T) {
 	t.Parallel()
-	res, _ := runShell(context.Background(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
+	res, _ := runShell(t.Context(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
 	if res.IsError || !strings.HasPrefix(res.Content, "started\na background process it started was stopped") {
 		t.Fatalf("orphan: %+v", res)
 	}
@@ -271,13 +271,13 @@ func TestShellOrphanIsNotAnError(t *testing.T) {
 // while it runs, and a shell line works without args.
 func TestJobStreamsOutput(t *testing.T) {
 	p := &Pipeline{Jobs: NewJobs()}
-	res, _ := runJobStart(context.Background(), p, map[string]any{"command": "echo ready && sleep 30"})
+	res, _ := runJobStart(t.Context(), p, map[string]any{"command": "echo ready && sleep 30"})
 	if res.IsError {
 		t.Fatal(res.Content)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"})
+		out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"})
 		if strings.Contains(out.Content, "ready") && strings.Contains(out.Content, "running") {
 			break
 		}
@@ -286,10 +286,10 @@ func TestJobStreamsOutput(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"}); strings.Contains(out.Content, "ready") {
+	if out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"}); strings.Contains(out.Content, "ready") {
 		t.Fatalf("a second read must not repeat delivered output: %q", out.Content)
 	}
-	runJobKill(context.Background(), p, map[string]any{"id": "job-1"})
+	runJobKill(t.Context(), p, map[string]any{"id": "job-1"})
 	j, _ := p.Jobs.Get("job-1")
 	select {
 	case <-j.done:
@@ -303,12 +303,12 @@ func TestJobStreamsOutput(t *testing.T) {
 func TestJobReadSpillsTheCut(t *testing.T) {
 	dir := t.TempDir()
 	p := &Pipeline{Jobs: NewJobs(), Pad: dir}
-	if res, _ := runJobStart(context.Background(), p, map[string]any{"command": "seq 1 4000"}); res.IsError {
+	if res, _ := runJobStart(t.Context(), p, map[string]any{"command": "seq 1 4000"}); res.IsError {
 		t.Fatal(res.Content)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		out, _ := runJobRead(context.Background(), p, map[string]any{"id": "job-1"})
+		out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"})
 		if _, file, ok := strings.Cut(out.Content, "(output saved to "); ok {
 			file, _, _ = strings.Cut(file, ")")
 			b, err := os.ReadFile(file)
@@ -344,7 +344,7 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 	}
 	run := func(name string, in map[string]any) string {
 		b, _ := json.Marshal(in, json.Deterministic(true))
-		res, _ := byName[name].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: name, Input: string(b)})
+		res, _ := byName[name].Run(t.Context(), fantasy.ToolCall{ID: "1", Name: name, Input: string(b)})
 		return res.Content
 	}
 	d := filepath.Join(proj, "d")
@@ -400,7 +400,7 @@ func TestShellResultText(t *testing.T) {
 			}
 			p.Sandboxed = &sandbox.Policy{}
 		}
-		res, _ := runShell(context.Background(), p, map[string]any{"command": tc.cmd})
+		res, _ := runShell(t.Context(), p, map[string]any{"command": tc.cmd})
 		if res.Content != tc.want {
 			t.Errorf("%s: %q, want %q", tc.cmd, res.Content, tc.want)
 		}
@@ -447,7 +447,7 @@ func TestShellStops(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if c.cancel {
 				time.AfterFunc(200*time.Millisecond, cancel)

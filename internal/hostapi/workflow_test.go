@@ -185,7 +185,7 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := runFlow(context.Background(), h, "local wf = zemi.workflow\n"+c.script, c.args)
+			res, err := runFlow(t.Context(), h, "local wf = zemi.workflow\n"+c.script, c.args)
 			if c.wantErr {
 				if err == nil || !strings.Contains(err.Error(), c.want) {
 					t.Fatalf("err = %v, want %q", err, c.want)
@@ -418,7 +418,7 @@ func TestWorkflowControl(t *testing.T) {
 			m := newGate()
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 			ticks, ended := make(chan flowView, 256), make(chan struct{})
-			f, err := h.startFlow(context.Background(), flowSpec{
+			f, err := h.startFlow(t.Context(), flowSpec{
 				src: "local wf = zemi.workflow\n" + c.script, concurrency: c.limit, background: true,
 				progress: func(f *flowRun) {
 					select {
@@ -517,7 +517,7 @@ func TestWorkflowRerun(t *testing.T) {
 		{name: "a script planted as a link is refused", first: `return "m"`, change: link(".lua"), want: "a symlink"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f, err := h.startFlow(context.Background(), flowSpec{src: wf + c.first, args: c.args})
+			f, err := h.startFlow(t.Context(), flowSpec{src: wf + c.first, args: c.args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -548,7 +548,7 @@ func TestWorkflowRerun(t *testing.T) {
 				}
 				var g *flowRun
 				if err == nil {
-					g, err = h.startFlow(context.Background(), flowSpec{src: src, from: from})
+					g, err = h.startFlow(t.Context(), flowSpec{src: src, from: from})
 				}
 				if err != nil {
 					if !strings.Contains(err.Error(), c.want) {
@@ -617,7 +617,7 @@ func TestWorkflowSchema(t *testing.T) {
 		{"a required field it does not declare raises", `return wf.agent("x", {schema = {type = "object", properties = {a = {}}, required = {"b"}}})`, "schema must be"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := runFlow(context.Background(), h, "local wf = zemi.workflow\n"+c.script, nil)
+			got, err := runFlow(t.Context(), h, "local wf = zemi.workflow\n"+c.script, nil)
 			if err != nil {
 				got = err.Error()
 			}
@@ -638,7 +638,7 @@ func TestWorkflowToolInput(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Ask})
 	tool := h.workflowTool(h.PipelineFor())
 	call := func(input string) (string, bool) {
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -828,7 +828,7 @@ func TestEndedRunIsNotHandedOff(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
-	f, err := h.startFlow(context.Background(), flowSpec{src: "return 1"})
+	f, err := h.startFlow(t.Context(), flowSpec{src: "return 1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -950,7 +950,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart { return textParts("ok") }}, nil
 	}
 	seedSession(t, h)
-	resp, err := h.workflowTool(h.PipelineFor()).Run(context.Background(),
+	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true,"description":"scan six parts"}`})
 	if err != nil || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
 		t.Fatalf("background start = %+v, %v", resp, err)
@@ -970,7 +970,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	if err := h.tasks.addFlow(&flowRun{id: store.ShortID(), parent: h.AgentSessionID(), background: true, status: RunRunning}, waitAdvice); err != nil {
 		t.Fatal(err)
 	}
-	resp, err = h.workflowTool(h.PipelineFor()).Run(context.Background(),
+	resp, err = h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "2", Name: "workflow", Input: `{"script":"return 1","background":true}`})
 	if err != nil || !strings.Contains(resp.Content, foregroundAdvice) {
 		t.Fatalf("a refused background start = %q, %v, want %q", resp.Content, err, foregroundAdvice)
@@ -1041,7 +1041,7 @@ func TestWorkflowUserStart(t *testing.T) {
 func TestWorkflowCancel(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -1063,7 +1063,7 @@ func TestWorkflowCancel(t *testing.T) {
 func TestWorkflowPanicEnds(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
-	f, err := h.startFlow(context.Background(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(*flowRun) {
+	f, err := h.startFlow(t.Context(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(*flowRun) {
 		panic("boom")
 	}})
 	if err != nil {
@@ -1139,7 +1139,7 @@ func TestSavedWorkflows(t *testing.T) {
 	h.agents.sessionID = "s1"
 	var runs []*flowRun
 	for _, desc := range []string{"Sum up", "Review"} {
-		f, err := h.startFlow(context.Background(), flowSpec{description: desc, src: "return 1"})
+		f, err := h.startFlow(t.Context(), flowSpec{description: desc, src: "return 1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1199,7 +1199,7 @@ func TestReviewTargetsACommit(t *testing.T) {
 		{"main", "git diff --merge-base main"},
 		{"", "git diff HEAD"},
 	} {
-		res, err := runFlow(context.Background(), h, src, c.args)
+		res, err := runFlow(t.Context(), h, src, c.args)
 		if err != nil {
 			t.Fatalf("%q: %v", c.args, err)
 		}

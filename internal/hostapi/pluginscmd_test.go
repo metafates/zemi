@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -64,7 +63,7 @@ func TestPluginsCommand(t *testing.T) {
 	h := NewHost(r, log, config.NewStore(), dirs)
 	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
 	h.SetUIHooks(ui)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep()}); err == nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep()}); err == nil {
 		t.Fatal("plugin b's error must fail the step")
 	}
 

@@ -32,7 +32,7 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, r
@@ -45,7 +45,7 @@ func newTestHostUI(t *testing.T) *Host {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -91,7 +91,7 @@ func outsideTemp(t *testing.T) string {
 // interpreter deadlock into a loud failure instead of a hung test binary.
 func runChunk(t *testing.T, r *lua.Runtime, src string) error {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -181,7 +181,7 @@ func TestReloadConfig(t *testing.T) {
 			if c.booting {
 				steps = append(steps, cfg)
 			}
-			if err := r.Boot(context.Background(), steps); err != nil {
+			if err := r.Boot(t.Context(), steps); err != nil {
 				t.Fatal(err)
 			}
 			if c.booting {
@@ -232,7 +232,7 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 
 	called := false
 	var onSelect *glua.LFunction
-	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		onSelect = L.NewFunction(func(*glua.LState) int { called = true; return 0 })
 		return nil, nil
 	}); err != nil {
@@ -240,16 +240,16 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 	}
 	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []any{"a"}}
 
-	h.SelectOverlay(context.Background(), o, 0)
+	h.SelectOverlay(t.Context(), o, 0)
 	if !called {
 		t.Fatal("a live overlay did not run on_select")
 	}
 
 	called = false
-	if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+	if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
-	h.SelectOverlay(context.Background(), o, 0)
+	h.SelectOverlay(t.Context(), o, 0)
 	if called {
 		t.Fatal("a stale overlay ran a retired generation's on_select")
 	}
@@ -381,7 +381,7 @@ func TestKeymapFromLua(t *testing.T) {
 		end
 		assert(zemi.keymap.del("ctrl+j", { list = true }) and zemi.keymap.get("ctrl+j", { list = true }) == nil, "del an alias")
 	`)
-	if err := r.ExecuteChunk(context.Background(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("a plugin bound a list alias: %v", err)
 	}
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
@@ -412,8 +412,8 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	w := h.Widgets.List()[0]
 	rendered := make(chan struct{})
-	ctx := &waitedCtx{Context: context.Background(), waited: make(chan struct{}, 1)}
-	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	ctx := &waitedCtx{Context: t.Context(), waited: make(chan struct{}, 1)}
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		go func() {
 			defer close(rendered)
 			h.RenderWidget(ctx, w, 40, 10, UIState{})
@@ -459,14 +459,14 @@ func TestRenderAllowlist(t *testing.T) {
 		widgets[w.ID] = w
 	}
 	for i, c := range cases {
-		_, _, err := h.RenderWidget(context.Background(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
+		_, _, err := h.RenderWidget(t.Context(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
 		if want := "zemi." + c.refused + " is not allowed during widget render"; c.refused == "" && err != nil ||
 			c.refused != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 			t.Errorf("%s: err = %v", c.call, err)
 		}
 	}
 
-	lines, _, err := h.RenderWidget(context.Background(), widgets["clean"], 40, 10, UIState{})
+	lines, _, err := h.RenderWidget(t.Context(), widgets["clean"], 40, 10, UIState{})
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
@@ -495,7 +495,7 @@ func TestEmitVetoable(t *testing.T) {
 			return {decision = "deny", reason = "no"}
 		end)
 	`)
-	res := h.EmitVetoable(context.Background(), "composer.submit", nil)
+	res := h.EmitVetoable(t.Context(), "composer.submit", nil)
 	if !res.Denied {
 		t.Fatalf("veto result = %+v, want Denied", res)
 	}
@@ -510,7 +510,7 @@ func TestEmitVetoable(t *testing.T) {
 		zemi.event.on("tool.pre", function(ev) while true do end end)
 	`)
 	start := time.Now()
-	res2 := h.EmitVetoable(context.Background(), "tool.pre", nil)
+	res2 := h.EmitVetoable(t.Context(), "tool.pre", nil)
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("veto deadline not honored: %s", elapsed)
 	}
@@ -864,7 +864,7 @@ func TestShortOutput(t *testing.T) {
 func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	h, r := newTestHost(t)
 	var boom *glua.LFunction
-	if _, err := r.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		boom = L.NewFunction(func(L *glua.LState) int { L.RaiseError("nope"); return 0 })
 		return nil, nil
 	}); err != nil {
@@ -872,8 +872,8 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	}
 	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: boom, OnClose: boom, Items: []any{"a"}}
 	for source, run := range map[string]func(){
-		"overlay x on_select": func() { h.SelectOverlay(context.Background(), o, 0) },
-		"overlay x on_close":  func() { h.CancelOverlay(context.Background(), o) },
+		"overlay x on_select": func() { h.SelectOverlay(t.Context(), o, 0) },
+		"overlay x on_close":  func() { h.CancelOverlay(t.Context(), o) },
 	} {
 		h.errs.entries = nil
 		run()

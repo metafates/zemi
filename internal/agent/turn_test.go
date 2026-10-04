@@ -184,7 +184,7 @@ func TestTurnStreamsAndPersists(t *testing.T) {
 		persisted = append(persisted, string(msg.Role))
 		return nil
 	}
-	if err := r.Send(context.Background(), "hi"); err != nil {
+	if err := r.Send(t.Context(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	waitDone(t, hooks)
@@ -237,7 +237,7 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 		}
 		return nil
 	}
-	if err := r.Send(context.Background(), "hi"); err != nil {
+	if err := r.Send(t.Context(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(roles, ","); got != "user,assistant,tool,user,assistant" {
@@ -269,7 +269,7 @@ func TestToolRowOpensAtInputStart(t *testing.T) {
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	hooks := newRecHooks()
 	r.Hooks = hooks
-	if err := r.Send(context.Background(), "hi"); err != nil {
+	if err := r.Send(t.Context(), "hi"); err != nil {
 		t.Fatal(err)
 	}
 	waitDone(t, hooks)
@@ -304,7 +304,7 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 		}
 		return nil
 	}
-	if err := r.Send(context.Background(), "hi"); err == nil {
+	if err := r.Send(t.Context(), "hi"); err == nil {
 		t.Fatal("want the step error")
 	}
 	var hist []string
@@ -333,14 +333,14 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 	r := NewRunner(m, nil, "")
 	r.MaxOutputTokens = 32000
 	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
+	if err := r.Send(t.Context(), "hi"); !errors.Is(err, ErrReplyCut) {
 		t.Fatalf("cut-off reply: %v, want ErrReplyCut", err)
 	}
 	if n := m.lastCall.MaxOutputTokens; n == nil || *n != 32000 {
 		t.Fatalf("max output tokens: %v", n)
 	}
 	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "go on"); err != nil {
+	if err := r.Send(t.Context(), "go on"); err != nil {
 		t.Fatal(err)
 	}
 	var roles []string
@@ -378,12 +378,12 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 		m = &mockModel{steps: [][]fantasy.StreamPart{append(step, fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: c.finish}), textParts("done")}}
 		r = NewRunner(m, nil, "")
 		r.Hooks = newRecHooks()
-		if err := r.Send(context.Background(), "hi"); (err != nil) != (c.err != "") || err != nil && !strings.Contains(err.Error(), c.err) {
+		if err := r.Send(t.Context(), "hi"); (err != nil) != (c.err != "") || err != nil && !strings.Contains(err.Error(), c.err) {
 			t.Errorf("finish %s, call %v: err %v, want %q", c.finish, c.call, err, c.err)
 			continue
 		}
 		r.Hooks = newRecHooks()
-		if err := r.Send(context.Background(), "go on"); err != nil {
+		if err := r.Send(t.Context(), "go on"); err != nil {
 			t.Fatal(err)
 		}
 		var texts []string
@@ -432,7 +432,7 @@ func TestToolLoopEndsTurn(t *testing.T) {
 		})
 		r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 		r.Hooks = newRecHooks()
-		if err := r.Send(context.Background(), "hi"); errors.Is(err, ErrToolLoop) != c.loop {
+		if err := r.Send(t.Context(), "hi"); errors.Is(err, ErrToolLoop) != c.loop {
 			t.Errorf("%s: err = %v, want a loop %v", c.name, err, c.loop)
 		}
 		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
@@ -455,7 +455,7 @@ func TestStepLimit(t *testing.T) {
 	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	r.Hooks, r.MaxSteps = newRecHooks(), 3
-	err := r.Send(context.Background(), "hi")
+	err := r.Send(t.Context(), "hi")
 	if err == nil || err.Error() != "stopped at the 3-step limit (agent.max_steps): send a message to continue" {
 		t.Fatalf("err = %v", err)
 	}
@@ -510,7 +510,7 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	} {
 		stop = c.stop
 		r.Hooks = newRecHooks()
-		if err := r.Send(context.Background(), c.text); err != nil {
+		if err := r.Send(t.Context(), c.text); err != nil {
 			t.Fatal(err)
 		}
 		if got := strings.Join(roles, ","); got != c.roles || r.CutShort() != c.cut {
@@ -527,7 +527,7 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 func TestAsideStreams(t *testing.T) {
 	r := NewRunner(&mockModel{parts: textParts("answer")}, nil, "sys")
 	r.MaxOutputTokens = 128_000
-	res, err := r.Aside(context.Background(), nil, "what did I say")
+	res, err := r.Aside(t.Context(), nil, "what did I say")
 	if err != nil || res.Response.Content.Text() != "answer" {
 		t.Fatalf("aside = %+v, %v", res, err)
 	}
@@ -548,11 +548,11 @@ func TestSecondSendWhileActive(t *testing.T) {
 	r := NewRunner(m, nil, "")
 	r.Hooks = hooks
 	go func() {
-		_ = r.Send(context.Background(), "first")
+		_ = r.Send(t.Context(), "first")
 	}()
 	for !r.Active() {
 	}
-	if err := r.Send(context.Background(), "second"); !errors.Is(err, ErrTurnActive) {
+	if err := r.Send(t.Context(), "second"); !errors.Is(err, ErrTurnActive) {
 		t.Fatalf("want ErrTurnActive, got %v", err)
 	}
 	close(block)
@@ -573,7 +573,7 @@ func TestCancelAbortsTurn(t *testing.T) {
 	r := NewRunner(m, nil, "")
 	r.Hooks = hooks
 	go func() {
-		_ = r.Send(context.Background(), "hi")
+		_ = r.Send(t.Context(), "hi")
 	}()
 	for !r.Active() {
 	}
@@ -989,7 +989,7 @@ func TestRunnerForkContinuesTheLastRequest(t *testing.T) {
 	if _, err := r.Fork(nil); err == nil {
 		t.Fatal("a runner that sent nothing cannot be forked")
 	}
-	if err := r.Send(context.Background(), "hello"); err != nil {
+	if err := r.Send(t.Context(), "hello"); err != nil {
 		t.Fatal(err)
 	}
 	f, err := r.Fork(nil)

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,7 +44,7 @@ func TestGoldenWorkflows(t *testing.T) {
 	defer close(hold)
 
 	app, host := bootAgentApp(t, 80, 30)
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}

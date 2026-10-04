@@ -45,7 +45,7 @@ func TestLSPDiagnostics(t *testing.T) {
 				in["content"] = content
 			}
 			input, _ := json.Marshal(in, json.Deterministic(true))
-			resp, err := byName[tool].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})
+			resp, err := byName[tool].Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +111,7 @@ func TestLSPTool(t *testing.T) {
 	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
 	run := func(input string) string {
 		t.Helper()
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: input})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -458,7 +458,7 @@ func TestLSPSyncFromGit(t *testing.T) {
 	os.WriteFile(a, []byte("func Foo()\nFoo()\n"), 0o644)
 	refs := func() string {
 		t.Helper()
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -102,7 +101,7 @@ func commandHost(t *testing.T) *hostapi.Host {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -116,7 +115,7 @@ func TestMainCommandArgs(t *testing.T) {
 		{"new", "idea: add caching", "/new takes no arguments"},
 		{"resume", "some-id", "session store unavailable"},
 	} {
-		if got := fmt.Sprint(h.RunCommand(context.Background(), c.name, c.args)); got != c.want {
+		if got := fmt.Sprint(h.RunCommand(t.Context(), c.name, c.args)); got != c.want {
 			t.Errorf("/%s %s = %q, want %q", c.name, c.args, got, c.want)
 		}
 	}

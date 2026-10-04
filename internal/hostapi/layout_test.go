@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -65,13 +64,13 @@ func TestLayoutOrigins(t *testing.T) {
 		t.Fatal(err)
 	}
 	steps := []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui.layout"), lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	if err := r.Boot(context.Background(), steps[:2]); err != nil {
+	if err := r.Boot(t.Context(), steps[:2]); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(h.Layout(), DefaultLayout) {
 		t.Fatal("the Go fallback drifted from tui/layout.lua")
 	}
-	if err := h.ForceReload(context.Background(), steps); err != nil {
+	if err := h.ForceReload(t.Context(), steps); err != nil {
 		t.Fatal(err)
 	}
 	side := func() bool { return h.Layout().Root.Children[0].Region == "side" }
@@ -80,22 +79,22 @@ func TestLayoutOrigins(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.ui.layout.get().root.children[1].id == "side")`)
 	for _, o := range []lua.Origin{lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject} {
-		err := r.ExecuteChunk(context.Background(), `zemi.ui.layout.set({ root = { kind = "box", dir = "col", children = { { kind = "composer" } } } })`, "x.lua", o)
+		err := r.ExecuteChunk(t.Context(), `zemi.ui.layout.set({ root = { kind = "box", dir = "col", children = { { kind = "composer" } } } })`, "x.lua", o)
 		if err == nil || !side() {
 			t.Fatalf("%s code replaced the user's layout (err %v)", o, err)
 		}
 	}
 
-	if err := h.ForceReload(context.Background(), steps); err != nil || !side() {
+	if err := h.ForceReload(t.Context(), steps); err != nil || !side() {
 		t.Fatalf("reload lost the user's layout: %v", err)
 	}
 	if err := os.Remove(initLua); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.ForceReload(context.Background(), steps); err != nil || side() || h.Layout() == DefaultLayout {
+	if err := h.ForceReload(t.Context(), steps); err != nil || side() || h.Layout() == DefaultLayout {
 		t.Fatalf("a replay without the user's layout should draw the shipped one: %v", err)
 	}
-	if err := h.ForceReload(context.Background(), steps[:1]); err != nil || h.Layout() != DefaultLayout {
+	if err := h.ForceReload(t.Context(), steps[:1]); err != nil || h.Layout() != DefaultLayout {
 		t.Fatalf("a replay that sets no layout should draw the fallback: %v", err)
 	}
 }

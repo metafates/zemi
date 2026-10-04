@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,7 +128,7 @@ func TestViewedRunThinksLive(t *testing.T) {
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{})
 	def := AgentDef{Name: "explore"}
-	run, _ := h.newRun(context.Background(), def, "look around", "look", true)
+	run, _ := h.newRun(t.Context(), def, "look around", "look", true)
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}

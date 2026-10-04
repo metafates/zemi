@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -197,7 +196,7 @@ func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 	clock := &fakeClock{now: testEpoch}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	h.SetUIHooks(&fakeUI{})

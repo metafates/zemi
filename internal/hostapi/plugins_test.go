@@ -243,7 +243,7 @@ func TestPluginsStep(t *testing.T) {
 				fmt.Fprintf(&out, "step: %v\n", run(ctx, r, g))
 				return nil
 			}
-			if err := r.Boot(context.Background(), []lua.BootStep{
+			if err := r.Boot(t.Context(), []lua.BootStep{
 				h.NamespacesStep(), step,
 				lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
 				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
@@ -251,7 +251,7 @@ func TestPluginsStep(t *testing.T) {
 				t.Fatal(err)
 			}
 			if b := h.Keymaps.Lookup("", "ctrl+g"); b != nil {
-				if err := h.RunRHS(context.Background(), b); err != nil {
+				if err := h.RunRHS(t.Context(), b); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -458,11 +458,11 @@ func TestPluginSettings(t *testing.T) {
 					h = NewHost(r, log, config.NewStore(), dirs)
 					t.Cleanup(h.Close)
 					steps = []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep(), lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)}
-					if err := r.Boot(context.Background(), steps); err != nil {
+					if err := r.Boot(t.Context(), steps); err != nil {
 						t.Fatal(err)
 					}
 					h.KeepPicks.Store(true)
-				} else if err := h.ForceReload(context.Background(), steps); err != nil {
+				} else if err := h.ForceReload(t.Context(), steps); err != nil {
 					t.Fatal(err)
 				}
 				if p.pick != nil {

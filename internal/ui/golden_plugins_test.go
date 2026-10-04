@@ -52,7 +52,7 @@ func TestGoldenPlugins(t *testing.T) {
 	gitIn(clone, "checkout", "-q", "refs/tags/v1.4.0")
 	gitIn(clone, "remote", "set-url", "origin", "https://github.com/someone/zemi-git-status")
 
-	ctx := context.Background()
+	ctx := t.Context()
 	// soft, as main.go runs it: a failed plugin fails no boot
 	step := host.PluginsStep()
 	run := step.Run

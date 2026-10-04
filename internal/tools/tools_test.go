@@ -114,7 +114,7 @@ func testPipeline(t *testing.T, overlayAllows bool, rules ...perm.Rule) (*Pipeli
 
 func call(t *testing.T, ag fantasy.AgentTool, input string) fantasy.ToolResponse {
 	t.Helper()
-	resp, err := ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: ag.Info().Name, Input: input})
+	resp, err := ag.Run(t.Context(), fantasy.ToolCall{ID: "t1", Name: ag.Info().Name, Input: input})
 	if err != nil {
 		t.Fatalf("Run returned Go error: %v", err)
 	}
@@ -199,14 +199,14 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 		call(t, read, `{"path":"`+path+`","limit":0}`)
 		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
 		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
-		CallStart(context.Background(), "c1", "edit", first)
-		CallStart(context.Background(), "c2", "edit", second)
+		CallStart(t.Context(), "c1", "edit", first)
+		CallStart(t.Context(), "c2", "edit", second)
 		var wg sync.WaitGroup
 		var r1, r2 fantasy.ToolResponse
 		wg.Go(func() {
-			r2, _ = edit.Run(context.Background(), fantasy.ToolCall{ID: "c2", Name: "edit", Input: second})
+			r2, _ = edit.Run(t.Context(), fantasy.ToolCall{ID: "c2", Name: "edit", Input: second})
 		})
-		wg.Go(func() { r1, _ = edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first}) })
+		wg.Go(func() { r1, _ = edit.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first}) })
 		wg.Wait()
 		got, _ := os.ReadFile(path)
 		if r1.IsError || r2.IsError || string(got) != "c\n" {
@@ -240,7 +240,7 @@ func TestCallOrderReleases(t *testing.T) {
 				return fantasy.ToolResponse{}
 			}
 		}
-		bg := context.Background()
+		bg := t.Context()
 		cancelled, cancel := context.WithCancel(bg)
 		cancel()
 		for _, c := range []struct {
@@ -254,7 +254,7 @@ func TestCallOrderReleases(t *testing.T) {
 				CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
 				CallStart(bg, "c2", "edit", second)
 				CallDone(bg, "c1")
-			}, context.Background(), true, "a\n"},
+			}, t.Context(), true, "a\n"},
 			{"another runner's step done keeps the order", func() {
 				CallStart(bg, "c1", "edit", first)
 				CallStart(bg, "c2", "edit", second)
@@ -263,9 +263,9 @@ func TestCallOrderReleases(t *testing.T) {
 				CallDone(other, "c1")
 				go func() {
 					time.Sleep(50 * time.Millisecond) // the bubble's clock moves only once c2 waits
-					edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
+					edit.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
 				}()
-			}, context.Background(), false, "c\n"},
+			}, t.Context(), false, "c\n"},
 			{"cancelled ctx gives up", func() {
 				CallStart(bg, "c1", "edit", first)
 				CallStart(bg, "c2", "edit", second)
@@ -729,7 +729,7 @@ func TestScratchpad(t *testing.T) {
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)
 	}
-	if res, _ := runShell(context.Background(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
+	if res, _ := runShell(t.Context(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
 		t.Errorf("unconfined $TMPDIR is %q, want %q", res.Content, pad)
 	}
 }
@@ -765,7 +765,7 @@ func TestReadAndShellShapes(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "d", "a"), 0o755)
 	os.WriteFile(filepath.Join(dir, "d", "b.pem"), nil, 0o644)
 	os.WriteFile(filepath.Join(dir, "d", "c"), nil, 0o644)
-	ctx := context.Background()
+	ctx := t.Context()
 	p := &Pipeline{Pad: filepath.Join(dir, "pad")}
 	for _, c := range []struct {
 		name      string
@@ -906,7 +906,7 @@ func TestOutputLimits(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	res, _ := runRead(ctx, onPath(t, nil, path), nil)
 	if !strings.HasSuffix(res.Content, "... (more lines; continue with offset 2001)\n") {
 		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
@@ -1022,11 +1022,11 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	f.Close()
 
 	p := onPath(t, &Pipeline{Seen: &sync.Map{}}, path)
-	res, _ := runRead(context.Background(), p, map[string]any{"offset": float64(100_000)})
+	res, _ := runRead(t.Context(), p, map[string]any{"offset": float64(100_000)})
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = runEdit(context.Background(), p, map[string]any{"old_string": "x", "new_string": "y"})
+	res, _ = runEdit(t.Context(), p, map[string]any{"old_string": "x", "new_string": "y"})
 	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}

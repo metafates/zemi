@@ -291,7 +291,7 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, text, err := h.runSubagent(context.Background(), def, "d", "look")
+	_, text, err := h.runSubagent(t.Context(), def, "d", "look")
 	if err == nil {
 		t.Fatal("want the step error")
 	}
@@ -349,7 +349,7 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 			runner := agent.NewRunner(model, nil, "sys")
 			runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
 			runner.History = c.history
-			base, err := h.sendPruning(context.Background(), runner, "p/m", "go", c.base)
+			base, err := h.sendPruning(t.Context(), runner, "p/m", "go", c.base)
 			wantErr := c.refusals > 1
 			if (err != nil) != wantErr || sends != 2 {
 				t.Fatalf("send: %v (streams %d)", err, sends)
@@ -392,7 +392,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil {
+			if _, _, err := h.runSubagent(t.Context(), def, "d", "look"); err != nil {
 				t.Fatal(err)
 			}
 			if len(ui.asked) != 1 || ui.asked[0].Agent != "general agent" {
@@ -428,7 +428,7 @@ func TestSubagentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 2 {
-		if _, text, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil || !strings.Contains(text, "use tabs here") {
+		if _, text, err := h.runSubagent(t.Context(), def, "d", "look"); err != nil || !strings.Contains(text, "use tabs here") {
 			t.Fatalf("run %d: read result %q, %v", i, text, err)
 		}
 	}
@@ -456,7 +456,7 @@ func TestSubagentOwnDir(t *testing.T) {
 	}
 	var dirs []string
 	for range 2 {
-		_, text, err := h.runSubagent(context.Background(), def, "d", "look")
+		_, text, err := h.runSubagent(t.Context(), def, "d", "look")
 		_, dir, ok := strings.Cut(text, "keep your own files in "+filepath.Join(h.ScratchDir(), "general-"))
 		if err != nil || !ok {
 			t.Fatalf("task %q, %v", text, err)
@@ -480,11 +480,11 @@ func TestSubagentReportTruncated(t *testing.T) {
 	}
 	// the schema words a wrong type as the builtin tools do
 	for in, want := range map[string]string{`{"prompt":1}`: `field "prompt" must be string`, `[1]`: "input must be a JSON object"} {
-		if resp, _ := h.agentTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "c0", Name: "agent", Input: in}); !resp.IsError || resp.Content != want {
+		if resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c0", Name: "agent", Input: in}); !resp.IsError || resp.Content != want {
 			t.Fatalf("%s: %+v", in, resp)
 		}
 	}
-	resp, err := h.agentTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{
+	resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{
 		ID: "c1", Name: "agent", Input: `{"description":"d","prompt":"look","agent":"explore"}`,
 	})
 	if err != nil {
@@ -722,9 +722,9 @@ func TestAgentsList(t *testing.T) {
 func TestUpdateToolReportsAFailedSend(t *testing.T) {
 	h, _ := newTestHostDB(t) // no model: the parent's send refuses
 	h.SetUIHooks(&fakeUI{})
-	run, _ := h.newRun(context.Background(), AgentDef{Name: "general"}, "d", "look", true)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "general"}, "d", "look", true)
 	tool := &updateTool{h: h, pipe: h.PipelineFor()}
-	ctx := context.WithValue(context.Background(), runKey{}, run)
+	ctx := context.WithValue(t.Context(), runKey{}, run)
 	resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "1", Name: tools.ToolUpdate, Input: `{"text":"found it"}`})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "did not reach the caller") {
 		t.Fatalf("a failed update = %+v, %v", resp, err)
@@ -1175,7 +1175,7 @@ func TestForkRefusals(t *testing.T) {
 	t.Run("a run cannot fork", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		run := func(agent string) error {
-			ctx := context.WithValue(context.Background(), runKey{}, &agentRun{agent: agent})
+			ctx := context.WithValue(t.Context(), runKey{}, &agentRun{agent: agent})
 			_, err := h.forkSetup(ctx, &agentRun{}, nil, "p")
 			return err
 		}
@@ -1190,7 +1190,7 @@ func TestForkRefusals(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		h.SetUIHooks(&fakeUI{})
 		tool := h.agentTool(h.PipelineFor())
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "c1", Input: `{"prompt":"p","agent":"fork","background":true}`})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: `{"prompt":"p","agent":"fork","background":true}`})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, "cannot be detached") {
 			t.Fatalf("a detached fork = %+v %v", resp, err)
 		}
@@ -1203,7 +1203,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 		// the run a detached fork is asked from must survive the detach, or the
 		// fork would continue the conversation from outside itself
-		ctx := context.WithValue(context.Background(), runKey{}, &agentRun{agent: forkAgent})
+		ctx := context.WithValue(t.Context(), runKey{}, &agentRun{agent: forkAgent})
 		id, err := h.startBackgroundAgent(ctx, def, "d", "p")
 		if err != nil {
 			t.Fatal(err)
@@ -1223,7 +1223,7 @@ func TestForkRefusals(t *testing.T) {
 	t.Run("a fork needs the turn that is running", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		want := "continues the turn that is running"
-		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := h.forkSetup(t.Context(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("a fork before anything was sent = %v", err)
 		}
 		h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -1236,7 +1236,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 		waitIdle(t, h)
 		// the runner outlives the turn, so only active says one is running
-		if _, err := h.forkSetup(context.Background(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := h.forkSetup(t.Context(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("a fork after the turn ended = %v", err)
 		}
 	})
@@ -1249,7 +1249,7 @@ func TestForkRefusals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := h.continueRun(context.Background(), run, "more", nil); err == nil || !strings.Contains(err.Error(), "no longer holds this fork's conversation") {
+		if _, err := h.continueRun(t.Context(), run, "more", nil); err == nil || !strings.Contains(err.Error(), "no longer holds this fork's conversation") {
 			t.Fatalf("continuing a forgotten fork = %v", err)
 		}
 	})

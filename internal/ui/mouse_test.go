@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"image/color"
 	"os"
@@ -222,7 +221,7 @@ func TestHoverTargets(t *testing.T) {
 			render = function() return {{{ text = "noclick", click = "go" }}} end })
 		zemi.ui.widget.add({ id = "c", region = "statusline.left", priority = 89, on_click = function() end,
 			render = function() return {{{ text = "quiet", hl = "Dim", click = "go", hover = false }}} end })`
-		if err := app.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
+		if err := app.host.RT.ExecuteChunk(t.Context(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)
 		}
 	}

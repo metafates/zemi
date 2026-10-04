@@ -37,13 +37,13 @@ func (m *askModel) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamRe
 }
 
 // chunkAs runs src as code of origin: a plugin's is plugin a's.
-func chunkAs(h *Host, r *lua.Runtime, origin lua.Origin, src string) error {
+func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, src string) error {
 	path := map[lua.Origin]string{
 		lua.OriginUser:    filepath.Join(h.Dirs.ConfigHome, "init.lua"),
 		lua.OriginPlugin:  filepath.Join(h.pluginsRoot(), "local", "a", "init.lua"),
 		lua.OriginProject: filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua"),
 	}[origin]
-	return r.ExecuteChunk(context.Background(), src, path, origin)
+	return r.ExecuteChunk(ctx, src, path, origin)
 }
 
 // TestModelAsk: zemi.model.ask answers off the interpreter and bills the
@@ -73,7 +73,7 @@ func TestModelAsk(t *testing.T) {
 				h.Perm.Add(perm.Rule{Subject: "lua.model.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
 			}
 			done := make(chan error, 1)
-			go func() { done <- chunkAs(h, r, c.origin, ask) }()
+			go func() { done <- chunkAs(t.Context(), h, r, c.origin, ask) }()
 			if c.err != "" {
 				if err := <-done; err == nil || !strings.Contains(err.Error(), c.err) {
 					t.Fatalf("err = %v, want %q", err, c.err)
@@ -84,7 +84,7 @@ func TestModelAsk(t *testing.T) {
 			// the waiting chunk left the interpreter free
 			runUser(t, r, `zemi.state.set("free", true)`)
 			if c.reload {
-				if err := r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
+				if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
 					t.Fatal(err)
 				}
 				<-m.gone

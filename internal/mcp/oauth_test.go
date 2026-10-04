@@ -101,7 +101,7 @@ func TestOAuthSignIn(t *testing.T) {
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	path := filepath.Join(t.TempDir(), "fake.json")
 	auth := &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: path}
@@ -305,7 +305,7 @@ func TestDiscoverChecksResource(t *testing.T) {
 		"https" + strings.TrimPrefix(srv.URL, "http") + "/mcp": false,
 	} {
 		resource.Store(res)
-		m, err := discover(context.Background(), srv.URL+"/mcp")
+		m, err := discover(t.Context(), srv.URL+"/mcp")
 		if err != nil {
 			t.Fatalf("%q: %v", res, err)
 		}
@@ -336,7 +336,7 @@ func TestDiscoverWithoutAuthServers(t *testing.T) {
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
 
-	m, err := discover(context.Background(), srv.URL+"/mcp")
+	m, err := discover(t.Context(), srv.URL+"/mcp")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestDiscoverWithoutAuthServers(t *testing.T) {
 	// resource is still the server's canonical URI
 	bare := httptest.NewServer(http.NotFoundHandler())
 	defer bare.Close()
-	if m, err = discover(context.Background(), bare.URL+"/mcp/"); err != nil {
+	if m, err = discover(t.Context(), bare.URL+"/mcp/"); err != nil {
 		t.Fatal(err)
 	}
 	if m.resource != bare.URL+"/mcp" || m.registerURL != bare.URL+"/register" {

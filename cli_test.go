@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -266,7 +265,7 @@ func TestTrustGate(t *testing.T) {
 			asked++
 			return c.answer
 		}
-		if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), tg.step(), h.MarkdownCommandsStep()}); err != nil {
+		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), tg.step(), h.MarkdownCommandsStep()}); err != nil {
 			t.Fatal(err)
 		}
 		loaded := h.Commands.Lookup("x") != nil
@@ -378,10 +377,10 @@ func TestSendPromptRunsCommands(t *testing.T) {
 // names itself.
 func TestHeadlessNotices(t *testing.T) {
 	_, h, r := newTrustGate(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ExecuteChunk(context.Background(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, "init.lua", lua.OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.Commands.Add(&hostapi.Command{
@@ -404,7 +403,7 @@ func TestHeadlessNotices(t *testing.T) {
 		{"info", "", func() error { h.Notify(slog.LevelInfo, "Copied", "3 chars"); return nil }},
 		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify(slog.LevelError, "", "first\nsecond"); return nil }},
 		{"zemi.notify.warn", "zemi: Warning: w\n", func() error {
-			return r.ExecuteChunk(context.Background(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
+			return r.ExecuteChunk(t.Context(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
 		}},
 		{"screen command", "", func() error {
 			if err := h.SendPrompt("/screen"); err == nil || err.Error() != "/screen needs the TUI" {
@@ -425,10 +424,10 @@ func TestHeadlessNotices(t *testing.T) {
 // with its own model, since the run would measure the profile's.
 func TestModelFlagUnderProfile(t *testing.T) {
 	_, h, r := newTrustGate(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ExecuteChunk(context.Background(), `zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err == nil || !strings.Contains(err.Error(), "sets its model") {

@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,10 +148,10 @@ func TestFsDataDir(t *testing.T) {
 	if _, err := os.Stat(file); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := h.runModelLua(context.Background(), `return zemi.fs.read(zemi.fs.data_dir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
+	if out, err := h.runModelLua(t.Context(), `return zemi.fs.read(zemi.fs.data_dir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
 		t.Fatalf("an unapproved Lua tool script read the data dir: %q %v", out, err)
 	}
-	err := r.ExecuteChunk(context.Background(), `
+	err := r.ExecuteChunk(t.Context(), `
 		assert(not pcall(zemi.fs.data_dir, "notes"), "data_dir")
 		for _, call in ipairs({ "read", "write" }) do
 			local ok, err = pcall(zemi.fs[call], "`+file+`", "x")

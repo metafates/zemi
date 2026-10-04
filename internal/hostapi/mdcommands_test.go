@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -47,7 +46,7 @@ func TestMarkdownCommandSends(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
 	cmd := h.Commands.Lookup("fix")
@@ -59,7 +58,7 @@ func TestMarkdownCommandSends(t *testing.T) {
 		{"main.go", "/fix main.go" + body},
 		{"main.go" + agent.Attached("stdin", "panic: x"), "/fix main.go" + body + agent.Attached("stdin", "panic: x")},
 	} {
-		if err := h.RunCommand(context.Background(), "fix", c.args); err != nil {
+		if err := h.RunCommand(t.Context(), "fix", c.args); err != nil {
 			t.Fatal(err)
 		}
 		waitIdle(t, h)
@@ -83,7 +82,7 @@ func TestProjectMarkdownCommands(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
 	if cmd := h.Commands.Lookup("atest"); cmd == nil || cmd.Desc != "from .agents" || cmd.Origin != lua.OriginProject {

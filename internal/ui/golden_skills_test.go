@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +21,7 @@ func TestGoldenSkillsList(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: deploy\ndescription: ship a release to staging\n---\n\nSteps.\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"), host.SkillsUserHooksStep()}
 	if err := host.ForceReload(ctx, steps); err != nil {
 		t.Fatal(err)

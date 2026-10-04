@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"cmp"
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -458,7 +457,7 @@ func TestMemoryDelOriginGate(t *testing.T) {
 	if err := h.DB.AddMemory(m); err != nil {
 		t.Fatal(err)
 	}
-	err := r.ExecuteChunk(context.Background(), `zemi.memory.del("`+m.ID+`")`, "model.lua", lua.OriginProject)
+	err := r.ExecuteChunk(t.Context(), `zemi.memory.del("`+m.ID+`")`, "model.lua", lua.OriginProject)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("model origin allowed: %v", err)
 	}
@@ -687,7 +686,7 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 // TestMemoryCommandsRegistered pins the /memory command step.
 func TestMemoryCommandsRegistered(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	if err := h.BuiltinCommandsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+	if err := h.BuiltinCommandsStep().Run(t.Context(), h.RT, &lua.Generation{ID: 1}); err != nil {
 		t.Fatalf("step: %v", err)
 	}
 	if h.Commands.Lookup("memory") == nil {

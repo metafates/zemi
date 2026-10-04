@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +34,7 @@ make all
 python x.py
 `)
 	step := func() {
-		if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+		if err := h.ProjectPermissionsStep().Run(t.Context(), h.RT, &lua.Generation{ID: 1}); err != nil {
 			t.Fatalf("step: %v", err)
 		}
 	}

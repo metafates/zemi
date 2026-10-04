@@ -66,7 +66,7 @@ assert(type(d.splash) == "function", "splash missing")
 assert(not pcall(function() d.splash = print end), "plugin wrote into the builtin module")
 assert(require("zemi.tui") == d, "view not cached")`
 	plugin := filepath.Join(host.Dirs.PluginsRoot(), "local", "p", "init.lua")
-	if err := host.RT.ExecuteChunk(context.Background(), src, plugin, lua.OriginPlugin); err != nil {
+	if err := host.RT.ExecuteChunk(t.Context(), src, plugin, lua.OriginPlugin); err != nil {
 		t.Fatal(err)
 	}
 	runLua(t, app, `assert(require("zemi.tui").splash ~= print)`)
@@ -279,6 +279,8 @@ func TestFarewell(t *testing.T) {
 				block, reached := make(chan struct{}), make(chan struct{})
 				t.Cleanup(func() { close(block) })
 				go func() {
+					// Background: the cleanup releases this goroutine, and
+					// t.Context is cancelled before cleanups run
 					_ = host.RT.Boot(context.Background(), []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui"), {
 						Name: "trust", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
 							close(reached)

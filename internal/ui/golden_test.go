@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -38,7 +37,7 @@ func tempConfig(t testing.TB) string {
 // User init.lua rebinds a default key and adds a statusline segment; the
 // composed frame is pinned as a golden.
 func TestGoldenFrame(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	cfg, data, state, project := tempConfig(t), t.TempDir(), t.TempDir(), t.TempDir()
 	// Classify on EvalSymlinks-resolved prefixes (DESIGN §5): on macOS
 	// t.TempDir() hands out /var/... while resolved paths are /private/var/...
@@ -109,7 +108,7 @@ func (a *App) renderSync(tb testing.TB) {
 		for more := true; more; {
 			var lines [][]hostapi.Segment
 			var err error
-			if lines, more, err = a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, a.uiState()); err != nil {
+			if lines, more, err = a.host.RenderWidget(tb.Context(), w.Widget, w.width, w.height, a.uiState()); err != nil {
 				tb.Fatalf("render widget %s: %v", w.ID, err)
 			}
 			a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen})

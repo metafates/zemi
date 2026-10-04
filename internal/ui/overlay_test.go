@@ -2,7 +2,6 @@ package ui
 
 import (
 	"cmp"
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -216,7 +215,7 @@ func pressWhileLuaBusy(t *testing.T, app *App, keys ...tea.KeyPressMsg) (release
 	t.Helper()
 	app.program = tea.NewProgram(nil)
 	busy, hold := make(chan struct{}), make(chan struct{})
-	go app.host.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
+	go app.host.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
 		close(busy)
 		<-hold
 		return nil, nil
@@ -1583,7 +1582,7 @@ func TestOverlayCloseRules(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	run := func(src string, origin lua.Origin) {
 		t.Helper()
-		if err := host.RT.ExecuteChunk(context.Background(), src, "t.lua", origin); err != nil {
+		if err := host.RT.ExecuteChunk(t.Context(), src, "t.lua", origin); err != nil {
 			t.Fatal(err)
 		}
 		for app.Pump() {

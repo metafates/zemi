@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"io/fs"
 	"path/filepath"
 	"regexp"
@@ -24,7 +23,7 @@ var undocumented = map[string]string{}
 func TestSkillsCoverSurface(t *testing.T) {
 	text := skillsText(t)
 	h, r := newTestHost(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{
+	if err := r.Boot(t.Context(), []lua.BootStep{
 		h.NamespacesStep(), h.BuiltinCommandsStep(),
 	}); err != nil {
 		t.Fatal(err)

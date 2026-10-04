@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"errors"
 	"slices"
 	"strconv"
@@ -30,7 +29,7 @@ func TestContextEstimateCountsPrompt(t *testing.T) {
 	if overhead <= 0 {
 		t.Fatal("the runner's prompt was never measured")
 	}
-	if err := h.compact(context.Background(), runner, compactManual, ""); err != nil {
+	if err := h.compact(t.Context(), runner, compactManual, ""); err != nil {
 		t.Fatalf("compact: %v", err)
 	}
 	h.agents.mu.Lock()
@@ -47,7 +46,7 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "## Goal\nship it")
 	m.cutReply = true
-	out, err := h.summarize(context.Background(), []fantasy.Message{agent.UserMessage("hi")}, "", "", 0)
+	out, err := h.summarize(t.Context(), []fantasy.Message{agent.UserMessage("hi")}, "", "", 0)
 	if err != nil {
 		t.Fatalf("summarize: %v", err)
 	}

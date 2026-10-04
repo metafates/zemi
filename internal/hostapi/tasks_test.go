@@ -271,7 +271,7 @@ func TestMixedMessageRows(t *testing.T) {
 func TestViewedRunTakesItsQueueBack(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
-	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "look around", "look", true)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look around", "look", true)
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 func TestAgentSendsWhileBackground(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
-	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "d", "look", true)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "d", "look", true)
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +535,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	}
 	parent := seedSession(t, h)
 	def, _ := h.agentDef("explore")
-	id, err := h.startBackgroundAgent(context.Background(), def, "left behind", "look")
+	id, err := h.startBackgroundAgent(t.Context(), def, "left behind", "look")
 	if err != nil {
 		t.Fatal(err)
 	}

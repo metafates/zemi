@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -50,7 +49,7 @@ func TestComposerActions(t *testing.T) {
 	if app.composer.text != "second!" {
 		t.Fatalf("history_next and the insert key: %q", app.composer.text)
 	}
-	err := host.RT.ExecuteChunk(context.Background(), `zemi.keymap.set("ctrl+u", "zemi.composer.submit")`, "p.lua", lua.OriginPlugin)
+	err := host.RT.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+u", "zemi.composer.submit")`, "p.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("a plugin bound a composer action: %v", err)
 	}

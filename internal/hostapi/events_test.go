@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -36,7 +35,7 @@ func TestToolDeniedEvent(t *testing.T) {
 		if tl.Info().Name != "read" {
 			continue
 		}
-		resp, err := tl.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "read", Input: `{"path":"/p/secret.txt","limit":0}`})
+		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "read", Input: `{"path":"/p/secret.txt","limit":0}`})
 		if err != nil || !resp.IsError {
 			t.Fatalf("denied read = %+v, %v", resp, err)
 		}
@@ -60,7 +59,7 @@ func TestHostToolEvents(t *testing.T) {
 		zemi.state.set("wpost", tostring(ev.ok))
 	end)`)
 	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Deny})
-	resp, err := h.workflowTool(h.PipelineFor()).Run(context.Background(),
+	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
 		t.Fatalf("denied workflow = %+v, %v", resp, err)
@@ -173,12 +172,12 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.keymap.set("<leader>y", "mode")`, `zemi.keymap.set("<leader>y", "profile")`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
-		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
+		if err := r.ExecuteChunk(t.Context(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
 			t.Errorf("%s from project: %v", src, err)
 		}
 	}
 	// a mode rule outside the subject namespaces would sit in its store and never match
-	if err := r.ExecuteChunk(context.Background(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "shell", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "shell" starts with none of`) {
+	if err := r.ExecuteChunk(t.Context(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "shell", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "shell" starts with none of`) {
 		t.Fatalf("mode rule with a bare subject: %v", err)
 	}
 	runUser(t, r, `
@@ -189,10 +188,10 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.next")
 		assert(zemi.command.run("gocmd"))
 		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
-	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatal(err)
 	}
-	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
+	if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("project app.quit deny = %+v, want ignored", res)
 	}
 }
@@ -215,7 +214,7 @@ func TestBuiltinWorkflows(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := runFlow(context.Background(), h, src, c.args)
+		res, err := runFlow(t.Context(), h, src, c.args)
 		if err != nil || !strings.HasPrefix(res, c.want) {
 			t.Fatalf("%s run = %q, %v", c.name, res, err)
 		}
@@ -305,16 +304,16 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 		zemi.event.on("permission.request", function() end)
 		zemi.event.on("app.quit", function() end)
 		zemi.event.on("tool.pre", function() end)`)
-	if _, err := r.Do(context.Background(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, func(*glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, func(*glua.LState) ([]any, error) {
 		<-t.Context().Done()
 		return nil, nil
 	}); !r.IsHot() {
 		t.Fatalf("runtime not hot: %v", err)
 	}
-	if res := h.EmitVetoable(context.Background(), "permission.request", map[string]any{}); !res.Denied {
+	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied {
 		t.Errorf("permission.request while hot = %+v, want denied", res)
 	}
-	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
+	if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("app.quit while hot = %+v, want proceed", res)
 	}
 	if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
@@ -338,7 +337,7 @@ func TestToolPreRewrite(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHost(t)
-			if err := r.ExecuteChunk(context.Background(), c.src, "c.lua", c.origin); err != nil {
+			if err := r.ExecuteChunk(t.Context(), c.src, "c.lua", c.origin); err != nil {
 				t.Fatal(err)
 			}
 			d, _, rw, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"})
@@ -362,7 +361,7 @@ func TestLuaToolRunsToolPre(t *testing.T) {
 			zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })
 			zemi.event.on("tool.pre", function(ev) if ev.tool == "weather" then return `+c.ret+` end end)
 		`)
-		resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+		resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) {
 			t.Errorf("%s: resp = %+v, %v", c.ret, resp, err)
 		}

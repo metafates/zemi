@@ -54,12 +54,12 @@ func TestTask(t *testing.T) {
 				return g.SB.RegisterNamespace("zemi.t", tb, nil)
 			}}}
 			r := NewRuntime(RuntimeOptions{})
-			if err := r.Boot(context.Background(), steps); err != nil {
+			if err := r.Boot(t.Context(), steps); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { close(r.current().stop) })
 
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			task := Task{
 				Class: ClassAgent, Origin: OriginUser, Path: "t.lua",
@@ -100,20 +100,20 @@ func TestTask(t *testing.T) {
 			if c.act != "" {
 				<-waiting
 				// the interpreter is free while the task waits
-				if _, err := r.Do(context.Background(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
+				if _, err := r.Do(t.Context(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
 					t.Fatalf("a request while the task waits: %v", err)
 				}
 				switch c.act {
 				case "release":
 					close(release)
 				case "reload":
-					if err := r.ForceReload(context.Background(), steps, nil); err != nil {
+					if err := r.ForceReload(t.Context(), steps, nil); err != nil {
 						t.Fatal(err)
 					}
 				case "cancel":
 					cancel()
 				case "forge":
-					if _, err := r.Do(context.Background(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+					if _, err := r.Do(t.Context(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 						fn, err := genOf(L).SB.CompileChunk(`local ok, err = pcall(coroutine.resume, ..., "forged")
 							assert(not ok and err:find("resumes only when", 1, true), tostring(err))`, OriginPlugin.ChunkName("p.lua"))
 						if err != nil {
