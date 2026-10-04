@@ -1,4 +1,4 @@
-GO_FILES = $(shell git ls-files '*.go')
+GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
 .PHONY: all build run first-run test race vet lint fmt golden luals stylua check install clean reset-db
 
@@ -31,7 +31,7 @@ test:
 	go test ./...
 
 race:
-	go test -race ./internal/...
+	go test -race ./...
 
 vet:
 	go vet ./...

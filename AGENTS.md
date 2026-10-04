@@ -97,7 +97,7 @@ make lint               # golangci-lint run (.golangci.yml: curated linters and 
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make first-run          # zemi as a newcomer sees it: fresh HOME and repo, deleted on exit; KEYS=0 without keys, DIR=<abs path>, ARGS=<flags>
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
-make race               # go test -race ./internal/...
+make race               # go test -race ./...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # golangci-lint fmt over the Go files (gofmt without the binary), and stylua over the runtime/ and testdata/ Lua
 make reset-db           # delete the stores a schema bump refuses (ZEMI_STATE=<dir> for another tree)
