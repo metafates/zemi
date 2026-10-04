@@ -507,6 +507,13 @@ func (p *Pipeline) guard() func() string {
 	return p.Guard(*p.Sandboxed)
 }
 
+// hiddenSecret reports a path the backend hides: the secret shapes with the
+// .env templates included, which perm.PathIsStrictSecret exempts because grep
+// and a directory listing may show them.
+func hiddenSecret(p string) bool {
+	return perm.PathIsStrictSecret(p) || strings.HasPrefix(filepath.Base(p), ".env.")
+}
+
 // sandboxHint is the line a confined command's failure gets when the
 // sandbox may be why: the limit a denied path hit and the one next step; ""
 // otherwise. It offers only the escapes the run's schema carries: none
@@ -568,9 +575,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 			break
 		}
 		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
-	case b.HidesSecretFiles && has(func(l limit) bool {
-		return perm.PathIsStrictSecret(l.path) || strings.HasPrefix(filepath.Base(l.path), ".env.")
-	}):
+	case b.HidesSecretFiles && has(func(l limit) bool { return hiddenSecret(l.path) }):
 		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, call it again with sandbox: false (needs approval)")
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
@@ -872,11 +877,12 @@ func ParseInput(info fantasy.ToolInfo, input string, open bool) (map[string]any,
 	if strings.TrimSpace(input) == "" {
 		input = "{}"
 	}
-	var typeErr *json.SemanticError
-	switch err := json.Unmarshal([]byte(input), &m); {
-	case errors.As(err, &typeErr):
+	err := json.Unmarshal([]byte(input), &m)
+	// a JSON value that is no object at all, not a field-level type error
+	if _, ok := errors.AsType[*json.SemanticError](err); ok {
 		return nil, errors.New("input must be a JSON object")
-	case err != nil:
+	}
+	if err != nil {
 		return nil, fmt.Errorf("invalid tool input: %w", err)
 	}
 	return m, Validate(info, m, open)
@@ -1100,10 +1106,31 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	withSandbox := func(props, sandbox, network map[string]any) map[string]any {
 		if p != nil && p.SandboxParam {
 			props["sandbox"], props["network"] = sandbox, network
-			about := props["about"].(map[string]any)
-			about["description"] = about["description"].(string) + " With network or sandbox set, also why it needs that."
+			// about is what streams first, so the sentence lands there; a tool
+			// whose schema has none gets no sentence rather than a panic
+			if about, ok := props["about"].(map[string]any); ok {
+				if desc, ok := about["description"].(string); ok {
+					about["description"] = desc + " With network or sandbox set, also why it needs that."
+				}
+			}
 		}
 		return props
+	}
+
+	// pathReq is the subjects func of a tool that makes one request about the
+	// path its input names: how the input names it (searchRoot where a search
+	// may name none) and why, for the ask.
+	pathReq := func(subject string, arg func(map[string]any) string, reason string) func(*Pipeline, map[string]any) ([]Request, error) {
+		return func(_ *Pipeline, in map[string]any) ([]Request, error) {
+			return []Request{{Subject: subject, Arg: arg(in), Reason: reason}}, nil
+		}
+	}
+	pathIn := func(in map[string]any) string { return str(in["path"]) }
+	// changeReq is write's and edit's one request, previewing what it would do
+	changeReq := func(tool string) func(*Pipeline, map[string]any) ([]Request, error) {
+		return func(_ *Pipeline, in map[string]any) ([]Request, error) {
+			return []Request{{Subject: perm.SubjectWrite, Arg: pathIn(in), Preview: ChangeDiff(tool, in)}}, nil
+		}
 	}
 
 	// a model told it reads images plans screenshots it can never look at
@@ -1135,9 +1162,7 @@ Chain dependent steps with &&.`,
 				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 bytes"},
 			},
 			[]string{"path", "limit"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"])}}, nil
-			},
+			pathReq(perm.SubjectRead, pathIn, ""),
 			runRead)),
 
 		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
@@ -1146,9 +1171,7 @@ Chain dependent steps with &&.`,
 				"content": map[string]any{"type": "string"},
 			},
 			[]string{"path", "content"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff(ToolWrite, in)}}, nil
-			},
+			changeReq(ToolWrite),
 			runWrite))),
 
 		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", true,
@@ -1159,9 +1182,7 @@ Chain dependent steps with &&.`,
 				"replace_all": map[string]any{"type": "boolean"},
 			},
 			[]string{"path", "old_string", "new_string"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff(ToolEdit, in)}}, nil
-			},
+			changeReq(ToolEdit),
 			runEdit))),
 
 		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
@@ -1170,9 +1191,7 @@ Chain dependent steps with &&.`,
 				"path":    map[string]any{"type": "string", "description": "directory to search under; default the working directory"},
 			},
 			[]string{"pattern"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}, nil
-			},
+			pathReq(perm.SubjectRead, searchRoot, ""),
 			runGlob),
 
 		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
@@ -1182,9 +1201,7 @@ Chain dependent steps with &&.`,
 				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}, nil
-			},
+			pathReq(perm.SubjectRead, searchRoot, ""),
 			runGrep),
 
 		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
@@ -1330,9 +1347,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"path": map[string]any{"type": "string"},
 			},
 			[]string{"path"},
-			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "read diagnostics"}}, nil
-			},
+			pathReq(perm.SubjectRead, pathIn, "read diagnostics"),
 			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
 					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
