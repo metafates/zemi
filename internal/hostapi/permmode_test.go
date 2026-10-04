@@ -567,7 +567,7 @@ func TestExplicitAskReachesUser(t *testing.T) {
 // is answered, so an answer that covers it settles it without a second
 // prompt, with the rule's verdict whole.
 func TestAskWaiterJudgedAgain(t *testing.T) {
-	root := perm.RealPath(t.TempDir())
+	root := outsideTemp(t)
 	for _, d := range []string{".git", "a", "b"} {
 		os.Mkdir(filepath.Join(root, d), 0o700)
 	}
