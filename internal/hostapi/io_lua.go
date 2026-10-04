@@ -745,10 +745,8 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
 	})
 	// §9 localhost development opt-in: an explicit user allow rule for the
-	// host overrides the resolved-address deny. Allow rules are user-only
-	// (zemi.permission.rule refuses them elsewhere), and project callers
-	// never get the override.
-	allowPrivate := v.DecidedBy == tools.ByRule && origin.Rank() > lua.OriginProject.Rank()
+	// host overrides the resolved-address deny. Project callers never get it.
+	allowPrivate := tools.UserRule(v.Rule) && origin.Rank() > lua.OriginProject.Rank()
 	fetch := func(ctx context.Context) (map[string]any, error) {
 		return h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
 	}

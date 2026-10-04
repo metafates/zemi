@@ -166,6 +166,12 @@ const (
 // ByMode is a verdict the permission mode name settled.
 func ByMode(name string) string { return modePrefix + name }
 
+// UserRule reports a rule the user's own config wrote, which is what earns
+// the §9 localhost development opt-in: a rule scoped to a plugin is still
+// theirs, while a session "always" answer carries the model principal and
+// never counts.
+func UserRule(r *perm.Rule) bool { return r != nil && r.Principal != perm.PrincipalModel }
+
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
 func DeniedText(v Verdict, what string) string {

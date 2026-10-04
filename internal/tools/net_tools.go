@@ -126,7 +126,7 @@ func checkFetchHost(p *Pipeline, u *url.URL) error {
 	if (ip == nil || !ipDenied(ip)) && host != "localhost" && !strings.HasSuffix(host, ".localhost") {
 		return nil
 	}
-	if o := p.Store.Evaluate("net."+u.Hostname(), u.String(), p.Principal); o.Decision == perm.Allow && o.Rule != nil && o.Rule.Principal == "" {
+	if o := p.Store.Evaluate("net."+u.Hostname(), u.String(), p.Principal); o.Decision == perm.Allow && UserRule(o.Rule) {
 		return nil
 	}
 	return privateRefused(u.Hostname(), u.Hostname())
@@ -175,9 +175,8 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	// §9 localhost development opt-in: a rule the user wrote in config for
-	// this host, never a session "always" answer (principal model)
-	allowPrivate := p.verdict.Rule != nil && p.verdict.Rule.Principal == ""
+	// §9 localhost development opt-in: only a rule the user's own config wrote
+	allowPrivate := UserRule(p.verdict.Rule)
 	client := SafeClient(func(hop *url.URL) error { return netGate(p, hop, "fetch redirect") }, allowPrivate)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {

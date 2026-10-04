@@ -1131,3 +1131,22 @@ func trunc(s string, n int) string {
 	}
 	return s
 }
+
+// TestUserRule pins which rule earns the §9 localhost development opt-in: one
+// the user's own config wrote, never a session "always" answer.
+func TestUserRule(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		r    *perm.Rule
+		want bool
+	}{
+		{"no rule matched", nil, false},
+		{"a user rule", &perm.Rule{Principal: ""}, true},
+		{"a rule the user scoped to a plugin", &perm.Rule{Principal: perm.PluginPrincipal("x")}, true},
+		{"a session always answer", &perm.Rule{Principal: perm.PrincipalModel}, false},
+	} {
+		if got := UserRule(c.r); got != c.want {
+			t.Fatalf("%s: UserRule = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
