@@ -3182,7 +3182,5 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 ## 13. Open questions
 
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
-- Streaming render cost: a long transcript re-renders per generation
-  bump; needs a per-widget invalidation design and a measured budget.
 - Platform support statement: the doc assumes Unix throughout (XDG
   paths, termios); Windows support is undecided.
