@@ -197,7 +197,8 @@ func TestColdChatRender(t *testing.T) {
 					t.Fatalf("the first render has %q %v, %q %v, %q %v", c.has[0], has(c.has[0]), c.has[1], has(c.has[1]), c.hasNot, has(c.hasNot))
 				}
 			}
-			if !strings.Contains(hostapi.SegsText(lines[0]), "question 0") || !has("reply 0") {
+			// the transcript's own first row is the pad above the first message
+			if len(lines) < 2 || strings.TrimSpace(hostapi.SegsText(lines[0])) != "" || !strings.Contains(hostapi.SegsText(lines[1]), "question 0") || !has("reply 0") {
 				t.Fatalf("the fill ends without the first exchange: %d lines from %q", len(lines), hostapi.SegsText(lines[0]))
 			}
 		})

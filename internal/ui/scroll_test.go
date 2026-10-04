@@ -217,7 +217,8 @@ func TestChatScrollFollows(t *testing.T) {
 }
 
 // TestChatScrollShortContent: content shorter than the viewport cannot
-// scroll; pgup is a no-op.
+// scroll; pgup is a no-op, and the transcript starts one row below the
+// region's own first row, which is the pad above it.
 func TestChatScrollShortContent(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "only one")
@@ -234,8 +235,10 @@ func TestChatScrollShortContent(t *testing.T) {
 		t.Fatalf("message must stay visible")
 	}
 	st := app.scrolls["chat"]
-	if row := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y])); !strings.Contains(row, "only one") {
-		t.Fatalf("a short transcript starts at the region's first row: %q", row)
+	pad := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y]))
+	row := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y+1]))
+	if pad != "" || !strings.Contains(row, "only one") {
+		t.Fatalf("a short transcript starts one row below the region's first row: %q then %q", pad, row)
 	}
 }
 
