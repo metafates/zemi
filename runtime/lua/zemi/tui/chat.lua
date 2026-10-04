@@ -946,6 +946,9 @@ zemi.ui.widget.add({
 			end
 			---@type zemi.Line[]
 			local all = {}
+			-- the transcript's first row stands one row off the window's top
+			-- edge; a printed run's output keeps its own framing
+			if last == 0 and #tr > 0 and not ctx.headless then all[1] = { { text = "" } } end
 			for n = #shown, 1, -1 do
 				for _, l in ipairs(shown[n].lines) do
 					all[#all + 1] = l
