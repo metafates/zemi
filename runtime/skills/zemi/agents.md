@@ -28,7 +28,7 @@ Report a one-line verdict (ready, or fix first), then each finding as `path:line
 
 New agent (`/agents new` sends you here, or the user asked for one):
 
-1. Unless the request already says, ask in one `question` call: what the agent does and when the main agent should hand it work; whether it only looks (`read_only`) or changes files; and where it lives: this repository (`.agents/agents/`, shared through git, loaded while the project is trusted) or every project (the user config's `agents/`). Recommend the repository for an agent about this code base and every project otherwise; outside a git repository offer only every project, and in a project the user has not trusted say that a repository agent loads only after `/trust`. Without the `question` tool (`zemi run`) take the recommended answers and say which.
+1. Unless the request already says, ask in one `question` call: what the agent does and when the main agent should hand it work, whether it only looks (`read_only`) or changes files, and where it lives: `.agents/agents/` in this repository or `agents/` in the user config (`SKILL.md` has the placement rule).
 2. The `agent` tool's description lists every agent zemi has. If one already does the job, say which and offer to use or change it instead. Pick a name nothing there uses.
 3. Read what the agent will work on (the instruction files, the build and test commands, the directories it will search), so its steps name real commands and paths.
 4. Write the file in one write: the fewest tools that do the job, `read_only` unless it must change files or run builds and tests, no `model` unless the user asked for one. A user config file asks for approval, which shows the user the file.
