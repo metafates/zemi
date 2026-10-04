@@ -172,21 +172,14 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 	return append(evs, ev)
 }
 
-// failureLine is why a failed call failed: a shell result ends in its exit
-// status, signal or "stopped:" line under the command's output, so the last
-// such line (the output may hold one too), else the last line; other tools
-// lead with it.
+// failureLine is why a failed call failed: the shell tool is the one whose
+// result ends in its reason (the exit status, signal or "stopped:" line under
+// the output, which the tool itself reads); the others lead with it.
 func failureLine(tool, output string) string {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if tool != tools.ToolShell {
-		return lines[0]
+	if tool == tools.ToolShell {
+		return tools.ShellFailure(output)
 	}
-	for _, l := range slices.Backward(lines) {
-		if strings.HasPrefix(l, "exit status ") || strings.HasPrefix(l, "signal: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
-			return l
-		}
-	}
-	return lines[len(lines)-1]
+	return strings.Split(strings.TrimSpace(output), "\n")[0]
 }
 
 // runFailed reports a zemi run that failed before its turn: a script
