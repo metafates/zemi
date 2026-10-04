@@ -377,7 +377,7 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		known = append(known, s.Name)
 		if s.Name == name {
 			path := filepath.Join(s.Path, "SKILL.md")
-			if v := p.Check(Request{Tool: ToolSkill, Subject: perm.SubjectRead, Arg: path}); v.Decision != perm.Allow {
+			if v := p.CheckDenied(Request{Tool: ToolSkill, Subject: perm.SubjectRead, Arg: path}); v.Decision != perm.Allow {
 				return fantasy.NewTextErrorResponse(DeniedText(v, "skill "+name)), nil
 			}
 			fi, _ := os.Stat(path)

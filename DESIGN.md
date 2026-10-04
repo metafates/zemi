@@ -2720,7 +2720,8 @@ provenance string.
   `fs.write` in one project cannot silently plant code in a plugin the user
   did not just create. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
-  author `init.lua`. The model's `read`, `write` and `edit`, `zemi.fs`,
+  author `init.lua`. The model's `read`, `write`, `edit`
+  and `lsp` tools, `zemi.fs`,
   `@file` attachments and the `lua` tool's `path` get their path resolved
   once before the check into a `perm.Path` and open exactly that path,
   walking it with `openat` and `O_NOFOLLOW` (`Path.Open`), so a directory

@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -100,7 +101,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		}
 		return fantasy.NewTextResponse(strings.TrimRight(b.String(), "\n")), nil
 	}
-	text, err := os.ReadFile(path)
+	text, err := readWhole(p.Path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -222,19 +223,28 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		if len(byPath) == 0 {
 			return fantasy.NewTextResponse("nothing to rename" + note), nil
 		}
-		// every other file passes the same gate the named one did
+		// every file is resolved once, judged on that value and written through
+		// it; the named one is the path the gate already checked
+		reason := "rename " + symbol + " to " + newName
+		resolved := map[string]perm.Path{}
 		for _, f := range slices.Sorted(maps.Keys(byPath)) {
 			if perm.CanonPath(f) == perm.CanonPath(path) {
+				resolved[f] = p.Path
 				continue
 			}
-			if v := p.Check(Request{Tool: "lsp", Subject: perm.SubjectWrite, Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {
+			ps, err := perm.Resolve(f)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(workRel(f) + ": " + err.Error()), nil
+			}
+			resolved[f] = ps
+			if v := p.CheckDenied(Request{Tool: ToolLSP, Subject: perm.SubjectWrite, Arg: ps.String(), Reason: reason}); v.Decision != perm.Allow {
 				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+workRel(f)+"; nothing was changed")), nil
 			}
 		}
 		var b strings.Builder
 		total := 0
 		for _, f := range slices.Sorted(maps.Keys(byPath)) {
-			n, err := applyTextEdits(p, f, byPath[f])
+			n, err := applyTextEdits(p, resolved[f], byPath[f])
 			if err != nil {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %v (files before it were changed)", workRel(f), err)), nil
 			}
@@ -428,15 +438,26 @@ func workRel(path string) string {
 	return path
 }
 
+// readWhole reads a file the gate resolved: not through a symlink swapped in
+// since the check, and not blocking on a FIFO the model named.
+func readWhole(path perm.Path) ([]byte, error) {
+	f, _, err := OpenRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(f)
+	return data, cmp.Or(err, f.Close())
+}
+
 // applyTextEdits writes a server's edits to one file under its lock and
 // checkpoint, last range first so earlier offsets stay valid.
-func applyTextEdits(p *Pipeline, path string, edits []lsp.TextEdit) (int, error) {
-	defer lockFile(path)()
-	fi, err := os.Stat(path)
+func applyTextEdits(p *Pipeline, path perm.Path, edits []lsp.TextEdit) (int, error) {
+	defer lockFile(path.String())()
+	fi, err := os.Stat(path.String())
 	if err != nil {
 		return 0, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := readWhole(path)
 	if err != nil {
 		return 0, err
 	}
@@ -458,11 +479,11 @@ func applyTextEdits(p *Pipeline, path string, edits []lsp.TextEdit) (int, error)
 		s, t := lsp.Offset(text, e.Range.Start), lsp.Offset(text, e.Range.End)
 		text = text[:s] + e.NewText + text[t:]
 	}
-	p.checkpoint(path)
-	if err := os.WriteFile(path, []byte(text), fi.Mode().Perm()); err != nil {
+	p.checkpoint(path.String())
+	if err := WriteFile(path, []byte(text), fi.Mode().Perm()); err != nil {
 		return 0, err
 	}
-	fi, _ = os.Stat(path)
-	p.markRead(path, fi)
+	fi, _ = os.Stat(path.String())
+	p.markRead(path.String(), fi)
 	return len(edits), nil
 }

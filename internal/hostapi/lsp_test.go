@@ -116,8 +116,8 @@ func TestLSPTool(t *testing.T) {
 			t.Fatal(err)
 		}
 		// paths come back relative to the process working directory, which
-		// is not the temp project here
-		return strings.ReplaceAll(resp.Content, h.Dirs.ProjectDir+string(filepath.Separator), "")
+		// is not the temp project here; the tool opens what it resolved
+		return strings.ReplaceAll(resp.Content, perm.RealPath(h.Dirs.ProjectDir)+string(filepath.Separator), "")
 	}
 	// references list both lines, so no note names them again
 	if got := run(fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)); strings.Contains(got, "pass line") || !strings.Contains(got, "a.txt:2:1") {
