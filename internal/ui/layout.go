@@ -430,9 +430,8 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 }
 
 // viewport is the one scroll model (chat, Lua scroll nodes, box text,
-// lists): rows of content, viewH of them shown from top. follow pins it to
-// the tail, where top goes negative while the content is shorter than the
-// view, which bottom-anchors it.
+// lists): rows of content, viewH of them shown from top. Content shorter
+// than the view starts at its first row; follow pins it to the tail.
 type viewport struct {
 	top, rows, viewH int
 	follow           bool
@@ -442,7 +441,6 @@ type viewport struct {
 func (v *viewport) clamp() {
 	if v.follow {
 		v.top = v.rows - v.viewH
-		return
 	}
 	v.top = max(0, min(v.top, v.rows-v.viewH))
 }
@@ -483,8 +481,8 @@ func barText(width int) int {
 
 // window is the rows of lines the view shows, each padded to width cells
 // and followed by its bar cell while the content overflows, which a box
-// draws in its border; rows before the content (a bottom-anchored tail) are
-// nil. fade sinks the rows at an edge content lies past; see edgeFade.
+// draws in its border. fade sinks the rows at an edge content lies past; see
+// edgeFade.
 func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
@@ -495,12 +493,9 @@ func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostap
 		if j >= len(lines) {
 			break
 		}
-		var row []hostapi.Segment
-		switch {
-		case i < len(v.pins):
+		row := lines[j]
+		if i < len(v.pins) {
 			row = v.pins[i]
-		case j >= 0:
-			row = lines[j]
 		}
 		if bar.on() {
 			p := padSegs(truncateSegs(row, width), width)
@@ -645,7 +640,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	st.pinRows(lines, w)
 	rows := st.window(lines, w-1, n.Fade) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
-	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
+	for i := st.top; i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
 			continue
 		}

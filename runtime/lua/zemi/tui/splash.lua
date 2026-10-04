@@ -91,8 +91,7 @@ end
 ---@return zemi.Line[]
 function M.render(ctx)
 	local width = ctx.width or 80
-	-- the chat is bottom-anchored and shows height - 1 of these rows
-	local fit = (ctx.height or 0) - 1
+	local fit = ctx.height or 0
 	local room = math.max(math.min(width - 4, 72), 1)
 	-- where zemi is rarely the pick (~, /, a new dir outside a repository) Go
 	-- sets projects to switch to, which take the recent sessions' place

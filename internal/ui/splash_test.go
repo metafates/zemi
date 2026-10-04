@@ -78,10 +78,10 @@ func TestSplashFitsShortChat(t *testing.T) {
 		h         int
 		want, not []string
 	}{
-		{16, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
-		{15, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
-		{11, []string{"╭────╮", "● Tip"}, []string{"v1"}},
-		{10, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
+		{15, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
+		{14, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
+		{10, []string{"╭────╮", "● Tip"}, []string{"v1"}},
+		{9, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
 	} {
 		app, _ := bootAgentApp(t, 80, c.h)
 		runLua(t, app, `

@@ -1273,7 +1273,7 @@ func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
 			}
 		}
 	case hostapi.ScrollStickyDown:
-		for i := max(st.top+1, 0); i < len(st.lines); i++ {
+		for i := st.top + 1; i < len(st.lines); i++ {
 			if headerAt(st.lines, i) {
 				a.scrollRows(id, i-st.top)
 				return
@@ -1305,8 +1305,8 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 			continue
 		}
 		// Word-wrap instead of truncating; the transcript shows the
-		// wrapped tail (bottom-anchored). The rows change only when the
-		// widget renders again or the width does.
+		// wrapped tail. The rows change only when the widget renders again
+		// or the width does.
 		if c.wrapped == nil || c.wrapW != width {
 			if c.wrapW != width {
 				c.lineRows = nil

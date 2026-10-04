@@ -97,7 +97,7 @@ func TestViewport(t *testing.T) {
 		{"reveal below moves the least", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(8, 10) }, 5, 5, true},
 		{"reveal above goes to its top", viewport{top: 10, viewH: 5}, 20, 12, func(v *viewport) { v.reveal(3, 4) }, 3, 5, true},
 		{"reveal taller than the view shows its top", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(6, 16) }, 6, 5, true},
-		{"follow bottom-anchors short content", viewport{viewH: 5, follow: true}, 3, 12, nil, -2, 5, false},
+		{"follow starts short content at its first row", viewport{viewH: 5, follow: true}, 3, 12, nil, 0, 3, false},
 		{"scrolling up leaves the tail", viewport{viewH: 5, follow: true}, 20, 12, func(v *viewport) { v.scroll(-3) }, 12, 5, true},
 		{"under 7 cells draws no bar", viewport{viewH: 5}, 20, 6, nil, 0, 5, false},
 	} {
@@ -114,7 +114,7 @@ func TestViewport(t *testing.T) {
 			out := v.window(lines, c.width, boxFade)
 			bar := false
 			for i, r := range out {
-				if j := v.top + i; j >= 0 && !strings.HasPrefix(hostapi.SegsText(r), lines[j][0].Text) {
+				if j := v.top + i; !strings.HasPrefix(hostapi.SegsText(r), lines[j][0].Text) {
 					t.Fatalf("row %d cut: %q", j, hostapi.SegsText(r))
 				}
 				bar = bar || len(r) > 0 && strings.HasPrefix(r[len(r)-1].HL, "Scrollbar")

@@ -1,7 +1,7 @@
 -- The default keymap: user config can rebind or zemi.keymap.del these.
--- Printable keys stay with the composer. The transcript is bottom-anchored,
--- so the scroll keys and the wheel move the viewport; sending snaps back to
--- the tail. A scroll action takes a node id after a space
+-- Printable keys stay with the composer. The transcript scrolls, so the
+-- scroll keys and the wheel move the viewport; sending snaps back to the
+-- tail. A scroll action takes a node id after a space
 -- ("zemi.ui.scroll.up sidebar"); without one it moves the stage's scrolled
 -- region.
 

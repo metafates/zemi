@@ -213,13 +213,13 @@ func (a *App) dragBar(y int) {
 	rel, span := max(0, min(y-b.top, b.h-1)), max(b.h-1, 1)
 	if b.region != "" {
 		if st := a.scrolls[b.region]; st != nil {
-			a.scrollRows(b.region, rel*(st.rows-st.viewH)/span-max(st.top, 0))
+			a.scrollRows(b.region, rel*(st.rows-st.viewH)/span-st.top)
 		}
 		return
 	}
 	switch text, sel, n, _ := a.boxScroll(); {
 	case text != nil && text.overflows():
-		text.scroll(rel*(text.rows-text.viewH)/span - max(text.top, 0))
+		text.scroll(rel*(text.rows-text.viewH)/span - text.top)
 	case sel != nil:
 		*sel = rel * (n - 1) / span
 	}

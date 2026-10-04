@@ -233,6 +233,10 @@ func TestChatScrollShortContent(t *testing.T) {
 	if !strings.Contains(app.Frame(), "only one") {
 		t.Fatalf("message must stay visible")
 	}
+	st := app.scrolls["chat"]
+	if row := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y])); !strings.Contains(row, "only one") {
+		t.Fatalf("a short transcript starts at the region's first row: %q", row)
+	}
 }
 
 // TestChatScrollAnchorsThroughRelayout: a narrower chat rewraps the lines
