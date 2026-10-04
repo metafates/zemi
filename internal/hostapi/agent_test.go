@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -407,62 +408,67 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 // still checked against the old Lua rules and wait for the tool.pre handlers
 // to come back instead of passing without them.
 func TestReloadKeepsUserVetoes(t *testing.T) {
-	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatal(err)
-	}
-	initLua := filepath.Join(dir, "init.lua")
-	src := `
+	synctest.Test(t, func(t *testing.T) {
+		dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
+		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+		h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+		t.Cleanup(h.Close)
+		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+			t.Fatal(err)
+		}
+		initLua := filepath.Join(dir, "init.lua")
+		src := `
 		zemi.permission.rule.add({ subject = "tool.shell", pattern = "rm *", decision = "deny", match = "rm x" })
 		zemi.event.on("tool.pre", function() return { decision = "deny", reason = "vetoed" } end)`
-	if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runUser(t, r, src+`
+		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runUser(t, r, src+`
 		zemi.permission.rule.add({ subject = "tool.shell", pattern = "curl *", decision = "deny", match = "curl x" })`)
-	decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
+		decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
 
-	pre := h.toolPreHook()
-	var vetoed tools.PreVerdict
-	done := make(chan struct{})
-	probe := lua.BootStep{Name: "probe", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
-		if d := decision("rm x"); d != perm.Deny {
-			t.Errorf("mid-reload rm x = %v, want deny", d)
+		pre := h.toolPreHook()
+		var vetoed tools.PreVerdict
+		done := make(chan struct{})
+		probe := lua.BootStep{Name: "probe", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+			if d := decision("rm x"); d != perm.Deny {
+				t.Errorf("mid-reload rm x = %v, want deny", d)
+			}
+			go func() {
+				vetoed, _, _, _ = pre("shell", map[string]any{"command": "ls"})
+				close(done)
+			}()
+			// virtual time: a hook that could return would have by now
+			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-done:
+				t.Error("tool.pre passed before the config replayed its handler")
+			default:
+			}
+			return nil
+		}}
+		steps := []lua.BootStep{h.NamespacesStep(), probe, lua.LoadFileStep("init", initLua, lua.OriginUser)}
+		if err := h.ForceReload(t.Context(), steps); err != nil {
+			t.Fatal(err)
 		}
-		go func() {
-			vetoed, _, _, _ = pre("shell", map[string]any{"command": "ls"})
-			close(done)
-		}()
-		select {
-		case <-done:
-			t.Error("tool.pre passed before the config replayed its handler")
-		case <-time.After(50 * time.Millisecond):
+		<-done
+		if vetoed != "deny" {
+			t.Fatalf("tool.pre during reload = %q, want deny", vetoed)
 		}
-		return nil
-	}}
-	steps := []lua.BootStep{h.NamespacesStep(), probe, lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	if err := h.ForceReload(t.Context(), steps); err != nil {
-		t.Fatal(err)
-	}
-	<-done
-	if vetoed != "deny" {
-		t.Fatalf("tool.pre during reload = %q, want deny", vetoed)
-	}
-	if decision("rm x") != perm.Deny || decision("curl x") == perm.Deny {
-		t.Fatalf("after reload: rm x %v, curl x %v", decision("rm x"), decision("curl x"))
-	}
-	// the replayed rule is tracked again, so a config without it drops it
-	if err := os.WriteFile(initLua, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
-		t.Fatal(err)
-	}
-	if d := decision("rm x"); d == perm.Deny {
-		t.Fatal("a rule the config no longer adds survived the reload")
-	}
+		if decision("rm x") != perm.Deny || decision("curl x") == perm.Deny {
+			t.Fatalf("after reload: rm x %v, curl x %v", decision("rm x"), decision("curl x"))
+		}
+		// the replayed rule is tracked again, so a config without it drops it
+		if err := os.WriteFile(initLua, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+			t.Fatal(err)
+		}
+		if d := decision("rm x"); d == perm.Deny {
+			t.Fatal("a rule the config no longer adds survived the reload")
+		}
+	})
 }
 
 // TestToolRegisterValidation covers zemi.tool.add: a spec that could
