@@ -180,7 +180,7 @@ func printHost(t *testing.T) *hostapi.Host {
 	srv := httptest.NewServer(http.HandlerFunc(fakeOpenAI))
 	t.Cleanup(srv.Close)
 	_, h, r := newTrustGate(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...), lua.RequireStep("zemi.tui")}); err != nil {
+	if err := r.Boot(context.Background(), coreSteps(h, mainCommands(func() {}, func() {}))); err != nil {
 		t.Fatal(err)
 	}
 	cfg := fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT, api_key = "x", base_url = %q, models = { { id = "m", context_window = 128000 } } })
