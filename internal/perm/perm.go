@@ -63,7 +63,7 @@ type Rule struct {
 	Pattern   string   // glob
 	Decision  Decision // allow | ask | deny
 	NotMatch  string   // optional exclusion glob
-	Principal string   // empty = any principal
+	Principal string   // empty = any principal, else only that one
 	// Source is where a principal-less rule came from, so /permissions can
 	// say what to edit: "" for user config, "permissions" for a project's
 	// permissions file, else the Lua origin that added it
@@ -372,7 +372,7 @@ func (s *Store) evaluator(subject, principal string, segment bool) func(arg stri
 	s.mu.Lock()
 	var rules []prepared
 	for _, r := range s.rules {
-		if subjectMatches(r.Subject, subject) && (r.Principal == "" || principal == "" || r.Principal == principal) {
+		if subjectMatches(r.Subject, subject) && (r.Principal == "" || r.Principal == principal) {
 			rules = append(rules, prepared{Rule: r, pattern: r.Pattern, notMatch: r.NotMatch})
 		}
 	}

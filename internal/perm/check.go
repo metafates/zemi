@@ -88,7 +88,9 @@ func cleanDotDot(argv []string) string {
 }
 
 // runnerOpts are the runner prefixes canonical steps past, each with its
-// options that take a value.
+// options that take a value. A program belongs here only if it runs what it
+// is handed (WrapperPrograms), and a wrapper it fails to list is stepped into
+// word by word, which changes the canonical form and padIntact.
 var runnerOpts = map[string][]string{
 	"command": nil, "builtin": nil, "nohup": nil, "setsid": nil, "exec": {"-a"}, "time": {"-f", "-o"},
 	"env": {"-u", "-C", "-S"}, "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U"}, "doas": {"-u", "-C"},

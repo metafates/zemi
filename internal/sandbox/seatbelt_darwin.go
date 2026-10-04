@@ -43,6 +43,8 @@ func nestedShapes(root string) string {
 // repos, the rebase and sequencer state holds exec lines and a merge
 // strategy git runs by name, remotes and branches name where fetch and push
 // go, and a nested .git or .agents is another repo or zemi config.
+// A git subcommand that writes one of these asks first (perm's gitWriters,
+// which says why), since the confined write could only fail.
 var gitCode = foldCase(`(worktrees/[^/]+/)?(config|config\.worktree|commondir|gitdir|hooks|info/attributes|modules|rebase-merge|rebase-apply|sequencer)|remotes|branches|objects/info/(http-)?alternates|(.*/)?\.(git|agents)`)
 
 // gitParents are the dirs holding a gitCode file: a rule on a name misses a

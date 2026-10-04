@@ -27,23 +27,26 @@ func BenchmarkNormalize(b *testing.B) {
 	}
 }
 
+// cpuTime is this process's CPU time, for a test that budgets work instead of
+// wall time (it runs alone, no t.Parallel).
+func cpuTime() time.Duration {
+	var u syscall.Rusage
+	syscall.Getrusage(syscall.RUSAGE_SELF, &u)
+	return time.Duration(u.Utime.Nano() + u.Stime.Nano())
+}
+
 // TestNormalizeNestedCheap: a rewalk after a reassignment and a failed
 // body's line by line reads reach a heredoc body again, which must not
 // multiply the work per level of nesting. The budget is the
 // process's CPU time; the test runs alone (no t.Parallel).
 func TestNormalizeNestedCheap(t *testing.T) {
-	cpu := func() time.Duration {
-		var u syscall.Rusage
-		syscall.Getrusage(syscall.RUSAGE_SELF, &u)
-		return time.Duration(u.Utime.Nano() + u.Stime.Nano())
-	}
 	cmd := "ls"
 	for i := range 20 {
 		cmd = fmt.Sprintf("sh <<E%d\n%s\nE%d", i, cmd, i)
 	}
-	start := cpu()
+	start := cpuTime()
 	Normalize(cmd)
-	if d := cpu() - start; d > 100*time.Millisecond {
+	if d := cpuTime() - start; d > 100*time.Millisecond {
 		t.Fatalf("20 nested heredocs took %s of CPU", d)
 	}
 }
