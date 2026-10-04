@@ -115,6 +115,23 @@ func TestPlanScroll(t *testing.T) {
 	}
 }
 
+// TestPlanClickButtons: the hit test reads the buttons the rows draw, so a
+// click on the second one opens the changes input.
+func TestPlanClickButtons(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 18)
+	done := planAsync(t, app, "# Plan", "")
+	app.renderSync(t)
+	x, y := findCell(t, app, "Request changes")
+	clickAt(app, x+2, y)
+	if !app.planAsk.typing {
+		t.Fatal("a click on Request changes should open the input")
+	}
+	pressKeys(app, "more", "enter")
+	if r := awaitPlan(t, app, done); !r.ok || r.v.Feedback != "more" {
+		t.Fatalf("verdict %+v ok=%v, want feedback \"more\"", r.v, r.ok)
+	}
+}
+
 func TestPlanBoxFits(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	box := app.planBox(&planAskPrompt{plan: strings.Repeat("line\n", 200)}, 70, 18)

@@ -81,6 +81,34 @@ func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Hos
 	return app, host
 }
 
+// chatRows is the chat widget's rows at w, trailing blanks trimmed, as a
+// test's assertion reads them.
+func chatRows(t testing.TB, app *App, w int) []string {
+	t.Helper()
+	lines, _, err := app.host.RenderWidget(t.Context(), app.host.Widgets.Get("chat"), w, 20, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+	}
+	return out
+}
+
+// testStore gives the host a session store of its own: the harness boots with
+// no project dir, so no project store came with it.
+func testStore(t testing.TB, host *hostapi.Host) *store.DB {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	return db
+}
+
 // seedLongChat fills the session with turns of reasoning, tool rows, a diff
 // and a markdown reply.
 func seedLongChat(host *hostapi.Host, turns int) {
@@ -235,12 +263,7 @@ func TestColdChatRender(t *testing.T) {
 // opens the rail under it.
 func TestAgentViewFolds(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	id := store.ShortID()
 	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
 		t.Fatal(err)
@@ -256,17 +279,7 @@ func TestAgentViewFolds(t *testing.T) {
 	if err := host.ViewAgent(id); err != nil {
 		t.Fatal(err)
 	}
-	rows := func() []string {
-		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := make([]string, 0, len(lines))
-		for _, l := range lines {
-			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
-		}
-		return out
-	}
+	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	closed := rows()
 	if !slices.Contains(closed, "· 1 file") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
@@ -284,12 +297,7 @@ func TestAgentViewFolds(t *testing.T) {
 // it was opened in, so showing another run draws folded rows again.
 func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	ids := make([]string, 2)
 	for i := range ids {
 		ids[i] = store.ShortID()
@@ -305,17 +313,7 @@ func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
 			fantasy.TextPart{Text: "it reads fine"},
 		}})
 	}
-	rows := func() []string {
-		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := make([]string, 0, len(lines))
-		for _, l := range lines {
-			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
-		}
-		return out
-	}
+	rows := func() []string { return chatRows(t, app, 98) }
 	if err := host.ViewAgent(ids[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -428,17 +426,7 @@ func TestNoticeBurst(t *testing.T) {
 	for i := range 6 {
 		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: fmt.Sprintf("Background agent a%d (explore) finished", i)})
 	}
-	rows := func() []string {
-		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := make([]string, 0, len(lines))
-		for _, l := range lines {
-			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
-		}
-		return out
-	}
+	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	got := rows()
 	newest, older := slices.Index(got, "◦ Background agent a5 (explore) finished"), slices.Index(got, "◦ Background agent a4 (explore) finished")
@@ -467,17 +455,7 @@ func TestRailWindow(t *testing.T) {
 		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: fmt.Sprintf("list dir %d", i), Status: "ok"})
 	}
 	appendReply(host, "done", hostapi.TurnStat{})
-	rows := func() []string {
-		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := make([]string, 0, len(lines))
-		for _, l := range lines {
-			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
-		}
-		return out
-	}
+	rows := func() []string { return chatRows(t, app, 98) }
 	click := func(id string) []string {
 		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
 			t.Fatal(err)
@@ -501,10 +479,11 @@ func TestRailWindow(t *testing.T) {
 	}
 }
 
-// digest row, and a click on it opens that run's rail under the digest, the
-// rest of the transcript coming from the chat's cache. A thought row's click
-// unrolls its text at the prose measure with a bar-only row above and below,
-// and the digest's second click folds the run again.
+// TestChatExpandSettledRow: a click on a settled turn's digest row opens the
+// run's rail under it, the rest of the transcript coming from the chat's
+// cache. A thought row's click unrolls its text at the prose measure with a
+// bar-only row above and below, and the digest's second click folds the run
+// again.
 func TestChatExpandSettledRow(t *testing.T) {
 	app, host := bootAgentApp(t, 140, 30)
 	host.AppendMessage("user", "run it")
@@ -512,17 +491,7 @@ func TestChatExpandSettledRow(t *testing.T) {
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok", Output: "built\nok"})
 	appendReasoning(host, "done then", hostapi.TurnStat{ThoughtMS: 400})
 	appendReply(host, "done", hostapi.TurnStat{})
-	rows := func() []string {
-		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 138, 20, app.uiState())
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := make([]string, len(lines))
-		for i, l := range lines {
-			out[i] = strings.TrimRight(hostapi.SegsText(l), " ")
-		}
-		return out
-	}
+	rows := func() []string { return chatRows(t, app, 138) }
 	click := func(id string) []string {
 		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
 			t.Fatal(err)
@@ -977,12 +946,8 @@ func TestInterruptKeys(t *testing.T) {
 				}
 			}
 			if c.view {
-				db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { db.Close() })
-				host.DB, clock = db, clock.Add(time.Hour)
+				db := testStore(t, host)
+				clock = clock.Add(time.Hour)
 				if err := db.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
 					t.Fatal(err)
 				}
@@ -1662,12 +1627,7 @@ func TestWorkingRowMascot(t *testing.T) {
 // nothing runs, and keeps that key once the name is dropped for width.
 func TestWorkingRowAgentView(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	id := store.ShortID()
 	if err := db.CreateSession(id, store.ShortID(), "explore the repo", "explore"); err != nil {
 		t.Fatal(err)
@@ -2109,15 +2069,9 @@ func TestTodoRowsKeepTheLiveItem(t *testing.T) {
 
 func todoRows(t *testing.T, h int, want []string) {
 	app, host := bootAgentApp(t, 100, h)
-	// the test host has no project dir, so no project store came with it
-	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	host.DB = db
+	db := testStore(t, host)
 	sid := store.ShortID()
-	if err := host.DB.CreateSession(sid, "", "t", ""); err != nil {
+	if err := db.CreateSession(sid, "", "t", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.ResumeSession(sid); err != nil {

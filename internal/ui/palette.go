@@ -153,7 +153,7 @@ func (a *App) acceptPalette() tea.Cmd {
 func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 	p := &a.palette
 	if p.count() == 0 {
-		return emptyRows("No matches.", maxW)
+		return emptyRows(noMatches, maxW)
 	}
 	items := make([]listItem, 0, p.count())
 	for i, c := range p.matches {

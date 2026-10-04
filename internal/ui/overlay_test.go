@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +21,15 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )
+
+// fail is "" when ok, and what the check saw otherwise: a check states its own
+// condition, where a map keyed by it can have its polarity flipped into a pass.
+func fail(ok bool, seen any) string {
+	if ok {
+		return ""
+	}
+	return fmt.Sprint(seen)
+}
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
 // run the row and rebuild the list in place, keeping the selection and the
@@ -142,11 +150,11 @@ func TestOverlayFilter(t *testing.T) {
 			return ""
 		}},
 		{"a row's value matches too, so a full model id finds its row", hostapi.Overlay{Items: models}, runes("/anthropic/op"), func(a *App) string {
-			return map[bool]string{false: fmt.Sprint(a.overlays[0].visible)}[slices.Equal(a.overlays[0].visible, []int{2})]
+			return fail(slices.Equal(a.overlays[0].visible, []int{2}), fmt.Sprint(a.overlays[0].visible))
 		}},
 		{"a one-token label matches fuzzily, and says where", hostapi.Overlay{Items: models}, runes("/snt"), func(a *App) string {
 			st := a.overlays[0]
-			return map[bool]string{false: fmt.Sprint(st.visible, st.match)}[slices.Equal(st.visible, []int{1}) && fmt.Sprint(st.match) == "[[0 2 5]]"]
+			return fail(slices.Equal(st.visible, []int{1}) && fmt.Sprint(st.match) == "[[0 2 5]]", fmt.Sprint(st.visible, st.match))
 		}},
 		{"a render_item row keeps its spaces, so the highlight lands on what matched", hostapi.Overlay{Items: []any{"x", "q1", "q2", "q3", "q4"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}}, runes("/net"), func(a *App) string {
 			var lit []string
@@ -157,7 +165,7 @@ func TestOverlayFilter(t *testing.T) {
 					}
 				}
 			}
-			return map[bool]string{false: fmt.Sprint(lit)}[slices.Equal(lit, []string{"net"})]
+			return fail(slices.Equal(lit, []string{"net"}), fmt.Sprint(lit))
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -485,7 +493,7 @@ func TestOverlayNavigation(t *testing.T) {
 			"enter on an inert row keeps the box open",
 			hostapi.Overlay{Items: []any{"a", "b"}},
 			[]string{"enter"},
-			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] },
+			func(a *App) string { return fail(len(a.overlays) == 1, "closed") },
 		},
 		{
 			"enter on a copy row toasts and keeps the list open",
@@ -508,7 +516,7 @@ func TestOverlayNavigation(t *testing.T) {
 					return fmt.Sprintf("y copied %q", got)
 				}
 				a.overlayKey("enter", "")
-				return map[bool]string{false: "enter did not run the row"}[len(a.overlays) == 0]
+				return fail(len(a.overlays) == 0, "enter did not run the row")
 			},
 		},
 		{
@@ -545,7 +553,7 @@ func TestOverlayNavigation(t *testing.T) {
 			nil,
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
-				return map[bool]string{false: box}[strings.Contains(box, "header") && strings.Contains(box, "Nothing cached yet.")]
+				return fail(strings.Contains(box, "header") && strings.Contains(box, "Nothing cached yet."), box)
 			},
 		},
 		{
@@ -573,7 +581,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Nothing"})}, Reload: func() ([]any, [][]hostapi.Segment) { backs++; return nil, nil }},
 			[]string{"enter", "esc", "enter", "enter"},
 			func(a *App) string {
-				return map[bool]string{false: fmt.Sprintf("overlays=%d rebuilds=%d", len(a.overlays), backs)}[len(a.overlays) == 1 && backs == 0]
+				return fail(len(a.overlays) == 1 && backs == 0, fmt.Sprintf("overlays=%d rebuilds=%d", len(a.overlays), backs))
 			},
 		},
 		{
@@ -594,7 +602,7 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"enter"},
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
-				return map[bool]string{false: box}[strings.Contains(box, "trusted: ~/x")]
+				return fail(strings.Contains(box, "trusted: ~/x"), box)
 			},
 		},
 		{
@@ -606,7 +614,7 @@ func TestOverlayNavigation(t *testing.T) {
 					return box
 				}
 				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
-				return map[bool]string{false: fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]()))}[fmt.Sprint(batch[0]()) == "status: ready\n\nprose"]
+				return fail(fmt.Sprint(batch[0]()) == "status: ready\n\nprose", fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]())))
 			},
 		},
 		{
@@ -664,7 +672,7 @@ func TestOverlayNavigation(t *testing.T) {
 					a.overlayKey(k, k)
 				}
 				d := a.overlays[len(a.overlays)-1]
-				return map[bool]string{false: fmt.Sprintf("visible=%v filtering=%v", d.visible, d.active)}[len(d.visible) == 1 && !d.active]
+				return fail(len(d.visible) == 1 && !d.active, fmt.Sprintf("visible=%v filtering=%v", d.visible, d.active))
 			},
 		},
 		{
@@ -683,7 +691,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Cancel"})}},
 			[]string{"enter", "enter"},
 			func(a *App) string {
-				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
+				return fail(len(a.overlays) == 1 && !a.overlays[0].back, "not back")
 			},
 		},
 		{
@@ -691,21 +699,21 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Origin: lua.OriginPlugin, Items: []any{detail(map[string]any{"text": "Restart", "run": "help"})}},
 			[]string{"enter", "enter"},
 			func(a *App) string {
-				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
+				return fail(len(a.overlays) == 1 && !a.overlays[0].back, "not back")
 			},
 		},
 		{
 			"a row that opens a screen leaves its list under it, for esc to come back to",
 			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}},
 			[]string{"enter"},
-			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] },
+			func(a *App) string { return fail(len(a.overlays) == 1, "closed") },
 		},
 		{
 			"a run action in a toggle list rebuilds the list",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() ([]any, [][]hostapi.Segment) { reloads++; return []any{detail()}, nil }},
 			[]string{"enter", "enter"},
 			func(a *App) string {
-				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
+				return fail(len(a.overlays) == 1 && reloads == 1, "not rebuilt")
 			},
 		},
 		{
@@ -713,7 +721,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}, Reload: func() ([]any, [][]hostapi.Segment) { spaced++; return nil, nil }},
 			[]string{"space"},
 			func(a *App) string {
-				return map[bool]string{false: "space ran the row"}[len(a.overlays) == 1 && spaced == 0]
+				return fail(len(a.overlays) == 1 && spaced == 0, "space ran the row")
 			},
 		},
 		{
@@ -721,7 +729,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []any{map[string]any{"text": "Install", "verb": "install", "fill": "/plugins install "}}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }},
 			[]string{"enter"},
 			func(a *App) string {
-				return map[bool]string{false: fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)}[len(a.overlays) == 0 && a.composer.text == "/plugins install "]
+				return fail(len(a.overlays) == 0 && a.composer.text == "/plugins install ", fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text))
 			},
 		},
 		{
@@ -732,7 +740,7 @@ func TestOverlayNavigation(t *testing.T) {
 				a.overlays[0].o.Reload = func() ([]any, [][]hostapi.Segment) { return []any{a.composer.text}, nil }
 				a.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []any{map[string]any{"text": "pick", "fill": "new"}}})
 				a.overlayKey("enter", "")
-				return map[bool]string{false: fmt.Sprintf("overlays=%d", len(a.overlays))}[len(a.overlays) == 1 && a.overlays[0].labels[0] == "new"]
+				return fail(len(a.overlays) == 1 && a.overlays[0].labels[0] == "new", fmt.Sprintf("overlays=%d", len(a.overlays)))
 			},
 		},
 		{
@@ -750,7 +758,7 @@ func TestOverlayNavigation(t *testing.T) {
 					}
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
-				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].labels[0] == "c"]
+				return fail(len(a.overlays) == 2 && a.overlays[0].labels[0] == "c", "a plugin replaced a builtin list")
 			},
 		},
 		{
@@ -759,7 +767,7 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"esc"},
 			func(a *App) string {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"b"}, Refresh: true})
-				return map[bool]string{false: "a closed list came back"}[len(a.overlays) == 0]
+				return fail(len(a.overlays) == 0, "a closed list came back")
 			},
 		},
 		{
@@ -769,7 +777,7 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				gen, built := a.frameGen, false
 				a.RefreshOverlay("p", func() hostapi.Overlay { built = true; return hostapi.Overlay{} })
-				return map[bool]string{false: fmt.Sprintf("built %v, frame moved %d", built, a.frameGen-gen)}[!built && a.frameGen == gen]
+				return fail(!built && a.frameGen == gen, fmt.Sprintf("built %v, frame moved %d", built, a.frameGen-gen))
 			},
 		},
 		{
@@ -782,7 +790,7 @@ func TestOverlayNavigation(t *testing.T) {
 					return fmt.Sprintf("overlays=%d body=%q selected=%d", len(a.overlays), d.o.Body, d.selected)
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{"x"}})
-				return map[bool]string{false: "the gone item's detail stayed"}[len(a.overlays) == 1]
+				return fail(len(a.overlays) == 1, "the gone item's detail stayed")
 			},
 		},
 		{
@@ -797,7 +805,7 @@ func TestOverlayNavigation(t *testing.T) {
 					return "the detail's arm was dropped"
 				}
 				a.openOverlay(item("stop 2"))
-				return map[bool]string{false: "an arm outlived its action"}[!a.overlays[1].armed]
+				return fail(!a.overlays[1].armed, "an arm outlived its action")
 			},
 		},
 		{
@@ -806,7 +814,7 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"enter"},
 			func(a *App) string {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{map[string]any{"text": "Stop", "danger": true, "run": "stop 1"}}})
-				return map[bool]string{false: "the list's arm was dropped"}[a.overlays[0].armed]
+				return fail(a.overlays[0].armed, "the list's arm was dropped")
 			},
 		},
 		{
@@ -825,7 +833,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran = ""
 				a.openOverlay(hostapi.Overlay{ID: "q", Origin: lua.OriginPlugin, Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}})
 				a.overlayKey("p", "p")
-				return map[bool]string{false: "a plugin list's key ran " + ran}[ran == ""]
+				return fail(ran == "", "a plugin list's key ran "+ran)
 			},
 		},
 		{
@@ -853,7 +861,7 @@ func TestOverlayNavigation(t *testing.T) {
 				o.Refresh = true
 				a.openOverlay(o)
 				a.overlayKey("x", "x")
-				return map[bool]string{false: "the second press ran " + ran}[ran == "stop"]
+				return fail(ran == "stop", "the second press ran "+ran)
 			},
 		},
 		{
@@ -862,7 +870,7 @@ func TestOverlayNavigation(t *testing.T) {
 			nil,
 			func(a *App) string {
 				a.overlayBox(&a.overlays[0], 120, 30)
-				return map[bool]string{false: fmt.Sprintf("%d cells wide", a.overlays[0].size.w)}[a.overlays[0].size.w == boxInner(120)]
+				return fail(a.overlays[0].size.w == boxInner(120), fmt.Sprintf("%d cells wide", a.overlays[0].size.w))
 			},
 		},
 		{
@@ -871,7 +879,7 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"enter"},
 			func(a *App) string {
 				a.closeOverlayByID("p")
-				return map[bool]string{false: "detail left"}[len(a.overlays) == 0]
+				return fail(len(a.overlays) == 0, "detail left")
 			},
 		},
 		{
@@ -880,21 +888,21 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"enter"},
 			func(a *App) string {
 				a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.armed == armed{}]
+				return fail(len(a.overlays) == 0 && a.armed == armed{}, "still open")
 			},
 		},
 		{
 			"the list keys scroll a body with no list",
 			hostapi.Overlay{Body: strings.Repeat("line\n", 50)},
 			[]string{"down"},
-			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].body.top == 1] },
+			func(a *App) string { return fail(a.overlays[0].body.top == 1, "no scroll") },
 		},
 		{
 			"a multi-line label stays on one row",
 			hostapi.Overlay{Items: []any{"fix: empty input\n\nThe parser crashed."}},
 			nil,
 			func(a *App) string {
-				return map[bool]string{false: "label kept its newlines"}[a.overlays[0].items[0].label == "fix: empty input The parser crashed."]
+				return fail(a.overlays[0].items[0].label == "fix: empty input The parser crashed.", "label kept its newlines")
 			},
 		},
 		{
@@ -914,7 +922,7 @@ func TestOverlayNavigation(t *testing.T) {
 			"Selected picks the first item",
 			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2},
 			nil,
-			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] },
+			func(a *App) string { return fail(a.overlays[0].selected == 2, "wrong selection") },
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -996,15 +1004,15 @@ func TestListAlias(t *testing.T) {
 	}{
 		{"ctrl+j moves an overlay's selection", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: []any{"a", "b"}})
-		}, "ctrl+j", func(a *App) string { return map[bool]string{false: "not moved"}[a.overlays[0].selected == 1] }},
+		}, "ctrl+j", func(a *App) string { return fail(a.overlays[0].selected == 1, "not moved") }},
 		{"ctrl+j moves the palette's selection", func(a *App) {
 			runLua(t, a, `zemi.command.add("aa", function() end) zemi.command.add("ab", function() end)`)
 			pressKeys(a, "/a")
 		}, "ctrl+j", func(a *App) string {
-			return map[bool]string{false: "not moved"}[a.palette.open && a.palette.selected == 1]
+			return fail(a.palette.open && a.palette.selected == 1, "not moved")
 		}},
 		{"ctrl+j on the bare composer scrolls the chat", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
-			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "hi"]
+			return fail(a.composer.text == "hi", fmt.Sprintf("composer %q", a.composer.text))
 		}},
 		{"an alias of ctrl+d moves half a page", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: many})
@@ -1012,13 +1020,13 @@ func TestListAlias(t *testing.T) {
 		}, "ctrl+f", func(a *App) string {
 			st := a.overlays[0]
 			want := max(st.view.pageItems(len(st.visible))/2, 1)
-			return map[bool]string{false: fmt.Sprintf("selected %d, want %d", st.selected, want)}[st.selected == want && want > 1]
+			return fail(st.selected == want && want > 1, fmt.Sprintf("selected %d, want %d", st.selected, want))
 		}},
 		{"an alias of ctrl+u leaves the draft under a popup alone", func(a *App) {
 			runLua(t, a, `zemi.command.add("aa", function() end)`)
 			pressKeys(a, "/a")
 		}, "ctrl+b", func(a *App) string {
-			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "/a"]
+			return fail(a.composer.text == "/a", fmt.Sprintf("composer %q", a.composer.text))
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -1321,13 +1329,13 @@ func TestOverlayItemFields(t *testing.T) {
 for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } }, { danger = "yes" }, { tail = 1 } }) do
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
-assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
-	want := hostapi.OverlayItem{
-		Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
-		Run: "r", ID: "i", Danger: true, Tail: true, Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
-	}
-	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
-		t.Fatalf("row %+v", got)
+	assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
+	// the fields the row renderer and the key handling read, from the Lua above
+	it := app.overlays[0].items[0].row
+	if it.Text != "t" || it.Desc != "d" || it.Key != "k" || it.Section != "s" || it.Detail != "x" ||
+		it.Verb != "v" || it.Hotkey != "h" || it.Fill != "f" || it.Copy != "c" || it.Run != "r" || it.ID != "i" ||
+		!it.Danger || !it.Tail || !it.Switch || !it.Locked || fmt.Sprint(it.Actions, it.Fields) != "[a] [{a b}]" {
+		t.Fatalf("row %+v", it)
 	}
 }
 
@@ -1407,50 +1415,50 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		check             func() string
 	}{
 		{"r resumes from the list", "", "", []string{"j", "r"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "res 1" && len(app.overlays) == 0]
+			return fail(ran == "res 1" && len(app.overlays) == 0, fmt.Sprintf("ran %q, %d open", ran, len(app.overlays)))
 		}},
 		{"x opens the detail on delete, armed", "", "", []string{"j", "x"}, func() string {
 			d := app.overlays[len(app.overlays)-1]
 			ok := ran == "" && d.back && d.selected == 1 && strings.Contains(footer(), "x again to delete · esc cancel")
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, selected %d, footer %q", ran, len(app.overlays), d.selected, footer())}[ok]
+			return fail(ok, fmt.Sprintf("ran %q, %d open, selected %d, footer %q", ran, len(app.overlays), d.selected, footer()))
 		}},
 		{"x twice deletes", "", "", []string{"j", "x", "x"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "del 1" && len(app.overlays) == 0]
+			return fail(ran == "del 1" && len(app.overlays) == 0, fmt.Sprintf("ran %q, %d open", ran, len(app.overlays)))
 		}},
 		{"x then space deletes", "", "", []string{"j", "x", "space"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
+			return fail(ran == "del 1", fmt.Sprintf("ran %q", ran))
 		}},
 		{"x then enter deletes", "", "", []string{"j", "enter", "x", "enter"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
+			return fail(ran == "del 1", fmt.Sprintf("ran %q", ran))
 		}},
 		{"esc drops the arm and keeps the detail", "", "", []string{"j", "x", "esc"}, func() string {
 			ok := ran == "" && len(app.overlays) == 2 && !armed() && strings.Contains(footer(), "enter pick")
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, armed %v, footer %q", ran, len(app.overlays), armed(), footer())}[ok]
+			return fail(ok, fmt.Sprintf("ran %q, %d open, armed %v, footer %q", ran, len(app.overlays), armed(), footer()))
 		}},
 		{"another key drops the arm, and the action's key arms it again", "", "", []string{"j", "x", "k", "x"}, func() string {
 			sel := app.overlays[len(app.overlays)-1].selected
-			return map[bool]string{false: fmt.Sprintf("ran %q, armed %v on %d", ran, armed(), sel)}[ran == "" && armed() && sel == 1]
+			return fail(ran == "" && armed() && sel == 1, fmt.Sprintf("ran %q, armed %v on %d", ran, armed(), sel))
 		}},
 		{"a danger row arms on enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, footer %q", ran, footer())}[ran == "" && strings.Contains(footer(), "enter again to wipe")]
+			return fail(ran == "" && strings.Contains(footer(), "enter again to wipe"), fmt.Sprintf("ran %q, footer %q", ran, footer()))
 		}},
 		{"a danger row runs on the second enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter", "enter"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del w"]
+			return fail(ran == "del w", fmt.Sprintf("ran %q", ran))
 		}},
 		{"a detail view with one danger action is its confirmation", `"current", { text = "p", detail = "rewinds", actions = { { text = "Rewind", hotkey = "r", danger = true, run = "del p" } } }`, "", []string{"j", "enter", "r"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del p"]
+			return fail(ran == "del p", fmt.Sprintf("ran %q", ran))
 		}},
 		{"a list's own key wins over an action's", "", `keys = { r = { desc = "rename", fn = function(item) zemi.notify({ body = "key " .. item.text }) end } }`, []string{"j", "r"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, toast %q", ran, lastToast(app))}[ran == "" && lastToast(app) == "key s1"]
+			return fail(ran == "" && lastToast(app) == "key s1", fmt.Sprintf("ran %q, toast %q", ran, lastToast(app)))
 		}},
 		{"a hotkey runs its own action, not the one at that position", `"current", { text = "s1", actions = { { text = "Delete", danger = true, run = "del 1" }, { text = "Other", hotkey = "1", run = "res 1" } } }`, "", []string{"j", "1"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "res 1"]
+			return fail(ran == "res 1", fmt.Sprintf("ran %q", ran))
 		}},
 		{"an action with a detail opens it over the list", `"current", { text = "s1", actions = { { text = "Read it", hotkey = "r", detail = "body" } } }`, "", []string{"j", "r"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("%d open", len(app.overlays))}[len(app.overlays) == 2 && app.overlays[1].o.Body == "body"]
+			return fail(len(app.overlays) == 2 && app.overlays[1].o.Body == "body", fmt.Sprintf("%d open", len(app.overlays)))
 		}},
 		{"a row without actions ignores the key", "", "", []string{"r"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "" && len(app.overlays) == 1]
+			return fail(ran == "" && len(app.overlays) == 1, fmt.Sprintf("ran %q, %d open", ran, len(app.overlays)))
 		}},
 		{"the footer names no action key", "", "", nil, func() string {
 			return map[bool]string{true: footer()}[strings.Contains(footer(), "resume")]

@@ -15,7 +15,15 @@ local function tail(path, w)
 	for ch in path:gmatch(fmt.UTF8_CHAR) do
 		chars[#chars + 1] = ch
 	end
-	return "…" .. table.concat(chars, "", #chars - w + 2)
+	-- the tail keeps w - 1 cells and the ellipsis the last of them; a wide
+	-- character takes two, so it is cells that hold the box's width (ui's tailSegs)
+	local keep, used = #chars + 1, 0
+	while keep > 1 do
+		local cw = zemi.ui.width(chars[keep - 1])
+		if used + cw > w - 1 then break end
+		keep, used = keep - 1, used + cw
+	end
+	return "…" .. table.concat(chars, "", keep)
 end
 
 --- Flows segments after an indent cells wide into at most two rows of room

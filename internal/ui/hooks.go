@@ -67,7 +67,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	explain := func(width int) [][]hostapi.Segment {
 		// a long path wraps at its slashes: the user trusts every character
 		var path []hostapi.Segment
-		for _, part := range strings.SplitAfter(perm.TildePath(tp.root), "/") {
+		for part := range strings.SplitAfterSeq(perm.TildePath(tp.root), "/") {
 			path = append(path, hostapi.Segment{Text: part, HL: hostapi.ChromeBold})
 		}
 		rows := hostapi.WrapSegs(path, width)

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -194,6 +195,46 @@ func TestSplashProjects(t *testing.T) {
 	}
 }
 
+// TestSplashWidePath: a project path of wide characters keeps its tail: the
+// cut counts cells, not runes, so the name at the path's end is what is left.
+func TestSplashWidePath(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	const name = "プロジェクトのディレクトリ"
+	root := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Close()
+	p.Close()
+	app.frameGen++
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, name) {
+		t.Fatalf("the path's name is cut away:\n%s", frame)
+	}
+}
+
+// TestFarewellWraps: an exit widget that asks to wrap prints wrapped at the
+// terminal's width, as the run view draws the region, not one over-long row.
+func TestFarewellWraps(t *testing.T) {
+	app, _ := bootAgentApp(t, 40, 20)
+	runLua(t, app, `zemi.ui.widget.add({ id = "exit.wide", region = "exit", wrap = true, render = function()
+  return { { { text = string.rep("word ", 20) } } }
+end })`)
+	rows := strings.Split(strings.TrimRight(app.Farewell(), "\n"), "\n")
+	if len(rows) < 2 {
+		t.Fatalf("a wrapping exit widget printed %d row(s):\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	for _, r := range rows {
+		if w := ansi.StringWidth(r); w > 40 {
+			t.Fatalf("a row is %d cells wide, want 40 at most: %q", w, r)
+		}
+	}
+}
+
 // TestFarewell: what zemi prints to the shell on quit, the exit region.
 func TestFarewell(t *testing.T) {
 	for _, c := range []struct {
@@ -218,12 +259,7 @@ func TestFarewell(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, c.width, 30)
 			app.colors = c.profile
-			db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { db.Close() })
-			host.DB = db
+			db := testStore(t, host)
 			if c.send {
 				sid := store.ShortID()
 				if err := db.CreateSession(sid, "", c.title, ""); err != nil {

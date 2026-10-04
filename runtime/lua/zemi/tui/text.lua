@@ -106,6 +106,8 @@ M.VERB = {
 	skill = "Load skill",
 	tool_search = "Find tools",
 	lsp = "Look up",
+	lua = "Run",
+	update = "Tell",
 }
 
 --- A call family the chat counts: its verb, then its noun, one and many; a
@@ -289,7 +291,8 @@ end
 M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 
 --- A cut that lands inside a word drops the fragment it would keep when that
---- is at most this many cells, so its ellipsis follows a whole word.
+--- is at most this many cells, so its ellipsis follows a whole word
+--- (ui/agent.go's ellipsizeSegs names the same number clipFragment).
 ---@type integer
 local FRAGMENT = 12
 

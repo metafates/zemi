@@ -284,13 +284,7 @@ func (v *RunView) region(region string, width, height int, state hostapi.UIState
 		if err != nil {
 			return nil, fmt.Errorf("widget %s: %w", w.ID, err)
 		}
-		for _, line := range lines {
-			if w.Wrap {
-				out = append(out, hostapi.WrapSegs(line, width)...)
-				continue
-			}
-			out = append(out, truncateSegs(expandTabs([][]hostapi.Segment{line})[0], width))
-		}
+		out = append(out, widgetRows(lines, w.Wrap, width)...)
 	}
 	return out, nil
 }

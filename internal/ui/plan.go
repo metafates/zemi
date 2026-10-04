@@ -33,6 +33,12 @@ type planAnswer struct {
 	ok bool
 }
 
+// choices is the plan's buttons: the rows, the keys and the hit test all read
+// them, and a button's key is what it does (planKey).
+func (p *planAskPrompt) choices() []promptChoice {
+	return []promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}
+}
+
 // AskPlan implements hostapi.UIHooks. It blocks the caller (the plan tool on
 // the turn goroutine) until the user approves, types changes, or dismisses.
 func (a *App) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
@@ -62,8 +68,9 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 // dismiss. Only in the changes input do keys type.
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
+	choices := p.choices()
 	defer a.bump()
-	if !(p.typing && lineKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
+	if !(p.typing && lineKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, len(choices), len(choices), key) {
 		return
 	}
 	if p.typing {
@@ -80,7 +87,7 @@ func (a *App) planKey(key, text string) {
 		return
 	}
 	if key == "enter" {
-		key = []string{"a", "e"}[p.sel]
+		key = choices[p.sel].key
 	}
 	switch key {
 	case "a":
@@ -97,7 +104,7 @@ func (a *App) planKey(key, text string) {
 // nothing.
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	act := choiceRows([]promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}, p.sel, inner, true)
+	act := choiceRows(p.choices(), p.sel, inner, true)
 	hints := []hintPair{pickHint, {"esc", "dismiss"}}
 	if p.typing {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner)}

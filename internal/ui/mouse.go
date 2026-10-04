@@ -316,8 +316,7 @@ func (a *App) highlightSelection(rows [][]hostapi.Segment, w int) {
 
 // restyle changes the style of cells [from, to) of a row.
 func restyle(row []hostapi.Segment, from, to int, style func(*hostapi.Segment)) []hostapi.Segment {
-	mid := truncateSegs(dropCells(row, from), to-from)
-	mid = append([]hostapi.Segment(nil), mid...)
+	mid := slices.Clone(truncateSegs(dropCells(row, from), to-from))
 	for i := range mid {
 		if !strings.ContainsRune(mid[i].Text, kitty.Placeholder) { // its color names the image
 			style(&mid[i])
@@ -464,9 +463,14 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		answer := trustAnswers[hit-1]
 		return spans, func() { a.answerTrust(answer) }, true
 	case top == modalPlan:
-		spans, ok := item(2) // the buttons; the changes input has no hits
-		key := map[int]string{1: "a", 2: "e"}[hit]
-		return spans, func() { a.planKey(key, "") }, ok
+		p := a.planAsk
+		choices := p.choices()
+		spans, ok := item(len(choices)) // the buttons; the changes input has no hits
+		if !ok {
+			return spans, nil, false
+		}
+		c := choices[hit-1]
+		return spans, func() { a.planKey(c.key, "") }, true
 	case top == modalQuestion:
 		qp := a.question
 		if qp.reviewing() { // a summary row opens its question, the button submits
