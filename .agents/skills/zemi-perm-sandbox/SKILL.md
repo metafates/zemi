@@ -190,7 +190,9 @@ project walk, which must not delay the first request).
 
 `ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle
 unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),
-no write redirects (`2>/dev/null` and `2>&1` are none), no program named by a path, and every
+no write redirects (`2>/dev/null` and `2>&1` are none), no program named by a path, no chain of
+`cd`s leaving the shell in more than 64 directories (each cd doubles the set every argument is
+judged from, and past the cap the command asks), and every
 argument must pass `safeCommandPath` (inside the project and not secret-shaped - `h.secretPath`
 matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
 hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so

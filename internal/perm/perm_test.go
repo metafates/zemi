@@ -124,6 +124,18 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 	}
 }
 
+// TestRunnerListsAgree: canonical steps past the options of a runnerOpts
+// program, which is sound only for one that runs what it is handed; a wrapper
+// missing from runnerOpts is stepped into word by word instead (the comment on
+// each list names the other).
+func TestRunnerListsAgree(t *testing.T) {
+	for name := range runnerOpts {
+		if !WrapperPrograms[name] {
+			t.Errorf("runnerOpts names %q, which WrapperPrograms does not call a wrapper", name)
+		}
+	}
+}
+
 func TestEvaluateNotMatch(t *testing.T) {
 	s := store(t,
 		Rule{Subject: "tool.shell", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
@@ -137,6 +149,27 @@ func TestEvaluateNotMatch(t *testing.T) {
 	}
 	if o.Reason == "" {
 		t.Fatal("fall-through must carry a reason")
+	}
+}
+
+// TestPrincipalScopesRule: a rule scoped to a principal applies to that one
+// alone, so a model call cannot ride a rule meant for a plugin and a caller
+// with no principal (a permission mode's own store, which scopes none) rides
+// no scoped rule.
+func TestPrincipalScopesRule(t *testing.T) {
+	s := store(t, Rule{Subject: "lua.model.ask", Pattern: "*", Decision: Allow, Principal: PluginPrincipal("a")})
+	for _, c := range []struct {
+		principal string
+		want      Decision
+	}{
+		{"plugin:a", Allow},
+		{"plugin:b", Ask},
+		{PrincipalModel, Ask},
+		{"", Ask},
+	} {
+		if got := s.Evaluate("lua.model.ask", "x", c.principal).Decision; got != c.want {
+			t.Errorf("principal %q: got %v, want %v", c.principal, got, c.want)
+		}
 	}
 }
 

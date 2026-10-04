@@ -1,10 +1,12 @@
 package perm
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReadCommand(t *testing.T) {
@@ -160,6 +162,24 @@ func TestReadCommand(t *testing.T) {
 	}
 }
 
+// TestReadCommandManyCds: a subshell or pipeline may drop a cd, so every cd
+// doubles the directories an argument is judged from; a command of many cds
+// must stop settling rather than cost 2^cds paths.
+func TestReadCommandManyCds(t *testing.T) {
+	cmd := "cat x"
+	for i := range 18 {
+		cmd = fmt.Sprintf("cd d%d && %s", i, cmd)
+	}
+	start := cpuTime()
+	n := Normalize(cmd)
+	if n.ReadCommand(nil) {
+		t.Fatal("a command of 18 cds settled as a read")
+	}
+	if d := cpuTime() - start; d > 100*time.Millisecond {
+		t.Fatalf("18 cds took %s of CPU", d)
+	}
+}
+
 func TestReadCommandPathCheck(t *testing.T) {
 	// the project root walked past ignore rules holds a .env
 	notSecret := func(arg string, use ArgUse) bool {
@@ -215,6 +235,57 @@ func TestReadCommandPathCheck(t *testing.T) {
 		n := Normalize(c.cmd)
 		if got := n.ReadCommand(notSecret); got != c.safe {
 			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
+		}
+	}
+}
+
+func TestPathIsStrictSecret(t *testing.T) {
+	for _, c := range []struct {
+		path   string
+		secret bool
+	}{
+		{".env", true},
+		{".env.local", true},
+		{"prod.env", true},
+		{".envrc", true},
+		{"x.pem", true},
+		{"id_rsa", true},
+		{"id_rsa.pub", false},
+		// a committed template a setup step copies
+		{".env.example", false},
+		{".env.sample", false},
+		{".env.template", false},
+		{".env.examples", true},
+		{".env.example.old", true},
+		// the broad shapes cover source files too, so grep searches them
+		{"credentials.json", false},
+		{"secret_prompt.py", false},
+		{"main.go", false},
+	} {
+		if got := PathIsStrictSecret(c.path); got != c.secret {
+			t.Errorf("PathIsStrictSecret(%q) = %v, want %v", c.path, got, c.secret)
+		}
+	}
+}
+
+func TestReadsSecret(t *testing.T) {
+	for _, c := range []struct {
+		cmd  string
+		read bool
+	}{
+		{"cat .env", true},
+		{"grep -n KEY .env", true},
+		{"cat .e*", true}, // the shell may expand a secret into it
+		{"cat ~/.ssh/id_rsa", true},
+		{"cat main.go", false},
+		{"grep -n KEY internal/main.go", false},
+		{"ls -la src", false},
+		{"rm -rf .env", false},         // not a reader: an always answer keeps it exact
+		{"sh -c 'rm -rf .env'", false}, // the body's deleter is no reader either
+	} {
+		n := Normalize(c.cmd)
+		if got := n.ReadsSecret(PathIsSecret); got != c.read {
+			t.Errorf("ReadsSecret(%q) = %v, want %v", c.cmd, got, c.read)
 		}
 	}
 }

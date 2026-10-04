@@ -65,6 +65,9 @@ const (
 	ArgText
 )
 
+// cdDirCap bounds the directories ReadCommand judges an argument from.
+const cdDirCap = 64
+
 // ReadCommand reports whether a shell command only reads: every segment runs
 // an allowlisted reader named without a path (no build or test tool, which
 // runs the project's code, and no git, which runs programs the repository's
@@ -85,8 +88,11 @@ func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
 		return false
 	}
 	// a subshell or pipeline may drop a cd, so arguments are judged from
-	// every directory the shell may be in
+	// every directory the shell may be in; each cd doubles that set, so it is
+	// deduped and capped instead of growing as 2^cds
+	// NOTE: cdDirCap directories, each judged: a chain of seven cds asks
 	dirs := []string{"."}
+	seen := map[string]bool{".": true}
 	check := func(a string, use ArgUse) bool {
 		for _, d := range dirs {
 			if use != ArgText && !pathOK(inDir(d, a), use) {
@@ -108,8 +114,16 @@ func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
 			return false
 		}
 		if f[0] == "cd" {
-			for _, d := range dirs {
-				dirs = append(dirs, inDir(d, f[1]))
+			for i, count := 0, len(dirs); i < count; i++ {
+				d := inDir(dirs[i], f[1])
+				if seen[d] {
+					continue
+				}
+				if len(dirs) >= cdDirCap {
+					return false
+				}
+				seen[d] = true
+				dirs = append(dirs, d)
 			}
 		}
 	}
@@ -677,7 +691,8 @@ func hasFlag(args []string, flags ...string) bool {
 // another command (sudo, xargs, busybox), so what such a segment does is in
 // its arguments: Destructive and GitWrites look past them for the program,
 // and an always answer offers no rule for them, since none written from
-// the wrapper says what a later call would run.
+// the wrapper says what a later call would run. A wrapper whose prefix takes
+// options (timeout, nice) belongs in runnerOpts too, which steps past them.
 var WrapperPrograms = map[string]bool{
 	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true, "fish": true, "csh": true, "tcsh": true,
 	"node": true, "nodejs": true, "deno": true, "python": true, "python2": true, "python3": true,
@@ -812,6 +827,8 @@ const (
 
 // gitWriters are the git subcommands that write .git, each with why it
 // still asks when the sandbox opens .git, "" when it then runs confined.
+// A gitConfig entry writes a path internal/sandbox's gitCode keeps read-only,
+// so a subcommand and a path are added together.
 var gitWriters = map[string]string{
 	"add": "", "am": gitConfig, "apply": "", "bisect": "", "checkout": "", "cherry-pick": "", "clone": gitNet,
 	"commit": "", "commit-tree": "", "fetch": gitNet, "filter-branch": "", "gc": gitDrop, "init": gitConfig, "maintenance": gitDrop,
