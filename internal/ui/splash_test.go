@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -191,6 +192,28 @@ func TestSplashProjects(t *testing.T) {
 	x, y := findCell(t, app, root[len(root)-20:])
 	if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
 		t.Fatalf("the path's segment: %+v", seg)
+	}
+}
+
+// TestSplashWidePath: a project path of wide characters keeps its tail: the
+// cut counts cells, not runes, so the name at the path's end is what is left.
+func TestSplashWidePath(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	const name = "プロジェクトのディレクトリ"
+	root := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Close()
+	p.Close()
+	app.frameGen++
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, name) {
+		t.Fatalf("the path's name is cut away:\n%s", frame)
 	}
 }
 
