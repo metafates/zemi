@@ -1907,17 +1907,22 @@ func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	return u
 }
 
+// contextPct is how full the model's context window is, in percent; 0 when
+// the window is unknown. Always a number, never a division.
+func contextPct(lastIn, window int64) float64 {
+	if window <= 0 {
+		return 0
+	}
+	return float64(lastIn) / float64(window) * 100
+}
+
 // contextTable is the current-context estimate: the last prompt size
 // against the model's context window, with the percent for the statusline.
 func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	c := L.CreateTable(0, 3)
 	c.RawSetString("tokens", glua.LNumber(s.LastIn))
 	c.RawSetString("window", glua.LNumber(s.CtxWindow))
-	pct := 0.0
-	if s.CtxWindow > 0 {
-		pct = float64(s.LastIn) / float64(s.CtxWindow) * 100
-	}
-	c.RawSetString("pct", glua.LNumber(pct))
+	c.RawSetString("pct", glua.LNumber(contextPct(s.LastIn, s.CtxWindow)))
 	return c
 }
 

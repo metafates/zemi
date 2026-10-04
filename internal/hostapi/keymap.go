@@ -192,7 +192,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			// the clipboard into the composer, whose line reaches slash
 			// commands and !shell, nor move the focus, which routes every
 			// later key to the node it picked.
-			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") || rhs.Command == "mode" ||
+			if (strings.HasPrefix(rhs.API, "zemi.permission.mode.") ||
+				slices.Contains([]string{"mode", "profile"}, rhs.Command) ||
 				strings.HasPrefix(rhs.API, "zemi.agent.profile.") ||
 				strings.HasPrefix(rhs.API, "zemi.composer.") || strings.HasPrefix(rhs.API, "zemi.ui.focus.")) &&
 				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {

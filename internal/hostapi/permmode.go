@@ -35,10 +35,12 @@ type PermModeDef struct {
 	Name, Base, Description, Prompt string
 	Rules                           *perm.Store
 	// Decide answers an ask the rules left open: "allow", "deny" or
-	// anything else to leave it to the user. It dies with its generation
-	// (PurgeGeneration clears the list), so no reload check is needed.
+	// anything else to leave it to the user. An ask copies the def out of
+	// the list before it awaits, so the function outlives a purge and Gen
+	// is what refuses it (0 for a builtin, which has no decide).
 	Decide *glua.LFunction
 	Origin lua.Origin
+	Gen    Gen
 }
 
 var builtinModes = []PermModeDef{
@@ -360,7 +362,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		gate(L, "add")
 		def := PermModeDef{
 			Name: name, Base: rawString(L, spec, "base"), Description: rawString(L, spec, "description"), Prompt: rawString(L, spec, "prompt"),
-			Origin: h.RT.CurrentOrigin(L),
+			Origin: h.RT.CurrentOrigin(L), Gen: h.currentGen(),
 		}
 		def.Decide, _ = opt[*glua.LFunction](L, spec, "decide")
 		if !modeName.MatchString(name) {
@@ -738,6 +740,9 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 	out, err := h.RT.RunTask(ctx, lua.Task{
 		Class: lua.ClassAgent, Ceiling: modeDecideCeiling, Origin: def.Origin, Path: "permission.mode." + def.Name,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			if def.Gen != 0 && h.currentGen() != def.Gen {
+				return nil, nil, lua.ErrReloaded
+			}
 			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
 				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
 				"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
@@ -749,7 +754,9 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 		},
 	})
 	if err != nil {
-		h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
+		if !errors.Is(err, lua.ErrReloaded) {
+			h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
+		}
 		return ""
 	}
 	if len(out) == 0 {

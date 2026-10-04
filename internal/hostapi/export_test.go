@@ -315,6 +315,29 @@ func TestCost(t *testing.T) {
 	runUser(t, r, `assert(require("zemi.tui.text").cost(0) == nil, "no cost reads as one")`)
 }
 
+// TestContextPct: /cost and the statusline read one percent, and 79.5 is
+// the same 79 in both (a threshold reads the number, not a rounded copy).
+func TestContextPct(t *testing.T) {
+	for _, c := range []struct {
+		in, window int64
+		want       float64
+	}{{0, 0, 0}, {500, 0, 0}, {1000, 10000, 10}, {795, 1000, 79.5}} {
+		if got := contextPct(c.in, c.window); got != c.want {
+			t.Errorf("contextPct(%d, %d) = %v, want %v", c.in, c.window, got, c.want)
+		}
+	}
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.SeedStream(StreamSnapshot{LastIn: 795, CtxWindow: 1000})
+	if err := h.OpenUsage(); err != nil {
+		t.Fatal(err)
+	}
+	if body := ui.opened[0].Body; !strings.Contains(body, "· 79%") {
+		t.Fatalf("/cost reads another percent than the statusline:\n%s", body)
+	}
+}
+
 // TestTokens: a token count rides k, M then B, a round unit losing its ".0".
 func TestTokens(t *testing.T) {
 	for _, c := range []struct {
