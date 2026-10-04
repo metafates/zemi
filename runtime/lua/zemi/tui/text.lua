@@ -3,18 +3,20 @@
 ---@class zemi.tui.text
 local M = {}
 
---- A token count as "812", "24.5k" or "1.2M"; nil for none.
+--- A token count as "812", "24.5k", "1.2M" or "1.5B"; nil for none.
 ---@param n integer|nil
 ---@return string|nil
 function M.tokens(n)
 	if not n or n <= 0 then return nil end
 	local s = string.format("%d", n)
-	if n >= 1000000 then
+	if n >= 1000000000 then
+		s = string.format("%.1fB", n / 1000000000)
+	elseif n >= 1000000 then
 		s = string.format("%.1fM", n / 1000000)
 	elseif n >= 1000 then
 		s = string.format("%.1fk", n / 1000)
 	end
-	return (s:gsub("%.0([kM])$", "%1"))
+	return (s:gsub("%.0([kMB])$", "%1"))
 end
 
 --- A cost in dollars as "$0.42", "<$0.01" under half a cent; nil for none (an unpriced model).

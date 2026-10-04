@@ -379,9 +379,11 @@ func (h *Host) todoSnapshot() []store.Todo {
 	return h.todos
 }
 
-// fmtTokens reads a token count as the statusline does: 1234 is 1.2k.
+// fmtTokens reads a token count as the statusline does: 1234 is 1.2k, 1500000000 is 1.5B.
 func fmtTokens(n int64) string {
 	switch {
+	case n >= 1_000_000_000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e9), ".0") + "B"
 	case n >= 1_000_000:
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
 	case n >= 1000:

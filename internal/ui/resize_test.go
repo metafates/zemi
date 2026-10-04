@@ -351,6 +351,8 @@ func TestContextMeter(t *testing.T) {
 		{"window and use known", hostapi.StreamSnapshot{SessionIn: 90000, LastIn: 12300, CtxWindow: 64000}, "12.3k/64k ctx", " tok"},
 		{"use not known yet", hostapi.StreamSnapshot{SessionIn: 90000, CtxWindow: 64000}, "", " tok"},
 		{"window unknown", hostapi.StreamSnapshot{SessionIn: 90000, LastIn: 12300}, "90k tok", "ctx"},
+		{"window and use in the billions", hostapi.StreamSnapshot{SessionIn: 90000, LastIn: 1200000000, CtxWindow: 1800000000}, "1.2B/1.8B ctx", " tok"},
+		{"total in the billions", hostapi.StreamSnapshot{SessionIn: 2000000000}, "2B tok", "ctx"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 100, 12)

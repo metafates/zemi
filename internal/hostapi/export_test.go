@@ -315,6 +315,27 @@ func TestCost(t *testing.T) {
 	runUser(t, r, `assert(require("zemi.tui.text").cost(0) == nil, "no cost reads as one")`)
 }
 
+// TestTokens: a token count rides k, M then B, a round unit losing its ".0".
+func TestTokens(t *testing.T) {
+	for _, c := range []struct {
+		n    int64
+		want string
+	}{
+		{999, "999"},
+		{1000, "1k"},
+		{1234, "1.2k"},
+		{1000000, "1M"},
+		{1234000, "1.2M"},
+		{1000000000, "1B"},
+		{1234567890, "1.2B"},
+		{999000000000, "999B"},
+	} {
+		if got := fmtTokens(c.n); got != c.want {
+			t.Errorf("fmtTokens(%d) = %q, want %q", c.n, got, c.want)
+		}
+	}
+}
+
 // TestUsageBreaksThePromptDown: the fixed prompt rides every request, so
 // /usage says what it is made of instead of one aggregate context line.
 func TestUsageBreaksThePromptDown(t *testing.T) {
