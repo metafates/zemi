@@ -284,6 +284,57 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	}
 }
 
+// TestChatFoldLeavesTheTail: a click that redraws the chat - a digest
+// opening over its rail - leaves the tail, so the rows it adds grow under
+// the reader's place instead of scrolling it away, past the view's own
+// height.
+func TestChatFoldLeavesTheTail(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 30)
+	host.AppendMessage("user", "update @.golangci.yaml so make lint works again")
+	for i := range 6 {
+		appendReasoning(host, fmt.Sprintf("look at the config %d\n", i), hostapi.TurnStat{ThoughtMS: 2800})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: fmt.Sprintf("a%d.go", i), Status: "ok"})
+	}
+	appendReply(host, "Root cause found: the config names linters the way v2.11 did.\nBut v2.13 renamed several.", hostapi.TurnStat{Out: 18800, ElapsedMS: 4000})
+	appendReasoning(host, "one more check\n", hostapi.TurnStat{ThoughtMS: 800})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "bash", Text: "make lint", Status: "ok"})
+	appendReply(host, "make lint passes with no issues and no deprecation warnings.\nThe disable list named linters by their pre-v2.13 names, so default: all kept on\nthe renamed ones as separate linters, and gofumpt.extra-rules was replaced.", hostapi.TurnStat{Out: 18800, ElapsedMS: 4000})
+	app.renderSync(t)
+	app.Frame()
+
+	st := app.scrolls["chat"]
+	if !st.follow || st.top != 0 || st.rows >= st.viewH {
+		t.Fatalf("precondition: top %d, follow %v, %d rows over %d", st.top, st.follow, st.rows, st.viewH)
+	}
+	// the region's first row, without the scrollbar's own cell
+	head := func() string {
+		r := app.lastRows[st.rect.Min.Y]
+		return strings.TrimSpace(hostapi.SegsText(r[:len(r)-1]))
+	}
+	first := head()
+
+	digest := slices.IndexFunc(strings.Split(ansi.Strip(app.Frame()), "\n"), func(r string) bool {
+		return strings.Contains(r, "· 6 files")
+	})
+	if digest < 0 {
+		t.Fatal("no digest row on screen")
+	}
+	clickAt(app, 5, digest)
+	app.renderSync(t)
+	app.Frame()
+
+	if st.follow || st.top != 0 {
+		t.Fatalf("the fold scrolled the view: top %d, follow %v", st.top, st.follow)
+	}
+	if st.rows <= st.viewH {
+		t.Fatalf("the rail did not grow past the view: %d rows over %d", st.rows, st.viewH)
+	}
+	got := head()
+	if got != first {
+		t.Fatalf("the first row moved from %q to %q", first, got)
+	}
+}
+
 // TestChatScrollAnchorsThroughFill: a long chat fills its latest rows first,
 // and a reader who scrolled up in them keeps their place when the older rows
 // land above, though every reply repeats the same lines.

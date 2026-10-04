@@ -624,8 +624,11 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 }
 
 // clickWidget runs the on_click of the widget that drew s on the background
-// worker, like a keymap.
+// worker, like a keymap. The click leaves the region it acts in off its
+// tail: the rows that widget redraws move under the reader, and a following
+// viewport would scroll them away instead of leaving the reader's place.
 func (a *App) clickWidget(s hostapi.Segment, x, y int) {
+	a.leaveTail(s.Widget)
 	p := a.press
 	ev := map[string]any{
 		"id": s.Click, "x": x, "y": y, "clicks": p.clicks,

@@ -1923,9 +1923,11 @@ provenance string.
   than the view leaves the blank under it. Scrollback (`pgup`/`pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport
   off the tail;
-  a scrolled view stays anchored while new lines fill underneath, and
-  sending a message (or a `!command`) snaps back to the tail, a slash
-  command does not. While a turn's prompt is above the view its first row
+  a scrolled view stays anchored while new lines fill underneath, and a
+  click on a row leaves the tail too: a digest opening over its rail or a
+  thought unrolling redraws the rows under the reader's place, never
+  scrolling them away. Sending a message (or a `!command`) snaps back to the
+  tail, a slash command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
   and an opened run's digest of that turn (`sticky = "section"`) pins on the

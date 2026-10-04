@@ -1198,6 +1198,19 @@ func (a *App) scrolledUp(widget string) bool {
 	return false
 }
 
+// leaveTail takes the scrolled regions a widget draws in off their tail, so
+// the rows a click has it redraw (a digest opening over its rail, a thought
+// unrolling) grow under the reader's place instead of scrolling it away.
+func (a *App) leaveTail(widget string) {
+	if w := a.host.Widgets.Get(widget); w != nil {
+		for _, st := range a.scrolls {
+			if st.region == w.Region {
+				st.follow = false
+			}
+		}
+	}
+}
+
 // scrollAt is the scrolled region drawn under (x, y), else the default one. A
 // bar in the separator beside a region is that region's own, one cell out of
 // its rect.
