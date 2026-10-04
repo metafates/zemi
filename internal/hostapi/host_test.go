@@ -51,6 +51,25 @@ func newTestHostUI(t *testing.T) *Host {
 	return h
 }
 
+// TestJobOf: only a call that handed off names a job, and the id comes from
+// its shape, so the wording around it belongs to the tool alone.
+func TestJobOf(t *testing.T) {
+	for _, c := range []struct {
+		status CallStatus
+		out    string
+		want   string
+	}{
+		{CallBG, "still running, so it moved to the background as job-3: read the rest", "job-3"},
+		{CallBG, "started job-12", "job-12"},
+		{CallOK, "job-3", ""}, // a call that did not hand off names no job
+		{CallBG, "no id here", ""},
+	} {
+		if got := jobOf(c.status, c.out); got != c.want {
+			t.Errorf("jobOf(%s, %q) = %q, want %q", c.status, c.out, got, c.want)
+		}
+	}
+}
+
 // outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
 // whose point is a path that must still ask lives here, since t.TempDir(), and
 // so every fixture, is inside a temp root. It sits beside this file, not in

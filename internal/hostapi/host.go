@@ -293,6 +293,19 @@ func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, Plural(n, "line", "lines"))
 }
 
+// jobRe is the id of a call that went on in the background: the handoff note
+// a timed-out command carries and the job tool's answer name it the same way.
+var jobRe = regexp.MustCompile(`\bjob-\d+\b`)
+
+// jobOf is the job a finished call handed off to, "" for any other call: the
+// row carries the id, so a widget never reads it out of the result's prose.
+func jobOf(status CallStatus, output string) string {
+	if status != CallBG {
+		return ""
+	}
+	return jobRe.FindString(output)
+}
+
 // rowOutput is a tool result as its transcript row shows it, else
 // shortOutput: a plan's verdict and an answered question call's
 // "question\tanswer\tnote" lines, since their results are written for the model.
@@ -1843,6 +1856,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
 		row.RawSetString("run", glua.LString(t.Run))
+		row.RawSetString("job", glua.LString(jobOf(t.Status, t.Output)))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
 		if !t.Started.IsZero() {
 			row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
@@ -1867,6 +1881,7 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 		row.RawSetString("status", glua.LString(m.Status))
 		row.RawSetString("detail", glua.LString(m.Detail))
 		row.RawSetString("run", glua.LString(m.Run))
+		row.RawSetString("job", glua.LString(jobOf(m.Status, m.Output)))
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		row.RawSetString("output", glua.LString(m.Output))

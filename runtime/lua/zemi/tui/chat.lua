@@ -434,7 +434,7 @@ local function builder(ctx, width)
 		local output = t.output or ""
 		local answered = name == "question" and output:find("\t") ~= nil
 		-- the command a description stands for, then progress, then the job
-		-- a timed-out command went on as (the phrase is tools.JobHandoff)
+		-- a timed-out command went on as, which the row carries
 		if answered then
 			more = {}
 		elseif label ~= "" and input ~= "" and (open or not fmt.looks(t)) then
@@ -445,12 +445,7 @@ local function builder(ctx, width)
 			detail(code and code[i + 1] or l, "Dim")
 		end
 		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
-		local job = t.status == "bg"
-			and (
-				(t.output or ""):match("moved to the background as (job%-%d+)")
-				or (t.output or ""):match("^started (job%-%d+)")
-			)
-		if job then detail("running as " .. job, "Dim") end
+		if (t.job or "") ~= "" then detail("running as " .. t.job, "Dim") end
 		-- an open file tool shows what it changed as numbered, tinted rows, four
 		-- cells in; a diff row is body: no hover, but the click folds like the head
 		if open then
