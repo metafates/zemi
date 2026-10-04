@@ -15,6 +15,10 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - A rebase that meets main's api version bump takes the next minor above main's, in `host.go` and `TestNamespaceVersion` together.
 - golangci-lint holds one lock per machine: while another worktree lints, `make check` fails with "parallel golangci-lint is running". Run it again; that is no finding.
 
+git commits run confined on macOS in the main checkout, where the sandbox opens `.git` but for
+what runs code; in a linked worktree or on Linux `.git` is read-only inside the sandbox, so a
+confined `git commit` fails on `index.lock` and runs unsandboxed (`sandbox: false`).
+
 ## Every commit boots
 
 - zemi keeps no migrations before its first release. A schema change bumps `schemaVersion` in `internal/store/store.go`; after merging it, `make reset-db` drops the owner's stores (allowed) instead of writing an ALTER.
@@ -58,3 +62,22 @@ Anything in the prefix that varies per request busts the provider cache for the 
 - gopher-lua: once `pcall` catches an error, closures made before it stop sharing locals with their maker. Share state through a table.
 - Lua's `os.clock` is wall time on the runtime's `lua.Clock`, not CPU time.
 - Builds fill the disk: a worktree's builds add to the Go build cache and a binary is 100 MB. Check `df` between rounds of parallel workers and delete scratch binaries.
+
+## Testing patterns
+
+- `internal/hostapi/host_test.go` has the canonical helpers: `newTestHost(t)` boots a fresh
+  runtime + namespaces step with temp dirs; `runUser(t, r, luaSrc)` runs a chunk as user origin
+  **with a 30s guard so an interpreter deadlock fails loudly instead of hanging the binary**
+  (and a 30s slice ceiling, which load does not reach) - reuse it for any test that runs Lua.
+- The Lua API surface is pinned by `TestTypesCoverAPI`, `TestTypesDeclareNothingExtra` and `TestTypesEnums` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
+- Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
+  units (perm normalizer, learn intake, store) get table tests.
+- Skills tests: `newTestHostSkills(t)` boots namespaces + skills steps;
+  `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting - every `Boot` builds a fresh
+  generation, so steps sharing state must be passed in ONE call.
+- Agent-turn tests stub the model with `reflectStub` and wait with `waitIdle`. End to end,
+  drive the real binary in tmux against a fake OpenAI-compatible server: pyte and friends
+  garble bubbletea's incremental renderer, tmux does not. Set the `ZEMI_*_HOME` variables
+  inside the pane's command: a tmux server that already runs does not pass the caller's
+  environment, and zemi would open the real config.
+- `internal/lua/sandbox_test.go` is adversarial by design: monkey-patching attempts must raise.

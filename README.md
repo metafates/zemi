@@ -144,4 +144,5 @@ zemi completion fish > ~/.config/fish/completions/zemi.fish
 `zemi <command> --help` says more.
 
 `/help` lists every key and command. [DESIGN.md](DESIGN.md) is the spec,
-[AGENTS.md](AGENTS.md) the internals.
+[AGENTS.md](AGENTS.md) the rules and the commands, and the internals live in the area skills
+under [.agents/skills/](.agents/skills/).
