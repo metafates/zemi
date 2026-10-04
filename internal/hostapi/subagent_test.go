@@ -1242,3 +1242,42 @@ func TestAgentToolHandsOff(t *testing.T) {
 		t.Fatalf("%d report rows for %s, want exactly 1", n, run.id)
 	}
 }
+
+// TestForegroundEscStopsTheRun: esc cancels the call's own context, and the run
+// waiting on it must stop - the arm the agent tool shares with a workflow call.
+func TestForegroundEscStopsTheRun(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	runCtx, runCancel := context.WithCancel(t.Context())
+	run := &agentRun{id: "r1", agent: "explore", status: RunRunning, cancel: runCancel}
+	call, esc := context.WithCancel(t.Context())
+	defer esc()
+	answered := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := (&agentTool{h: h}).foreground(call, "c1", run, func(func(string)) (string, error) {
+			<-runCtx.Done() // the run keeps going until the call stops it
+			return "", runCtx.Err()
+		})
+		answered <- resp
+	}()
+	esc()
+	resp := waitCall(t, answered)
+	if !strings.Contains(resp.Content, "the user stopped this agent") {
+		t.Fatalf("esc answered %q, want the run stopped", resp.Content)
+	}
+}
+
+// TestForegroundRunPanicAnswersTheCall: a panic inside a foreground run must not
+// leave the call waiting for an answer that never comes.
+func TestForegroundRunPanicAnswersTheCall(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	resp, err := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(func(string)) (string, error) {
+		panic("boom")
+	})
+	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "boom") {
+		t.Fatalf("a panicked run answered %q (error %v), want the panic as a tool error", resp.Content, err)
+	}
+}

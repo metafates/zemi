@@ -237,16 +237,12 @@ func (a *App) sendMessage(text string) {
 		}
 		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
 	}
-	if err := a.host.AgentSend(text); err != nil {
+	if err := a.host.AgentSendUser(text); err != nil {
 		a.pushToast(slog.LevelError, "Could not send", err.Error())
 		a.composer.text = draft
 		a.composer.moveEnd()
 		a.publishComposer()
-		return
 	}
-	// the user's own line: a call waiting on a long run hands it off, so this
-	// message reaches the turn instead of waiting for that run
-	a.host.UserSpoke()
 }
 
 // restoreQueue moves queued steering messages back into the composer,

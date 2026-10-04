@@ -606,7 +606,7 @@ func TestSendTo(t *testing.T) {
 // and /agents stop with nothing to stop says how to name one.
 func TestStopWording(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(context.Context, func(string)) (string, error) {
+	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(func(string)) (string, error) {
 		return "", context.Canceled
 	})
 	if !strings.Contains(resp.Content, "the user stopped this agent") {

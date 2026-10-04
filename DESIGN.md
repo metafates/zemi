@@ -278,9 +278,11 @@ Contracts that make this safe:
   `workflow` call waiting on its run cannot hold the turn past the user's
   own message (§6.3): the message hands the run off, the call answers at
   once, and the run's report arrives as a message when it ends. Only the
-  user's typed line raises that signal (the composer, or a command-line
-  prompt), never a report, a plugin send or a loop, and it is spent once
-  the queue is read at a step boundary, so a later call waits as usual.
+  user's own line raises that signal (`Host.AgentSendUser`: the composer,
+  or a command-line prompt), only when it joined a running turn - one that
+  starts a turn leaves its calls waiting - and never a report, a plugin
+  send or a loop; it is spent once the queue is read at a step boundary or
+  taken back for editing, so a later call waits as usual.
   Whatever is still queued when
   the turn ends starts one follow-up turn; with nothing queued, a set goal
   is checked and may start the next (§6.3). `up` on an empty composer

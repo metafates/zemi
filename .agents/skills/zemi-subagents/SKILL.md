@@ -63,13 +63,15 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. A foreground `agent` or `workflow` call waits for
   its run off the turn's goroutine (a workflow run is `startFlow` and its `flowRun.done`); the
-  user's own typed line (`Host.UserSpoke`, from `sendMessage` in
-  palette.go or `sendPrompt` in cli.go, and never a report, a plugin send or a loop) hands the
+  user's own typed line (`Host.AgentSendUser`, from the composer's `sendMessage` in palette.go or
+  a command-line prompt, and never a report, a plugin send or a loop) hands the
   run off: the call answers with the background text and the run's end delivers its report as a
   message. `flowRun.detach`/`agentRun.detach` take the handoff under the run's own lock and
-  answer false once it ended, so the result is the caller's and is never both or neither; the
-  signal is one channel re-armed where the queue is read at a step boundary, so a later call in
-  the turn waits as usual, and headless (no UI hooks) raises none. A background run past
+  answer false once it ended, so the result is the caller's and is never both or neither. The
+  signal (`Host.UserSpoke`) is raised for a message that joined a *running* turn alone - the
+  composer idle starts one, and its own calls wait - and it is re-armed where the queue is read
+  at a step boundary or taken back for editing, so a later call in the turn waits as usual;
+  headless (no UI hooks) raises none. A background run past
   `agent.max_background`
   (4 by default, workflows counted with agents, a handed-off run counted too) is refused
   (`taskReg.detached`). What the chat

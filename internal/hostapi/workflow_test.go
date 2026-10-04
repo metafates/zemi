@@ -888,10 +888,9 @@ func TestTurnReadsTheUsersMessageWhileARunWaits(t *testing.T) {
 	}
 	f := waitLiveFlow(t, h)
 	// the user types while the step waits on the run
-	if err := h.AgentSend("how long will it take?"); err != nil {
+	if err := h.AgentSendUser("how long will it take?"); err != nil {
 		t.Fatal(err)
 	}
-	h.UserSpoke()
 	waitFor(t, func() error {
 		if !f.isRunning() {
 			return errors.New("the run ended with the message")

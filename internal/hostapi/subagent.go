@@ -1054,7 +1054,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextResponse("Queued for agent " + run.id + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-		return t.foreground(ctx, call.ID, run, func(ctx context.Context, progress func(string)) (string, error) {
+		return t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
 			return t.h.continueRun(ctx, run, in.Prompt, progress)
 		})
 	}
@@ -1091,8 +1091,8 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	run, rctx := t.h.newRun(context.WithoutCancel(ctx), def, in.Description, in.Prompt, false)
 	_ = t.h.tasks.add(run)
 	t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-	return t.foreground(rctx, call.ID, run, func(ctx context.Context, progress func(string)) (string, error) {
-		return t.h.runAgent(ctx, run, def, in.Prompt, progress)
+	return t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
+		return t.h.runAgent(rctx, run, def, in.Prompt, progress)
 	})
 }
 
@@ -1106,9 +1106,11 @@ func bgAgentText(id string) string {
 // detail following its progress; the run id heads the report (the tail
 // may be the spill file's name) so the model can continue the run. The run
 // outlives the call: the user's own message hands it off, and its report then
-// arrives as one. Only the run's end and esc keep the call attached, and a
-// handoff that lost the race to the end reads the result inline.
-func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun, do func(context.Context, func(string)) (string, error)) (fantasy.ToolResponse, error) {
+// arrives as one. Only the run's end and esc - the call's own context, watched
+// here - keep the call attached, and a handoff that lost the race to the end
+// reads the result inline. do runs the run on its own context, which is not the
+// call's: it must survive the call.
+func (t *agentTool) foreground(call context.Context, callID string, run *agentRun, do func(func(string)) (string, error)) (fantasy.ToolResponse, error) {
 	start := time.Now()
 	var last atomic.Value
 	type answer struct {
@@ -1117,19 +1119,28 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 	}
 	answers := make(chan answer, 1)
 	t.h.GoSafe("agent run", func() {
-		text, err := do(ctx, func(line string) {
+		a := answer{}
+		// deferred: a panic inside the run must not leave the call waiting for
+		// an answer that never comes
+		defer func() {
+			if r := recover(); r != nil {
+				a.err = fmt.Errorf("it panicked: %v", r)
+				t.h.logPanic("agent run", r)
+			}
+			answers <- a
+		}()
+		a.text, a.err = do(func(line string) {
 			last.Store(line)
 			t.h.setToolDetail(callID, line)
 		})
 		if run.handedOff() {
-			t.h.deliverAgent(run, text, err)
+			t.h.deliverAgent(run, a.text, a.err)
 		}
-		answers <- answer{text, err}
 	})
 	var a answer
 	select {
 	case a = <-answers:
-	case <-ctx.Done():
+	case <-call.Done():
 		run.cancel()
 		a = <-answers
 	case <-t.h.userSpoke():

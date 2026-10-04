@@ -650,14 +650,33 @@ func (h *Host) promptBreakdown() ([]promptPart, int64) {
 	return ag.promptParts, ag.promptTokens
 }
 
-// AgentSend sends one user message to the agent (DESIGN §4, §6.3). Idle,
-// it starts a turn; during a turn it queues, and the queue joins the
-// running turn at its next step boundary. Safe from any goroutine.
+// AgentSend sends one message to the agent (DESIGN §4, §6.3). Idle, it starts
+// a turn; during a turn it queues, and the queue joins the running turn at its
+// next step boundary. Safe from any goroutine.
 func (h *Host) AgentSend(text string) error {
+	_, err := h.agentSend(text)
+	return err
+}
+
+// AgentSendUser sends the user's own typed line: AgentSend, and a message that
+// joined a running turn is marked (UserSpoke), so a foreground agent or
+// workflow call waiting on a long run hands off and the turn reads the message
+// at its next step boundary instead of waiting for that run (DESIGN §4). A
+// message that starts a turn marks nothing: its own calls wait as usual.
+func (h *Host) AgentSendUser(text string) error {
+	queued, err := h.agentSend(text)
+	if queued {
+		h.UserSpoke()
+	}
+	return err
+}
+
+// agentSend is AgentSend, reporting whether the message joined a running turn.
+func (h *Host) agentSend(text string) (queued bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		// a provider refuses an empty user message, and where it landed would
 		// be the middle of a turn
-		return errors.New("nothing to send")
+		return false, errors.New("nothing to send")
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -665,13 +684,13 @@ func (h *Host) AgentSend(text string) error {
 		ag.steering = append(ag.steering, text)
 		ag.mu.Unlock()
 		h.refresh()
-		return nil
+		return true, nil
 	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
 	scope := h.claim()
 	ag.mu.Unlock()
-	return h.sendClaimed(scope, text)
+	return false, h.sendClaimed(scope, text)
 }
 
 // drainQueue starts a turn for what a background agent's report left queued
@@ -779,12 +798,13 @@ func (ag *agentHost) spokeLocked() chan struct{} {
 	return ag.spoke
 }
 
-// UserSpoke marks the user's own typed message: a foreground agent or
-// workflow call waiting on a long run hands it off, so the turn reads the
-// message instead of waiting for the run. Every waiting call hears it, since
-// the result of one call alone cannot release the turn. Only the composer and
-// a command-line prompt raise it, never a report, a plugin send or a loop,
-// and headless nothing does: a detached report would outlive the run.
+// UserSpoke marks the user's own typed line: a foreground agent or workflow
+// call waiting on a long run hands it off, so the turn reads the message
+// instead of waiting for the run. Every waiting call hears it, since the result
+// of one call alone cannot release the turn. Host.AgentSendUser raises it, and
+// only for a message that joined a running turn; a report, a plugin send or a
+// loop never does, and headless nothing does: a detached report would outlive
+// the run.
 func (h *Host) UserSpoke() {
 	if h.hooks() == nil {
 		return
@@ -792,11 +812,19 @@ func (h *Host) UserSpoke() {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	ch := ag.spokeLocked()
+	ag.spokeClose()
+}
+
+// spokeClose releases every call waiting on this turn's signal (ag.mu held);
+// one already closed is left alone, since the signal is spent for the turn.
+func (ag *agentHost) spokeClose() {
+	if ag.spoke == nil {
+		return
+	}
 	select {
-	case <-ch: // this turn's calls already heard it
+	case <-ag.spoke: // this turn's calls already heard it
 	default:
-		close(ch)
+		close(ag.spoke)
 	}
 }
 
@@ -1068,9 +1096,7 @@ func (h *Host) deliverSteering() []string {
 		return nil
 	}
 	ag.steering, ag.todoNag = nil, ""
-	if len(msgs) > 0 {
-		ag.spoke = nil // the message is read: a later call is not detached by it
-	}
+	ag.spoke = nil // the message is read: a later call is not detached by it
 	h.flushOutput(TurnStat{})
 	ag.mu.Unlock()
 	for _, m := range msgs {
@@ -1095,6 +1121,11 @@ func (h *Host) AgentTakeQueue() []string {
 		ag := h.agents
 		ag.mu.Lock()
 		q, ag.steering = takeQueued(ag.steering)
+		if len(q) > 0 {
+			// the user's own lines went back to the composer, so no message
+			// reaches the turn: a later call is not detached by a spent signal
+			ag.spoke = nil
+		}
 		ag.mu.Unlock()
 	}
 	if len(q) > 0 {

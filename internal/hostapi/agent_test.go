@@ -654,8 +654,16 @@ func TestSteeringQueue(t *testing.T) {
 		}
 	}
 	send("one", "two")
+	h.UserSpoke() // the user's own line arrived while the turn ran
 	if q := h.AgentTakeQueue(); len(q) != 2 || q[0] != "one" || q[1] != "two" {
 		t.Fatalf("queue = %q", q)
+	}
+	// the lines went back to the composer, so no message reaches the turn: a
+	// call later in it must not be detached by the spent signal
+	select {
+	case <-h.userSpoke():
+		t.Fatal("a signal stayed raised after its lines were taken back")
+	default:
 	}
 	if q := h.AgentTakeQueue(); len(q) != 0 {
 		t.Fatalf("queue after take = %q", q)
@@ -2360,4 +2368,48 @@ func TestRunFrame(t *testing.T) {
 			t.Errorf("%s: next %d, %d settled, %d pending", c.name, fr.Next, len(fr.Settled), len(fr.Pending))
 		}
 	}
+}
+
+// TestTypedSendMarksOnlyAQueuedMessage: the handoff signal belongs to a
+// message that joined a running turn (Host.AgentSendUser). One that starts a
+// turn marks nothing, so a foreground call in that turn waits as usual - which
+// is what the composer's send does every time it is idle.
+func TestTypedSendMarksOnlyAQueuedMessage(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	gate := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+			<-gate // the turn holds until the test releases it
+			return textParts("ok")
+		}}, nil
+	}
+	seedSession(t, h)
+	if err := h.AgentSendUser("start a turn"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		ag := h.agents
+		ag.mu.Lock()
+		defer ag.mu.Unlock()
+		if !ag.active {
+			return errors.New("the turn never started")
+		}
+		return nil
+	})
+	select {
+	case <-h.userSpoke():
+		t.Fatal("a message that started the turn marked it: a foreground call hands off at once")
+	default:
+	}
+	if err := h.AgentSendUser("and this one joins it"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-h.userSpoke():
+	default:
+		t.Fatal("a message that joined the turn did not mark it")
+	}
+	close(gate)
+	waitIdle(t, h)
 }
