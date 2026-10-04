@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -23,6 +24,21 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
+
+// outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
+// whose point is a path the tools ask about lives here, since t.TempDir(),
+// and so every fixture, is inside a temp root. It sits beside this file, not
+// in the working directory, which a test may have chdir'd into the project.
+func outsideTemp(t *testing.T) string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	dir, err := os.MkdirTemp(filepath.Dir(file), ".zemi-outside-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return perm.RealPath(dir)
+}
 
 func TestResolveSchemaRefs(t *testing.T) {
 	defs := map[string]any{
@@ -541,7 +557,7 @@ func TestEditSafety(t *testing.T) {
 	p.Seen = &sync.Map{}
 	all := All(p)
 	read, edit := all[1], all[3]
-	dir := t.TempDir()
+	dir := outsideTemp(t)
 	js := func(m map[string]any) string { b, _ := json.Marshal(m, json.Deterministic(true)); return string(b) }
 	for _, c := range []struct {
 		name, file   string
@@ -646,9 +662,15 @@ func TestEditSafety(t *testing.T) {
 // TestScratchpad: the pad needs no rule, no prior read and no write access
 // to the project, keeps the stale check, stays out of checkpoints and is a
 // command's $TMPDIR whoever allowed it; a secret-shaped name there asks, and
-// a path a shell would expand is refused naming the real one.
+// a path a shell would expand is refused naming the real one. The machine's
+// temp dirs read and write the same way (perm.FreeZone), a checkpoint aside.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
+	free := filepath.Join(perm.TempRoots()[0], "zemi-free-zone")
+	if err := os.MkdirAll(free, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(free) })
 	t.Chdir(proj)
 	p, asked := testPipeline(t, false)
 	p.Pad, p.Seen, p.Secret = pad, &sync.Map{}, perm.PathIsSecret
@@ -673,6 +695,10 @@ func TestScratchpad(t *testing.T) {
 			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
 		}, "not read its current version", false},
 		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "give it another name", true},
+		{"write in a temp dir, unread", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "wrote", false},
+		{"edit in a temp dir, unread", ToolEdit, `{"path":"FREE/notes.txt","old_string":"x","new_string":"y"}`, nil, "edited", false},
+		{"read in a temp dir", ToolRead, `{"path":"FREE/notes.txt","limit":0}`, nil, "1\ty", false},
+		{"secret-shaped name in a temp dir", ToolWrite, `{"path":"FREE/cert.pem","content":"x"}`, nil, "give it another name", true},
 		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
@@ -681,16 +707,24 @@ func TestScratchpad(t *testing.T) {
 			c.before()
 		}
 		n := len(*asked)
-		got := call(t, toolNamed(t, c.tool, p), strings.ReplaceAll(c.input, "PAD", pad)).Content
+		in := strings.ReplaceAll(strings.ReplaceAll(c.input, "PAD", pad), "FREE", free)
+		got := call(t, toolNamed(t, c.tool, p), in).Content
 		if len(*asked) > n {
 			got = (*asked)[n].Reason // what the user and a failed ask read
 		}
-		if want := strings.ReplaceAll(c.want, "PAD", pad); !strings.Contains(got, want) || len(*asked) > n != c.asks {
+		want := strings.ReplaceAll(strings.ReplaceAll(c.want, "PAD", pad), "FREE", free)
+		if !strings.Contains(got, want) || len(*asked) > n != c.asks {
 			t.Errorf("%s: asked %v, got %q, want %q", c.name, len(*asked) > n, got, want)
 		}
 	}
-	if len(checkpoints) > 0 {
-		t.Errorf("pad writes checkpointed: %q", checkpoints)
+	// the pad is no project a rewind restores; a temp file is
+	if len(checkpoints) == 0 {
+		t.Error("no checkpoint: the pad is left out, a temp file is not")
+	}
+	for _, path := range checkpoints {
+		if !strings.HasPrefix(path, free) {
+			t.Errorf("checkpointed %s, want only the temp file %s", path, free)
+		}
 	}
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)

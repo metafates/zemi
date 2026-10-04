@@ -916,7 +916,7 @@ func (n Normalized) GitWrites(gitDir bool) string {
 // Empty when it may run. Normalize already made sh -c bodies and
 // substitutions segments of their own. pad is the scratchpad, $TMPDIR in
 // every command the model runs, "" for none: an rm whose every operand is
-// inside it deletes nothing of the project.
+// inside it or inside a native temp dir deletes nothing of the project.
 // NOTE: a symlink the same command plants in the pad, one a glob picks
 // with a trailing slash, or an arithmetic assignment to a name built at run
 // time ($(( $(printf TMP)DIR = 0 ))) still leads out; the run is confined,
@@ -961,39 +961,63 @@ var ShellState = map[string]bool{
 	"let": true, "alias": true, "trap": true, "select": true, "enable": true,
 }
 
-// padOperands reports that args has operands and each names a path below
-// pad: the literal pad path or $TMPDIR, a slash, then a rest with no climb
-// and no expansion but a glob. A word after -- is an operand whatever it
-// starts with.
-func padOperands(args []string, pad string) bool {
+// freeOperands reports that args has operands and each names a path below one
+// of the disposable roots: the pad, named by its literal path or as $TMPDIR,
+// which the policy sets to it, or a native temp dir. A word after -- is an
+// operand whatever it starts with.
+func freeOperands(args []string, pad string) bool {
 	operands, dashed := 0, false
 	for _, a := range args {
 		if !dashed && strings.HasPrefix(a, "-") && a != "-" {
 			dashed = a == "--"
 			continue
 		}
-		rest, ok := strings.CutPrefix(a, "$TMPDIR/")
-		if !ok {
-			rest, ok = strings.CutPrefix(a, "${TMPDIR}/")
-		}
-		// unquoted, a pad path holding a blank or a glob splits or expands
-		if ok && strings.ContainsAny(pad, " \t\n*?[") {
-			return false
-		}
-		if !ok {
-			rest, ok = strings.CutPrefix(a, strings.TrimSuffix(pad, "/")+"/")
-		}
+		root, rest, ok := freeOperand(a, pad)
 		if !ok || path.Clean("/"+rest) == "/" || strings.ContainsAny(rest, "~\\") || expandsToDotDot("/"+rest) ||
 			slices.Contains(strings.Split(rest, "/"), "..") {
 			return false
 		}
 		// a symlink already there leads out
-		if _, in := Under(RealPath(pad), RealPath(filepath.Join(pad, rest))); !in && !strings.ContainsAny(rest, "*?[") {
+		if _, in := Under(RealPath(root), RealPath(filepath.Join(root, rest))); !in && !strings.ContainsAny(rest, "*?[") {
 			return false
 		}
 		operands++
 	}
 	return operands > 0
+}
+
+// freeOperand splits an operand word into the disposable root it names and
+// the rest below it. $TMPDIR is the pad and no operand without one: what the
+// text would name is the environment's, which nothing here vouches for.
+// Unquoted, a root holding a blank or a glob splits or expands.
+func freeOperand(a, pad string) (root, rest string, ok bool) {
+	rest, ok = strings.CutPrefix(a, "$TMPDIR/")
+	if !ok {
+		rest, ok = strings.CutPrefix(a, "${TMPDIR}/")
+	}
+	if ok {
+		if pad == "" || strings.ContainsAny(pad, " \t\n*?[") {
+			return "", "", false
+		}
+		return pad, rest, true
+	}
+	for _, r := range freeRoots(pad) {
+		if rest, ok := strings.CutPrefix(a, strings.TrimSuffix(r, "/")+"/"); ok {
+			return r, rest, true
+		}
+	}
+	return "", "", false
+}
+
+// freeRoots are the disposable roots an operand may name as text: the pad and
+// the machine's temp dirs as a command writes them and as they resolve (a
+// model writes /tmp, the kernel opens /private/tmp).
+func freeRoots(pad string) []string {
+	roots := slices.Concat(TempRoots(), []string{os.TempDir(), "/tmp"})
+	if pad != "" {
+		roots = append(roots, pad)
+	}
+	return roots
 }
 
 // repeats are the runners that run what they are handed once per input,
@@ -1041,7 +1065,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 				continue
 			}
 			// behind a runner (xargs, find -exec) more operands come from elsewhere
-			if name == "rm" && i == 0 && pad != "" && padOperands(rest, pad) {
+			if name == "rm" && i == 0 && freeOperands(rest, pad) {
 				continue
 			}
 			return "this may delete many files"

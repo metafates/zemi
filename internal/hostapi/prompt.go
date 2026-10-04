@@ -493,7 +493,7 @@ func (h *Host) instructionFile(p string) bool {
 // command. scratchOwn names a subagent run's own directory in its task,
 // since per run it would bust the cached prompt.
 const (
-	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in /tmp or the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. The temp dirs (/tmp and the system's own) are free the same way. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
 	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."

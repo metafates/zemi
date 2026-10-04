@@ -136,8 +136,8 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		switch {
 		case why != "":
 			note(why)
-		case req.InPad():
-			// Check's reason says why already (tools.PadSecret)
+		case req.FreeZone() && strings.Contains(req.Reason, tools.FreeSecret):
+			// Check's reason says why already
 		case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
 			note("this file looks like it holds secrets")
 		case strings.HasPrefix(req.Subject, "net.") && req.Tool == tools.ToolWebSearch:

@@ -91,10 +91,12 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
   `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
-  decided, a read-only agent's included, but a secret-shaped name (`tools.PadSecret`); `write`
+  decided, a read-only agent's included, but a secret-shaped name (`tools.FreeSecret`). The
+  machine's temp dirs (`perm.TempRoots`) are allowed the same way, a `protectedWrite` aside;
+  they are not jails for `zemi.fs` or the Lua tool, which keep the pad alone. `write`
   and `edit` need no prior read there (the stale check stays), a pad write is never
   checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
-  (`$TMPDIR/...` or its literal path) settle. A file tool path starting with `$`, `~` or
+  or a temp dir (`$TMPDIR/...`, its literal path, or `/tmp/...`) settle. A file tool path starting with `$`, `~` or
   `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
   system prompt (which runs of one agent share in the provider cache), to keep its files in
   `<pad>/<agent>-<run id>`. `ensureScratch` (building the environment prompt) creates the live

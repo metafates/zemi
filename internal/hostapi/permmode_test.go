@@ -362,7 +362,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	proj, outside := h.Dirs.ProjectDir, perm.RealPath(t.TempDir())
+	proj, outside := h.Dirs.ProjectDir, outsideTemp(t)
 	os.MkdirAll(filepath.Join(proj, ".git", "hooks"), 0o755)
 	os.Symlink(h.Dirs.ConfigHome, filepath.Join(proj, "cfg"))
 	os.Symlink(filepath.Join(proj, ".git"), filepath.Join(proj, "gl"))

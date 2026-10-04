@@ -2425,7 +2425,8 @@ provenance string.
   loop body or a shell body `xargs` or `find -exec` repeats; an `rm` whose
   every operand is below the scratchpad, as `$TMPDIR/...` or its literal
   path with no climb, settles while nothing in the command can have
-  changed `$TMPDIR`; and any command a shell may read otherwise than
+  changed `$TMPDIR`, and so does one below a native temp dir, by its own
+  path (`perm.FreeZone`); and any command a shell may read otherwise than
   the parse, above, since the list cannot vouch for it),
   a git command that writes what the sandbox keeps read-only in `.git`
   (`perm.Normalized.GitWrites`: with the git dir open, below, config,
@@ -2445,8 +2446,9 @@ provenance string.
   the project when inside it), so a symlink a sandboxed command planted
   cannot dress a write to zemi's config as a project file, and a write
   under any `.git`, to the Lua in any `.agents` or zemi's own dirs, or outside the project
-  and the scratchpad (`~/.gitconfig`, a shell rc file: the sandbox cannot
-  confine the write tool), goes to the user.
+  and the free zone (`~/.gitconfig`, a shell rc file: the sandbox cannot
+  confine the write tool; the scratchpad and the temp dirs make up the free zone, and
+  a protected path asks there too), goes to the user.
   Network is never settled locally, because the URL is the model's.
   Known ceiling: in-jail writes and commands both settle, so the model
   can write code and run it unattended, rewrite any project file and read
@@ -2554,10 +2556,11 @@ provenance string.
   names, and a command can move a project directory there whole; a hint
   names another file name as the way through); writable are the pipeline's scratchpad, also
   its temp dir (`TMPDIR`, `TMP` and `TEMP`, which every model command gets, confined or not, so
-  the file tools read what a command left there without asking; the shared system temp dir and `/tmp`
-  are not writable, since macOS keeps the `xcrun_db` there that picks what
-  `/usr/bin/make` or `git` runs, and a denial naming one gets a hint
-  pointing at `$TMPDIR`), a Go
+  the file tools read what a command left there without asking), the machine's own temp dirs and
+  `/tmp` (temp data is disposable: a command writes and deletes there, the file tools read, write
+  and delete there with no ask, and the destructive check settles an `rm` below one, all through
+  the one predicate `perm.FreeZone`; the tradeoff is the shared dir itself, where macOS keeps the
+  `xcrun_db` that picks what `/usr/bin/make` or `git` runs), a Go
   build cache only sandboxed runs use, one per trust root
   (`<state>/sandbox-cache/<hash of the trust root>/go-build`, set as
   `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and Go
@@ -2659,7 +2662,7 @@ provenance string.
   a crash of its own repeats; where the schema has no escape, say what
   could not be checked), the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
   file tools), a secret-shaped name, a protected one (`.agents`: the write
-  tool), the system temp dir (`$TMPDIR`), a path outside every write root
+  tool), a path outside every write root
   (the roots by name, `Policy.WriteNames`); the path words come from the
   output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
   run's schema carries are offered;
@@ -2682,9 +2685,11 @@ provenance string.
   directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
   whole trusted repository: the user does that writing); the per-session scratchpad
   (`<state>/scratch/<session id>`, §5, every model command's `$TMPDIR`) is outside it but
-  is the one path the model's file tools read and write by default, secret-shaped names aside
+  is where the model's file tools read and write by default, secret-shaped names aside
   (`Pipeline.Check` on the pad the pipeline was bound to, so a run that outlives its session
-  keeps it; `zemi.fs` cannot write there), and user config's `zemi.fs` also
+  keeps it; `zemi.fs` cannot write there), the temp dirs reading and writing the same way
+  (`perm.FreeZone`; a protected path asks there all the same, since what it names runs), and
+  user config's `zemi.fs` also
   reaches `<data>/lua` (`zemi.fs.data_dir(name)`, outside the watched config
   tree, never a root of the model's file tools or of a Lua tool script the
   user did not approve); the read jail is wider: project

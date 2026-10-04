@@ -26,6 +26,7 @@ import (
 // lets them.
 func TestAgentSelfAccess(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.Dirs.ProjectDir = outsideTemp(t)
 	h.agents.sessionID = "s1"
 	ctx := context.Background()
 
@@ -222,7 +223,7 @@ func TestLuaToolPath(t *testing.T) {
 	if err := h.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}
-	outside := filepath.Join(t.TempDir(), "x.lua")
+	outside := filepath.Join(outsideTemp(t), "x.lua")
 	for _, f := range []string{filepath.Join(h.Dirs.ProjectDir, "ok.lua"), filepath.Join(h.Dirs.ProjectDir, ".env.lua"), outside} {
 		if err := os.WriteFile(f, []byte("return 1"), 0o600); err != nil {
 			t.Fatal(err)

@@ -173,6 +173,50 @@ func Under(root, path string) (string, bool) {
 	return rel, true
 }
 
+// FreeZone reports a path nothing of the user's depends on: inside the pad
+// (a request's scratchpad, "" when it has none) or a native temp dir. A
+// command may write there, and the file tools read, write and delete there
+// with no ask.
+func FreeZone(pad, path string) bool {
+	if InPad(pad, path) {
+		return true
+	}
+	real := CanonPath(path)
+	if real == "" {
+		return false
+	}
+	for _, root := range TempRoots() {
+		if _, ok := Under(root, real); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// InPad reports path inside pad, both resolved, so a symlink in the pad
+// cannot lead out. The pad is zemi's own zone, where no path is a protected
+// one, though it sits in zemi's state dir.
+func InPad(pad, path string) bool {
+	if pad == "" || path == "" {
+		return false
+	}
+	real := CanonPath(path)
+	_, ok := Under(CanonPath(pad), real)
+	return ok && real != ""
+}
+
+// TempRoots are the machine's own temp dirs, this process's temp dir and
+// /tmp, deduped and in the form rules match (/tmp is /private/tmp on macOS).
+func TempRoots() []string {
+	var roots []string
+	for _, r := range []string{os.TempDir(), "/tmp"} {
+		if r = CanonPath(r); r != "" && !slices.Contains(roots, r) {
+			roots = append(roots, r)
+		}
+	}
+	return roots
+}
+
 // RealPath makes p absolute and resolves it one component at a time, so
 // L/../x with L a symlink lands where open lands, not beside L. A missing
 // component is joined lexically, so a file about to be created is judged by

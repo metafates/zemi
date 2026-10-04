@@ -590,8 +590,8 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // stale refuses writing a file the model has not read, or one that changed
 // since (a command it ran, the user's editor, a formatter, another agent):
 // writing over it would silently drop those changes. A shell call never updates
-// Seen, so the model re-reads what a command rewrote. A pad file needs no
-// read: its own command made it and nobody else edits there. Nor does an
+// Seen, so the model re-reads what a command rewrote. A file in the free zone
+// needs no read: its own command made it and nobody else edits there. Nor does an
 // edit: runEdit holds the edit of a file whose current version the model has
 // not read to one exact match, which proves it knows the text it replaces
 // and keeps every other change, and leaves the file unseen. "" when the view
@@ -608,7 +608,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	}
 	t, ok := p.Seen.Load(perm.CanonPath(path))
 	switch {
-	case edit, !ok && inPad(p.Pad, path):
+	case edit, !ok && perm.FreeZone(p.Pad, path):
 	case !ok:
 		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
@@ -618,14 +618,14 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 }
 
 // unseen reports a file whose current version the session has not read:
-// one changed since its read, or one never read outside the pad.
+// one changed since its read, or one never read outside the free zone.
 func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
 	if p.Seen == nil {
 		return false
 	}
 	t, ok := p.Seen.Load(perm.CanonPath(path))
 	if !ok {
-		return !inPad(p.Pad, path)
+		return !perm.FreeZone(p.Pad, path)
 	}
 	return !t.(time.Time).Equal(fi.ModTime())
 }
@@ -761,7 +761,7 @@ func (p *Pipeline) wrote(path string) string {
 
 // checkpoint leaves out the pad, which is no project a rewind restores.
 func (p *Pipeline) checkpoint(path string) {
-	if p.Checkpoint != nil && !inPad(p.Pad, path) {
+	if p.Checkpoint != nil && !perm.InPad(p.Pad, path) {
 		p.Checkpoint(path)
 	}
 }

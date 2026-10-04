@@ -64,7 +64,7 @@ program lookup in perm and the always answer goes through `perm.ProgramName`, th
 case folded as APFS folds it, since `/bin/RM` runs rm and `ſh` (long s) runs sh.
 
 File tools (internal/tools/fs_tools.go): `write` refuses a file the
-model has not read (outside the scratchpad) or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
+model has not read (outside the free zone: `perm.FreeZone`, the scratchpad and the temp dirs) or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and `edit` takes either only when `old_string` matches exactly once as written (the match proves the model knows that text and no other, so the file stays unread for `write`); both hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
 `OnToolCall`, which fires for every call before any is dispatched; `tools.CallDone` from
@@ -109,7 +109,11 @@ decision, fewest wildcards then longest literal prefix wins. A `not_match` hit f
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
 `fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except
 secret-shaped paths, writes ask) and finally ask - there
-is no fail-open path. New host-API side effects need the same `lua.` subject.
+is no fail-open path. A file request in the free zone (`perm.FreeZone`: the pipeline's
+scratchpad, or a native temp dir) allows before any rule, a secret-shaped name and a
+`protectedWrite` (`.git`, the Lua in `.agents`, zemi's own dirs, a local plugin) aside, and the
+file tools need no prior read there (`perm.InPad` is the narrower pad-only check the protected
+ones use). New host-API side effects need the same `lua.` subject.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules and
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
@@ -134,7 +138,7 @@ whatever the base would settle, which is how a user gets every ask); it runs as 
 most 60s, long enough for a model call of its own, and, like the mode's own rules,
 cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Normalized.Destructive` list (bulk deletes,
-DESIGN §9), a git command that writes what the sandbox keeps read-only in `.git`, reaches the
+DESIGN §9; an `rm` whose every operand is below the scratchpad or a temp dir is outside it), a git command that writes what the sandbox keeps read-only in `.git`, reaches the
 network or can drop commits for good (`perm.Normalized.GitWrites`, whose `gitDir` says whether the
 policy opens `.git`, `Policy.Git`: a confined run could only fail, so the ask comes before a
 wasted run) and, on a backend that
@@ -162,8 +166,9 @@ every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` 
 run under `serverPolicy`. `NewHost` probes the backend synchronously, so `zemi health` and the first turn's
 schema see it.
 
-`sandboxPolicy` writes the policy; DESIGN §9 has the whys behind it: the scratchpad as `TMPDIR`
-and never the shared system temp dir, `GOCACHE` per trust root, the project writable only when
+`sandboxPolicy` writes the policy; DESIGN §9 has the whys behind it: the scratchpad and the
+machine's temp dirs (`perm.TempRoots`: this process's temp dir and `/tmp`) as write roots,
+the scratchpad also every model command's `TMPDIR`, `GOCACHE` per trust root, the project writable only when
 it is trusted, outside zemi's own dirs and on a backend that can protect paths inside it
 (`Backend.EnforcesProtect`), `.git`, `.agents` and every `PATH` dir under a write root read-only
 because zemi runs git, the shell and servers unconfined by name (on seatbelt a repository root's

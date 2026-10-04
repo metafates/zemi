@@ -107,7 +107,7 @@ func TestJobCwdAndSandbox(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	outside := t.TempDir()
+	outside := outsideTemp(t)
 	runUser(t, r, `
 		local outside = "`+outside+`"
 		local res = assert(zemi.job.wait({ cmd = "pwd", cwd = "sub" }))

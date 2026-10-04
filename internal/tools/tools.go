@@ -134,19 +134,13 @@ func (r Request) Command() perm.Normalized {
 	return perm.Normalize(r.Arg)
 }
 
-// InPad reports a file request inside the request's scratchpad.
-func (r Request) InPad() bool { return PathSubject(r.Subject) && inPad(r.Pad, r.Arg) }
+// InPad reports a file request inside the request's scratchpad: the one place
+// a write is no protected path, since the pad is where the model works.
+func (r Request) InPad() bool { return PathSubject(r.Subject) && perm.InPad(r.Pad, r.Arg) }
 
-// inPad reports path inside pad, both resolved, so a symlink in the pad
-// cannot lead out.
-func inPad(pad, path string) bool {
-	if pad == "" || path == "" {
-		return false
-	}
-	real := perm.CanonPath(path)
-	_, ok := perm.Under(perm.CanonPath(pad), real)
-	return ok && real != ""
-}
+// FreeZone reports a file request inside the scratchpad or a native temp dir,
+// where nothing of the user's is at stake.
+func (r Request) FreeZone() bool { return PathSubject(r.Subject) && perm.FreeZone(r.Pad, r.Arg) }
 
 // Verdict is the pipeline outcome for one permission request.
 type Verdict struct {
@@ -403,8 +397,12 @@ func (p *Pipeline) Check(req Request) Verdict {
 		n := perm.Normalize(req.Arg)
 		req.cmd = &n
 	}
-	pad := req.InPad()
-	if plan && req.Subject == perm.SubjectWrite && !pad {
+	// pad is the scratchpad, in zemi's own state dir: its writes are free and
+	// no protected path either. A temp dir is free too, but .git, the Lua in
+	// .agents, zemi's own dirs and a local plugin's code stay protected
+	// wherever they sit: they decide what runs next.
+	free, pad := req.FreeZone(), req.InPad()
+	if plan && req.Subject == perm.SubjectWrite && !free {
 		return Verdict{Decision: perm.Deny, Reason: "describe the change instead of making it", DecidedBy: ByReadOnly}
 	}
 	// read-only holds under every mode: yolo would settle the escape and
@@ -451,14 +449,15 @@ func (p *Pipeline) Check(req Request) Verdict {
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
-	// the pad is neither project nor zemi dir: what no rule decided there
-	// allows, a secret-shaped name aside, which the sandbox refuses there too
-	if pad && !o.Ruled() {
+	// the scratchpad and the temp dirs are neither project nor zemi dir: what
+	// no rule decided there allows, a secret-shaped name aside, which the
+	// sandbox refuses there too
+	if free && !o.Ruled() {
 		if p.Secret != nil && p.Secret(written) {
-			req.Reason = strings.TrimPrefix(req.Reason+"; "+PadSecret, "; ")
-			return p.resolveAsk(req, PadSecret)
+			req.Reason = strings.TrimPrefix(req.Reason+"; "+FreeSecret, "; ")
+			return p.resolveAsk(req, FreeSecret)
 		}
-		o = perm.Outcome{Decision: perm.Allow, Reason: "inside the scratchpad"}
+		o = perm.Outcome{Decision: perm.Allow, Reason: "the scratchpad and the temp dirs are disposable"}
 	}
 	switch o.Decision {
 	case perm.Allow:
@@ -581,8 +580,6 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		default:
 			line += or(all, ": call it again with sandbox: false (needs approval)")
 		}
-	case p.Pad != "" && has(func(l limit) bool { return l.kind == outside && sandbox.SystemTemp(l.path) }):
-		line = "/tmp is not writable: use $TMPDIR"
 	case len(pol.Write) > 0 && has(is(outside)):
 		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
 	case all:
@@ -629,9 +626,10 @@ func limitOf(pol *sandbox.Policy, path string) limit {
 	return best
 }
 
-// PadSecret is why a secret-shaped name in the scratchpad asks: a command can
-// move a project directory into the pad, and the shapes match names only.
-const PadSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad; if the file holds no secret, give it another name"
+// FreeSecret is why a secret-shaped name in the scratchpad or a temp dir
+// asks: a command can move a project directory there, and the shapes match
+// names only.
+const FreeSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad and the temp dirs; if the file holds no secret, give it another name"
 
 // networkProp is the middle tier: the sandbox stays, the command gets
 // sockets. It is the answer to almost every sandbox denial, since the file

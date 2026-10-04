@@ -81,8 +81,10 @@ func homes() []string {
 // read-only, so uv (its lock in ~/.cache/uv) and npm (~/.npm) fail, and so
 // does a module fetch under network: true; the fix is one Env entry each
 // (UV_CACHE_DIR, npm_config_cache) at a dir in the pad, never the user's
-// cache. The system temp dir is not writable for the same reason: macOS
-// keeps xcrun_db there, which picks the binary /usr/bin/make or git runs.
+// cache. The machine's own temp dirs are free, like the pad: temp data is
+// disposable and a build needs somewhere to put it, at the cost of what
+// another program reads there (macOS picks the binary /usr/bin/make or git
+// runs with xcrun_db in the shared temp dir).
 // Seatbelt allows a unix socket in the policy's own temp dir alone, bound and
 // dialed: the scratchpad for a command, the cache for a language server.
 // Landlock plus seccomp refuses AF_UNIX outright, since a pathname socket's
@@ -180,11 +182,19 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 			p.Write = append(p.Write, wt)
 		}
 	}
-	// both made here: the sandbox cannot create them inside the protected
-	// state dir. The pad is the temp dir too, so the file tools read what a
-	// command left there without asking.
-	// NOTE: a run outside any session (Lua at idle) has no pad and so no
-	// TMPDIR: its temp writes fail and the hint names no fix
+	// the machine's own temp dirs are free, like the pad: temp data is
+	// disposable, and a build, a mktemp or a socket in /tmp needs no escape.
+	// A backend that cannot hide inside a write root keeps one out when
+	// something hidden sits in it, as it does for the project.
+	for _, t := range perm.TempRoots() {
+		if slices.Contains(p.Write, t) {
+			continue
+		}
+		if backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, t) }) {
+			continue
+		}
+		p.Write = append(p.Write, t)
+	}
 	p.Env = map[string]string{}
 	if p.Git != "" {
 		// git reports an upstream set though its config write failed, and auto
@@ -195,6 +205,9 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		p.Env["GIT_CONFIG_KEY_1"], p.Env["GIT_CONFIG_VALUE_1"] = "maintenance.auto", "false"
 	}
 	if pad != "" && os.MkdirAll(pad, 0o700) == nil {
+		// made here: the sandbox cannot create it inside the protected state
+		// dir. The pad is the temp dir too, so the file tools read what a
+		// command left there without asking.
 		p.Write = append(p.Write, pad)
 		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad
 	}

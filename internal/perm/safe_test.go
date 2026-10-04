@@ -253,6 +253,7 @@ func TestPathIsSecret(t *testing.T) {
 
 func TestDestructive(t *testing.T) {
 	pad := t.TempDir()
+	temp := TempRoots()[0]
 	if err := os.Symlink("/", filepath.Join(pad, "link")); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +355,6 @@ func TestDestructive(t *testing.T) {
 		{"rm -rf ${TMPDIR:-/}/x", true},
 		{"rm -rf $TMPDIR/$x", true},
 		{"rm -rf $TMPDIR/link", true},
-		{"rm -rf PAD", true},
 		{"rm -rf PAD/../x", true},
 		{"rm -rf '$TMPDIR/x'", true},
 		{`rm -rf \$TMPDIR/x`, true},
@@ -372,6 +372,13 @@ func TestDestructive(t *testing.T) {
 
 		{"rm x", false},
 		{"rm -rf $TMPDIR/build", false},
+		// the machine's temp dirs are disposable by their own paths
+		{"rm -rf " + temp + "/build", false},
+		{"rm -rf " + temp + "/build /tmp/out", false},
+		{"rm -rf /tmp", true},
+		{"rm -rf " + temp + "/x /etc", true},
+		{"rm -rf " + temp + "/../x", true},
+		{"rm -rf " + temp + "/x; rm -rf /etc", true},
 		{"P=$TMPDIR/probe; rm -rf $P; mkdir -p $P", false},
 		{`set -e
 W="$TMPDIR/check"; rm -rf "$W"; mkdir -p "$W"`, false},

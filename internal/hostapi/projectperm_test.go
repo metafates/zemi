@@ -78,7 +78,8 @@ func TestProjectAskPersists(t *testing.T) {
 	pipe := h.PipelineFor()
 	ui := &fakeUI{askAllowed: true, askBy: "user:project"}
 	h.SetUIHooks(ui)
-	cmd := "rm -rf /tmp/scratch"
+	// a home path, since an rm below a temp dir settles now
+	cmd := "rm -rf " + filepath.Join(os.Getenv("HOME"), "zemi-project-test-scratch")
 	v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: cmd})
 	if v.Decision != perm.Allow || v.DecidedBy != "user:project" {
 		t.Fatalf("project shell: %v by %q", v.Decision, v.DecidedBy)
@@ -102,6 +103,26 @@ func TestProjectAskPersists(t *testing.T) {
 	}
 	if len(ui.asked) != 0 {
 		t.Fatalf("ruled re-check must not ask: %+v", ui.asked)
+	}
+}
+
+// TestFreeZone: a write and an rm below a temp dir settle in auto mode with no
+// ask and no rule at all: temp data is disposable (perm.FreeZone).
+func TestFreeZone(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	pipe := h.PipelineFor()
+	temp := filepath.Join(perm.TempRoots()[0], "zemi-free-zone-probe")
+	for _, req := range []tools.Request{
+		{Subject: perm.SubjectWrite, Arg: filepath.Join(temp, "notes.txt")},
+		{Subject: perm.SubjectShell, Arg: "rm -rf " + temp},
+	} {
+		if v := pipe.Check(req); v.Decision != perm.Allow || len(ui.asked) > 0 {
+			t.Errorf("%s %s: %v, asked %+v", req.Subject, req.Arg, v, ui.asked)
+		}
 	}
 }
 
@@ -129,7 +150,7 @@ func TestProjectChoice(t *testing.T) {
 		{"safe shell", tools.Request{Subject: "tool.shell", Arg: "git push origin main"}, "allow git push"},
 		{"wrapper", tools.Request{Subject: "tool.shell", Arg: "sh -c 'x'"}, ""},
 		{"file write", tools.Request{Subject: "fs.write", Arg: "/x"}, ""},
-		{"destructive", tools.Request{Subject: "tool.shell", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
+		{"destructive", tools.Request{Subject: "tool.shell", Arg: "rm -rf " + filepath.Join(os.Getenv("HOME"), "scratch")}, "allow this exact command"},
 		{"destructive subcommand", tools.Request{Subject: "tool.shell", Arg: "git clean -n"}, "allow this exact command"},
 		// a line continuation would load as two wider commands next boot
 		{"multi-line", tools.Request{Subject: "tool.shell", Arg: "git \\\npush"}, ""},

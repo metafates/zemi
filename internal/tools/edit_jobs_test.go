@@ -173,9 +173,8 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 			"a PATH dir", "pip: PROJ/.venv/bin/x: Operation not permitted", false, false, false, false, false, false, false,
 			".venv/bin is read-only to commands: zemi runs programs from it unconfined; call it again with sandbox: false (needs approval).",
 		},
-		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, false, false, false, false, "/tmp is not writable: use $TMPDIR."},
 		{
-			"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, true, false, false, false,
+			"outside the roots with no pad", "touch: /elsewhere/x: Operation not permitted", false, false, false, true, false, false, false,
 			"commands write only in the project and $GOCACHE: write there, or call it again with sandbox: false (needs approval).",
 		},
 		{
@@ -330,7 +329,7 @@ func TestJobReadSpillsTheCut(t *testing.T) {
 // them act outside.
 func TestFileToolsSymlinkRace(t *testing.T) {
 	t.Parallel()
-	proj, outside := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
+	proj, outside := outsideTemp(t), outsideTemp(t)
 	os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600)
 	s := new(perm.Store)
 	s.Default = func(subject, arg string) perm.Decision {

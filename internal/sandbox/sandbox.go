@@ -203,34 +203,33 @@ func DeniedPaths(out string) []string {
 	return paths
 }
 
-// systemTemp matches the shared temp dirs, which the policy's own $TMPDIR
-// replaces.
-var systemTemp = regexp.MustCompile(`^(?:/private)?/(?:tmp|var/folders)(?:/|$)`)
-
-// SystemTemp reports a path in the shared temp dirs.
-func SystemTemp(path string) bool { return systemTemp.MatchString(path) }
-
 // WriteNames names the Write roots as a sentence would ("the project,
 // $TMPDIR and $GOCACHE"): "the project" for project, the Env variable that
-// holds a root ($TMPDIR before the others), a path inside the project
-// relative to it, else the path.
+// holds a root ($TMPDIR before the others), the machine's temp dirs together,
+// a path inside the project relative to it, else the path.
 func (p Policy) WriteNames(project string) string {
 	keys := slices.Sorted(maps.Keys(p.Env))
-	names := make([]string, len(p.Write))
-	for i, w := range p.Write {
+	var names []string
+	for _, w := range p.Write {
 		k := slices.IndexFunc(keys, func(k string) bool { return p.Env[k] == w })
 		rel, err := filepath.Rel(project, w)
+		var name string
 		switch {
 		case w == project:
-			names[i] = "the project"
+			name = "the project"
 		case p.Env["TMPDIR"] == w:
-			names[i] = "$TMPDIR"
+			name = "$TMPDIR"
 		case k >= 0:
-			names[i] = "$" + keys[k]
+			name = "$" + keys[k]
+		case slices.Contains(perm.TempRoots(), w):
+			name = "the temp dirs"
 		case project != "" && err == nil && filepath.IsLocal(rel):
-			names[i] = rel
+			name = rel
 		default:
-			names[i] = w
+			name = w
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
 		}
 	}
 	if len(names) < 2 {

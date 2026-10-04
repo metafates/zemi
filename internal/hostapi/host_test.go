@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -48,6 +49,21 @@ func newTestHostUI(t *testing.T) *Host {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
+// whose point is a path that must still ask lives here, since t.TempDir(), and
+// so every fixture, is inside a temp root. It sits beside this file, not in
+// the working directory, which a test may have chdir'd into the project.
+func outsideTemp(t *testing.T) string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	dir, err := os.MkdirTemp(filepath.Dir(file), ".zemi-outside-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return perm.RealPath(dir)
 }
 
 // runUser executes src as a user-origin chunk and fails the test on error.
