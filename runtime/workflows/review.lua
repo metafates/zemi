@@ -8,13 +8,18 @@ local base = type(wf.args) == "string" and wf.args ~= "" and wf.args or nil
 local sha = base and #base >= 7 and #base <= 40 and base:match("^%x+$")
 
 local task
+local what = "the uncommitted changes"
 if sha then
+	-- a hex name reads as a base ref, so say which one this is
+	what = "the one commit " .. base
 	task = "List the changes commit " .. base .. " introduced: run `git show " .. base .. "`. "
 elseif base then
+	what = "the changes since " .. base
 	task = "List the changes in this repository: run `git status --short` and `git diff --merge-base " .. base .. "`. "
 else
 	task = "List the changes in this repository: run `git status --short` and `git diff HEAD`. "
 end
+wf.log("reviewing " .. what)
 
 -- One agent reads the changes, so the reviewers can stay read-only and
 -- never stop to ask for permission.
