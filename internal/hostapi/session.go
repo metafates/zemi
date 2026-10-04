@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
@@ -549,4 +550,51 @@ func ago(ms int64) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
+func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("id", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LString(h.AgentSessionID()))
+		return 1
+	}))
+	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LString(h.Session().Title))
+		return 1
+	}))
+	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
+		title := L.CheckString(1)
+		h.tMu.Lock()
+		h.session.Title = title
+		h.tMu.Unlock()
+		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
+			_ = h.DB.RenameSession(sid, title)
+		}
+		h.refresh()
+		return 0
+	}))
+	tb.RawSetString("messages", L.NewFunction(func(L *glua.LState) int {
+		out := L.NewTable()
+		sid := h.AgentSessionID()
+		if sid != "" && h.DB != nil {
+			msgs, _ := h.DB.Messages(sid)
+			for _, m := range msgs {
+				row := L.NewTable()
+				row.RawSetString("id", glua.LString(m.ID))
+				row.RawSetString("role", glua.LString(m.Role))
+				// the text parts joined: reading a reply must not mean
+				// decoding the provider's wire shape by hand
+				var msg fantasy.Message
+				if json.Unmarshal([]byte(m.PartsJSON), &msg) == nil {
+					row.RawSetString("text", glua.LString(concatText(msg.Content)))
+				}
+				row.RawSetString("json", glua.LString(m.PartsJSON))
+				out.Append(row)
+			}
+		}
+		L.Push(out)
+		return 1
+	}))
+	h.sessionExtraFns(L, tb)
+	return tb
 }
