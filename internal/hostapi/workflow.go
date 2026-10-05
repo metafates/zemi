@@ -377,6 +377,11 @@ func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string
 		r.drainAgents()
 	}
 	if r.resultErr != nil {
+		// the VM reports a context check it hit as a Lua error of its own, which
+		// would read as a failure: a run whose context is done was stopped
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", r.resultErr
 	}
 	return luaResultString(r.result), nil
