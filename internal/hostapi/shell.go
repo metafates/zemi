@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -22,7 +21,8 @@ import (
 const shellTimeout = 2 * time.Minute
 
 // RunShell runs cmd (typed by the user, so no permission gate) without
-// blocking the caller.
+// blocking the caller. The model reads its output, so the child starts from
+// zemi's own environment minus the secret-shaped names.
 func (h *Host) RunShell(cmd string) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -34,7 +34,8 @@ func (h *Host) RunShell(cmd string) {
 		defer cancel()
 		c := proc.CommandContext(ctx, "sh", "-c", cmd)
 		c.Dir = h.Dirs.ProjectDir
-		c.Env = append(os.Environ(), proc.NonInteractiveEnv...)
+		env, _ := h.Perm.ChildEnv(nil)
+		c.Env = append(env, proc.NonInteractiveEnv...)
 		out := &proc.Buffer{Max: 1 << 20}
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)

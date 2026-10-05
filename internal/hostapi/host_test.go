@@ -73,6 +73,29 @@ func TestJobOf(t *testing.T) {
 	}
 }
 
+// TestRunShellKeepsSecretsOut: the model reads a !command's output with the
+// next message, so the child starts from zemi's own environment, minus the
+// secret-shaped names.
+func TestRunShellKeepsSecretsOut(t *testing.T) {
+	h, _ := newTestHost(t)
+	t.Setenv("ZEMI_TEST_API_KEY", "leaked")
+	t.Setenv("ZEMI_TEST_PLAIN", "kept")
+	h.RunShell(`printf '%s %s' "$ZEMI_TEST_API_KEY" "$ZEMI_TEST_PLAIN"`)
+	var note string
+	waitFor(t, func() error {
+		if note = h.takeShellNotes(); note == "" {
+			return errors.New("the shell has not answered")
+		}
+		return nil
+	})
+	if strings.Contains(note, "leaked") {
+		t.Errorf("a secret-shaped variable reached the child: %s", note)
+	}
+	if !strings.Contains(note, "kept") {
+		t.Errorf("the child lost a plain variable: %s", note)
+	}
+}
+
 // outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
 // whose point is a path that must still ask lives here, since t.TempDir(), and
 // so every fixture, is inside a temp root. It sits beside this file, not in
