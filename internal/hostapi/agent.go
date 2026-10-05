@@ -204,10 +204,12 @@ type agentHost struct {
 	holdCut      bool          // a Full cut is compacted and resent, not reported; off once the compaction failed
 	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
 
-	// digest is pinned at session start (DESIGN §10.7) and refreshed only
-	// at compaction; memAuto counts auto-applied memories against the
-	// session cap (memory proposals persist in the store).
-	digest     string
+	// brain is the # Brain section, pinned at session open (D4) and rebuilt
+	// only at compaction, brainGlobs the pointer table built with it;
+	// memAuto counts auto-applied memories against the session cap (memory
+	// proposals persist in the store).
+	brain      string
+	brainGlobs []brainGlob
 	memAuto    int
 	reflectErr error // last reflector run's error, nil after a success (/health)
 
@@ -505,9 +507,9 @@ type contextRow struct {
 
 // contextKey is what a stored context message is valid for: the pin key,
 // the working directory and scratchpad it names (a fork has its own) and
-// the digest, so a memory dropped since is not sent again.
-func (h *Host) contextKey(pinKey, digest string) string {
-	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + digest))
+// the brain render, so a memory dropped since is not sent again.
+func (h *Host) contextKey(pinKey, brain string) string {
+	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + brain))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -555,7 +557,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	k := strings.Join(key, "\x00")
 	ag := h.agents
 	ag.mu.Lock()
-	pin, drops, digest := ag.pin, ag.pinDrops, ag.digest
+	pin, drops, brainText := ag.pin, ag.pinDrops, ag.brain
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
@@ -563,7 +565,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
-		ctxKey, mine := h.contextKey(k, digest), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+		ctxKey, mine := h.contextKey(k, brainText), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		var stored *contextRow
 		ag.mu.Lock()
 		// a drop during the build means it may have read what the drop replaced
@@ -629,7 +631,7 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		{"instructions", p.instructions},
 		{"lua", p.lua},
 		{"skills", p.skills},
-		{"memory", p.digest},
+		{"memory", p.brain},
 	}
 }
 
@@ -1708,9 +1710,10 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.sessionID = sid
 	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
-	ag.digest = h.digestFor()
 	ag.env = ""
 	ag.memAuto = 0
+	brain, globs := h.brainFor()
+	ag.brain, ag.brainGlobs = brain, globs
 	ag.mu.Unlock()
 	h.refreshPending()
 	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
@@ -2605,9 +2608,9 @@ func (h *Host) pinFiles() []string {
 }
 
 // mainInstructions is the main agent's Instructions hook: its prompt holds
-// the files the pin read.
+// the files the pin read, and a brain pointer when one maps the path.
 func (h *Host) mainInstructions(path string) string {
-	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent)
+	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent) + h.brainPointer(path, false)
 }
 
 // afterWrite is the pipeline's AfterWrite hook. The recipe check comes first:
@@ -2615,7 +2618,7 @@ func (h *Host) mainInstructions(path string) string {
 func (h *Host) afterWrite(path string) string {
 	note := h.recipeAfterWrite(path)
 	h.noteWrite(path)
-	return note + h.lspAfterWrite(path)
+	return note + h.lspAfterWrite(path) + h.brainPointer(path, true)
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls. It is

@@ -102,7 +102,7 @@ func (h *Host) ResumeSession(id string) error {
 			break
 		}
 	}
-	digest := h.digestFor()
+	brain, globs := h.brainFor()
 	ag := h.agents
 	err = h.closeSession(func() {
 		ag.sessionID, ag.titled, ag.firstUser = id, true, first
@@ -115,7 +115,7 @@ func (h *Host) ResumeSession(id string) error {
 		// the prompt so the context readout and compactDue see the window it
 		// had until the next step reports a real count.
 		ag.lastIn = estTokens(history...) + ag.promptTokens
-		ag.digest, ag.env, ag.ctx = digest, "", contextIn(rows)
+		ag.brain, ag.brainGlobs, ag.env, ag.ctx = brain, globs, "", contextIn(rows)
 		ag.goal = goalIn(rows)
 	})
 	if err != nil {
@@ -297,7 +297,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
-	ag.digest, ag.memAuto, ag.pin = "", 0, promptPin{}
+	ag.brain, ag.brainGlobs, ag.memAuto, ag.pin = "", nil, 0, promptPin{}
 	ag.dropPin()
 	ag.todoInProgress, ag.todoSteps, ag.todoPending, ag.todoNag = "", 0, false, ""
 	ag.goal, ag.goalPending, ag.goalRuns = nil, "", 0

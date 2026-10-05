@@ -1,6 +1,6 @@
 // memory.go is the memory host API (DESIGN §6.7, §7, §10.4): the
-// zemi.memory namespace, the Go-owned /memory command, the
-// proposal queue behind the autonomy gate, and the §10.7 digest. Proposals
+// zemi.memory namespace, the Go-owned /memory command, and the
+// proposal queue behind the autonomy gate. Proposals
 // persist in their scope's store until the user accepts or rejects them.
 
 package hostapi
@@ -15,7 +15,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -821,13 +820,6 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 		out = append(out, rows...)
 	}
 	return out, errors.Join(errs...)
-}
-
-// digestFor renders the §10.7 memory section: every live memory of both
-// scopes, newest first, under the per-scope budget.
-func (h *Host) digestFor() string {
-	rows, _ := h.memoryList(false)
-	return learn.Digest(rows, time.Now(), learn.ScopeBudget)
 }
 
 // memoryCommands is /memory.

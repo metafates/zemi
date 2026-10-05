@@ -277,13 +277,14 @@ type Pipeline struct {
 	// check.
 	Seen *sync.Map
 
-	// Instructions returns the instruction file governing a file the model
-	// just read, when it is not already in the prompt; nil = none.
+	// Instructions returns text to append to a read result: the instruction
+	// file governing a file the model just read, when it is not already in
+	// the prompt, and a brain pointer when one maps the path; nil = none.
 	Instructions func(path string) string
 
 	// AfterWrite returns text to append to a successful write or edit
-	// result (language server diagnostics) and may rewrite the file (a
-	// recipe's scrub); nil = nothing.
+	// result (language server diagnostics, a brain pointer) and may rewrite
+	// the file (a recipe's scrub); nil = nothing.
 	AfterWrite func(path string) string
 
 	// Diagnostics backs the diagnostics tool; nil = unavailable.
