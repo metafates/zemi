@@ -555,7 +555,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
-		if _, over := h.scopeOver(res); over {
+		if h.scopeOver(res) {
 			return false, errScopeFull(p.Scope)
 		}
 		undo := h.undoKeep(id)
@@ -581,7 +581,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	}
 	res.Memory.ID = m.ID
 	// a shorter edit is always taken, so a scope already over can shrink
-	if _, over := h.scopeOver(res); over && len(res.Memory.Text) > len(m.Text) {
+	if h.scopeOver(res) && len(res.Memory.Text) > len(m.Text) {
 		return false, errScopeFull(m.Scope)
 	}
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
@@ -1143,7 +1143,7 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 // memory.autonomy like a learned one-liner; everything else queues as a
 // proposal whose accept writes the file.
 func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
-	private, user := h.brainParts()
+	user, private := h.brainParts()
 	if private.Zero() {
 		return "", errors.New("this project has no brain; trusted sessions get one")
 	}
@@ -1183,7 +1183,7 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 		reason = "multi-line frontmatter"
 	case learn.InstructionShaped(fm.Description) || learn.InstructionShaped(fm.ReadIf):
 		reason = "instruction-shaped frontmatter"
-	case len([]rune(brain.Normalize(fm.Description))) > brain.FieldCap || len([]rune(brain.Normalize(fm.ReadIf))) > brain.FieldCap:
+	case brain.Oversized(fm.Description) || brain.Oversized(fm.ReadIf):
 		reason = "the description or read_if is over 200 characters"
 	}
 	if reason == "" {
@@ -1410,12 +1410,11 @@ func errScopeFull(scope store.Scope) error {
 }
 
 // scopeOver reports whether storing res would push its scope past
-// brain.ScopeBudget, with the three oldest ids to replace when so. The
-// count is the partition's memories.md lines (D1).
-func (h *Host) scopeOver(res *learn.Result) (oldest []string, over bool) {
+// brain.ScopeBudget; the count is the partition's memories.md lines (D1).
+func (h *Host) scopeOver(res *learn.Result) bool {
 	lines, err := brain.Lines(h.partition(res.Memory.Scope))
 	if err != nil {
-		return nil, false
+		return false
 	}
 	used := brain.LineSize(res.Memory.Text)
 	for _, l := range lines {
@@ -1423,13 +1422,7 @@ func (h *Host) scopeOver(res *learn.Result) (oldest []string, over bool) {
 			used += brain.LineSize(l.Text)
 		}
 	}
-	if used <= brain.ScopeBudget {
-		return nil, false
-	}
-	for i := len(lines) - 1; i >= 0 && len(oldest) < 3; i-- {
-		oldest = append(oldest, lines[i].ID)
-	}
-	return oldest, true
+	return used > brain.ScopeBudget
 }
 
 // quoteInSession reports whether the user wrote quote in session sid:

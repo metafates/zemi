@@ -306,7 +306,18 @@ func Lines(p Partition) ([]Line, error) {
 // an explainer). A line still live is not re-added; an id nothing holds
 // still journals its forget.
 func Restore(p Partition, sid string, add []Line, forget []string, at time.Time) error {
-	return mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+	unlock, err := Lock(p)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return RestoreLocked(p, sid, add, forget, at)
+}
+
+// RestoreLocked is Restore for a caller already holding the partition lock
+// (the rewind holds every partition's while it works, section 7).
+func RestoreLocked(p Partition, sid string, add []Line, forget []string, at time.Time) error {
+	return mutateLocked(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
 		var ops []*Op
 		for _, id := range forget {
 			op := &Op{Op: OpForget, ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}

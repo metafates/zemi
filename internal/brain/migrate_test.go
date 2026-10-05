@@ -12,16 +12,20 @@ import (
 func TestReconcile(t *testing.T) {
 	at := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	live := func(id, text string, updated int64) *store.Memory {
-		return &store.Memory{ID: id, Scope: "project", Text: text, ProvenanceSessionID: "seed",
-			Origin: store.OriginLearned, CreatedAt: updated, UpdatedAt: updated}
+		return &store.Memory{
+			ID: id, Scope: "project", Text: text, ProvenanceSessionID: "seed",
+			Origin: store.OriginLearned, CreatedAt: updated, UpdatedAt: updated,
+		}
 	}
 
 	t.Run("imports live rows, keeps superseded ones and re-runs idempotently", func(t *testing.T) {
 		p := testPartition(t)
 		db := openStore(t, p)
 		lg := openLedger(t, p)
-		old := &store.Memory{ID: "superseded1", Scope: "project", Text: "old truth", ProvenanceSessionID: "seed",
-			Origin: store.OriginLearned, UpdatedAt: 1, SupersededBy: "newerid1"}
+		old := &store.Memory{
+			ID: "superseded1", Scope: "project", Text: "old truth", ProvenanceSessionID: "seed",
+			Origin: store.OriginLearned, UpdatedAt: 1, SupersededBy: "newerid1",
+		}
 		rows := []*store.Memory{
 			live("bbbb2222", "newer fact", 2_000_000_000),
 			live("aaaa1111", "older fact", 1_000_000_000),

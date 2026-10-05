@@ -1,7 +1,8 @@
-// migrate.go is the reconcile-on-open migration (section 8): the frozen
-// memory table's live rows compose into memories.md, idempotently, the
-// ledger's import entries the permanent tombstone.
 package brain
+
+// Reconcile-on-open migration (section 8): the frozen memory table's live
+// rows compose into memories.md, idempotently, the ledger's import entries
+// the permanent tombstone.
 
 import (
 	"bytes"

@@ -279,7 +279,12 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 					}
 				}
 			case brain.OpSupersede, brain.OpArchive:
-				// the line comes back with its last write's age (D1)
+				// the line comes back with its last write's age (D1); a line
+				// the session itself wrote in the range stays dropped - the
+				// add being undone outranks the cut that later took it
+				if slices.Contains(drop[p.Kind], op.ID) {
+					continue
+				}
 				date := time.UnixMilli(op.TS).UTC()
 				if trail, err := lg.ByID(op.ID); err == nil {
 					for _, o := range slices.Backward(trail) {
@@ -294,7 +299,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 				writes = append(writes, op)
 			}
 		}
-		if err := brain.Restore(p, sid, add, drop[p.Kind], h.now()); err != nil {
+		if err := brain.RestoreLocked(p, sid, add, drop[p.Kind], h.now()); err != nil {
 			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
 		}
 		_ = lg.Close()

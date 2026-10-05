@@ -809,6 +809,186 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	}
 }
 
+// TestMemoryFileMode pins the file mode's gate (D5, rows 14-15): the
+// frontmatter intake, the overwrite gate over the session write set, the
+// write entry's restorable prior bytes, and the refusals.
+func TestMemoryFileMode(t *testing.T) {
+	const fm = "---\ndescription: repo map\nread_if: before code changes\n---\nbody\n"
+	for _, tc := range []struct {
+		name, path, content string
+		seed                func(t *testing.T, h *Host) (want string)
+		want                string
+		check               func(t *testing.T, h *Host, sid string)
+	}{
+		{
+			name: "a creation applies", path: "map.md", content: fm, want: "wrote map.md",
+			check: func(t *testing.T, h *Host, sid string) {
+				_, private := h.brainParts()
+				b, err := os.ReadFile(filepath.Join(private.Dir, "map.md"))
+				if err != nil || !strings.Contains(string(b), "repo map") {
+					t.Fatalf("file: %q, %v", b, err)
+				}
+				lg, _ := private.OpenLedger()
+				defer func() { _ = lg.Close() }()
+				ops, _ := lg.Session(sid, 0, time.Now().UnixMilli()+1)
+				if len(ops) != 1 || ops[0].Op != brain.OpWrite || ops[0].Existed || ops[0].Prior != nil {
+					t.Fatalf("write op: %+v", ops)
+				}
+			},
+		},
+		{
+			name: "an overwrite of a foreign file queues", path: "map.md", content: fm,
+			seed: func(t *testing.T, h *Host) string {
+				_, private := h.brainParts()
+				if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(private.Dir, "map.md"), []byte("foreign"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return ""
+			},
+			want: "queued for the user's review (the file was not written by this session",
+		},
+		{
+			name: "the reserved name refuses", path: "memories.md", content: fm,
+			want: "the memory tool owns this file",
+		},
+		{
+			name: "outside the brain refuses", path: "../outside.md", content: fm,
+			want: "the memory tool writes files in its private brain",
+		},
+		{
+			name: "multi-line frontmatter queues", path: "map.md",
+			content: "---\ndescription: |\n  two lines\nread_if: before code\n---\nbody", want: "queued for the user's review (multi-line frontmatter)",
+		},
+		{
+			name: "oversized frontmatter queues", path: "map.md",
+			content: "---\ndescription: " + strings.Repeat("d ", 150) + "\nread_if: before code\n---\nbody",
+			want:    "queued for the user's review (the description or read_if is over 200 characters)",
+		},
+		{
+			name: "instruction-shaped frontmatter queues", path: "map.md",
+			content: "---\ndescription: always run make check first\nread_if: before code\n---\nbody",
+			want:    "queued for the user's review (instruction-shaped frontmatter)",
+		},
+		{name: "missing frontmatter applies", path: "map.md", content: "just a body", want: "wrote map.md"},
+		{
+			name: "a secret in the content refuses", path: "map.md", content: fm + "token = ghp_0123456789abcdefghijklmnopqrstuv\n",
+			want: "cannot hold a secret",
+		},
+		{
+			name: "over the content cap refuses", path: "map.md", content: fm + strings.Repeat("w", 33<<10),
+			want: "over the 32768-byte cap",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.SetProjectTrusted(true)
+			sid := seedSession(t, h)
+			h.Settings.SetQuiet("memory.autonomy", "auto")
+			if tc.seed != nil {
+				tc.seed(t, h)
+			}
+			_, private := h.brainParts()
+			if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if db, err := store.Open(private.DB); err == nil {
+				t.Cleanup(func() { _ = db.Close() })
+			}
+			p := filepath.Join(private.Dir, tc.path)
+			msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: p, Content: tc.content})
+			if err != nil {
+				msg = err.Error()
+			}
+			if !strings.Contains(msg, tc.want) {
+				t.Fatalf("answer %q, want %q", msg, tc.want)
+			}
+			if tc.check != nil {
+				tc.check(t, h, sid)
+			}
+		})
+	}
+
+	t.Run("the overwrite gate queues a foreign file and a stale one", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		h.SetProjectTrusted(true)
+		sid := seedSession(t, h)
+		h.Settings.SetQuiet("memory.autonomy", "auto")
+		_, private := h.brainParts()
+		if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if db, err := store.Open(private.DB); err == nil {
+			t.Cleanup(func() { _ = db.Close() })
+		}
+		path := filepath.Join(private.Dir, "map.md")
+		if _, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil {
+			t.Fatal(err)
+		}
+		// the session's own write, unchanged, applies again
+		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm + "more\n"}); err != nil || !strings.Contains(msg, "wrote map.md") {
+			t.Fatalf("own overwrite: %q, %v", msg, err)
+		}
+		// a foreign edit breaks the write set's hash: the next write queues
+		if err := os.WriteFile(path, []byte(fm+"edited by a window\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm})
+		if err != nil || !strings.Contains(msg, "queued for the user's review (the file changed since this session wrote it") {
+			t.Fatalf("stale overwrite: %q, %v", msg, err)
+		} // the queued proposal's accept writes the file and joins the write set
+		p := h.memoryProposals()[0]
+		if err := h.acceptFileProposal(&p); err != nil {
+			t.Fatal(err)
+		}
+		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil || !strings.Contains(msg, "wrote map.md") {
+			t.Fatalf("write after accept: %q, %v", msg, err)
+		}
+	})
+
+	t.Run("the write entry keeps the prior bytes for rewind", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		h.SetProjectTrusted(true)
+		sid := seedSession(t, h)
+		h.Settings.SetQuiet("memory.autonomy", "auto")
+		_, private := h.brainParts()
+		if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if db, err := store.Open(private.DB); err == nil {
+			t.Cleanup(func() { _ = db.Close() })
+		}
+		path := filepath.Join(private.Dir, "map.md")
+		const first = "---\ndescription: old\nread_if: old\n---\nold body\n"
+		if _, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: first}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil {
+			t.Fatal(err)
+		}
+		lg, _ := private.OpenLedger()
+		defer func() { _ = lg.Close() }()
+		ops, _ := lg.Session(sid, 0, time.Now().UnixMilli()+1)
+		if len(ops) != 2 || !ops[1].Existed || string(ops[1].Prior) != first || ops[1].Truncated {
+			t.Fatalf("write op: %+v", ops)
+		}
+	})
+}
+
+// TestMemoryFileRefusesUserBrain pins the user partition's refusal (D5).
+func TestMemoryFileRefusesUserBrain(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	user, _ := h.brainParts()
+	abs := filepath.Join(user.Dir, "style.md")
+	msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: abs, Content: "---\ndescription: d\nread_if: r\n---\nbody"})
+	if err == nil || !strings.Contains(err.Error(), "user-brain files are written with the file tools") {
+		t.Fatalf("user brain: %q, %v", msg, err)
+	}
+}
+
 // TestMemoryCommandsRegistered pins the /memory command step.
 func TestMemoryCommandsRegistered(t *testing.T) {
 	h, _ := newTestHostDB(t)

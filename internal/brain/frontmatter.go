@@ -61,6 +61,10 @@ func (fm Frontmatter) BadGlob() error {
 	return nil
 }
 
+// Oversized reports a frontmatter field whose stripped length is over
+// FieldCap: intake queues the write instead of truncating (D5).
+func Oversized(s string) bool { return len([]rune(strip(s))) > FieldCap }
+
 // Normalize makes one field safe to inject: control characters and
 // newlines stripped, capped at FieldCap runes. Intake applies it and the
 // render applies it again (D5).
