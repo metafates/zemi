@@ -19,6 +19,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -214,9 +215,7 @@ func addToolResult(t *testing.T, h *Host, sid, name, text, errText string) {
 func learnedMemory(t *testing.T, h *Host, scope store.Scope, text, quote string) string {
 	t.Helper()
 	m := &store.Memory{Scope: scope, Text: text, Quote: quote, ProvenanceSessionID: "seed", Origin: store.OriginLearned}
-	if err := h.memoryDB(scope).AddMemory(m); err != nil {
-		t.Fatal(err)
-	}
+	seedMemory(t, h, m)
 	return m.ID
 }
 
@@ -262,7 +261,22 @@ func TestReflectApply(t *testing.T) {
 			},
 			doc: `{"memories":[{"scope":"project","text":"` + fact + `","replaces":"OLD"}]}`, stored: 1,
 			check: func(t *testing.T, h *Host, sid string) {
-				if !slices.ContainsFunc(projectMemories(t, h), func(m *store.Memory) bool { return m.SupersededBy != "" }) {
+				live := projectMemories(t, h)
+				if len(live) != 1 || live[0].Text != fact {
+					t.Fatalf("the replacement did not store: %+v", live)
+				}
+				lg, err := h.partition("project").OpenLedger()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = lg.Close() }()
+				latest, err := lg.Latest()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !slices.ContainsFunc(latest, func(op *brain.Op) bool {
+					return op.Op == brain.OpSupersede && op.Text == "the deploy script requires the labels sequence bumped"
+				}) {
 					t.Fatal("old memory not superseded")
 				}
 			},
@@ -282,8 +296,8 @@ func TestReflectApply(t *testing.T) {
 				if _, err := h.acceptProposal(p.ID); err != nil {
 					t.Fatal(err)
 				}
-				if old, _ := h.DB.GetMemory(p.Supersedes); old.SupersededBy != p.ID {
-					t.Fatalf("superseded_by=%q want %q", old.SupersededBy, p.ID)
+				if supersededBy(t, h, p.Supersedes) != p.ID {
+					t.Fatal("the replaced memory is still live")
 				}
 			},
 		},
@@ -484,9 +498,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		sid := seedSession(t, h)
 		seedTranscript(t, h, sid)
 		old := &store.Memory{Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: store.OriginUser}
-		if err := h.DB.AddMemory(old); err != nil {
-			t.Fatal(err)
-		}
+		seedMemory(t, h, old)
 		reflectStub(t, h, `{"memories":[{"text":"","replaces":"`+old.ID+`"},{"text":" ","replaces":"`+old.ID+`"},{"text":"","replaces":"ghost123"}]}`)
 		if _, err := h.reflectSession(t.Context(), sid); err != nil {
 			t.Fatal(err)
@@ -514,7 +526,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal("reject found nothing")
 			}
 		case "rewritten":
-			if err := h.DB.UpdateMemoryText(old.ID, "deploy with bin/deploy", store.OriginUser); err != nil {
+			if _, err := brain.Edit(h.partition("project"), "", old.ID, "deploy with bin/deploy", store.OriginUser, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := h.acceptProposal(props[0].ID); err == nil || len(h.memoryProposals()) != 0 {
@@ -528,7 +540,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
 				t.Fatal(err)
 			}
-			if m, err := h.GlobalDB.GetMemory(old.ID); err != nil || m.Text != "deploy by hand" {
+			if _, m, err := h.locateMemory(old.ID); err != nil || m.Text != "deploy by hand" || m.Scope != "user" {
 				t.Fatalf("move lost the memory: %v", err)
 			}
 			want = 0
@@ -536,9 +548,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal(err)
 			}
 		case "merged":
-			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: store.OriginLearned}); err != nil {
-				t.Fatal(err)
-			}
+			seedMemory(t, h, &store.Memory{Scope: "user", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: store.OriginLearned})
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {
 				t.Fatal(err)
 			}
@@ -548,7 +558,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			}
 		case "deleted":
 			// the pending forget holds no copy of the text
-			if err := h.DB.DeleteMemory(old.ID); err != nil {
+			if err := brain.Forget(h.partition("project"), "", old.ID, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.Remember("deploy by hand"); err != nil {

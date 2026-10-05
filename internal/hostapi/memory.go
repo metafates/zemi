@@ -11,13 +11,17 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -36,6 +40,16 @@ func (h *Host) memoryDB(scope store.Scope) *store.DB {
 		return h.GlobalDB
 	}
 	return h.DB
+}
+
+// partition is the brain partition owning a scope (D2): user scope in the
+// user partition, project scope in the private one.
+func (h *Host) partition(scope store.Scope) brain.Partition {
+	user, private := h.brainParts()
+	if scope == store.ScopeUser {
+		return user
+	}
+	return private
 }
 
 // storeMemory runs the §10.4 intake policy over what session sid wrote;
@@ -104,10 +118,12 @@ func (h *Host) queueForget(sid, id string) (added bool, err error) {
 }
 
 // applyProposal stores a proposal under auto autonomy and spends one unit
-// of the per-session auto-apply budget.
-func (h *Host) applyProposal(res *learn.Result) error {
-	if err := h.storeProposal(res); err != nil {
-		return err
+// of the per-session auto-apply budget; the ids the budget cut name
+// themselves in the answer (D1).
+func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
+	cut, err := h.storeProposal(res)
+	if err != nil {
+		return nil, err
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -117,27 +133,39 @@ func (h *Host) applyProposal(res *learn.Result) error {
 		ag.memAuto++
 	}
 	ag.mu.Unlock()
-	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
-	return nil
+	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+cutNote(cut)+redactNote(res.Scrubbed))
+	return cut, nil
+}
+
+// cutNote names the learned lines the budget archived (D1): their text,
+// quote and provenance live on in the ledger and /memory lists them.
+func cutNote(cut []string) string {
+	if len(cut) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; %d oldest learned %s cut to the ledger to fit: %s",
+		len(cut), Plural(len(cut), "line", "lines"), strings.Join(cut, ", "))
 }
 
 // memoryOutcome is what became of a proposed memory: stored under ID,
 // queued for review (Queued says why, "" for the autonomy setting alone),
 // refused as a near-duplicate of a live or pending one, or dropped because
-// its quote is not in the session.
+// its quote is not in the session. Cut names the learned lines the budget
+// archived to make room.
 type memoryOutcome struct {
 	ID        string
 	Queued    string
 	Duplicate *store.Memory
 	DupQueued bool // Duplicate is a pending proposal, which replaces cannot name
 	Dropped   bool
+	Cut       []string
 }
 
 // String is the memory tool's answer: the id and what to do next.
 func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
-		return "saved as " + o.ID + "; shows from the next session"
+		return "saved as " + o.ID + cutNote(o.Cut) + "; shows from the next session"
 	case o.Duplicate != nil && o.DupQueued:
 		return fmt.Sprintf("already queued for the user's review as %s: %q", o.Duplicate.ID, o.Duplicate.Text)
 	case o.Duplicate != nil:
@@ -189,31 +217,29 @@ func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memo
 	return nil, false
 }
 
-// storeProposal writes a policy-clean memory to its scope's DB.
-func (h *Host) storeProposal(res *learn.Result) error {
-	db := h.memoryDB(res.Memory.Scope)
-	if db == nil {
-		return errNoMemoryStore
-	}
+// storeProposal applies a policy-clean memory to its partition's
+// memories.md, its add entry in the ledger first (D1); the ids the budget
+// cut come back for the tool result to name.
+func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 	m := &res.Memory
 	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
-		return fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
+		return nil, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
-	if err := db.AddMemory(m); err != nil {
-		return err
+	l, cut, err := brain.Apply(h.partition(m.Scope), *m, res.Supersedes, h.now())
+	if err != nil {
+		return nil, err
 	}
-	if res.Supersedes != "" {
-		h.linkSupersede(res.Supersedes, *m)
-	}
+	m.ID = l.ID
 	h.EmitAsync("memory.written", map[string]any{
 		"id": m.ID, "scope": m.Scope, "origin": m.Origin, "text": m.Text,
 	})
-	return nil
+	return cut, nil
 }
 
 // Remember stores a user-typed /memory <note> text (origin user, project
-// scope): the keystroke bypasses the autonomy gate (DESIGN §10.4), and a
-// full scope is refused, since the user is there to make room.
+// scope): the keystroke bypasses the autonomy gate (DESIGN §10.4), and an
+// overflow that would cut a line the user saved is refused, since the user
+// is there to make room (row 9).
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return Usagef("usage: /memory <note>")
@@ -222,13 +248,15 @@ func (h *Host) Remember(text string) error {
 	if err != nil {
 		return err
 	}
-	if _, over := h.scopeOver(res); over {
-		return errScopeFull(res.Memory.Scope)
-	}
-	if err := h.storeProposal(res); err != nil {
+	cut, err := h.storeProposal(res)
+	if err != nil {
+		if uc, ok := errors.AsType[brain.UserCutError](err); ok {
+			return userCutFull(res.Memory.Scope, uc)
+		}
 		return err
 	}
-	h.Notify(slog.LevelInfo, "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
+	h.Notify(slog.LevelInfo, "Memory saved for this project",
+		"press s on it in /memory to keep it for every project"+cutNote(cut)+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -257,14 +285,14 @@ func (h *Host) memoryCommand(args string) error {
 	id := f[1]
 	switch f[0] {
 	case "forget":
-		db, m, err := h.locateMemory(id)
+		p, m, err := h.locateMemory(id)
 		if err != nil {
 			return err
 		}
-		if err := db.DeleteMemory(m.ID); err != nil {
+		if err := brain.Forget(p, cmp.Or(h.AgentSessionID(), "user"), m.ID, h.now()); err != nil {
 			return err
 		}
-		h.pushUndo(func() error { return db.AddMemory(m) })
+		h.pushUndo(func() error { return h.restoreMemory(p, m) })
 		h.Notify(slog.LevelInfo, "Memory forgotten", m.Text)
 		return nil
 	case "accept":
@@ -358,7 +386,7 @@ func (h *Host) refreshMemory() {
 }
 
 // undoKeep returns the reverse of keeping suggestion id, taken before it is
-// kept: the stored copy goes, the memory it replaced or forgot comes back
+// kept: the stored line goes, the memory it replaced or forgot comes back
 // as it was, age included, and the suggestion is queued again.
 func (h *Host) undoKeep(id string) func() error {
 	props := h.memoryProposals()
@@ -367,26 +395,34 @@ func (h *Host) undoKeep(id string) func() error {
 		return nil
 	}
 	p := props[i]
-	oldDB, old, _ := h.locateMemory(p.Supersedes)
-	if old != nil && old.SupersededBy != "" {
-		old = nil // not live, so nothing to bring back
+	oldP, old, _ := h.locateMemory(p.Supersedes)
+	if old != nil && old.SupersededBy != "" && old.SupersededBy != p.ID {
+		old = nil // a later replacement superseded it again; nothing to bring back
 	}
 	return func() error {
 		if !p.Forget {
-			if err := h.memoryDB(p.Scope).DeleteMemory(p.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
-				return err
+			if pP, m, err := h.locateMemory(p.ID); err == nil {
+				if err := brain.Forget(pP, cmp.Or(h.AgentSessionID(), "user"), m.ID, h.now()); err != nil && !errors.Is(err, brain.ErrNoMemory) {
+					return err
+				}
 			}
 		}
 		if old != nil {
-			if err := oldDB.DeleteMemory(old.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
-				return err
-			}
-			if err := oldDB.AddMemory(old); err != nil {
+			if err := h.restoreMemory(oldP, old); err != nil {
 				return err
 			}
 		}
 		return h.addProposal(p)
 	}
+}
+
+// restoreMemory puts m's line back whole, its age included: the reverse of
+// a removal. No ledger entry - the trail's forget explains the absence it
+// had, and the restored hash matches the entry that wrote the line (D6).
+func (h *Host) restoreMemory(p brain.Partition, m *store.Memory) error {
+	return brain.Restore(p, "", []brain.Line{{
+		ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text,
+	}}, nil, h.now())
 }
 
 // moveRow moves suggestion or memory id to the other scope. A suggestion
@@ -426,10 +462,10 @@ func (h *Host) moveRow(id string) error {
 	}
 	h.pushUndo(func() error {
 		// a move that merged into a copy left nothing under the id
-		if err := h.memoryDB(to).DeleteMemory(m.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		if err := brain.Forget(h.partition(to), "", m.ID, h.now()); err != nil && !errors.Is(err, brain.ErrNoMemory) {
 			return err
 		}
-		return db.AddMemory(m)
+		return h.restoreMemory(db, m)
 	})
 	return nil
 }
@@ -525,7 +561,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		if h.takeProposal(id) == nil {
 			return false, fmt.Errorf("%w %q", errUnknownProposal, id)
 		}
-		if err := h.storeProposal(res); err != nil {
+		if _, err := h.storeProposal(res); err != nil {
 			if qerr := h.addProposal(p); qerr != nil {
 				h.Log.Warn("proposal dropped", "origin", "memory", "error", qerr)
 			}
@@ -550,14 +586,13 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
 		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
-	if err := db.UpdateMemoryText(m.ID, res.Memory.Text, store.OriginUser); err != nil {
+	if _, err := brain.Edit(db, h.AgentSessionID(), m.ID, res.Memory.Text, store.OriginUser, h.now()); err != nil {
 		return false, err
 	}
-	h.pushUndo(func() error { // the old row back whole, its age included
-		if err := db.DeleteMemory(m.ID); err != nil {
-			return err
-		}
-		return db.AddMemory(m)
+	h.pushUndo(func() error { // the old line back whole, its age included
+		return brain.Restore(db, "", []brain.Line{{
+			ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text,
+		}}, []string{m.ID}, h.now())
 	})
 	return res.Scrubbed, nil
 }
@@ -583,50 +618,25 @@ func (h *Host) takeProposal(id string) *memoryProposal {
 	return nil
 }
 
-// moveMemory stores a memory in the other scope, then deletes it from the
-// old one; a failed add, or a full destination, leaves it where it was.
+// moveMemory moves a memory to the other scope: both partitions lock in
+// the fixed user-then-private order, the move-out and move-in entries go
+// into both ledgers (D1), and a failed move, or a full destination, leaves
+// it where it was.
 func (h *Host) moveMemory(id string, from, to store.Scope) error {
-	src, dst := h.memoryDB(from), h.memoryDB(to)
-	if src == nil || dst == nil {
-		return errNoMemoryStore
-	}
-	m, err := src.GetMemory(id)
-	if err != nil {
+	mergedInto, err := brain.Move(h.partition(from), h.partition(to), cmp.Or(h.AgentSessionID(), "user"), id, h.now())
+	if err != nil || mergedInto == "" {
 		return err
 	}
-	m.Scope = to
-	// a stored copy already there makes the move a merge; a pending proposal
-	// with the same text does not, it may yet be dropped
-	live, err := dst.ListMemory(to, false)
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) })
-	switch {
-	case i < 0:
-		if _, over := h.scopeOver(&learn.Result{Memory: *m}); over {
-			return errScopeFull(to)
-		}
-		err = dst.AddMemory(m)
-	case m.Origin == store.OriginUser && live[i].Origin != store.OriginUser:
-		// the copy left behind keeps the user's attestation (DESIGN §10.4)
-		err = dst.UpdateMemoryText(live[i].ID, live[i].Text, store.OriginUser)
-	}
-	if err != nil {
-		return err
-	}
-	if i >= 0 {
-		// pending forgets and replacements follow the text to the copy it merged into
-		for _, p := range h.memoryProposals() {
-			if p.Supersedes == id && h.takeProposal(p.ID) != nil {
-				p.Supersedes = live[i].ID
-				if err := h.addProposal(p); err != nil {
-					return err
-				}
+	// pending forgets and replacements follow the text to the copy it merged into
+	for _, p := range h.memoryProposals() {
+		if p.Supersedes == id && h.takeProposal(p.ID) != nil {
+			p.Supersedes = mergedInto
+			if err := h.addProposal(p); err != nil {
+				return err
 			}
 		}
 	}
-	return src.DeleteMemory(id)
+	return nil
 }
 
 // acceptProposal stores a pending proposal, or deletes the memory a forget
@@ -650,17 +660,19 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 			// the review showed the old text: forgetting the new one needs a new proposal
 			return nil, errors.New("the memory changed since zemi proposed forgetting it")
 		default:
-			err = db.DeleteMemory(p.Supersedes)
+			err = brain.Forget(db, cmp.Or(h.AgentSessionID(), "user"), p.Supersedes, h.now())
 		}
+	} else if p.Path != "" {
+		err = h.acceptFileProposal(p)
 	} else {
-		res := &learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}
-		if _, over := h.scopeOver(res); over {
-			err = errScopeFull(p.Memory.Scope)
-		} else {
-			err = h.storeProposal(res)
-		}
+		// the budget cuts learned lines to make room (row 10); a cut that
+		// would take a user line puts the proposal back
+		_, err = h.storeProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
 	}
 	if err != nil {
+		if uc, ok := errors.AsType[brain.UserCutError](err); ok {
+			err = userCutFull(p.Memory.Scope, uc)
+		}
 		if !errors.Is(err, errDuplicateMemory) {
 			if qerr := h.addProposal(*p); qerr != nil {
 				h.Log.Warn("proposal dropped", "origin", "memory", "error", qerr)
@@ -672,11 +684,14 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 }
 
 // memoryProposal is a queued proposal's payload. Forget proposes deleting
-// the memory Supersedes names; the embedded memory is a copy of it.
+// the memory Supersedes names; the embedded memory is a copy of it. A
+// file-mode proposal writes the brain file Path with Content instead (D5).
 type memoryProposal struct {
 	store.Memory
 	Supersedes string `json:",omitempty"`
 	Forget     bool   `json:",omitzero"`
+	Path       string `json:",omitempty"`
+	Content    string `json:",omitempty"`
 }
 
 // memoryProposals lists pending memory proposals from both scopes.
@@ -783,41 +798,130 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 	}
 }
 
-// locateMemory finds a memory id across both scopes and returns the DB
-// owning it.
-func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
+// locateMemory resolves an id over the partitions' files and ledgers (D1),
+// the frozen table last (D9): pre-migration rows keep resolving there until
+// stage 5 retires the read.
+func (h *Host) locateMemory(id string) (brain.Partition, *store.Memory, error) {
+	user, private := h.brainParts()
+	for _, p := range []brain.Partition{private, user} {
+		if p.Zero() {
+			continue
+		}
+		m, ok, err := h.partitionMemory(p, id)
+		if err != nil {
+			return brain.Partition{}, nil, err
+		}
+		if ok {
+			return p, m, nil
+		}
+	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
 		}
 		m, err := db.GetMemory(id)
 		if err == nil {
-			return db, m, nil
+			return h.partition(m.Scope), m, nil
 		}
 		if !errors.Is(err, store.ErrNotFound) {
-			return nil, nil, err
+			return brain.Partition{}, nil, err
 		}
 	}
-	return nil, nil, fmt.Errorf("%w %q", errNoMemory, id)
+	return brain.Partition{}, nil, fmt.Errorf("%w %q", errNoMemory, id)
 }
 
-// memoryList merges both scopes, project first, each newest-first. A
-// failing scope is logged and skipped; its error comes back with the rows.
+// partitionMemory is id's memory as one partition holds it: the live line,
+// else the id's latest trail, quote and stamps from the ledger. A trail
+// ending in a move-out is not a hit: the id moved to the other partition.
+func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, bool, error) {
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = lg.Close() }()
+	line, _, err := brain.Locate(p, lg, id)
+	if err != nil {
+		if errors.Is(err, brain.ErrNoMemory) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	m := &store.Memory{
+		ID: id, Scope: p.Kind.Scope(), Text: line.Text, Origin: line.Origin,
+		CreatedAt: line.Date.UnixMilli(), UpdatedAt: line.Date.UnixMilli(),
+	}
+	if trail, err := lg.ByID(id); err == nil {
+		for _, op := range trail {
+			if op.Quote != "" {
+				m.Quote = op.Quote
+			}
+			if op.SupersededBy != "" {
+				m.SupersededBy = op.SupersededBy
+			}
+			if op.CreatedAt != 0 {
+				m.CreatedAt, m.UpdatedAt = op.CreatedAt, op.UpdatedAt
+			}
+		}
+		if len(trail) > 0 && trail[len(trail)-1].Op == brain.OpMoveOut {
+			return nil, false, nil
+		}
+	}
+	return m, true, nil
+}
+
+// memoryList merges both scopes, project first, each newest first by last
+// write (D1): the partitions' memories.md lines, quote and stamps from the
+// ledger trail. includeSuperseded adds the frozen table's rows the files do
+// not hold - the pre-migration trail /memory's collapsed group shows -
+// until stage 5 retires the read. A failing partition is logged and
+// skipped; its error comes back with the rows.
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
 	var errs []error
+	live := map[string]bool{}
 	for _, scope := range []store.Scope{store.ScopeProject, store.ScopeUser} {
-		db := h.memoryDB(scope)
-		if db == nil {
+		p := h.partition(scope)
+		if p.Zero() {
 			continue
 		}
-		rows, err := db.ListMemory(scope, includeSuperseded)
+		lines, err := brain.Lines(p)
 		if err != nil {
 			h.Log.Warn("list failed", "origin", "memory", "scope", scope, "error", err)
 			errs = append(errs, err)
 			continue
 		}
-		out = append(out, rows...)
+		var stamps map[string]brain.Stamp
+		if lg, err := p.OpenLedger(); err == nil {
+			stamps, _ = lg.Stamps()
+			_ = lg.Close()
+		}
+		for _, l := range lines {
+			live[l.ID] = true
+			m := &store.Memory{ID: l.ID, Scope: scope, Text: l.Text, Origin: l.Origin, UpdatedAt: l.Date.UnixMilli()}
+			if s, ok := stamps[l.ID]; ok {
+				m.Quote, m.CreatedAt, m.ProvenanceSessionID = s.Quote, s.First, s.Session
+			}
+			out = append(out, m)
+		}
+	}
+	if includeSuperseded {
+		for _, db := range []*store.DB{h.DB, h.GlobalDB} {
+			if db == nil {
+				continue
+			}
+			for _, scope := range store.Scopes {
+				rows, err := db.ListMemory(scope, true)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				for _, m := range rows {
+					if !live[m.ID] {
+						out = append(out, m)
+					}
+				}
+			}
+		}
 	}
 	return out, errors.Join(errs...)
 }
@@ -898,9 +1002,11 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
 		h.refuseBelowUser(L, "memory.del")
-		db, m, err := h.locateMemory(id)
-		if err == nil {
-			err = db.DeleteMemory(m.ID)
+		var err error
+		if p, m, lerr := h.locateMemory(id); lerr == nil {
+			err = brain.Forget(p, cmp.Or(h.AgentSessionID(), "user"), m.ID, h.now())
+		} else {
+			err = lerr
 		}
 		return luaResult(L, err)
 	}))
@@ -932,19 +1038,210 @@ func (h *Host) proposeMemory(sid string, origin store.Origin, scope store.Scope,
 }
 
 // memoryTool is the memory tool that run p called from session sid: text
-// supersedes what replaces names, empty text with replaces forgets it.
-func (h *Host) memoryTool(p *tools.Pipeline, sid string, scope store.Scope, text, quote, replaces string) (string, error) {
-	if strings.TrimSpace(text) == "" {
-		if replaces == "" {
-			return "", errors.New("text is empty; pass replaces=<id> to drop a memory")
-		}
-		return h.forgetMemory(p, sid, replaces)
+// supersedes what replaces names, empty text with replaces forgets it, and
+// a non-empty path writes a private-partition brain file (D5).
+func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) (string, error) {
+	if call.Path != "" {
+		return h.memoryFileTool(sid, call.Path, call.Content)
 	}
-	out, err := h.proposeMemory(sid, store.OriginLearned, scope, text, quote, replaces)
+	if strings.TrimSpace(call.Text) == "" {
+		if call.Replaces == "" {
+			return "", errors.New("text is empty; pass replaces=<id> to drop a memory, or path to write a brain file")
+		}
+		return h.forgetMemory(p, sid, call.Replaces)
+	}
+	out, err := h.proposeMemory(sid, store.OriginLearned, call.Scope, call.Text, call.Quote, call.Replaces)
 	if err != nil {
 		return "", err
 	}
 	return out.String(), nil
+}
+
+// memoryFileTool is the memory tool's file mode (D5): a freeform file in
+// the private partition only, its frontmatter through the injected-surface
+// intake, the overwrite gated on the session's write set, settling under
+// memory.autonomy like a learned one-liner; everything else queues as a
+// proposal whose accept writes the file.
+func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
+	private, user := h.brainParts()
+	if private.Zero() {
+		return "", errors.New("this project has no brain; trusted sessions get one")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	inUser := !user.Zero() && h.underBrainDir(user.Dir, abs)
+	inPrivate := h.underBrainDir(private.Dir, abs)
+	if !inUser && !inPrivate {
+		return "", fmt.Errorf("the memory tool writes files in its private brain, %s, only", private.Dir)
+	}
+	if filepath.Base(abs) == brain.MemFile {
+		return "", errors.New("the memory tool owns this file")
+	}
+	if inUser {
+		return "", errors.New("user-brain files are written with the file tools; those writes ask")
+	}
+	name := filepath.Base(abs)
+	if !strings.HasSuffix(name, ".md") {
+		return "", errors.New("brain files are .md")
+	}
+	if len(content) > brain.ContentCap {
+		return "", fmt.Errorf("content is over the %d-byte cap; split or shorten it", brain.ContentCap)
+	}
+	if _, scrubbed := learn.ScrubSecrets(content); scrubbed {
+		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
+	}
+	// injected-surface intake (D5): the frontmatter fields get what a
+	// one-liner's text gets, the lazy-read body exempt
+	fm, ferr := brain.ParseFrontmatter(content)
+	reason := ""
+	switch {
+	case ferr != nil:
+		reason = "the frontmatter does not parse"
+	case multiLine(fm.Description) || multiLine(fm.ReadIf):
+		reason = "multi-line frontmatter"
+	case learn.InstructionShaped(fm.Description) || learn.InstructionShaped(fm.ReadIf):
+		reason = "instruction-shaped frontmatter"
+	case len([]rune(brain.Normalize(fm.Description))) > brain.FieldCap || len([]rune(brain.Normalize(fm.ReadIf))) > brain.FieldCap:
+		reason = "the description or read_if is over 200 characters"
+	}
+	if reason == "" {
+		reason = h.fileOverwriteGate(private, abs, name)
+	}
+	if reason == "" && !h.memoryAuto(sid) {
+		reason = "memory.autonomy is not auto"
+	}
+	if reason == "" && !h.autoApplyBudgetLeft(sid) {
+		reason = "this session's auto budget is spent"
+	}
+	if reason != "" {
+		return h.queueFileProposal(sid, private, name, content, reason)
+	}
+	if err := brain.WriteFile(private, sid, name, []byte(content), h.fileWant(private, abs, name), h.now()); err != nil {
+		if errors.Is(err, brain.ErrStale) {
+			return h.queueFileProposal(sid, private, name, content, "the file changed while the write waited")
+		}
+		return "", err
+	}
+	h.markBrainWrite(abs, []byte(content))
+	out := "wrote " + name + "; injects from the next session"
+	if note := h.brainLintNote(private, name); note != "" {
+		out += "; " + note
+	}
+	return out, nil
+}
+
+// multiLine reports a frontmatter field that would not render as one line.
+func multiLine(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return r < ' ' || r == 127 })
+}
+
+// underBrainDir reports whether abs sits directly in the partition's
+// directory, symlinks resolved.
+func (h *Host) underBrainDir(dir, abs string) bool {
+	real := perm.CanonPath(abs)
+	root := perm.CanonPath(dir)
+	if real == "" || root == "" {
+		return false
+	}
+	rel, ok := perm.Under(root, real)
+	return ok && rel != "." && !strings.Contains(rel, string(filepath.Separator))
+}
+
+// fileOverwriteGate says why an overwrite queues (row 15): the file was not
+// written by this session, or it changed since the session wrote it. A
+// creation is no overwrite.
+func (h *Host) fileOverwriteGate(private brain.Partition, abs, name string) string {
+	prior, err := os.ReadFile(filepath.Join(private.Dir, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return ""
+	}
+	if err != nil {
+		return err.Error()
+	}
+	entry, ours := h.brainWriteOf(abs)
+	switch {
+	case !ours:
+		return "the file was not written by this session; an overwrite asks"
+	case entry != brain.FileHash(prior):
+		return "the file changed since this session wrote it; an overwrite asks"
+	}
+	return ""
+}
+
+// fileWant is the hash the apply expects the file to hold: the write-set
+// entry for an overwrite, nothing for a creation (D5).
+func (h *Host) fileWant(private brain.Partition, abs, name string) *string {
+	empty := ""
+	if prior, err := os.ReadFile(filepath.Join(private.Dir, name)); err == nil {
+		if entry, ours := h.brainWriteOf(abs); ours && entry == brain.FileHash(prior) {
+			return &entry
+		}
+	}
+	return &empty
+}
+
+// acceptFileProposal writes the file-mode proposal the user accepted: the
+// write replaces whatever is there now, the entry keeping its prior bytes
+// for rewind (D7).
+func (h *Host) acceptFileProposal(p *memoryProposal) error {
+	private := h.partition(p.Scope)
+	name := filepath.Base(p.Path)
+	if err := brain.WriteFile(private, cmp.Or(h.AgentSessionID(), "user"), name, []byte(p.Content), nil, h.now()); err != nil {
+		return err
+	}
+	h.markBrainWrite(p.Path, []byte(p.Content))
+	return nil
+}
+
+// queueFileProposal queues a file-mode write for review; accept writes it.
+func (h *Host) queueFileProposal(sid string, p brain.Partition, name, content, reason string) (string, error) {
+	pr := memoryProposal{Path: filepath.Join(p.Dir, name), Content: content, Scope: p.Kind.Scope()}
+	pr.ProvenanceSessionID, pr.Origin = sid, store.OriginLearned
+	if err := h.addProposal(pr); err != nil {
+		return "", err
+	}
+	if reason != "" {
+		return "queued for the user's review (" + reason + ")", nil
+	}
+	return "queued for the user's review", nil
+}
+
+// brainLintNote is the file's own open lint findings, one line (row 14).
+func (h *Host) brainLintNote(p brain.Partition, name string) string {
+	var out []string
+	for _, f := range brain.Lint(p) {
+		if f.Subject == name {
+			out = append(out, f.Text)
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
+// brainWriteOf is the session's write-set entry for abs (D5): the hash the
+// session recorded when it last applied a write, ours when it wrote the
+// file at all.
+func (h *Host) brainWriteOf(abs string) (hash string, ours bool) {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	hash, ours = ag.brainWrites[perm.CanonPath(abs)]
+	return hash, ours
+}
+
+// markBrainWrite records a brain file this session wrote, with the hash of
+// what it wrote, so a later file-mode overwrite applies only while the file
+// still matches (D5). Approved file-tool writes join here through the
+// AfterWrite hook (stage 4).
+func (h *Host) markBrainWrite(abs string, content []byte) {
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.brainWrites == nil {
+		ag.brainWrites = map[string]string{}
+	}
+	ag.brainWrites[perm.CanonPath(abs)] = brain.FileHash(content)
+	ag.mu.Unlock()
 }
 
 // forgetMemory drops a memory for the model: one the user saved asks
@@ -968,7 +1265,7 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 		}
 		return "forget of " + m.ID + " queued for the user's review", nil
 	}
-	if err := db.DeleteMemory(m.ID); err != nil {
+	if err := brain.Forget(db, sid, m.ID, h.now()); err != nil {
 		return "", err
 	}
 	return m.ID + " dropped", nil
@@ -976,7 +1273,8 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 
 // gateMemory is the autonomy gate (DESIGN §10.4): a near-duplicate is
 // refused, a quote the user never wrote drops the memory, and what
-// memoryReview finds no reason to hold is stored, the rest queued.
+// memoryReview finds no reason to hold is stored, the rest queued. A cut
+// that would take a line the user saved queues instead (row 3).
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
 	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
@@ -988,13 +1286,22 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	}
 	reason, review := h.memoryReview(res)
 	if !review {
-		return memoryOutcome{ID: m.ID}, h.applyProposal(res)
+		cut, err := h.applyProposal(res)
+		if err != nil {
+			if uc, ok := errors.AsType[brain.UserCutError](err); ok {
+				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error()}, nil
+			}
+			return memoryOutcome{}, err
+		}
+		return memoryOutcome{ID: m.ID, Cut: cut}, nil
 	}
 	return memoryOutcome{Queued: reason}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 }
 
 // memoryReview says why res waits for the user, or that it may be stored
-// at once.
+// at once. The budget is not a reason: the apply cuts the oldest learned
+// lines to the ledger (row 3), and a cut that would take a user line
+// queues from the apply's refusal.
 func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	m := &res.Memory
 	switch {
@@ -1009,10 +1316,13 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	case !h.autoApplyBudgetLeft(m.ProvenanceSessionID):
 		return "this session's auto budget is spent", true
 	}
-	if oldest, over := h.scopeOver(res); over {
-		return fmt.Sprintf("%s memory is full; replace one of %s to store at once", m.Scope, strings.Join(oldest, ", ")), true
-	}
 	return "", false
+}
+
+// userCutFull refuses what would cut a line the user saved (rows 3, 9-10):
+// the cut never takes one, so the user makes room, the id naming the line.
+func userCutFull(scope store.Scope, uc brain.UserCutError) error {
+	return fmt.Errorf("%w (its oldest line %s is yours)", errScopeFull(scope), uc.ID)
 }
 
 func errScopeFull(scope store.Scope) error {
@@ -1020,24 +1330,24 @@ func errScopeFull(scope store.Scope) error {
 }
 
 // scopeOver reports whether storing res would push its scope past
-// learn.ScopeBudget, with the three oldest ids to replace when so.
+// brain.ScopeBudget, with the three oldest ids to replace when so. The
+// count is the partition's memories.md lines (D1).
 func (h *Host) scopeOver(res *learn.Result) (oldest []string, over bool) {
-	db := h.memoryDB(res.Memory.Scope)
-	if db == nil {
+	lines, err := brain.Lines(h.partition(res.Memory.Scope))
+	if err != nil {
 		return nil, false
 	}
-	live, _ := db.ListMemory(res.Memory.Scope, false)
-	used := learn.LineSize(res.Memory.Text)
-	for _, o := range live {
-		if o.ID != res.Supersedes && o.ID != res.Memory.ID {
-			used += learn.LineSize(o.Text)
+	used := brain.LineSize(res.Memory.Text)
+	for _, l := range lines {
+		if l.ID != res.Supersedes && l.ID != res.Memory.ID {
+			used += brain.LineSize(l.Text)
 		}
 	}
-	if used <= learn.ScopeBudget {
+	if used <= brain.ScopeBudget {
 		return nil, false
 	}
-	for i := len(live) - 1; i >= 0 && len(oldest) < 3; i-- {
-		oldest = append(oldest, live[i].ID)
+	for i := len(lines) - 1; i >= 0 && len(oldest) < 3; i-- {
+		oldest = append(oldest, lines[i].ID)
 	}
 	return oldest, true
 }

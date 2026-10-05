@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/metafates/zemi/internal/brain"
@@ -40,6 +41,14 @@ func (h *Host) brainParts() (user, private brain.Partition) {
 	return brain.UserPartition(h.Dirs.DataHome, h.Dirs.StateHome),
 		brain.PrivatePartition(h.Dirs.StateHome, h.trustRoot())
 }
+
+// BrainParts is brainParts for the packages that gate or render by
+// partition (the ui tests seed one).
+func (h *Host) BrainParts() (user, private brain.Partition) { return h.brainParts() }
+
+// RekeyProject re-derives the trust-root-keyed state: a test harness that
+// sets Dirs.ProjectDir after boot needs the private partition to follow.
+func (h *Host) RekeyProject() { h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) }
 
 // brainFor builds the # Brain section and the glob table its pointers match
 // (D10). The user partition loads and lints in every project; the private

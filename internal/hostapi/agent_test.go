@@ -35,6 +35,7 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{
 		StateHome:  t.TempDir(),
+		DataHome:   t.TempDir(),
 		ProjectDir: t.TempDir(),
 	})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {

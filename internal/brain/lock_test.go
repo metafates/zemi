@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/store"
 )
 
 func TestLockContention(t *testing.T) {
@@ -21,7 +23,7 @@ func TestLockContention(t *testing.T) {
 	for i := range 8 {
 		wg.Go(func() {
 			sid := "s" + strconv.Itoa(i)
-			if _, err := Add(p, sid, "from "+sid, "", "learned", at); err != nil {
+			if _, _, err := Apply(p, store.Memory{Text: "from " + sid, ProvenanceSessionID: sid, Origin: "learned"}, "", at); err != nil {
 				t.Error(err)
 			}
 		})

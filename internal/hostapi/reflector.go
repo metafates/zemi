@@ -629,19 +629,6 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 	return stored, queued, superseded, skipped
 }
 
-// linkSupersede marks an existing memory as replaced by a freshly stored
-// one, in either scope; unknown ids are dropped with a log.
-func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
-	db, old, err := h.locateMemory(oldID)
-	if err != nil {
-		h.Log.Debug("supersede skipped: old memory missing", "origin", "reflector", "id", oldID)
-		return
-	}
-	if err := db.SupersedeMemory(old.ID, fresh.ID); err != nil {
-		h.Log.Warn("supersede failed", "origin", "reflector", "id", oldID, "error", err)
-	}
-}
-
 // reflectorCommands is /reflect.
 func (h *Host) reflectorCommands() []*Command {
 	return []*Command{{

@@ -56,7 +56,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	if err != nil || res.ID == "" {
 		t.Fatalf("propose: %+v %v", res, err)
 	}
-	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), "project", "the build uses go build", "", res.ID); err != nil || !strings.HasPrefix(msg, "saved as ") {
+	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), tools.MemoryCall{Scope: "project", Text: "the build uses go build", Replaces: res.ID}); err != nil || !strings.HasPrefix(msg, "saved as ") {
 		t.Fatalf("replace: %q %v", msg, err)
 	}
 	_, m, _ := h.locateMemory(res.ID)
@@ -66,7 +66,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
-	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), "project", "", "", m.SupersededBy); err != nil || !strings.Contains(msg, "queued") {
+	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), tools.MemoryCall{Scope: "project", Replaces: m.SupersededBy}); err != nil || !strings.Contains(msg, "queued") {
 		t.Fatalf("forget without auto autonomy must wait for review: %q %v", msg, err)
 	}
 }

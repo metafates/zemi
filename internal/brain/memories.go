@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -122,15 +123,46 @@ func textHash(text string) string {
 var ErrNoMemory = errors.New("brain: no such memory")
 
 // ErrUserCut marks a budget overflow whose cut set would include an
-// origin=user line: refused, nothing written, the caller queues the write
-// (D1; DESIGN.md forbids silently dropping a user-attested memory).
+// origin=user line: nothing was written, the caller queues the write
+// instead (D1; DESIGN.md forbids silently dropping a user-attested memory).
 var ErrUserCut = errors.New("brain: the cut would take a user memory")
 
-// Add prepends a new line, its add entry in the ledger first, under the
-// partition lock (D1).
-func Add(p Partition, sid, text, quote string, origin store.Origin, at time.Time) (Line, error) {
-	l := Line{ID: store.ShortID(), Origin: origin, Date: day(at), Text: text}
+// UserCutError is ErrUserCut with the id of the oldest line the cut would
+// have taken, which the refusal and the queue reason name.
+type UserCutError struct{ ID string }
+
+func (e UserCutError) Error() string { return "the cut would take user memory " + e.ID }
+func (e UserCutError) Unwrap() error { return ErrUserCut }
+
+// Apply stores m as a memories.md line under the partition lock, the
+// ledger entries before the file replace (D1): the id kept when m.ID is
+// set (a proposal's, so review decisions keep it), else a fresh one; the
+// line replaces names moves out first, its supersede entry trailing the
+// quote; then the budget cut archives the oldest learned lines until the
+// file fits ScopeBudget, the ids returned for the tool result to name. An
+// overflow whose cut set would reach an origin=user line is UserCutError
+// and nothing is written: the caller queues instead (rows 3 and 9).
+func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []string, error) {
+	if m.Text == "" || m.Origin == "" {
+		return Line{}, nil, errors.New("brain: memory needs text and origin")
+	}
+	l := Line{ID: m.ID, Origin: m.Origin, Date: day(at), Text: m.Text}
+	if l.ID == "" {
+		l.ID = store.ShortID()
+	}
+	var cut []string
 	err := mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+		var ops []*Op
+		if replaces != "" {
+			op, next, err := supersedeOp(lg, lines, m.ProvenanceSessionID, replaces, l.ID, p.Kind.Scope(), at)
+			if err != nil {
+				return nil, nil, err
+			}
+			if op != nil {
+				ops = append(ops, op)
+			}
+			lines = next
+		}
 		// a colliding id would merge two memories under one key; the old
 		// store refused it at the primary key (store.go's ShortID NOTE)
 		for {
@@ -141,62 +173,102 @@ func Add(p Partition, sid, text, quote string, origin store.Origin, at time.Time
 			if len(trail) == 0 && !slices.ContainsFunc(lines, func(x Line) bool { return x.ID == l.ID }) {
 				break
 			}
+			if m.ID != "" {
+				return nil, nil, fmt.Errorf("brain: memory id %s is already in use", l.ID)
+			}
 			l.ID = store.ShortID()
 		}
-		op := &Op{
-			Op: OpAdd, ID: l.ID, Text: text, Quote: quote, SessionID: sid,
-			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: origin, TS: at.UnixMilli(),
+		ops = append(ops, &Op{
+			Op: OpAdd, ID: l.ID, Text: m.Text, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
+			Hash: textHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+		})
+		// budget as promotion (D1): the oldest learned lines go to the
+		// ledger, never a user line; the line just written is its own index
+		// zero and never its own cut
+		next := append([]Line{l}, lines...)
+		used := 0
+		for _, x := range next {
+			used += LineSize(x.Text)
 		}
-		return append([]Line{l}, lines...), []*Op{op}, nil
+		i := len(next)
+		for used > ScopeBudget && i > 1 {
+			i--
+			oldest := next[i]
+			if oldest.Origin == store.OriginUser {
+				return nil, nil, UserCutError{ID: oldest.ID}
+			}
+			used -= LineSize(oldest.Text)
+			cut = append(cut, oldest.ID)
+			ops = append(ops, &Op{
+				Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: m.ProvenanceSessionID,
+				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
+			})
+		}
+		return next[:i:i], ops, nil
 	})
-	return l, err
+	if err != nil {
+		return Line{}, nil, err
+	}
+	return l, cut, nil
 }
 
-// Edit rewrites a line's text, refreshes its date and re-prepends it
-// (/memory edit, the AfterWrite scrub); the edit entry carries the prior
-// text and the new hash (D7).
-func Edit(p Partition, sid, id, text string, at time.Time) (Line, error) {
-	var out Line
-	err := mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
-		i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
-		if i < 0 {
+// supersedeOp is the supersede half of a write: the live line out, its text
+// and quote trailing in the entry (D1); an id only the ledger holds gets
+// its entry alone, since the hot file holds live lines only.
+func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Scope, at time.Time) (*Op, []Line, error) {
+	i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
+	if i < 0 {
+		trail, err := lg.ByID(id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(trail) == 0 {
 			return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
 		}
-		prior := lines[i]
-		out = Line{ID: id, Origin: prior.Origin, Date: day(at), Text: text}
-		op := &Op{
-			Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
-			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli(),
+		return &Op{Op: OpSupersede, ID: id, SupersededBy: byID, SessionID: sid, Scope: scope, TS: at.UnixMilli()}, lines, nil
+	}
+	prior := lines[i]
+	op := &Op{
+		Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
+		Hash: textHash(prior.Text), Scope: scope, Origin: prior.Origin, TS: at.UnixMilli(),
+	}
+	// the quote trails in the supersede entry (D1); the add or import
+	// entry is where it lives
+	if trail, err := lg.ByID(id); err == nil {
+		for _, o := range trail {
+			if o.Quote != "" {
+				op.Quote = o.Quote
+			}
 		}
-		return append([]Line{out}, slices.Delete(lines, i, i+1)...), []*Op{op}, nil
+	}
+	return op, slices.Delete(lines, i, i+1), nil
+}
+
+// Edit rewrites a line's text, refreshes its date and re-prepends it, the
+// edit entry carrying the prior text and the new hash (D7); origin is the
+// line's new attestation (/memory edits are the user's own words, a
+// move-merge takes the mover's).
+func Edit(p Partition, sid, id, text string, origin store.Origin, at time.Time) (Line, error) {
+	var out Line
+	err := mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+		next, op, err := editChange(sid, id, text, origin, p.Kind.Scope(), at, &out, lines)
+		return next, []*Op{op}, err
 	})
 	return out, err
 }
 
-// Supersede removes the line id, its text and the superseding id trailing
-// in the supersede entry (D1); the hot file holds live lines only.
-func Supersede(p Partition, sid, id, byID string, at time.Time) error {
-	return mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
-		i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
-		if i < 0 {
-			return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
-		}
-		prior := lines[i]
-		op := &Op{
-			Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
-			Hash: textHash(prior.Text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli(),
-		}
-		// the quote trails in the supersede entry (D1); the add or import
-		// entry is where it lives
-		if trail, err := lg.ByID(id); err == nil {
-			for _, o := range trail {
-				if o.Quote != "" {
-					op.Quote = o.Quote
-				}
-			}
-		}
-		return slices.Delete(lines, i, i+1), []*Op{op}, nil
-	})
+func editChange(sid, id, text string, origin store.Origin, scope store.Scope, at time.Time, out *Line, lines []Line) ([]Line, *Op, error) {
+	i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
+	if i < 0 {
+		return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
+	}
+	prior := lines[i]
+	*out = Line{ID: id, Origin: origin, Date: day(at), Text: text}
+	op := &Op{
+		Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
+		Hash: textHash(text), Scope: scope, Origin: origin, TS: at.UnixMilli(),
+	}
+	return append([]Line{*out}, slices.Delete(lines, i, i+1)...), op, nil
 }
 
 // Forget removes the line id and writes its forget entry, so the absence
@@ -222,37 +294,215 @@ func Forget(p Partition, sid, id string, at time.Time) error {
 	})
 }
 
-// Cut archives the partition's oldest learned lines until its lines plus
-// extra fit ScopeBudget, one archive entry per line (D1): the tool result
-// names the ids, whose text, quote and provenance live on in the ledger.
-func Cut(p Partition, sid string, extra int, at time.Time) ([]string, error) {
-	var cut []string
-	err := mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
-		used := extra
-		for _, l := range lines {
-			used += LineSize(l.Text)
-		}
+// Lines reads a partition's live memories.md lines, newest first (D1).
+func Lines(p Partition) ([]Line, error) {
+	lines, _, err := readMemories(p)
+	return lines, err
+}
+
+// Restore rewrites memories.md under the partition lock: the lines are
+// re-prepended (undo and rewind bring back what their trail removed, ages
+// kept), the ids dropped with a forget entry each (D1 - every removal has
+// an explainer). A line still live is not re-added; an id nothing holds
+// still journals its forget.
+func Restore(p Partition, sid string, add []Line, forget []string, at time.Time) error {
+	return mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
 		var ops []*Op
-		i := len(lines) // oldest last: lines are newest first
-		for used > ScopeBudget && i > 0 {
-			i--
-			oldest := lines[i]
-			if oldest.Origin == store.OriginUser {
-				return nil, nil, fmt.Errorf("%w: %s", ErrUserCut, oldest.ID)
+		for _, id := range forget {
+			op := &Op{Op: OpForget, ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}
+			if i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id }); i >= 0 {
+				prior := lines[i]
+				op.Text, op.Hash, op.Origin = prior.Text, textHash(prior.Text), prior.Origin
+				lines = slices.Delete(lines, i, i+1)
 			}
-			used -= LineSize(oldest.Text)
-			cut = append(cut, oldest.ID)
-			ops = append(ops, &Op{
-				Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: sid,
-				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
-			})
+			ops = append(ops, op)
 		}
-		if len(cut) == 0 {
-			return lines, nil, nil
+		for _, l := range add {
+			if slices.ContainsFunc(lines, func(x Line) bool { return x.ID == l.ID }) {
+				continue
+			}
+			lines = append([]Line{l}, lines...)
 		}
-		return lines[:i], ops, nil
+		return lines, ops, nil
 	})
-	return cut, err
+}
+
+// Move moves id's line to another partition (D1): both locks in the fixed
+// user-then-private order, the move-out entry in the source's ledger and,
+// when no copy of the text lives there, the move-in entry in the
+// destination's and the line prepended with its id and age. A copy already
+// there makes the move a merge: the copy takes the mover's attestation when
+// the mover is the user's (DESIGN §10.4), and its id comes back for pending
+// forgets and replacements to follow.
+func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, err error) {
+	if src.Zero() || dst.Zero() {
+		return "", errors.New("brain: no partition to move within")
+	}
+	unlock, err := LockAll(src, dst)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	srcLines, srcRaw, err := readMemories(src)
+	if err != nil {
+		return "", err
+	}
+	i := slices.IndexFunc(srcLines, func(l Line) bool { return l.ID == id })
+	if i < 0 {
+		return "", fmt.Errorf("%w: %s", ErrNoMemory, id)
+	}
+	m := srcLines[i]
+	dstLines, _, err := readMemories(dst)
+	if err != nil {
+		return "", err
+	}
+	if j := slices.IndexFunc(dstLines, func(l Line) bool { return strings.EqualFold(l.Text, m.Text) }); j >= 0 {
+		twin := dstLines[j]
+		if m.Origin == store.OriginUser && twin.Origin != store.OriginUser {
+			// the copy left behind keeps the user's attestation (DESIGN §10.4)
+			var out Line
+			if err := mutateLocked(dst, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+				next, op, err := editChange(sid, twin.ID, twin.Text, store.OriginUser, dst.Kind.Scope(), at, &out, lines)
+				return next, []*Op{op}, err
+			}); err != nil {
+				return "", err
+			}
+		}
+		moveOut := &Op{
+			Op: OpMoveOut, ID: id, Text: m.Text, SupersededBy: twin.ID, SessionID: sid,
+			Hash: textHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+		}
+		if err := removeLine(src, moveOut, srcRaw, srcLines, i); err != nil {
+			return "", err
+		}
+		return twin.ID, nil
+	}
+	used := 0
+	for _, l := range dstLines {
+		used += LineSize(l.Text)
+	}
+	// a move into a full scope is refused: the mover is there to make room
+	if used+LineSize(m.Text) > ScopeBudget {
+		return "", fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", dst.Kind.Scope())
+	}
+	lg, err := src.OpenLedger()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = lg.Close() }()
+	dl, err := dst.OpenLedger()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = dl.Close() }()
+	out := &Op{
+		Op: OpMoveOut, ID: id, Text: m.Text, SessionID: sid,
+		Hash: textHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+	}
+	if trail, err := lg.ByID(id); err == nil {
+		for _, o := range trail {
+			if o.Quote != "" {
+				out.Quote = o.Quote
+			}
+		}
+	}
+	if err := removeLine(src, out, srcRaw, srcLines, i); err != nil {
+		return "", err
+	}
+	if err := dl.Insert(&Op{
+		Op: OpMoveIn, ID: id, Text: m.Text, Quote: out.Quote, SessionID: sid,
+		Hash: textHash(m.Text), Scope: dst.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+	}); err != nil {
+		return "", err
+	}
+	return "", writeMemories(dst, nil, append([]Line{m}, dstLines...))
+}
+
+// writeMemories serializes next and replaces the file, a line that does not
+// parse carried through verbatim (D6): a write never deletes bytes it did
+// not write. The caller holds the partition lock.
+func writeMemories(p Partition, raw []byte, next []Line) error {
+	data := serialize(next)
+	if _, bad := ParseMemories(raw); len(bad) > 0 {
+		for _, b := range bad {
+			data = append(data, b.Text...)
+			data = append(data, '\n')
+		}
+	}
+	if cur, err := os.ReadFile(p.memPath()); err == nil && bytes.Equal(data, cur) {
+		return nil
+	}
+	return config.WriteFileAtomic(p.memPath(), data, 0o600)
+}
+
+// removeLine takes the line at i out of lines and replaces the file with
+// the op inserted first (D1); both under the caller's held locks.
+func removeLine(p Partition, op *Op, raw []byte, lines []Line, i int) error {
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lg.Close() }()
+	if err := lg.Insert(op); err != nil {
+		return err
+	}
+	return writeMemories(p, raw, slices.Delete(slices.Clone(lines), i, i+1))
+}
+
+// ErrStale is the overwrite gate (D5): the file's current bytes no longer
+// match what the caller saw, so nothing was written and the write queues.
+var ErrStale = errors.New("brain: the file changed under the write")
+
+// FileHash is the sha256 the file-mode overwrite gate compares (D5) and a
+// write-set entry records.
+func FileHash(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// WriteFile replaces one freeform brain file under the partition lock, its
+// write entry in the ledger first (D1, D7): the entry carries the replaced
+// file's prior bytes, ContentCap-capped with the truncation and existed
+// flags, so rewind restores them. want, when given, is the hash the caller
+// believes the file holds ("" when it should not exist): a mismatch is
+// ErrStale. The accepted-proposal write passes nil - the user approved it.
+func WriteFile(p Partition, sid, name string, content []byte, want *string, at time.Time) error {
+	unlock, err := Lock(p)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	path := filepath.Join(p.Dir, name)
+	prior, rerr := os.ReadFile(path)
+	existed := rerr == nil
+	if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+		return rerr
+	}
+	if want != nil {
+		now := ""
+		if existed {
+			now = FileHash(prior)
+		}
+		if now != *want {
+			return ErrStale
+		}
+	}
+	op := &Op{Op: OpWrite, ID: name, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli(), Existed: existed}
+	if existed {
+		op.Prior, op.Truncated = prior, len(prior) > ContentCap
+		if op.Truncated {
+			op.Prior = prior[:ContentCap]
+		}
+	}
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lg.Close() }()
+	if err := lg.Insert(op); err != nil {
+		return err
+	}
+	return config.WriteFileAtomic(path, content, 0o600)
 }
 
 // Locate resolves an id over memories.md and the ledger (D1): the live
@@ -279,16 +529,9 @@ func Locate(p Partition, l *Ledger, id string) (line Line, live bool, err error)
 	return Line{ID: id, Origin: last.Origin, Date: day(time.UnixMilli(last.TS)), Text: last.Text}, false, nil
 }
 
-// mutate runs change on the partition's memories.md under the partition
-// lock, inserting its ledger entries before the atomic replace: ledger
-// first, both inside the lock (D1), so a crash between the two leaves the
-// D6 divergence finding, never a live line whose provenance is missing.
-func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next []Line, ops []*Op, err error)) error {
-	unlock, err := Lock(p)
-	if err != nil {
-		return err
-	}
-	defer unlock()
+// mutateLocked runs change under a lock the caller holds (brain.Move's
+// merge branch, the reflector's batch): no lock is taken here.
+func mutateLocked(p Partition, change func(l *Ledger, raw []byte, lines []Line) ([]Line, []*Op, error)) error {
 	lines, raw, err := readMemories(p)
 	if err != nil {
 		return err
@@ -307,20 +550,20 @@ func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next 
 			return err
 		}
 	}
-	data := serialize(next)
-	// a line that does not parse is no op's to own (D6): carried through
-	// verbatim, file order kept, so a write never deletes bytes it did not
-	// write - dropped from the render, never from the file
-	if _, bad := ParseMemories(raw); len(bad) > 0 {
-		for _, b := range bad {
-			data = append(data, b.Text...)
-			data = append(data, '\n')
-		}
+	return writeMemories(p, raw, next)
+}
+
+// mutate runs change on the partition's memories.md under the partition
+// lock, inserting its ledger entries before the atomic replace: ledger
+// first, both inside the lock (D1), so a crash between the two leaves the
+// D6 divergence finding, never a live line whose provenance is missing.
+func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next []Line, ops []*Op, err error)) error {
+	unlock, err := Lock(p)
+	if err != nil {
+		return err
 	}
-	if bytes.Equal(data, raw) {
-		return nil
-	}
-	return config.WriteFileAtomic(p.memPath(), data, 0o600)
+	defer unlock()
+	return mutateLocked(p, change)
 }
 
 // readMemories reads and parses the partition's memories.md; a missing

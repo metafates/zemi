@@ -151,7 +151,7 @@ func TestLintCleanAndAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	openStore(t, p)
-	if _, err := Add(p, "sess1234", "a fact", "", store.OriginLearned, time.Now()); err != nil {
+	if _, _, err := Apply(p, store.Memory{Text: "a fact", ProvenanceSessionID: "sess1234", Origin: store.OriginLearned}, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if findings := Lint(p); len(findings) != 0 {

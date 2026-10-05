@@ -211,7 +211,12 @@ type agentHost struct {
 	brain      string
 	brainGlobs []brainGlob
 	memAuto    int
-	reflectErr error // last reflector run's error, nil after a success (/health)
+	// brainWrites are the brain files this session wrote, keyed by their
+	// resolved path with the hash each write saw: a later file-mode write
+	// applies only while the file still matches (D5's overwrite gate).
+	// Cleared on rewind and when the session changes.
+	brainWrites map[string]string
+	reflectErr  error // last reflector run's error, nil after a success (/health)
 
 	// turnMsgID is the stored user message of the running turn; write tools
 	// checkpoint files against it (rewind).
@@ -2665,8 +2670,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.agents.mu.Unlock()
 			return h.takesImages(id)
 		},
-		Remember: func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
-			return h.memoryTool(p, h.AgentSessionID(), scope, text, quote, replaces)
+		Remember: func(p *tools.Pipeline, call tools.MemoryCall) (string, error) {
+			return h.memoryTool(p, h.AgentSessionID(), call)
 		},
 		Pad:          h.ScratchDir(),
 		Protected:    h.protectedWhy,

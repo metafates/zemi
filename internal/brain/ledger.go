@@ -191,6 +191,40 @@ func (l *Ledger) ops() ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
+// Stamp is what display needs about one id (D7): First and Last are the
+// first and latest writing op's ts (the line's age), Quote the latest
+// quote the trail carried, Session the first writer's provenance.
+type Stamp struct {
+	First, Last int64
+	Quote       string
+	Session     string
+}
+
+// Stamps folds the ledger to one Stamp per id, for /memory, the reflector's
+// index and the overlay's trail, which read quote and age beside the lines.
+func (l *Ledger) Stamps() (map[string]Stamp, error) {
+	ops, err := l.ops()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]Stamp, len(ops))
+	for _, op := range ops {
+		s := out[op.ID]
+		if s.First == 0 && (op.Op == OpAdd || op.Op == OpImport || op.Op == OpMoveIn) {
+			s.First, s.Session = op.TS, op.SessionID
+		}
+		switch op.Op {
+		case OpAdd, OpEdit, OpImport, OpMoveIn:
+			s.Last = op.TS
+		}
+		if op.Quote != "" {
+			s.Quote = op.Quote
+		}
+		out[op.ID] = s
+	}
+	return out, nil
+}
+
 const opCols = `op, id, ts, text, prior_text, quote, session_id, hash, superseded_by, scope, origin,
 	prior_bytes, prior_truncated, prior_existed, created_at, updated_at`
 

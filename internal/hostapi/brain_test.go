@@ -120,12 +120,8 @@ func TestBrainRenderTrust(t *testing.T) {
 	writeBrainFile(t, user.Dir, "style.md", "writing style", "writing any reply", nil)
 	writeBrainFile(t, private.Dir, "repo-map.md", "map of "+h.Dirs.ProjectDir, "before code changes", nil)
 	day := time.Now().Add(-48 * time.Hour).UnixMilli()
-	if err := h.DB.AddMemory(&store.Memory{ID: "pmem1234", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "project fact", UpdatedAt: day}); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.GlobalDB.AddMemory(&store.Memory{ID: "kmem1234", Scope: store.ScopeUser, Origin: store.OriginLearned, Text: "user fact"}); err != nil {
-		t.Fatal(err)
-	}
+	seedMemory(t, h, &store.Memory{ID: "pmem1234", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "project fact", UpdatedAt: day})
+	seedMemory(t, h, &store.Memory{ID: "kmem1234", Scope: store.ScopeUser, Origin: store.OriginLearned, Text: "user fact"})
 
 	text, _ := h.brainFor()
 	for _, want := range []string{
@@ -220,9 +216,7 @@ func TestBrainCatalogCaps(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(user.Dir, "broken.md"), []byte("no frontmatter"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.DB.AddMemory(&store.Memory{ID: "pmem1234", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "the one memory"}); err != nil {
-		t.Fatal(err)
-	}
+	seedMemory(t, h, &store.Memory{ID: "pmem1234", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "the one memory"})
 
 	text, _ := h.brainFor()
 	for _, want := range []string{

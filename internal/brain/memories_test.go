@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -44,22 +45,31 @@ func TestMemoriesRoundTrip(t *testing.T) {
 	}
 }
 
+// mem is a learned one-liner with provenance, the way every writer hands
+// its memory to Apply.
+func mem(sid, text string) store.Memory {
+	return store.Memory{Text: text, ProvenanceSessionID: sid, Origin: store.OriginLearned}
+}
+
 func TestMemoriesWritePath(t *testing.T) {
 	at := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	later := at.Add(48 * time.Hour)
 
-	t.Run("add prepends, edit refreshes and re-prepends", func(t *testing.T) {
+	t.Run("apply prepends and an edit refreshes and re-prepends", func(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
-		first, err := Add(p, "sess0001", "first fact", "I said so", store.OriginLearned, at)
+		first, _, err := Apply(p, mem("sess0001", "first fact"), "", at)
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, err := Add(p, "sess1234", "second fact", "", store.OriginUser, at)
+		second, _, err := Apply(p, store.Memory{Text: "second fact", ProvenanceSessionID: "sess1234", Origin: store.OriginUser}, "", at)
 		if err != nil {
 			t.Fatal(err)
 		}
-		edited, err := Edit(p, "sess1234", first.ID, "the dploy gate lives in ci/pipeline", later)
+		if second.Origin != store.OriginUser {
+			t.Fatal("origin lost")
+		}
+		edited, err := Edit(p, "sess1234", first.ID, "the dploy gate lives in ci/pipeline", store.OriginLearned, later)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,18 +85,22 @@ func TestMemoriesWritePath(t *testing.T) {
 		}
 	})
 
-	t.Run("supersede and forget remove, the ledger explains", func(t *testing.T) {
+	t.Run("replaces supersedes and forget removes, the ledger explains", func(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
 		lg := openLedger(t, p)
-		a, _ := Add(p, "s1", "one", "", store.OriginLearned, at)
-		b, _ := Add(p, "s1", "two", "", store.OriginLearned, at)
-		if err := Supersede(p, "s1", a.ID, b.ID, later); err != nil {
-			t.Fatal(err)
+		a, _, _ := Apply(p, mem("s1", "one"), "", at)
+		b, _, _ := Apply(p, mem("s1", "two"), "", at)
+		c, cut, err := Apply(p, mem("s1", "three"), a.ID, later)
+		if err != nil || len(cut) != 0 {
+			t.Fatalf("apply = (%+v, %v, %v)", c, cut, err)
 		}
 		lines, _, _ := readMemories(p)
-		if len(lines) != 1 || lines[0].ID != b.ID {
+		if len(lines) != 2 || lines[0].ID != c.ID || lines[1].ID != b.ID {
 			t.Fatalf("lines = %+v", lines)
+		}
+		if err := Forget(p, "s1", c.ID, later); err != nil {
+			t.Fatal(err)
 		}
 		if err := Forget(p, "s1", b.ID, later); err != nil {
 			t.Fatal(err)
@@ -94,17 +108,14 @@ func TestMemoriesWritePath(t *testing.T) {
 		if lines, _, _ := readMemories(p); len(lines) != 0 {
 			t.Fatalf("lines = %+v", lines)
 		}
-		// the removed ids resolve through the ledger trail
-		for _, id := range []string{a.ID, b.ID} {
+		// the removed ids resolve through the ledger trail, quote included
+		for _, id := range []string{a.ID, b.ID, c.ID} {
 			line, live, err := Locate(p, lg, id)
 			if err != nil || live || line.Text == "" {
 				t.Fatalf("locate %s = (%+v, %t, %v)", id, line, live, err)
 			}
 		}
-		// and a forget of a cut id writes its explainer without a live line
-		if err := Forget(p, "s1", a.ID, later); err != nil {
-			t.Fatal(err)
-		}
+		// a forget of an id nothing holds is refused
 		if err := Forget(p, "s1", "zzzz9999", later); !errors.Is(err, ErrNoMemory) {
 			t.Fatalf("unknown id: %v", err)
 		}
@@ -117,29 +128,27 @@ func TestMemoriesWritePath(t *testing.T) {
 		for _, op := range ops {
 			kinds = append(kinds, op.Op)
 		}
-		if !slicesSame(kinds, []string{OpAdd, OpAdd, OpSupersede, OpForget, OpForget}) {
+		if !slices.Equal(kinds, []string{OpAdd, OpAdd, OpSupersede, OpAdd, OpForget, OpForget}) {
 			t.Fatalf("op kinds = %v", kinds)
 		}
 	})
 
-	t.Run("cut archives learned lines and refuses a user line", func(t *testing.T) {
+	t.Run("the budget cut archives learned lines and names them", func(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
 		lg := openLedger(t, p)
 		var ids []string
+		var cut []string
 		for i := range 6 {
-			m, err := Add(p, "s1", strings.Repeat("w", 500), "", store.OriginLearned, at.Add(-time.Duration(6-i)*time.Hour))
+			m, c, err := Apply(p, mem("s1", strings.Repeat("w", 500)), "", at.Add(-time.Duration(6-i)*time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
 			ids = append(ids, m.ID)
+			cut = append(cut, c...)
 		}
-		cut, err := Cut(p, "s1", 0, later)
-		if err != nil || len(cut) == 0 {
-			t.Fatalf("cut = %v, %v", cut, err)
-		}
-		if !slicesSame(cut, ids[:len(cut)]) {
-			t.Fatalf("cut = %v, oldest are %v", cut, ids)
+		if !slices.Equal(cut, ids[:1]) {
+			t.Fatalf("cut = %v, oldest is %v", cut, ids)
 		}
 		lines, _, _ := readMemories(p)
 		used := 0
@@ -149,25 +158,72 @@ func TestMemoriesWritePath(t *testing.T) {
 		if used > ScopeBudget {
 			t.Fatalf("cut left %d bytes over budget", used)
 		}
-		// a scope holding a user line refuses a cut that would reach it
-		if _, err := Add(p, "s1", strings.Repeat("u", 3200), "", store.OriginUser, later); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := Cut(p, "s1", 0, later); !errors.Is(err, ErrUserCut) {
-			t.Fatalf("user cut = %v", err)
-		}
-		// nothing was written by the refused cut
-		ops, err := lg.Latest()
+		ops, err := lg.ops()
 		if err != nil {
 			t.Fatal(err)
 		}
+		var archived []string
 		for _, op := range ops {
-			if op.ID == ids[0] && op.Op != OpArchive {
-				t.Fatalf("cut row kind = %q", op.Op)
+			if op.Op == OpArchive {
+				archived = append(archived, op.ID)
 			}
-			if op.Op == OpArchive && op.ID == ids[len(ids)-1] {
-				t.Fatal("refused cut archived the oldest line")
-			}
+		}
+		if !slices.Equal(archived, cut) {
+			t.Fatalf("archive rows = %v, cut = %v", archived, cut)
+		}
+	})
+
+	t.Run("an overflow that would cut a user line writes nothing", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		lg := openLedger(t, p)
+		yours, _, err := Apply(p, store.Memory{Text: strings.Repeat("u", 300), ProvenanceSessionID: "s1", Origin: store.OriginUser}, "", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := Apply(p, mem("s1", strings.Repeat("w", 3200)), "", later); !errors.As(err, &UserCutError{}) {
+			t.Fatalf("user cut = %v", err)
+		}
+		lines, _, _ := readMemories(p)
+		if len(lines) != 1 || lines[0].ID != yours.ID {
+			t.Fatalf("the refused write landed: %+v", lines)
+		}
+		ops, err := lg.ops()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ops) != 1 || ops[0].Op != OpAdd {
+			t.Fatalf("ops = %+v", ops)
+		}
+	})
+
+	t.Run("restore re-prepends and drops with forget entries", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		lg := openLedger(t, p)
+		a, _, _ := Apply(p, mem("s1", "one"), "", at)
+		b, _, _ := Apply(p, mem("s1", "two"), "", at)
+		if err := Forget(p, "s1", a.ID, later); err != nil {
+			t.Fatal(err)
+		}
+		back := Line{ID: a.ID, Origin: store.OriginLearned, Date: day(at), Text: "one"}
+		if err := Restore(p, "s1", []Line{back}, []string{b.ID}, later); err != nil {
+			t.Fatal(err)
+		}
+		lines, _, _ := readMemories(p)
+		if len(lines) != 1 || lines[0] != back {
+			t.Fatalf("lines = %+v", lines)
+		}
+		ops, err := lg.ops()
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds := make([]string, 0, len(ops))
+		for _, op := range ops {
+			kinds = append(kinds, op.Op)
+		}
+		if !slices.Equal(kinds, []string{OpAdd, OpAdd, OpForget, OpForget}) {
+			t.Fatalf("op kinds = %v", kinds)
 		}
 	})
 
@@ -175,25 +231,12 @@ func TestMemoriesWritePath(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
 		lg := openLedger(t, p)
-		m, _ := Add(p, "s1", "live one", "quote", store.OriginLearned, at)
+		m, _, _ := Apply(p, store.Memory{Text: "live one", Quote: "quote", ProvenanceSessionID: "s1", Origin: store.OriginLearned}, "", at)
 		line, live, err := Locate(p, lg, m.ID)
 		if err != nil || !live || line.Text != "live one" {
 			t.Fatalf("locate = (%+v, %t, %v)", line, live, err)
 		}
 	})
-}
-
-// slicesSame reports a and b hold the same ids, in order.
-func slicesSame(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // openStore opens the partition's own store, the way a running zemi has it
@@ -222,7 +265,7 @@ func openLedger(t *testing.T, p Partition) *Ledger {
 func TestMemoriesWriteCreatesThePartition(t *testing.T) {
 	p := testPartition(t)
 	openStore(t, p)
-	if _, err := Add(p, "s1", "first", "", store.OriginLearned, time.Now()); err != nil {
+	if _, _, err := Apply(p, mem("s1", "first"), "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(p.memPath()); err != nil {
@@ -230,7 +273,7 @@ func TestMemoriesWriteCreatesThePartition(t *testing.T) {
 	}
 	// a partition whose store was never opened fails its ledger insert
 	empty := PrivatePartition(filepath.Dir(p.Dir), "/nowhere")
-	if _, err := Add(empty, "s1", "x", "", store.OriginLearned, time.Now()); err == nil {
+	if _, _, err := Apply(empty, mem("s1", "x"), "", time.Now()); err == nil {
 		t.Fatal("wrote a ledger entry with no store")
 	}
 }

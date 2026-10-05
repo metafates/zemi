@@ -358,8 +358,8 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 		pipe.Pad = h.scratchFor(run.parent)
 	}
 	parent := cmp.Or(run.parent, "lua")
-	pipe.Remember = func(p *tools.Pipeline, scope store.Scope, text, quote, replaces string) (string, error) {
-		return h.memoryTool(p, parent, scope, text, quote, replaces)
+	pipe.Remember = func(p *tools.Pipeline, call tools.MemoryCall) (string, error) {
+		return h.memoryTool(p, parent, call)
 	}
 	h.labelAsks(pipe, run, name)
 	return pipe
