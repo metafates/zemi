@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"strings"
-	"time"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -180,7 +179,7 @@ func (h *Host) assembleSections() string {
 		return ""
 	}
 	var b strings.Builder
-	_, err := h.RT.Do(context.Background(), lua.ClassUI, time.Duration(len(handlers))*lua.VetoDeadline+2*time.Second, 0,
+	_, err := h.RT.Do(context.Background(), lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
 		func(L *glua.LState) ([]any, error) {
 			for _, hd := range handlers {
 				if hd.Origin.Rank() <= lua.OriginProject.Rank() {

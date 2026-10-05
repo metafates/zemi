@@ -47,6 +47,13 @@ const (
 	VetoDeadline = 50 * time.Millisecond
 )
 
+// VetoCeiling bounds a run of Lua hooks: a deadline per handler per round,
+// so one slow handler cannot spend every other one's budget, plus a floor
+// for the round trip.
+func VetoCeiling(handlers, rounds int) time.Duration {
+	return time.Duration(rounds*handlers)*VetoDeadline + 2*time.Second
+}
+
 // Sentinel errors surfaced to callers.
 var (
 	// ErrHot means the runtime is wedged and needs /reload.
