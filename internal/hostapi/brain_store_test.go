@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -245,6 +246,112 @@ func TestMoveOutExplainsAbsence(t *testing.T) {
 		if strings.Contains(f.Text, "gone from") || strings.Contains(f.Text, "outside the ledger") {
 			t.Fatalf("the move-out left a divergence finding: %+v", f)
 		}
+	}
+}
+
+// TestCrossScopeSupersede: a replaces whose memory moved to the other
+// partition supersedes it there and lands the new line in its own (D1) -
+// what the store swap strands a pre-swap proposal into.
+func TestCrossScopeSupersede(t *testing.T) {
+	h, sid := rewindHost(t)
+	user, private := h.brainParts()
+	for _, p := range []brain.Partition{user, private} {
+		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, _, err := brain.Apply(user, store.Memory{ID: "uu7a1b2c", Text: "the user truth", ProvenanceSessionID: sid, Origin: store.OriginLearned}, "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := &learn.Result{
+		Memory:     store.Memory{Scope: store.ScopeProject, Text: "a different project fact", ProvenanceSessionID: sid, Origin: store.OriginLearned},
+		Supersedes: old.ID,
+	}
+	if _, err := h.storeProposal(res); err != nil {
+		t.Fatal(err)
+	}
+	if lines, _ := brain.Lines(user); len(lines) != 0 {
+		t.Fatalf("the replaced line stayed: %+v", lines)
+	}
+	live, _ := h.memoryList(false)
+	if len(live) != 1 || live[0].Scope != store.ScopeProject || live[0].Text != "a different project fact" {
+		t.Fatalf("live = %+v", live)
+	}
+	if by := supersededBy(t, h, old.ID); by != live[0].ID {
+		t.Fatalf("superseded by %q, want %q", by, live[0].ID)
+	}
+}
+
+// TestRewindMoveOut: rewinding a turn that moved a learned line across
+// scopes restores the source's line and drops the destination copy
+// (section 7), not a deletion from both.
+func TestRewindMoveOut(t *testing.T) {
+	h, sid := rewindHost(t)
+	user, private := h.brainParts()
+	for _, p := range []brain.Partition{user, private} {
+		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	movedID := "aa7a1b2c"
+	seedMemory(t, h, &store.Memory{ID: movedID, Scope: store.ScopeProject, Text: "the traveling fact", ProvenanceSessionID: "seed", Origin: store.OriginLearned, UpdatedAt: time.Now().Add(-time.Hour).UnixMilli()})
+	if err := h.moveMemory(movedID, store.ScopeProject, store.ScopeUser); err != nil {
+		t.Fatal(err)
+	}
+	addText(t, h, sid, "user", "after the move")
+	if _, err := h.RewindTo(promptsFirst(t, h)); err != nil {
+		t.Fatal(err)
+	}
+	lines, _ := brain.Lines(private)
+	if len(lines) != 1 || lines[0].ID != movedID || lines[0].Text != "the traveling fact" {
+		t.Fatalf("the source line did not come back: %+v", lines)
+	}
+	if ulines, _ := brain.Lines(user); len(ulines) != 0 {
+		t.Fatalf("the destination copy stayed: %+v", ulines)
+	}
+}
+
+// TestRewindLedgerOnlySupersede: a supersede whose id only the ledger holds
+// (a budget cut got there first) restores nothing - the pre-session state
+// already has the id archived - and writes no unparseable line.
+func TestRewindLedgerOnlySupersede(t *testing.T) {
+	h, sid := rewindHost(t)
+	_, private := h.brainParts()
+	lg, err := private.OpenLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lg.Close() }()
+	old := time.Now().Add(-time.Hour)
+	id := "aa9a1b2c"
+	for _, op := range []*brain.Op{
+		{Op: brain.OpAdd, ID: id, Text: "the aged truth", SessionID: "seed", Hash: brain.FileHash([]byte("the aged truth")), Scope: store.ScopeProject, Origin: store.OriginLearned, TS: old.UnixMilli()},
+		{Op: brain.OpArchive, ID: id, Text: "the aged truth", SessionID: "seed", Hash: brain.FileHash([]byte("the aged truth")), Scope: store.ScopeProject, Origin: store.OriginLearned, TS: old.UnixMilli()},
+	} {
+		if err := lg.Insert(op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := brain.Apply(private, store.Memory{Text: "the new truth", ProvenanceSessionID: sid, Origin: store.OriginLearned}, id, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	addText(t, h, sid, "user", "after the writes")
+	if _, err := h.RewindTo(promptsFirst(t, h)); err != nil {
+		t.Fatal(err)
+	}
+	lines, _ := brain.Lines(private)
+	for _, l := range lines {
+		if l.ID == id || l.Text == "" || l.Origin == "" {
+			t.Fatalf("the empty un-supersede wrote a line: %+v", lines)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(private.Dir, brain.MemFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, bad := brain.ParseMemories(raw); len(bad) > 0 {
+		t.Fatalf("an unparseable line survived: %q", raw)
 	}
 }
 

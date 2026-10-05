@@ -264,6 +264,18 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 			continue
 		}
 		var add []brain.Line
+		// lastWrite is the age a restored line carries: its latest writing
+		// op's time in this partition's trail (D1)
+		lastWrite := func(id string, fallback int64) time.Time {
+			if trail, err := lg.ByID(id); err == nil {
+				for _, o := range slices.Backward(trail) {
+					if o.Op == brain.OpAdd || o.Op == brain.OpEdit || o.Op == brain.OpImport || o.Op == brain.OpMoveIn {
+						return time.UnixMilli(o.TS).UTC()
+					}
+				}
+			}
+			return time.UnixMilli(fallback).UTC()
+		}
 		for _, op := range ops {
 			switch op.Op {
 			case brain.OpAdd, brain.OpMoveIn:
@@ -277,24 +289,22 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 					} else {
 						drop[brain.User] = append(drop[brain.User], op.ID)
 					}
+					// the move back restores the source's line - unless the
+					// session wrote it here first, the add being undone
+					if !slices.Contains(drop[p.Kind], op.ID) {
+						add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
+					}
 				}
 			case brain.OpSupersede, brain.OpArchive:
 				// the line comes back with its last write's age (D1); a line
 				// the session itself wrote in the range stays dropped - the
-				// add being undone outranks the cut that later took it
-				if slices.Contains(drop[p.Kind], op.ID) {
+				// add being undone outranks the cut that later took it - and
+				// an entry without text (the id only the ledger held) has no
+				// line to restore
+				if slices.Contains(drop[p.Kind], op.ID) || op.Text == "" {
 					continue
 				}
-				date := time.UnixMilli(op.TS).UTC()
-				if trail, err := lg.ByID(op.ID); err == nil {
-					for _, o := range slices.Backward(trail) {
-						if o.Op == brain.OpAdd || o.Op == brain.OpEdit || o.Op == brain.OpImport || o.Op == brain.OpMoveIn {
-							date = time.UnixMilli(o.TS).UTC()
-							break
-						}
-					}
-				}
-				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: date, Text: op.Text})
+				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
 			case brain.OpWrite:
 				writes = append(writes, op)
 			}

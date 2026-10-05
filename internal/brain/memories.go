@@ -244,6 +244,16 @@ func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Sco
 	return op, slices.Delete(lines, i, i+1), nil
 }
 
+// Supersede removes id's line with a supersede entry naming byID (D1), for
+// a replacement whose new line lands in the other partition; an id only the
+// ledger holds gets its entry alone.
+func Supersede(p Partition, sid, id, byID string, at time.Time) error {
+	return mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+		op, next, err := supersedeOp(lg, lines, sid, id, byID, p.Kind.Scope(), at)
+		return next, []*Op{op}, err
+	})
+}
+
 // Edit rewrites a line's text, refreshes its date and re-prepends it, the
 // edit entry carrying the prior text and the new hash (D7); origin is the
 // line's new attestation (/memory edits are the user's own words, a

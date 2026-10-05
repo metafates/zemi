@@ -658,9 +658,12 @@ allowlist unchanged.
   the shape `DeleteLearnedBetween` nearly is today) - and keeps both halves of today's version
   (rewind.go:206-233) plus the two the new store adds: supersedes in the range
   re-prepend the superseded line from the ledger entry's prior text (today's Unsupersede,
-  rewind.go:225-231); cut (archive) ops whose acting session is sid re-prepend their lines from the
+  rewind.go:225-231; an entry without prior text - an id only the ledger held - restores nothing);
+  cut (archive) ops whose acting session is sid re-prepend their lines from the
   entry's prior text - today nothing is ever cut, so today has no un-archive half, and the design
-  closes that gap in the same SELECT; file-mode brain writes restore newest-first, a range ending at
+  closes that gap in the same SELECT; a move-out re-prepends its line to the partition it left
+  (unless the session wrote the line there in the range, whose add the rewind already undoes), the
+  destination copy dropped by the move-in's half; file-mode brain writes restore newest-first, a range ending at
   its oldest entry's prior bytes, an entry with existed=false deleting the file it created, a
   truncation flag preferring the approved file-tool write's checkpoint, else the truncated bytes, as
   D5 names - bytes checkpoints never saw, because
@@ -691,7 +694,9 @@ user-then-private when both partitions are touched:
    repo file or gitignore is written.
 2. Insert ledger entries (op `import`) carrying id, origin, quote, provenance_session_id,
    created/updated timestamps, text hash - skipped when the ledger already holds the id, so replay
-   is idempotent. Nothing the overlay or rewind reads is lost.
+   is idempotent. The entries follow the file write: a crash between the two re-runs (the compose
+   is the half a lost tombstone cannot redo), while entries before the bytes would mark rows done
+   that were never composed. Nothing the overlay or rewind reads is lost.
 3. No kv flag, no schema bump: the frozen table's rows are the guard, the reconcile is an id-set
    diff over a bounded row set, and once every live row is imported the bytes stop changing. An old
    binary (rollback build, pinned version, second checkout) keeps writing rows with no knowledge of

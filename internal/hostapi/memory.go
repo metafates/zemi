@@ -226,9 +226,29 @@ func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
 		return nil, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
-	l, cut, err := brain.Apply(h.partition(m.Scope), *m, res.Supersedes, h.now())
+	replaces := res.Supersedes
+	var oldP brain.Partition
+	if replaces != "" {
+		p, _, err := h.locateMemory(replaces)
+		if err != nil {
+			return nil, err
+		}
+		if p.Kind != h.partition(m.Scope).Kind {
+			// the replaced memory lives in the other partition (it moved
+			// there, or the proposal predates the swap): the new line lands
+			// here without replaces and its supersede entry goes there (D1),
+			// after the add so a budget refusal leaves the old line alone
+			oldP, replaces = p, ""
+		}
+	}
+	l, cut, err := brain.Apply(h.partition(m.Scope), *m, replaces, h.now())
 	if err != nil {
 		return nil, err
+	}
+	if !oldP.Zero() {
+		if err := brain.Supersede(oldP, m.ProvenanceSessionID, res.Supersedes, l.ID, h.now()); err != nil {
+			return nil, err
+		}
 	}
 	m.ID = l.ID
 	h.EmitAsync("memory.written", map[string]any{
@@ -1205,6 +1225,15 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 		return "", err
 	}
 	h.markBrainWrite(abs, []byte(content))
+	// the apply spends the session's auto budget, as a stored one-liner does
+	// (row 14); a detached reflector writes no files, the guard mirrors
+	// applyProposal
+	ag := h.agents
+	ag.mu.Lock()
+	if sid == ag.sessionID {
+		ag.memAuto++
+	}
+	ag.mu.Unlock()
 	out := "wrote " + name + "; injects from the next session"
 	if note := h.brainLintNote(private, name); note != "" {
 		out += "; " + note
@@ -1369,7 +1398,9 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 		cut, err := h.applyProposal(res)
 		if err != nil {
 			if uc, ok := errors.AsType[brain.UserCutError](err); ok {
-				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error()}, nil
+				// row 3: the write queues instead, so the proposal is not
+				// dropped while the user makes room
+				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error()}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 			}
 			return memoryOutcome{}, err
 		}

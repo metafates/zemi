@@ -1,8 +1,10 @@
 package brain
 
 import (
+	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -103,6 +105,78 @@ func TestReconcile(t *testing.T) {
 		lines, _, _ := readMemories(p)
 		if len(lines) != 0 {
 			t.Fatalf("the hand-deleted line came back: %+v", lines)
+		}
+	})
+
+	t.Run("a hand-written malformed line survives the import", func(t *testing.T) {
+		p := testPartition(t)
+		db := openStore(t, p)
+		rows := []*store.Memory{live("aaaa1111", "the fact", 1000)}
+		if err := db.AddMemory(rows[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p.memPath(), []byte("the user's own stray line\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := Reconcile(p, rows, at); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(p.memPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(raw, []byte("the user's own stray line")) {
+			t.Fatalf("the import deleted a line it did not write: %q", raw)
+		}
+		lines, _, _ := readMemories(p)
+		if len(lines) != 1 || lines[0].ID != "aaaa1111" {
+			t.Fatalf("lines = %+v", lines)
+		}
+	})
+
+	t.Run("the tombstone follows the bytes it stamps", func(t *testing.T) {
+		p := testPartition(t)
+		db := openStore(t, p)
+		rows := []*store.Memory{live("aaaa1111", "the fact", 1000)}
+		if err := db.AddMemory(rows[0]); err != nil {
+			t.Fatal(err)
+		}
+		lg := openLedger(t, p)
+		// the file replace fails: the import entry must not land either, so
+		// a re-run still composes
+		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		lock, err := os.OpenFile(filepath.Join(p.Dir, "memories.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = lock.Close()
+		if err := os.Chmod(p.Dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		if err := Reconcile(p, rows, at); err == nil {
+			t.Fatal("the write did not fail")
+		}
+		if err := os.Chmod(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		ops, err := lg.ops()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ops) != 0 {
+			t.Fatalf("entries committed before the bytes: %+v", ops)
+		}
+		// the re-run composes, then the outstanding entries land
+		if err := Reconcile(p, rows, at); err != nil {
+			t.Fatal(err)
+		}
+		if ops, _ = lg.ops(); len(ops) != 1 || ops[0].Op != OpImport {
+			t.Fatalf("re-run entries: %+v", ops)
 		}
 	})
 }

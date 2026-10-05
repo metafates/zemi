@@ -333,6 +333,10 @@ func TestMemoryGate(t *testing.T) {
 				if len(live) != 11 || !slices.ContainsFunc(live, func(m *store.Memory) bool { return m.Origin == store.OriginUser }) {
 					t.Fatalf("the refused write cut something: %d live", len(live))
 				}
+				p := h.memoryProposals()
+				if len(p) != 1 || p[0].Text != "the deploy script lives in bin/deploy" {
+					t.Fatalf("the queued write left no proposal: %+v", p)
+				}
 			},
 		},
 		{
@@ -823,6 +827,9 @@ func TestMemoryFileMode(t *testing.T) {
 		{
 			name: "a creation applies", path: "map.md", content: fm, want: "wrote map.md",
 			check: func(t *testing.T, h *Host, sid string) {
+				if h.agents.memAuto != 1 {
+					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
+				}
 				_, private := h.brainParts()
 				b, err := os.ReadFile(filepath.Join(private.Dir, "map.md"))
 				if err != nil || !strings.Contains(string(b), "repo map") {
@@ -835,6 +842,11 @@ func TestMemoryFileMode(t *testing.T) {
 					t.Fatalf("write op: %+v", ops)
 				}
 			},
+		},
+		{
+			name: "the spent auto budget queues", path: "map.md", content: fm,
+			seed: func(t *testing.T, h *Host) string { h.agents.memAuto = memoryAutoApplyCap; return "" },
+			want: "queued for the user's review (this session's auto budget is spent)",
 		},
 		{
 			name: "an overwrite of a foreign file queues", path: "map.md", content: fm,
