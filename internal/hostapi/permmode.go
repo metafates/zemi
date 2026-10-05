@@ -521,16 +521,21 @@ func (h *Host) memFiles() []string {
 const memLintMax = 3
 
 // memLintNotes lints the brain partition a reserved-file write lands in and
-// returns up to three findings' texts for the ask (D5).
+// returns up to three of the file's own findings' texts for the ask (D5).
 func (h *Host) memLintNotes(arg string) []string {
 	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
 		if !h.inJail(arg, filepath.Join(p.Dir, brain.MemFile)) {
 			continue
 		}
 		findings := brain.Lint(p)
-		if len(findings) > memLintMax {
-			findings = findings[:memLintMax]
+		n := 0
+		for _, f := range findings {
+			if f.Subject == brain.MemFile {
+				findings[n] = f
+				n++
+			}
 		}
+		findings = findings[:min(n, memLintMax)]
 		notes := make([]string, len(findings))
 		for i, f := range findings {
 			notes[i] = f.Text

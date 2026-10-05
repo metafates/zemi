@@ -753,8 +753,12 @@ func TestBrainAskNotes(t *testing.T) {
 	if err := os.MkdirAll(memDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// four malformed lines: three findings ride the ask, the fourth is cut
+	// four malformed lines: three findings ride the ask, the fourth is cut;
+	// a bad freeform file lints too, and its findings are not the file's
 	if err := os.WriteFile(mem, []byte("one\ntwo\nthree\nfour\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(memDir, "style.md"), []byte("---\nread_if: r\n---\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ask := func(arg string) string {
@@ -771,6 +775,7 @@ func TestBrainAskNotes(t *testing.T) {
 	if !strings.Contains(local, "the memory tool owns this file") ||
 		!strings.Contains(local, "line 3 is not a memory line") ||
 		strings.Contains(local, "line 4 is not a memory line") ||
+		strings.Contains(local, "no description") ||
 		strings.Contains(local, "outside the machine") {
 		t.Errorf("a local-only session's memories.md ask: %q", local)
 	}

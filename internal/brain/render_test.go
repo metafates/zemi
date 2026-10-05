@@ -34,7 +34,7 @@ func TestRenderPinsTheSection(t *testing.T) {
 	pl := Loaded{Partition: private, Entries: []Entry{
 		entry("repo-map.md", "Map of this repository's packages", "before any code change"),
 	}, Mem: memFile("abcd2345", "the dploy gate lives in ci/pipeline")}
-	findings := []Finding{{User, "style.md: no description"}}
+	findings := []Finding{{Kind: User, Text: "style.md: no description"}}
 
 	loop := "Consult the brain before you build, update it after."
 	got := Render(loop, []Loaded{ul, pl}, findings, at)
@@ -140,7 +140,7 @@ func TestRenderCuts(t *testing.T) {
 			l.Entries = append(l.Entries, entry(strings.Repeat("f", 90)+".md", strings.Repeat("d", 900), strings.Repeat("r", 900)))
 		}
 		l.Mem = memFile("abcd2345", "the memory the model must still see")
-		findings := []Finding{{Private, "the warning the model must still see"}}
+		findings := []Finding{{Kind: Private, Text: "the warning the model must still see"}}
 		loop := "the loop text"
 		got := Render(loop, []Loaded{l}, findings, at)
 		if len(got) > Backstop {
@@ -180,7 +180,7 @@ func TestRenderCuts(t *testing.T) {
 func TestWarningsCap(t *testing.T) {
 	many := make([]Finding, 40)
 	for i := range many {
-		many[i] = Finding{User, strings.Repeat("w", 100)}
+		many[i] = Finding{Kind: User, Text: strings.Repeat("w", 100)}
 	}
 	got := Warnings(many)
 	if size(strings.Split(got, "\n")) > WarnCap {
@@ -190,7 +190,7 @@ func TestWarningsCap(t *testing.T) {
 		t.Fatalf("no finding was dropped: %d", n)
 	}
 	// a single over-cap finding is cut to one line, tags intact
-	one := Warnings([]Finding{{User, strings.Repeat("w", WarnCap)}})
+	one := Warnings([]Finding{{Kind: User, Text: strings.Repeat("w", WarnCap)}})
 	if size([]string{one}) > WarnCap || strings.Count(one, "<brain-warning>") != 1 {
 		t.Fatalf("single finding not truncated: %d bytes", len(one))
 	}

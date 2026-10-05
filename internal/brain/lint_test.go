@@ -78,6 +78,9 @@ func TestLintFindings(t *testing.T) {
 		if f.Kind != Private {
 			t.Fatalf("finding %q names another partition", f.Text)
 		}
+		if f.Subject == "" {
+			t.Fatalf("finding %q names no subject", f.Text)
+		}
 		if strip(f.Text) != f.Text || strings.ContainsAny(f.Text, "\n") {
 			t.Fatalf("finding is not one stripped line: %q", f.Text)
 		}

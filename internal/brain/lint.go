@@ -7,12 +7,15 @@ import (
 )
 
 // Finding is one lint result (D6): single-line, control-character-free,
-// naming the path and the problem and nothing more. Kind is the partition
-// it names, for the untrusted filter (D3): an untrusted project hears
-// only user-partition findings.
+// naming the path and the problem and nothing more. Subject is the file the
+// finding names - an entry name, MemFile, or the partition dir or ledger
+// path - so a consumer takes one file's findings without parsing Text. Kind
+// is the partition it names, for the untrusted filter (D3): an untrusted
+// project hears only user-partition findings.
 type Finding struct {
-	Kind Kind
-	Text string
+	Kind    Kind
+	Subject string
+	Text    string
 }
 
 // Lint checks one partition against D6's findings: the freeform files'
@@ -21,63 +24,63 @@ type Finding struct {
 // costs no findings, since the render already degrades without it.
 func Lint(p Partition) []Finding {
 	var out []Finding
-	add := func(format string, args ...any) {
-		out = append(out, Finding{Kind: p.Kind, Text: strip(fmt.Sprintf(format, args...))})
+	add := func(subject, format string, args ...any) {
+		out = append(out, Finding{Kind: p.Kind, Subject: subject, Text: strip(fmt.Sprintf(format, args...))})
 	}
 	l := Load(p)
 	if l.DirErr != nil {
-		add("%s: %s", p.Dir, errLine(l.DirErr))
+		add(p.Dir, "%s: %s", p.Dir, errLine(l.DirErr))
 	}
 	for _, e := range l.Entries {
 		switch {
 		case e.Err != nil:
-			add("%s: %s", e.Name, errLine(e.Err))
+			add(e.Name, "%s: %s", e.Name, errLine(e.Err))
 		case e.FM.Description == "":
-			add("%s: no description", e.Name)
+			add(e.Name, "%s: no description", e.Name)
 		case e.FM.ReadIf == "":
-			add("%s: no read_if", e.Name)
+			add(e.Name, "%s: no read_if", e.Name)
 		}
 		if err := e.FM.BadGlob(); err != nil {
-			add("%s: %s", e.Name, err)
+			add(e.Name, "%s: %s", e.Name, err)
 		}
 		if n := len([]rune(e.FM.Description)); n > FieldCap {
-			add("%s: description is %d characters, over the %d the render caps", e.Name, n, FieldCap)
+			add(e.Name, "%s: description is %d characters, over the %d the render caps", e.Name, n, FieldCap)
 		}
 		if n := len([]rune(e.FM.ReadIf)); n > FieldCap {
-			add("%s: read_if is %d characters, over the %d the render caps", e.Name, n, FieldCap)
+			add(e.Name, "%s: read_if is %d characters, over the %d the render caps", e.Name, n, FieldCap)
 		}
 	}
 	if l.Over {
-		add("%s: catalog scan past its ceiling (%d files, %d bytes of frontmatter)", p.Dir, MaxCatalogFiles, MaxFrontBytes)
+		add(p.Dir, "%s: catalog scan past its ceiling (%d files, %d bytes of frontmatter)", p.Dir, MaxCatalogFiles, MaxFrontBytes)
 	}
 	lines, bad := ParseMemories(l.Mem)
 	if l.MemErr != nil {
-		add("%s: %s", MemFile, l.MemErr)
+		add(MemFile, "%s: %s", MemFile, l.MemErr)
 	}
 	for _, b := range bad {
-		add("%s: line %d is not a memory line", MemFile, b.N)
+		add(MemFile, "%s: line %d is not a memory line", MemFile, b.N)
 	}
 	used := 0
 	for _, ln := range lines {
 		used += LineSize(ln.Text)
 	}
 	if used > ScopeBudget {
-		add("%s: memory lines render past the %d-byte budget", p.memPath(), ScopeBudget)
+		add(MemFile, "%s: memory lines render past the %d-byte budget", p.memPath(), ScopeBudget)
 	}
 	for _, ln := range lines {
 		if learn.InstructionShaped(ln.Text) {
-			add("memory %s reads like an instruction (detection only; the line still injects)", ln.ID)
+			add(MemFile, "memory %s reads like an instruction (detection only; the line still injects)", ln.ID)
 		}
 	}
 	lg, err := p.OpenLedger()
 	if err != nil {
-		add("%s: %s", p.DB, errLine(err))
+		add(p.DB, "%s: %s", p.DB, errLine(err))
 		return out
 	}
 	defer func() { _ = lg.Close() }()
 	ops, err := lg.ops()
 	if err != nil {
-		add("%s: %s", p.DB, errLine(err))
+		add(p.DB, "%s: %s", p.DB, errLine(err))
 		return out
 	}
 	lintLedger(ops, lines, add)
@@ -89,7 +92,7 @@ func Lint(p Partition) []Finding {
 // divergence - a crash between the ledger insert and the file replace, a
 // lost update between windows, or a hand edit - and a live line whose text
 // hash matches no entry for its id is an unjournaled rewrite.
-func lintLedger(ops []*Op, lines []Line, add func(string, ...any)) {
+func lintLedger(ops []*Op, lines []Line, add func(subject, format string, args ...any)) {
 	type trail struct {
 		added     bool
 		explained bool
@@ -122,13 +125,13 @@ func lintLedger(ops []*Op, lines []Line, add func(string, ...any)) {
 			continue
 		}
 		if d := t[ln.ID]; d == nil || !d.hashes[textHash(ln.Text)] {
-			add("memory %s was rewritten outside the ledger (a hand edit)", ln.ID)
+			add(MemFile, "memory %s was rewritten outside the ledger (a hand edit)", ln.ID)
 			flagged[ln.ID] = true
 		}
 	}
 	for _, id := range ids {
 		if d := t[id]; d.added && !d.explained && !live[id] {
-			add("memory %s is in the ledger, gone from %s (a crash between the ledger and the file, a lost update, or a hand edit)", id, MemFile)
+			add(MemFile, "memory %s is in the ledger, gone from %s (a crash between the ledger and the file, a lost update, or a hand edit)", id, MemFile)
 		}
 	}
 }
