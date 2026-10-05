@@ -255,8 +255,6 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	return f, nil
 }
 
-// handedOff reports whether the run's report goes to the session as a
-// message: a background start, or a foreground call the user's message took.
 // wfTask is one coroutine: the script body or a parallel() branch.
 type wfTask struct {
 	co      *glua.LState
