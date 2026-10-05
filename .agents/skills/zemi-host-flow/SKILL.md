@@ -309,8 +309,9 @@ is refused with its path, to delete (the owner is the only user).
   delta seen and is the `/health` reflector row's news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
   and `gateMemory` like the `memory` tool's, and an entry with empty text and `replaces`
   queues a forget proposal, never auto-applied. There is no config-patch pipeline, the agent
-  edits config files directly. `digestFor()` renders every live memory, newest first per
-  scope, under `learn.ScopeBudget`; no search, no ranking.
+  edits config files directly. The brain build (`brainFor`) renders the `# Brain` section: the
+  partitions' catalogs, the memory lines newest first per scope under the scope budget, the loop
+  text and the lint warnings; no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
@@ -357,10 +358,10 @@ is refused with its path, to delete (the owner is the only user).
   and recipes (`skillsIndexPrompt`'s second half), the per-session pinned `environmentPrompt` (in a
   trusted repository with its top level as the read tool lists it, `topLevel`, and the last
   commits: repository free text, left out untrusted), the
-  digest and, for the main agent on the shipped prompt, `replyReminder` last.
+  `# Brain` section and, for the main agent on the shipped prompt, `replyReminder` last.
   The main agent stores it as a `context` row (`contextRow`, which no transcript reader reads)
   whenever the pin is built anew, and a resume sends the stored one again while `contextKey`
-  (the pin key, working directory, scratchpad and digest) holds, so the provider's cache of the whole
+  (the pin key, working directory, scratchpad and brain render) holds, so the provider's cache of the whole
   conversation holds too; `dropPin` forgets it. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`

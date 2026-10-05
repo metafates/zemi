@@ -76,7 +76,7 @@ func (h *Host) brainFor() (string, []brainGlob) {
 func memLines(rows []*store.Memory, scope store.Scope) []byte {
 	var b strings.Builder
 	for _, m := range rows {
-		if m == nil || m.Scope != scope {
+		if m.Scope != scope {
 			continue
 		}
 		l := brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt), Text: m.Text}
