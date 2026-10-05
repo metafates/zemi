@@ -602,7 +602,10 @@ type Host struct {
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
-// skills.
+// skills. A flip also rebuilds the brain render the session carries: the pin
+// key moves with trust, and the next send would otherwise re-pin the stale
+// render, keeping the private catalog in an untrusted session (D3) or
+// holding it back a compaction.
 func (h *Host) SetProjectTrusted(ok bool) {
 	prev := h.projectTrusted.Swap(ok)
 	if prev && !ok {
@@ -614,6 +617,16 @@ func (h *Host) SetProjectTrusted(ok bool) {
 	}
 	h.projectSkills.Store(&found)
 	h.instrStale.Store(true)
+	ag := h.agents
+	ag.mu.Lock()
+	stale := prev != ok && ag.brain != ""
+	ag.mu.Unlock()
+	if stale {
+		brain, globs := h.brainFor()
+		ag.mu.Lock()
+		ag.brain, ag.brainGlobs = brain, globs
+		ag.mu.Unlock()
+	}
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home

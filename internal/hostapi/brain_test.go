@@ -30,7 +30,8 @@ func writeBrainFile(t *testing.T, dir, name, desc, readIf string, paths []string
 }
 
 // pinBrain runs a build point by hand: it renders and pins what the session
-// would carry, the way ensureSession, ResumeSession and compactDone store it.
+// would carry, the way ensureSession, ResumeSession and compactDone store it
+// (a trust flip does it inside SetProjectTrusted).
 func pinBrain(t *testing.T, h *Host) {
 	t.Helper()
 	text, globs := h.brainFor()
@@ -150,6 +151,48 @@ func TestBrainRenderTrust(t *testing.T) {
 	text, _ = h.brainFor()
 	if !strings.Contains(text, "### private") || !strings.Contains(text, "- repo-map.md - map of "+h.Dirs.ProjectDir+". (Read If: before code changes.)") {
 		t.Fatalf("the trusted render does not carry the private catalog:\n%s", text)
+	}
+}
+
+// TestBrainRebuildsOnTrustFlip: a trust flip with a session live rebuilds the
+// pinned render at once, so a revoke drops the private catalog before the
+// next send re-pins (D3) and a grant brings it back without a compaction.
+func TestBrainRebuildsOnTrustFlip(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, private := h.brainParts()
+	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeBrainFile(t, private.Dir, "repo-map.md", "map of "+h.Dirs.ProjectDir, "before code changes", nil)
+	h.SetProjectTrusted(true)
+	if err := h.ensureSession(nil, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	h.agents.mu.Lock()
+	pinned := h.agents.brain
+	h.agents.mu.Unlock()
+	if !strings.Contains(pinned, "repo-map.md") {
+		t.Fatalf("the trusted render lacks the private catalog:\n%s", pinned)
+	}
+
+	h.SetProjectTrusted(false)
+	h.agents.mu.Lock()
+	held := h.agents.brain
+	h.agents.mu.Unlock()
+	if strings.Contains(held, "repo-map.md") || strings.Contains(held, h.Dirs.ProjectDir) {
+		t.Fatalf("the revoked render still carries the private catalog:\n%s", held)
+	}
+
+	h.SetProjectTrusted(true)
+	h.agents.mu.Lock()
+	back := h.agents.brain
+	h.agents.mu.Unlock()
+	if !strings.Contains(back, "repo-map.md") {
+		t.Fatalf("the granted render lacks the private catalog:\n%s", back)
 	}
 }
 
