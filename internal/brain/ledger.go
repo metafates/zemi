@@ -176,6 +176,15 @@ func (l *Ledger) Latest() ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
+// ops is every entry, oldest first; lint replays it (D6).
+func (l *Ledger) ops() ([]*Op, error) {
+	if l.db == nil {
+		return nil, nil
+	}
+	rows, err := l.db.Query(`SELECT ` + opCols + ` FROM memory_ops ORDER BY rowid`)
+	return collectOps(rows, err)
+}
+
 const opCols = `op, id, ts, text, prior_text, quote, session_id, hash, superseded_by, scope, origin,
 	prior_bytes, prior_truncated, prior_existed, created_at, updated_at`
 

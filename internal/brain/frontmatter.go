@@ -72,6 +72,13 @@ func Normalize(s string) string {
 	return s
 }
 
+// errLine is an error's first line, stripped: a yaml error's caret
+// diagram is noise in an injected warning or note.
+func errLine(err error) string {
+	s, _, _ := strings.Cut(err.Error(), "\n")
+	return strip(s)
+}
+
 // strip removes control characters, newlines included, so text renders as
 // one line (the topLevel precedent, prompt.go:605).
 func strip(s string) string {
