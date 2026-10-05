@@ -55,6 +55,10 @@ type UIHooks interface {
 	// LayoutRects is where the last frame drew each node with an id, plus
 	// "stage" and "composer"; safe from any goroutine.
 	LayoutRects() map[string]Rect
+	// KeyHelp is the keys the router owns and the keys every list takes, as
+	// rows of key and what it does: they are not Lua keymaps, so the UI that
+	// routes them owns the wording /help lists.
+	KeyHelp() (keys, lists [][2]string)
 	// AgentStream says a streaming update landed; the UI only invalidates
 	// the frame, so these coalesce.
 	AgentStream()
@@ -906,41 +910,6 @@ func (h *Host) AppendChat(m ChatMessage) {
 	h.refresh()
 }
 
-// goKeys are the bindings the key router owns (internal/ui/keys.go): they
-// are not Lua keymaps, so /help would list none of them.
-var goKeys = [][2]string{
-	{"enter", "send the message"},
-	{"shift+enter, alt+enter", "newline"},
-	{"esc", "back, or twice to interrupt"},
-	{"ctrl+c", "interrupt, clear the draft, quit"},
-	{"ctrl+g", "edit the draft in your editor"},
-	{"ctrl+v", "paste, images included"},
-	{"up, ctrl+p", "earlier prompts or queued ones"},
-	{"down, ctrl+n", "later prompts"},
-	{"ctrl+z", "undo in the composer"},
-	{"ctrl+a, ctrl+e", "line start, line end"},
-	{"alt+left, alt+right", "move by word"},
-	{"ctrl+d, ctrl+u", "scroll the chat half a view"},
-	{"ctrl+w", "delete the word before the cursor"},
-	{"/", "command palette"},
-	{"@", "attach a project file"},
-	{"ctrl+space", "show completions"},
-	{"!cmd", "run a shell command with your next message"},
-}
-
-// listKeys are the keys every list and box takes (internal/ui/keys.go).
-var listKeys = [][2]string{
-	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
-	{"ctrl+d, ctrl+u", "move half a page, or scroll the text"},
-	{"pgup, pgdown", "move a page"},
-	{"home, end", "first row, last row"},
-	{"/", "filter; enter keeps it, esc clears it"},
-	{"space", "toggle"},
-	{"y, Y", "copy the row, every row"},
-	{"an action's key", "act on the row, as its button does"},
-	{"shift+up, shift+down", "scroll the text a line"},
-}
-
 // OpenHelp opens the help overlay listing keys and slash commands. A
 // command row runs it, unless it needs an argument, which it fills in.
 func (h *Host) OpenHelp() error {
@@ -949,7 +918,8 @@ func (h *Host) OpenHelp() error {
 		return err
 	}
 	var items []any
-	for _, k := range goKeys {
+	keys, lists := ui.KeyHelp()
+	for _, k := range keys {
 		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Keys"})
 	}
 	var aliases []any
@@ -967,7 +937,7 @@ func (h *Host) OpenHelp() error {
 		}
 		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
 	}
-	for _, k := range listKeys {
+	for _, k := range lists {
 		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Lists"})
 	}
 	items = append(items, aliases...)
@@ -1065,7 +1035,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	}
 	outcomes := make([]outcome, len(handlers))
 	ev := eventTable(name, "host", payload)
-	_, err := h.RT.Do(ctx, lua.ClassUI, time.Duration(len(handlers))*lua.VetoDeadline+2*time.Second, 0,
+	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
 		func(L *glua.LState) ([]any, error) {
 			for i, hd := range handlers {
 				ret, timedOut, err := h.callEvent(L, hd, ev)

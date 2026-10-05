@@ -1025,6 +1025,7 @@ func (*testUI) Notify(slog.Level, string, string)                   {}
 func (*testUI) Refresh()                                            {}
 func (*testUI) Scroll(ScrollAction, string)                         {}
 func (*testUI) LayoutRects() map[string]Rect                        { return nil }
+func (*testUI) KeyHelp() ([][2]string, [][2]string)                 { return nil, nil }
 func (*testUI) AgentStream()                                        {}
 func (*testUI) TurnDone(string, bool)                               {}
 func (*testUI) AskPermission(PermRequest) (bool, string)            { return false, tools.ByUser }

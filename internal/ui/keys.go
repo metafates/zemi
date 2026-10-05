@@ -15,6 +15,45 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+// goKeys are the bindings this router owns: they are not Lua keymaps, so
+// /help would list none of them.
+var goKeys = [][2]string{
+	{"enter", "send the message"},
+	{"shift+enter, alt+enter, ctrl+enter", "newline"},
+	{"esc", "back, or twice to interrupt"},
+	{"ctrl+c", "interrupt, clear the draft, quit"},
+	{"ctrl+g", "edit the draft in your editor"},
+	{"ctrl+v", "paste, images included"},
+	{"up, ctrl+p", "earlier prompts or queued ones"},
+	{"down, ctrl+n", "later prompts"},
+	{"ctrl+z", "undo in the composer"},
+	{"ctrl+a, ctrl+e", "line start, line end"},
+	{"alt+left, alt+right", "move by word"},
+	{"ctrl+d, ctrl+u", "scroll the chat half a view"},
+	{"ctrl+w", "delete the word before the cursor"},
+	{"/", "command palette"},
+	{"@", "attach a project file"},
+	{"ctrl+space", "show completions"},
+	{"!cmd", "run a shell command with your next message"},
+}
+
+// listKeys are the keys every list and box takes.
+var listKeys = [][2]string{
+	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
+	{"ctrl+d, ctrl+u", "move half a page, or scroll the text"},
+	{"pgup, pgdown", "move a page"},
+	{"home, end", "first row, last row"},
+	{"/", "filter; enter keeps it, esc clears it"},
+	{"space", "toggle"},
+	{"y, Y", "copy the row, every row"},
+	{"an action's key", "act on the row, as its button does"},
+	{"shift+up, shift+down", "scroll the text a line"},
+}
+
+// KeyHelp implements hostapi.UIHooks: what /help lists as keys, owned here
+// because this file is what routes them.
+func (a *App) KeyHelp() (keys, lists [][2]string) { return goKeys, listKeys }
+
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
 // the chrome drawn on top (topChrome), a focused layout node's keymaps,
 // then keymaps and the composer.
