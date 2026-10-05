@@ -21,10 +21,12 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // HealthLevel is how a /health row reads.
@@ -357,6 +359,32 @@ func (h *Host) goHealthRows() []HealthRow {
 		out[len(out)-1].Run = "memory"
 	} else {
 		add(HealthOK, "learning", "nothing to review")
+	}
+
+	// the brain row: lint findings, over-budget partitions and the counts
+	// beside the learning row (D6)
+	userP, privateP := h.brainParts()
+	var findings []brain.Finding
+	findings = append(findings, brain.Lint(userP)...)
+	if h.ProjectTrusted() {
+		findings = append(findings, brain.Lint(privateP)...)
+	}
+	liveRows, _ := h.memoryList(false)
+	learned, yours := 0, 0
+	for _, m := range liveRows {
+		if m.Origin == store.OriginLearned {
+			learned++
+		} else {
+			yours++
+		}
+	}
+	switch detail := fmt.Sprintf("%d learned, %d yours", learned, yours); {
+	case len(findings) > 0:
+		detail = fmt.Sprintf("%d findings: %s; %s", len(findings), findings[0].Text, detail)
+		add(HealthWarn, "brain", detail)
+		out[len(out)-1].Run = "memory"
+	default:
+		add(HealthOK, "brain", detail)
 	}
 
 	// the project's own skills are always on and never in the registry, so

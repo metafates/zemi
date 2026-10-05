@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -724,18 +725,33 @@ func (h *Host) refreshPending() {
 
 // memoryItems lists the suggestions, then the memories of this project and
 // of everywhere, newest first; each section title counts its rows, and a
-// scope's names its share of learn.ScopeBudget. A row is one line: the
-// preview and the detail hold the whole text.
+// scope's names its share of brain.ScopeBudget. A row is one line: the
+// preview and the detail hold the whole text. The trail of cut and
+// superseded lines is one collapsed row at the end (section 6).
 func (h *Host) memoryItems() []any {
 	props := h.memoryProposals()
 	live, _ := h.memoryList(false)
 	count, used := map[store.Scope]int{}, map[store.Scope]int{}
 	for _, m := range live {
 		count[m.Scope]++
-		used[m.Scope] += learn.LineSize(m.Text)
+		used[m.Scope] += brain.LineSize(m.Text)
 	}
-	items := make([]any, 0, len(props)+len(live))
+	items := make([]any, 0, len(props)+len(live)+1)
 	for _, p := range props {
+		if p.Path != "" {
+			item := map[string]any{
+				"id": p.ID, "text": clipRunes("write "+filepath.Base(p.Path), 40),
+				"desc": fmt.Sprintf("Suggested by zemi (%d)", len(props)), "section": scopeWords[p.Scope],
+				"preview": p.Content, "copy": p.Content,
+				"fields": fieldList("path", p.Path, "bytes", strconv.Itoa(len(p.Content))),
+			}
+			item["actions"] = []any{
+				map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
+				map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
+			}
+			items = append(items, item)
+			continue
+		}
 		label, replaces := p.Text, ""
 		if p.Forget {
 			label = "forget: " + label
@@ -760,12 +776,76 @@ func (h *Host) memoryItems() []any {
 	}
 	for _, m := range live {
 		desc := map[store.Origin]string{store.OriginUser: "by you", store.OriginLearned: "learned"}[m.Origin] + " · " + ago(m.UpdatedAt)
-		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, learn.ScopeBudget/1024)
+		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, brain.ScopeBudget/1024)
 		item := memoryItem(*m, m.Text, section, desc, "")
 		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "f", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
 		items = append(items, item)
 	}
+	if trail := h.memoryTrail(live); len(trail) > 0 {
+		var b strings.Builder
+		for i, t := range trail {
+			if i >= 40 {
+				fmt.Fprintf(&b, "... %d more", len(trail)-40)
+				break
+			}
+			b.WriteString(t.String() + "\n")
+		}
+		items = append(items, map[string]any{
+			"text":    fmt.Sprintf("%d removed from memories.md", len(trail)),
+			"desc":    "cut by the budget, superseded, or forgotten; the ledger keeps their text",
+			"section": "Trail", "preview": strings.TrimRight(b.String(), "\n"),
+			"fields": fieldList("count", strconv.Itoa(len(trail))),
+		})
+	}
 	return items
+}
+
+// memoryTrail is the ids the ledgers show superseded or budget-cut, plus
+// the frozen table's superseded rows, none of them live (D1, section 6);
+// each carries its origin and last-write date.
+func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
+	liveIDs := map[string]bool{}
+	for _, m := range live {
+		liveIDs[m.ID] = true
+	}
+	var out []brain.Line
+	seen := map[string]bool{}
+	for _, scope := range store.Scopes {
+		p := h.partition(scope)
+		if p.Zero() {
+			continue
+		}
+		lg, err := p.OpenLedger()
+		if err != nil {
+			continue
+		}
+		latest, err := lg.Latest()
+		_ = lg.Close()
+		if err != nil {
+			continue
+		}
+		for _, op := range latest {
+			if (op.Op != brain.OpSupersede && op.Op != brain.OpArchive) || liveIDs[op.ID] || seen[op.ID] {
+				continue
+			}
+			seen[op.ID] = true
+			out = append(out, brain.Line{ID: op.ID, Origin: op.Origin, Date: dayOf(op.TS), Text: op.Text})
+		}
+	}
+	frozen, _ := h.memoryList(true)
+	for _, m := range frozen {
+		if m.SupersededBy != "" && !liveIDs[m.ID] && !seen[m.ID] {
+			seen[m.ID] = true
+			out = append(out, brain.Line{ID: m.ID, Origin: m.Origin, Date: dayOf(m.UpdatedAt), Text: m.Text})
+		}
+	}
+	slices.SortFunc(out, func(a, b brain.Line) int { return b.Date.Compare(a.Date) })
+	return out
+}
+
+// dayOf is the date a ts carries in a line, the line format's granularity.
+func dayOf(ts int64) time.Time {
+	return time.UnixMilli(ts).UTC().Truncate(24 * time.Hour)
 }
 
 // memoryItem is m's row under section: label cut to one line, its whole
