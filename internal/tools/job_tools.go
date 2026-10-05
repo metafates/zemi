@@ -22,8 +22,31 @@ import (
 )
 
 // JobHandoff opens the shell result note for a command that outlived its
-// timeout; the chat widget keeps such a row by this phrase.
+// timeout; the host stamps such a row "bg" by this phrase.
 const JobHandoff = "moved to the background as "
+
+// jobStartPrefix opens a job_start answer, "started job-2 (npm run dev)".
+const jobStartPrefix = "started "
+
+// JobID is the job a call's result names, "" when it names none: the phrase
+// each tool writes, then the id it wrote. A command's own output cannot name
+// one, since only a tool that started a job is asked.
+func JobID(tool, out string) string {
+	at, ok := map[string]string{ToolShell: JobHandoff, ToolJobStart: jobStartPrefix}[tool]
+	if !ok {
+		return ""
+	}
+	_, rest, ok := strings.Cut(out, at)
+	if !ok {
+		return ""
+	}
+	id, _, _ := strings.Cut(rest, ":")
+	id, _, _ = strings.Cut(id, " ")
+	if !strings.HasPrefix(id, "job-") {
+		return ""
+	}
+	return id
+}
 
 // jobSettle is how long new job output must stay quiet before a job_read
 // wait returns.

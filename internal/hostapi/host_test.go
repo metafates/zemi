@@ -51,21 +51,24 @@ func newTestHostUI(t *testing.T) *Host {
 	return h
 }
 
-// TestJobOf: only a call that handed off names a job, and the id comes from
-// its shape, so the wording around it belongs to the tool alone.
+// TestJobOf: only a call that started or handed off to a job names one, from
+// the phrase its own tool wrote, so the wording around it belongs to the tool.
 func TestJobOf(t *testing.T) {
 	for _, c := range []struct {
+		tool   string
 		status CallStatus
 		out    string
 		want   string
 	}{
-		{CallBG, "still running, so it moved to the background as job-3: read the rest", "job-3"},
-		{CallBG, "started job-12", "job-12"},
-		{CallOK, "job-3", ""}, // a call that did not hand off names no job
-		{CallBG, "no id here", ""},
+		{tools.ToolShell, CallBG, "still running, so it moved to the background as job-3: read the rest", "job-3"},
+		{tools.ToolShell, CallBG, "job-7 of the build\nso it moved to the background as job-3: read the rest", "job-3"},
+		{tools.ToolJobStart, CallBG, "started job-2 (npm run dev)", "job-2"},
+		{tools.ToolShell, CallOK, "moved to the background as job-3", ""}, // a shell that exited names no job
+		{tools.ToolJobStart, CallBG, "job-2", ""},                         // only the tool's own phrasing counts
+		{tools.ToolShell, CallBG, "no id here", ""},
 	} {
-		if got := jobOf(c.status, c.out); got != c.want {
-			t.Errorf("jobOf(%s, %q) = %q, want %q", c.status, c.out, got, c.want)
+		if got := jobOf(c.tool, c.status, c.out); got != c.want {
+			t.Errorf("jobOf(%s, %s, %q) = %q, want %q", c.tool, c.status, c.out, got, c.want)
 		}
 	}
 }

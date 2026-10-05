@@ -754,6 +754,7 @@ function zemi.event.stats() end
 ---@field status zemi.CallStatus
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
+---@field job string A call that handed off: the background job id, else "".
 ---@field label string The model's description of the call; a question call's headers.
 ---@field elapsed number
 ---@field diff string
