@@ -10,7 +10,6 @@ import (
 	"io"
 	"maps"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -54,9 +53,6 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextErrorResponse("no language server support"), nil
 	}
 	action, path, symbol := str(input["action"]), str(input["path"]), str(input["symbol"])
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
 	s, err := p.LSP(ctx, path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
