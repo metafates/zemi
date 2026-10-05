@@ -1,1 +1,0 @@
-- [aa1mem1m learned 2026-09-23] the fts join needs m-qualified columns, since the memory table and its fts index share column names
