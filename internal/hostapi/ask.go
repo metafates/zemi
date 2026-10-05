@@ -108,6 +108,15 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	if def.Decide != nil {
 		base = ""
 	}
+	// a protected write names its reason in every mode that reaches the
+	// user, not only under auto (the .git class shares it)
+	why := ""
+	if req.Subject == perm.SubjectWrite && !req.InPad() {
+		why = h.protectedWhy(req.Arg)
+	}
+	if why != "" && base != "auto" {
+		note(why)
+	}
 	switch {
 	case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectShell && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
 		note("read-only agent: nothing confines this call")
@@ -128,10 +137,6 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	case base == "auto":
 		if h.autoLocal(req) {
 			return resolved(true, tools.ByMode(def.Name))
-		}
-		why := ""
-		if req.Subject == perm.SubjectWrite && !req.InPad() {
-			why = h.protectedWhy(req.Arg)
 		}
 		switch {
 		case why != "":

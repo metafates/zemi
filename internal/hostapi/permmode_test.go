@@ -712,7 +712,7 @@ func TestBrainWritesProtected(t *testing.T) {
 	runUser(t, r, `zemi.permission.mode.add("open", { base = "auto", rules = { { "fs.write", "*", "allow" } } })`)
 	runUser(t, r, `zemi.permission.mode.add("decider", { base = "auto", decide = function() return "allow" end })`)
 	// the rename's write request, shaped as lspRequests builds it (lsp_tool.go:45)
-	rename := []tools.Request{{Subject: "fs.write", Arg: userMem, Reason: "rename a to b"}}
+	rename := tools.Request{Subject: "fs.write", Arg: userMem, Reason: "rename a to b"}
 	pipe := h.PipelineFor()
 	for _, c := range []struct {
 		name, mode, why string
@@ -723,15 +723,15 @@ func TestBrainWritesProtected(t *testing.T) {
 		{"private memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: privateMem}},
 		{"private freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: privateFile}},
 		{"mode rule", "open", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
-		{"decide", "decider", "", tools.Request{Subject: "fs.write", Arg: userMem}},
-		{"lsp rename", "auto", "the memory tool owns this file", rename[0]},
+		{"decide", "decider", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
+		{"lsp rename", "auto", "the memory tool owns this file", rename},
 	} {
 		if err := h.SetPermMode(c.mode); err != nil {
 			t.Fatal(err)
 		}
 		v := pipe.Check(c.req)
 		if v.Decision != perm.Deny || c.why != "" && !strings.Contains(v.Reason, c.why) {
-			t.Errorf("%s (%s): %s %q, want deny%s", c.name, c.mode, v.Decision, v.Reason, " naming "+c.why)
+			t.Errorf("%s (%s): %s %q, want deny naming %s", c.name, c.mode, v.Decision, v.Reason, c.why)
 		}
 	}
 }

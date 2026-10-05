@@ -511,10 +511,13 @@ func (h *Host) privateBrain() brain.Partition {
 // memFiles are the brain partitions' reserved one-liner stores: the memory
 // tool owns them, so a file-tool write asks with that reason (D5).
 func (h *Host) memFiles() []string {
-	return []string{
-		filepath.Join(h.userBrain().Dir, brain.MemFile),
-		filepath.Join(h.privateBrain().Dir, brain.MemFile),
+	var out []string
+	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+		if !p.Zero() {
+			out = append(out, filepath.Join(p.Dir, brain.MemFile))
+		}
 	}
+	return out
 }
 
 // memLintMax caps the reserved file's findings an ask carries (D5).
