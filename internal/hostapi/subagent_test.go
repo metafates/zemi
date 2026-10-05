@@ -980,6 +980,9 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
 	}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	if err := h.Remember("deploy by hand"); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.AgentSend("hello"); err != nil {
 		t.Fatal(err)
 	}
@@ -1004,6 +1007,18 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		if msg.Role != fork.Prompt[i].Role || !reflect.DeepEqual(msg.Content, fork.Prompt[i].Content) {
 			t.Fatalf("message %d is not the caller's:\ncaller %+v\nfork   %+v", i, msg, fork.Prompt[i])
 		}
+	}
+	// the # Brain section rides the caller's prefix, so the fork's first
+	// request reuses its bytes: the per-message loop above holds it
+	var ctxMsg string
+	for _, msg := range caller.Prompt {
+		if s := concatText(msg.Content); strings.Contains(s, "<context>") {
+			ctxMsg = s
+			break
+		}
+	}
+	if !strings.Contains(ctxMsg, "# Brain") || !strings.Contains(ctxMsg, "deploy by hand") {
+		t.Fatalf("the caller's context message does not carry the brain:\n%.400s", ctxMsg)
 	}
 	task := concatText(fork.Prompt[len(fork.Prompt)-1].Content)
 	if !strings.HasPrefix(task, forkTask) || !strings.Contains(task, "review what we did") {

@@ -41,7 +41,7 @@ regression (untrusted, the injected memory lines are byte-equal to today's diges
 the render is user-owned state-dir content, D3; injected surfaces pass one-liner intake;
 user-partition file writes ask in every mode, yolo aside); no unbounded growth (per-section caps, a
 terminating backstop, render-time cuts, a bounded and file-safety-checked catalog scan); no cache
-hostility (context message only, hash-pinned, built at the two build points only; pointers ride tool
+hostility (context message only, hash-pinned, built at the build points only (D4); pointers ride tool
 results outside the pinned prefix); no second CLI. Net: the store's write path and the digest
 renderer are deleted, the read path stays as the frozen-table reader, and one new `internal/brain`
 package is added. The win is the capability - codebase maps, long-form knowledge, host-enforced lazy
@@ -182,7 +182,9 @@ One rule per surface, no protocol:
   no byte from the private partition's catalog, map files or findings - the digest-equivalent memory
   lines and the loop's root naming are the exceptions - no repo path in any warning; the user
   partition is the only one linted untrusted. The `## Memory` lines are byte-equal to today's digest
-  lines (digest.go:51) under the same scope headings when the store is healthy; the digest's
+  lines (digest.go:51) under the same scope headings when the store is healthy - the age computed
+  from the line's day-granular last-write date, D1's own semantics, so a row written in the last two
+  days can read a day older than the digest's timestamp math; the digest's
   `# Memory` H1 (digest.go:18) is not duplicated - `## Memory` replaces it.
 
 Writes from untrusted or outside-text sessions always queue and inject only on the user's accept -
@@ -192,8 +194,9 @@ today's semantics.
 
 All brain content rides the context message, never the system prompt (the system prompt must stay
 per-user stable, internal/hostapi/prompt.go:279-282); built once at session open - new session at
-agent.go:1711, resume at session.go:105-118 - and rebuilt only at compaction (compact.go:374-385),
-hash-pinned, never per send. `contextKey` (internal/hostapi/agent.go:506-512) hashes the brain
+agent.go:1711, resume at session.go:105-118 - rebuilt at compaction (compact.go:374-385) and at a
+mid-session trust flip (SetProjectTrusted, host.go:604, which a revoke's next send would otherwise
+re-pin stale, D3), hash-pinned, never per send. `contextKey` (internal/hostapi/agent.go:506-512) hashes the brain
 render where it hashed the digest; the stored role-"context" row is written on the next send
 (agent.go:590) and replays its bytes while the key matches, and the pin/drop machinery around it is
 untouched. A mid-session brain edit changes nothing until the next build. (The brain does not join
@@ -488,7 +491,7 @@ of Markdown; every cut marker names a path):
 
 ## 4. Injection
 
-One section, one hash, in the context message - after project instructions, before the skills index:
+One section, one hash, in the context message, in the slot the memory digest held - after the environment:
 
 ```
 # Brain
@@ -720,10 +723,11 @@ user-then-private when both partitions are touched:
   backstop-terminates golden; memory line round-trip; ledger insert and idempotent import; lint
   findings table; lock contention and ordered dual-lock.
 - Stage 2 - injection: prompt.go builds `# Brain` (catalog, memory with the digest header, roots
-  named); agent.go `contextKey` takes the brain hash; session.go/compact.go rebuild points;
+  named); agent.go `contextKey` takes the brain hash; session.go/compact.go/SetProjectTrusted
+  rebuild points;
   path-triggered pointers (glob table from frontmatter, matcher in the Instructions hook and
   AfterWrite, dedupe, 3-per-result cap). Tests: the key changes at a build after a brain edit, the
-  stored role-"context" row replays while it matches, nothing re-renders mid-session; budget
+  stored role-"context" row replays while it matches, nothing re-renders mid-session but a trust flip; budget
   cut-order and backstop golden; cut markers name paths; the AGENTS.md chain untouched by the brain
   render; pointers fire once on a matching read and on a matching write or edit, private globs
   trusted-only and user globs every project, capped at 3; fork prefix reuse.

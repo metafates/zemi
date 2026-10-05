@@ -371,17 +371,17 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	return nil
 }
 
-// compactDone installs the post-compaction estimate, re-pins the digest,
+// compactDone installs the post-compaction estimate, re-pins the brain render,
 // drops the pinned prompt and has the next step judge the result; a manual
 // success re-enables auto compaction.
 func (h *Host) compactDone(used int64, manual bool) {
 	ag := h.agents
-	digest := h.digestFor()
+	brain, globs := h.brainFor()
 	h.forgetInstructions()
 	ag.mu.Lock()
 	// the prompt cache is gone anyway, so the next send rebuilds the whole
-	// prompt with a fresh environment and digest
-	ag.lastIn, ag.digest, ag.env, ag.compacted = used, digest, "", true
+	// prompt with a fresh environment and brain render
+	ag.lastIn, ag.brain, ag.brainGlobs, ag.env, ag.compacted = used, brain, globs, "", true
 	ag.dropPin()
 	if manual {
 		ag.compactFails = 0

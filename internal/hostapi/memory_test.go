@@ -473,11 +473,12 @@ func TestMemoryDelOriginGate(t *testing.T) {
 
 // TestDigestAtSessionStart covers §10.7: the session's prompt carries the
 // memories it started with (TestPromptPinned keeps later ones out).
-func TestDigestAtSessionStart(t *testing.T) {
+func TestBrainAtSessionStart(t *testing.T) {
 	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
 
-	if sys := h.buildSystem(nil); strings.Contains(sys, "# Memory") {
-		t.Fatal("digest must be absent before any memory")
+	if sys := h.buildSystem(nil); strings.Contains(sys, "## Memory") {
+		t.Fatal("memory lines must be absent before any memory")
 	}
 
 	if err := h.Remember("the deploy script lives in bin/deploy"); err != nil {
@@ -488,18 +489,18 @@ func TestDigestAtSessionStart(t *testing.T) {
 	}
 
 	sys := h.buildSystem(nil)
-	if !strings.Contains(sys, "# Memory\nLines earlier sessions kept, as [id who age].") {
-		t.Fatalf("digest missing from system prompt:\n%s", sys)
+	if !strings.Contains(sys, "## Memory\nLines earlier sessions kept, as [id who age].") {
+		t.Fatalf("memory section missing from the context message:\n%s", sys)
 	}
 	if !strings.Contains(sys, "## this project\n- [") || !strings.Contains(sys, " user] the deploy script lives in bin/deploy") {
-		t.Fatalf("digest line missing:\n%s", sys)
+		t.Fatalf("memory line missing:\n%s", sys)
 	}
 
 	if err := h.Remember("later note"); err != nil {
 		t.Fatalf("remember2: %v", err)
 	}
-	if got := h.digestFor(); !strings.Contains(got, "later note") {
-		t.Fatalf("digestFor missed the new memory: %q", got)
+	if got, _ := h.brainFor(); !strings.Contains(got, "later note") {
+		t.Fatalf("brainFor missed the new memory: %q", got)
 	}
 }
 
