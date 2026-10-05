@@ -51,9 +51,9 @@ func Catalog(l Loaded) string {
 	for _, e := range l.Entries {
 		lines = append(lines, catalogLine(e))
 	}
-	cut := 0
+	var marker string
 	if size(lines) > CatalogCap {
-		var marker string
+		cut := 0
 		for len(lines) > 0 {
 			cut++
 			marker = fmt.Sprintf("- ... %d more in %s", cut, l.Partition.Dir)
@@ -63,6 +63,15 @@ func Catalog(l Loaded) string {
 				break
 			}
 		}
+	} else if l.Over {
+		// the scan ceiling dropped files the entries never show; the
+		// marker names the partition (D6) and rides inside the cap
+		marker = "- ... more in " + l.Partition.Dir
+		for len(lines) > 0 && size(lines)+len(marker)+1 > CatalogCap {
+			lines = lines[:len(lines)-1]
+		}
+	}
+	if marker != "" {
 		lines = append(lines, marker)
 	}
 	return strings.Join(lines, "\n")

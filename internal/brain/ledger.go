@@ -121,6 +121,10 @@ func (l *Ledger) Insert(op *Op) error {
 	if l.db == nil {
 		return errors.New("brain: no store holds the ledger")
 	}
+	// an anonymous row is unlintable and unrestorable (D6, D7)
+	if op.Op == "" {
+		return errors.New("brain: ledger insert without an op kind")
+	}
 	if op.TS == 0 {
 		op.TS = time.Now().UnixMilli()
 	}

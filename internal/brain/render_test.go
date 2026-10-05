@@ -74,7 +74,7 @@ func TestRenderCuts(t *testing.T) {
 	_, private := testPartitions(t)
 
 	t.Run("catalog tail cut names the partition", func(t *testing.T) {
-		l := Loaded{Partition: private}
+		l := Loaded{Partition: private, Over: true}
 		for i := range 30 {
 			l.Entries = append(l.Entries, entry(string(rune('a'+i))+".md", strings.Repeat("d", 300), "r"))
 		}
@@ -85,12 +85,28 @@ func TestRenderCuts(t *testing.T) {
 		if !strings.Contains(got, "more in "+private.Dir) {
 			t.Fatalf("marker does not name the partition: %s", got)
 		}
+		if strings.Count(got, "more in "+private.Dir) != 1 {
+			t.Fatal("the scan ceiling added a second marker")
+		}
 		// the alphabetically last entries are the ones gone
 		if strings.Contains(got, "z.md - ") {
 			t.Fatal("a late entry survived the tail cut")
 		}
 		if !strings.Contains(got, "a.md - ") || !strings.Contains(got, "e.md - ") {
 			t.Fatal("an early entry was cut")
+		}
+	})
+
+	t.Run("scan ceiling names the partition", func(t *testing.T) {
+		l := Loaded{Partition: private, Over: true, Entries: []Entry{
+			entry("a.md", "d", "r"),
+		}}
+		got := Catalog(l)
+		if !strings.Contains(got, "more in "+private.Dir) {
+			t.Fatalf("scan-ceiling marker missing: %s", got)
+		}
+		if !strings.Contains(got, "a.md - d. ") {
+			t.Fatalf("the entry did not render: %s", got)
 		}
 	})
 

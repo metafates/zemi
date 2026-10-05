@@ -108,6 +108,18 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err := Forget(p, "s1", "zzzz9999", later); !errors.Is(err, ErrNoMemory) {
 			t.Fatalf("unknown id: %v", err)
 		}
+		// every row the write path inserts carries its D7 kind
+		ops, err := lg.ops()
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds := make([]string, 0, len(ops))
+		for _, op := range ops {
+			kinds = append(kinds, op.Op)
+		}
+		if !slicesSame(kinds, []string{OpAdd, OpAdd, OpSupersede, OpForget, OpForget}) {
+			t.Fatalf("op kinds = %v", kinds)
+		}
 	})
 
 	t.Run("cut archives learned lines and refuses a user line", func(t *testing.T) {
@@ -150,6 +162,9 @@ func TestMemoriesWritePath(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, op := range ops {
+			if op.ID == ids[0] && op.Op != OpArchive {
+				t.Fatalf("cut row kind = %q", op.Op)
+			}
 			if op.Op == OpArchive && op.ID == ids[len(ids)-1] {
 				t.Fatal("refused cut archived the oldest line")
 			}

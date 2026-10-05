@@ -131,7 +131,7 @@ var ErrUserCut = errors.New("brain: the cut would take a user memory")
 func Add(p Partition, sid, text, quote string, origin store.Origin, at time.Time) (Line, error) {
 	l := Line{ID: store.ShortID(), Origin: origin, Date: day(at), Text: text}
 	err := mutate(p, func(_ *Ledger, raw []byte, lines []Line) ([]Line, []*Op, error) {
-		op := &Op{ID: l.ID, Text: text, Quote: quote, SessionID: sid,
+		op := &Op{Op: OpAdd, ID: l.ID, Text: text, Quote: quote, SessionID: sid,
 			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: origin, TS: at.UnixMilli()}
 		return append([]Line{l}, lines...), []*Op{op}, nil
 	})
@@ -150,7 +150,7 @@ func Edit(p Partition, sid, id, text string, at time.Time) (Line, error) {
 		}
 		prior := lines[i]
 		out = Line{ID: id, Origin: prior.Origin, Date: day(at), Text: text}
-		op := &Op{ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
+		op := &Op{Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
 			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli()}
 		return append([]Line{out}, slices.Delete(lines, i, i+1)...), []*Op{op}, nil
 	})
@@ -166,7 +166,7 @@ func Supersede(p Partition, sid, id, byID string, at time.Time) error {
 			return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
 		}
 		prior := lines[i]
-		op := &Op{ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
+		op := &Op{Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
 			Hash: textHash(prior.Text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli()}
 		return slices.Delete(lines, i, i+1), []*Op{op}, nil
 	})
@@ -177,7 +177,7 @@ func Supersede(p Partition, sid, id, byID string, at time.Time) error {
 // ledger trail; one neither holds is ErrNoMemory.
 func Forget(p Partition, sid, id string, at time.Time) error {
 	return mutate(p, func(l *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
-		op := &Op{ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}
+		op := &Op{Op: OpForget, ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}
 		i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
 		if i < 0 {
 			trail, err := l.ByID(id)
@@ -215,7 +215,7 @@ func Cut(p Partition, sid string, extra int, at time.Time) ([]string, error) {
 			}
 			used -= LineSize(oldest.Text)
 			cut = append(cut, oldest.ID)
-			ops = append(ops, &Op{ID: oldest.ID, Text: oldest.Text, SessionID: sid,
+			ops = append(ops, &Op{Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: sid,
 				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli()})
 		}
 		if len(cut) == 0 {
@@ -279,6 +279,15 @@ func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next 
 		}
 	}
 	data := serialize(next)
+	// a line that does not parse is no op's to own (D6): carried through
+	// verbatim, file order kept, so a write never deletes bytes it did not
+	// write - dropped from the render, never from the file
+	if _, bad := ParseMemories(raw); len(bad) > 0 {
+		for _, b := range bad {
+			data = append(data, b.Text...)
+			data = append(data, '\n')
+		}
+	}
 	if bytes.Equal(data, raw) {
 		return nil
 	}
