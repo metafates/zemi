@@ -148,14 +148,12 @@ func TestLintCleanAndAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	openStore(t, p)
-	m, err := Add(p, "sess1234", "a fact", "", store.OriginLearned, time.Now())
-	if err != nil {
+	if _, err := Add(p, "sess1234", "a fact", "", store.OriginLearned, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if findings := Lint(p); len(findings) != 0 {
 		t.Fatalf("clean partition = %+v", findings)
 	}
-	_ = m
 }
 
 func TestLintUnreadableMemories(t *testing.T) {
@@ -174,7 +172,7 @@ func TestLintUnreadableMemories(t *testing.T) {
 		t.Skip("running as root ignores the mode")
 	}
 	findings := Lint(p)
-	if len(findings) != 1 || !strings.Contains(findings[0].Text, MemFile+" is unreadable") && !strings.Contains(findings[0].Text, "permission denied") {
+	if len(findings) != 1 || !strings.Contains(findings[0].Text, "permission denied") {
 		t.Fatalf("findings = %+v", findings)
 	}
 	// the render degrades to the marker, never an error
