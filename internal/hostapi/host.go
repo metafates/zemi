@@ -712,6 +712,9 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	h.picked, h.pluginKeys = map[string]any{}, map[string]Gen{}
 	if h.GlobalDB != nil {
 		h.loadPicks()
+		// the global store's partition reconciles at startup; a project
+		// store's waits for its project session to open (section 8)
+		h.reconcileBrain(h.partition(store.ScopeUser))
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":              func(h *Host, _ string) error { return h.OpenHelp() },

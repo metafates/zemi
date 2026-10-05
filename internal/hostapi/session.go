@@ -102,6 +102,7 @@ func (h *Host) ResumeSession(id string) error {
 			break
 		}
 	}
+	h.reconcileBrain(h.partition(store.ScopeProject))
 	brain, globs := h.brainFor()
 	ag := h.agents
 	err = h.closeSession(func() {

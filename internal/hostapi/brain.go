@@ -13,7 +13,6 @@ import (
 
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // brainLoop is the loop text every project's # Brain opens with (section 4);
@@ -50,49 +49,55 @@ func (h *Host) BrainParts() (user, private brain.Partition) { return h.brainPart
 // sets Dirs.ProjectDir after boot needs the private partition to follow.
 func (h *Host) RekeyProject() { h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) }
 
+// reconcileBrain imports a partition's frozen-table rows into memories.md
+// (section 8). Best effort: a failed import is a lint finding and the next
+// open retries.
+func (h *Host) reconcileBrain(p brain.Partition) {
+	if p.Zero() {
+		return
+	}
+	db := h.memoryDB(p.Kind.Scope())
+	if db == nil {
+		return
+	}
+	rows, err := db.ListMemory(p.Kind.Scope(), false)
+	if err != nil {
+		h.Log.Warn("brain reconcile skipped", "origin", "brain", "error", err)
+		return
+	}
+	if err := brain.Reconcile(p, rows, h.now()); err != nil {
+		h.Log.Warn("brain reconcile failed", "origin", "brain", "error", err)
+	}
+}
+
 // brainFor builds the # Brain section and the glob table its pointers match
 // (D10). The user partition loads and lints in every project; the private
 // one's catalog and findings reach a trusted render only, while its memory
-// lines inject in every project like the digest they still are (D3). The
-// lines come from the store rows; stage 3 repoints them at memories.md.
+// lines inject in every project like the digest they replaced (D3).
 func (h *Host) brainFor() (string, []brainGlob) {
 	user, private := h.brainParts()
-	rows, _ := h.memoryList(false)
 	parts := make([]brain.Loaded, 0, 2)
 	var findings []brain.Finding
 	var globs []brainGlob
 	if !user.Zero() {
 		l := brain.Load(user)
-		l.Mem = memLines(rows, store.ScopeUser)
 		parts = append(parts, l)
 		findings = append(findings, brain.Lint(user)...)
 		globs = brainGlobs(l)
 	}
-	if !private.Zero() && h.ProjectTrusted() {
+	if !private.Zero() {
 		l := brain.Load(private)
-		l.Mem = memLines(rows, store.ScopeProject)
+		if !h.ProjectTrusted() {
+			// the lines inject untrusted; the catalog, its scan ceiling and
+			// the dir's error name private paths a pull must not see (D3)
+			l.Entries, l.Over, l.DirErr = nil, false, nil
+		} else {
+			findings = append(findings, brain.Lint(private)...)
+			globs = append(globs, brainGlobs(l)...)
+		}
 		parts = append(parts, l)
-		findings = append(findings, brain.Lint(private)...)
-		globs = append(globs, brainGlobs(l)...)
-	} else {
-		parts = append(parts, brain.Loaded{Partition: private, Mem: memLines(rows, store.ScopeProject)})
 	}
 	return brain.Render(h.brainLoopText(user, private), parts, findings, time.Now()), globs
-}
-
-// memLines renders one scope's rows as memories.md bytes, newest first as
-// the store listed them.
-func memLines(rows []*store.Memory, scope store.Scope) []byte {
-	var b strings.Builder
-	for _, m := range rows {
-		if m.Scope != scope {
-			continue
-		}
-		l := brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt), Text: m.Text}
-		b.WriteString(l.String())
-		b.WriteByte('\n')
-	}
-	return []byte(b.String())
 }
 
 // brainLoopText is the loop text headed by the partition roots that exist on

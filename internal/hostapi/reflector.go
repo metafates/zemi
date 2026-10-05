@@ -21,6 +21,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -344,14 +345,21 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 	}
 	h.cutMu.Lock()
 	defer h.cutMu.Unlock()
-	if err := h.reflectRead(sid, read); err != nil {
+	if err := h.reflectHeld(sid, read); err != nil {
 		return read, err
 	}
 	proposal, err := parseReflectProposal(concatText(res.Response.Content))
 	if err != nil {
+		// no entry existed to apply or queue, so the run is not retried
+		_ = h.reflectRead(sid, read)
 		return read, err
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
+	// the delta is seen only once every entry has applied or queued (D8);
+	// a rewind during the apply marks nothing
+	if err := h.reflectRead(sid, read); err != nil {
+		return read, err
+	}
 	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
@@ -361,16 +369,24 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 	return read, nil
 }
 
-// reflectRead marks sid reflected up to the rows read, what the prompt held
-// rather than the count now, which the live session may have grown past. A
-// rewind during the model call cut rows the reply may come from, so then it
-// marks nothing (errRewound). cutMu held.
-func (h *Host) reflectRead(sid string, read []*store.Message) error {
+// reflectHeld reports whether the rows the prompt read still stand: a
+// rewind during the model call cut rows the reply may come from. cutMu held.
+func (h *Host) reflectHeld(sid string, read []*store.Message) error {
 	seen := len(read)
 	if rows, err := h.DB.Messages(sid); err != nil || len(rows) < seen || seen > 0 && rows[seen-1].ID != read[seen-1].ID {
 		return cmp.Or(err, errRewound)
 	}
-	h.reflectSeen(sid, seen)
+	return nil
+}
+
+// reflectRead validates and marks sid reflected up to the rows read, what
+// the prompt held rather than the count now, which the live session may
+// have grown past. cutMu held.
+func (h *Host) reflectRead(sid string, read []*store.Message) error {
+	if err := h.reflectHeld(sid, read); err != nil {
+		return err
+	}
+	h.reflectSeen(sid, len(read))
 	return nil
 }
 
@@ -570,6 +586,7 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 // a bad entry, a near-duplicate or a quote the user never wrote is skipped,
 // never fatal.
 func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
+	var busy map[store.Scope]bool
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
@@ -611,10 +628,31 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			continue
 		}
+		if busy[scope] {
+			// a store another zemi held queued the batch: the rest waits for
+			// review too, never a per-entry lock burn (section 7)
+			if h.queueProposal(res) {
+				queued++
+			} else {
+				skipped++
+			}
+			continue
+		}
 		switch out, err := h.gateMemory(res); {
 		case err != nil:
-			skipped++
-			h.Log.Warn("apply failed", "origin", "reflector", "error", err)
+			// a failed apply queues as a proposal whose accept applies it (D8)
+			if errors.Is(err, brain.ErrLocked) {
+				if busy == nil {
+					busy = map[store.Scope]bool{}
+				}
+				busy[scope] = true
+			}
+			if h.queueProposal(res) {
+				queued++
+			} else {
+				skipped++
+			}
+			h.Log.Warn("apply queued", "origin", "reflector", "error", err)
 		case out.Duplicate != nil || out.Dropped:
 			skipped++
 		case out.ID == "":

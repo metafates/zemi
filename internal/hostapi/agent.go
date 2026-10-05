@@ -1717,6 +1717,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	h.recentStale.Store(true)
 	ag.env = ""
 	ag.memAuto = 0
+	h.reconcileBrain(h.partition(store.ScopeProject))
 	brain, globs := h.brainFor()
 	ag.brain, ag.brainGlobs = brain, globs
 	ag.mu.Unlock()
