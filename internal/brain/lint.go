@@ -25,6 +25,9 @@ func Lint(p Partition) []Finding {
 		out = append(out, Finding{Kind: p.Kind, Text: strip(fmt.Sprintf(format, args...))})
 	}
 	l := Load(p)
+	if l.DirErr != nil {
+		add("%s: %s", p.Dir, errLine(l.DirErr))
+	}
 	for _, e := range l.Entries {
 		switch {
 		case e.Err != nil:
@@ -68,11 +71,13 @@ func Lint(p Partition) []Finding {
 	}
 	lg, err := p.OpenLedger()
 	if err != nil {
+		add("%s: %s", p.DB, errLine(err))
 		return out
 	}
 	defer lg.Close()
 	ops, err := lg.ops()
 	if err != nil {
+		add("%s: %s", p.DB, errLine(err))
 		return out
 	}
 	lintLedger(ops, lines, add)

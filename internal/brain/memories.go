@@ -130,7 +130,19 @@ var ErrUserCut = errors.New("brain: the cut would take a user memory")
 // partition lock (D1).
 func Add(p Partition, sid, text, quote string, origin store.Origin, at time.Time) (Line, error) {
 	l := Line{ID: store.ShortID(), Origin: origin, Date: day(at), Text: text}
-	err := mutate(p, func(_ *Ledger, raw []byte, lines []Line) ([]Line, []*Op, error) {
+	err := mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+		// a colliding id would merge two memories under one key; the old
+		// store refused it at the primary key (store.go's ShortID NOTE)
+		for {
+			trail, err := lg.ByID(l.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(trail) == 0 && !slices.ContainsFunc(lines, func(x Line) bool { return x.ID == l.ID }) {
+				break
+			}
+			l.ID = store.ShortID()
+		}
 		op := &Op{Op: OpAdd, ID: l.ID, Text: text, Quote: quote, SessionID: sid,
 			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: origin, TS: at.UnixMilli()}
 		return append([]Line{l}, lines...), []*Op{op}, nil
@@ -160,7 +172,7 @@ func Edit(p Partition, sid, id, text string, at time.Time) (Line, error) {
 // Supersede removes the line id, its text and the superseding id trailing
 // in the supersede entry (D1); the hot file holds live lines only.
 func Supersede(p Partition, sid, id, byID string, at time.Time) error {
-	return mutate(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+	return mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
 		i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
 		if i < 0 {
 			return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
@@ -168,6 +180,15 @@ func Supersede(p Partition, sid, id, byID string, at time.Time) error {
 		prior := lines[i]
 		op := &Op{Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
 			Hash: textHash(prior.Text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli()}
+		// the quote trails in the supersede entry (D1); the add or import
+		// entry is where it lives
+		if trail, err := lg.ByID(id); err == nil {
+			for _, o := range trail {
+				if o.Quote != "" {
+					op.Quote = o.Quote
+				}
+			}
+		}
 		return slices.Delete(lines, i, i+1), []*Op{op}, nil
 	})
 }

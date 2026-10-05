@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -13,13 +14,13 @@ import (
 func TestLockContention(t *testing.T) {
 	p := testPartition(t)
 	openStore(t, p)
-	// two windows write concurrently; the flock serializes them and no
-	// line is lost (D1)
+	// eight windows write concurrently; the flock serializes them and no
+	// line and no ledger entry is lost (D1)
 	at := time.Now()
 	var wg sync.WaitGroup
-	for i := range 2 {
+	for i := range 8 {
 		wg.Go(func() {
-			sid := "s" + string(rune('0'+i))
+			sid := "s" + strconv.Itoa(i)
 			if _, err := Add(p, sid, "from "+sid, "", "learned", at); err != nil {
 				t.Error(err)
 			}
@@ -30,15 +31,33 @@ func TestLockContention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 2 {
+	if len(lines) != 8 {
 		t.Fatalf("lines = %+v", lines)
 	}
-	sids := map[string]bool{}
+	texts := map[string]bool{}
 	for _, l := range lines {
-		sids[l.Text] = true
+		texts[l.Text] = true
 	}
-	if len(sids) != 2 {
-		t.Fatalf("texts = %v", sids)
+	if len(texts) != 8 {
+		t.Fatalf("texts = %v", texts)
+	}
+	lg, err := p.OpenLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lg.Close()
+	ops, err := lg.ops()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adds := map[string]bool{}
+	for _, op := range ops {
+		if op.Op == OpAdd {
+			adds[op.ID] = true
+		}
+	}
+	if len(adds) != 8 {
+		t.Fatalf("add entries = %v", adds)
 	}
 }
 

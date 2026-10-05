@@ -1,7 +1,9 @@
 package brain
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -42,6 +44,7 @@ type Loaded struct {
 	Partition Partition
 	Entries   []Entry // sorted by name, at most MaxCatalogFiles
 	Over      bool    // the scan hit a ceiling with catalogable files left
+	DirErr    error   // the directory could not be read (a missing one is empty, not this)
 	Mem       []byte  // memories.md's bytes; nil when absent
 	MemErr    error   // memories.md failed to read
 }
@@ -53,7 +56,11 @@ type Loaded struct {
 func Load(p Partition) Loaded {
 	l := Loaded{Partition: p}
 	des, err := os.ReadDir(p.Dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return l
+	}
 	if err != nil {
+		l.DirErr = err
 		return l
 	}
 	names := make([]string, 0, len(des))

@@ -67,7 +67,6 @@ func LockAll(ps ...Partition) (func(), error) {
 		unlocks = append(unlocks, unlock)
 	}
 	return func() {
-		// release in the reverse order the locks were taken
 		for i := len(unlocks) - 1; i >= 0; i-- {
 			unlocks[i]()
 		}

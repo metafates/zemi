@@ -193,7 +193,7 @@ func catalogSections(parts []Loaded, drop int) string {
 			continue
 		}
 		c := Catalog(l)
-		if c == "" && dropped >= drop {
+		if c == "" {
 			continue
 		}
 		b.WriteString("\n### " + k.String() + "\n")

@@ -143,7 +143,9 @@ func (l *Ledger) Insert(op *Op) error {
 
 // Import appends an import entry unless the ledger already holds the id:
 // the tombstone is what keeps a hand-deleted line from re-importing (D1),
-// so replay is idempotent. Reports whether it inserted.
+// so replay is idempotent. Reports whether it inserted. Migration callers
+// hold the partition lock (D1), which makes the check and the insert one
+// step; a lock-free duplicate would write a harmless second tombstone.
 func (l *Ledger) Import(op *Op) (bool, error) {
 	if l.db == nil {
 		return false, errors.New("brain: no store holds the ledger")
