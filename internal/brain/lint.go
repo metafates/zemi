@@ -74,7 +74,7 @@ func Lint(p Partition) []Finding {
 		add("%s: %s", p.DB, errLine(err))
 		return out
 	}
-	defer lg.Close()
+	defer func() { _ = lg.Close() }()
 	ops, err := lg.ops()
 	if err != nil {
 		add("%s: %s", p.DB, errLine(err))

@@ -22,19 +22,25 @@ func TestLedger(t *testing.T) {
 		}
 		defer lg.Close()
 
-		a := &Op{ID: "abcd2345", Op: OpAdd, Text: "one", Hash: textHash("one"),
-			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli()}
-		b := &Op{ID: "efgh6789", Op: OpAdd, Text: "two", Hash: textHash("two"),
-			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli()}
+		a := &Op{
+			ID: "abcd2345", Op: OpAdd, Text: "one", Hash: textHash("one"),
+			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
+		}
+		b := &Op{
+			ID: "efgh6789", Op: OpAdd, Text: "two", Hash: textHash("two"),
+			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
+		}
 		for _, op := range []*Op{a, b} {
 			if err := lg.Insert(op); err != nil {
 				t.Fatal(err)
 			}
 		}
 		// an edit makes the prior text trail
-		e := &Op{ID: "abcd2345", Op: OpEdit, Text: "one, moved", PriorText: "one",
+		e := &Op{
+			ID: "abcd2345", Op: OpEdit, Text: "one, moved", PriorText: "one",
 			Hash: textHash("one, moved"), Scope: store.ScopeProject,
-			Origin: store.OriginLearned, TS: at.Add(time.Hour).UnixMilli()}
+			Origin: store.OriginLearned, TS: at.Add(time.Hour).UnixMilli(),
+		}
 		if err := lg.Insert(e); err != nil {
 			t.Fatal(err)
 		}
@@ -54,8 +60,10 @@ func TestLedger(t *testing.T) {
 			t.Fatalf("trail = %+v, %v", trail, err)
 		}
 		// the prior bytes of a write op round-trip, truncation flag included
-		w := &Op{ID: "repo-map.md", Op: OpWrite, Prior: []byte(strings.Repeat("x", ContentCap+1)),
-			Truncated: true, Existed: true, Scope: store.ScopeProject, TS: at.UnixMilli()}
+		w := &Op{
+			ID: "repo-map.md", Op: OpWrite, Prior: []byte(strings.Repeat("x", ContentCap+1)),
+			Truncated: true, Existed: true, Scope: store.ScopeProject, TS: at.UnixMilli(),
+		}
 		if err := lg.Insert(w); err != nil {
 			t.Fatal(err)
 		}
@@ -76,15 +84,19 @@ func TestLedger(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer lg.Close()
-		op := &Op{ID: "abcd2345", Text: "one", Hash: textHash("one"), Quote: "I said so",
+		op := &Op{
+			ID: "abcd2345", Text: "one", Hash: textHash("one"), Quote: "I said so",
 			SessionID: "sess1234", Scope: store.ScopeProject, Origin: store.OriginLearned,
-			CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli()}
+			CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli(),
+		}
 		inserted, err := lg.Import(op)
 		if err != nil || !inserted || op.Op != OpImport {
 			t.Fatalf("first import = %t, %v (op %s)", inserted, err, op.Op)
 		}
-		inserted, err = lg.Import(&Op{ID: "abcd2345", Text: "one", Hash: textHash("one"),
-			Scope: store.ScopeProject, Origin: store.OriginLearned})
+		inserted, err = lg.Import(&Op{
+			ID: "abcd2345", Text: "one", Hash: textHash("one"),
+			Scope: store.ScopeProject, Origin: store.OriginLearned,
+		})
 		if err != nil || inserted {
 			t.Fatalf("replay import = %t, %v", inserted, err)
 		}

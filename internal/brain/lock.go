@@ -67,8 +67,8 @@ func LockAll(ps ...Partition) (func(), error) {
 		unlocks = append(unlocks, unlock)
 	}
 	return func() {
-		for i := len(unlocks) - 1; i >= 0; i-- {
-			unlocks[i]()
+		for _, unlock := range slices.Backward(unlocks) {
+			unlock()
 		}
 	}, nil
 }

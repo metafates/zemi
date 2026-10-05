@@ -143,8 +143,10 @@ func Add(p Partition, sid, text, quote string, origin store.Origin, at time.Time
 			}
 			l.ID = store.ShortID()
 		}
-		op := &Op{Op: OpAdd, ID: l.ID, Text: text, Quote: quote, SessionID: sid,
-			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: origin, TS: at.UnixMilli()}
+		op := &Op{
+			Op: OpAdd, ID: l.ID, Text: text, Quote: quote, SessionID: sid,
+			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: origin, TS: at.UnixMilli(),
+		}
 		return append([]Line{l}, lines...), []*Op{op}, nil
 	})
 	return l, err
@@ -162,8 +164,10 @@ func Edit(p Partition, sid, id, text string, at time.Time) (Line, error) {
 		}
 		prior := lines[i]
 		out = Line{ID: id, Origin: prior.Origin, Date: day(at), Text: text}
-		op := &Op{Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
-			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli()}
+		op := &Op{
+			Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
+			Hash: textHash(text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli(),
+		}
 		return append([]Line{out}, slices.Delete(lines, i, i+1)...), []*Op{op}, nil
 	})
 	return out, err
@@ -178,8 +182,10 @@ func Supersede(p Partition, sid, id, byID string, at time.Time) error {
 			return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
 		}
 		prior := lines[i]
-		op := &Op{Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
-			Hash: textHash(prior.Text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli()}
+		op := &Op{
+			Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
+			Hash: textHash(prior.Text), Scope: p.Kind.Scope(), Origin: prior.Origin, TS: at.UnixMilli(),
+		}
 		// the quote trails in the supersede entry (D1); the add or import
 		// entry is where it lives
 		if trail, err := lg.ByID(id); err == nil {
@@ -236,8 +242,10 @@ func Cut(p Partition, sid string, extra int, at time.Time) ([]string, error) {
 			}
 			used -= LineSize(oldest.Text)
 			cut = append(cut, oldest.ID)
-			ops = append(ops, &Op{Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: sid,
-				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli()})
+			ops = append(ops, &Op{
+				Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: sid,
+				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
+			})
 		}
 		if len(cut) == 0 {
 			return lines, nil, nil
@@ -289,7 +297,7 @@ func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next 
 	if err != nil {
 		return err
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	next, ops, err := change(l, raw, lines)
 	if err != nil {
 		return err

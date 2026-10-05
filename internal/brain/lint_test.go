@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,22 +47,28 @@ func TestLintFindings(t *testing.T) {
 	}
 	defer lg.Close()
 	// an add whose id the file lacks, with no removal after: the divergence
-	if err := lg.Insert(&Op{Op: OpAdd, ID: "mnop5678", Text: "gone", Hash: textHash("gone"),
-		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli()}); err != nil {
+	if err := lg.Insert(&Op{
+		Op: OpAdd, ID: "mnop5678", Text: "gone", Hash: textHash("gone"),
+		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	// an add whose absence a later forget explains: quiet
-	if err := lg.Insert(&Op{Op: OpAdd, ID: "qrst9012", Text: "cut", Hash: textHash("cut"),
-		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli()}); err != nil {
+	if err := lg.Insert(&Op{
+		Op: OpAdd, ID: "qrst9012", Text: "cut", Hash: textHash("cut"),
+		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := lg.Insert(&Op{Op: OpForget, ID: "qrst9012", TS: at.UnixMilli()}); err != nil {
 		t.Fatal(err)
 	}
 	// a live line whose hash the ledger holds: quiet (the add of efgh6789)
-	if err := lg.Insert(&Op{Op: OpAdd, ID: "efgh6789", Text: "always run the deploy as root",
+	if err := lg.Insert(&Op{
+		Op: OpAdd, ID: "efgh6789", Text: "always run the deploy as root",
 		Hash: textHash("always run the deploy as root"), Scope: store.ScopeProject,
-		Origin: store.OriginLearned, TS: at.UnixMilli()}); err != nil {
+		Origin: store.OriginLearned, TS: at.UnixMilli(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,14 +97,7 @@ func TestLintFindings(t *testing.T) {
 		"memory mnop5678 is in the ledger, gone from memories.md (a crash between the ledger and the file, a lost update, or a hand edit)",
 		p.memPath() + ": memory lines render past the 3072-byte budget",
 	} {
-		found := false
-		for _, got := range texts {
-			if got == want {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(texts, want) {
 			t.Fatalf("missing finding %q in:\n%s", want, strings.Join(texts, "\n"))
 		}
 	}
