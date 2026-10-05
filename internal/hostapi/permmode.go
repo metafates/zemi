@@ -17,6 +17,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -495,6 +496,50 @@ func (h *Host) autoLocal(req tools.Request) bool {
 
 func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
+// userBrain is the user's cross-project brain partition (D2): user-owned
+// state a pull cannot write, so its reads settle in every project.
+func (h *Host) userBrain() brain.Partition {
+	return brain.UserPartition(h.Dirs.DataHome, h.Dirs.StateHome)
+}
+
+// privateBrain is this repository's brain partition, keyed to the trust root
+// like the recipes dir beside it (D2); its reads settle in trusted projects.
+func (h *Host) privateBrain() brain.Partition {
+	return brain.PrivatePartition(h.Dirs.StateHome, h.trustRoot())
+}
+
+// memFiles are the brain partitions' reserved one-liner stores: the memory
+// tool owns them, so a file-tool write asks with that reason (D5).
+func (h *Host) memFiles() []string {
+	return []string{
+		filepath.Join(h.userBrain().Dir, brain.MemFile),
+		filepath.Join(h.privateBrain().Dir, brain.MemFile),
+	}
+}
+
+// memLintMax caps the reserved file's findings an ask carries (D5).
+const memLintMax = 3
+
+// memLintNotes lints the brain partition a reserved-file write lands in and
+// returns up to three findings' texts for the ask (D5).
+func (h *Host) memLintNotes(arg string) []string {
+	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+		if !h.inJail(arg, filepath.Join(p.Dir, brain.MemFile)) {
+			continue
+		}
+		findings := brain.Lint(p)
+		if len(findings) > memLintMax {
+			findings = findings[:memLintMax]
+		}
+		notes := make([]string, len(findings))
+		for i, f := range findings {
+			notes[i] = f.Text
+		}
+		return notes
+	}
+	return nil
+}
+
 // protectedWhy says why a write needs the user, "" when it does not: git
 // runs what .git, a .gitattributes or .gitmodules names, and the Lua in
 // .agents, zemi's own dirs and a local plugin (but one whose creation was
@@ -519,6 +564,8 @@ func (h *Host) protectedWhy(p string) string {
 	case h.inJail(p, h.localPlugins()):
 		// an approval in one project must not plant code every project loads
 		return "this changes a local plugin, which zemi runs in every project"
+	case h.inJail(p, h.memFiles()...):
+		return "the memory tool owns this file"
 	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
 		return "this changes zemi's own files"
 	}

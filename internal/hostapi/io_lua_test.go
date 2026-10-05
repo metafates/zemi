@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -182,5 +183,57 @@ func TestEditRepoRoot(t *testing.T) {
 			local file = "`+root+`/a.txt"
 			assert(not pcall(zemi.fs.write, file, "x"), "write")
 			assert(pcall(zemi.ui.edit, file, {}, function() end) == `+trusted+`, "edit, trusted `+trusted+`")`)
+	}
+}
+
+// TestBrainReadJails: the user brain's reads settle in every project, the
+// private brain's only in a trusted one (D2); no brain root enters the write
+// jail, so a brain write never auto-settles.
+func TestBrainReadJails(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	user := filepath.Join(h.userBrain().Dir, "style.md")
+	private := filepath.Join(h.privateBrain().Dir, "repo-map.md")
+	for _, c := range []struct {
+		name         string
+		trusted      bool
+		subject, arg string
+		want         perm.Decision // fsDefault, the every-mode floor
+		auto         bool          // autoLocal, what auto mode settles
+	}{
+		{"user brain read, untrusted", false, "fs.read", user, perm.Allow, true},
+		{"user brain read, trusted", true, "fs.read", user, perm.Allow, true},
+		{"private brain read, untrusted", false, "fs.read", private, perm.Ask, false},
+		{"private brain read, trusted", true, "fs.read", private, perm.Allow, true},
+		{"user brain write", true, "fs.write", user, perm.Ask, false},
+		{"private brain write", true, "fs.write", private, perm.Ask, false},
+	} {
+		h.SetProjectTrusted(c.trusted)
+		if got := h.fsDefault(c.subject, c.arg); got != c.want {
+			t.Errorf("%s: default %v, want %v", c.name, got, c.want)
+		}
+		if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != c.auto {
+			t.Errorf("%s: auto %v, want %v", c.name, got, c.auto)
+		}
+	}
+}
+
+// TestLuaFsWriteBrainRefused: a brain path is in no write jail, so a Lua
+// write dies at jail resolution and is never asked (D2, row 16).
+func TestLuaFsWriteBrainRefused(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
+	mem := filepath.Join(h.userBrain().Dir, brain.MemFile)
+	runUser(t, r, `
+		for _, file in ipairs({ "`+mem+`", "`+h.privateBrain().Dir+`/repo-map.md" }) do
+			local ok, err = pcall(zemi.fs.write, file, "x")
+			assert(not ok and tostring(err):find("outside the jail"), file .. ": " .. tostring(err))
+		end
+	`)
+	if len(ui.asked) != 0 {
+		t.Errorf("a brain write reached the user: %+v", ui.asked)
 	}
 }
