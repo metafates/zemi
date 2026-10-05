@@ -182,6 +182,17 @@ func (l *Ledger) Latest() ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
+// Session is the ops session sid wrote between from and until (millis),
+// oldest first: rewind's forgetLearned replays them (section 7).
+func (l *Ledger) Session(sid string, from, until int64) ([]*Op, error) {
+	if l.db == nil {
+		return nil, nil
+	}
+	rows, err := l.db.Query(`SELECT `+opCols+` FROM memory_ops
+		WHERE session_id = ? AND ts BETWEEN ? AND ? ORDER BY rowid`, sid, from, until)
+	return collectOps(rows, err)
+}
+
 // ops is every entry, oldest first; lint replays it (D6).
 func (l *Ledger) ops() ([]*Op, error) {
 	if l.db == nil {

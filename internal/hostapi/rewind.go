@@ -23,6 +23,8 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -160,6 +162,16 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if len(cps) > 0 {
 		h.lspDirty() // a restore rewrites files behind the language servers' backs
 	}
+	// the locks come before any truncation or restore (section 7): a store
+	// another zemi holds aborts the rewind with both intact
+	h.cutMu.Lock()
+	user, private := h.brainParts()
+	unlockBrain, err := brain.LockAll(private, user)
+	if err != nil {
+		h.cutMu.Unlock()
+		return 0, fmt.Errorf("rewind aborted: %w", err)
+	}
+	defer unlockBrain()
 	for _, cp := range cps {
 		if err := restoreCheckpoint(cp); err != nil {
 			failed = append(failed, cp.Path+": "+err.Error())
@@ -168,11 +180,10 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if len(failed) > 0 {
 		return 0, fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 	}
-	h.cutMu.Lock()
+	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
 	err = h.DB.TruncateMessages(sid, id)
 	if err == nil {
 		h.clampReflectSeen(sid, cut)
-		h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
 	}
 	h.cutMu.Unlock()
 	if err != nil {
@@ -204,12 +215,14 @@ func (h *Host) RewindTo(id string) (int, error) {
 }
 
 // forgetLearned undoes what session sid learned from its rows from to until:
-// its learned memories and pending proposals go, and what they replaced is
-// live again. The user's own memories stay, and a learned forget cannot come
-// back. A memory tool write lands before its step's rows; a reflector run or
-// an accepted proposal after the last row is kept.
+// its learned memories and pending proposals go, and what they replaced or
+// the budget cut is live again. The frozen-table halves keep covering the
+// pre-migration rows (section 7); the ledger SELECT replays the session's
+// ops onto the files, forget entries per removed id (D1, D7), and restores
+// its file-mode writes newest-first, ending at the oldest entry's prior
+// bytes. The rewind holds cutMu and the partition locks (section 7).
 // NOTE: an accept or a reflector run between two rewound rows goes too.
-func (h *Host) forgetLearned(sid string, from, until int64) {
+func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) {
 	var gone []string
 	dbs := []*store.DB{h.DB, h.GlobalDB}
 	for _, db := range dbs {
@@ -229,7 +242,113 @@ func (h *Host) forgetLearned(sid string, from, until int64) {
 			}
 		}
 	}
+	user, private := h.brainParts()
+	parts := []brain.Partition{private, user}
+	// drop collects the ids each partition loses: a move-out in one
+	// partition removes the line from the other (section 7)
+	drop := map[brain.Kind][]string{brain.Private: nil, brain.User: nil}
+	var writes []*brain.Op
+	for _, p := range parts {
+		if p.Zero() {
+			continue
+		}
+		lg, err := p.OpenLedger()
+		if err != nil {
+			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			continue
+		}
+		ops, err := lg.Session(sid, from, until)
+		if err != nil {
+			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			_ = lg.Close()
+			continue
+		}
+		var add []brain.Line
+		for _, op := range ops {
+			switch op.Op {
+			case brain.OpAdd, brain.OpMoveIn:
+				if op.Origin == store.OriginLearned {
+					drop[p.Kind] = append(drop[p.Kind], op.ID)
+				}
+			case brain.OpMoveOut:
+				if op.Origin == store.OriginLearned {
+					if p.Kind == brain.User {
+						drop[brain.Private] = append(drop[brain.Private], op.ID)
+					} else {
+						drop[brain.User] = append(drop[brain.User], op.ID)
+					}
+				}
+			case brain.OpSupersede, brain.OpArchive:
+				// the line comes back with its last write's age (D1)
+				date := time.UnixMilli(op.TS).UTC()
+				if trail, err := lg.ByID(op.ID); err == nil {
+					for _, o := range slices.Backward(trail) {
+						if o.Op == brain.OpAdd || o.Op == brain.OpEdit || o.Op == brain.OpImport || o.Op == brain.OpMoveIn {
+							date = time.UnixMilli(o.TS).UTC()
+							break
+						}
+					}
+				}
+				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: date, Text: op.Text})
+			case brain.OpWrite:
+				writes = append(writes, op)
+			}
+		}
+		if err := brain.Restore(p, sid, add, drop[p.Kind], h.now()); err != nil {
+			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+		}
+		_ = lg.Close()
+	}
+	h.restoreBrainWrites(private, user, writes, cps)
+	ag := h.agents
+	ag.mu.Lock()
+	ag.brainWrites = nil // the session wrote nothing that survives the rewind
+	ag.mu.Unlock()
 	h.refreshPending()
+}
+
+// restoreBrainWrites rewinds the session's file-mode brain writes: the
+// oldest op's prior bytes win, a creation deletes its file, and a truncated
+// prior defers to the file-tool checkpoint the restore loop already wrote
+// (section 7). The rewind holds the partition locks.
+func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) {
+	oldest := map[string]*brain.Op{}
+	for _, op := range writes {
+		if _, ok := oldest[op.ID]; !ok {
+			oldest[op.ID] = op
+		}
+	}
+	for name, op := range oldest {
+		p := private
+		if op.Scope == store.ScopeUser {
+			p = user
+		}
+		path := filepath.Join(p.Dir, name)
+		if op.Truncated {
+			skip := false
+			for _, cp := range cps {
+				if cp.Path == path {
+					skip = true // the checkpoint's pre-turn bytes are the fuller truth
+					break
+				}
+			}
+			if skip {
+				continue
+			}
+			h.Notify(slog.LevelWarn, "File partly restored", filepath.Base(path)+" rewound to its first 32 KiB only")
+		}
+		var err error
+		if !op.Existed {
+			if err = os.Remove(path); errors.Is(err, fs.ErrNotExist) {
+				err = nil
+			}
+		} else {
+			err = config.WriteFileAtomic(path, op.Prior, 0o600)
+		}
+		if err != nil {
+			h.Log.Warn("brain file not rewound", "origin", "rewind", "path", path, "error", err)
+		}
+	}
 }
 
 // todosIn is the todo list the last todos call in rows that ran set.
