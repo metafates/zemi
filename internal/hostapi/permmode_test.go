@@ -15,6 +15,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -690,5 +691,94 @@ func TestYoloToggle(t *testing.T) {
 					for _, row in ipairs(zemi.permission.mode.list()) do assert(row.active == nil) end`, want))
 			}
 		})
+	}
+}
+
+// TestBrainWritesProtected: a file-tool write to a state-dir brain path is a
+// protected ask no store rule, mode rule or decide settles, in every mode
+// yolo aside; the reserved file names its owner, a freeform file zemi's own
+// files (D2, rows 16-17). The lsp rename asks like the write it is.
+func TestBrainWritesProtected(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	proj := perm.RealPath(h.Dirs.ProjectDir)
+	userMem := filepath.Join(perm.RealPath(h.userBrain().Dir), brain.MemFile)
+	userFile := filepath.Join(perm.RealPath(h.userBrain().Dir), "style.md")
+	privateMem := filepath.Join(perm.RealPath(h.privateBrain().Dir), brain.MemFile)
+	privateFile := filepath.Join(perm.RealPath(h.privateBrain().Dir), "repo-map.md")
+	for _, root := range []string{h.Dirs.StateHome, h.Dirs.DataHome, proj} {
+		h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(root), "*"), Decision: perm.Allow, Principal: "model"})
+	}
+	runUser(t, r, `zemi.permission.mode.add("open", { base = "auto", rules = { { "fs.write", "*", "allow" } } })`)
+	runUser(t, r, `zemi.permission.mode.add("decider", { base = "auto", decide = function() return "allow" end })`)
+	// the rename's write request, shaped as lspRequests builds it (lsp_tool.go:45)
+	rename := []tools.Request{{Subject: "fs.write", Arg: userMem, Reason: "rename a to b"}}
+	pipe := h.PipelineFor()
+	for _, c := range []struct {
+		name, mode, why string
+		req             tools.Request
+	}{
+		{"user memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
+		{"user freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: userFile}},
+		{"private memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: privateMem}},
+		{"private freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: privateFile}},
+		{"mode rule", "open", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
+		{"decide", "decider", "", tools.Request{Subject: "fs.write", Arg: userMem}},
+		{"lsp rename", "auto", "the memory tool owns this file", rename[0]},
+	} {
+		if err := h.SetPermMode(c.mode); err != nil {
+			t.Fatal(err)
+		}
+		v := pipe.Check(c.req)
+		if v.Decision != perm.Deny || c.why != "" && !strings.Contains(v.Reason, c.why) {
+			t.Errorf("%s (%s): %s %q, want deny%s", c.name, c.mode, v.Decision, v.Reason, " naming "+c.why)
+		}
+	}
+}
+
+// TestBrainAskNotes: a brain ask notes outside text only when the session
+// read any, and a memories.md ask carries the file's open lint findings, at
+// most three (D5).
+func TestBrainAskNotes(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	ui := &fakeUI{askAllowed: true, askBy: "user:once"}
+	h.SetUIHooks(ui)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	sid := seedSession(t, h)
+	mem := filepath.Join(h.userBrain().Dir, brain.MemFile)
+	memDir := filepath.Dir(mem)
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// four malformed lines: three findings ride the ask, the fourth is cut
+	if err := os.WriteFile(mem, []byte("one\ntwo\nthree\nfour\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ask := func(arg string) string {
+		before := len(ui.asked)
+		if ok, _, _ := h.askHook()(tools.Request{Subject: "fs.write", Arg: arg}); !ok {
+			t.Fatalf("%s: the ask was not allowed", arg)
+		}
+		if len(ui.asked) != before+1 {
+			t.Fatalf("%s: asked %+v", arg, ui.asked)
+		}
+		return ui.asked[before].Reason
+	}
+	local := ask(mem)
+	if !strings.Contains(local, "the memory tool owns this file") ||
+		!strings.Contains(local, "line 3 is not a memory line") ||
+		strings.Contains(local, "line 4 is not a memory line") ||
+		strings.Contains(local, "outside the machine") {
+		t.Errorf("a local-only session's memories.md ask: %q", local)
+	}
+	if r := ask(filepath.Join(memDir, "style.md")); strings.Contains(r, "outside the machine") || strings.Contains(r, "not a memory line") {
+		t.Errorf("a freeform brain ask: %q", r)
+	}
+	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true)
+	if r := ask(mem); !strings.Contains(r, "outside the machine") {
+		t.Errorf("a session that fetched: %q", r)
 	}
 }
