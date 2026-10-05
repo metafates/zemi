@@ -822,16 +822,15 @@ func (h *Host) UserSpoke() {
 	ag.spokeClose()
 }
 
-// spokeClose releases every call waiting on this turn's signal (ag.mu held);
-// one already closed is left alone, since the signal is spent for the turn.
+// spokeClose raises this turn's signal (ag.mu held), so a call that waits on it
+// later hears it too; one already closed is left alone, since the signal is
+// spent for the turn.
 func (ag *agentHost) spokeClose() {
-	if ag.spoke == nil {
-		return
-	}
+	spoke := ag.spokeLocked()
 	select {
-	case <-ag.spoke: // this turn's calls already heard it
+	case <-spoke: // this turn's calls already heard it
 	default:
-		close(ag.spoke)
+		close(spoke)
 	}
 }
 
