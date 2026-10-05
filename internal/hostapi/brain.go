@@ -112,7 +112,6 @@ func (h *Host) brainLoopText(user, private brain.Partition) string {
 // names and the Read If it quotes.
 type brainGlob struct {
 	pattern string
-	file    string // the brain file's path in its partition
 	name    string
 	readIf  string
 }
@@ -129,8 +128,7 @@ func brainGlobs(l brain.Loaded) []brainGlob {
 		for _, pattern := range e.FM.Paths {
 			out = append(out, brainGlob{
 				pattern: pattern,
-				file:    filepath.Join(l.Partition.Dir, e.Name),
-				name:    e.Name,
+				name:    brain.Normalize(e.Name),
 				readIf:  read,
 			})
 		}
@@ -167,7 +165,7 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 	ag.readMu.Lock()
 	defer ag.readMu.Unlock()
 	var lines []string
-	extra := 0
+	more := map[string]bool{}
 	for _, g := range globs {
 		if !matchAny(g.pattern, forms) {
 			continue
@@ -180,7 +178,7 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 			continue
 		}
 		if len(lines) == 3 {
-			extra++
+			more[g.name] = true
 			continue
 		}
 		if ag.instr == nil {
@@ -189,8 +187,8 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 		ag.instr[line] = true
 		lines = append(lines, line)
 	}
-	if extra > 0 {
-		lines = append(lines, fmt.Sprintf("zemi: %d more brain files map this path; the catalog names them.", extra))
+	if len(more) > 0 {
+		lines = append(lines, fmt.Sprintf("zemi: %d more brain files map this path; the catalog names them.", len(more)))
 	}
 	return strings.Join(lines, "\n")
 }

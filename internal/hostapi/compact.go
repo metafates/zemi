@@ -371,7 +371,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	return nil
 }
 
-// compactDone installs the post-compaction estimate, re-pins the digest,
+// compactDone installs the post-compaction estimate, re-pins the brain render,
 // drops the pinned prompt and has the next step judge the result; a manual
 // success re-enables auto compaction.
 func (h *Host) compactDone(used int64, manual bool) {

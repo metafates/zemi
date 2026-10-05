@@ -205,9 +205,9 @@ type agentHost struct {
 	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
 
 	// brain is the # Brain section, pinned at session open (D4) and rebuilt
-	// only at compaction, brainGlobs the pointer table built with it;
-	// memAuto counts auto-applied memories against the session cap (memory
-	// proposals persist in the store).
+	// at compaction and a mid-session trust flip, brainGlobs the pointer
+	// table built with it; memAuto counts auto-applied memories against the
+	// session cap (memory proposals persist in the store).
 	brain      string
 	brainGlobs []brainGlob
 	memAuto    int
@@ -631,7 +631,7 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		{"instructions", p.instructions},
 		{"lua", p.lua},
 		{"skills", p.skills},
-		{"memory", p.brain},
+		{"brain", p.brain},
 	}
 }
 

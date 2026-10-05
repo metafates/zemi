@@ -473,7 +473,7 @@ func TestMemoryDelOriginGate(t *testing.T) {
 
 // TestDigestAtSessionStart covers §10.7: the session's prompt carries the
 // memories it started with (TestPromptPinned keeps later ones out).
-func TestDigestAtSessionStart(t *testing.T) {
+func TestBrainAtSessionStart(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 

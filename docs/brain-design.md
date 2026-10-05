@@ -182,7 +182,9 @@ One rule per surface, no protocol:
   no byte from the private partition's catalog, map files or findings - the digest-equivalent memory
   lines and the loop's root naming are the exceptions - no repo path in any warning; the user
   partition is the only one linted untrusted. The `## Memory` lines are byte-equal to today's digest
-  lines (digest.go:51) under the same scope headings when the store is healthy; the digest's
+  lines (digest.go:51) under the same scope headings when the store is healthy - the age computed
+  from the line's day-granular last-write date, D1's own semantics, so a row written in the last two
+  days can read a day older than the digest's timestamp math; the digest's
   `# Memory` H1 (digest.go:18) is not duplicated - `## Memory` replaces it.
 
 Writes from untrusted or outside-text sessions always queue and inject only on the user's accept -
@@ -489,7 +491,7 @@ of Markdown; every cut marker names a path):
 
 ## 4. Injection
 
-One section, one hash, in the context message - after project instructions, before the skills index:
+One section, one hash, in the context message, in the slot the memory digest held - after the environment:
 
 ```
 # Brain

@@ -552,7 +552,7 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 }
 
 // environmentPrompt describes the machine and repository. It is pinned per
-// session and again after a compaction, like the digest, so a changing git
+// session and again after a compaction, like the # Brain section, so a changing git
 // status does not bust the prompt cache every turn; environmentFor fills
 // in what the run and trust decide.
 func (h *Host) environmentPrompt() string {
