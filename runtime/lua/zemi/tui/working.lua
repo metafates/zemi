@@ -30,10 +30,10 @@ zemi.ui.widget.add({
 		-- each part with its worth and the cells it grows to: a narrow rule
 		-- sheds the least worth first, sized by what a part grows to, so a
 		-- ticking clock never sheds one mid-turn
-		---@type { [1]: zemi.Line, [2]: integer, [3]: integer?, center: boolean? }[]
+		---@type { [1]: zemi.Line, [2]: integer, [3]: integer?, center: boolean? } []
 		local parts = {}
 		---@param text string
-		---@param hl string?
+		---@param hl   string?
 		---@return zemi.Line
 		local function plain(text, hl) return { { text = text, hl = hl or "Dim" } } end
 		local state = "idle"
@@ -49,7 +49,7 @@ zemi.ui.widget.add({
 		-- means there: the name takes the row's centre, the key the rule's right
 		-- end, and the key is worth more than the name so a narrow rule keeps it
 		if ctx.view then
-			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5, center = true }
+			parts[#parts + 1] = { plain(ctx.view.agent, "Title"), 5, center = true }
 			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
 		end
 		if not ctx.agent_active then

@@ -1646,7 +1646,7 @@ func TestWorkingRowAgentView(t *testing.T) {
 	// centred: the run's own name on the rule, not the agent that ran it, a cell
 	// of rule either side of it and the block at the rule's end
 	centred := func(r string) bool {
-		left, right, ok := strings.Cut(r, "viewing explore the repo")
+		left, right, ok := strings.Cut(r, "explore the repo")
 		rule, tail, found := strings.Cut(right, " esc back ")
 		if !ok || !found || strings.Trim(rule, "─ ") != "" || tail != "" {
 			return false
