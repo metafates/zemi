@@ -3,6 +3,8 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -119,6 +122,31 @@ func TestHealthChecks(t *testing.T) {
 		if m := it.(map[string]any); m["text"] == "store" && m["detail"] != nil {
 			t.Fatalf("a fine short row opens a detail view: %v", m)
 		}
+	}
+}
+
+// TestHealthBrainRow: a malformed memories.md line makes the brain row warn,
+// &
+// action opens /memory.
+func TestHealthBrainRow(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetProjectTrusted(true)
+	_, private := h.brainParts()
+	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(private.Dir, brain.MemFile),
+		[]byte("not a memory line\n- [abcd2345 learned 2026-10-05] tabs over spaces\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]HealthRow{}
+	for _, r := range h.HealthRows() {
+		rows[r.Name] = r
+	}
+	row := rows["brain"]
+	if row.Level != HealthWarn || row.Run != "memory" ||
+		!strings.Contains(row.Detail, "memories.md: line 1 is not a memory line") || !strings.Contains(row.Detail, "1 learned, 0 yours") {
+		t.Fatalf("brain row = %+v", row)
 	}
 }
 
