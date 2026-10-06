@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"os"
@@ -112,10 +113,11 @@ func TestRewind(t *testing.T) {
 	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
 	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1, UpdatedAt: last + 1}
 	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
-	if _, _, err := brain.Apply(private, *old, "", time.UnixMilli(1)); err != nil {
+	oldLine, _, err := brain.Apply(private, *old, "", time.UnixMilli(1))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := brain.Apply(private, *learned, old.ID, time.UnixMilli(last)); err != nil {
+	if _, _, err := brain.Apply(private, *learned, oldLine.ID, time.UnixMilli(last)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := brain.Apply(private, *reflected, "", time.UnixMilli(last+1)); err != nil {
@@ -125,14 +127,23 @@ func TestRewind(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a pre-migration row the next open imported: the op ts is the migration
-	// moment, the frozen row's created_at is the session's turn
+	// moment, the frozen row's created_at is the session's turn. Its id and
+	// the frozen row's hold only IDShape letters: an off-shape id would ride
+	// memories.md as a bad line no rewind sees.
 	migrated := &store.Memory{
-		ID: "mig01aaa", Scope: "project", Text: "migrated", Origin: "learned",
+		ID: "m1g01aaa", Scope: "project", Text: "migrated", Origin: "learned",
 		ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last,
 	}
 	if err := brain.Reconcile(private, []*store.Memory{migrated}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	// the frozen row that row superseded pre-swap: no op carries it, the
+	// rewind reads the frozen table to bring it back
+	frozenOld := &store.Memory{
+		ID: "01dfrzn1", Scope: "project", Text: "frozen old", Origin: "learned",
+		ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last, SupersededBy: "m1g01aaa",
+	}
+	seedFrozen(t, private, frozenOld)
 	for _, at := range []int64{last, last + 1} {
 		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid}, json.Deterministic(true))
 		if err := h.DB.AddProposal(&store.Proposal{Payload: string(payload), CreatedAt: at}); err != nil {
@@ -190,11 +201,28 @@ func TestRewind(t *testing.T) {
 	for _, l := range lines {
 		texts = append(texts, l.Text)
 	}
-	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
-		t.Fatalf("memories %q and %d proposals, want mine, old and reflected and one", texts, len(h.memoryProposals()))
+	if slices.Sort(texts); !slices.Equal(texts, []string{"frozen old", "mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
+		t.Fatalf("memories %q and %d proposals, want frozen old, mine, old and reflected and one", texts, len(h.memoryProposals()))
 	}
 	if _, err := h.RewindTo(prompts[0]); err == nil {
 		t.Fatal("rewinding to a removed prompt must fail")
+	}
+}
+
+// seedFrozen inserts a frozen-table row the way the pre-brain store's write
+// path did - the table's only writer now (section 7).
+func seedFrozen(t *testing.T, p brain.Partition, m *store.Memory) {
+	t.Helper()
+	db, err := sql.Open("sqlite", p.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO memory
+		(id, scope, text, quote, provenance_session_id, created_at, updated_at, superseded_by, origin)
+		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`,
+		m.ID, m.Scope, m.Text, m.ProvenanceSessionID, m.CreatedAt, m.UpdatedAt, m.SupersededBy, m.Origin); err != nil {
+		t.Fatal(err)
 	}
 }
 

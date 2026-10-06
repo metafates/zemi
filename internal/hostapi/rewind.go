@@ -219,8 +219,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 // the budget cut is live again. The ledger SELECT replays the session's ops
 // onto the files, forget entries per removed id (D1, D7), and restores its
 // file-mode writes newest-first, ending at the oldest entry's prior bytes;
-// the frozen table is read-only trail, its rows covered by their import
-// entries. The rewind holds cutMu and the partition locks (section 7).
+// the frozen table is read-only trail, a live row's import entry replaying
+// as the add it stands for and a frozen row the import superseded coming
+// back too (D9). The rewind holds cutMu and the partition locks (section 7).
 // NOTE: an accept or a reflector run between two rewound rows goes too.
 func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) {
 	dbs := []*store.DB{h.DB, h.GlobalDB}
@@ -299,6 +300,27 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
 			case brain.OpWrite:
 				writes = append(writes, op)
+			}
+		}
+		// a pre-migration supersede has no op to replay: the frozen row the
+		// dropped import retired comes back with the row's own text and age
+		// (D9); one the session dropped itself stays gone
+		if len(drop[p.Kind]) > 0 {
+			db := h.DB
+			if p.Kind == brain.User {
+				db = h.GlobalDB
+			}
+			if db != nil {
+				frozen, err := db.ListMemory(p.Kind.Scope(), true)
+				if err != nil {
+					h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+				}
+				for _, m := range frozen {
+					if !slices.Contains(drop[p.Kind], m.SupersededBy) || slices.Contains(drop[p.Kind], m.ID) {
+						continue
+					}
+					add = append(add, brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text})
+				}
 			}
 		}
 		if err := brain.RestoreLocked(p, sid, add, drop[p.Kind], h.now()); err != nil {

@@ -658,7 +658,9 @@ allowlist unchanged.
   the shape `DeleteLearnedBetween` nearly is today) - and keeps both halves of today's version
   (rewind.go:206-233) plus the two the new store adds: supersedes in the range
   re-prepend the superseded line from the ledger entry's prior text (today's Unsupersede,
-  rewind.go:225-231; an entry without prior text - an id only the ledger held - restores nothing);
+  rewind.go:225-231; an entry without prior text - an id only the ledger held - restores nothing;
+  a dropped import re-prepends the frozen row its superseded_by retired, the pre-migration
+  supersede whose op the swap left behind);
   cut (archive) ops whose acting session is sid re-prepend their lines from the
   entry's prior text - today nothing is ever cut, so today has no un-archive half, and the design
   closes that gap in the same SELECT; a move-out re-prepends its line to the partition it left

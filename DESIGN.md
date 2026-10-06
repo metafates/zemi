@@ -1693,7 +1693,9 @@ a partition - a memory-tool apply, the reflector, `/memory`, migration,
 rewind, the post-write scrub - holds an exclusive flock on the partition's
 `memories.lock` for the whole operation (a blocked writer waits 2s, then
 fails; a cross-partition move takes both locks, user then private), inserts
-its ledger entries before the file replace, and replaces files atomically.
+its ledger entries before the file replace - except the reconcile-on-open
+migration, which writes the bytes first and the import entries after, so a
+crash between re-runs to identical bytes - and replaces files atomically.
 
 The `memory_ops` ledger is append-only and never compacted; nothing reads it
 to build the prompt. Line ops (add, supersede, forget, edit, archive, move,
@@ -2940,8 +2942,10 @@ by the next startup sweep, since the session still has unseen messages.
   the ledger keeping their text; their ids still resolve for `replaces`,
   forget and the fork deltas. A row's keys act at once: `a`
   accepts a proposal, `d` drops one, `f` forgets a stored memory, `s` moves
-  one between this project and everywhere (a stored memory is added to the
-  other store before it is deleted from its own), `o` edits one in the
+  one between this project and everywhere (deleted from its own store
+  before the move-in entry and the other store's write; a crash between
+  leaves the move-out entry explaining the absence; a copy already there
+  merges, keeping the mover's attestation when the mover is the user), `o` edits one in the
   user's editor (the saved text passes intake again as user origin with
   the same scope and quote and keeps the id, an edited suggestion is
   stored, empty or unchanged text changes nothing), and `u`, named only
