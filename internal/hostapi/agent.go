@@ -2627,10 +2627,10 @@ func (h *Host) mainInstructions(path string) string {
 	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent) + h.brainPointer(path, false)
 }
 
-// afterWrite is the pipeline's AfterWrite hook. The recipe check comes first:
-// it may rewrite the file.
+// afterWrite is the pipeline's AfterWrite hook. The recipe check and the
+// brain scrub come first: both may rewrite the file.
 func (h *Host) afterWrite(path string) string {
-	note := h.recipeAfterWrite(path)
+	note := h.recipeAfterWrite(path) + h.brainAfterWrite(path)
 	h.noteWrite(path)
 	return note + h.lspAfterWrite(path) + h.brainPointer(path, true)
 }

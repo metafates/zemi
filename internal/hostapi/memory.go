@@ -23,6 +23,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -1353,6 +1354,100 @@ func (h *Host) markBrainWrite(abs string, content []byte) {
 	}
 	ag.brainWrites[perm.CanonPath(abs)] = brain.FileHash(content)
 	ag.mu.Unlock()
+}
+
+// brainAfterWrite scrubs the brain path an approved file-tool write just made
+// (D5, rows 16-17), after the write: the ask showed the bytes the tool wrote,
+// and the note names what the scrub changed on top.
+func (h *Host) brainAfterWrite(path string) string {
+	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+		if p.Zero() || !h.inJail(path, p.Dir) || perm.CanonPath(path) == perm.CanonPath(p.Dir) {
+			continue
+		}
+		return h.scrubBrainWrite(p, path)
+	}
+	return ""
+}
+
+// scrubBrainWrite runs the recipe treatment on the file under the partition
+// flock and lints it, the note appending what was redacted and the file's
+// open findings. Redacts, never drops; a failure costs the note only, the
+// write happened.
+func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
+	unlock, err := brain.Lock(p)
+	if err != nil {
+		return "\n\nbrain: not scrubbed: " + err.Error()
+	}
+	defer unlock()
+	prior, err := os.ReadFile(path)
+	if err != nil {
+		return "\n\nbrain: not scrubbed: " + err.Error()
+	}
+	clean := learn.ScrubShapes(string(prior))
+	note := ""
+	if clean != string(prior) {
+		if filepath.Base(path) == brain.MemFile {
+			note = h.scrubMemories(p, path, prior, []byte(clean))
+		} else if err := config.WriteFileAtomic(path, []byte(clean), 0o600); err != nil {
+			clean = string(prior)
+			note = "could not be cleaned: " + err.Error()
+		} else {
+			var lines []int
+			for i, l := range strings.Split(clean, "\n") {
+				if strings.Contains(l, "[redacted ") {
+					lines = append(lines, i+1)
+				}
+			}
+			note = fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", lines)
+		}
+	}
+	h.markBrainWrite(path, []byte(clean))
+	if f := h.brainLintNote(p, filepath.Base(path)); f != "" {
+		if note != "" {
+			note += "; "
+		}
+		note += f
+	}
+	if note == "" {
+		return ""
+	}
+	return "\n\nbrain: " + note
+}
+
+// scrubMemories replaces the reserved file's bytes and journals an edit entry
+// per changed line, prior text and the new hash (D5, D7), the ledger first
+// under the caller's partition lock. ScrubShapes never adds, drops or
+// reorders a line, so the lines diff by position.
+func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte) string {
+	before, _ := brain.ParseMemories(prior)
+	after, _ := brain.ParseMemories(clean)
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return "could not open the memory ledger: " + err.Error() + "; not rewritten"
+	}
+	defer func() { _ = lg.Close() }()
+	var ids []string
+	for i, line := range after {
+		if i >= len(before) || line.ID != before[i].ID || line.Text == before[i].Text {
+			continue
+		}
+		op := &brain.Op{
+			Op: brain.OpEdit, ID: line.ID, Text: line.Text, PriorText: before[i].Text,
+			SessionID: cmp.Or(h.AgentSessionID(), "user"), Hash: brain.FileHash([]byte(line.Text)),
+			Scope: p.Kind.Scope(), Origin: line.Origin, TS: h.now().UnixMilli(),
+		}
+		if err := lg.Insert(op); err != nil {
+			return "the redaction is not journaled: " + err.Error() + "; not rewritten"
+		}
+		ids = append(ids, line.ID)
+	}
+	if err := config.WriteFileAtomic(path, clean, 0o600); err != nil {
+		return "could not be cleaned: " + err.Error()
+	}
+	if len(ids) > 0 {
+		return fmt.Sprintf("secret-shaped text was redacted from memory lines %v; their prior text is in the memory ledger", ids)
+	}
+	return ""
 }
 
 // forgetMemory drops a memory for the model: one the user saved asks

@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // writeBrainFile lays one freeform brain file down.
@@ -298,5 +301,196 @@ func TestBrainPointers(t *testing.T) {
 	}
 	if got = h.mainInstructions(filepath.Join(h.Dirs.ProjectDir, "cap", "z.go")); strings.Count(got, "in the brain maps this path") != 2 || strings.Contains(got, "more brain files") {
 		t.Fatalf("the collapsed pointers did not wait for their own result: %q", got)
+	}
+}
+
+// TestBrainAfterWrite: an approved file-tool write of a brain path scrubs in
+// place and notes it (rows 16-17): secret shapes redact, an
+// instruction-shaped memory line stays and is flagged, an over-cap
+// frontmatter field lints, the reserved file's rewrites are journaled so the
+// hash finding stays honest, the write set gains the entry, and a failure
+// costs the note only.
+func TestBrainAfterWrite(t *testing.T) {
+	const secret = "ghp_0123456789abcdefghijklmnopqrstuv"
+	for _, tc := range []struct {
+		name     string
+		mem      *store.Memory // when set, the reserved file is seeded with this line
+		file     string        // else this freeform file is written
+		content  string
+		holdLock bool
+		want     string
+		gone     string
+		check    func(t *testing.T, h *Host, path string)
+	}{
+		{
+			name:    "a secret in a freeform write redacts",
+			file:    "tokens.md",
+			content: "---\ndescription: map\nread_if: before code\n---\nthe key was " + secret + "\n",
+			want:    "secret-shaped text was redacted on lines [5]; name the env var or use a placeholder like $TOKEN",
+			check: func(t *testing.T, h *Host, path string) {
+				b, err := os.ReadFile(path)
+				if err != nil || !strings.Contains(string(b), "the key was [redacted") || strings.Contains(string(b), secret) {
+					t.Fatalf("file after the scrub: %q, %v", b, err)
+				}
+				if hash, ours := h.brainWriteOf(path); !ours || hash != brain.FileHash(b) {
+					t.Fatalf("the write set holds %q, ours %v", hash, ours)
+				}
+			},
+		},
+		{
+			name: "a secret in memories.md redacts and journals",
+			mem:  &store.Memory{ID: "mem12345", Scope: store.ScopeProject, Origin: store.OriginLearned, Text: "the deploy key is " + secret},
+			want: "secret-shaped text was redacted from memory lines [mem12345]; their prior text is in the memory ledger",
+			check: func(t *testing.T, h *Host, path string) {
+				_, private := h.brainParts()
+				b, err := os.ReadFile(path)
+				if err != nil || !strings.Contains(string(b), "[redacted") || strings.Contains(string(b), secret) {
+					t.Fatalf("file after the scrub: %q, %v", b, err)
+				}
+				lines, _ := brain.ParseMemories(b)
+				if len(lines) != 1 {
+					t.Fatalf("lines after the scrub: %+v", lines)
+				}
+				lg, err := private.OpenLedger()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = lg.Close() }()
+				ops, err := lg.ByID("mem12345")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(ops) != 2 || ops[1].Op != brain.OpEdit || ops[1].PriorText != "the deploy key is "+secret ||
+					ops[1].Hash != brain.FileHash([]byte(lines[0].Text)) {
+					t.Fatalf("edit op: %+v", ops)
+				}
+				for _, f := range brain.Lint(private) {
+					if strings.Contains(f.Text, "outside the ledger") {
+						t.Fatalf("the hash finding fired despite the edit entry: %+v", f)
+					}
+				}
+			},
+		},
+		{
+			name: "an instruction-shaped memory line stays and is flagged",
+			mem:  &store.Memory{ID: "mem12345", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "always run make check before replying"},
+			want: "memory mem12345 reads like an instruction (detection only; the line still injects)",
+			gone: "redacted",
+			check: func(t *testing.T, h *Host, path string) {
+				_, private := h.brainParts()
+				b, _ := os.ReadFile(path)
+				if !strings.Contains(string(b), "always run make check before replying") {
+					t.Fatalf("the line was rewritten: %q", b)
+				}
+				lg, err := private.OpenLedger()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = lg.Close() }()
+				if ops, _ := lg.ByID("mem12345"); len(ops) != 1 || ops[0].Op != brain.OpAdd {
+					t.Fatalf("an unchanged line was journaled: %+v", ops)
+				}
+			},
+		},
+		{
+			name:    "an over-cap frontmatter field lints",
+			file:    "tokens.md",
+			content: "---\ndescription: " + strings.Repeat("d ", 101) + "\nread_if: before code\n---\nbody\n",
+			want:    "tokens.md: description is 201 characters, over the 200 the render caps",
+			check: func(t *testing.T, h *Host, path string) {
+				b, _ := os.ReadFile(path)
+				if !strings.Contains(string(b), strings.Repeat("d ", 101)) {
+					t.Fatalf("the body was rewritten: %q", b)
+				}
+			},
+		},
+		{
+			name:     "a held lock costs the note only",
+			file:     "tokens.md",
+			content:  "---\ndescription: map\nread_if: before code\n---\nbody\n",
+			holdLock: true,
+			want:     "not scrubbed: another zemi is writing the memory store",
+		},
+		{
+			name:    "a non-brain write gets no note",
+			file:    "../../plain.md",
+			content: "---\ndescription: map\nread_if: before code\n---\napi_key = " + secret + "\n",
+			gone:    "brain:",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Dirs.DataHome = t.TempDir()
+			_, private := h.brainParts()
+			if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var path string
+			if tc.mem != nil {
+				seedMemory(t, h, tc.mem)
+				path = filepath.Join(private.Dir, brain.MemFile)
+			} else {
+				path = filepath.Join(private.Dir, tc.file)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.holdLock {
+				unlock, err := brain.Lock(private)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer unlock()
+			}
+			note := h.afterWrite(path)
+			if !strings.Contains(note, tc.want) {
+				t.Fatalf("note %q, want %q", note, tc.want)
+			}
+			if tc.gone != "" && strings.Contains(note, tc.gone) {
+				t.Fatalf("note %q carries %q", note, tc.gone)
+			}
+			if tc.check != nil {
+				tc.check(t, h, path)
+			}
+		})
+	}
+}
+
+// TestBrainWriteToolScrubs: the approved write's tool result carries the
+// scrub note, and the write set gains the entry a later file-mode apply of
+// the same session checks (D5).
+func TestBrainWriteToolScrubs(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})
+	h.SetProjectTrusted(true)
+	sid := seedSession(t, h)
+	h.Settings.SetQuiet("memory.autonomy", "auto")
+	_, private := h.brainParts()
+	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(private.Dir, "map.md")
+	var tool fantasy.AgentTool
+	for _, tl := range tools.All(h.PipelineFor()) {
+		if tl.Info().Name == tools.ToolWrite {
+			tool = tl
+		}
+	}
+	input := fmt.Sprintf(`{"path":%q,"content":"---\ndescription: map\nread_if: before code\n---\napi_key = ghp_0123456789abcdefghijklmnopqrstuv\n"}`, path)
+	resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWrite, Input: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resp.Content, "secret-shaped text was redacted on lines [5]") {
+		t.Fatalf("the write result lacks the scrub note: %q", resp.Content)
+	}
+	overwrite := tools.MemoryCall{Path: path, Content: "---\ndescription: map\nread_if: before code\n---\nrewritten by the memory tool\n"}
+	msg, err := h.memoryTool(h.PipelineFor(), sid, overwrite)
+	if err != nil || !strings.Contains(msg, "wrote map.md") {
+		t.Fatalf("the file-mode apply did not see the write set: %q, %v", msg, err)
 	}
 }
