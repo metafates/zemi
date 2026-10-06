@@ -119,6 +119,13 @@ func TestLockOrderIsUserThenPrivate(t *testing.T) {
 
 func TestLockCreatesThePartition(t *testing.T) {
 	p := testPartition(t)
+	// a set with a partition that has no home locks the rest, so a host
+	// whose Dirs are partial still rewinds
+	if all, err := LockAll(p, Partition{Kind: Private}); err != nil {
+		t.Fatalf("LockAll with a partition of no home: %v", err)
+	} else {
+		all()
+	}
 	unlock, err := Lock(p)
 	if err != nil {
 		t.Fatal(err)

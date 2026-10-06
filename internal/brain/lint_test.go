@@ -31,6 +31,13 @@ func TestLintFindings(t *testing.T) {
 	write("no-read.md", "---\ndescription: d\n---\n")
 	write("bad-glob.md", "---\ndescription: d\nread_if: r\npaths: bad.[\n---\n")
 	write("long.md", "---\ndescription: "+strings.Repeat("d", FieldCap+1)+"\nread_if: r\n---\n")
+	// over the cap in raw runes, at it once stripped: the render caps what
+	// it strips, so this one is not over
+	wrapped := "---\ndescription: |\n" + strings.Repeat("  "+strings.Repeat("w", 40)+"\n", 5) + "read_if: r\n---\n"
+	if fm, err := ParseFrontmatter(wrapped); err != nil || len([]rune(fm.Description)) <= FieldCap || len([]rune(strip(fm.Description))) > FieldCap {
+		t.Fatalf("the wrapped fixture does not test the cut: %+v, %v", fm, err)
+	}
+	write("wrapped.md", wrapped)
 	write("broken.md", "---\ndescription: [unclosed\n---\n")
 	var mem []byte
 	for range 6 {
@@ -108,7 +115,7 @@ func TestLintFindings(t *testing.T) {
 		}
 	}
 	// the explained absence and the journaled line stay quiet
-	for _, quiet := range []string{"qrst9012", "not a memory line"} {
+	for _, quiet := range []string{"qrst9012", "not a memory line", "wrapped.md"} {
 		for _, got := range texts {
 			if strings.Contains(got, quiet) && !strings.HasPrefix(got, "memories.md: line") {
 				t.Fatalf("unexpected finding about %q: %s", quiet, got)

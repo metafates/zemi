@@ -372,6 +372,10 @@ func TestMemoryGate(t *testing.T) {
 				if len(h.memoryProposals()) != 1 || projectMemories(t, h)[10].Text != filler(0) {
 					t.Fatal("an edit went past the budget")
 				}
+				// a shrinking edit is taken, so a scope already over can shrink
+				if _, err := h.rewriteMemory(h.memoryProposals()[0].ID, "deploy in bin"); err != nil {
+					t.Fatalf("shrinking edit: %v", err)
+				}
 			},
 		},
 		{
