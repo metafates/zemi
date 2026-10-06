@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// Caps of the injected # Brain section (§3's table). Backstop is
-// hostapi's contextBudget.
+// Caps of the injected # Brain section (§3's table).
 const (
 	CatalogCap = 4 << 10
 	WarnCap    = 1 << 10
@@ -195,13 +194,13 @@ func catalogSections(parts []Loaded, drop int) string {
 		if c == "" {
 			continue
 		}
-		b.WriteString("\n### " + k.String() + "\n")
 		if dropped < drop {
-			b.WriteString("- ... the catalog of " + l.Partition.Dir + " is cut here\n")
+			// a dropped catalog goes whole: its heading and a marker naming
+			// the partition would cost nearly what the catalog did
 			dropped++
 			continue
 		}
-		b.WriteString(c + "\n")
+		b.WriteString("\n### " + k.String() + "\n" + c + "\n")
 	}
 	return b.String()
 }
