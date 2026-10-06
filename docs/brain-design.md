@@ -69,7 +69,7 @@ compacted, its import entries are permanent tombstones - the marker that keeps a
 from re-importing (section 8). The pre-migration `memory` table freezes and no stage drops it
 (section 10).
 
-Budget as promotion: when an apply pushes a scope past its 3 KiB budget (learn.ScopeBudget, charged
+Budget as promotion: when an apply pushes a scope past its 3 KiB budget (brain.ScopeBudget, charged
 at internal/hostapi/memory.go:1032-1051), the oldest learned lines are cut from `memories.md` - not
 lost: each cut line's text, quote and provenance live on in its ledger entries, `/memory` lists cut
 ids in a collapsed group, and the tool result names them, replacing today's oldest-ids hint

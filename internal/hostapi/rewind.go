@@ -256,11 +256,15 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 		}
 		var add []brain.Line
 		// lastWrite is the age a restored line carries: its latest writing
-		// op's time in this partition's trail (D1)
+		// op's time in this partition's trail; an import op's own stamps are
+		// the frozen row's (the migration moment is not a write)
 		lastWrite := func(id string, fallback int64) time.Time {
 			if trail, err := lg.ByID(id); err == nil {
 				for _, o := range slices.Backward(trail) {
 					if o.Op == brain.OpAdd || o.Op == brain.OpEdit || o.Op == brain.OpImport || o.Op == brain.OpMoveIn {
+						if o.Op == brain.OpImport && o.UpdatedAt != 0 {
+							return time.UnixMilli(o.UpdatedAt).UTC()
+						}
 						return time.UnixMilli(o.TS).UTC()
 					}
 				}

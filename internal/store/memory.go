@@ -1,5 +1,5 @@
 // memory.go is the frozen memory table (DESIGN §7): the pre-migration
-// trail, read only - live rows imported into the brain at open (§8), the
+// trail, read only - live rows imported into the brain at open (§7), the
 // rows staying for /memory's merged list and the trail. A scope's table
 // lives in its own DB: user-scope in the global DB, project-scope in the
 // project DB.
