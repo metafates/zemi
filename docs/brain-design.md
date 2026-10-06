@@ -206,8 +206,8 @@ deltas (export.go:355-359) - the brain render is just the new digest payload, so
 property survives. Path-triggered pointers are tool-result text appended after a read or write -
 outside the pinned prefix, no cache impact (D10).
 
-Budgets: per-section caps (section 3) plus a 32 KiB backstop on the whole `# Brain` section (=
-`contextBudget`, prompt.go:27). The backstop cut order terminates: catalogs to zero; what can remain
+Budgets: per-section caps (section 3) plus a 32 KiB backstop on the whole `# Brain` section. The
+backstop cut order terminates: catalogs to zero; what can remain
 (loop text 1 KiB, warnings 1 KiB, memory lines 6 KiB worst case, 3 KiB per scope) always fits.
 Rejected: a single global pool with no per-section caps (one fat catalog starves the rest). Every
 cut marker names a discoverable location, so a dropped entry is never undiscoverable.
@@ -219,8 +219,7 @@ naming the file, and a lint finding names the partition: the renderer cannot cut
 never injects past the cap, so the backstop invariant holds for any store state. Maps cannot be
 meaningfully refused at write time - the cap is a property of an aggregate of files - so they are
 enforced at render time with cut markers, the contract instruction files already have
-(prompt.go:289-311), plus an AfterWrite lint finding naming the over-budget partition; a hard
-write-time refusal would make a legitimate file unwriteable.
+(prompt.go:289-311); a hard write-time refusal would make a legitimate file unwriteable.
 
 Resume recomputes the render - the digest's own designed trade: session.go:105 calls `digestFor()`,
 session.go:118 stores it, and contextKey exists "so a memory dropped since is not sent again"

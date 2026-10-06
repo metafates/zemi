@@ -70,10 +70,10 @@
 
 SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 
-- `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals, skill enabled state (`skills`), `kv`.
-- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): `sessions`, `messages`, project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores). The same directory holds the project's `permissions` file and `skills/` (recipes).
+- `~/.local/state/zemi/zemi.db` (global): user-scope proposals, the `memory_ops` ledger of user-brain writes, skill enabled state (`skills`), `kv`. The user brain itself is files under `~/.local/share/zemi/brain/user/`.
+- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): `sessions`, `messages`, proposals, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores), and the project's `memory_ops` ledger. The same directory holds `permissions`, `skills/` (recipes) and `brain/` (this project's `brain/memories.md` and its map files).
 
-Useful tables: `memory` (text, quote, origin, superseded_by), `proposals` (pending review, JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost), `messages` (role `tail` rows are copies of messages a compaction kept; resume starts at the last summary row).
+Useful tables: `memory_ops` (the brain's append-only trail: text, quote, hash, origin, superseded_by), `memory` (frozen at the swap; the read path still resolves ids from it), `proposals` (pending review, JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost), `messages` (role `tail` rows are copies of messages a compaction kept; resume starts at the last summary row).
 
 ## Reproduce without touching the user's setup
 
