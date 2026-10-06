@@ -2,7 +2,7 @@
 
 ## Subagents (`agents/<name>.md`)
 
-A subagent is a model run the main agent starts for a self-contained task. It gets a fresh context: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), the memory digest, and the task the main agent writes. It never sees the conversation (a fork does, `## Forks`). The body is the job alone: zemi already says the rest.
+A subagent is a model run the main agent starts for a self-contained task. It gets a fresh context: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), the brain section, and the task the main agent writes. It never sees the conversation (a fork does, `## Forks`). The body is the job alone: zemi already says the rest.
 
 ```markdown
 ---

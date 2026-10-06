@@ -76,36 +76,6 @@ func TestLedger(t *testing.T) {
 		}
 	})
 
-	t.Run("import is idempotent and a tombstone", func(t *testing.T) {
-		p := testPartition(t)
-		openStore(t, p)
-		lg, err := p.OpenLedger()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer lg.Close()
-		op := &Op{
-			ID: "abcd2345", Text: "one", Hash: textHash("one"), Quote: "I said so",
-			SessionID: "sess1234", Scope: store.ScopeProject, Origin: store.OriginLearned,
-			CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli(),
-		}
-		inserted, err := lg.Import(op)
-		if err != nil || !inserted || op.Op != OpImport {
-			t.Fatalf("first import = %t, %v (op %s)", inserted, err, op.Op)
-		}
-		inserted, err = lg.Import(&Op{
-			ID: "abcd2345", Text: "one", Hash: textHash("one"),
-			Scope: store.ScopeProject, Origin: store.OriginLearned,
-		})
-		if err != nil || inserted {
-			t.Fatalf("replay import = %t, %v", inserted, err)
-		}
-		trail, err := lg.ByID("abcd2345")
-		if err != nil || len(trail) != 1 || trail[0].Op != OpImport || trail[0].Quote != "I said so" {
-			t.Fatalf("trail = %+v, %v", trail, err)
-		}
-	})
-
 	t.Run("no store is an empty ledger and a failed write", func(t *testing.T) {
 		p := testPartition(t)
 		lg, err := p.OpenLedger() // the store was never opened

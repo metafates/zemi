@@ -1697,6 +1697,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		ag.mu.Unlock()
 		return fmt.Errorf("agent: %w", errNoStore)
 	}
+	ag.mu.Unlock()
 	sid := store.ShortID()
 	name := ""
 	if p != nil {
@@ -1708,6 +1709,15 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
 	}
 	title, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
+	// the reconcile and the render take file and flock time; they run off
+	// ag.mu, which every agent-state reader holds
+	h.reconcileBrain(h.partition(store.ScopeProject))
+	brain, globs := h.brainFor()
+	ag.mu.Lock()
+	if ag.sessionID != "" {
+		ag.mu.Unlock()
+		return nil
+	}
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
@@ -1717,8 +1727,6 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	h.recentStale.Store(true)
 	ag.env = ""
 	ag.memAuto = 0
-	h.reconcileBrain(h.partition(store.ScopeProject))
-	brain, globs := h.brainFor()
 	ag.brain, ag.brainGlobs = brain, globs
 	ag.mu.Unlock()
 	h.refreshPending()

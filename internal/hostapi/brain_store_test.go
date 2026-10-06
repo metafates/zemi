@@ -112,27 +112,17 @@ func TestRewindBrain(t *testing.T) {
 	for _, l := range lines {
 		live[l.ID] = l.Text
 	}
-	// the learned adds are gone, each with its forget entry
-	for _, id := range []string{fresh.ID} {
-		if live[id] != "" {
-			t.Fatalf("%s survived the rewind", id)
+	// the learned add is gone, the user line the session added survives both
+	// halves, the superseded line is live again with its replacement gone,
+	// and the archived line cut from an earlier session came back from the
+	// ledger's prior text (D1)
+	for id, want := range map[string]string{
+		fresh.ID: "", yours.ID: "yours", oldID: "the old truth",
+		ssID: "", agedID: "the aged truth",
+	} {
+		if live[id] != want {
+			t.Fatalf("%s = %q, want %q", id, live[id], want)
 		}
-	}
-	// the user line the session added survives both halves (D1)
-	if yoursText := live[yours.ID]; yoursText != "yours" {
-		t.Fatalf("a user line was cut: %q", yoursText)
-	}
-	// the superseded line is live again and the new one gone
-	if live[oldID] != "the old truth" || live[fresh.ID] != "" {
-		t.Fatalf("un-supersede: %+v", live)
-	}
-	// the archived line cut from an earlier session came back from the
-	// ledger's prior text, the session's own writes stayed gone
-	if live[agedID] != "the aged truth" {
-		t.Fatalf("un-archive: %+v", live)
-	}
-	if live[ssID] != "" || live[oldID] != "the old truth" {
-		t.Fatalf("un-supersede: %+v", live)
 	}
 	// every removal wrote its forget entry
 	ops, _ := lg.Session(sid, 0, at.Add(time.Minute).UnixMilli())

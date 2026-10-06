@@ -16,7 +16,7 @@
    return zemi.errors.list() -- newest first: { index, at, source, message }
    ```
 
-   For a question about what the model was told - a profile's `system`, an `agent.assemble` section, an instruction file the budget cut, the memory digest - read the prompt itself:
+   For a question about what the model was told - a profile's `system`, an `agent.assemble` section, an instruction file the budget cut, the brain section - read the prompt itself:
 
    ```lua
    return zemi.agent.prompt() -- the pinned system prompt and context message, "" before the first send

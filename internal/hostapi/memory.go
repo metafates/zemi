@@ -812,7 +812,7 @@ func (h *Host) memoryItems() []any {
 		}
 		items = append(items, map[string]any{
 			"text":    fmt.Sprintf("%d removed from memories.md", len(trail)),
-			"desc":    "cut by the budget, superseded, or forgotten; the ledger keeps their text",
+			"desc":    "cut by the budget or superseded; the ledger keeps their text",
 			"section": "Trail", "preview": strings.TrimRight(b.String(), "\n"),
 			"fields": fieldList("count", strconv.Itoa(len(trail))),
 		})
@@ -997,6 +997,8 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 		}
 		for _, l := range lines {
 			live[l.ID] = true
+			// the line's date is the last write the store holds (D1); the
+			// ledger refines quote and provenance beside it
 			m := &store.Memory{ID: l.ID, Scope: scope, Text: l.Text, Origin: l.Origin, UpdatedAt: l.Date.UnixMilli()}
 			if s, ok := stamps[l.ID]; ok {
 				m.Quote, m.CreatedAt, m.ProvenanceSessionID = s.Quote, s.First, s.Session

@@ -339,17 +339,19 @@ func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain
 			p = user
 		}
 		path := filepath.Join(p.Dir, name)
+		// a checkpoint's pre-turn bytes are the fuller truth and were
+		// restored above; this op's prior is only mid-turn state
+		checkpointed := false
+		for _, cp := range cps {
+			if cp.Path == path {
+				checkpointed = true
+				break
+			}
+		}
+		if checkpointed {
+			continue
+		}
 		if op.Truncated {
-			skip := false
-			for _, cp := range cps {
-				if cp.Path == path {
-					skip = true // the checkpoint's pre-turn bytes are the fuller truth
-					break
-				}
-			}
-			if skip {
-				continue
-			}
 			h.Notify(slog.LevelWarn, "File partly restored", filepath.Base(path)+" rewound to its first 32 KiB only")
 		}
 		var err error
