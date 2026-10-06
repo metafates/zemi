@@ -15,8 +15,8 @@ type Finding struct {
 	Text    string
 }
 
-// Lint checks one partition against DESIGN §10.7's findings: the freeform files'
-// frontmatter, the memories.md lines, and the file-versus-ledger
+// Lint checks one partition against the design's findings: the freeform
+// files' frontmatter, the memories.md lines, and the file-versus-ledger
 // divergence. An absent partition is clean; a ledger that will not open
 // adds its own finding and ends the divergence check.
 func Lint(p Partition) []Finding {
