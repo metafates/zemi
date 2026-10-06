@@ -576,7 +576,6 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
-		// a shrinking suggestion is taken, like a stored memory's edit
 		if h.scopeOver(res) && len(res.Memory.Text) > len(p.Text) {
 			return false, errScopeFull(p.Scope)
 		}

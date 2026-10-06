@@ -50,9 +50,9 @@ type Loaded struct {
 }
 
 // Load scans a partition's directory. Files that fail instructionFile's
-// bar (a regular file, not secret-shaped, inside the project) are left out
-// of the catalog, so a symlink planted in a brain dir cannot feed a target
-// outside it into the render (DESIGN §10.7).
+// bar (a regular file, not secret-shaped, inside the partition) are left
+// out of the catalog, so a symlink planted in a brain dir cannot feed a
+// target outside it into the render (DESIGN §10.7).
 func Load(p Partition) Loaded {
 	l := Loaded{Partition: p}
 	des, err := os.ReadDir(p.Dir)

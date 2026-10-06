@@ -195,8 +195,8 @@ func catalogSections(parts []Loaded, drop int) string {
 			continue
 		}
 		if dropped < drop {
-			// a dropped catalog goes whole: its heading and a marker naming
-			// the partition would cost nearly what the catalog did
+			// a dropped catalog goes whole: a heading and a marker would
+			// leave the last resort over Backstop
 			dropped++
 			continue
 		}
