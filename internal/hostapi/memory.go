@@ -1361,12 +1361,25 @@ func (h *Host) markBrainWrite(abs string, content []byte) {
 // and the note names what the scrub changed on top.
 func (h *Host) brainAfterWrite(path string) string {
 	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
-		if p.Zero() || !h.inJail(path, p.Dir) || perm.CanonPath(path) == perm.CanonPath(p.Dir) {
+		// the brain dir is flat by design: only its direct children are
+		// brain files, so a nested memories.md is freeform everywhere else too
+		if p.Zero() || !h.underBrainDir(p.Dir, path) {
 			continue
 		}
 		return h.scrubBrainWrite(p, path)
 	}
 	return ""
+}
+
+// redactedLines numbers the lines a scrub's marker landed on, 1-based.
+func redactedLines(clean string) []int {
+	var lines []int
+	for i, l := range strings.Split(clean, "\n") {
+		if strings.Contains(l, "[redacted ") {
+			lines = append(lines, i+1)
+		}
+	}
+	return lines
 }
 
 // scrubBrainWrite runs the recipe treatment on the file under the partition
@@ -1386,19 +1399,17 @@ func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
 	clean := learn.ScrubShapes(string(prior))
 	note := ""
 	if clean != string(prior) {
-		if filepath.Base(path) == brain.MemFile {
-			note = h.scrubMemories(p, path, prior, []byte(clean))
+		if perm.CanonPath(path) == perm.CanonPath(filepath.Join(p.Dir, brain.MemFile)) {
+			var applied bool
+			note, applied = h.scrubMemories(p, path, prior, []byte(clean))
+			if !applied {
+				clean = string(prior)
+			}
 		} else if err := config.WriteFileAtomic(path, []byte(clean), 0o600); err != nil {
 			clean = string(prior)
 			note = "could not be cleaned: " + err.Error()
 		} else {
-			var lines []int
-			for i, l := range strings.Split(clean, "\n") {
-				if strings.Contains(l, "[redacted ") {
-					lines = append(lines, i+1)
-				}
-			}
-			note = fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", lines)
+			note = fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(clean))
 		}
 	}
 	h.markBrainWrite(path, []byte(clean))
@@ -1417,13 +1428,14 @@ func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
 // scrubMemories replaces the reserved file's bytes and journals an edit entry
 // per changed line, prior text and the new hash (D5, D7), the ledger first
 // under the caller's partition lock. ScrubShapes never adds, drops or
-// reorders a line, so the lines diff by position.
-func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte) string {
+// reorders a line, so the lines diff by position; a changed line that does
+// not parse journals nothing, so the note falls back to the line numbers.
+func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte) (string, bool) {
 	before, _ := brain.ParseMemories(prior)
 	after, _ := brain.ParseMemories(clean)
 	lg, err := p.OpenLedger()
 	if err != nil {
-		return "could not open the memory ledger: " + err.Error() + "; not rewritten"
+		return "could not open the memory ledger: " + err.Error() + "; not rewritten", false
 	}
 	defer func() { _ = lg.Close() }()
 	var ids []string
@@ -1437,17 +1449,17 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 			Scope: p.Kind.Scope(), Origin: line.Origin, TS: h.now().UnixMilli(),
 		}
 		if err := lg.Insert(op); err != nil {
-			return "the redaction is not journaled: " + err.Error() + "; not rewritten"
+			return "the redaction is not journaled: " + err.Error() + "; not rewritten", false
 		}
 		ids = append(ids, line.ID)
 	}
 	if err := config.WriteFileAtomic(path, clean, 0o600); err != nil {
-		return "could not be cleaned: " + err.Error()
+		return "could not be cleaned: " + err.Error(), false
 	}
 	if len(ids) > 0 {
-		return fmt.Sprintf("secret-shaped text was redacted from memory lines %v; their prior text is in the memory ledger", ids)
+		return fmt.Sprintf("secret-shaped text was redacted from memory lines %v; their prior text is in the memory ledger", ids), true
 	}
-	return ""
+	return fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(string(clean))), true
 }
 
 // forgetMemory drops a memory for the model: one the user saved asks

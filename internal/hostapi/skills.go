@@ -238,13 +238,7 @@ func (h *Host) recipeAfterWrite(path string) string {
 		if err := os.WriteFile(path, []byte(clean), 0o644); err != nil {
 			return note + "could not be cleaned: " + err.Error()
 		}
-		var lines []int
-		for i, l := range strings.Split(clean, "\n") {
-			if strings.Contains(l, "[redacted ") {
-				lines = append(lines, i+1)
-			}
-		}
-		note += fmt.Sprintf("secret-shaped or control text was removed, redacted lines %v: name the env var or use a placeholder like $TOKEN, then re-check the commands; ", lines)
+		note += fmt.Sprintf("secret-shaped or control text was removed, redacted lines %v: name the env var or use a placeholder like $TOKEN, then re-check the commands; ", redactedLines(clean))
 	}
 	// a file beside SKILL.md is only cleaned; any case of the name is the
 	// same file where the filesystem folds case
