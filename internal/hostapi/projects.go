@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -84,8 +85,11 @@ func (p *Project) readStats(stateHome string) {
 	if err == nil {
 		defer db.Close()
 		var latest []*store.Session
-		if p.Sessions, p.Memories, err = db.Counts(); err == nil {
+		if p.Sessions, err = db.SessionCount(); err == nil {
 			latest, err = db.ListSessions(1)
+		}
+		if lines, lerr := brain.Lines(brain.PrivatePartition(stateHome, p.Root)); lerr == nil {
+			p.Memories = len(lines)
 		}
 		if len(latest) > 0 {
 			p.Latest = latest[0]

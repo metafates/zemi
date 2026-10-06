@@ -127,12 +127,12 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 	}, nil
 }
 
-// Counts is how many top-level sessions and live memories the store holds.
-func (s *DB) Counts() (sessions, memories int, err error) {
-	err = s.db.QueryRow(`SELECT
-		(SELECT count(*) FROM sessions WHERE COALESCE(parent_id, '') = ''),
-		(SELECT count(*) FROM memory WHERE superseded_by IS NULL)`).Scan(&sessions, &memories)
-	return sessions, memories, err
+// SessionCount is how many top-level sessions the store holds. The memory
+// figure comes from the brain's partition, not this frozen table.
+func (s *DB) SessionCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE COALESCE(parent_id, '') = ''`).Scan(&n)
+	return n, err
 }
 
 func (s *DB) checkVersion(version int) error {

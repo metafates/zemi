@@ -596,8 +596,8 @@ func TestClaimForDelete(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if n, _, err := db.Counts(); err != nil || n != 2 {
-					t.Fatalf("Counts = %d, %v; want the 2 top-level sessions", n, err)
+				if n, err := db.SessionCount(); err != nil || n != 2 {
+					t.Fatalf("SessionCount = %d, %v; want the 2 top-level sessions", n, err)
 				}
 				if c.held {
 					defer db.Close()
