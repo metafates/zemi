@@ -220,7 +220,7 @@ func TestCatalogSelfRepairNote(t *testing.T) {
 }
 
 // TestRenderLine pins the injected line's shape and age: the digest's
-// form, kept through the store swap (D1).
+// form, kept through the store swap (DESIGN §7).
 func TestRenderLine(t *testing.T) {
 	line := Line{ID: "abcd2345", Origin: store.OriginLearned, Date: at.Add(-10 * 24 * time.Hour), Text: "the dploy gate lives in ci/pipeline"}
 	if got, want := RenderLine(line, at), "- [abcd2345 learned 10d] the dploy gate lives in ci/pipeline"; got != want {

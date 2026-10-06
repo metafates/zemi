@@ -697,7 +697,7 @@ func TestYoloToggle(t *testing.T) {
 // TestBrainWritesProtected: a file-tool write to a state-dir brain path is a
 // protected ask no store rule, mode rule or decide settles, in every mode
 // yolo aside; the reserved file names its owner, a freeform file zemi's own
-// files (D2, rows 16-17). The lsp rename asks like the write it is.
+// files (DESIGN §10.4). The lsp rename asks like the write it is.
 func TestBrainWritesProtected(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -739,7 +739,7 @@ func TestBrainWritesProtected(t *testing.T) {
 
 // TestBrainAskNotes: a brain ask notes outside text only when the session
 // read any, and a memories.md ask carries the file's open lint findings, at
-// most three (D5).
+// most three (DESIGN §10.4).
 func TestBrainAskNotes(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()

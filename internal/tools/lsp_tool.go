@@ -247,7 +247,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			}
 			total += n
 			// every rewritten file rides AfterWrite, so a brain file a rename
-			// edits as a secondary target is scrubbed and linted too (D5)
+			// edits as a secondary target is scrubbed and linted too (DESIGN §10.4)
 			notes.WriteString(p.afterWrite(f))
 			fmt.Fprintf(&b, "%s (%d)\n", workRel(f), n)
 			// the server must see the new text, or the next query (a rename

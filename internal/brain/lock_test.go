@@ -17,7 +17,7 @@ func TestLockContention(t *testing.T) {
 	p := testPartition(t)
 	openStore(t, p)
 	// eight windows write concurrently; the flock serializes them and no
-	// line and no ledger entry is lost (D1)
+	// line and no ledger entry is lost (DESIGN §7)
 	at := time.Now()
 	var wg sync.WaitGroup
 	for i := range 8 {
@@ -85,7 +85,7 @@ func TestLockTimesOut(t *testing.T) {
 func TestLockOrderIsUserThenPrivate(t *testing.T) {
 	user, private := testPartitions(t)
 	// a holder of the user lock alone blocks a dual lock, which must not
-	// have taken the private one yet (D1's fixed order)
+	// have taken the private one yet (DESIGN §7's fixed order)
 	unlock, err := Lock(user)
 	if err != nil {
 		t.Fatal(err)

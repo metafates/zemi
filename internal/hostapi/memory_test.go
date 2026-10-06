@@ -203,9 +203,8 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 }
 
 // TestMemoryGate pins the autonomy gate (DESIGN §10.4) through the memory
-// tool: the quote rule, the near-duplicate refusal, the per-scope budget
-// cut (row 3), what replaces does with and without text, and /memory over
-// budget (row 9).
+// tool: the quote rule, the near-duplicate refusal, // cut, what replaces does with and without text, and /memory over
+// budget.
 func TestMemoryGate(t *testing.T) {
 	filler := func(i int) string { return strings.TrimSpace(strings.Repeat(fmt.Sprintf("w%02d ", i), 65)) } // 259 bytes, no content token
 	fill := func(t *testing.T, h *Host, n int) (oldest string) {
@@ -813,7 +812,7 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	}
 }
 
-// TestMemoryFileMode pins the file mode's gate (D5, rows 14-15): the
+// TestMemoryFileMode pins the file mode's gate (DESIGN §10.4): the
 // frontmatter intake, the overwrite gate over the session write set, the
 // write entry's restorable prior bytes, and the refusals.
 func TestMemoryFileMode(t *testing.T) {
@@ -988,7 +987,7 @@ func TestMemoryFileMode(t *testing.T) {
 	})
 }
 
-// TestMemoryFileRefusesUserBrain pins the user partition's refusal (D5).
+// TestMemoryFileRefusesUserBrain pins the user partition's refusal (DESIGN §10.4).
 func TestMemoryFileRefusesUserBrain(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)

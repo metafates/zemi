@@ -21,7 +21,7 @@ func TestReconcile(t *testing.T) {
 		}
 	}
 	// seedRow inserts a frozen-table row the way the pre-brain store's write
-	// path did - the table's only writer now (section 7).
+	// path did - the table's only writer now (DESIGN §7).
 	seedRow := func(t *testing.T, p Partition, m *store.Memory) {
 		t.Helper()
 		db, err := sql.Open("sqlite", p.DB)

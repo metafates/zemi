@@ -204,7 +204,7 @@ type agentHost struct {
 	holdCut      bool          // a Full cut is compacted and resent, not reported; off once the compaction failed
 	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
 
-	// brain is the # Brain section, pinned at session open (D4) and rebuilt
+	// brain is the # Brain section, pinned at session open (DESIGN §10.7) and rebuilt
 	// at compaction and a mid-session trust flip, brainGlobs the pointer
 	// table built with it; memAuto counts auto-applied memories against the
 	// session cap (memory proposals persist in the store).
@@ -213,7 +213,7 @@ type agentHost struct {
 	memAuto    int
 	// brainWrites are the brain files this session wrote, keyed by their
 	// resolved path with the hash each write saw: a later file-mode write
-	// applies only while the file still matches (D5's overwrite gate).
+	// applies only while the file still matches (DESIGN §10.4's overwrite gate).
 	// Cleared on rewind and when the session changes.
 	brainWrites map[string]string
 	reflectErr  error // last reflector run's error, nil after a success (/health)

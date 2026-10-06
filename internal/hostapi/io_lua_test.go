@@ -187,7 +187,7 @@ func TestEditRepoRoot(t *testing.T) {
 }
 
 // TestBrainReadJails: the user brain's reads settle in every project, the
-// private brain's only in a trusted one (D2); no brain root enters the write
+// private brain's only in a trusted one (DESIGN §9); no brain root enters the write
 // jail, so a brain write never auto-settles.
 func TestBrainReadJails(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -219,7 +219,7 @@ func TestBrainReadJails(t *testing.T) {
 }
 
 // TestLuaFsWriteBrainRefused: a brain path is in no write jail, so a Lua
-// write dies at jail resolution and is never asked (D2, row 16).
+// write dies at jail resolution and is never asked (DESIGN §9).
 func TestLuaFsWriteBrainRefused(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()

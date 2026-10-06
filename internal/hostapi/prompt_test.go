@@ -554,7 +554,7 @@ func TestPromptBudget(t *testing.T) {
 	// 24000: the agent and workflow tool descriptions say a foreground call
 	// hands its run off on the user's message, so the turn reads it (291 chars).
 	// 24500: the memory tool's file mode: path, content and its brain-file
-	// paragraph write a private brain map (D5).
+	// paragraph write a private brain map (DESIGN §10.4).
 	const ceiling = 24500
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)

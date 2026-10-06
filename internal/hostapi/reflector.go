@@ -355,7 +355,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 		return read, err
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
-	// the delta is seen only once every entry has applied or queued (D8);
+	// the delta is seen only once every entry has applied or queued (DESIGN §10.3);
 	// a rewind during the apply marks nothing
 	if err := h.reflectRead(sid, read); err != nil {
 		return read, err
@@ -630,7 +630,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		}
 		if busy[scope] {
 			// a store another zemi held queued the batch: the rest waits for
-			// review too, never a per-entry lock burn (section 7)
+			// review too, never a per-entry lock burn (DESIGN §10.3)
 			if h.queueProposal(res) {
 				queued++
 			} else {
@@ -640,7 +640,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		}
 		switch out, err := h.gateMemory(res); {
 		case err != nil:
-			// a failed apply queues as a proposal whose accept applies it (D8)
+			// a failed apply queues as a proposal whose accept applies it (DESIGN §10.3)
 			if errors.Is(err, brain.ErrLocked) {
 				if busy == nil {
 					busy = map[store.Scope]bool{}

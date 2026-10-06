@@ -1,5 +1,5 @@
 // brain.go builds the # Brain section of the context message and the
-// path-triggered pointers (docs/brain-design.md sections 3-4 and D10).
+// path-triggered pointers (DESIGN §10.7).
 
 package hostapi
 
@@ -15,7 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// brainLoop is the loop text every project's # Brain opens with (section 4);
+// brainLoop is the loop text every project's # Brain opens with (DESIGN §10.7);
 // it carries the seeding instruction, so it renders where no partition
 // exists yet.
 const brainLoop = `- The maps below are derived from file frontmatter; bodies are not injected.
@@ -34,7 +34,7 @@ const brainLoop = `- The maps below are derived from file frontmatter; bodies ar
   AGENTS.md, not here; the user's messages win over every file. Never
   hand-edit memories.md; use the memory tool.`
 
-// brainParts are the host's two brain partitions (D2): the private one
+// brainParts are the host's two brain partitions (DESIGN §7): the private one
 // keyed by this repository's TrustRoot, and the user's cross-project one.
 func (h *Host) brainParts() (user, private brain.Partition) {
 	return brain.UserPartition(h.Dirs.DataHome, h.Dirs.StateHome),
@@ -46,7 +46,7 @@ func (h *Host) brainParts() (user, private brain.Partition) {
 func (h *Host) RekeyProject() { h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) }
 
 // reconcileBrain imports a partition's frozen-table rows into memories.md
-// (section 8). Best effort: a failed import is a lint finding and the next
+// (DESIGN §7). Best effort: a failed import is a lint finding and the next
 // open retries.
 func (h *Host) reconcileBrain(p brain.Partition) {
 	if p.Zero() {
@@ -67,9 +67,9 @@ func (h *Host) reconcileBrain(p brain.Partition) {
 }
 
 // brainFor builds the # Brain section and the glob table its pointers match
-// (D10). The user partition loads and lints in every project; the private
+// (DESIGN §10.7). The user partition loads and lints in every project; the private
 // one's catalog and findings reach a trusted render only, while its memory
-// lines inject in every project like the digest they replaced (D3).
+// lines inject in every project like the digest they replaced (DESIGN §10.7).
 func (h *Host) brainFor() (string, []brainGlob) {
 	user, private := h.brainParts()
 	parts := make([]brain.Loaded, 0, 2)
@@ -85,7 +85,7 @@ func (h *Host) brainFor() (string, []brainGlob) {
 		l := brain.Load(private)
 		if !h.ProjectTrusted() {
 			// the lines inject untrusted; the catalog, its scan ceiling and
-			// the dir's error name private paths a pull must not see (D3)
+			// the dir's error name private paths a pull must not see (DESIGN §10.7)
 			l.Entries, l.Over, l.DirErr = nil, false, nil
 		} else {
 			findings = append(findings, brain.Lint(private)...)
@@ -97,7 +97,7 @@ func (h *Host) brainFor() (string, []brainGlob) {
 }
 
 // brainLoopText is the loop text headed by the partition roots that exist on
-// disk, so file-mode paths resolve without guessing (D10). The roots are
+// disk, so file-mode paths resolve without guessing (DESIGN §10.7). The roots are
 // zemi's own paths, so naming them untrusted leaks nothing.
 func (h *Host) brainLoopText(user, private brain.Partition) string {
 	var b strings.Builder
@@ -118,7 +118,7 @@ func (h *Host) brainLoopText(user, private brain.Partition) string {
 	return b.String() + brainLoop
 }
 
-// brainGlob is one armed paths: glob (D10) with the brain file its pointer
+// brainGlob is one armed paths: glob (DESIGN §10.7) with the brain file its pointer
 // names and the Read If it quotes.
 type brainGlob struct {
 	pattern string
@@ -127,7 +127,7 @@ type brainGlob struct {
 }
 
 // brainGlobs arms a loaded partition's globs. A file that cannot serve -
-// unreadable, missing frontmatter, or a bad glob - triggers nothing (D6).
+// unreadable, missing frontmatter, or a bad glob - triggers nothing (DESIGN §10.7).
 func brainGlobs(l brain.Loaded) []brainGlob {
 	var out []brainGlob
 	for _, e := range l.Entries {
@@ -146,7 +146,7 @@ func brainGlobs(l brain.Loaded) []brainGlob {
 	return out
 }
 
-// brainPointer is the path-triggered pointer (D10): the first read of a path
+// brainPointer is the path-triggered pointer (DESIGN §10.7): the first read of a path
 // a brain glob maps earns one line naming the file and its Read If, the
 // first write or edit the check-the-map line. At most three attach to one
 // result and further matches collapse into one aggregate line, so a result

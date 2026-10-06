@@ -16,7 +16,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// ScopeBudget caps the bytes one partition's lines take in the prompt (§3):
+// ScopeBudget caps the bytes one partition's lines take in the prompt (DESIGN §10.7):
 // the write gate keeps a scope under it, cutting learned lines to the
 // ledger, and the render cuts a hand-edited or corrupted file at the same
 // line.
@@ -32,7 +32,7 @@ func LineSize(text string) int { return len(text) + lineOverhead }
 
 // Line is one memories.md line: `- [id origin YYYY-MM-DD] text`. The date
 // is the line's last write - created for a new line, refreshed and
-// re-prepended by an edit - so the rendered age tracks the line (D1).
+// re-prepended by an edit - so the rendered age tracks the line (DESIGN §7).
 type Line struct {
 	ID     string
 	Origin store.Origin
@@ -46,7 +46,7 @@ func (l Line) String() string {
 }
 
 // BadLine is a line that does not parse, at its number in the file:
-// dropped from the render, named by lint (D6).
+// dropped from the render, named by lint (DESIGN §10.7).
 type BadLine struct {
 	N    int // 1-based, counting every line of the file
 	Text string
@@ -126,7 +126,7 @@ func day(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// TextHash is the sha256 a memories.md line op carries (D7): lint matches
+// TextHash is the sha256 a memories.md line op carries (DESIGN §7): lint matches
 // a live line's hash against the entries recorded for its id.
 func TextHash(text string) string { return FileHash([]byte(text)) }
 
@@ -135,7 +135,7 @@ var ErrNoMemory = errors.New("brain: no such memory")
 
 // ErrUserCut marks a budget overflow whose cut set would include an
 // origin=user line: nothing was written, the caller queues the write
-// instead (D1; DESIGN.md forbids silently dropping a user-attested memory).
+// instead (DESIGN §10.4 forbids silently dropping a user-attested memory).
 var ErrUserCut = errors.New("brain: the cut would take a user memory")
 
 // UserCutError is ErrUserCut with the id of the oldest line the cut would
@@ -146,13 +146,13 @@ func (e UserCutError) Error() string { return "the cut would take user memory " 
 func (e UserCutError) Unwrap() error { return ErrUserCut }
 
 // Apply stores m as a memories.md line under the partition lock, the
-// ledger entries before the file replace (D1): the id kept when m.ID is
+// ledger entries before the file replace (DESIGN §7): the id kept when m.ID is
 // set (a proposal's, so review decisions keep it), else a fresh one; the
 // line replaces names moves out first, its supersede entry trailing the
 // quote; then the budget cut archives the oldest learned lines until the
 // file fits ScopeBudget, the ids returned for the tool result to name. An
 // overflow whose cut set would reach an origin=user line is UserCutError
-// and nothing is written: the caller queues instead (rows 3 and 9).
+// and nothing is written: the caller queues instead (DESIGN §10.4).
 func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []string, error) {
 	if m.Text == "" || m.Origin == "" {
 		return Line{}, nil, errors.New("brain: memory needs text and origin")
@@ -195,7 +195,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 			Op: OpAdd, ID: l.ID, Text: m.Text, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
 			Hash: TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 		})
-		// budget as promotion (D1): the oldest learned lines go to the
+		// budget as promotion (DESIGN §10.4): the oldest learned lines go to the
 		// ledger, never a user line; the line just written is its own index
 		// zero and never its own cut
 		next := append([]Line{l}, lines...)
@@ -226,7 +226,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 }
 
 // supersedeOp is the supersede half of a write: the live line out, its text
-// and quote trailing in the entry (D1); an id only the ledger holds gets
+// and quote trailing in the entry (DESIGN §7); an id only the ledger holds gets
 // its entry alone, since the hot file holds live lines only.
 func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Scope, at time.Time) (*Op, []Line, error) {
 	i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
@@ -245,13 +245,13 @@ func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Sco
 		Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
 		Hash: TextHash(prior.Text), Scope: scope, Origin: prior.Origin, TS: at.UnixMilli(),
 	}
-	// the quote trails in the supersede entry (D1); the add or import
+	// the quote trails in the supersede entry (DESIGN §7); the add or import
 	// entry is where it lives
 	op.Quote = trailQuote(lg, id)
 	return op, slices.Delete(lines, i, i+1), nil
 }
 
-// Supersede removes id's line with a supersede entry naming byID (D1), for
+// Supersede removes id's line with a supersede entry naming byID (DESIGN §7), for
 // a replacement whose new line lands in the other partition; an id only the
 // ledger holds gets its entry alone.
 func Supersede(p Partition, sid, id, byID string, at time.Time) error {
@@ -262,7 +262,7 @@ func Supersede(p Partition, sid, id, byID string, at time.Time) error {
 }
 
 // Edit rewrites a line's text, refreshes its date and re-prepends it, the
-// edit entry carrying the prior text and the new hash (D7); origin is the
+// edit entry carrying the prior text and the new hash (DESIGN §7); origin is the
 // line's new attestation (/memory edits are the user's own words, a
 // move-merge takes the mover's).
 func Edit(p Partition, sid, id, text string, origin store.Origin, at time.Time) (Line, error) {
@@ -289,7 +289,7 @@ func editChange(sid, id, text string, origin store.Origin, scope store.Scope, at
 }
 
 // Forget removes the line id and writes its forget entry, so the absence
-// always has an explainer (D1). An id the file no longer holds must have a
+// always has an explainer (DESIGN §7). An id the file no longer holds must have a
 // ledger trail; one neither holds is ErrNoMemory.
 func Forget(p Partition, sid, id string, at time.Time) error {
 	return mutate(p, func(l *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
@@ -311,7 +311,7 @@ func Forget(p Partition, sid, id string, at time.Time) error {
 	})
 }
 
-// Lines reads a partition's live memories.md lines, newest first (D1).
+// Lines reads a partition's live memories.md lines, newest first (DESIGN §7).
 func Lines(p Partition) ([]Line, error) {
 	lines, _, err := readMemories(p)
 	return lines, err
@@ -319,7 +319,7 @@ func Lines(p Partition) ([]Line, error) {
 
 // Restore rewrites memories.md under the partition lock: the lines are
 // re-prepended (undo and rewind bring back what their trail removed, ages
-// kept), the ids dropped with a forget entry each (D1 - every removal has
+// kept), the ids dropped with a forget entry each (DESIGN §7 - every removal has
 // an explainer). A line still live is not re-added; an id nothing holds
 // still journals its forget.
 func Restore(p Partition, sid string, add []Line, forget []string, at time.Time) error {
@@ -332,7 +332,7 @@ func Restore(p Partition, sid string, add []Line, forget []string, at time.Time)
 }
 
 // RestoreLocked is Restore for a caller already holding the partition lock
-// (the rewind holds every partition's while it works, section 7).
+// (the rewind holds every partition's while it works, DESIGN §7).
 func RestoreLocked(p Partition, sid string, add []Line, forget []string, at time.Time) error {
 	return mutateLocked(p, func(_ *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
 		var ops []*Op
@@ -355,7 +355,7 @@ func RestoreLocked(p Partition, sid string, add []Line, forget []string, at time
 	})
 }
 
-// Move moves id's line to another partition (D1): both locks in the fixed
+// Move moves id's line to another partition (DESIGN §7): both locks in the fixed
 // user-then-private order, the move-out entry in the source's ledger and,
 // when no copy of the text lives there, the move-in entry in the
 // destination's and the line prepended with its id and age. A copy already
@@ -441,7 +441,7 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 }
 
 // writeMemories serializes next and replaces the file, a line that does not
-// parse carried through verbatim (D6): a write never deletes bytes it did
+// parse carried through verbatim: a write never deletes bytes it did
 // not write. The caller holds the partition lock.
 func writeMemories(p Partition, raw []byte, next []Line) error {
 	data := serialize(next)
@@ -458,7 +458,7 @@ func writeMemories(p Partition, raw []byte, next []Line) error {
 }
 
 // removeLine takes the line at i out of lines and replaces the file with
-// the op inserted first (D1); both under the caller's held locks.
+// the op inserted first (DESIGN §7); both under the caller's held locks.
 func removeLine(p Partition, op *Op, raw []byte, lines []Line, i int) error {
 	lg, err := p.OpenLedger()
 	if err != nil {
@@ -471,11 +471,11 @@ func removeLine(p Partition, op *Op, raw []byte, lines []Line, i int) error {
 	return writeMemories(p, raw, slices.Delete(slices.Clone(lines), i, i+1))
 }
 
-// ErrStale is the overwrite gate (D5): the file's current bytes no longer
+// ErrStale is the overwrite gate (DESIGN §10.4): the file's current bytes no longer
 // match what the caller saw, so nothing was written and the write queues.
 var ErrStale = errors.New("brain: the file changed under the write")
 
-// FileHash is the sha256 the file-mode overwrite gate compares (D5) and a
+// FileHash is the sha256 the file-mode overwrite gate compares (DESIGN §10.4) and a
 // write-set entry records.
 func FileHash(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -483,7 +483,7 @@ func FileHash(b []byte) string {
 }
 
 // WriteFile replaces one freeform brain file under the partition lock, its
-// write entry in the ledger first (D1, D7): the entry carries the replaced
+// write entry in the ledger first (DESIGN §7): the entry carries the replaced
 // file's prior bytes, ContentCap-capped with the truncation and existed
 // flags, so rewind restores them. want, when given, is the hash the caller
 // believes the file holds ("" when it should not exist): a mismatch is
@@ -527,7 +527,7 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 	return config.WriteFileAtomic(path, content, 0o600)
 }
 
-// Locate resolves an id over memories.md and the ledger (D1): the live
+// Locate resolves an id over memories.md and the ledger (DESIGN §7): the live
 // line when the file holds it, else the id's latest trail.
 func Locate(p Partition, l *Ledger, id string) (line Line, live bool, err error) {
 	lines, _, err := readMemories(p)
@@ -577,8 +577,8 @@ func mutateLocked(p Partition, change func(l *Ledger, raw []byte, lines []Line) 
 
 // mutate runs change on the partition's memories.md under the partition
 // lock, inserting its ledger entries before the atomic replace: ledger
-// first, both inside the lock (D1), so a crash between the two leaves the
-// D6 divergence finding, never a live line whose provenance is missing.
+// first, both inside the lock (DESIGN §7), so a crash between the two leaves the
+// divergence finding (DESIGN §10.7), never a live line whose provenance is missing.
 func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next []Line, ops []*Op, err error)) error {
 	unlock, err := Lock(p)
 	if err != nil {

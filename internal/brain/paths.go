@@ -1,4 +1,4 @@
-// Package brain is the disk-native memory store (docs/brain-design.md):
+// Package brain is the disk-native memory store (DESIGN §7, §10.7):
 // one Markdown partition per scope, an append-only SQLite ledger beside
 // each, and the render and lint that carry them into the prompt.
 package brain
@@ -44,9 +44,9 @@ type Partition struct {
 	DB   string // the SQLite file whose memory_ops table is this partition's ledger
 }
 
-// UserPartition is <dataHome>/brain/user (D2), whose ledger lives in the
+// UserPartition is <dataHome>/brain/user (DESIGN §7), whose ledger lives in the
 // global store. The user partition is user-owned state a pull cannot
-// write, so its catalog injects in every project (D3).
+// write, so its catalog injects in every project (DESIGN §10.7).
 func UserPartition(dataHome, stateHome string) Partition {
 	if dataHome == "" || stateHome == "" {
 		return Partition{Kind: User}
@@ -61,7 +61,7 @@ func UserPartition(dataHome, stateHome string) Partition {
 // PrivatePartition is <stateHome>/projects/<hash-of-TrustRoot>/brain, the
 // same hash key and derivation as the project DB it sits beside (the
 // recipes precedent), so one brain per repository survives across
-// worktrees and no pull can write a byte of it (D2).
+// worktrees and no pull can write a byte of it (DESIGN §7).
 func PrivatePartition(stateHome, trustRoot string) Partition {
 	if stateHome == "" || trustRoot == "" {
 		return Partition{Kind: Private}

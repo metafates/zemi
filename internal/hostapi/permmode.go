@@ -497,7 +497,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
 // memFiles are the brain partitions' reserved one-liner stores: the memory
-// tool owns them, so a file-tool write asks with that reason (D5).
+// tool owns them, so a file-tool write asks with that reason (DESIGN §10.4).
 func (h *Host) memFiles() []string {
 	user, private := h.brainParts()
 	var out []string
@@ -509,11 +509,11 @@ func (h *Host) memFiles() []string {
 	return out
 }
 
-// memLintMax caps the reserved file's findings an ask carries (D5).
+// memLintMax caps the reserved file's findings an ask carries (DESIGN §10.4).
 const memLintMax = 3
 
 // memLintNotes lints the brain partition a reserved-file write lands in and
-// returns up to three of the file's own findings' texts for the ask (D5).
+// returns up to three of the file's own findings' texts for the ask (DESIGN §10.4).
 func (h *Host) memLintNotes(arg string) []string {
 	user, private := h.brainParts()
 	for _, p := range []brain.Partition{user, private} {

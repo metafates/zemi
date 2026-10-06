@@ -25,7 +25,7 @@ func TestLintFindings(t *testing.T) {
 		}
 	}
 
-	// the seven finding classes of D6, one case each plus the clean case
+	// the seven finding classes (DESIGN §10.7), one case each plus the clean case
 	write("clean.md", "---\ndescription: fine\nread_if: always fine\n---\nbody")
 	write("no-desc.md", "---\nread_if: r\n---\n")
 	write("no-read.md", "---\ndescription: d\n---\n")

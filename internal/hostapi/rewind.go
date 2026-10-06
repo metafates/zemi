@@ -161,7 +161,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if len(cps) > 0 {
 		h.lspDirty() // a restore rewrites files behind the language servers' backs
 	}
-	// the locks come before any truncation or restore (section 7): a store
+	// the locks come before any truncation or restore (DESIGN §7): a store
 	// another zemi holds aborts the rewind with both intact
 	err = func() error {
 		h.cutMu.Lock()
@@ -219,11 +219,11 @@ func (h *Host) RewindTo(id string) (int, error) {
 // forgetLearned undoes what session sid learned from its rows from to until:
 // its learned memories and pending proposals go, and what they replaced or
 // the budget cut is live again. The ledger SELECT replays the session's ops
-// onto the files, forget entries per removed id (D1, D7), and restores its
+// onto the files, forget entries per removed id (DESIGN §7), and restores its
 // file-mode writes newest-first, ending at the oldest entry's prior bytes;
 // the frozen table is read-only trail, a live row's import entry replaying
 // as the add it stands for and a frozen row the import superseded coming
-// back too (D9). The rewind holds cutMu and the partition locks (section 7).
+// back too (DESIGN §7). The rewind holds cutMu and the partition locks.
 // NOTE: an accept or a reflector run between two rewound rows goes too.
 func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) {
 	dbs := []*store.DB{h.DB, h.GlobalDB}
@@ -238,7 +238,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 	user, private := h.brainParts()
 	parts := []brain.Partition{private, user}
 	// drop collects the ids each partition loses: a move-out in one
-	// partition removes the line from the other (section 7)
+	// partition removes the line from the other (DESIGN §7)
 	drop := map[brain.Kind][]string{brain.Private: nil, brain.User: nil}
 	var writes []*brain.Op
 	for _, p := range parts {
@@ -277,7 +277,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 			switch op.Op {
 			case brain.OpAdd, brain.OpMoveIn, brain.OpImport:
 				// an import replays like the add it stands for: the line it
-				// composed is the session's pre-migration learning (D9)
+				// composed is the session's pre-migration learning (DESIGN §7)
 				if op.Origin == store.OriginLearned {
 					drop[p.Kind] = append(drop[p.Kind], op.ID)
 				}
@@ -295,7 +295,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 					}
 				}
 			case brain.OpSupersede, brain.OpArchive:
-				// the line comes back with its last write's age (D1); a line
+				// the line comes back with its last write's age (DESIGN §7); a line
 				// the session itself wrote in the range stays dropped - the
 				// add being undone outranks the cut that later took it - and
 				// an entry without text (the id only the ledger held) has no
@@ -310,7 +310,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 		}
 		// a pre-migration supersede has no op to replay: the frozen row the
 		// dropped import retired comes back with the row's own text and age
-		// (D9); one the session dropped itself stays gone
+		// (DESIGN §7); one the session dropped itself stays gone
 		if len(drop[p.Kind]) > 0 {
 			db := h.DB
 			if p.Kind == brain.User {
@@ -356,7 +356,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 // restoreBrainWrites rewinds the session's file-mode brain writes: the
 // oldest op's prior bytes win, a creation deletes its file, and a truncated
 // prior defers to the file-tool checkpoint the restore loop already wrote
-// (section 7). The rewind holds the partition locks.
+// (DESIGN §7). The rewind holds the partition locks.
 func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) {
 	oldest := map[string]*brain.Op{}
 	for _, op := range writes {

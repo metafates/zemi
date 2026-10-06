@@ -175,13 +175,13 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		}
 	}
 	// a recipe is followed by later sessions, so say when this one could
-	// carry injected text; a brain file is read by later sessions too (D2)
+	// carry injected text; a brain file is read by later sessions too (DESIGN §10.4)
 	user, private := h.brainParts()
 	if req.Subject == perm.SubjectWrite && h.inJail(req.Arg, h.recipesDir(), user.Dir, private.Dir) && !h.sessionLocalOnly(h.AgentSessionID()) {
 		note("this session read text from outside the machine")
 	}
 	// the reserved file's open findings ride the ask, so the user approves
-	// the write seeing what the store already flags (D5)
+	// the write seeing what the store already flags (DESIGN §10.4)
 	if req.Subject == perm.SubjectWrite && !req.InPad() {
 		for _, s := range h.memLintNotes(req.Arg) {
 			note(s)

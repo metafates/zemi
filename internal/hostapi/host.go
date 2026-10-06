@@ -604,7 +604,7 @@ type Host struct {
 // SetProjectTrusted records the trust decision and rescans the project's
 // skills. A flip also rebuilds the brain render the session carries: the pin
 // key moves with trust, and the next send would otherwise re-pin the stale
-// render, keeping the private catalog in an untrusted session (D3) or
+// render, keeping the private catalog in an untrusted session (DESIGN §10.7) or
 // holding it back a compaction.
 func (h *Host) SetProjectTrusted(ok bool) {
 	prev := h.projectTrusted.Swap(ok)
@@ -713,7 +713,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	if h.GlobalDB != nil {
 		h.loadPicks()
 		// the global store's partition reconciles at startup; a project
-		// store's waits for its project session to open (section 8)
+		// store's waits for its project session to open (DESIGN §7)
 		h.reconcileBrain(h.partition(store.ScopeUser))
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{

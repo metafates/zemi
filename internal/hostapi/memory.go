@@ -48,7 +48,7 @@ func (h *Host) memoryDB(scope store.Scope) *store.DB {
 	return h.DB
 }
 
-// partition is the brain partition owning a scope (D2): user scope in the
+// partition is the brain partition owning a scope (DESIGN §7): user scope in the
 // user partition, project scope in the private one.
 func (h *Host) partition(scope store.Scope) brain.Partition {
 	user, private := h.brainParts()
@@ -125,7 +125,7 @@ func (h *Host) queueForget(sid, id string) (added bool, err error) {
 
 // applyProposal stores a proposal under auto autonomy and spends one unit
 // of the per-session auto-apply budget; the ids the budget cut name
-// themselves in the answer (D1).
+// themselves in the answer (DESIGN §7).
 func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	cut, err := h.storeProposal(res)
 	if err != nil {
@@ -138,7 +138,7 @@ func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	return cut, nil
 }
 
-// cutNote names the learned lines the budget archived (D1): their text,
+// cutNote names the learned lines the budget archived (DESIGN §7): their text,
 // quote and provenance live on in the ledger and /memory lists them.
 func cutNote(cut []string) string {
 	if len(cut) == 0 {
@@ -219,7 +219,7 @@ func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memo
 }
 
 // storeProposal applies a policy-clean memory to its partition's
-// memories.md, its add entry in the ledger first (D1); the ids the budget
+// memories.md, its add entry in the ledger first (DESIGN §7); the ids the budget
 // cut come back for the tool result to name.
 func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 	m := &res.Memory
@@ -236,7 +236,7 @@ func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 		if p.Kind != h.partition(m.Scope).Kind {
 			// the replaced memory lives in the other partition (it moved
 			// there, or the proposal predates the swap): the new line lands
-			// here without replaces and its supersede entry goes there (D1),
+			// here without replaces and its supersede entry goes there (DESIGN §7),
 			// after the add so a budget refusal leaves the old line alone
 			oldP, replaces = p, ""
 		}
@@ -260,7 +260,7 @@ func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 // Remember stores a user-typed /memory <note> text (origin user, project
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4), and an
 // overflow that would cut a line the user saved is refused, since the user
-// is there to make room (row 9).
+// is there to make room.
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return Usagef("usage: /memory <note>")
@@ -439,7 +439,7 @@ func (h *Host) undoKeep(id string) func() error {
 
 // restoreMemory puts m's line back whole, its age included: the reverse of
 // a removal. No ledger entry - the trail's forget explains the absence it
-// had, and the restored hash matches the entry that wrote the line (D6).
+// had, and the restored hash matches the entry that wrote the line (DESIGN §10.4).
 func (h *Host) restoreMemory(p brain.Partition, m *store.Memory) error {
 	return brain.Restore(p, "", []brain.Line{{
 		ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text,
@@ -643,7 +643,7 @@ func (h *Host) takeProposal(id string) *memoryProposal {
 
 // moveMemory moves a memory to the other scope: both partitions lock in
 // the fixed user-then-private order, the move-out and move-in entries go
-// into both ledgers (D1), and a failed move, or a full destination, leaves
+// into both ledgers (DESIGN §7), and a failed move, or a full destination, leaves
 // it where it was.
 func (h *Host) moveMemory(id string, from, to store.Scope) error {
 	mergedInto, err := brain.Move(h.partition(from), h.partition(to), cmp.Or(h.AgentSessionID(), "user"), id, h.now())
@@ -688,7 +688,7 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 	} else if p.Path != "" {
 		err = h.acceptFileProposal(p)
 	} else {
-		// the budget cuts learned lines to make room (row 10); a cut that
+		// the budget cuts learned lines to make room; a cut that
 		// would take a user line puts the proposal back
 		_, err = h.storeProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
 	}
@@ -708,7 +708,7 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 
 // memoryProposal is a queued proposal's payload. Forget proposes deleting
 // the memory Supersedes names; the embedded memory is a copy of it. A
-// file-mode proposal writes the brain file Path with Content instead (D5).
+// file-mode proposal writes the brain file Path with Content instead (DESIGN §10.4).
 type memoryProposal struct {
 	store.Memory
 	Supersedes string `json:",omitempty"`
@@ -749,7 +749,7 @@ func (h *Host) refreshPending() {
 // of everywhere, newest first; each section title counts its rows, and a
 // scope's names its share of brain.ScopeBudget. A row is one line: the
 // preview and the detail hold the whole text. The trail of cut and
-// superseded lines is one collapsed row at the end (section 6).
+// superseded lines is one collapsed row at the end (DESIGN §10.4).
 func (h *Host) memoryItems() []any {
 	props := h.memoryProposals()
 	live, _ := h.memoryList(false)
@@ -823,7 +823,7 @@ func (h *Host) memoryItems() []any {
 }
 
 // memoryTrail is the ids the ledgers show superseded or budget-cut, plus
-// the frozen table's superseded rows, none of them live (D1, section 6);
+// the frozen table's superseded rows, none of them live (DESIGN §7);
 // each carries its origin and last-write date.
 func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 	liveIDs := map[string]bool{}
@@ -904,8 +904,8 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 	}
 }
 
-// locateMemory resolves an id over the partitions' files and ledgers (D1),
-// the frozen table last (D9): the pre-migration rows keep resolving there,
+// locateMemory resolves an id over the partitions' files and ledgers (DESIGN §7),
+// the frozen table last: the pre-migration rows keep resolving there,
 // quote and provenance intact, for /memory and the replaces it names.
 func (h *Host) locateMemory(id string) (brain.Partition, *store.Memory, error) {
 	user, private := h.brainParts()
@@ -976,7 +976,7 @@ func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, boo
 }
 
 // memoryList merges both scopes, project first, each newest first by last
-// write (D1): the partitions' memories.md lines, quote and stamps from the
+// write (DESIGN §7): the partitions' memories.md lines, quote and stamps from the
 // ledger trail. includeSuperseded adds the frozen table's rows the files do
 // not hold - the pre-migration trail /memory's collapsed group shows, and
 // the ids a stored context row or a pending proposal still names. A failing
@@ -1003,7 +1003,7 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 		}
 		for _, l := range lines {
 			live[l.ID] = true
-			// the line's date is the last write the store holds (D1); the
+			// the line's date is the last write the store holds (DESIGN §7); the
 			// ledger refines quote and provenance beside it
 			m := &store.Memory{ID: l.ID, Scope: scope, Text: l.Text, Origin: l.Origin, UpdatedAt: l.Date.UnixMilli()}
 			if s, ok := stamps[l.ID]; ok {
@@ -1147,7 +1147,7 @@ func (h *Host) proposeMemory(sid string, origin store.Origin, scope store.Scope,
 
 // memoryTool is the memory tool that run p called from session sid: text
 // supersedes what replaces names, empty text with replaces forgets it, and
-// a non-empty path writes a private-partition brain file (D5).
+// a non-empty path writes a private-partition brain file (DESIGN §10.4).
 func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) (string, error) {
 	if call.Path != "" {
 		return h.memoryFileTool(sid, call.Path, call.Content)
@@ -1165,7 +1165,7 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 	return out.String(), nil
 }
 
-// memoryFileTool is the memory tool's file mode (D5): a freeform file in
+// memoryFileTool is the memory tool's file mode (DESIGN §10.4): a freeform file in
 // the private partition only, its frontmatter through the injected-surface
 // intake, the overwrite gated on the session's write set, settling under
 // memory.autonomy like a learned one-liner; everything else queues as a
@@ -1200,7 +1200,7 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	if _, scrubbed := learn.ScrubSecrets(content); scrubbed {
 		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
 	}
-	// injected-surface intake (D5): the frontmatter fields get what a
+	// injected-surface intake (DESIGN §10.4): the frontmatter fields get what a
 	// one-liner's text gets, the lazy-read body exempt
 	fm, ferr := brain.ParseFrontmatter(content)
 	reason := ""
@@ -1263,7 +1263,7 @@ func (h *Host) underBrainDir(dir, abs string) bool {
 
 // overwriteGate is the row-15 gate in one read: why an overwrite queues
 // ("" when the session may apply) and the hash the apply's write expects,
-// the write-set entry for an overwrite, "" for a creation (D5).
+// the write-set entry for an overwrite, "" for a creation (DESIGN §10.4).
 func (h *Host) overwriteGate(private brain.Partition, abs, name string) (string, *string) {
 	empty := ""
 	prior, err := os.ReadFile(filepath.Join(private.Dir, name))
@@ -1283,7 +1283,7 @@ func (h *Host) overwriteGate(private brain.Partition, abs, name string) (string,
 	return "", &entry
 }
 
-// spendAutoBudget charges the session's auto-apply budget (row 14); a
+// spendAutoBudget charges the session's auto-apply budget (DESIGN §10.4); a
 // detached reflector stores nothing of its own, so only the live session
 // spends.
 func (h *Host) spendAutoBudget(sid string) {
@@ -1297,7 +1297,7 @@ func (h *Host) spendAutoBudget(sid string) {
 
 // acceptFileProposal writes the file-mode proposal the user accepted: the
 // write replaces whatever is there now, the entry keeping its prior bytes
-// for rewind (D7).
+// for rewind (DESIGN §7).
 func (h *Host) acceptFileProposal(p *memoryProposal) error {
 	private := h.partition(p.Scope)
 	name := filepath.Base(p.Path)
@@ -1318,7 +1318,7 @@ func (h *Host) queueFileProposal(sid string, p brain.Partition, name, content, r
 	return "queued for the user's review (" + reason + ")", nil
 }
 
-// brainLintNote is the file's own open lint findings, one line (row 14).
+// brainLintNote is the file's own open lint findings, one line.
 func (h *Host) brainLintNote(p brain.Partition, name string) string {
 	var out []string
 	for _, f := range brain.Lint(p) {
@@ -1329,7 +1329,7 @@ func (h *Host) brainLintNote(p brain.Partition, name string) string {
 	return strings.Join(out, "; ")
 }
 
-// brainWriteOf is the session's write-set entry for abs (D5): the hash the
+// brainWriteOf is the session's write-set entry for abs (DESIGN §10.4): the hash the
 // session recorded when it last applied a write, ours when it wrote the
 // file at all.
 func (h *Host) brainWriteOf(abs string) (hash string, ours bool) {
@@ -1342,7 +1342,7 @@ func (h *Host) brainWriteOf(abs string) (hash string, ours bool) {
 
 // markBrainWrite records a brain file this session wrote, with the hash of
 // what it wrote, so a later file-mode overwrite applies only while the file
-// still matches (D5). Approved file-tool writes join here through the
+// still matches (DESIGN §10.4). Approved file-tool writes join here through the
 // AfterWrite hook.
 func (h *Host) markBrainWrite(abs string, content []byte) {
 	ag := h.agents
@@ -1355,7 +1355,7 @@ func (h *Host) markBrainWrite(abs string, content []byte) {
 }
 
 // brainAfterWrite scrubs the brain path an approved file-tool write just made
-// (D5, rows 16-17), after the write: the ask showed the bytes the tool wrote,
+// (DESIGN §10.4), after the write: the ask showed the bytes the tool wrote,
 // and the note names what the scrub changed on top.
 func (h *Host) brainAfterWrite(path string) string {
 	user, private := h.brainParts()
@@ -1425,7 +1425,7 @@ func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
 }
 
 // scrubMemories replaces the reserved file's bytes and journals an edit entry
-// per changed line, prior text and the new hash (D5, D7), the ledger first
+// per changed line, prior text and the new hash (DESIGN §7, §10.4), the ledger first
 // under the caller's partition lock. ScrubShapes never adds, drops or
 // reorders a line, so the lines diff by position; a changed line that does
 // not parse journals nothing, so the note falls back to the line numbers.
@@ -1491,7 +1491,7 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 // gateMemory is the autonomy gate (DESIGN §10.4): a near-duplicate is
 // refused, a quote the user never wrote drops the memory, and what
 // memoryReview finds no reason to hold is stored, the rest queued. A cut
-// that would take a line the user saved queues instead (row 3).
+// that would take a line the user saved queues instead.
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
 	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
@@ -1506,7 +1506,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 		cut, err := h.applyProposal(res)
 		if err != nil {
 			if uc, ok := errors.AsType[brain.UserCutError](err); ok {
-				// row 3: the write queues instead, so the proposal is not
+				// the write queues instead, so the proposal is not
 				// dropped while the user makes room
 				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error()}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 			}
@@ -1519,7 +1519,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 
 // memoryReview says why res waits for the user, or that it may be stored
 // at once. The budget is not a reason: the apply cuts the oldest learned
-// lines to the ledger (row 3), and a cut that would take a user line
+// lines to the ledger (DESIGN §10.4), and a cut that would take a user line
 // queues from the apply's refusal.
 func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	m := &res.Memory
@@ -1538,7 +1538,7 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	return "", false
 }
 
-// userCutFull refuses what would cut a line the user saved (rows 3, 9-10):
+// userCutFull refuses what would cut a line the user saved (DESIGN §10.4):
 // the cut never takes one, so the user makes room, the id naming the line.
 func userCutFull(scope store.Scope, uc brain.UserCutError) error {
 	return fmt.Errorf("%w (its oldest line %s is yours)", errScopeFull(scope), uc.ID)
@@ -1549,7 +1549,7 @@ func errScopeFull(scope store.Scope) error {
 }
 
 // scopeOver reports whether storing res would push its scope past
-// brain.ScopeBudget; the count is the partition's memories.md lines (D1).
+// brain.ScopeBudget; the count is the partition's memories.md lines (DESIGN §7).
 func (h *Host) scopeOver(res *learn.Result) bool {
 	lines, err := brain.Lines(h.partition(res.Memory.Scope))
 	if err != nil {

@@ -124,7 +124,7 @@ func TestBrainRenderTrust(t *testing.T) {
 	writeBrainFile(t, user.Dir, "style.md", "writing style", "writing any reply", nil)
 	writeBrainFile(t, private.Dir, "repo-map.md", "map of "+h.Dirs.ProjectDir, "before code changes", nil)
 	// a broken private file lints: its finding is a trusted-project warning,
-	// never an untrusted one (D3)
+	// never an untrusted one (DESIGN §10.7)
 	if err := os.WriteFile(filepath.Join(private.Dir, "broken.md"), []byte("no frontmatter"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestBrainRenderTrust(t *testing.T) {
 
 // TestBrainRebuildsOnTrustFlip: a trust flip with a session live rebuilds the
 // pinned render at once, so a revoke drops the private catalog before the
-// next send re-pins (D3) and a grant brings it back without a compaction.
+// next send re-pins (DESIGN §10.7) and a grant brings it back without a compaction.
 func TestBrainRebuildsOnTrustFlip(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -314,7 +314,7 @@ func TestBrainPointers(t *testing.T) {
 }
 
 // TestBrainAfterWrite: an approved file-tool write of a brain path scrubs in
-// place and notes it (rows 16-17): secret shapes redact, an
+// place and notes it (DESIGN §10.4): secret shapes redact, an
 // instruction-shaped memory line stays and is flagged, an over-cap
 // frontmatter field lints, the reserved file's rewrites are journaled so the
 // hash finding stays honest, the write set gains the entry, and a failure
@@ -470,7 +470,7 @@ func TestBrainAfterWrite(t *testing.T) {
 
 // TestBrainWriteToolScrubs: the approved write's tool result carries the
 // scrub note, and the write set gains the entry a later file-mode apply of
-// the same session checks (D5).
+// the same session checks (DESIGN §10.4).
 func TestBrainWriteToolScrubs(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -506,7 +506,7 @@ func TestBrainWriteToolScrubs(t *testing.T) {
 
 // TestBrainRenameScrub: the lsp rename path runs AfterWrite for every file it
 // rewrites, so a brain file a rename edits as a secondary target is scrubbed,
-// linted and joined to the write set, the notes one block (D5).
+// linted and joined to the write set, the notes one block (DESIGN §10.4).
 func TestBrainRenameScrub(t *testing.T) {
 	h, r := newTestHostDB(t)
 	defer func() { h.lsp.stopAll()() }()

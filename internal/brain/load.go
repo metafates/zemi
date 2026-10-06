@@ -12,7 +12,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// Scan ceilings (§3): the catalog is derived at render, so a pathological
+// Scan ceilings (DESIGN §10.7): the catalog is derived at render, so a pathological
 // tree costs at most this much. Past the caps the catalog renders its cut
 // marker naming the partition and a lint finding fires.
 const (
@@ -26,12 +26,12 @@ const (
 )
 
 // MemFile is the reserved one-liner store's name, the memory tool's file
-// (D1); every other .md is freeform and carries frontmatter.
+// (DESIGN §7); every other .md is freeform and carries frontmatter.
 const MemFile = "memories.md"
 
 // Entry is one freeform brain file as the scan saw it. A file that passes
 // the file-safety checks but cannot be read or parsed is still here, Err
-// set: it is named, never silently dropped (D6).
+// set: it is named, never silently dropped (DESIGN §10.7).
 type Entry struct {
 	Name string // the file's name in the partition
 	FM   Frontmatter
@@ -39,7 +39,7 @@ type Entry struct {
 }
 
 // Loaded is one partition's scan. A missing directory loads empty, never
-// as an error (D1); the render and lint degrade from here.
+// as an error (DESIGN §7); the render and lint degrade from here.
 type Loaded struct {
 	Partition Partition
 	Entries   []Entry // sorted by name, at most MaxCatalogFiles
@@ -52,7 +52,7 @@ type Loaded struct {
 // Load scans a partition's directory. Files that fail instructionFile's
 // bar (a regular file, not secret-shaped, inside the project) are left out
 // of the catalog, so a symlink planted in a brain dir cannot feed a target
-// outside it into the render (D3).
+// outside it into the render (DESIGN §10.7).
 func Load(p Partition) Loaded {
 	l := Loaded{Partition: p}
 	des, err := os.ReadDir(p.Dir)

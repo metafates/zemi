@@ -13,7 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// Op kinds (D7).
+// Op kinds (DESIGN §7).
 const (
 	OpAdd       = "add"
 	OpSupersede = "supersede"
@@ -27,10 +27,10 @@ const (
 )
 
 // ContentCap caps a brain file's content and the prior bytes a write op
-// keeps for rewind (D5, D7).
+// keeps for rewind (DESIGN §7, §10.4).
 const ContentCap = 32 << 10
 
-// Op is one memory_ops row (D7): INSERT-only, never compacted. Line ops
+// Op is one memory_ops row (DESIGN §7): INSERT-only, never compacted. Line ops
 // (add, supersede, forget, edit, archive, move, import) carry the line's
 // text, hash and origin; write ops carry the replaced brain file's prior
 // bytes. Import entries are the permanent tombstones.
@@ -53,7 +53,7 @@ type Op struct {
 	UpdatedAt    int64
 }
 
-// opsSchema is created lazily in the store the scope already uses (D1).
+// opsSchema is created lazily in the store the scope already uses (DESIGN §7).
 // No schema bump: the table is IF NOT EXISTS and user_version untouched.
 const opsSchema = `
 CREATE TABLE IF NOT EXISTS memory_ops (
@@ -116,12 +116,12 @@ func (l *Ledger) Close() error {
 }
 
 // Insert appends one op, the ledger entry preceding every file replace
-// that follows it under the same lock (D1).
+// that follows it under the same lock (DESIGN §7).
 func (l *Ledger) Insert(op *Op) error {
 	if l.db == nil {
 		return errors.New("brain: no store holds the ledger")
 	}
-	// an anonymous row is unlintable and unrestorable (D6, D7)
+	// an anonymous row is unlintable and unrestorable (DESIGN §7, §10.7)
 	if op.Op == "" {
 		return errors.New("brain: ledger insert without an op kind")
 	}
@@ -151,7 +151,7 @@ func (l *Ledger) ByID(id string) ([]*Op, error) {
 }
 
 // Latest is the newest op per id, the state /memory and the reflector
-// read. Nothing reads the ledger to build the prompt (D1).
+// read. Nothing reads the ledger to build the prompt (DESIGN §7).
 func (l *Ledger) Latest() ([]*Op, error) {
 	if l.db == nil {
 		return nil, nil
@@ -163,7 +163,7 @@ func (l *Ledger) Latest() ([]*Op, error) {
 }
 
 // Session is the ops session sid wrote between from and until (millis),
-// oldest first: rewind's forgetLearned replays them (section 7). Import
+// oldest first: rewind's forgetLearned replays them (DESIGN §7). Import
 // entries match on the frozen row's created_at, their op ts being the
 // migration moment, outside any rewound range.
 func (l *Ledger) Session(sid string, from, until int64) ([]*Op, error) {
@@ -176,7 +176,7 @@ func (l *Ledger) Session(sid string, from, until int64) ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
-// ops is every entry, oldest first; lint replays it (D6).
+// ops is every entry, oldest first; lint replays it (DESIGN §10.7).
 func (l *Ledger) ops() ([]*Op, error) {
 	if l.db == nil {
 		return nil, nil
@@ -185,7 +185,7 @@ func (l *Ledger) ops() ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
-// Stamp is what display needs about one id (D7): First is the first writing
+// Stamp is what display needs about one id (DESIGN §7): First is the first writing
 // op's ts (the line's age), Quote the latest quote the trail carried,
 // Session the first writer's provenance.
 type Stamp struct {

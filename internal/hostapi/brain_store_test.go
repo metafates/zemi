@@ -1,7 +1,7 @@
 package hostapi
 
 // Tests for the brain's rewind halves and the failure paths the design
-// calls out by name (docs/brain-design.md sections 7 and 9).
+// calls out by name (DESIGN §7, §10.3).
 
 import (
 	"errors"
@@ -112,7 +112,7 @@ func TestRewindBrain(t *testing.T) {
 	// the learned add is gone, the user line the session added survives both
 	// halves, the superseded line is live again with its replacement gone,
 	// and the archived line cut from an earlier session came back from the
-	// ledger's prior text (D1)
+	// ledger's prior text (DESIGN §7)
 	for id, want := range map[string]string{
 		fresh.ID: "", yours.ID: "yours", oldID: "the old truth",
 		ssID: "", agedID: "the aged truth",
@@ -151,7 +151,7 @@ func promptsFirst(t *testing.T, h *Host) string {
 
 // TestRewindBrainWrites restores the session's file-mode writes newest
 // first: an overwrite to its prior bytes, a creation deleted, and a
-// truncated prior deferring to the checkpoint (section 7).
+// truncated prior deferring to the checkpoint (DESIGN §7).
 func TestRewindBrainWrites(t *testing.T) {
 	h, sid := rewindHost(t)
 	_, private := h.brainParts()
@@ -171,7 +171,7 @@ func TestRewindBrainWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	// the session created map.md in the range and new.md too: the oldest
-	// entries' existed=false deletes both (section 7)
+	// entries' existed=false deletes both (DESIGN §7)
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("map.md survived the rewind: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestRewindBrainWrites(t *testing.T) {
 }
 
 // TestBrainCrashOrdering: a crash between the ledger insert and the file
-// replace leaves the lint finding, never a provenance-less live line (D1).
+// replace leaves the lint finding, never a provenance-less live line (DESIGN §7).
 func TestBrainCrashOrdering(t *testing.T) {
 	h, sid := rewindHost(t)
 	_, private := h.brainParts()
@@ -217,7 +217,7 @@ func TestBrainCrashOrdering(t *testing.T) {
 }
 
 // TestMoveOutExplainsAbsence: after a cross-scope move no lint finding
-// claims divergence (section 9's move-out half).
+// claims divergence (DESIGN §7).
 func TestMoveOutExplainsAbsence(t *testing.T) {
 	h, _ := rewindHost(t)
 	if err := h.Remember("deploy by hand"); err != nil {
@@ -236,7 +236,7 @@ func TestMoveOutExplainsAbsence(t *testing.T) {
 }
 
 // TestCrossScopeSupersede: a replaces whose memory moved to the other
-// partition supersedes it there and lands the new line in its own (D1) -
+// partition supersedes it there and lands the new line in its own (DESIGN §7) -
 // what the store swap strands a pre-swap proposal into.
 func TestCrossScopeSupersede(t *testing.T) {
 	h, sid := rewindHost(t)
@@ -271,7 +271,7 @@ func TestCrossScopeSupersede(t *testing.T) {
 
 // TestRewindMoveOut: rewinding a turn that moved a learned line across
 // scopes restores the source's line and drops the destination copy
-// (section 7), not a deletion from both.
+// (DESIGN §7), not a deletion from both.
 func TestRewindMoveOut(t *testing.T) {
 	h, sid := rewindHost(t)
 	user, private := h.brainParts()
@@ -342,7 +342,7 @@ func TestRewindLedgerOnlySupersede(t *testing.T) {
 }
 
 // TestReflectorQueuesFailedApply: an apply the store refuses queues as a
-// proposal whose accept applies it, and the delta still marks seen (D8).
+// proposal whose accept applies it, and the delta still marks seen (DESIGN §10.3).
 func TestReflectorQueuesFailedApply(t *testing.T) {
 	h, sid := rewindHost(t)
 	_, private := h.brainParts()

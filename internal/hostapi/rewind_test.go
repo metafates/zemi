@@ -210,7 +210,7 @@ func TestRewind(t *testing.T) {
 }
 
 // seedFrozen inserts a frozen-table row the way the pre-brain store's write
-// path did - the table's only writer now (section 7).
+// path did - the table's only writer now (DESIGN §7).
 func seedFrozen(t *testing.T, p brain.Partition, m *store.Memory) {
 	t.Helper()
 	db, err := sql.Open("sqlite", p.DB)

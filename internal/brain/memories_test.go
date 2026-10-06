@@ -119,7 +119,7 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err := Forget(p, "s1", "zzzz9999", later); !errors.Is(err, ErrNoMemory) {
 			t.Fatalf("unknown id: %v", err)
 		}
-		// every row the write path inserts carries its D7 kind
+		// every row the write path inserts carries its kind (DESIGN §7)
 		ops, err := lg.ops()
 		if err != nil {
 			t.Fatal(err)

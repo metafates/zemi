@@ -8,12 +8,12 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// Reconcile imports a partition's frozen-table rows into memories.md (§8).
+// Reconcile imports a partition's frozen-table rows into memories.md (DESIGN §7).
 // A live row whose id the ledger holds is done - the import entries are the
 // permanent tombstone that keeps a hand-deleted line from re-importing -
 // and the missing ones compose into the file: a deterministic merge of the
 // existing lines and the new rows, sorted by last-write date desc then id,
-// written through writeMemories so the file's malformed lines survive (D6)
+// written through writeMemories so the file's malformed lines survive
 // and a crash re-runs to identical bytes. The bytes are written first and
 // the entries follow them: a crash between the two re-runs, while the
 // reverse order would skip the compose forever. Superseded rows are not

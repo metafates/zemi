@@ -264,7 +264,7 @@ type Pipeline struct {
 	// gate and returns the answer: what became of it and what to do next; p
 	// is the run asking, whose gate a forget goes through. Text mode keeps
 	// one fact; a non-empty Path writes a private-partition brain file with
-	// Content (D5). nil = memory tool error.
+	// Content (DESIGN §10.4). nil = memory tool error.
 	Remember func(p *Pipeline, call MemoryCall) (string, error)
 
 	// Pad is the scratchpad this pipeline was bound to, "" for none: every
@@ -1376,7 +1376,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 	}
 }
 
-// MemoryCall is the memory tool's parsed input (D5): text mode when Path is
+// MemoryCall is the memory tool's parsed input (DESIGN §10.4): text mode when Path is
 // empty, file mode - a private-partition brain file - otherwise.
 type MemoryCall struct {
 	Scope    store.Scope

@@ -362,7 +362,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	// the brain row: lint findings, over-budget partitions and the counts
-	// beside the learning row (D6)
+	// beside the learning row
 	userP, privateP := h.brainParts()
 	var findings []brain.Finding
 	findings = append(findings, brain.Lint(userP)...)

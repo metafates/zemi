@@ -6,7 +6,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 )
 
-// Finding is one lint result (D6): single-line, control-character-free,
+// Finding is one lint result (DESIGN §10.7): single-line, control-character-free,
 // naming the path and the problem and nothing more. Subject is the file the
 // finding names - an entry name, MemFile, or the partition dir or ledger
 // path - so a consumer takes one file's findings without parsing Text.
@@ -15,7 +15,7 @@ type Finding struct {
 	Text    string
 }
 
-// Lint checks one partition against D6's findings: the freeform files'
+// Lint checks one partition against DESIGN §10.7's findings: the freeform files'
 // frontmatter, the memories.md lines, and the file-versus-ledger
 // divergence. An absent partition is clean; a ledger that will not open
 // adds its own finding and ends the divergence check.
@@ -84,7 +84,7 @@ func Lint(p Partition) []Finding {
 	return out
 }
 
-// lintLedger replays the ops oldest first (D6): an add or import whose id
+// lintLedger replays the ops oldest first (DESIGN §10.7): an add or import whose id
 // is missing from the file with no later removal explaining it is the
 // divergence - a crash between the ledger insert and the file replace, a
 // lost update between windows, or a hand edit - and a live line whose text

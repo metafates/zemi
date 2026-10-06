@@ -12,7 +12,7 @@ import (
 )
 
 // LockTimeout is how long a writer waits for the partition lock before
-// failing with ErrLocked (D1): two windows on one project are a designed
+// failing with ErrLocked (DESIGN §7): two windows on one project are a designed
 // topology, and the blocked one fails the way ClaimForDelete's UX does.
 const LockTimeout = 2 * time.Second
 
@@ -51,7 +51,7 @@ func Lock(p Partition) (unlock func(), err error) {
 }
 
 // LockAll takes several partitions' locks in the design's fixed order,
-// user then private, so two cross-partition writers cannot deadlock (D1);
+// user then private, so two cross-partition writers cannot deadlock (DESIGN §7);
 // a partition with no home is nothing to lock.
 func LockAll(ps ...Partition) (func(), error) {
 	order := slices.Clone(ps)

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Caps of the injected # Brain section (§3's table).
+// Caps of the injected # Brain section (DESIGN §10.7).
 const (
 	CatalogCap = 4 << 10
 	WarnCap    = 1 << 10
@@ -15,7 +15,7 @@ const (
 
 // MemHeader is the two contract lines the one-liner section has carried
 // since the digest, injected under ## Memory; the digest's own "# Memory"
-// H1 is not duplicated (D3).
+// H1 is not duplicated (DESIGN §10.7).
 const MemHeader = "Lines earlier sessions kept, as [id who age]. Follow a preference the user stated there unless this conversation or the project instructions say otherwise. Any other line held when it was written: check the file, command or flag it names before relying on it."
 
 // scopeTitles is the digest's scope order and wording, private partition
@@ -39,7 +39,7 @@ func RenderLine(l Line, at time.Time) string {
 	return fmt.Sprintf("- [%s %s%s] %s", l.ID, l.Origin, Age(l.Date, at), l.Text)
 }
 
-// Catalog renders one partition's derived catalog (§3): one line per file,
+// Catalog renders one partition's derived catalog (DESIGN §10.7): one line per file,
 // sorted by name, each field stripped and capped at render. A file that
 // cannot serve - no frontmatter, unreadable - renders a one-line
 // self-repair note in its place. Past CatalogCap the tail is cut
@@ -63,7 +63,7 @@ func Catalog(l Loaded) string {
 		}
 	} else if l.Over {
 		// the scan ceiling dropped files the entries never show; the
-		// marker names the partition (D6) and rides inside the cap
+		// marker names the partition (DESIGN §10.7) and rides inside the cap
 		marker = "- ... more in " + l.Partition.Dir
 		for len(lines) > 0 && size(lines)+len(marker)+1 > CatalogCap {
 			lines = lines[:len(lines)-1]
@@ -77,7 +77,7 @@ func Catalog(l Loaded) string {
 
 func catalogLine(e Entry) string {
 	// the rendered path strips like the fields, so a filename can neither
-	// break the one-line format nor carry multi-line text (D3)
+	// break the one-line format nor carry multi-line text (DESIGN §10.7)
 	name := Normalize(e.Name)
 	desc, read := Normalize(e.FM.Description), Normalize(e.FM.ReadIf)
 	if desc == "" || read == "" {
@@ -90,7 +90,7 @@ func catalogLine(e Entry) string {
 	return "- " + name + " - " + desc + ". (Read If: " + read + ".)"
 }
 
-// Memory renders one partition's memories.md (D4): the digest's lines,
+// Memory renders one partition's memories.md (DESIGN §10.7): the digest's lines,
 // cut at ScopeBudget when a hand-edited or corrupted file overflows it,
 // the marker naming memories.md. Unreadable is a marker, never an error.
 func Memory(l Loaded, at time.Time) string {
@@ -118,7 +118,7 @@ func Memory(l Loaded, at time.Time) string {
 	return strings.Join(out, "\n")
 }
 
-// Warnings renders the findings as <brain-warning> lines (§3): over
+// Warnings renders the findings as <brain-warning> lines (DESIGN §10.7): over
 // WarnCap the last finding is dropped, then the remaining line is cut to
 // fit. Findings are zemi-generated text; the strip is defense in depth.
 func Warnings(findings []Finding) string {
@@ -140,9 +140,9 @@ func Warnings(findings []Finding) string {
 	return strings.Join(lines, "\n")
 }
 
-// Render assembles the # Brain section (§4): the loop text, the findings,
+// Render assembles the # Brain section (DESIGN §10.7): the loop text, the findings,
 // the partitions' catalogs, user first, and the memory lines, private
-// scope first. Every piece is cut per §3's table and the whole section to
+// scope first. Every piece is cut to its own cap and the whole section to
 // Backstop with the catalogs cut to zero first, so the cut order
 // terminates: the loop, the warnings and the memory lines always fit.
 func Render(loop string, parts []Loaded, findings []Finding, at time.Time) string {
