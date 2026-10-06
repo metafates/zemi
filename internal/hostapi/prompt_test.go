@@ -530,8 +530,8 @@ func TestPromptBudget(t *testing.T) {
 	for _, s := range sizes {
 		n += s.chars
 	}
-	// the paths the prompt names (project, pad, zemi's dirs, the binary) are
-	// the machine's: each counts as a fixed short one, so TMPDIR moves nothing
+	// every dir the prompt names (project, pad, recipes, zemi's own) is the
+	// machine's: each counts as a fixed short one, so TMPDIR moves nothing
 	text := sys
 	for _, tool := range toolset {
 		schema, _ := json.Marshal(tool.Info().Parameters, json.Deterministic(true))
@@ -553,7 +553,9 @@ func TestPromptBudget(t *testing.T) {
 	// delegating paragraph says when that pays (447 chars).
 	// 24000: the agent and workflow tool descriptions say a foreground call
 	// hands its run off on the user's message, so the turn reads it (291 chars).
-	const ceiling = 24000
+	// 24500: the memory tool's file mode: path, content and its brain-file
+	// paragraph write a private brain map (D5).
+	const ceiling = 24500
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
