@@ -560,4 +560,28 @@ func TestBrainRenameScrub(t *testing.T) {
 	if hash, ours := h.brainWriteOf(brainFile); !ours || hash != brain.FileHash(b) {
 		t.Fatalf("the rename did not join the write set: %q, ours %v", hash, ours)
 	}
+	// a rename failing partway still rides AfterWrite for the files it
+	// rewrote before the failure: z.md sorts last and its write is refused,
+	// so map.md and code.md were written when it does
+	third := filepath.Join(h.Dirs.ProjectDir, "z.md")
+	if err := os.WriteFile(third, []byte("Baz()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(fmt.Sprintf(`{"action":"symbols","path":%q}`, third)); !strings.Contains(got, "no symbols") {
+		t.Fatalf("symbols on z.md: %q", got)
+	}
+	if err := os.Chmod(third, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	got = run(fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Baz","new_name":"Qux"}`, named))
+	if !strings.Contains(got, "z.md:") || !strings.Contains(got, "map.md: no description") {
+		t.Fatalf("the failed rename result: %q", got)
+	}
+	b, _ = os.ReadFile(brainFile)
+	if !strings.Contains(string(b), "Qux is called in code.md") {
+		t.Fatalf("brain file after the failed rename: %q", b)
+	}
+	if hash, ours := h.brainWriteOf(brainFile); !ours || hash != brain.FileHash(b) {
+		t.Fatalf("the failed rename did not join the write set: %q, ours %v", hash, ours)
+	}
 }

@@ -237,14 +237,20 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+workRel(f)+"; nothing was changed")), nil
 			}
 		}
-		var b strings.Builder
+		var b, notes strings.Builder
 		total := 0
+		var done []string
 		for _, f := range slices.Sorted(maps.Keys(byPath)) {
 			n, err := applyTextEdits(p, resolved[f], byPath[f])
 			if err != nil {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %v (files before it were changed)", workRel(f), err)), nil
+				// the files before it were written; they still ride AfterWrite (D5)
+				for _, g := range done {
+					notes.WriteString(p.afterWrite(g))
+				}
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %v (files before it were changed)", workRel(f), err) + notes.String()), nil
 			}
 			total += n
+			done = append(done, f)
 			fmt.Fprintf(&b, "%s (%d)\n", workRel(f), n)
 			// the server must see the new text, or the next query (a rename
 			// back, references) answers from the old one
@@ -254,8 +260,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		}
 		// every rewritten file rides AfterWrite, so a brain file a rename
 		// edits as a secondary target is scrubbed and linted too (D5)
-		var notes strings.Builder
-		for _, f := range slices.Sorted(maps.Keys(byPath)) {
+		for _, f := range done {
 			notes.WriteString(p.afterWrite(f))
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("renamed %s to %s in %d file%s, %d place%s:\n%s", symbol, newName, len(byPath), plural(len(byPath)), total, plural(total), strings.TrimRight(b.String(), "\n")) + notes.String()), nil
