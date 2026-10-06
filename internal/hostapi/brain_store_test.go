@@ -101,9 +101,6 @@ func TestRewindBrain(t *testing.T) {
 	}
 
 	first := promptsFirst(t, h)
-	if rows, err := h.DB.Messages(sid); err == nil {
-		t.Logf("range from=%d until=%d", rows[0].CreatedAt, rows[len(rows)-1].CreatedAt)
-	}
 	if _, err := h.RewindTo(first); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +126,6 @@ func TestRewindBrain(t *testing.T) {
 	kinds := map[string]int{}
 	for _, op := range ops {
 		kinds[op.Op]++
-		t.Logf("op %s id=%s ts=%d", op.Op, op.ID, op.TS)
 	}
 	if kinds[brain.OpForget] < 2 || kinds[brain.OpSupersede] == 0 || kinds[brain.OpArchive] == 0 {
 		t.Fatalf("ledger halves: %+v", kinds)

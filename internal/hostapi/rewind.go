@@ -331,7 +331,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 					// explains the line and lint's hand-edit finding stays quiet
 					revive := &brain.Op{
 						Op: brain.OpAdd, ID: m.ID, Text: m.Text, SessionID: sid,
-						Hash: brain.FileHash([]byte(m.Text)), Scope: p.Kind.Scope(), Origin: m.Origin,
+						Hash: brain.TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin,
 						CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, TS: h.now().UnixMilli(),
 					}
 					if err := lg.Insert(revive); err != nil {
@@ -374,7 +374,7 @@ func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain
 		// restored above; this op's prior is only mid-turn state
 		checkpointed := false
 		for _, cp := range cps {
-			if cp.Path == path {
+			if perm.CanonPath(cp.Path) == perm.CanonPath(path) {
 				checkpointed = true
 				break
 			}
@@ -383,7 +383,7 @@ func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain
 			continue
 		}
 		if op.Truncated {
-			h.Notify(slog.LevelWarn, "File partly restored", filepath.Base(path)+" rewound to its first 32 KiB only")
+			h.Notify(slog.LevelWarn, "File partly restored", fmt.Sprintf("%s rewound to its first %d KiB only", filepath.Base(path), brain.ContentCap>>10))
 		}
 		var err error
 		if !op.Existed {

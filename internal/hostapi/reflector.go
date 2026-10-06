@@ -649,10 +649,10 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			if h.queueProposal(res) {
 				queued++
+				h.Log.Warn("apply queued", "origin", "reflector", "error", err)
 			} else {
 				skipped++
 			}
-			h.Log.Warn("apply queued", "origin", "reflector", "error", err)
 		case out.Duplicate != nil || out.Dropped:
 			skipped++
 		case out.ID == "":

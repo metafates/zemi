@@ -370,7 +370,7 @@ func TestBrainAfterWrite(t *testing.T) {
 					t.Fatal(err)
 				}
 				if len(ops) != 2 || ops[1].Op != brain.OpEdit || ops[1].PriorText != "the deploy key is "+secret ||
-					ops[1].Hash != brain.FileHash([]byte(lines[0].Text)) {
+					ops[1].Hash != brain.TextHash(lines[0].Text) {
 					t.Fatalf("edit op: %+v", ops)
 				}
 				for _, f := range brain.Lint(private) {
