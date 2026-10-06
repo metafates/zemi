@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/store"
@@ -193,36 +192,5 @@ func TestInstructionShaped(t *testing.T) {
 		if InstructionShaped(n) {
 			t.Fatalf("false positive: %q", n)
 		}
-	}
-}
-
-// TestDigestBudget: the section lists every scope newest first as given,
-// stops a scope at its budget, and renders nothing
-// for an empty store.
-func TestDigestBudget(t *testing.T) {
-	at := time.UnixMilli(1700000000000)
-	mem := func(scope store.Scope, id, text string, origin store.Origin, age time.Duration) *store.Memory {
-		return &store.Memory{ID: id, Scope: scope, Text: text, Origin: origin, UpdatedAt: at.Add(-age).UnixMilli()}
-	}
-	rows := []*store.Memory{
-		mem("project", "aaaa0000", "newest project fact", store.OriginLearned, 0),
-		mem("project", "cccc0000", "older project fact", store.OriginUser, 72*time.Hour),
-		mem("project", "dddd0000", "oldest project fact, past the budget", store.OriginUser, 96*time.Hour),
-		mem("user", "eeee0000", "the user prefers short replies", store.OriginUser, 0),
-	}
-	budget := LineSize("newest project fact") + LineSize("older project fact")
-	want := digestHeader + `
-
-## this project
-- [aaaa0000 learned] newest project fact
-- [cccc0000 user 3d] older project fact
-
-## every project
-- [eeee0000 user] the user prefers short replies`
-	if got := Digest(rows, at, budget); got != want {
-		t.Fatalf("digest:\n%s\nwant:\n%s", got, want)
-	}
-	if got := Digest(nil, at, budget); got != "" {
-		t.Fatalf("want empty, got %q", got)
 	}
 }

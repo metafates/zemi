@@ -216,30 +216,20 @@ func (h *Host) RewindTo(id string) (int, error) {
 
 // forgetLearned undoes what session sid learned from its rows from to until:
 // its learned memories and pending proposals go, and what they replaced or
-// the budget cut is live again. The frozen-table halves keep covering the
-// pre-migration rows (section 7); the ledger SELECT replays the session's
-// ops onto the files, forget entries per removed id (D1, D7), and restores
-// its file-mode writes newest-first, ending at the oldest entry's prior
-// bytes. The rewind holds cutMu and the partition locks (section 7).
+// the budget cut is live again. The ledger SELECT replays the session's ops
+// onto the files, forget entries per removed id (D1, D7), and restores its
+// file-mode writes newest-first, ending at the oldest entry's prior bytes;
+// the frozen table is read-only trail, its rows covered by their import
+// entries. The rewind holds cutMu and the partition locks (section 7).
 // NOTE: an accept or a reflector run between two rewound rows goes too.
 func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) {
-	var gone []string
 	dbs := []*store.DB{h.DB, h.GlobalDB}
 	for _, db := range dbs {
 		if db == nil {
 			continue
 		}
-		ids, err := db.DeleteLearnedBetween(sid, from, until)
-		if err = errors.Join(err, db.DeleteProposalsBetween(sid, from, until)); err != nil {
+		if err := db.DeleteProposalsBetween(sid, from, until); err != nil {
 			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
-		}
-		gone = append(gone, ids...)
-	}
-	for _, db := range dbs {
-		if db != nil && len(gone) > 0 {
-			if err := db.Unsupersede(gone); err != nil {
-				h.Log.Warn("replaced memories not restored", "origin", "rewind", "error", err)
-			}
 		}
 	}
 	user, private := h.brainParts()
@@ -278,7 +268,9 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 		}
 		for _, op := range ops {
 			switch op.Op {
-			case brain.OpAdd, brain.OpMoveIn:
+			case brain.OpAdd, brain.OpMoveIn, brain.OpImport:
+				// an import replays like the add it stands for: the line it
+				// composed is the session's pre-migration learning (D9)
 				if op.Origin == store.OriginLearned {
 					drop[p.Kind] = append(drop[p.Kind], op.ID)
 				}

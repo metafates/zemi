@@ -163,13 +163,16 @@ func (l *Ledger) Latest() ([]*Op, error) {
 }
 
 // Session is the ops session sid wrote between from and until (millis),
-// oldest first: rewind's forgetLearned replays them (section 7).
+// oldest first: rewind's forgetLearned replays them (section 7). Import
+// entries match on the frozen row's created_at, their op ts being the
+// migration moment, outside any rewound range.
 func (l *Ledger) Session(sid string, from, until int64) ([]*Op, error) {
 	if l.db == nil {
 		return nil, nil
 	}
 	rows, err := l.db.Query(`SELECT `+opCols+` FROM memory_ops
-		WHERE session_id = ? AND ts BETWEEN ? AND ? ORDER BY rowid`, sid, from, until)
+		WHERE session_id = ? AND (ts BETWEEN ? AND ? OR op = ? AND created_at BETWEEN ? AND ?)
+		ORDER BY rowid`, sid, from, until, OpImport, from, until)
 	return collectOps(rows, err)
 }
 

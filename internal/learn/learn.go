@@ -1,7 +1,8 @@
 // Package learn is the learning core (DESIGN §10): memory intake with
 // the §10.4 policy (length caps, provenance, secret scrubbing,
-// instruction-shaped flagging), the near-duplicate check and the §10.7
-// digest. Autonomy gating and the review queue live above it, in hostapi.
+// instruction-shaped flagging) and the near-duplicate check. Autonomy
+// gating, the review queue and the injected render live above it, in
+// hostapi and brain.
 package learn
 
 import "errors"
@@ -12,11 +13,6 @@ const (
 	MaxTextLen  = 300
 	MaxQuoteLen = 160
 )
-
-// ScopeBudget caps the bytes one scope's lines take in the prompt: every
-// live memory is there, so the write gate refuses to grow past it
-// (DESIGN §10.7).
-const ScopeBudget = 3072
 
 // ErrRefused marks text the intake policy will not store.
 var ErrRefused = errors.New("learn: intake refused")

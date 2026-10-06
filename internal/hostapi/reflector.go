@@ -438,13 +438,13 @@ func (h *Host) reflectPrompt(sid string) (string, []*store.Message, error) {
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
 		used := map[store.Scope]int{}
 		for _, m := range mems {
-			used[m.Scope] += learn.LineSize(m.Text)
+			used[m.Scope] += brain.LineSize(m.Text)
 		}
 		fmt.Fprintf(&b, "\n# Memory index (project %s, user %s)\n",
 			budgetUse(used[store.ScopeProject]), budgetUse(used[store.ScopeUser]))
 		now := time.Now()
 		for _, m := range mems {
-			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID, m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
+			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID, m.Scope, m.Origin, brain.Age(dayOf(m.UpdatedAt), now), m.Text)
 			if m.Quote != "" {
 				fmt.Fprintf(&b, "  quote: %q\n", m.Quote)
 			}
@@ -464,8 +464,8 @@ func (h *Host) reflectPrompt(sid string) (string, []*store.Message, error) {
 // is told which scope takes nothing new rather than left to do the
 // arithmetic.
 func budgetUse(used int) string {
-	s := fmt.Sprintf("%.1f/%d KB", float64(used)/1024, learn.ScopeBudget/1024)
-	if used > learn.ScopeBudget*4/5 {
+	s := fmt.Sprintf("%.1f/%d KB", float64(used)/1024, brain.ScopeBudget/1024)
+	if used > brain.ScopeBudget*4/5 {
 		s += " (full)"
 	}
 	return s

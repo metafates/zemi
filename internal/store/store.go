@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS memory (
 	superseded_by TEXT,
 	origin TEXT NOT NULL
 );
--- listings and the digest order by recency within a scope
+-- the trail group and /memory's merged list order by recency within a scope
 CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 `
 

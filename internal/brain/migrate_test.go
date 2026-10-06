@@ -2,6 +2,7 @@ package brain
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,6 +20,22 @@ func TestReconcile(t *testing.T) {
 			Origin: store.OriginLearned, CreatedAt: updated, UpdatedAt: updated,
 		}
 	}
+	// seedRow inserts a frozen-table row the way the pre-brain store's write
+	// path did - the table's only writer now (section 7).
+	seedRow := func(t *testing.T, p Partition, m *store.Memory) {
+		t.Helper()
+		db, err := sql.Open("sqlite", p.DB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if _, err := db.Exec(`INSERT INTO memory
+			(id, scope, text, quote, provenance_session_id, created_at, updated_at, superseded_by, origin)
+			VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`,
+			m.ID, m.Scope, m.Text, m.ProvenanceSessionID, m.CreatedAt, m.UpdatedAt, m.SupersededBy, m.Origin); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	t.Run("imports live rows, keeps superseded ones and re-runs idempotently", func(t *testing.T) {
 		p := testPartition(t)
@@ -33,16 +50,8 @@ func TestReconcile(t *testing.T) {
 			live("aaaa1111", "older fact", 1_000_000_000),
 			old,
 		}
-		for _, m := range rows[:2] {
-			if err := db.AddMemory(m); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := db.AddMemory(old); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.SupersedeMemory("superseded1", "newerid1"); err != nil {
-			t.Fatal(err)
+		for _, m := range rows {
+			seedRow(t, p, m)
 		}
 		if err := Reconcile(p, rows, at); err != nil {
 			t.Fatal(err)
@@ -87,11 +96,9 @@ func TestReconcile(t *testing.T) {
 
 	t.Run("a hand-deleted line never resurrects", func(t *testing.T) {
 		p := testPartition(t)
-		db := openStore(t, p)
+		openStore(t, p)
 		rows := []*store.Memory{live("aaaa1111", "the fact", 1000)}
-		if err := db.AddMemory(rows[0]); err != nil {
-			t.Fatal(err)
-		}
+		seedRow(t, p, rows[0])
 		if err := Reconcile(p, rows, at); err != nil {
 			t.Fatal(err)
 		}
@@ -110,11 +117,9 @@ func TestReconcile(t *testing.T) {
 
 	t.Run("a hand-written malformed line survives the import", func(t *testing.T) {
 		p := testPartition(t)
-		db := openStore(t, p)
+		openStore(t, p)
 		rows := []*store.Memory{live("aaaa1111", "the fact", 1000)}
-		if err := db.AddMemory(rows[0]); err != nil {
-			t.Fatal(err)
-		}
+		seedRow(t, p, rows[0])
 		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -139,11 +144,9 @@ func TestReconcile(t *testing.T) {
 
 	t.Run("the tombstone follows the bytes it stamps", func(t *testing.T) {
 		p := testPartition(t)
-		db := openStore(t, p)
+		openStore(t, p)
 		rows := []*store.Memory{live("aaaa1111", "the fact", 1000)}
-		if err := db.AddMemory(rows[0]); err != nil {
-			t.Fatal(err)
-		}
+		seedRow(t, p, rows[0])
 		lg := openLedger(t, p)
 		// the file replace fails: the import entry must not land either, so
 		// a re-run still composes

@@ -900,8 +900,8 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 }
 
 // locateMemory resolves an id over the partitions' files and ledgers (D1),
-// the frozen table last (D9): pre-migration rows keep resolving there until
-// stage 5 retires the read.
+// the frozen table last (D9): the pre-migration rows keep resolving there,
+// quote and provenance intact, for /memory and the replaces it names.
 func (h *Host) locateMemory(id string) (brain.Partition, *store.Memory, error) {
 	user, private := h.brainParts()
 	for _, p := range []brain.Partition{private, user} {
@@ -973,9 +973,9 @@ func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, boo
 // memoryList merges both scopes, project first, each newest first by last
 // write (D1): the partitions' memories.md lines, quote and stamps from the
 // ledger trail. includeSuperseded adds the frozen table's rows the files do
-// not hold - the pre-migration trail /memory's collapsed group shows -
-// until stage 5 retires the read. A failing partition is logged and
-// skipped; its error comes back with the rows.
+// not hold - the pre-migration trail /memory's collapsed group shows, and
+// the ids a stored context row or a pending proposal still names. A failing
+// partition is logged and skipped; its error comes back with the rows.
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
 	var errs []error
@@ -1345,7 +1345,7 @@ func (h *Host) brainWriteOf(abs string) (hash string, ours bool) {
 // markBrainWrite records a brain file this session wrote, with the hash of
 // what it wrote, so a later file-mode overwrite applies only while the file
 // still matches (D5). Approved file-tool writes join here through the
-// AfterWrite hook (stage 4).
+// AfterWrite hook.
 func (h *Host) markBrainWrite(abs string, content []byte) {
 	ag := h.agents
 	ag.mu.Lock()

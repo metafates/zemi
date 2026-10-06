@@ -7,26 +7,26 @@ import (
 )
 
 // Caps of the injected # Brain section (§3's table). Backstop is
-// hostapi's contextBudget; stage 2 wires the render where that lives.
+// hostapi's contextBudget.
 const (
 	CatalogCap = 4 << 10
 	WarnCap    = 1 << 10
 	Backstop   = 32 << 10
 )
 
-// MemHeader is the two contract lines of today's digest header
-// (learn/digest.go:18) that stage 2 injects under ## Memory; the digest's
-// own "# Memory" H1 is not duplicated (D3).
+// MemHeader is the two contract lines the one-liner section has carried
+// since the digest, injected under ## Memory; the digest's own "# Memory"
+// H1 is not duplicated (D3).
 const MemHeader = "Lines earlier sessions kept, as [id who age]. Follow a preference the user stated there unless this conversation or the project instructions say otherwise. Any other line held when it was written: check the file, command or flag it names before relying on it."
 
-// scopeTitles is the digest's order and wording (learn/digest.go's
-// scopeTitles), private partition first.
+// scopeTitles is the digest's scope order and wording, private partition
+// first.
 var scopeTitles = []struct {
 	kind  Kind
 	title string
 }{{Private, "## this project"}, {User, "## every project"}}
 
-// Age is the digest's " 12d" from a line's last write, "" under two days.
+// Age is " 12d" from a line's last write, "" under two days.
 func Age(date, at time.Time) string {
 	days := int(at.Sub(date).Hours() / 24)
 	if days < 2 {
@@ -35,8 +35,7 @@ func Age(date, at time.Time) string {
 	return fmt.Sprintf(" %dd", days)
 }
 
-// RenderLine is one memory's injected form, byte-equal to today's digest
-// line (learn/digest.go:51).
+// RenderLine is one memory's injected form, the digest line's format.
 func RenderLine(l Line, at time.Time) string {
 	return fmt.Sprintf("- [%s %s%s] %s", l.ID, l.Origin, Age(l.Date, at), l.Text)
 }

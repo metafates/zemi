@@ -20,11 +20,11 @@ import (
 // ScopeBudget caps the bytes one partition's lines take in the prompt (§3):
 // the write gate keeps a scope under it, cutting learned lines to the
 // ledger, and the render cuts a hand-edited or corrupted file at the same
-// line. learn.ScopeBudget's successor; stage 5 deletes that one.
+// line.
 const ScopeBudget = 3072
 
 // lineOverhead is what a rendered line costs beyond its text: the widest
-// "- [id origin age] " prefix and the newline, learn/digest.go's measure.
+// "- [id origin age] " prefix and the newline.
 const lineOverhead = len("- [12345678 learned 365d] \n")
 
 // LineSize is the bytes one memory takes in the render, which the budget

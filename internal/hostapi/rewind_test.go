@@ -13,6 +13,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -99,20 +100,39 @@ func TestRewind(t *testing.T) {
 	}
 
 	// what the session learned in the rewound turns goes; the user's own and
-	// what was learned after the last row (a reflector run, an accept) stay
+	// what was learned after the last row (a reflector run, an accept) stay.
+	// Seeded the way the live store holds them: lines in the partition plus
+	// their ledger ops, and one line already imported from the frozen table,
+	// whose entry matches the rewind by the row's created_at.
 	sid := h.AgentSessionID()
 	rows, _ := h.DB.Messages(sid)
 	last := rows[len(rows)-1].CreatedAt
-	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1}
-	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last}
-	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1}
-	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid}
-	for _, m := range []*store.Memory{old, learned, reflected, mine} {
-		if err := h.DB.AddMemory(m); err != nil {
-			t.Fatal(err)
-		}
+	private := h.partition(store.ScopeProject)
+	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1, UpdatedAt: 1}
+	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
+	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1, UpdatedAt: last + 1}
+	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
+	if _, _, err := brain.Apply(private, *old, "", time.UnixMilli(1)); err != nil {
+		t.Fatal(err)
 	}
-	h.DB.SupersedeMemory(old.ID, learned.ID)
+	if _, _, err := brain.Apply(private, *learned, old.ID, time.UnixMilli(last)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := brain.Apply(private, *reflected, "", time.UnixMilli(last+1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := brain.Apply(private, *mine, "", time.UnixMilli(last)); err != nil {
+		t.Fatal(err)
+	}
+	// a pre-migration row the next open imported: the op ts is the migration
+	// moment, the frozen row's created_at is the session's turn
+	migrated := &store.Memory{
+		ID: "mig01aaa", Scope: "project", Text: "migrated", Origin: "learned",
+		ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last,
+	}
+	if err := brain.Reconcile(private, []*store.Memory{migrated}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	for _, at := range []int64{last, last + 1} {
 		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid}, json.Deterministic(true))
 		if err := h.DB.AddProposal(&store.Proposal{Payload: string(payload), CreatedAt: at}); err != nil {
@@ -162,10 +182,13 @@ func TestRewind(t *testing.T) {
 			t.Fatalf("rewind %d: transcript users %d, stored prompts %d, want %d", c.prompt, users, left, c.transcriptBefore)
 		}
 	}
-	live, _ := h.DB.ListMemory("project", false)
+	lines, err := brain.Lines(h.partition("project"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var texts []string
-	for _, m := range live {
-		texts = append(texts, m.Text)
+	for _, l := range lines {
+		texts = append(texts, l.Text)
 	}
 	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
 		t.Fatalf("memories %q and %d proposals, want mine, old and reflected and one", texts, len(h.memoryProposals()))

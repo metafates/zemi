@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -217,27 +216,15 @@ func TestCatalogSelfRepairNote(t *testing.T) {
 	}
 }
 
-// TestRenderedMemoryLineMatchesDigest pins the injected line byte-equal to
-// today's digest line (learn/digest.go:51), and the budget constants to
-// learn's, which stage 5 deletes.
-func TestRenderedMemoryLineMatchesDigest(t *testing.T) {
+// TestRenderLine pins the injected line's shape and age: the digest's
+// form, kept through the store swap (D1).
+func TestRenderLine(t *testing.T) {
 	line := Line{ID: "abcd2345", Origin: store.OriginLearned, Date: at.Add(-10 * 24 * time.Hour), Text: "the dploy gate lives in ci/pipeline"}
-	digest := learn.Digest([]*store.Memory{{
-		ID: line.ID, Scope: store.ScopeProject, Text: line.Text, Origin: line.Origin,
-		UpdatedAt: line.Date.UnixMilli(), CreatedAt: line.Date.UnixMilli(),
-	}}, at, learn.ScopeBudget)
-	if !strings.Contains(digest, RenderLine(line, at)) {
-		t.Fatalf("digest %q does not hold the brain line %q", digest, RenderLine(line, at))
+	if got, want := RenderLine(line, at), "- [abcd2345 learned 10d] the dploy gate lives in ci/pipeline"; got != want {
+		t.Fatalf("line = %q, want %q", got, want)
 	}
-	if Age(line.Date, at) != " 10d" {
-		t.Fatalf("age = %q", Age(line.Date, at))
-	}
-	for _, text := range []string{"", "short", strings.Repeat("w", 300)} {
-		if LineSize(text) != learn.LineSize(text) {
-			t.Fatalf("LineSize(%q) differs from learn's", text)
-		}
-	}
-	if ScopeBudget != learn.ScopeBudget {
-		t.Fatalf("ScopeBudget = %d, learn's is %d", ScopeBudget, learn.ScopeBudget)
+	young := Line{ID: "abcd2345", Origin: store.OriginUser, Date: at.Add(-24 * time.Hour), Text: "x"}
+	if got, want := RenderLine(young, at), "- [abcd2345 user] x"; got != want {
+		t.Fatalf("line = %q, want %q (under two days carries no age)", got, want)
 	}
 }
