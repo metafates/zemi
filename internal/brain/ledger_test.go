@@ -23,11 +23,11 @@ func TestLedger(t *testing.T) {
 		defer lg.Close()
 
 		a := &Op{
-			ID: "abcd2345", Op: OpAdd, Text: "one", Hash: textHash("one"),
+			ID: "abcd2345", Op: OpAdd, Text: "one", Hash: TextHash("one"),
 			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
 		}
 		b := &Op{
-			ID: "efgh6789", Op: OpAdd, Text: "two", Hash: textHash("two"),
+			ID: "efgh6789", Op: OpAdd, Text: "two", Hash: TextHash("two"),
 			Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
 		}
 		for _, op := range []*Op{a, b} {
@@ -38,7 +38,7 @@ func TestLedger(t *testing.T) {
 		// an edit makes the prior text trail
 		e := &Op{
 			ID: "abcd2345", Op: OpEdit, Text: "one, moved", PriorText: "one",
-			Hash: textHash("one, moved"), Scope: store.ScopeProject,
+			Hash: TextHash("one, moved"), Scope: store.ScopeProject,
 			Origin: store.OriginLearned, TS: at.Add(time.Hour).UnixMilli(),
 		}
 		if err := lg.Insert(e); err != nil {

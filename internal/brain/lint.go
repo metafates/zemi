@@ -9,11 +9,8 @@ import (
 // Finding is one lint result (D6): single-line, control-character-free,
 // naming the path and the problem and nothing more. Subject is the file the
 // finding names - an entry name, MemFile, or the partition dir or ledger
-// path - so a consumer takes one file's findings without parsing Text. Kind
-// is the partition it names, for the untrusted filter (D3): an untrusted
-// project hears only user-partition findings.
+// path - so a consumer takes one file's findings without parsing Text.
 type Finding struct {
-	Kind    Kind
 	Subject string
 	Text    string
 }
@@ -21,11 +18,11 @@ type Finding struct {
 // Lint checks one partition against D6's findings: the freeform files'
 // frontmatter, the memories.md lines, and the file-versus-ledger
 // divergence. An absent partition is clean; a ledger that will not open
-// costs no findings, since the render already degrades without it.
+// adds its own finding and ends the divergence check.
 func Lint(p Partition) []Finding {
 	var out []Finding
 	add := func(subject, format string, args ...any) {
-		out = append(out, Finding{Kind: p.Kind, Subject: subject, Text: strip(fmt.Sprintf(format, args...))})
+		out = append(out, Finding{Subject: subject, Text: strip(fmt.Sprintf(format, args...))})
 	}
 	l := Load(p)
 	if l.DirErr != nil {
@@ -43,10 +40,10 @@ func Lint(p Partition) []Finding {
 		if err := e.FM.BadGlob(); err != nil {
 			add(e.Name, "%s: %s", e.Name, err)
 		}
-		if n := len([]rune(e.FM.Description)); n > FieldCap {
+		if n := len([]rune(strip(e.FM.Description))); n > FieldCap {
 			add(e.Name, "%s: description is %d characters, over the %d the render caps", e.Name, n, FieldCap)
 		}
-		if n := len([]rune(e.FM.ReadIf)); n > FieldCap {
+		if n := len([]rune(strip(e.FM.ReadIf))); n > FieldCap {
 			add(e.Name, "%s: read_if is %d characters, over the %d the render caps", e.Name, n, FieldCap)
 		}
 	}
@@ -124,7 +121,7 @@ func lintLedger(ops []*Op, lines []Line, add func(subject, format string, args .
 		if flagged[ln.ID] {
 			continue
 		}
-		if d := t[ln.ID]; d == nil || !d.hashes[textHash(ln.Text)] {
+		if d := t[ln.ID]; d == nil || !d.hashes[TextHash(ln.Text)] {
 			add(MemFile, "memory %s was rewritten outside the ledger (a hand edit)", ln.ID)
 			flagged[ln.ID] = true
 		}

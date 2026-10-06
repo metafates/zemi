@@ -50,9 +50,9 @@ type Loaded struct {
 }
 
 // Load scans a partition's directory. Files that fail instructionFile's
-// bar (prompt.go:485: a regular file, not secret-shaped, inside the
-// partition) are left out of the catalog, so a symlink planted in a brain
-// dir cannot feed a target outside it into the render (D3).
+// bar (a regular file, not secret-shaped, inside the project) are left out
+// of the catalog, so a symlink planted in a brain dir cannot feed a target
+// outside it into the render (D3).
 func Load(p Partition) Loaded {
 	l := Loaded{Partition: p}
 	des, err := os.ReadDir(p.Dir)
@@ -122,9 +122,9 @@ func readSafe(p Partition, name string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// safe is instructionFile's check (prompt.go:485-488): a regular file, not
-// secret-shaped, inside the partition. Symlinks are followed, like a read
-// would follow them, and must not lead out.
+// safe is instructionFile's check: a regular file, not secret-shaped,
+// inside the partition. Symlinks are followed, like a read would follow
+// them, and must not lead out.
 func safe(dir, name string) bool {
 	p := filepath.Join(dir, name)
 	fi, err := os.Stat(p)

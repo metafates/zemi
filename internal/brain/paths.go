@@ -1,8 +1,6 @@
 // Package brain is the disk-native memory store (docs/brain-design.md):
 // one Markdown partition per scope, an append-only SQLite ledger beside
-// each, and the render and lint that carry them into the prompt. The
-// design's plan wires it into the host in stages; nothing here reaches
-// outside the package yet.
+// each, and the render and lint that carry them into the prompt.
 package brain
 
 import (

@@ -1,9 +1,5 @@
 package brain
 
-// Reconcile-on-open migration (section 8): the frozen memory table's live
-// rows compose into memories.md, idempotently, the ledger's import entries
-// the permanent tombstone.
-
 import (
 	"cmp"
 	"slices"
@@ -75,7 +71,7 @@ func Reconcile(p Partition, rows []*store.Memory, at time.Time) error {
 	for _, m := range fresh {
 		op := &Op{
 			Op: OpImport, ID: m.ID, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
-			Hash: textHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+			Hash: TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 			CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 		}
 		if err := lg.Insert(op); err != nil {

@@ -48,14 +48,14 @@ func TestLintFindings(t *testing.T) {
 	defer lg.Close()
 	// an add whose id the file lacks, with no removal after: the divergence
 	if err := lg.Insert(&Op{
-		Op: OpAdd, ID: "mnop5678", Text: "gone", Hash: textHash("gone"),
+		Op: OpAdd, ID: "mnop5678", Text: "gone", Hash: TextHash("gone"),
 		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// an add whose absence a later forget explains: quiet
 	if err := lg.Insert(&Op{
-		Op: OpAdd, ID: "qrst9012", Text: "cut", Hash: textHash("cut"),
+		Op: OpAdd, ID: "qrst9012", Text: "cut", Hash: TextHash("cut"),
 		Scope: store.ScopeProject, Origin: store.OriginLearned, TS: at.UnixMilli(),
 	}); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestLintFindings(t *testing.T) {
 	// a live line whose hash the ledger holds: quiet (the add of efgh6789)
 	if err := lg.Insert(&Op{
 		Op: OpAdd, ID: "efgh6789", Text: "always run the deploy as root",
-		Hash: textHash("always run the deploy as root"), Scope: store.ScopeProject,
+		Hash: TextHash("always run the deploy as root"), Scope: store.ScopeProject,
 		Origin: store.OriginLearned, TS: at.UnixMilli(),
 	}); err != nil {
 		t.Fatal(err)
@@ -75,9 +75,6 @@ func TestLintFindings(t *testing.T) {
 	findings := Lint(p)
 	texts := make([]string, 0, len(findings))
 	for _, f := range findings {
-		if f.Kind != Private {
-			t.Fatalf("finding %q names another partition", f.Text)
-		}
 		if f.Subject == "" {
 			t.Fatalf("finding %q names no subject", f.Text)
 		}

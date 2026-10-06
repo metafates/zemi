@@ -96,6 +96,21 @@ func parseLine(s string) (Line, bool) {
 	return Line{ID: id, Origin: o, Date: t, Text: text}, true
 }
 
+// trailQuote is the last non-empty quote the id's ledger trail carries.
+func trailQuote(lg *Ledger, id string) string {
+	trail, err := lg.ByID(id)
+	if err != nil {
+		return ""
+	}
+	q := ""
+	for _, o := range trail {
+		if o.Quote != "" {
+			q = o.Quote
+		}
+	}
+	return q
+}
+
 // serialize is the whole file: one line each, in the order given.
 func serialize(lines []Line) []byte {
 	var b bytes.Buffer
@@ -111,12 +126,9 @@ func day(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// textHash is the sha256 a memories.md line op carries (D7): lint matches
+// TextHash is the sha256 a memories.md line op carries (D7): lint matches
 // a live line's hash against the entries recorded for its id.
-func textHash(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
+func TextHash(text string) string { return FileHash([]byte(text)) }
 
 // ErrNoMemory marks an id neither memories.md nor the ledger holds.
 var ErrNoMemory = errors.New("brain: no such memory")
@@ -181,7 +193,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 		}
 		ops = append(ops, &Op{
 			Op: OpAdd, ID: l.ID, Text: m.Text, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
-			Hash: textHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+			Hash: TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 		})
 		// budget as promotion (D1): the oldest learned lines go to the
 		// ledger, never a user line; the line just written is its own index
@@ -202,7 +214,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 			cut = append(cut, oldest.ID)
 			ops = append(ops, &Op{
 				Op: OpArchive, ID: oldest.ID, Text: oldest.Text, SessionID: m.ProvenanceSessionID,
-				Hash: textHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
+				Hash: TextHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
 			})
 		}
 		return next[:i:i], ops, nil
@@ -231,17 +243,11 @@ func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Sco
 	prior := lines[i]
 	op := &Op{
 		Op: OpSupersede, ID: id, Text: prior.Text, SupersededBy: byID, SessionID: sid,
-		Hash: textHash(prior.Text), Scope: scope, Origin: prior.Origin, TS: at.UnixMilli(),
+		Hash: TextHash(prior.Text), Scope: scope, Origin: prior.Origin, TS: at.UnixMilli(),
 	}
 	// the quote trails in the supersede entry (D1); the add or import
 	// entry is where it lives
-	if trail, err := lg.ByID(id); err == nil {
-		for _, o := range trail {
-			if o.Quote != "" {
-				op.Quote = o.Quote
-			}
-		}
-	}
+	op.Quote = trailQuote(lg, id)
 	return op, slices.Delete(lines, i, i+1), nil
 }
 
@@ -277,7 +283,7 @@ func editChange(sid, id, text string, origin store.Origin, scope store.Scope, at
 	*out = Line{ID: id, Origin: origin, Date: day(at), Text: text}
 	op := &Op{
 		Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
-		Hash: textHash(text), Scope: scope, Origin: origin, TS: at.UnixMilli(),
+		Hash: TextHash(text), Scope: scope, Origin: origin, TS: at.UnixMilli(),
 	}
 	return append([]Line{*out}, slices.Delete(lines, i, i+1)...), op, nil
 }
@@ -300,7 +306,7 @@ func Forget(p Partition, sid, id string, at time.Time) error {
 			return lines, []*Op{op}, nil
 		}
 		prior := lines[i]
-		op.Text, op.Hash, op.Origin = prior.Text, textHash(prior.Text), prior.Origin
+		op.Text, op.Hash, op.Origin = prior.Text, TextHash(prior.Text), prior.Origin
 		return slices.Delete(lines, i, i+1), []*Op{op}, nil
 	})
 }
@@ -334,7 +340,7 @@ func RestoreLocked(p Partition, sid string, add []Line, forget []string, at time
 			op := &Op{Op: OpForget, ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}
 			if i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id }); i >= 0 {
 				prior := lines[i]
-				op.Text, op.Hash, op.Origin = prior.Text, textHash(prior.Text), prior.Origin
+				op.Text, op.Hash, op.Origin = prior.Text, TextHash(prior.Text), prior.Origin
 				lines = slices.Delete(lines, i, i+1)
 			}
 			ops = append(ops, op)
@@ -392,7 +398,7 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 		}
 		moveOut := &Op{
 			Op: OpMoveOut, ID: id, Text: m.Text, SupersededBy: twin.ID, SessionID: sid,
-			Hash: textHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+			Hash: TextHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 		}
 		if err := removeLine(src, moveOut, srcRaw, srcLines, i); err != nil {
 			return "", err
@@ -419,21 +425,15 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 	defer func() { _ = dl.Close() }()
 	out := &Op{
 		Op: OpMoveOut, ID: id, Text: m.Text, SessionID: sid,
-		Hash: textHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+		Hash: TextHash(m.Text), Scope: src.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 	}
-	if trail, err := lg.ByID(id); err == nil {
-		for _, o := range trail {
-			if o.Quote != "" {
-				out.Quote = o.Quote
-			}
-		}
-	}
+	out.Quote = trailQuote(lg, id)
 	if err := removeLine(src, out, srcRaw, srcLines, i); err != nil {
 		return "", err
 	}
 	if err := dl.Insert(&Op{
 		Op: OpMoveIn, ID: id, Text: m.Text, Quote: out.Quote, SessionID: sid,
-		Hash: textHash(m.Text), Scope: dst.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+		Hash: TextHash(m.Text), Scope: dst.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
 	}); err != nil {
 		return "", err
 	}

@@ -51,12 +51,16 @@ func Lock(p Partition) (unlock func(), err error) {
 }
 
 // LockAll takes several partitions' locks in the design's fixed order,
-// user then private, so two cross-partition writers cannot deadlock (D1).
+// user then private, so two cross-partition writers cannot deadlock (D1);
+// a partition with no home is nothing to lock.
 func LockAll(ps ...Partition) (func(), error) {
 	order := slices.Clone(ps)
 	slices.SortFunc(order, func(a, b Partition) int { return cmp.Compare(a.Kind, b.Kind) })
 	var unlocks []func()
 	for _, p := range order {
+		if p.Zero() {
+			continue
+		}
 		unlock, err := Lock(p)
 		if err != nil {
 			for _, done := range unlocks {

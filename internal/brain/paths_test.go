@@ -209,15 +209,18 @@ func TestLoad(t *testing.T) {
 		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		secret := filepath.Join(p.Dir, ".env.md")
-		outside := filepath.Join(t.TempDir(), "outside.md")
-		if err := os.WriteFile(outside, []byte("---\ndescription: stolen\nread_if: r\n---\n"), 0o600); err != nil {
+		body := []byte("---\ndescription: stolen\nread_if: r\n---\n")
+		// secret-shaped by name, and a plain file: the shape is the only bar
+		// it fails
+		if err := os.WriteFile(filepath.Join(p.Dir, ".env.md"), body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		for name, target := range map[string]string{".env.md": secret, "link.md": outside} {
-			if err := os.Symlink(target, filepath.Join(p.Dir, name)); err != nil {
-				t.Fatal(err)
-			}
+		outside := filepath.Join(t.TempDir(), "outside.md")
+		if err := os.WriteFile(outside, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(p.Dir, "link.md")); err != nil {
+			t.Fatal(err)
 		}
 		l := Load(p)
 		if len(l.Entries) != 0 {

@@ -27,7 +27,7 @@ const (
 )
 
 // ContentCap caps a brain file's content and the prior bytes a write op
-// keeps for rewind (D5, D7); hostapi's contextBudget is the same number.
+// keeps for rewind (D5, D7).
 const ContentCap = 32 << 10
 
 // Op is one memory_ops row (D7): INSERT-only, never compacted. Line ops
@@ -39,7 +39,7 @@ type Op struct {
 	ID           string // the memory id; the brain file's path for a write op
 	TS           int64  // millis; zero means now
 	Text         string // the line text this op wrote or removed
-	PriorText    string // edit and supersede: what this replaced
+	PriorText    string // edit: the text this replaced
 	Quote        string
 	SessionID    string // provenance; the acting session of an archive
 	Hash         string // sha256 of Text, on memories.md line ops
@@ -185,13 +185,13 @@ func (l *Ledger) ops() ([]*Op, error) {
 	return collectOps(rows, err)
 }
 
-// Stamp is what display needs about one id (D7): First and Last are the
-// first and latest writing op's ts (the line's age), Quote the latest
-// quote the trail carried, Session the first writer's provenance.
+// Stamp is what display needs about one id (D7): First is the first writing
+// op's ts (the line's age), Quote the latest quote the trail carried,
+// Session the first writer's provenance.
 type Stamp struct {
-	First, Last int64
-	Quote       string
-	Session     string
+	First   int64
+	Quote   string
+	Session string
 }
 
 // Stamps folds the ledger to one Stamp per id, for /memory, the reflector's
@@ -206,10 +206,6 @@ func (l *Ledger) Stamps() (map[string]Stamp, error) {
 		s := out[op.ID]
 		if s.First == 0 && (op.Op == OpAdd || op.Op == OpImport || op.Op == OpMoveIn) {
 			s.First, s.Session = op.TS, op.SessionID
-		}
-		switch op.Op {
-		case OpAdd, OpEdit, OpImport, OpMoveIn:
-			s.Last = op.TS
 		}
 		if op.Quote != "" {
 			s.Quote = op.Quote

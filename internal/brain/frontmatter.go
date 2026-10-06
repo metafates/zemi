@@ -84,7 +84,7 @@ func errLine(err error) string {
 }
 
 // strip removes control characters, newlines included, so text renders as
-// one line (the topLevel precedent, prompt.go:605).
+// one line (the topLevel filter's precedent).
 func strip(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
