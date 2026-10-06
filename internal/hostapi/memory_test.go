@@ -606,8 +606,8 @@ func TestMemoryDelOriginGate(t *testing.T) {
 	}
 }
 
-// TestDigestAtSessionStart covers §10.7: the session's prompt carries the
-// memories it started with (TestPromptPinned keeps later ones out).
+// covers §10.7: the session's prompt carries the memories it started with
+// (TestPromptPinned keeps later ones out).
 func TestBrainAtSessionStart(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -820,7 +820,7 @@ func TestMemoryFileMode(t *testing.T) {
 	const fm = "---\ndescription: repo map\nread_if: before code changes\n---\nbody\n"
 	for _, tc := range []struct {
 		name, path, content string
-		seed                func(t *testing.T, h *Host) (want string)
+		seed                func(t *testing.T, h *Host)
 		want                string
 		check               func(t *testing.T, h *Host, sid string)
 	}{
@@ -845,12 +845,12 @@ func TestMemoryFileMode(t *testing.T) {
 		},
 		{
 			name: "the spent auto budget queues", path: "map.md", content: fm,
-			seed: func(t *testing.T, h *Host) string { h.agents.memAuto = memoryAutoApplyCap; return "" },
+			seed: func(t *testing.T, h *Host) { h.agents.memAuto = memoryAutoApplyCap },
 			want: "queued for the user's review (this session's auto budget is spent)",
 		},
 		{
 			name: "an overwrite of a foreign file queues", path: "map.md", content: fm,
-			seed: func(t *testing.T, h *Host) string {
+			seed: func(t *testing.T, h *Host) {
 				_, private := h.brainParts()
 				if err := os.MkdirAll(private.Dir, 0o700); err != nil {
 					t.Fatal(err)
@@ -858,7 +858,6 @@ func TestMemoryFileMode(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(private.Dir, "map.md"), []byte("foreign"), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				return ""
 			},
 			want: "queued for the user's review (the file was not written by this session",
 		},

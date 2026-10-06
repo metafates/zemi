@@ -35,6 +35,10 @@ import (
 // per session (DESIGN §10.4).
 const memoryAutoApplyCap = 20
 
+// The memory tool's refusal of the reserved file, which the ask reason from
+// permmode.go's protectedWhy has to say the same way.
+const memOwnedReason = "the memory tool owns this file"
+
 // memoryDB returns the store owning a scope: user scope in the global DB,
 // project scope in the project DB (DESIGN §7).
 func (h *Host) memoryDB(scope store.Scope) *store.DB {
@@ -556,8 +560,9 @@ func (h *Host) editableMemory(id string) (string, error) {
 // rewriteMemory saves the user's edit of a memory: intake runs again as
 // user origin with the same scope and quote, and the memory keeps its
 // id. An edited suggestion is stored as the user's own. Empty or unchanged
-// text changes nothing, and so does a refusal, a full scope included; a
-// saved edit is on the /memory undo stack like the list's actions.
+// text changes nothing, and so does a refusal; only an edit that grows past
+// a full scope is refused, so a scope already over can shrink. A saved edit
+// is on the /memory undo stack like the list's actions.
 func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil
@@ -571,7 +576,8 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
-		if h.scopeOver(res) {
+		// a shrinking suggestion is taken, like a stored memory's edit
+		if h.scopeOver(res) && len(res.Memory.Text) > len(p.Text) {
 			return false, errScopeFull(p.Scope)
 		}
 		undo := h.undoKeep(id)
@@ -845,6 +851,10 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 				continue
 			}
 			seen[op.ID] = true
+			// an id the ledger alone held has no text to show
+			if op.Text == "" {
+				continue
+			}
 			out = append(out, brain.Line{ID: op.ID, Origin: op.Origin, Date: dayOf(op.TS), Text: op.Text})
 		}
 	}
@@ -1175,7 +1185,7 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 		return "", fmt.Errorf("the memory tool writes files in its private brain, %s, only", private.Dir)
 	}
 	if filepath.Base(abs) == brain.MemFile {
-		return "", errors.New("the memory tool owns this file")
+		return "", errors.New(memOwnedReason)
 	}
 	if inUser {
 		return "", errors.New("user-brain files are written with the file tools; those writes ask")
@@ -1202,7 +1212,7 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	case learn.InstructionShaped(fm.Description) || learn.InstructionShaped(fm.ReadIf):
 		reason = "instruction-shaped frontmatter"
 	case brain.Oversized(fm.Description) || brain.Oversized(fm.ReadIf):
-		reason = "the description or read_if is over 200 characters"
+		reason = fmt.Sprintf("the description or read_if is over %d characters", brain.FieldCap)
 	}
 	if reason == "" {
 		var want *string
@@ -1434,7 +1444,7 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 		}
 		op := &brain.Op{
 			Op: brain.OpEdit, ID: line.ID, Text: line.Text, PriorText: before[i].Text,
-			SessionID: cmp.Or(h.AgentSessionID(), "user"), Hash: brain.FileHash([]byte(line.Text)),
+			SessionID: cmp.Or(h.AgentSessionID(), "user"), Hash: brain.TextHash(line.Text),
 			Scope: p.Kind.Scope(), Origin: line.Origin, TS: h.now().UnixMilli(),
 		}
 		if err := lg.Insert(op); err != nil {

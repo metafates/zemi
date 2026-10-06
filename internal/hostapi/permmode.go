@@ -563,7 +563,7 @@ func (h *Host) protectedWhy(p string) string {
 		// an approval in one project must not plant code every project loads
 		return "this changes a local plugin, which zemi runs in every project"
 	case h.inJail(p, h.memFiles()...):
-		return "the memory tool owns this file"
+		return memOwnedReason
 	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
 		return "this changes zemi's own files"
 	}

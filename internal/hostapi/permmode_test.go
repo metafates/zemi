@@ -712,7 +712,7 @@ func TestBrainWritesProtected(t *testing.T) {
 	}
 	runUser(t, r, `zemi.permission.mode.add("open", { base = "auto", rules = { { "fs.write", "*", "allow" } } })`)
 	runUser(t, r, `zemi.permission.mode.add("decider", { base = "auto", decide = function() return "allow" end })`)
-	// the rename's write request, shaped as lspRequests builds it (lsp_tool.go:45)
+	// the rename's write request, shaped as lspRequests builds it
 	rename := tools.Request{Subject: "fs.write", Arg: userMem, Reason: "rename a to b"}
 	pipe := h.PipelineFor()
 	for _, c := range []struct {
