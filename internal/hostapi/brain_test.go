@@ -11,6 +11,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -492,5 +493,63 @@ func TestBrainWriteToolScrubs(t *testing.T) {
 	msg, err := h.memoryTool(h.PipelineFor(), sid, overwrite)
 	if err != nil || !strings.Contains(msg, "wrote map.md") {
 		t.Fatalf("the file-mode apply did not see the write set: %q, %v", msg, err)
+	}
+}
+
+// TestBrainRenameScrub: the lsp rename path runs AfterWrite for every file it
+// rewrites, so a brain file a rename edits as a secondary target is scrubbed,
+// linted and joined to the write set, the notes one block (D5).
+func TestBrainRenameScrub(t *testing.T) {
+	h, r := newTestHostDB(t)
+	defer func() { h.lsp.stopAll()() }()
+	h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})
+	h.SetProjectTrusted(true)
+	// the user partition rides inside the project, so a server covers its files
+	h.Dirs.DataHome = filepath.Join(h.Dirs.ProjectDir, ".data")
+	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "md" } })`, os.Args[0]))
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	user, _ := h.brainParts()
+	if err := os.MkdirAll(user.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	named := filepath.Join(h.Dirs.ProjectDir, "code.md")
+	brainFile := filepath.Join(user.Dir, "map.md")
+	body := "no frontmatter\n\nFoo is called in code.md\ntoken = ghp_0123456789abcdefghijklmnopqrstuv\n"
+	if err := os.WriteFile(named, []byte("func Foo()\nFoo()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(brainFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var tool fantasy.AgentTool
+	for _, tl := range tools.All(h.PipelineFor()) {
+		if tl.Info().Name == "lsp" {
+			tool = tl
+		}
+	}
+	run := func(input string) string {
+		t.Helper()
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Content
+	}
+	// the query opens the brain file, so the rename touches it as a secondary
+	if got := run(fmt.Sprintf(`{"action":"symbols","path":%q}`, brainFile)); !strings.Contains(got, "no symbols") {
+		t.Fatalf("symbols on the brain file: %q", got)
+	}
+	got := run(fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Foo","new_name":"Baz"}`, named))
+	if !strings.Contains(got, "renamed Foo to Baz in 2 files") ||
+		!strings.Contains(got, "secret-shaped text was redacted on lines [4]") ||
+		!strings.Contains(got, "map.md: no description") {
+		t.Fatalf("the rename result: %q", got)
+	}
+	b, _ := os.ReadFile(brainFile)
+	if !strings.Contains(string(b), "Baz is called in code.md") || !strings.Contains(string(b), "[redacted") {
+		t.Fatalf("brain file after the rename: %q", b)
+	}
+	if hash, ours := h.brainWriteOf(brainFile); !ours || hash != brain.FileHash(b) {
+		t.Fatalf("the rename did not join the write set: %q, ours %v", hash, ours)
 	}
 }

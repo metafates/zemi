@@ -252,7 +252,13 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 				fmt.Fprintf(&b, "  (not re-sent to %s: %v)\n", server, err)
 			}
 		}
-		return fantasy.NewTextResponse(fmt.Sprintf("renamed %s to %s in %d file%s, %d place%s:\n%s", symbol, newName, len(byPath), plural(len(byPath)), total, plural(total), strings.TrimRight(b.String(), "\n")) + p.afterWrite(path)), nil
+		// every rewritten file rides AfterWrite, so a brain file a rename
+		// edits as a secondary target is scrubbed and linted too (D5)
+		var notes strings.Builder
+		for _, f := range slices.Sorted(maps.Keys(byPath)) {
+			notes.WriteString(p.afterWrite(f))
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("renamed %s to %s in %d file%s, %d place%s:\n%s", symbol, newName, len(byPath), plural(len(byPath)), total, plural(total), strings.TrimRight(b.String(), "\n")) + notes.String()), nil
 	}
 	return fantasy.NewTextErrorResponse("unknown action " + action), nil
 }
