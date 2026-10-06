@@ -2,7 +2,7 @@
 
 ## Memories
 
-Memories reach you as the `# Memory` section of zemi's context message, after the system prompt: this project's, then every project's, newest first, each line with its id. The section is pinned at session start, so a new memory shows from the next session or compaction. Asked what you remember, read that section; never invent a memory.
+Memories reach you as the `## Memory` section of the `# Brain` section in zemi's context message, after the system prompt: this project's, then every project's, newest first, each line with its id. The section is pinned at session start, so a new memory shows from the next session or compaction. Asked what you remember, read that section; never invent a memory.
 
 - The `memory` tool's description has the writing rules; each scope holds 3 KB.
 - Under `memory.autonomy = "auto"` (the default) a memory stores at once unless it is instruction-shaped, replaces one the user saved, comes from an untrusted project, or comes from a session that used `fetch`, `web_search`, the `lua` tool or a tool zemi does not ship (MCP, `zemi.tool`), directly or through a subagent. Those wait for review; `ask` queues every one. Forgetting a memory the user saved needs the user's approval.

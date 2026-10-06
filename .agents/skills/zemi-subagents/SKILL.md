@@ -128,8 +128,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **Model memory writes** (DESIGN §10.4): the one `memory` tool goes through `memoryTool` ->
   `gateMemory`, as the reflector's entries do: `learn.Similar` refuses a near-duplicate, a
   learned user-scope memory's `quote` is checked against the typed part of the session's user
-  rows (`quoteInSession`, cut at `agent.AttachMarker`), and a scope over `learn.ScopeBudget`
-  queues. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write` as
+  rows (`quoteInSession`, cut at `agent.AttachMarker`), and an apply that would push its
+  scope past `brain.ScopeBudget` cuts its oldest learned lines to the ledger, a cut that
+  would take a user line queueing instead. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write` as
   `Unsandboxed`), and a learned one goes at once only when `memoryAuto` holds; `subagentHooks`
   and `markNotLocal` record what makes a session not local-only, once per session and in a
   subagent run's own. A plugin's send reaches the model behind

@@ -61,7 +61,7 @@ func seedMemory(t *testing.T, h *Host, m *store.Memory) {
 	}
 	line := brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text}
 	if m.UpdatedAt == 0 {
-		// AddMemory's fill: a row with no stamp is as new as it gets
+		// a row with no stamp is as new as it gets
 		line.Date = time.Now().UTC()
 	}
 	path := filepath.Join(p.Dir, brain.MemFile)

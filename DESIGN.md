@@ -112,8 +112,10 @@ Layers and ownership:
 - **UI core** (`internal/ui`): bubbletea program, region layout, widget
   registry, theme/highlight resolution, slash palette, overlay stack.
 - **Learn** (`internal/learn`): the memory intake policy (caps, provenance,
-  the secret scrubber), the near-duplicate check and the digest. The
-  reflector and the skill manager live in `internal/hostapi`.
+  the secret scrubber) and the near-duplicate check. The brain - the
+  partitioned Markdown memory store with its ledger, render and lock -
+  lives in `internal/brain`; the reflector and the skill manager in
+  `internal/hostapi`.
 - **Store** (`internal/store`): SQLite (sessions, messages, todos, tool-call
   telemetry, checkpoints, memory, proposals, skills, kv; §7), one schema
   const; a schema change bumps `schemaVersion` and an older store is
@@ -1182,8 +1184,8 @@ tool-call telemetry.
 
 System prompts are Go string constants in `internal/hostapi/prompt.go`;
 there are no template files. Lua injects sections via the `agent.assemble`
-event and a Lua tool's `prompt`, which ships only with the tool (memory
-digest, skills index, project context ship as built-in sections).
+event and a Lua tool's `prompt`, which ships only with the tool (the brain
+section, skills index, project context ship as built-in sections).
 
 The main agent's fixed prefix, the system prompt and every tool's
 description and schema, is built once and sent verbatim, because anything
@@ -1257,7 +1259,7 @@ text instead of the `question` or `plan` tool is told so once, since a
 question or a report is no plan to approve),
 `web_search` (DuckDuckGo Lite),
 `job_start`/`job_read`/`job_list`/`job_kill`,
-`memory` (one durable line, `replaces` rewrites or drops one, §10.4),
+`memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
 server errors and warnings for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
@@ -1641,7 +1643,11 @@ messages(id, session_id, role, parts_json, created_at)          -- fantasy messa
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, text, quote, provenance_session_id,
-       created_at, updated_at, superseded_by, origin)
+       created_at, updated_at, superseded_by, origin)          -- the frozen pre-migration trail (below)
+memory_ops(op, id, ts, text, prior_text, quote, session_id, hash,
+           superseded_by, scope, origin, prior_bytes,
+           prior_truncated, prior_existed, created_at, updated_at)
+                                                               -- the audit ledger, one per scope's DB
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, payload, created_at)                              -- pending, until reviewed
@@ -1661,9 +1667,10 @@ DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, named in
 the dir's `root` file (read only when it hashes to the dir's name), the same
 repository identity trust uses, so a subdirectory or a linked worktree opens
 the same sessions and project memory rather than a blank store. The
-global DB holds user-scope memory and proposals, skills and kv; a
-project DB holds its sessions, messages, todos, tool_calls, checkpoints,
-project-scope memory and proposals, and the reflector's kv marks. Opening a store sweeps checkpoints older than 30
+global DB holds the user partition's ledger and frozen memory rows,
+proposals, skills and kv; a project DB holds its sessions, messages, todos,
+tool_calls, checkpoints, the private partition's ledger and frozen rows,
+proposals, and the reflector's kv marks. Opening a store sweeps checkpoints older than 30
 days; sessions are never swept (zemi deletes a
 session only when the user says to: Delete in `/sessions` removes it and its subagent
 runs, then VACUUMs and truncates the WAL so the text leaves the disk).
@@ -1671,14 +1678,44 @@ Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,
 `sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`.
-There is no memory search and no ranking: every live memory
-(`superseded_by IS NULL`) reaches the prompt, newest first per scope,
-under the per-scope byte budget the write gate enforces (§10.7).
-`memory.quote` holds the user's own words a memory about them rests on.
-`memory.origin` is `user` or `learned`: `/memory <note>` writes `user`,
-everything else writes `learned`; the autonomy gate, the supersede guard
-(§10.4), and the digest labels (§10.7) read this column, not the
-provenance string.
+
+The memory store itself is not a table but Markdown on disk, entirely
+inside zemi's own state, in two partitions:
+`~/.local/state/zemi/projects/<hash of trust root>/brain/` beside the
+project DB, and `~/.local/share/zemi/brain/user/` beside the global one.
+One-liner memories are lines in each partition's reserved `memories.md`
+(`- [id origin YYYY-MM-DD] text`, newest first by last write); every other
+`.md` is freeform knowledge whose required frontmatter (`description`,
+`read_if`, an optional `paths:` glob) derives the injected catalog. No brain
+byte is ever created in a repository, so nothing of it can be written by a
+pull; committed team knowledge stays in the repo's own files. Every write to
+a partition - a memory-tool apply, the reflector, `/memory`, migration,
+rewind, the post-write scrub - holds an exclusive flock on the partition's
+`memories.lock` for the whole operation (a blocked writer waits 2s, then
+fails; a cross-partition move takes both locks, user then private), inserts
+its ledger entries before the file replace, and replaces files atomically.
+
+The `memory_ops` ledger is append-only and never compacted; nothing reads it
+to build the prompt. Line ops (add, supersede, forget, edit, archive, move,
+import) carry the line's text, hash, quote and provenance; a write op - the
+memory tool's file mode - carries the replaced file's prior bytes, capped at
+32 KiB with a truncation flag, so a rewind restores them. Import entries are
+permanent tombstones: the marker that keeps a deleted or rewound-away line
+from re-importing.
+
+The `memory` table froze at the swap: never written again, never dropped, no
+schema bump. Its superseded rows keep their text, quote and provenance
+forever, its live rows compose into `memories.md` by the reconcile-on-open
+migration, and the read path stays as the trail resolver -
+`/memory`'s merged list and collapsed trail group, and the ids a stored
+context row or a pending `replaces` still names. There is no memory search
+and no ranking: every live line reaches the prompt, newest first per scope,
+under the per-scope byte budget the write gate keeps it under (§10.4).
+A memory about the user carries the user's own words (`quote`), and
+`origin` is `user` or `learned` - `/memory <note>` writes `user`, everything
+else writes `learned` - which the autonomy gate, the supersede guard
+(§10.4), and the injected labels (§10.7) read; since the swap the origin
+rides the `memories.md` line and its ledger entries.
 
 ## 8. UI core detail
 
@@ -2838,9 +2875,10 @@ from the history rows since the telemetry rows keep no text + tool-call
 stats + the instruction files the agent's prompt carries (the same trust
 gate, 16 KiB), so the reflector can see what it must not repeat + this
 session's memories awaiting review (another session's may hold outside
-text, and this session's autonomy would store a copy) + the whole memory
-index with each scope's budget use and the quote under a memory that has
-one, so an older near-duplicate is replaced rather than added again + the
+text, and this session's autonomy would store a copy) + the memory index
+the partitions' files and ledgers hold (§7), each scope's budget use and
+the quote under a memory that has one, so an older near-duplicate is
+replaced rather than added again + the
 project's skills and recipes by name and description, so a repository's
 own procedure is left to the live agent's recipe. The prompt asks for
 memories phrased as facts, never as instructions, which the intake
@@ -2873,8 +2911,15 @@ whatever the autonomy, since deleting loses data; accepting one deletes the
 memory, rejecting keeps it.
 
 The reflector is constrained by prompt and by pipeline: it can only emit
-proposals; application is a separate, reviewed step. Memories go through
-the intake policy (§10.4) into the store; there is no reflector scratch
+proposals; application is a separate, reviewed step. Its view of live
+memories - the dedup and the retirement targets - is the partitions'
+`memories.md` lines plus the ledger (§7), and each entry it applies goes
+through the same gate and lock as a memory-tool write, ledger first. An
+entry the gate passes applies, one it refuses queues as a pending proposal,
+and a file apply that failed (the partition lock held, a rename error)
+queues too: only when every entry has applied or queued is the delta marked
+seen, so nothing a run proposed is lost. Memories go through
+the intake policy (§10.4) into the brain; there is no reflector scratch
 directory and no path into the config dir, and it drafts no skills: a
 procedure is a recipe the live agent writes under the user's eyes. The
 reflector runs detached with a timeout; a run cut off by exit is retried
@@ -2885,10 +2930,15 @@ by the next startup sweep, since the session still has unseen messages.
 - Pending memory proposals persist in their scope's store (`proposals`
   table) until accepted or rejected, so restarts never lose them; the
   statusline shows how many wait for `/memory`. `/memory` is a toggle list
-  (§8): the suggestions, then this project's memories and everywhere's,
-  each section title counting its rows and a scope's naming its share of
-  the budget; a row is one line, and the preview pane and the detail hold
-  the whole text, its quote, origin and age. A row's keys act at once: `a`
+  (§8): the suggestions, then this project's memories and everywhere's -
+  the lines the partitions' `memories.md` hold, quote and provenance read
+  from the ledger (§7) - each section title counting its rows and a scope's
+  naming its share of the budget; a row is one line, and the preview pane
+  and the detail hold the whole text, its quote, origin and age. The ids
+  the budget cut or a supersede removed, and the frozen table's superseded
+  rows, are one collapsed trail group at the end, origin- and date-labeled,
+  the ledger keeping their text; their ids still resolve for `replaces`,
+  forget and the fork deltas. A row's keys act at once: `a`
   accepts a proposal, `d` drops one, `f` forgets a stored memory, `s` moves
   one between this project and everywhere (a stored memory is added to the
   other store before it is deleted from its own), `o` edits one in the
@@ -2920,12 +2970,18 @@ by the next startup sweep, since the session still has unseen messages.
   a learned user-scope memory without one waits for review, and a quote that
   is not in what the user typed in the session (compaction summaries,
   attachments and a plugin's `zemi.agent.send` text aside) drops the
-  memory. Each scope has a 3 KB prompt budget (§10.7): a write that would
-  pass it queues for review with the oldest ids to replace, and `/memory
-  <note>`, accepting a queued one, a move into that scope and an edit that
-  grows past it refuse and point at the oldest in `/memory`, since the user
-  is there. The digest (§10.7) tells the model to follow a preference the
-  user stated and to check what any other line names before relying on it.
+  memory. Each scope has a 3 KB prompt budget (§10.7), and the write gate
+  enforces it by cutting, not refusing: a model write that would push its
+  scope past the budget applies with its oldest learned lines cut from
+  `memories.md` into the ledger - the tool result names them, and their ids
+  still resolve for `replaces` and forget - while an overflow
+  whose cut set would reach a user-attested line queues instead. The
+  user's own writes refuse rather than cut: `/memory <note>`, accepting a
+  queued one, a move into that scope and an edit that grows past it refuse
+  and point at the oldest in `/memory`, since the user is there; nothing
+  silently drops a user-attested memory. The `## Memory` header (§10.7)
+  tells the model to follow a preference the user stated and to check what
+  any other line names before relying on it.
   Residual risk is stated plainly: a learned line can still sway a credulous
   model; the cap, provenance, quote check, scrubbing and the review queue
   narrow that window. `replaces` is the one edit: text with it supersedes
@@ -2933,6 +2989,21 @@ by the next startup sweep, since the session still has unseen messages.
   other review action: model proposals may never silently drop a
   user-attested (`/memory <note>`) memory, and a reflector retirement
   (§10.3) never drops any memory without review.
+- The `memory` tool's file mode writes a private-partition brain file -
+  `path` inside the partition's dir plus `content`; the reserved
+  `memories.md` refuses ("the memory tool owns this file"), and the user
+  partition refuses whole ("user-brain files are written with the file
+  tools; those writes ask"). The injected surfaces get the one-liner
+  treatment: `description` and `read_if` are stripped and capped like a
+  one-liner's text (shaped or oversized queues), the secret scan and scrub
+  run on the content, and the body itself is exempt - it is read lazily,
+  never injected. A creation applies; an overwrite of a file this session
+  did not write queues, and so does one whose bytes changed since - the
+  gate holds the session's write set, every apply and every approved
+  file-tool write recording the file's hash and clearing on rewind. A
+  settled overwrite keeps the replaced file's prior bytes in its ledger
+  write op, capped with a truncation flag, so rewind restores what
+  checkpoints never saw.
 - A recipe (§10.5) is written with the file tools, and every write asks:
   the dir is under zemi's state, so auto mode never settles it, no
   "always" is offered, and the ask says when the session read text from
@@ -2947,6 +3018,18 @@ by the next startup sweep, since the session still has unseen messages.
   frontmatter name that is not the directory's, a taken name, a body
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
+- A brain file the file tools write - write, edit, an LSP rename's
+  secondary targets - asks in every mode the same way (the write is under
+  zemi's state, so no rule settles it, no "always" is offered, and the ask
+  carries the outside-text note); Lua's `zemi.fs.write` is refused at jail
+  resolution, never asked. The reserved `memories.md` carries its own
+  reason, "the memory tool owns this file", with the file's open lint
+  findings named in the ask. Once approved the write gets the recipe
+  treatment: the secret scrub runs after the write, the instruction-shape
+  check is a lint finding, not a rewrite (dropping content the user
+  approved is the review queue's job), and a scrubbed `memories.md` writes
+  its edit entries under the partition lock, so the ledger's hash trail
+  stays honest.
 
 Autonomy is one knob that only user config sets:
 
@@ -3043,20 +3126,36 @@ index** (name + description only; the user's, builtin and plugin skills) +
 the user's `<config>/AGENTS.md` + Lua sections (§6.3; a trusted project's
 own Lua can add one). What varies by project or session follows it as the
 context message, a user-role message before the conversation that the
-session stores and a resume sends again byte for byte while the memories
-are the same: the repository's context files (AGENTS.md, else CLAUDE.md,
+session stores and a resume sends again byte for byte while the brain is
+unchanged: the repository's context files (AGENTS.md, else CLAUDE.md,
 injected verbatim) + the project's skills and recipes + the environment +
-**memory digest** (every live memory, this project then
-every project, newest first, each scope cut at a 3 KB budget the write
-gate keeps it under (§10.4), each line prefixed with id, origin and age in
-days; no relevance ranking). Each send keys its calls on the session
+**# Brain** (§7), one section in the slot the memory digest held:
+
+- the loop text, static, naming the partition roots that exist;
+- `<brain-warning>` lines, zemi-generated findings (a malformed line, a
+  hash mismatch, an over-budget partition), cut at 1 KiB; in an untrusted
+  project they name no repository path and carry user-partition findings
+  only;
+- the derived catalogs, one line per freeform brain file from its
+  frontmatter, `### user` in every project (user-owned state a pull cannot
+  write), `### private` in trusted projects only, each cut at 4 KiB;
+- `## Memory`, the two contract lines, then the live lines, this
+  project then every project, newest first, each scope cut at a 3 KB budget
+  the write gate keeps it under (§10.4), each line prefixed with id, origin
+  and age in days; no relevance ranking.
+
+The whole section is built once at session open and rebuilt only at
+compaction and at a mid-session trust flip, never per send; the context
+key hashes the render, and the stored context row replays its bytes while
+it matches, so a memory written mid-session surfaces at the next rebuild
+and no cache is broken before then. Each send keys its calls on the session
 (`prompt_cache_key`, `x-session-affinity`). A fork (§6.3) sends the caller's
 own prefix under the caller's own key, tools by name and schema, system
 prompt and context message included, so the provider reads that conversation
 out of its cache instead of writing it again; that pinning is what makes a
 fork cheap to start. The whole prompt, tool descriptions and the
 context message included, is pinned at session start (§6.3) and rebuilt
-with a fresh environment and digest at compaction (triggered before a turn
+with a fresh environment and brain at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
 included, is within a 20k reply reserve plus 13k of the window but at
 least half of it, never when the window is unknown; once after a
@@ -3069,24 +3168,28 @@ it reads the provider's cache; a flat transcript to a separate compact
 model, or when that call gives no summary), stores the summary (an unfinished todo
 list follows it, outside what the next compaction merges) and a copy of the
 tail after it (`/resume` scans for the last summary row and starts from
-it), and re-runs digest assembly, §7, with the environment section and the
+it), and re-runs the brain assembly, §7, with the environment section and the
 rest of the prompt (§6.3) pinned again; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps
-provider prompt caches warm; under "# Memory" a preference the user
+provider prompt caches warm; under "## Memory" a preference the user
 stated holds unless the conversation or project instructions say
 otherwise, and any other line carries the cue that it held when it was
 written, so a file, command or flag it names is checked before the model
-relies on it. Digest lines are
-labeled `user` or `learned` from `memory.origin`, so users can audit
-what the model was told and which of it the agent wrote itself. Context
+relies on it. Memory lines are
+labeled `user` or `learned` from their origin, so users can audit
+what the model was told and which of it the agent wrote itself. A brain
+file whose `paths:` globs match a file the session reads or edits earns a
+one-line pointer as tool-result text, at most three per result, once per
+conversation - outside the pinned prefix, so recall never moves the cache.
+Context
 files are injected verbatim, and only in a trusted project (§5); an
 untrusted one gets the user's `<config>/AGENTS.md` alone. A pull can
 still change a trusted repository's files, which the trust decision
 accepts like its build scripts. `agent.assemble` handlers
 (user, builtin and plugin origin) add sections: each returns a string or
 `{ title, text }`, capped at 16 KiB per section and 64 KiB in all, rendered
-below the built-in sections; no handler can drop the digest, the skills
-index, or the untrusted-content framing.
+below the built-in sections; no handler can drop the brain section, the
+skills index, or the untrusted-content framing.
 
 ### 10.8 What the loop cannot do (hard lines)
 
@@ -3094,14 +3197,23 @@ index, or the untrusted-content framing.
   request, not a self-modification.
 - Never loosens permissions, never widens the sandbox, never disables
   telemetry, never edits its own proposals after review begins.
-- Never writes outside its two homes (memory store, skills dir). Anything else is a normal tool call under normal permissions.
+- Never writes outside its homes - the memory store, the brain partitions
+  (private via the memory tool's file mode or an approved file-tool write,
+  user via the file tools only when the user approves), the skills dir.
+  Anything else is a normal tool call under normal permissions.
 - Only user config raises `memory.autonomy`; no Lua path edits the env
   deny-list or widens the fs jail. Auto autonomy never applies a memory
   from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), the user-only config.set and allow rules
-(§6.1), and the reflector's tool-less model call (§10.3).
+(§6.1), and the reflector's tool-less model call (§10.3). The homes line is
+the permission layer: `protectedWhy`'s dedicated case makes the reserved
+`memories.md` a protected ask no rule settles, the brain roots sit in the
+read jails (`readJails`) and out of the write jails, a state-dir write asks
+with the outside-text note in every mode, the AfterWrite hook scrubs what
+the user approves, and the sandbox hides the state dir from settled
+commands as the backstop.
 
 ## 11. Error handling and observability
 
@@ -3160,7 +3272,9 @@ internal/sandbox/           OS confinement for settled commands: seatbelt, Landl
                             seccomp, the namespace variant and the helper re-exec
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse, and zemi run's view of a run
-internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
+internal/learn/             memory intake policy: caps, scrubber, near-duplicate check
+internal/brain/             the memory store: partitions, memories.md, the ops ledger,
+                            render, lint, lock, migration
 internal/skill/             SKILL.md discovery and parsing
 internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
