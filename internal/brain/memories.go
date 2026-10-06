@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -153,18 +152,10 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 	var cut []string
 	err := mutate(p, func(lg *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
 		var ops []*Op
-		if replaces != "" {
-			op, next, err := supersedeOp(lg, lines, m.ProvenanceSessionID, replaces, l.ID, p.Kind.Scope(), at)
-			if err != nil {
-				return nil, nil, err
-			}
-			if op != nil {
-				ops = append(ops, op)
-			}
-			lines = next
-		}
 		// a colliding id would merge two memories under one key; the old
-		// store refused it at the primary key (store.go's ShortID NOTE)
+		// store refused it at the primary key (store.go's ShortID NOTE).
+		// Settled before the supersede op is built, so its SupersededBy is
+		// this memory's final id
 		for {
 			trail, err := lg.ByID(l.ID)
 			if err != nil {
@@ -177,6 +168,16 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 				return nil, nil, fmt.Errorf("brain: memory id %s is already in use", l.ID)
 			}
 			l.ID = store.ShortID()
+		}
+		if replaces != "" {
+			op, next, err := supersedeOp(lg, lines, m.ProvenanceSessionID, replaces, l.ID, p.Kind.Scope(), at)
+			if err != nil {
+				return nil, nil, err
+			}
+			if op != nil {
+				ops = append(ops, op)
+			}
+			lines = next
 		}
 		ops = append(ops, &Op{
 			Op: OpAdd, ID: l.ID, Text: m.Text, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
@@ -373,7 +374,7 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 		return "", fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	m := srcLines[i]
-	dstLines, _, err := readMemories(dst)
+	dstLines, dstRaw, err := readMemories(dst)
 	if err != nil {
 		return "", err
 	}
@@ -436,7 +437,7 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 	}); err != nil {
 		return "", err
 	}
-	return "", writeMemories(dst, nil, append([]Line{m}, dstLines...))
+	return "", writeMemories(dst, dstRaw, append([]Line{m}, dstLines...))
 }
 
 // writeMemories serializes next and replaces the file, a line that does not
@@ -450,7 +451,7 @@ func writeMemories(p Partition, raw []byte, next []Line) error {
 			data = append(data, '\n')
 		}
 	}
-	if cur, err := os.ReadFile(p.memPath()); err == nil && bytes.Equal(data, cur) {
+	if cur, err := readSafe(p, MemFile); err == nil && bytes.Equal(data, cur) {
 		return nil
 	}
 	return config.WriteFileAtomic(p.memPath(), data, 0o600)
@@ -494,7 +495,7 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 	}
 	defer unlock()
 	path := filepath.Join(p.Dir, name)
-	prior, rerr := os.ReadFile(path)
+	prior, rerr := readSafe(p, name)
 	existed := rerr == nil
 	if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
 		return rerr
@@ -587,10 +588,10 @@ func mutate(p Partition, change func(l *Ledger, raw []byte, lines []Line) (next 
 	return mutateLocked(p, change)
 }
 
-// readMemories reads and parses the partition's memories.md; a missing
-// file is an empty store.
+// readMemories reads and parses the partition's memories.md; a missing file
+// is an empty store, a planted one an error the write paths fail on.
 func readMemories(p Partition) (lines []Line, raw []byte, err error) {
-	raw, err = os.ReadFile(p.memPath())
+	raw, err = readSafe(p, MemFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}

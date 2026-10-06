@@ -702,10 +702,11 @@ func TestBrainWritesProtected(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	proj := perm.RealPath(h.Dirs.ProjectDir)
-	userMem := filepath.Join(perm.RealPath(h.userBrain().Dir), brain.MemFile)
-	userFile := filepath.Join(perm.RealPath(h.userBrain().Dir), "style.md")
-	privateMem := filepath.Join(perm.RealPath(h.privateBrain().Dir), brain.MemFile)
-	privateFile := filepath.Join(perm.RealPath(h.privateBrain().Dir), "repo-map.md")
+	user, private := h.brainParts()
+	userMem := filepath.Join(perm.RealPath(user.Dir), brain.MemFile)
+	userFile := filepath.Join(perm.RealPath(user.Dir), "style.md")
+	privateMem := filepath.Join(perm.RealPath(private.Dir), brain.MemFile)
+	privateFile := filepath.Join(perm.RealPath(private.Dir), "repo-map.md")
 	for _, root := range []string{h.Dirs.StateHome, h.Dirs.DataHome, proj} {
 		h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(root), "*"), Decision: perm.Allow, Principal: "model"})
 	}
@@ -748,7 +749,8 @@ func TestBrainAskNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	sid := seedSession(t, h)
-	mem := filepath.Join(h.userBrain().Dir, brain.MemFile)
+	user, _ := h.brainParts()
+	mem := filepath.Join(user.Dir, brain.MemFile)
 	memDir := filepath.Dir(mem)
 	if err := os.MkdirAll(memDir, 0o755); err != nil {
 		t.Fatal(err)

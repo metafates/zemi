@@ -71,7 +71,7 @@ func Load(p Partition) Loaded {
 	front := 0
 	for _, name := range names {
 		if name == MemFile {
-			l.Mem, l.MemErr = os.ReadFile(p.memPath())
+			l.Mem, l.MemErr = readSafe(p, MemFile)
 			continue
 		}
 		if !strings.HasSuffix(name, ".md") || !safe(p.Dir, name) {
@@ -105,6 +105,21 @@ func readEntry(dir, name string) (e Entry, peeked int) {
 	}
 	e.FM, e.Err = ParseFrontmatter(string(data))
 	return e, len(data)
+}
+
+// readSafe reads a brain file through the bar every cataloged file passes: a
+// regular file, not secret-shaped, resolving inside the partition. A missing
+// file is ErrNotExist as a plain read would give; anything planted - a link,
+// a pipe - reads as fs.ErrInvalid, not the store.
+func readSafe(p Partition, name string) ([]byte, error) {
+	path := filepath.Join(p.Dir, name)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil, fs.ErrNotExist
+	}
+	if !safe(p.Dir, name) {
+		return nil, fs.ErrInvalid
+	}
+	return os.ReadFile(path)
 }
 
 // safe is instructionFile's check (prompt.go:485-488): a regular file, not

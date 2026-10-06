@@ -496,23 +496,12 @@ func (h *Host) autoLocal(req tools.Request) bool {
 
 func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
-// userBrain is the user's cross-project brain partition (D2): user-owned
-// state a pull cannot write, so its reads settle in every project.
-func (h *Host) userBrain() brain.Partition {
-	return brain.UserPartition(h.Dirs.DataHome, h.Dirs.StateHome)
-}
-
-// privateBrain is this repository's brain partition, keyed to the trust root
-// like the recipes dir beside it (D2); its reads settle in trusted projects.
-func (h *Host) privateBrain() brain.Partition {
-	return brain.PrivatePartition(h.Dirs.StateHome, h.trustRoot())
-}
-
 // memFiles are the brain partitions' reserved one-liner stores: the memory
 // tool owns them, so a file-tool write asks with that reason (D5).
 func (h *Host) memFiles() []string {
+	user, private := h.brainParts()
 	var out []string
-	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+	for _, p := range []brain.Partition{user, private} {
 		if !p.Zero() {
 			out = append(out, filepath.Join(p.Dir, brain.MemFile))
 		}
@@ -526,7 +515,8 @@ const memLintMax = 3
 // memLintNotes lints the brain partition a reserved-file write lands in and
 // returns up to three of the file's own findings' texts for the ask (D5).
 func (h *Host) memLintNotes(arg string) []string {
-	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+	user, private := h.brainParts()
+	for _, p := range []brain.Partition{user, private} {
 		if !h.inJail(arg, filepath.Join(p.Dir, brain.MemFile)) {
 			continue
 		}

@@ -127,14 +127,9 @@ func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	ag := h.agents
-	ag.mu.Lock()
 	// a detached reflector stores a closed session's memories; the live
 	// session's budget is not theirs to spend
-	if res.Memory.ProvenanceSessionID == ag.sessionID {
-		ag.memAuto++
-	}
-	ag.mu.Unlock()
+	h.spendAutoBudget(res.Memory.ProvenanceSessionID)
 	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+cutNote(cut)+redactNote(res.Scrubbed))
 	return cut, nil
 }
@@ -1210,33 +1205,28 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 		reason = "the description or read_if is over 200 characters"
 	}
 	if reason == "" {
-		reason = h.fileOverwriteGate(private, abs, name)
-	}
-	if reason == "" && !h.memoryAuto(sid) {
-		reason = "memory.autonomy is not auto"
-	}
-	if reason == "" && !h.autoApplyBudgetLeft(sid) {
-		reason = "this session's auto budget is spent"
-	}
-	if reason != "" {
+		var want *string
+		reason, want = h.overwriteGate(private, abs, name)
+		if reason == "" && !h.memoryAuto(sid) {
+			reason = "memory.autonomy is not auto"
+		}
+		if reason == "" && !h.autoApplyBudgetLeft(sid) {
+			reason = "this session's auto budget is spent"
+		}
+		if reason != "" {
+			return h.queueFileProposal(sid, private, name, content, reason)
+		}
+		if err := brain.WriteFile(private, sid, name, []byte(content), want, h.now()); err != nil {
+			if errors.Is(err, brain.ErrStale) {
+				return h.queueFileProposal(sid, private, name, content, "the file changed while the write waited")
+			}
+			return "", err
+		}
+	} else {
 		return h.queueFileProposal(sid, private, name, content, reason)
 	}
-	if err := brain.WriteFile(private, sid, name, []byte(content), h.fileWant(private, abs, name), h.now()); err != nil {
-		if errors.Is(err, brain.ErrStale) {
-			return h.queueFileProposal(sid, private, name, content, "the file changed while the write waited")
-		}
-		return "", err
-	}
 	h.markBrainWrite(abs, []byte(content))
-	// the apply spends the session's auto budget, as a stored one-liner does
-	// (row 14); a detached reflector writes no files, the guard mirrors
-	// applyProposal
-	ag := h.agents
-	ag.mu.Lock()
-	if sid == ag.sessionID {
-		ag.memAuto++
-	}
-	ag.mu.Unlock()
+	h.spendAutoBudget(sid)
 	out := "wrote " + name + "; injects from the next session"
 	if note := h.brainLintNote(private, name); note != "" {
 		out += "; " + note
@@ -1261,37 +1251,38 @@ func (h *Host) underBrainDir(dir, abs string) bool {
 	return ok && rel != "." && !strings.Contains(rel, string(filepath.Separator))
 }
 
-// fileOverwriteGate says why an overwrite queues (row 15): the file was not
-// written by this session, or it changed since the session wrote it. A
-// creation is no overwrite.
-func (h *Host) fileOverwriteGate(private brain.Partition, abs, name string) string {
+// overwriteGate is the row-15 gate in one read: why an overwrite queues
+// ("" when the session may apply) and the hash the apply's write expects,
+// the write-set entry for an overwrite, "" for a creation (D5).
+func (h *Host) overwriteGate(private brain.Partition, abs, name string) (string, *string) {
+	empty := ""
 	prior, err := os.ReadFile(filepath.Join(private.Dir, name))
 	if errors.Is(err, fs.ErrNotExist) {
-		return ""
+		return "", &empty
 	}
 	if err != nil {
-		return err.Error()
+		return err.Error(), &empty
 	}
 	entry, ours := h.brainWriteOf(abs)
 	switch {
 	case !ours:
-		return "the file was not written by this session; an overwrite asks"
+		return "the file was not written by this session; an overwrite asks", &empty
 	case entry != brain.FileHash(prior):
-		return "the file changed since this session wrote it; an overwrite asks"
+		return "the file changed since this session wrote it; an overwrite asks", &empty
 	}
-	return ""
+	return "", &entry
 }
 
-// fileWant is the hash the apply expects the file to hold: the write-set
-// entry for an overwrite, nothing for a creation (D5).
-func (h *Host) fileWant(private brain.Partition, abs, name string) *string {
-	empty := ""
-	if prior, err := os.ReadFile(filepath.Join(private.Dir, name)); err == nil {
-		if entry, ours := h.brainWriteOf(abs); ours && entry == brain.FileHash(prior) {
-			return &entry
-		}
+// spendAutoBudget charges the session's auto-apply budget (row 14); a
+// detached reflector stores nothing of its own, so only the live session
+// spends.
+func (h *Host) spendAutoBudget(sid string) {
+	ag := h.agents
+	ag.mu.Lock()
+	if sid == ag.sessionID {
+		ag.memAuto++
 	}
-	return &empty
+	ag.mu.Unlock()
 }
 
 // acceptFileProposal writes the file-mode proposal the user accepted: the
@@ -1314,10 +1305,7 @@ func (h *Host) queueFileProposal(sid string, p brain.Partition, name, content, r
 	if err := h.addProposal(pr); err != nil {
 		return "", err
 	}
-	if reason != "" {
-		return "queued for the user's review (" + reason + ")", nil
-	}
-	return "queued for the user's review", nil
+	return "queued for the user's review (" + reason + ")", nil
 }
 
 // brainLintNote is the file's own open lint findings, one line (row 14).
@@ -1360,7 +1348,8 @@ func (h *Host) markBrainWrite(abs string, content []byte) {
 // (D5, rows 16-17), after the write: the ask showed the bytes the tool wrote,
 // and the note names what the scrub changed on top.
 func (h *Host) brainAfterWrite(path string) string {
-	for _, p := range []brain.Partition{h.userBrain(), h.privateBrain()} {
+	user, private := h.brainParts()
+	for _, p := range []brain.Partition{user, private} {
 		// the brain dir is flat by design: only its direct children are
 		// brain files, so a nested memories.md is freeform everywhere else too
 		if p.Zero() || !h.underBrainDir(p.Dir, path) {

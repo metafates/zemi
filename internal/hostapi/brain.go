@@ -41,10 +41,6 @@ func (h *Host) brainParts() (user, private brain.Partition) {
 		brain.PrivatePartition(h.Dirs.StateHome, h.trustRoot())
 }
 
-// BrainParts is brainParts for the packages that gate or render by
-// partition (the ui tests seed one).
-func (h *Host) BrainParts() (user, private brain.Partition) { return h.brainParts() }
-
 // RekeyProject re-derives the trust-root-keyed state: a test harness that
 // sets Dirs.ProjectDir after boot needs the private partition to follow.
 func (h *Host) RekeyProject() { h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) }

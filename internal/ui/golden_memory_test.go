@@ -24,7 +24,8 @@ import (
 // ledger. (ui tests have no hostapi test helpers.)
 func brainSeed(t *testing.T, host *hostapi.Host, m *store.Memory) {
 	t.Helper()
-	user, private := host.BrainParts()
+	user := brain.UserPartition(host.Dirs.DataHome, host.Dirs.StateHome)
+	private := brain.PrivatePartition(host.Dirs.StateHome, host.Dirs.TrustRoot())
 	p := private
 	if m.Scope == store.ScopeUser {
 		p = user

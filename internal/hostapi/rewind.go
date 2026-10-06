@@ -158,34 +158,36 @@ func (h *Host) RewindTo(id string) (int, error) {
 		h.Notify(slog.LevelWarn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
 			int(store.CheckpointTTL.Hours()/24), aged, Plural(aged, "turn", "turns")))
 	}
-	var failed []string
 	if len(cps) > 0 {
 		h.lspDirty() // a restore rewrites files behind the language servers' backs
 	}
 	// the locks come before any truncation or restore (section 7): a store
 	// another zemi holds aborts the rewind with both intact
-	h.cutMu.Lock()
-	user, private := h.brainParts()
-	unlockBrain, err := brain.LockAll(private, user)
-	if err != nil {
-		h.cutMu.Unlock()
-		return 0, fmt.Errorf("rewind aborted: %w", err)
-	}
-	defer unlockBrain()
-	for _, cp := range cps {
-		if err := restoreCheckpoint(cp); err != nil {
-			failed = append(failed, cp.Path+": "+err.Error())
+	err = func() error {
+		h.cutMu.Lock()
+		defer h.cutMu.Unlock()
+		user, private := h.brainParts()
+		unlockBrain, err := brain.LockAll(private, user)
+		if err != nil {
+			return fmt.Errorf("rewind aborted: %w", err)
 		}
-	}
-	if len(failed) > 0 {
-		return 0, fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
-	}
-	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
-	err = h.DB.TruncateMessages(sid, id)
-	if err == nil {
+		defer unlockBrain()
+		var failed []string
+		for _, cp := range cps {
+			if err := restoreCheckpoint(cp); err != nil {
+				failed = append(failed, cp.Path+": "+err.Error())
+			}
+		}
+		if len(failed) > 0 {
+			return fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
+		}
+		h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
+		if err := h.DB.TruncateMessages(sid, id); err != nil {
+			return err
+		}
 		h.clampReflectSeen(sid, cut)
-	}
-	h.cutMu.Unlock()
+		return nil
+	}()
 	if err != nil {
 		return 0, err
 	}
@@ -324,6 +326,17 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 						continue
 					}
 					add = append(add, brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text})
+					// the frozen table has no op to replay, so the revival
+					// journals its own add-shaped entry: the replayed trail
+					// explains the line and lint's hand-edit finding stays quiet
+					revive := &brain.Op{
+						Op: brain.OpAdd, ID: m.ID, Text: m.Text, SessionID: sid,
+						Hash: brain.FileHash([]byte(m.Text)), Scope: p.Kind.Scope(), Origin: m.Origin,
+						CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, TS: h.now().UnixMilli(),
+					}
+					if err := lg.Insert(revive); err != nil {
+						h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+					}
 				}
 			}
 		}

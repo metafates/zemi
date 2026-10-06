@@ -96,16 +96,17 @@ func (h *Host) shippedDirs() []string {
 }
 
 func (h *Host) readJails() []string {
+	user, private := h.brainParts()
 	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
 	// outside the config home, so it needs its own root.
 	roots := slices.Concat([]string{
 		h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(), h.ScratchDir(),
-		h.userBrain().Dir,
+		user.Dir,
 	}, h.shippedDirs(), h.Dirs.UserTrees())
 	if h.ProjectTrusted() {
 		// the decision covers the repository, so starting in a subdirectory
 		// must not ask for every sibling package the task reaches
-		roots = append(roots, h.Dirs.RepoRoot(), h.recipesDir(), h.privateBrain().Dir)
+		roots = append(roots, h.Dirs.RepoRoot(), h.recipesDir(), private.Dir)
 	}
 	return roots
 }

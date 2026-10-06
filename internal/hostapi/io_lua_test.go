@@ -192,8 +192,8 @@ func TestEditRepoRoot(t *testing.T) {
 func TestBrainReadJails(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
-	user := filepath.Join(h.userBrain().Dir, "style.md")
-	private := filepath.Join(h.privateBrain().Dir, "repo-map.md")
+	user, private := h.brainParts()
+	userPath, privatePath := filepath.Join(user.Dir, "style.md"), filepath.Join(private.Dir, "repo-map.md")
 	for _, c := range []struct {
 		name         string
 		trusted      bool
@@ -201,12 +201,12 @@ func TestBrainReadJails(t *testing.T) {
 		want         perm.Decision // fsDefault, the every-mode floor
 		auto         bool          // autoLocal, what auto mode settles
 	}{
-		{"user brain read, untrusted", false, "fs.read", user, perm.Allow, true},
-		{"user brain read, trusted", true, "fs.read", user, perm.Allow, true},
-		{"private brain read, untrusted", false, "fs.read", private, perm.Ask, false},
-		{"private brain read, trusted", true, "fs.read", private, perm.Allow, true},
-		{"user brain write", true, "fs.write", user, perm.Ask, false},
-		{"private brain write", true, "fs.write", private, perm.Ask, false},
+		{"user brain read, untrusted", false, "fs.read", userPath, perm.Allow, true},
+		{"user brain read, trusted", true, "fs.read", userPath, perm.Allow, true},
+		{"private brain read, untrusted", false, "fs.read", privatePath, perm.Ask, false},
+		{"private brain read, trusted", true, "fs.read", privatePath, perm.Allow, true},
+		{"user brain write", true, "fs.write", userPath, perm.Ask, false},
+		{"private brain write", true, "fs.write", privatePath, perm.Ask, false},
 	} {
 		h.SetProjectTrusted(c.trusted)
 		if got := h.fsDefault(c.subject, c.arg); got != c.want {
@@ -226,9 +226,10 @@ func TestLuaFsWriteBrainRefused(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
-	mem := filepath.Join(h.userBrain().Dir, brain.MemFile)
+	user, private := h.brainParts()
+	mem := filepath.Join(user.Dir, brain.MemFile)
 	runUser(t, r, `
-		for _, file in ipairs({ "`+mem+`", "`+h.privateBrain().Dir+`/repo-map.md" }) do
+		for _, file in ipairs({ "`+mem+`", "`+private.Dir+`/repo-map.md" }) do
 			local ok, err = pcall(zemi.fs.write, file, "x")
 			assert(not ok and tostring(err):find("outside the jail"), file .. ": " .. tostring(err))
 		end
