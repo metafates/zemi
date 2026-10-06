@@ -88,8 +88,11 @@ func (p *Project) readStats(stateHome string) {
 		if p.Sessions, err = db.SessionCount(); err == nil {
 			latest, err = db.ListSessions(1)
 		}
-		if lines, lerr := brain.Lines(brain.PrivatePartition(stateHome, p.Root)); lerr == nil {
+		if lines, lerr := brain.Lines(brain.PrivatePartition(stateHome, p.Root)); lerr == nil && lines != nil {
 			p.Memories = len(lines)
+		} else if rows, rerr := db.ListMemory(store.ScopeProject, false); rerr == nil {
+			// never opened since the swap, so its rows are still the live ones
+			p.Memories = len(rows)
 		}
 		if len(latest) > 0 {
 			p.Latest = latest[0]
