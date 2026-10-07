@@ -103,7 +103,6 @@ local function lastRow(ctx, room)
 	if not pending then return { { text = "" } } end
 	---@type zemi.Line
 	local row = {}
-	---@type integer, zemi.Segment
 	local used = 0
 	for _, s in ipairs(pending) do
 		if used >= room then break end
@@ -128,8 +127,6 @@ function M.render(ctx)
 	local recent = ctx.projects or ctx.recent or {}
 	local tips = flow(tip(ctx, #recent > 0), room, 7)
 	table.insert(tips[1], 1, { text = "● Tip  ", hl = "Accent", copy = false })
-	-- the region's last row: the pending row the chat would draw at the same
-	-- place, kept as a row whether or not anything pends
 	local last = lastRow(ctx, room)
 	local version = ctx.version or ""
 
@@ -201,9 +198,9 @@ function M.render(ctx)
 			out[#out + 1] = line
 		end
 	end
-	-- the last row the region has, where the chat draws its pending row: the
-	-- block ends with it, blank when nothing pends
-	if fit > 0 then
+	-- the region's last row, where the chat draws its pending row: a block that
+	-- already fills the region leaves it none
+	if fit > 0 and #out < fit then
 		for _ = #out + 1, fit - 1 do
 			out[#out + 1] = { { text = "" } }
 		end

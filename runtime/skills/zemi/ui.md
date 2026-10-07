@@ -35,12 +35,13 @@ Rules for `render(ctx)`:
 ```lua
 -- a tip of your own in place of the default splash's
 local default = require("zemi.tui")
+local text = require("zemi.tui.text")
 zemi.ui.widget.add({
 	id = "splash",
 	region = "chat",
 	priority = 5,
 	render = function(ctx)
-		if ctx.transcript_count > 0 or ctx.agent_active then return {} end
+		if not text.empty_chat(ctx) then return {} end
 		local rows = default.splash(ctx)
 		for i, row in ipairs(rows) do
 			if row[2] and row[2].text == "● Tip  " then

@@ -707,9 +707,7 @@ zemi.ui.widget.add({
 		local count = ctx.transcript_count or 0
 		-- the splash owns the empty chat: it draws the pending row too, in a
 		-- block that fits, so nothing here can scroll it off the top
-		if fmt.empty_chat(ctx) then
-			return {} -- the splash widget fills the empty chat
-		end
+		if fmt.empty_chat(ctx) then return {} end
 		-- work that outlives this view of the session, drawn at the tail: a
 		-- session's counts are about other work, so a run's view leaves it out
 		local pending = fmt.pending(ctx)
