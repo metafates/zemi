@@ -2243,7 +2243,7 @@ rides the `memories.md` line and its ledger entries.
   outputs. stdout is the answer and nothing else: the run's last message
   (the headless prompt tells the model to put the whole answer there, after
   its last call), or with `--json` one event per line, `done` last (the
-  schema is in README.md). stderr is the run view: the chat and working
+  lines are specified below). stderr is the run view: the chat and working
   widgets rendered over the run's rows with `UIState.Printed`, which widgets
   read as `ctx.headless` (no click or key hints, the splash stays out, the
   exit region drops its banner). Rows print once they settle, and on a
@@ -2262,6 +2262,36 @@ rides the `memories.md` line and its ledger entries.
   Since the model picks every URL, which only yolo settles, a run with no
   `net.*` allow rule, yolo base or `decide` in its mode ships neither
   `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
+- **JSON lines** (run.go, cli.go): `zemi run --json` prints one object per line
+  in the order the run drew them, `done` last; a field the event's type does
+  not carry is left out, and a run that failed before its turn prints `done`
+  alone.
+
+  | `type` | its fields |
+  |---|---|
+  | `start` | `session`, `model`, `profile`, `mode`, `trusted`, `cwd` |
+  | `message` | `text` |
+  | `reasoning` | `text`, `ms` |
+  | `notice`, `compact`, `error` | `text` |
+  | `tool_start` | `id`, `tool`, `input`, `label` |
+  | `tool_end` | the start's fields, `status`, `output`, `diff`, `detail`, and `error` when the call failed or was stopped |
+  | `retry` | `attempt`, `in_ms`, `error` |
+  | `ask` | `tool`, `subject`, `arg`, `reason`, `why` |
+
+  The `done` line carries `result` (the run's last message), `is_error` and
+  `error`, `session`, `duration_ms`, the run's own `usage`
+  (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`),
+  `compactions`, `denied` (each `tool`, `subject`, `arg`, `reason`, `why`) and
+  `tools` (`id`, `tool`, `input`, `status` and `error` per call that ended).
+  `zemi sessions`, `zemi projects`, `zemi plugins` and `zemi health` take
+  `--json` too, one object per row:
+
+  | command | fields per row |
+  |---|---|
+  | `zemi sessions` | `id`, `title`, `updated`, `cost_usd` |
+  | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
+  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source` |
+  | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
