@@ -138,6 +138,9 @@ func TestEmitKeepsNameAndFrom(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `zemi.event.emit("user.y", { from = "host", name = "x" })`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatal(err)
 	}
+	if err := r.ExecuteChunk(t.Context(), `zemi.event.emit("user.y", { "a", "b" })`, "p.lua", lua.OriginProject); err == nil {
+		t.Fatal("a sequence payload did not raise")
+	}
 	if v, _ := h.GlobalDB.GetKV("project:ev"); v != `"project user.y"` {
 		t.Fatalf("handler saw %s", v)
 	}

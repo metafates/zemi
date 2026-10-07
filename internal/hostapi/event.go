@@ -82,9 +82,13 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 			if err != nil {
 				L.RaiseError("zemi.event.emit: %v", err)
 			}
-			if m, ok := v.(map[string]any); ok {
-				payload = m
+			// a sequence marshals to []any, and eventTable hands handlers
+			// string-keyed fields: its values would vanish without a word
+			m, ok := v.(map[string]any)
+			if !ok {
+				L.RaiseError("zemi.event.emit: payload is a table with string keys")
 			}
+			payload = m
 		}
 		from := string(h.RT.CurrentOrigin(L))
 		h.recordEvent(name, from, payload)
