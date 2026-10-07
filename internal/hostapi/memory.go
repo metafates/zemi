@@ -1161,7 +1161,13 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 	if err != nil {
 		return "", err
 	}
-	return out.String(), nil
+	msg := out.String()
+	if out.Dropped || out.Duplicate != nil {
+		// nothing was stored, so the call answers an error: the row and the
+		// model both read a refusal as one
+		return "", errors.New(msg)
+	}
+	return msg, nil
 }
 
 // memoryFileTool is the memory tool's file mode (DESIGN §10.4): a freeform file in

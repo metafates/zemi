@@ -464,7 +464,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
 					tr[i].Output = rowOutput(tr[i].Tool, out)
-					tr[i].Status = toolStatus(tr[i].Tool, p.Output.GetType() != fantasy.ToolResultContentTypeError, out, false)
+					tr[i].Status = toolStatus(tr[i].Tool, p.Output, false)
 				}
 			}
 		}

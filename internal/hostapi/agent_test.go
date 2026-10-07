@@ -1111,10 +1111,10 @@ func TestTodoNag(t *testing.T) {
 		engage(h, 0)
 		s := h.streamHooks()
 		for i := range todoNagAfter * 2 {
-			s.ToolCallEnd(strconv.Itoa(i), "read", true, "", "")
+			s.ToolCallEnd(strconv.Itoa(i), "read", out(""), "")
 		}
 		s.StepDone(agent.Step{})
-		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
+		s.ToolCallEnd("t", tools.ToolTodos, out(""), "")
 		s.StepDone(agent.Step{})
 		for range todoNagAfter - 2 {
 			s.StepDone(agent.Step{})
@@ -1232,7 +1232,7 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	sa.ReasoningDelta("pondering")
 	sa.TextDelta("answer")
 	sa.ToolCallStart("t1", "shell", "ls")
-	sa.ToolCallEnd("t1", "shell", true, "", "")
+	sa.ToolCallEnd("t1", "shell", out(""), "")
 	sa.TextDelta("done")
 	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
 
@@ -1829,7 +1829,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 	} {
 		base := c.rows()
 		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
-		c.hooks.ToolCallEnd("c0", "read", true, "", "")
+		c.hooks.ToolCallEnd("c0", "read", out(""), "")
 		c.hooks.TextDelta("before ")
 		c.hooks.StepStart()
 		// the stream breaks while a call's arguments stream in
@@ -2301,7 +2301,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		hk.ToolCallPending("t1", "grep")
 		hk.ReasoningDelta("ning.")
 		hk.ToolCallStart("t1", "grep", `{"pattern":"x"}`)
-		hk.ToolCallEnd("t1", "grep", true, "", "")
+		hk.ToolCallEnd("t1", "grep", out(""), "")
 		hk.ReasoningDelta("next")
 		hk.TurnDone(nil, fantasy.Usage{})
 		if got := rowsOf(h.Session().Transcript); got != "reasoning:pinning. | tool:x | reasoning:next" {

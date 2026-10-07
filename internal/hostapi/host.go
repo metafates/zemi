@@ -228,7 +228,7 @@ const (
 	CallWait      CallStatus = "wait" // arguments streaming, or queued behind a serial call
 	CallRun       CallStatus = "run"
 	CallOK        CallStatus = "ok"
-	CallWarn      CallStatus = "warn"      // it finished, but something it ran failed
+	CallWarn      CallStatus = "warn" // it finished, but something it ran failed
 	CallErr       CallStatus = "err"
 	CallStopped   CallStatus = "stopped"   // the user denied, dismissed or interrupted it
 	CallBG        CallStatus = "bg"        // its work goes on in the background

@@ -142,7 +142,7 @@ func (h *recHooks) ToolCallRunning(string) {
 	h.mu.Unlock()
 }
 
-func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
+func (h *recHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, _ string) {
 	h.mu.Lock()
 	h.tools = append(h.tools, "end:"+name)
 	h.mu.Unlock()

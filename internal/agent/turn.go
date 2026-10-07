@@ -32,7 +32,7 @@ type StreamHooks interface {
 	// ToolCallRunning is when the call starts to run: a serial call (shell)
 	// holds every later call of its step until it returns.
 	ToolCallRunning(id string)
-	ToolCallEnd(id, name string, ok bool, output, diff string)
+	ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, diff string)
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
 	StepStart()
@@ -377,7 +377,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	call.OnToolResult = func(res fantasy.ToolResultContent) error {
 		// fires for a call fantasy refused to run too, which Run never releases
 		tools.CallDone(tctx, res.ToolCallID)
-		hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
+		hooks.ToolCallEnd(res.ToolCallID, res.ToolName, res.Result, res.ClientMetadata)
 		return nil
 	}
 	call.OnStreamFinish = func(u fantasy.Usage, _ fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
@@ -927,5 +927,11 @@ func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 }
 
 func isErrResult(c fantasy.ToolResultContent) bool {
-	return c.Result != nil && c.Result.GetType() == fantasy.ToolResultContentTypeError
+	return ErrResult(c.Result)
+}
+
+// ErrResult is whether a tool result is the error one: a call that did not
+// do what it was asked answers with it, whatever the text says.
+func ErrResult(c fantasy.ToolResultOutputContent) bool {
+	return c != nil && c.GetType() == fantasy.ToolResultContentTypeError
 }

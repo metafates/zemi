@@ -744,7 +744,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			c.act(h, cancel)
 			if c.wantBG {
 				resp := waitCall(t, calls)
-				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
+				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(tools.ToolWorkflow, out(resp.Content), false) != CallBG {
 					t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
 				}
 				if !f.isRunning() {
@@ -952,7 +952,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	seedSession(t, h)
 	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true,"description":"scan six parts"}`})
-	if err != nil || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
+	if err != nil || toolStatus(tools.ToolWorkflow, out(resp.Content), false) != CallBG {
 		t.Fatalf("background start = %+v, %v", resp, err)
 	}
 	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]

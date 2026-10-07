@@ -202,9 +202,9 @@ func TestTurnExtras(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	sa := h.streamHooks()
 	sa.ToolCallStart("e1", "edit", `{"path":"a.go","old_string":"x","new_string":"y"}`)
-	sa.ToolCallEnd("e1", "edit", true, "", "")
+	sa.ToolCallEnd("e1", "edit", out(""), "")
 	sa.ToolCallStart("e2", "edit", `{"path":"b.go","old_string":"p","new_string":"q"}`)
-	sa.ToolCallEnd("e2", "edit", false, "old_string not found", "")
+	sa.ToolCallEnd("e2", "edit", outErr("old_string not found"), "")
 	sa.TurnDone(nil, fantasy.Usage{})
 	var diffs []string
 	for _, m := range h.Session().Transcript {

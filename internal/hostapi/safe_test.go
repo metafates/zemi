@@ -62,7 +62,7 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		{context.Canceled, "Interrupted", "cancelled", "stopped"},
 	} {
 		sa.ToolCallStart("a", "glob", `{"pattern":"*"}`)
-		sa.ToolCallEnd("a", "glob", true, "x.go", "")
+		sa.ToolCallEnd("a", "glob", out("x.go"), "")
 		sa.ToolCallPending("b", "read")
 		sa.ReasoningDelta("then b")
 		if tr := h.Session().Transcript; tr[len(tr)-1].Status != "ok" || len(h.agents.tools) != 1 {

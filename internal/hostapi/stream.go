@@ -141,10 +141,11 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	s.h.agentStream()
 }
 
-func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
+func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, changed string) {
 	ag := s.h.agents
 	t := s.h.turn.Load()
-	status := toolStatus(name, ok, output, t != nil && t.ctx.Err() != nil)
+	status := toolStatus(name, result, t != nil && t.ctx.Err() != nil)
+	ok, output := !agent.ErrResult(result), agent.ToolOutput(result)
 	row := StreamTool{ID: id, Name: name}
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {

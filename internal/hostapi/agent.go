@@ -1282,10 +1282,14 @@ func inputDiff(name, input string) string {
 	return capLines(tools.ChangeDiff(name, in), 24)
 }
 
-// toolStatus is a finished call's row status: stopped when the user
-// denied, dismissed or interrupted it (cancelled), so the row does not read
-// as a failure.
-func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus {
+// toolStatus is a finished call's row status, read from the result itself:
+// a tool that answers an error did not do what it was asked, whatever its
+// text says, and cancelled is the user denying, dismissing or interrupting
+// it, which is a stop rather than a failure. The only chooser of a
+// CallStatus, so no caller can hand it an outcome it made up.
+func toolStatus(name string, result fantasy.ToolResultOutputContent, cancelled bool) CallStatus {
+	output := agent.ToolOutput(result)
+	ok := !agent.ErrResult(result)
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
 		name == tools.ToolWorkflow && strings.HasPrefix(output, bgWorkflowStarted),

@@ -759,12 +759,13 @@ func (s *subagentHooks) ToolCallRunning(id string) {
 	s.h.refreshViewed(run)
 }
 
-func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) {
+func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, diff string) {
 	run := s.run
+	out, ok := agent.ToolOutput(result), !agent.ErrResult(result)
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		t := &run.tr[i]
-		t.Status, t.Output = toolStatus(name, ok, out, s.ctx != nil && s.ctx.Err() != nil), shortOutput(out)
+		t.Status, t.Output = toolStatus(name, result, s.ctx != nil && s.ctx.Err() != nil), shortOutput(out)
 		switch {
 		case diff != "":
 			t.Diff = diff // shell: what the command changed

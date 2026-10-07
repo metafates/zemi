@@ -407,7 +407,7 @@ func TestPlanRowOutput(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			hk := h.streamHooks()
 			hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
-			hk.ToolCallEnd("c1", tools.ToolPlan, true, raw, "")
+			hk.ToolCallEnd("c1", tools.ToolPlan, out(raw), "")
 			hk.TurnDone(nil, fantasy.Usage{})
 			tr := h.Session().Transcript
 			return tr[len(tr)-1].Output
