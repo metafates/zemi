@@ -1323,13 +1323,13 @@ func bgFlowText(f *flowRun) string {
 	return bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."
 }
 
-// list names the runs of this session, newest first: a run the user started
-// in /workflows has no call of the model's behind it, so this is where the
-// model learns it is there, and the id it acts on.
+// list names the runs of this session this process holds, newest first: a run
+// the user started in /workflows has no call of the model's behind it, so this
+// is where the model learns it is there, and the id it acts on.
 func (t *workflowTool) list() string {
 	flows := t.h.tasks.flowsOf(t.h.AgentSessionID())
 	if len(flows) == 0 {
-		return "(no workflow runs in this session)"
+		return "(no workflow run to act on in this session)"
 	}
 	lines, live := make([]string, 0, len(flows)), 0
 	for _, f := range flows {
@@ -1343,7 +1343,7 @@ func (t *workflowTool) list() string {
 		}
 		lines = append(lines, line)
 	}
-	return fmt.Sprintf("%d %s in this session, %d running, newest first:\n%s",
+	return fmt.Sprintf("%d %s to act on in this session, %d running, newest first:\n%s",
 		len(flows), Plural(len(flows), "run", "runs"), live, strings.Join(lines, "\n"))
 }
 
@@ -1365,7 +1365,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 			" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
 			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
-		actions = []string{string(actStatus), string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
+		actions = []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
 	}
 	params["action"] = map[string]any{"type": "string", "enum": actions, "description": "what to do to run"}

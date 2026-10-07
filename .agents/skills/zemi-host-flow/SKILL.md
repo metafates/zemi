@@ -56,7 +56,7 @@ and the `follower` turns the same frames into `--json` events, each once (a call
 needs a user (`headlessExcluded`), the web tools and the `web` agent when nothing could allow a
 fetch (`webOff`), the agent tool's `background` and `send_to` (a detached
 report would outlive the run), the workflow tool's `background` and every `action` but
-`status` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
+`status`, `list`, `wait` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
 raises there (nothing would bound its chain of turns). With no UI `Host.Notify` prints a
 warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so `zemi run` never swallows
 one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which

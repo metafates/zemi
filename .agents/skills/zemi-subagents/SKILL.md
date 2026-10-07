@@ -44,7 +44,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   between agents too: `taskReg.live` counts it, and not its agents, for rewind, fork, session
   delete, the queue drain and the statusline. The tool's `list` action names this session's
   runs (`flowsOf`), with the id to steer one: a run the user started in `/workflows` is a
-  chat row the model never reads, so that list is its only notice of one. `flowControl` is
+  chat row the model never reads, so that list is its only notice of one while it runs. `flowControl` is
   the one control path; controls
   write the run's fields under its lock and wake the scheduler, so none waits on a script busy
   in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`

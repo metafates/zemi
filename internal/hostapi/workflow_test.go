@@ -719,6 +719,11 @@ func TestWorkflowToolInput(t *testing.T) {
 	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status list wait rerun]" {
 		t.Fatalf("headless schema: %v", info.Parameters)
 	}
+	h.SetUIHooks(ui)
+	enum := fmt.Sprint(h.workflowTool(h.PipelineFor()).Info().Parameters["action"].(map[string]any)["enum"])
+	if enum != "[status list wait pause resume stop rerun]" {
+		t.Fatalf("the TUI schema offers %s", enum)
+	}
 }
 
 // TestWorkflowWait: a run the model started detached has no join but the wait
@@ -1110,7 +1115,7 @@ func TestWorkflowToolListsRuns(t *testing.T) {
 		}
 		return resp.Content
 	}
-	if got := list(); got != "(no workflow runs in this session)" {
+	if got := list(); got != "(no workflow run to act on in this session)" {
 		t.Fatalf("an empty session lists %q", got)
 	}
 	h.Dirs.ConfigHome = t.TempDir()
@@ -1122,7 +1127,7 @@ func TestWorkflowToolListsRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := h.tasks.flowList()[0]
-	if got := list(); !strings.Contains(got, f.id) || !strings.Contains(got, "running") {
+	if got := list(); !strings.Contains(got, f.id+" "+f.description+": running") {
 		t.Fatalf("the user's run is not listed with its id: %q", got)
 	}
 	close(release)
