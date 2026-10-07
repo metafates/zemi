@@ -7,6 +7,7 @@ package skill
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -73,17 +74,9 @@ func Parse(dir string, source Source) (Skill, error) {
 	if !nameRe.MatchString(sk.Name) {
 		return sk, fmt.Errorf("skills: %q: directory name must match [a-z0-9][a-z0-9-]{0,63}", sk.Name)
 	}
-	path := filepath.Join(dir, "SKILL.md")
-	fi, err := os.Lstat(path)
+	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
-		return sk, fmt.Errorf("skills: %s: no SKILL.md", sk.Name)
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return sk, fmt.Errorf("skills: %s: SKILL.md must not be a symlink", sk.Name)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return sk, err
+		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
 	}
 	if len(data) > MaxFileBytes {
 		return sk, fmt.Errorf("skills: %s: SKILL.md exceeds %d bytes", sk.Name, MaxFileBytes)
@@ -180,6 +173,26 @@ func frontmatter(data []byte) (front, error) {
 	return fm, nil
 }
 
+// readSkillFile reads a skill's SKILL.md, which must be a regular file: a
+// symlink reads outside the trees skills come from, and reading a FIFO blocks
+// the boot step or the turn that got here.
+func readSkillFile(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, errors.New("no SKILL.md")
+		}
+		return nil, fmt.Errorf("SKILL.md: %w", err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("SKILL.md must not be a symlink")
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, errors.New("SKILL.md is not a regular file")
+	}
+	return os.ReadFile(path)
+}
+
 // Discover merges skill directories in the order given, higher trust first:
 // on a name clash the earlier one wins (§10.5), with a warning only when two
 // plugins ship one name, since any other clash is an override by design.
@@ -207,6 +220,9 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 			if err != nil {
 				warnings = append(warnings, err.Error())
 				if !errors.Is(err, ErrDescriptionCut) {
+					// a broken skill still holds its name: taking it away
+					// would let a lower-trust same-named one in unnoticed
+					seen[sk.Name] = sk
 					continue
 				}
 			}
@@ -219,13 +235,13 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 
 func fileExists(path string) bool {
 	fi, err := os.Stat(path)
-	return err == nil && !fi.IsDir()
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // Body reads a skill's SKILL.md without its frontmatter: the index already
 // showed name and description, the body is what the model follows.
 func Body(dir string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
 		return "", err
 	}

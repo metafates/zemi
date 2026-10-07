@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -140,6 +141,58 @@ func TestParseSymlinkedSkillFile(t *testing.T) {
 	}
 	if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+// A SKILL.md that is not a regular file must be refused, not read: reading a
+// FIFO there blocks the boot step that discovers skills, and Body blocks a turn.
+func TestParseNonRegularSkillFile(t *testing.T) {
+	cases := []struct {
+		name string
+		make func(t *testing.T, path string)
+	}{
+		{"directory", func(t *testing.T, path string) {
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"fifo", func(t *testing.T, path string) {
+			if err := syscall.Mkfifo(path, 0o600); err != nil {
+				t.Skipf("mkfifo unavailable: %v", err)
+			}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "x")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			c.make(t, filepath.Join(dir, "SKILL.md"))
+			if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Fatalf("parse err=%v", err)
+			}
+			if _, err := Body(dir); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Fatalf("body err=%v", err)
+			}
+		})
+	}
+}
+
+// A skill that fails to parse still holds its name: a lower-trust directory's
+// same-named skill must not slip in behind the warning about the broken one.
+func TestDiscoverBrokenSkillHoldsItsName(t *testing.T) {
+	root := t.TempDir()
+	user, project := filepath.Join(root, "user"), filepath.Join(root, "project")
+	writeFile(t, filepath.Join(user, "x", "SKILL.md"), "not frontmatter")
+	writeFile(t, filepath.Join(project, "x", "SKILL.md"), "---\nname: x\ndescription: project x\n---\n")
+
+	got, warns := Discover(Dir{user, User}, Dir{project, Project})
+	if len(got) != 0 {
+		t.Fatalf("a lower-trust skill took the name: %+v", got)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "frontmatter block") {
+		t.Fatalf("warnings=%v", warns)
 	}
 }
 
