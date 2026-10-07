@@ -1351,23 +1351,23 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			runMemory),
 
-		mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
+		gated(mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 			},
 			[]string{"path"},
 			pathReq(perm.SubjectRead, pathIn, "read diagnostics"),
-			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+			func(_ context.Context, p *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
 					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
 				}
-				out, err := p.Diagnostics(str(in["path"]))
+				out, err := p.Diagnostics(p.Path.String())
 				if err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				return fantasy.NewTextResponse(out), nil
-			}),
+			})),
 
 		gated(mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP)),
 
