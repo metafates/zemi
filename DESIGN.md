@@ -321,7 +321,7 @@ Directories (XDG):
                           and .emmyrc.json
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
-  drops/                  files dropped in from outside the project (@drop:<name>)
+  drops/                  copies of the files attached from outside the project
   plans/<session id>.md   plans approved from a read-only agent
   types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
@@ -1064,8 +1064,8 @@ A workflow is a Lua script that starts subagents: `zemi.workflow.agent`,
 nothing else of zemi but `zemi.json`; a bare `agent` or `print` raises
 naming its `zemi.workflow` spelling. The `workflow` tool takes one of
 `script`, `name` or `run` (`script` joins `run` for action `rerun`); `run`
-with an action reports its status, pauses it (no new dispatch, running
-agents finish), resumes or stops it (cancels the run), and `concurrency`
+with an action reports its status, waits on it, pauses it (no new dispatch,
+running agents finish), resumes or stops it (cancels the run), and `concurrency`
 with `run` sets a running one's limit (1-16, at the next dispatch);
 `/workflows restart` cancels one running agent and queues the same call
 again, counting toward the 100-agent cap. `background` delivers the result
@@ -1075,7 +1075,8 @@ message hands the run off: the call answers with the background text and the
 result arrives as a message like that one, since a call cannot hold the turn
 past a message the user sent (§4). A handed-off run keeps its row, revised
 when the run ends - a run that finished with a failed agent inside it draws
-warn, a stopped one stop, a run that died err - and the outcome is stored with
+warn, a stopped one stop, a run that died err, and the notice row its report
+arrives as leads with the same mark - and the outcome is stored with
 the session, so a restart draws the mark it ended with, not done. A run
 already under way can be waited on instead: the `workflow` tool's `wait`
 action and the `agent` tool's `wait` beside `send_to` block until that run
