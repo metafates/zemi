@@ -402,8 +402,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly, req.Pad, req.Script = plan, p.Pad, p.Script
 	if req.Subject == perm.SubjectShell && req.cmd == nil {
-		n := perm.Normalize(req.Arg)
-		req.cmd = &n
+		req.cmd = new(perm.Normalize(req.Arg))
 	}
 	// pad is the scratchpad, in zemi's own state dir: its writes are free and
 	// no protected path either. A temp dir is free too, but .git, the Lua in
