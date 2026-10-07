@@ -349,10 +349,10 @@ func globalTSServer(root string) string {
 // server's back: they either only read, or write through zemi's own file
 // tools, which open the document they touched. Anything else ran a program.
 var lspQuietTool = map[string]bool{
-	"read": true, "write": true, "edit": true,
-	"glob": true, "grep": true, "todos": true, "plan": true, "question": true,
-	"skill": true, "lsp": true, "diagnostics": true, "job_list": true,
-	"memory": true,
+	tools.ToolRead: true, tools.ToolWrite: true, tools.ToolEdit: true,
+	tools.ToolGlob: true, tools.ToolGrep: true, tools.ToolTodos: true, tools.ToolPlan: true, tools.ToolQuestion: true,
+	tools.ToolSkill: true, tools.ToolLSP: true, tools.ToolDiagnostics: true, tools.ToolJobList: true,
+	tools.ToolMemory: true,
 }
 
 // lspDirty records that something may have changed files without telling
