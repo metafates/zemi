@@ -51,13 +51,27 @@ type watcher struct {
 	path string
 }
 
-// The builtin permission modes' one-line descriptions: the mode list
-// (hostapi's builtinModes) and the permissions.mode setting's help both read
-// them, so a screen and the config name a mode the same way.
+// The builtin permission modes: the names, and the one-line descriptions the
+// mode list (hostapi's builtinModes) and permissions.mode's help both read, so
+// a screen and the config name a mode the same way.
 const (
+	PermModeAuto     = "auto"
+	PermModeYolo     = "yolo"
 	PermModeAutoDesc = "safe actions run on their own, risky ones ask"
 	PermModeYoloDesc = "everything runs without asking"
 )
+
+// The ui.notify styles, in the order the setting lists them: the resolver that
+// picks one and the dispatch that fires it read the same names.
+const (
+	NotifyAuto   = "auto"
+	NotifyOSC    = "osc"
+	NotifyNative = "native"
+	NotifyBell   = "bell"
+	NotifyOff    = "off"
+)
+
+var notifyStyles = []string{NotifyAuto, NotifyOSC, NotifyNative, NotifyBell, NotifyOff}
 
 func NewStore() *Store {
 	s := &Store{
@@ -76,7 +90,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
 		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: "permissions.mode", Kind: KindString, Default: "auto", Desc: "the permission mode zemi starts in: auto (" + PermModeAutoDesc + "), yolo (" + PermModeYoloDesc + "), or a mode added with zemi.permission.mode.add"},
+		{Path: "permissions.mode", Kind: KindString, Default: PermModeAuto, Desc: "the permission mode zemi starts in: auto (" + PermModeAutoDesc + "), yolo (" + PermModeYoloDesc + "), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
 		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
@@ -91,7 +105,7 @@ func (s *Store) defineDefaults() {
 		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: "keymap.leader", Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: "ui.notify", Kind: KindString, Default: "auto", Choices: []string{"auto", "osc", "native", "bell", "off"}, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks per terminal (/health names it)"},
+		{Path: "ui.notify", Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks per terminal (/health names it)"},
 		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
 		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter)"},
 		{Path: "ui.composer.history", Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
