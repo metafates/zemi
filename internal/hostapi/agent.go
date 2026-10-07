@@ -1726,18 +1726,15 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
-	h.recentStale.Store(true)
 	ag.env = ""
 	ag.memAuto = 0
 	ag.brain, ag.brainGlobs = brain, globs
 	ag.mu.Unlock()
-	h.refreshPending()
-	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
 	// the tab, the exit banner and zemi.session.title() read the first
 	// message's line from here on, not after the model's title lands
-	h.tMu.Lock()
-	h.session.Title = title
-	h.tMu.Unlock()
+	h.setLiveTitle(sid, title)
+	h.refreshPending()
+	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
 	if title != "" {
 		h.autoTitle(sid, title)
 	}

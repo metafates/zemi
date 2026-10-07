@@ -514,13 +514,7 @@ func (h *Host) autoTitle(sid, user string) {
 		if err := h.DB.RenameSession(sid, title); err != nil {
 			return
 		}
-		h.recentStale.Store(true)
-		if h.AgentSessionID() == sid {
-			h.tMu.Lock()
-			h.session.Title = title
-			h.tMu.Unlock()
-			h.refresh()
-		}
+		h.setLiveTitle(sid, title)
 	})
 }
 
@@ -563,14 +557,21 @@ func (h *Host) RenameSession(id, title string) error {
 	if err := h.DB.RenameSession(id, title); err != nil {
 		return h.noSession(id, err)
 	}
-	h.recentStale.Store(true)
-	if id == h.AgentSessionID() {
-		h.tMu.Lock()
-		h.session.Title = title
-		h.tMu.Unlock()
-		h.refresh()
-	}
+	h.setLiveTitle(id, title)
 	return nil
+}
+
+// setLiveTitle names the live session when id is it, and marks the sessions
+// picker stale either way: the stored row is the caller's to write.
+func (h *Host) setLiveTitle(id, title string) {
+	h.recentStale.Store(true)
+	if h.AgentSessionID() != id {
+		return
+	}
+	h.tMu.Lock()
+	h.session.Title = title
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 // noSession is a failed session write, an unknown id named as such.
