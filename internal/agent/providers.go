@@ -566,6 +566,7 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 			level := strings.ToUpper(effort)
 			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
 		}
+	case KindOpenAI: // answered above; the exhaustive linter wants the case
 	}
 	return nil
 }
