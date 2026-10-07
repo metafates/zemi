@@ -608,8 +608,7 @@ func TestSessionNamespace(t *testing.T) {
 
 	runUser(t, r, `
 		assert(zemi.session.id() == "", "session should start empty")
-		zemi.session.rename("my session")
-		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())
+		assert(zemi.session.title() == "zemi", "title=" .. zemi.session.title())
 		assert(#zemi.session.messages() == 0, "messages should be empty")
 	`)
 
@@ -619,6 +618,8 @@ func TestSessionNamespace(t *testing.T) {
 	if h.AgentSessionID() == "" {
 		t.Fatal("session id still empty after ensureSession")
 	}
+	runUser(t, r, `zemi.session.rename("my session")
+		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())`)
 	if err := h.persistMessage(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
 		t.Fatal(err)
 	}

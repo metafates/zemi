@@ -176,6 +176,7 @@ func (h *Host) OpenSessions(confirm string) error {
 			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item["actions"] = []any{
 				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
+				map[string]any{"text": "Rename", "hotkey": "n", "run": "sessions rename " + s.ID + " "},
 				map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
 			}
 		}
@@ -183,7 +184,7 @@ func (h *Host) OpenSessions(confirm string) error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one.",
-		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "x", Desc: "delete"}},
+		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "n", Desc: "rename"}, {Key: "x", Desc: "delete"}},
 	})
 	return nil
 }
@@ -529,6 +530,73 @@ func (h *Host) autoTitle(sid, user, reply string) {
 	})
 }
 
+// RenameSession names a session: the live one when id is "", else the stored
+// row id. One path for /rename, the sessions picker's row action and
+// zemi.session.rename. An empty title opens the one-line prompt the text of
+// it is typed into.
+func (h *Host) RenameSession(id, title string) error {
+	if h.DB == nil {
+		return errNoStore
+	}
+	if id = cmp.Or(id, h.AgentSessionID()); id == "" {
+		return Usagef("no session to rename; send a message or /new first")
+	}
+	if strings.TrimSpace(title) == "" {
+		ui, err := h.Screen()
+		if err != nil {
+			return err
+		}
+		sess, err := h.DB.GetSession(id)
+		if err != nil {
+			return h.noSession(id, err)
+		}
+		// the command the typed title runs: the live session's own /rename,
+		// else the one the sessions picker's row action runs
+		run := "sessions rename " + id + " "
+		if id == h.AgentSessionID() {
+			run = "rename "
+		}
+		ui.OpenOverlay(Overlay{
+			ID: "rename", Title: "Rename session", Origin: lua.OriginBuiltin, Input: true,
+			Default: clipRunes(sess.Title, 60), Run: run,
+		})
+		return nil
+	}
+	title = clipRunes(strings.TrimSpace(sanitize.String(title)), 60)
+	if title == "" {
+		return Usagef("usage: rename <title>")
+	}
+	if err := h.DB.RenameSession(id, title); err != nil {
+		return h.noSession(id, err)
+	}
+	h.recentStale.Store(true)
+	if id == h.AgentSessionID() {
+		h.tMu.Lock()
+		h.session.Title = title
+		h.tMu.Unlock()
+		h.refresh()
+	}
+	return nil
+}
+
+// noSession is a failed session write, an unknown id named as such.
+func (h *Host) noSession(id string, err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return Usagef("no session %q in this project", id)
+	}
+	return err
+}
+
+// renameCommands is /rename: a title given renames the live session at once,
+// none opens the prompt to type one.
+func (h *Host) renameCommands() []*Command {
+	return []*Command{{
+		Name: "rename", NArgs: NArgsOptional, Desc: "name this session", GoFn: func(h *Host, args string) error {
+			return h.RenameSession("", strings.TrimSpace(args))
+		},
+	}}
+}
+
 // recentSessions feeds the splash screen. Widget renders must not wait on
 // the store, so the list is cached and reloaded only after a session
 // starts, closes or resumes.
@@ -565,14 +633,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
-		title := L.CheckString(1)
-		h.tMu.Lock()
-		h.session.Title = title
-		h.tMu.Unlock()
-		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
-			_ = h.DB.RenameSession(sid, title)
-		}
-		h.refresh()
+		_ = h.RenameSession("", L.CheckString(1))
 		return 0
 	}))
 	tb.RawSetString("messages", L.NewFunction(func(L *glua.LState) int {
