@@ -516,6 +516,10 @@ func hiddenSecret(p string) bool {
 	return perm.PathIsStrictSecret(p) || strings.HasPrefix(filepath.Base(p), ".env.")
 }
 
+// sandboxOff is the one escape a confined failure offers when the run's
+// schema carries sandbox: false; the clauses below add their own lead-in.
+const sandboxOff = "call it again with sandbox: false (needs approval)"
+
 // sandboxHint is the line a confined command's failure gets when the
 // sandbox may be why: the limit a denied path hit and the one next step; ""
 // otherwise. It offers only the escapes the run's schema carries: none
@@ -561,7 +565,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case sandbox.Killed(out, err):
 		line = "it died from a signal: if it needs a system service (a browser, a GUI app, docker), "
 		if all {
-			line += "call it again with sandbox: false (needs approval); a crash of its own repeats there"
+			line += sandboxOff + "; a crash of its own repeats there"
 		} else {
 			line += "it cannot run here: say what you could not check"
 		}
@@ -573,28 +577,28 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		root := perm.TildePath(l.root)
 		// a credential dir is no place to send the read tool either
 		if p.Secret != nil && p.Secret(l.root) {
-			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, call it again with sandbox: false (needs approval)")
+			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, "+sandboxOff)
 			break
 		}
-		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
+		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or "+sandboxOff)
 	case b.HidesSecretFiles && has(func(l limit) bool { return hiddenSecret(l.path) }):
-		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, call it again with sandbox: false (needs approval)")
+		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, "+sandboxOff)
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
 		switch {
 		case pol.Git == l.root:
-			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; call it again with sandbox: false (needs approval)")
+			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; "+sandboxOff)
 		case filepath.Base(l.root) == ".agents":
 			line += ": create and edit files there with the write and edit tools"
 		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):
-			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise call it again with sandbox: false (needs approval)")
+			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise "+sandboxOff)
 		case slices.Contains(filepath.SplitList(os.Getenv("PATH")), l.root):
-			line += ": zemi runs programs from it unconfined" + or(all, "; call it again with sandbox: false (needs approval)")
+			line += ": zemi runs programs from it unconfined" + or(all, "; "+sandboxOff)
 		default:
-			line += or(all, ": call it again with sandbox: false (needs approval)")
+			line += or(all, ": "+sandboxOff)
 		}
 	case len(pol.Write) > 0 && has(is(outside)):
-		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
+		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or "+sandboxOff)
 	case all:
 		line += ": network: true adds the network, sandbox: false drops every limit; both need approval"
 	case net:

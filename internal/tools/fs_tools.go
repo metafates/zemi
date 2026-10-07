@@ -329,35 +329,42 @@ func lastFrames(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// cmdMaxOut is what a command's output may take in a tool result; the rest
-// is spilled to the scratchpad.
-const cmdMaxOut = 10_000
+// resultMaxOut is what a tool result may carry of a command's or a fetch's
+// output; the rest is spilled to the scratchpad. A skill body has its own cap.
+const resultMaxOut = 10_000
 
-// CmdOut is a command's output as a result carries it: cmdText cut to
-// cmdMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
-// already dropped from the middle, which no spill file can hold.
-func CmdOut(dir, name, raw string, lost int64) string {
-	out := cmdText(raw)
-	// compare the text, not lengths: the cut marker can outgrow a small cut
-	cut := TruncOut(out, cmdMaxOut)
-	if cut == out {
-		return out
+// Cut cuts tool output to n and spills the whole text to dir, so the cut part
+// stays one read away and its line numbers are read offsets.
+func Cut(dir, name, s string, n int) string {
+	if out := TruncOut(s, n); out != s {
+		return out + Spill(dir, name, s)
 	}
-	cut += Spill(dir, name, out)
-	if lost > 0 {
-		cut += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
-	}
-	return cut
+	return s
 }
 
-// cmdOut is CmdOut for this run: a call a lua script drives keeps the whole
-// text the buffer held, since the script reads it and says what of it the model
-// gets; one the model called gets the cut and the spill.
-func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
-	if p.Script == "" {
-		return CmdOut(p.Pad, name, raw, lost)
+// cut is Cut for this run: a call a lua script drove keeps its output whole,
+// since the script reads it and says what of it the model gets.
+func (p *Pipeline) cut(name, s string, n int) string {
+	if p.Script != "" {
+		return s
 	}
-	out := cmdText(raw)
+	return Cut(p.Pad, name, s, n)
+}
+
+// CmdOut is a command's output as a result carries it: cmdText cut to
+// resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
+// already dropped from the middle, which no spill file can hold.
+func CmdOut(dir, name, raw string, lost int64) string {
+	out := Cut(dir, name, cmdText(raw), resultMaxOut)
+	if lost > 0 {
+		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
+	}
+	return out
+}
+
+// cmdOut is CmdOut for this run.
+func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
+	out := p.cut(name, cmdText(raw), resultMaxOut)
 	if lost > 0 {
 		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
 	}
@@ -754,8 +761,7 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			return fantasy.NewTextErrorResponse(msg), nil
 		}
 	}
-	p.checkpoint(path)
-	if err := WriteFile(p.Path, []byte(content), 0o644); err != nil {
+	if err := p.writeThrough(p.Path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", workRel(path), len(content)) + p.wrote(path)), nil
@@ -782,6 +788,14 @@ func (p *Pipeline) checkpoint(path string) {
 	if p.Checkpoint != nil && !perm.InPad(p.Pad, path) {
 		p.Checkpoint(path)
 	}
+}
+
+// writeThrough is how every file tool writes: the prior bytes are
+// checkpointed first. The caller records the file as read after, once any
+// afterWrite hook has rewritten it.
+func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) error {
+	p.checkpoint(path.String())
+	return WriteFile(path, data, mode)
 }
 
 // runEdit applies an edit to a file under its lock. Matching runs on LF
@@ -814,8 +828,7 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	if n := bytes.Count(data, []byte("\r\n")); 2*n > bytes.Count(data, []byte("\n")) {
 		out = strings.ReplaceAll(out, "\n", "\r\n")
 	}
-	p.checkpoint(path)
-	if err := WriteFile(p.Path, []byte(out), fi.Mode().Perm()); err != nil {
+	if err := p.writeThrough(p.Path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	res := fmt.Sprintf("edited %s (%d replacement%s)", rel, n, plural(n))

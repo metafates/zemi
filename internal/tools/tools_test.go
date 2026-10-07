@@ -1111,7 +1111,7 @@ func TestCmdOutScript(t *testing.T) {
 			if cut := strings.Contains(out, "output saved to"); cut != c.cut {
 				t.Fatalf("cut %v, want %v: %q", cut, c.cut, trunc(out, 120))
 			}
-			if c.cut && len(out) > cmdMaxOut+200 {
+			if c.cut && len(out) > resultMaxOut+200 {
 				t.Fatalf("the cut kept %d bytes", len(out))
 			}
 			if !c.cut && out != cmdText(raw) {
