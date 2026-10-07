@@ -1069,7 +1069,10 @@ A workflow is a Lua script that starts subagents: `zemi.workflow.agent`,
 `parallel`, `pipeline` (Lua over `parallel`), `phase`, `log` and `args`,
 nothing else of zemi but `zemi.json`; a bare `agent` or `print` raises
 naming its `zemi.workflow` spelling. The `workflow` tool takes one of
-`script`, `name` or `run` (`script` joins `run` for action `rerun`); `run`
+`script`, `name` or `run` (`script` joins `run` for action `rerun`), and
+`action list` on its own names this session's runs, newest first, with the id
+to act on: a run `/workflows` started is drawn in the chat, which the model
+never reads, so the list is the only way it learns one is running. `run`
 with an action reports its status, waits on it, pauses it (no new dispatch,
 running agents finish), resumes or stops it (cancels the run), and `concurrency`
 with `run` sets a running one's limit (1-16, at the next dispatch);

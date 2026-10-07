@@ -716,7 +716,7 @@ func TestWorkflowToolInput(t *testing.T) {
 	}
 	h.SetUIHooks(nil)
 	info := h.workflowTool(h.PipelineFor()).Info()
-	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status wait rerun]" {
+	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status list wait rerun]" {
 		t.Fatalf("headless schema: %v", info.Parameters)
 	}
 }
@@ -1087,6 +1087,52 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	if err != nil || !strings.Contains(resp.Content, foregroundAdvice) {
 		t.Fatalf("a refused background start = %q, %v, want %q", resp.Content, err, foregroundAdvice)
 	}
+}
+
+// TestWorkflowToolListsRuns: the model asks what is running with action list,
+// and a run the user started in /workflows is in the answer with the id it
+// acts on, a session with none says so.
+func TestWorkflowToolListsRuns(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	release := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			<-release
+			return textParts("ok")
+		}}, nil
+	}
+	seedSession(t, h)
+	list := func() string {
+		resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"action":"list"}`})
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		return resp.Content
+	}
+	if got := list(); got != "(no workflow runs in this session)" {
+		t.Fatalf("an empty session lists %q", got)
+	}
+	h.Dirs.ConfigHome = t.TempDir()
+	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
+	if err := os.MkdirAll(dir, 0o755); err != nil || os.WriteFile(filepath.Join(dir, "count.lua"), []byte(`return zemi.workflow.agent("x")`), 0o644) != nil {
+		t.Fatal(err)
+	}
+	if err := h.workflowCommands()[0].GoFn(h, "run count"); err != nil {
+		t.Fatal(err)
+	}
+	f := h.tasks.flowList()[0]
+	if got := list(); !strings.Contains(got, f.id) || !strings.Contains(got, "running") {
+		t.Fatalf("the user's run is not listed with its id: %q", got)
+	}
+	close(release)
+	waitIdle(t, h)
+	waitFor(t, func() error {
+		if got := list(); !strings.Contains(got, "done") || !strings.Contains(got, f.id) {
+			return fmt.Errorf("the ended run is not listed as finished: %q", got)
+		}
+		return nil
+	})
 }
 
 // TestWorkflowUserStart: /workflows run starts the saved workflow with no

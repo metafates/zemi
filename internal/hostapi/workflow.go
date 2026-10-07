@@ -1323,11 +1323,35 @@ func bgFlowText(f *flowRun) string {
 	return bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."
 }
 
+// list names the runs of this session, newest first: a run the user started
+// in /workflows has no call of the model's behind it, so this is where the
+// model learns it is there, and the id it acts on.
+func (t *workflowTool) list() string {
+	flows := t.h.tasks.flowsOf(t.h.AgentSessionID())
+	if len(flows) == 0 {
+		return "(no workflow runs in this session)"
+	}
+	lines, live := make([]string, 0, len(flows)), 0
+	for _, f := range flows {
+		v := f.view()
+		if v.status == RunRunning {
+			live++
+		}
+		line := fmt.Sprintf("%s %s: %s", f.id, clipRunes(f.description, 60), flowWord(v))
+		if s := f.summary(); s != "" {
+			line += " · " + s
+		}
+		lines = append(lines, line)
+	}
+	return fmt.Sprintf("%d %s in this session, %d running, newest first:\n%s",
+		len(flows), Plural(len(flows), "run", "runs"), live, strings.Join(lines, "\n"))
+}
+
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	tui := t.h.hooks() != nil
 	var desc strings.Builder
 	desc.WriteString(workflowToolDesc)
-	actions := []string{string(actStatus), string(actWait), "rerun"}
+	actions := []string{string(actStatus), "list", string(actWait), "rerun"}
 	params := map[string]any{
 		"script":      map[string]any{"type": "string", "description": "Lua source"},
 		"name":        map[string]any{"type": "string", "description": "a saved workflow to run"},
@@ -1338,7 +1362,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	}
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {
-		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; status lists the run ids of its agents." +
+		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 			" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
 			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
 		actions = []string{string(actStatus), string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
@@ -1378,6 +1402,11 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		return resp, nil
 	}
 	defer h.postNotify(ctx, t.pipe.Pad, "workflow", call.Input, &reply, time.Now())
+	// a run started in /workflows has no call of the model's behind it: list is
+	// how the model learns it is there, and the id to act on
+	if in.Action == "list" && in.Run == "" && in.Name == "" && in.Script == "" {
+		return fantasy.NewTextResponse(t.list()), nil
+	}
 	rerun := in.Run != "" && in.Action == "rerun"
 	switch n := len(slices.DeleteFunc([]string{in.Script, in.Name, in.Run}, func(s string) bool { return s == "" })); {
 	case n != 1 && !(n == 2 && rerun && in.Name == ""):

@@ -557,7 +557,8 @@ func TestPromptBudget(t *testing.T) {
 	// paragraph write a private brain map (DESIGN §10.4).
 	// 25000: the workflow and agent tools' wait action and the clauses naming
 	// it, and the file tools' descriptions matching the code again (the free
-	// zone write's exemption, the tolerant edit match); 24577 today.
+	// zone write's exemption, the tolerant edit match); 24577 then.
+	// The workflow tool's list action names the user's own runs (24663 today).
 	const ceiling = 25000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
