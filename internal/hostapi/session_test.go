@@ -57,7 +57,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 	}
 	live := shape(h.Session().Transcript)
 	want := `user/   "go"
-assistant/notice   "Background agent a1 (look around) finished"
+assistant/notice  ok "Background agent a1 (look around) finished"
 assistant/reasoning   "look first"
 assistant/   "I will look first."
 assistant/tool glob err "*.go"

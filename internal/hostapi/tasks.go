@@ -609,6 +609,57 @@ func (run *agentRun) finish(h *Host, err error) {
 	default:
 		run.status = RunDone
 	}
+	if h.DB != nil && run.sessionID != "" {
+		// a restart reads this back instead of calling every run done
+		if err := h.DB.SetSessionRunStatus(run.sessionID, string(run.status)); err != nil {
+			h.Log.Warn("run status not stored", "origin", "agents", "run", run.id, "error", err)
+		}
+	}
+	h.markRunRow(run.id, callMark(run.status))
+}
+
+// callMark is a run's outcome as the chat marks the call that handed off to
+// it: the row was written as CallBG and would otherwise read as running.
+func callMark(s RunStatus) CallStatus {
+	switch s {
+	case RunDone:
+		return CallOK
+	case RunWarn:
+		return CallWarn
+	case RunCancelled:
+		return CallStopped
+	}
+	return CallErr
+}
+
+// markRunRow revises the row of a run that ended: a handed-off call's row and
+// the transcript row it settled as both carry the run's id, and the run's end
+// is the only other writer either of them has.
+func (h *Host) markRunRow(id string, status CallStatus) {
+	if id == "" {
+		return
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	for i := range ag.tools {
+		if ag.tools[i].Run == id && ag.tools[i].Status == CallBG {
+			ag.tools[i].Status = status
+		}
+	}
+	ag.mu.Unlock()
+	h.tMu.Lock()
+	if i := slices.IndexFunc(h.session.Transcript, func(m ChatMessage) bool {
+		return m.Kind == RowTool && m.Run == id && m.Status == CallBG
+	}); i >= 0 {
+		tr := slices.Clone(h.session.Transcript)
+		tr[i].Status = status
+		// replaced whole, like setTranscript: readers share the old array and
+		// the chat widget caches rows by index
+		h.session.Transcript = tr
+		h.trEdit.Add(1)
+	}
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 // startBackgroundAgent launches def on prompt detached from the turn and
@@ -775,33 +826,55 @@ func (h *Host) notifyReports(queued []string) {
 	}
 }
 
+// notice is a notice row built from the message behind agent.AttachMarker:
+// the line the user reads and the status of the run it names, so a failed
+// report's row carries its failure. The Status is empty for a plugin's send,
+// a loop's run or a running agent's line, which draw the plain note mark.
+type notice struct {
+	Text   string
+	Status CallStatus
+}
+
+// reportStatus is a report's status word as its row's mark: a failed run
+// failed, a run that finished with a failed agent inside warns, and
+// anything else finished.
+func reportStatus(word string) CallStatus {
+	switch word {
+	case "failed":
+		return CallErr
+	case string(RunWarn):
+		return CallWarn
+	}
+	return CallOK
+}
+
 // reportHeads rebuilds the notice rows from the reports behind a message's
 // agent.AttachMarker (a joined queue may carry several), the plugins' sends,
 // the loop's runs and the planner's nudge, so a reply that follows no user
 // row says why; none for none of them.
-func reportHeads(tail string) []string {
-	var heads []string
+func reportHeads(tail string) []notice {
+	var heads []notice
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
 		desc, _ := strconv.Unquote(m[4])
-		heads = append(heads, reportHead(m[1], m[2], m[3], desc))
+		heads = append(heads, notice{Text: reportHead(m[1], m[2], m[3], desc), Status: reportStatus(m[3])})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[2]); line != "" {
-			heads = append(heads, m[1]+": "+clipRunes(sanitize.String(line), 200))
+			heads = append(heads, notice{Text: m[1] + ": " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[2]); line != "" {
-			heads = append(heads, "Loop run "+m[1]+": "+clipRunes(sanitize.String(line), 200))
+			heads = append(heads, notice{Text: "Loop run " + m[1] + ": " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[3]); line != "" {
-			heads = append(heads, "Agent "+m[1]+" ("+m[2]+"): "+clipRunes(sanitize.String(line), 200))
+			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	if strings.Contains(tail, planNudgeText) {
-		heads = append(heads, "Asked the planner to end with the plan or question tool.")
+		heads = append(heads, notice{Text: "Asked the planner to end with the plan or question tool."})
 	}
 	return heads
 }
@@ -905,7 +978,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	run := &agentRun{
 		id: id, agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
-		sessionID: id, status: RunDone, tr: tr,
+		sessionID: id, status: cmp.Or(RunStatus(sess.RunStatus), RunDone), tr: tr,
 	}
 	_ = h.tasks.add(run)
 	return run, nil
@@ -957,7 +1030,7 @@ func (h *Host) agentRunItems() []any {
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
 			if !held[c.ID] && !inFlows[c.ID] {
-				row(c.ID, RunDone, cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, "")
+				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, "")
 			}
 		}
 	}

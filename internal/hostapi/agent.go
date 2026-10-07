@@ -971,8 +971,8 @@ func (h *Host) appendUserRows(text string) bool {
 	if shown != "" {
 		h.AppendMessage(fantasy.MessageRoleUser, shown)
 	}
-	for _, line := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: line})
+	for _, n := range reportHeads(tail) {
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
 	return shown != ""
 }
@@ -997,7 +997,9 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
 			_, tail, _ := strings.Cut(m, agent.AttachMarker)
-			waiting = append(waiting, reportHeads(tail)...)
+			for _, n := range reportHeads(tail) {
+				waiting = append(waiting, n.Text)
+			}
 		}
 	} else {
 		if ag.planApproved != "" {
@@ -1192,7 +1194,7 @@ func queuedRows(msgs []string) []Queued {
 			out = append(out, Queued{Text: shown})
 		}
 		for _, h := range reportHeads(tail) {
-			out = append(out, Queued{Text: h, Notice: true})
+			out = append(out, Queued{Text: h.Text, Notice: true})
 		}
 	}
 	return out

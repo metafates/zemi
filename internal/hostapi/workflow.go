@@ -308,15 +308,20 @@ type wfRun struct {
 // end too: a flow left running would block rewind until zemi exits.
 func (h *Host) runFlow(ctx context.Context, f *flowRun, spec flowSpec) {
 	val, err := "", errors.New("the workflow crashed")
-	defer func() { f.end(val, err) }()
+	defer func() { h.markRunRow(f.id, callMark(f.end(val, err))) }()
 	val, err = h.runScript(ctx, f, spec)
 }
 
-func (f *flowRun) end(val string, err error) {
+// end records how the run ended and returns its status. A script that went on
+// past a failed agent finished by design (the skill says an angle that fails
+// is a wf.log, not a lost run), so the run warns rather than failing.
+func (f *flowRun) end(val string, err error) RunStatus {
 	f.cancel()
 	f.mu.Lock()
 	f.result, f.err, f.finished = val, err, time.Now()
 	switch {
+	case err == nil && f.failedAgent():
+		f.status = RunWarn
 	case err == nil:
 		f.status = RunDone
 	case errors.Is(err, context.Canceled):
@@ -324,13 +329,29 @@ func (f *flowRun) end(val string, err error) {
 	default:
 		f.status = RunFailed
 	}
-	end := journalLine{Status: f.status, MS: f.finished.Sub(f.started).Milliseconds(), Result: jsonString(val), Err: errString(err)}
+	status := f.status
+	end := journalLine{Status: status, MS: f.finished.Sub(f.started).Milliseconds(), Result: jsonString(val), Err: errString(err)}
 	f.mu.Unlock()
 	f.note(end)
 	if f.journal != nil {
 		f.journal.Close()
 	}
 	f.changed()
+	return status
+}
+
+// failedAgent is whether an agent this run started failed (f.mu held).
+func (f *flowRun) failedAgent() bool {
+	for _, a := range f.agents {
+		status := a.status
+		if a.run != nil {
+			status, _, _, _ = a.run.state()
+		}
+		if status == RunFailed {
+			return true
+		}
+	}
+	return false
 }
 
 // runScript is the scheduler loop: it resumes the script's coroutines as
@@ -1510,6 +1531,8 @@ func (f *flowRun) reportAs() (attr, status, report string) {
 	report, ok := f.report()
 	if !ok {
 		status = "failed"
+	} else if f.status == RunWarn {
+		status = string(RunWarn)
 	}
 	return attr, status, report
 }

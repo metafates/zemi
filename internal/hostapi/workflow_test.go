@@ -490,6 +490,7 @@ func TestWorkflowRerun(t *testing.T) {
 		from               string                         // the rerun's from, else the run's id
 		want               string                         // the rerun's result, or its error's text
 		calls, later       int                            // model calls the rerun and its own rerun make
+		status             RunStatus                      // how the first run ended, RunDone by default
 	}{
 		{name: "an unchanged script answers every call from the journal", first: `return wf.agent("a") .. wf.agent("b")`, want: "a!1b!1"},
 		{
@@ -509,7 +510,7 @@ func TestWorkflowRerun(t *testing.T) {
 			first: `return wf.agent("h") .. wf.agent("h")`, again: `return wf.agent("h") .. wf.agent("h") .. wf.agent("h")`,
 			want: "h!1h!2h!3", calls: 1,
 		},
-		{name: "a failed agent runs again", first: `return tostring(wf.agent("fail"))`, want: "nil", calls: 1, later: 1},
+		{name: "a failed agent runs again", first: `return tostring(wf.agent("fail"))`, want: "nil", calls: 1, later: 1, status: RunWarn},
 		{name: "args default to the run's", first: `return wf.args .. wf.agent("i")`, args: "x", want: "xi!1"},
 		{name: "an id that is no run id is refused", first: `return "j"`, from: "../../x", want: "not a workflow run id"},
 		{name: "a missing journal names the file", first: `return "k"`, from: "0000000a", want: "workflow-0000000a.jsonl"},
@@ -525,7 +526,9 @@ func TestWorkflowRerun(t *testing.T) {
 			if f.err != nil {
 				t.Fatal(f.err)
 			}
-			if old, err := h.loadFlow("s1", f.id); err != nil || old.result != f.result || len(old.agents) != len(f.agents) || old.status != RunDone {
+			old, err := h.loadFlow("s1", f.id)
+			want := cmp.Or(c.status, RunDone)
+			if err != nil || old.result != f.result || len(old.agents) != len(f.agents) || old.status != want {
 				t.Fatalf("loadFlow = %+v, %v", old, err)
 			}
 			for _, a := range f.view().agents {

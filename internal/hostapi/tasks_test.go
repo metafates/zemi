@@ -17,6 +17,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestTaskRegEviction: a full registry forgets its oldest finished run, never
@@ -203,17 +204,51 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	}
 }
 
+// TestRunRowFollowsItsRun: a call that handed off keeps its row, and the run's
+// own end revises that row and stores how it ended, so neither the chat nor
+// /agents reads a finished run as still going or a failed one as done.
+func TestRunRowFollowsItsRun(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	if err := h.DB.CreateSession("r1", sid, "look around", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	h.setTranscript("t", []ChatMessage{
+		{Kind: RowTool, Tool: tools.ToolAgent, Run: "r1", Status: CallBG},
+		{Kind: RowTool, Tool: tools.ToolAgent, Run: "r2", Status: CallBG},
+	})
+	run := &agentRun{id: "r1", agent: "explore", parent: sid, sessionID: "r1", cancel: func() {}}
+	run.finish(h, errors.New("boom"))
+	if tr := h.Session().Transcript; tr[0].Status != CallErr || tr[1].Status != CallBG {
+		t.Fatalf("rows after the run ended: %s, %s", tr[0].Status, tr[1].Status)
+	}
+	if sess, err := h.DB.GetSession("r1"); err != nil || sess.RunStatus != string(RunFailed) {
+		t.Fatalf("stored run status = %q, %v", sess.RunStatus, err)
+	}
+	if old, err := h.loadRun("r1"); err != nil || old.status != RunFailed {
+		t.Fatalf("loadRun = %+v, %v", old, err)
+	}
+}
+
 // TestReportHeadsNameTheLine: a plugin send, an update or a loop note is named
 // by its first line that has something in it, and one that has none is not
 // named at all, so no row is ever drawn with nothing after its tag.
 func TestReportHeadsNameTheLine(t *testing.T) {
 	for _, c := range []struct {
 		name, tail string
-		want       []string
+		want       []notice
 	}{
 		{
 			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found it"),
-			want: []string{"Background agent r1 (look around) finished"},
+			want: []notice{{Text: "Background agent r1 (look around) finished", Status: CallOK}},
+		},
+		{
+			name: "a failed report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="failed" description="look around"`, "it broke"),
+			want: []notice{{Text: "Background agent r1 (look around) failed", Status: CallErr}},
+		},
+		{
+			name: "a workflow that finished with a failed agent", tail: agent.Attached(`agent-report run="w1" agent="workflow" status="warn" description="audit"`, "3 of 4 angles came back"),
+			want: []notice{{Text: "Workflow w1 (audit) warn", Status: CallWarn}},
 		},
 		// an element quoted in a body is still the user's text: only one
 		// right behind the marker is a report
@@ -222,14 +257,14 @@ not a report
 </agent-report>`), want: nil},
 		{
 			name: "a plugin send after blank lines", tail: agent.Attached("plugin:demo", "\n\nreal line"),
-			want: []string{"plugin:demo: real line"},
+			want: []notice{{Text: "plugin:demo: real line"}},
 		},
 		{name: "a plugin send with nothing in it", tail: agent.Attached("plugin:demo", ""), want: nil},
 		{
 			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
-			want: []string{"Agent r1 (explore): kept going"},
+			want: []notice{{Text: "Agent r1 (explore): kept going"}},
 		},
-		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []string{"Loop run 1: check a"}},
+		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []notice{{Text: "Loop run 1: check a"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
