@@ -85,7 +85,7 @@ func probe() (Backend, error) {
 	if err != nil {
 		return Backend{}, fmt.Errorf("sandbox-exec: %w", err)
 	}
-	return Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}, nil
+	return Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}, nil
 }
 
 func wrap(cmd *exec.Cmd, p Policy) error {

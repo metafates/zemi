@@ -145,9 +145,9 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	}
 	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
 		// Landlock rules only add access: a write root opens every hidden path inside it
-		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
+		!backend.ProtectsByName && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
 	writable := h.ProjectTrusted() && !readOnly && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
-	if writable && walk && backend.Name != "seatbelt" {
+	if writable && walk && !backend.ProtectsByName {
 		// seatbelt protects every .git and .agents by name, the namespace
 		// variant only the paths it binds
 		found, ok := configEntries(d.ProjectDir)
@@ -167,7 +167,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		p.Write = append(p.Write, d.ProjectDir)
 		// seatbelt keeps what git runs or follows read-only by name, so the
 		// rest of .git opens; a .git file's git dir (a linked worktree) stays shut
-		if gd := filepath.Join(d.ProjectDir, ".git"); backend.Name == "seatbelt" {
+		if gd := filepath.Join(d.ProjectDir, ".git"); backend.ProtectsByName {
 			if fi, err := os.Lstat(gd); err == nil && fi.IsDir() {
 				p.Git = gd
 			}
@@ -190,7 +190,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		if slices.Contains(p.Write, t) {
 			continue
 		}
-		if backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, t) }) {
+		if !backend.ProtectsByName && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, t) }) {
 			continue
 		}
 		p.Write = append(p.Write, t)
@@ -309,7 +309,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	}
 	// seatbelt's localhost is the machine's, the namespace backend's its own
 	switch {
-	case backend.Name == "seatbelt":
+	case backend.ProtectsByName:
 		// its profile denies almost every mach service
 		b.WriteString("\n- System services are off: a browser, GUI app, docker or the keychain fails or crashes (Abort trap: 6). ")
 		if escapes && !readOnly {
@@ -477,7 +477,7 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 		}
 	}
 	s := h.sandbox.Load()
-	if s == nil || s.backend.Name == "seatbelt" {
+	if s == nil || s.backend.ProtectsByName {
 		return func() string { return "" }
 	}
 	if h.Dirs.ProjectDir != "" && slices.Contains(p.Write, h.Dirs.ProjectDir) {

@@ -476,7 +476,7 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}
-		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
+		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}})
 		h.SetUIHooks(&fakeUI{})
 		os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755)
 		if i == 1 {
@@ -508,7 +508,7 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 // base cannot grow unnoticed.
 func TestPromptBudget(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}})
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"

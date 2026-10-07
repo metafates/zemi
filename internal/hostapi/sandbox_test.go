@@ -415,18 +415,18 @@ func TestSandboxPolicy(t *testing.T) {
 		configInProject        bool
 		projectInConfig        bool
 		gitLink                bool
-		secretInside           string // backend name when the project is ~/.config
+		secretInside, byName   bool // the project is ~/.config, which holds a hidden ~/.config/gh
 		want                   bool
 	}{
-		{"trusted", true, false, true, false, false, false, "", true},
-		{"untrusted", false, false, true, false, false, false, "", false},
-		{"plan", true, true, true, false, false, false, "", false},
-		{"backend without protect", true, false, false, false, false, false, "", false},
-		{"config home inside", true, false, true, true, false, false, "", false},
-		{"inside config home", true, false, true, false, true, false, "", false},
-		{".git is a symlink", true, false, true, false, false, true, "", false},
-		{"holds ~/.config/gh under landlock", true, false, true, false, false, false, "fake", false},
-		{"holds ~/.config/gh under seatbelt", true, false, true, false, false, false, "seatbelt", true},
+		{"trusted", true, false, true, false, false, false, false, false, true},
+		{"untrusted", false, false, true, false, false, false, false, false, false},
+		{"plan", true, true, true, false, false, false, false, false, false},
+		{"backend without protect", true, false, false, false, false, false, false, false, false},
+		{"config home inside", true, false, true, true, false, false, false, false, false},
+		{"inside config home", true, false, true, false, true, false, false, false, false},
+		{".git is a symlink", true, false, true, false, false, true, false, false, false},
+		{"holds ~/.config/gh under landlock", true, false, true, false, false, false, true, false, false},
+		{"holds ~/.config/gh under seatbelt", true, false, true, false, false, false, true, true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h.SetProjectTrusted(c.trusted)
@@ -442,8 +442,8 @@ func TestSandboxPolicy(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if c.secretInside != "" {
-				h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: c.secretInside, EnforcesProtect: true}})
+			if c.secretInside {
+				h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{EnforcesProtect: true, ProtectsByName: c.byName}})
 				home := t.TempDir()
 				t.Setenv("HOME", home)
 				h.Dirs.ProjectDir = filepath.Join(home, ".config")
@@ -470,7 +470,7 @@ func TestSandboxPolicy(t *testing.T) {
 				t.Errorf("read %v", p.Read)
 			}
 			// HOME moved: the account's own credentials stay hidden too
-			if u, err := user.Current(); c.secretInside != "" && (err != nil || !slices.Contains(p.Hide, filepath.Join(u.HomeDir, ".ssh"))) {
+			if u, err := user.Current(); c.secretInside && (err != nil || !slices.Contains(p.Hide, filepath.Join(u.HomeDir, ".ssh"))) {
 				t.Errorf("account home's .ssh not hidden (%v): %v", err, p.Hide)
 			}
 			for _, dir := range []string{p.Env["GOCACHE"], p.Env["TMPDIR"]} {
@@ -486,7 +486,7 @@ func TestSandboxPolicy(t *testing.T) {
 	// seatbelt opens a .git dir but for what runs code; a .git file's git dir
 	// (a linked worktree) stays shut
 	h.SetProjectTrusted(true)
-	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", EnforcesProtect: true}})
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{EnforcesProtect: true, ProtectsByName: true}})
 	gd := filepath.Join(project, ".git")
 	for _, dir := range []bool{true, false} {
 		if dir {
@@ -502,14 +502,14 @@ func TestSandboxPolicy(t *testing.T) {
 	// the machine's temp dirs are write roots; a backend that cannot hide
 	// inside one (Landlock adds access and never denies) keeps out the root
 	// holding zemi's own dirs
-	for _, backend := range []string{"seatbelt", "fake"} {
-		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: backend, EnforcesProtect: true}})
+	for _, byName := range []bool{true, false} {
+		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{EnforcesProtect: true, ProtectsByName: byName}})
 		temp := perm.TempRoots()[0]
 		if !h.inJail(h.Dirs.StateHome, temp) {
 			t.Fatalf("the state dir %s is not under %s", h.Dirs.StateHome, temp)
 		}
-		if got := slices.Contains(h.sandboxPolicy(false, h.ScratchDir()).Write, temp); got != (backend == "seatbelt") {
-			t.Errorf("%s: %s writable %v", backend, temp, got)
+		if got := slices.Contains(h.sandboxPolicy(false, h.ScratchDir()).Write, temp); got != byName {
+			t.Errorf("protects by name %v: %s writable %v", byName, temp, got)
 		}
 	}
 	venv := filepath.Join(project, ".venv", "bin")
@@ -761,7 +761,7 @@ func TestSandboxPrompt(t *testing.T) {
 			h, _ := newTestHost(t)
 			h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome = t.TempDir(), t.TempDir(), t.TempDir()
 			h.agents.sessionID = "s1"
-			s := &sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}}
+			s := &sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}}
 			if !c.live {
 				s.err = errors.New("no backend")
 			}

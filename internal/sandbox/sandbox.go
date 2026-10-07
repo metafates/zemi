@@ -57,6 +57,11 @@ type Backend struct {
 	HidesSecretFiles bool
 	// Protect paths stay read-only inside Write roots
 	EnforcesProtect bool
+	// ProtectsByName says the policy is rules naming what is denied, which the
+	// kernel applies to a path whether or not it exists yet and which win over
+	// a broader allow (seatbelt). Landlock instead grants rights on objects
+	// that are already there.
+	ProtectsByName bool
 }
 
 var probeOnce = sync.OnceValues(probe)
