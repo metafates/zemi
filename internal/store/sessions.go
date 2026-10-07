@@ -25,6 +25,9 @@ type Session struct {
 	// cache, over the input billed alongside them
 	CacheRead   int64
 	CacheBilled int64
+	// RunStatus is a subagent run's outcome, written where it ends: the run
+	// rows and a restart read it back instead of assuming the run finished
+	RunStatus string
 }
 
 func (s *DB) CreateSession(id, parentID, title, profile string) error {
@@ -40,17 +43,23 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 }
 
 const sessionCols = `id, COALESCE(parent_id, ''), title, profile, created_at, updated_at,
-	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens`
+	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, run_status`
 
 func scanSession(row scanner) (*Session, error) {
 	var s Session
 	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Profile,
 		&s.CreatedAt, &s.UpdatedAt,
 		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
-		&s.CacheRead, &s.CacheBilled); err != nil {
+		&s.CacheRead, &s.CacheBilled, &s.RunStatus); err != nil {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// SetSessionRunStatus records how a run ended. It leaves updated_at alone: a
+// run ending is not activity in its parent's list.
+func (s *DB) SetSessionRunStatus(id, status string) error {
+	return s.execOne("set run status", `UPDATE sessions SET run_status = ? WHERE id = ?`, status, id)
 }
 
 func (s *DB) GetSession(id string) (*Session, error) {

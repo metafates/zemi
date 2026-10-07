@@ -53,33 +53,9 @@ type Op struct {
 	UpdatedAt    int64
 }
 
-// opsSchema is created lazily in the store the scope already uses (DESIGN §7).
-// No schema bump: the table is IF NOT EXISTS and user_version untouched.
-const opsSchema = `
-CREATE TABLE IF NOT EXISTS memory_ops (
-	op TEXT NOT NULL,
-	id TEXT NOT NULL,
-	ts INTEGER NOT NULL,
-	text TEXT NOT NULL DEFAULT '',
-	prior_text TEXT NOT NULL DEFAULT '',
-	quote TEXT NOT NULL DEFAULT '',
-	session_id TEXT NOT NULL DEFAULT '',
-	hash TEXT NOT NULL DEFAULT '',
-	superseded_by TEXT NOT NULL DEFAULT '',
-	scope TEXT NOT NULL DEFAULT '',
-	origin TEXT NOT NULL DEFAULT '',
-	prior_bytes BLOB,
-	prior_truncated INTEGER NOT NULL DEFAULT 0,
-	prior_existed INTEGER NOT NULL DEFAULT 0,
-	created_at INTEGER NOT NULL DEFAULT 0,
-	updated_at INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS memory_ops_id ON memory_ops(id);
-`
-
 // Ledger is a partition's memory_ops trail, in the store the scope already
 // uses. brain opens its own handle on the same file - store.DB's is
-// unexported and this stage must not change store - which SQLite
+// unexported - which SQLite
 // serializes like a second process, on the WAL and busy_timeout both keep.
 type Ledger struct {
 	db *sql.DB
@@ -100,9 +76,12 @@ func (p Partition) OpenLedger() (*Ledger, error) {
 		return nil, fmt.Errorf("brain: open %s: %w", p.DB, err)
 	}
 	d.SetMaxOpenConns(1)
-	if _, err := d.Exec(opsSchema); err != nil {
+	// the store's schema holds memory_ops; a query answers whether this handle
+	// opened a database at all, which a garbage file is not
+	var version int
+	if err := d.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		d.Close()
-		return nil, fmt.Errorf("brain: ledger schema in %s: %w", p.DB, err)
+		return nil, fmt.Errorf("brain: ledger in %s: %w", p.DB, err)
 	}
 	return &Ledger{db: d}, nil
 }

@@ -156,7 +156,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 	completion_tokens INTEGER NOT NULL DEFAULT 0,
 	cache_read_tokens INTEGER NOT NULL DEFAULT 0,
 	cache_billed_tokens INTEGER NOT NULL DEFAULT 0,
-	cost REAL NOT NULL DEFAULT 0
+	cost REAL NOT NULL DEFAULT 0,
+	run_status TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
 -- the picker and the splash order by recency on every render
@@ -236,12 +237,32 @@ CREATE TABLE IF NOT EXISTS memory (
 );
 -- the trail group and /memory's merged list order by recency within a scope
 CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
+
+CREATE TABLE IF NOT EXISTS memory_ops (
+	op TEXT NOT NULL,
+	id TEXT NOT NULL,
+	ts INTEGER NOT NULL,
+	text TEXT NOT NULL DEFAULT '',
+	prior_text TEXT NOT NULL DEFAULT '',
+	quote TEXT NOT NULL DEFAULT '',
+	session_id TEXT NOT NULL DEFAULT '',
+	hash TEXT NOT NULL DEFAULT '',
+	superseded_by TEXT NOT NULL DEFAULT '',
+	scope TEXT NOT NULL DEFAULT '',
+	origin TEXT NOT NULL DEFAULT '',
+	prior_bytes BLOB,
+	prior_truncated INTEGER NOT NULL DEFAULT 0,
+	prior_existed INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL DEFAULT 0,
+	updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS memory_ops_id ON memory_ops(id);
 `
 
 // schemaVersion stamps every store. zemi keeps no migrations before its
 // first release: a schema change bumps this, and a store another version made
 // is refused with its path, for the developer to delete.
-const schemaVersion = 6
+const schemaVersion = 7
 
 func (s *DB) migrate() error {
 	// one transaction, so a second process opening the same file waits and
