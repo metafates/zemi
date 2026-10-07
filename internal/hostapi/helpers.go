@@ -134,11 +134,7 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 // saves the whole text to pad, the scratchpad of the pipeline that made the
 // call, so the rest is one read away instead of gone.
 func (h *Host) truncOutput(pad, name, s string) string {
-	cut := tools.TruncOut(s, 30000)
-	if cut == s {
-		return s
-	}
-	return cut + tools.Spill(pad, name, s)
+	return tools.Cut(pad, name, s, 30000)
 }
 
 // readRegularFile reads a config file, refusing symlinks and oversized files.
