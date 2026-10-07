@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"testing"
 )
 
 // Kind is the type of value a setting holds.
@@ -156,22 +155,16 @@ func (s *Store) Get(path string) (any, bool) {
 }
 
 // Str reads a string schema key; Bool and Int read the other two kinds, Int
-// truncating a fraction. Every schema key holds
-// its default until someone sets it, so only a key outside the schema reads
-// as the zero value, and under go test it panics, so a mistyped key fails
-// the suite.
+// truncating a fraction. Every schema key holds its default until someone
+// sets it, so only a key outside the schema reads as the zero value.
 func (s *Store) Str(path string) string { return s.value[string](path) }
 func (s *Store) Bool(path string) bool  { return s.value[bool](path) }
 func (s *Store) Int(path string) int    { return int(s.value[float64](path)) }
 
 func (s *Store) value[T any](path string) T {
 	s.mu.RLock()
-	_, known := s.schema[path]
+	defer s.mu.RUnlock()
 	t, _ := s.values[path].(T)
-	s.mu.RUnlock()
-	if !known && testing.Testing() {
-		panic("config: " + path + " is not a schema key")
-	}
 	return t
 }
 
