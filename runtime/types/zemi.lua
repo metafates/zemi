@@ -166,7 +166,8 @@ function os.clock() end
 function os.time(t) end
 
 --- The date as text in a strftime `format` ("%c" by default; a leading "!"
---- means UTC), or as a table with "*t".
+--- means UTC; the specifiers are %Y, %m, %d, %H, %M, %S, %p, %c, %x, %X and
+--- %%, and any other raises), or as a table with "*t".
 ---@overload fun(format: "*t"|"!*t", time?: integer): { year: integer, month: integer, day: integer, hour: integer, min: integer, sec: integer, wday: integer, yday: integer, isdst: boolean }
 ---@param format? string
 ---@param time? integer Unix seconds; now by default.
