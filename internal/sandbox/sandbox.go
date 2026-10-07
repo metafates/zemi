@@ -237,4 +237,3 @@ func (p Policy) WriteNames(project string) string {
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
-
