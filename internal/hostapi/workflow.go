@@ -242,6 +242,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	spec.cache = cache
 	h.watchFlows()
+	h.refresh() // the run is listed and counted from here on
 	h.GoSafe("workflow", func() {
 		defer h.drainQueue() // this run no longer holds a queued report back
 		// closed even when the run or its report panics, so nothing waiting

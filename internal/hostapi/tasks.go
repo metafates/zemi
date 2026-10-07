@@ -672,6 +672,7 @@ func (h *Host) startBackgroundAgent(ctx context.Context, def AgentDef, descripti
 		run.cancel()
 		return "", err
 	}
+	h.refresh() // the run is listed and counted from here on
 	h.GoSafe("background agent", func() {
 		// whatever queued behind this run starts once nothing else holds it,
 		// report or not (a cancelled run has none, a finished one's joins the turn)
@@ -699,6 +700,9 @@ func (h *Host) deliverAgent(run *agentRun, text string, err error) {
 // it: to the model, attached behind it, when that session is live, else
 // stored there and toasted.
 func (h *Host) deliverReport(parent, id, agentName, status, description, report, attached string) {
+	// the run is over: every count-derived indicator and list moves now, not
+	// at the next frame the user happens to cause
+	h.refresh()
 	if h.AgentSessionID() != parent {
 		// the user moved on; do not drop the report into another conversation
 		h.notifyReport(id, agentName, status, description, report)
