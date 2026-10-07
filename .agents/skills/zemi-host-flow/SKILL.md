@@ -8,7 +8,7 @@ description: "Load before changing main.go, cli.go, run.go, internal/config, int
 ## CLI (cli.go, run.go)
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
-prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
+prompt on stdout, and `sessions` (and `sessions export [--full] <id>` and `sessions rename <id> [title]`, `hostapi.SessionMarkdown` on
 stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
 sweeps nothing and takes no lock a running zemi waits on), `projects` (`hostapi.ListProjects` with its
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
@@ -271,7 +271,8 @@ is refused with its path, to delete (the owner is the only user).
   `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
   calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
   with no input since, and its live-only `Recap: ...` notice row is dropped when the transcript
-  moved during the call.
+  moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
+  stops it and the chat's pending row names it.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a shell call's

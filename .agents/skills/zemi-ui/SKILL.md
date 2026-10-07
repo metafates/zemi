@@ -110,8 +110,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
-  (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start) holds a `Host.Busy`
-  entry: the working rule draws the newest as `ctx.busy`, and the same double esc
+  (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start,
+  the idle recap, a compaction round) holds a `Host.Busy` entry: `ctx.busy` is the list of
+  them, newest first, the chat's pending row names every one, the working rule draws
+  `ctx.busy[1]`, and the same double esc
   (`CancelBusy`, never `zemi.agent.cancel`) cancels every entry that has a cancel func.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
@@ -125,6 +127,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   what it sits on: `hostBox` and the composer frame put theirs on the panel, where a
   style that paints the canvas takes the panel instead (`segStyle`).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
-  attachment tokens. Files from outside the project are copied to `<data>/drops` and referenced
-  as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a
-  forged reference cannot attach other files.
+  attachment tokens: `[Image <name>]` or `[File <name>]`, the kind read from the MIME type,
+  the name the project-relative path for a file in the project and the copy's own basename
+  for one outside it, capped at 60 cells; a name the project root already holds is refused,
+  and a clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. `expandAttachments`
+  resolves a bracketed name in the drops directory first, then project-relative, so a forged
+  reference cannot attach other files; a `@name` the user typed stays a reference and keeps
+  its form.
