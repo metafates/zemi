@@ -45,10 +45,11 @@ func Open(path string) (*DB, error) {
 	d.SetMaxOpenConns(1)
 	s := &DB{db: d, path: path}
 	// switching to WAL takes an exclusive lock that busy_timeout does not wait
-	// for, so a second process creating the same store retries; the mode sticks
-	// to the file, and one that never gets it runs with a rollback journal
+	// for, so a second process creating the same store retries; only that lock
+	// is worth retrying, and anything else keeps the rollback journal the file
+	// opens with
 	for range 100 {
-		if _, err = d.Exec(`PRAGMA journal_mode = WAL`); err == nil {
+		if _, err = d.Exec(`PRAGMA journal_mode = WAL`); err == nil || !isBusy(err) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -60,6 +61,13 @@ func Open(path string) (*DB, error) {
 	// best effort: a failed sweep must never keep zemi from starting
 	_ = s.sweep()
 	return s, nil
+}
+
+// isBusy reports SQLITE_BUSY, the one failure another zemi holding the same
+// store causes and a retry answers.
+func isBusy(err error) bool {
+	e, ok := errors.AsType[*sqlite.Error](err)
+	return ok && e.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
 // OpenRead opens an existing store read-only: no migration, no sweep and
@@ -117,7 +125,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 		rows, qerr := d.Query(`SELECT id FROM sessions`)
 		sessions, err = collect(rows, qerr, scanString)
 	}
-	if e, ok := errors.AsType[*sqlite.Error](err); ok && e.Code()&0xff == sqlite3.SQLITE_BUSY {
+	if isBusy(err) {
 		d.Close()
 		return nil, nil, ErrInUse
 	}
