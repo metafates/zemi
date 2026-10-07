@@ -685,8 +685,82 @@ func TestWorkflowToolInput(t *testing.T) {
 	}
 	h.SetUIHooks(nil)
 	info := h.workflowTool(h.PipelineFor()).Info()
-	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status rerun]" {
+	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status wait rerun]" {
 		t.Fatalf("headless schema: %v", info.Parameters)
+	}
+}
+
+// TestWorkflowWait: a run the model started detached has no join but the wait
+// action, which returns when the run ends with its status (never the report,
+// which the same instant sends as a message of its own), and stops waiting on
+// esc without stopping the run.
+func TestWorkflowWait(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		esc       bool
+		want      string
+		stillLive bool
+	}{
+		{name: "the run ends", want: "Its report arrives as a message"},
+		{name: "esc stops waiting, not the run", esc: true, want: "Stopped waiting", stillLive: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{})
+			seedSession(t, h)
+			gate := make(chan struct{})
+			// the run's agent blocks until the test releases it, so the run is
+			// live while the wait sits on it
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
+					if strings.Contains(system, "a subagent of zemi") {
+						<-gate
+						return textParts("worked")
+					}
+					return textParts("ok") // the turn a report starts
+				}}, nil
+			}
+			tool := h.workflowTool(h.PipelineFor())
+			started := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWorkflow,
+					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')","background":true}`})
+				started <- resp
+			}()
+			f := waitLiveFlow(t, h)
+			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+				t.Fatalf("a background start = %q", resp.Content)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			waited := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := tool.Run(ctx, fantasy.ToolCall{ID: "c2", Name: tools.ToolWorkflow,
+					Input: `{"run":"` + f.id + `","action":"wait"}`})
+				waited <- resp
+			}()
+			if c.esc {
+				cancel()
+			} else {
+				close(gate)
+			}
+			resp := waitCall(t, waited)
+			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, "worked") {
+				t.Fatalf("wait = %q (error %v)", resp.Content, resp.IsError)
+			}
+			if f.isRunning() != c.stillLive {
+				t.Fatalf("the run runs = %v, want %v", f.isRunning(), c.stillLive)
+			}
+			if c.stillLive {
+				close(gate)
+			}
+			waitFor(t, func() error {
+				if n := reportRows(h, f.id); n != 1 {
+					return fmt.Errorf("%d report rows for %s, want exactly 1", n, f.id)
+				}
+				return nil
+			})
+		})
 	}
 }
 

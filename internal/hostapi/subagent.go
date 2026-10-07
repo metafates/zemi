@@ -235,6 +235,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	h.refresh()
 	run.mu.Lock()
 	prev := run.runner
+	// fresh per attempt: a continuation makes the run live again, and a
+	// waiter must follow the attempt it started on
+	run.end = make(chan struct{})
 	run.mu.Unlock()
 	setup, err := h.runSetup(ctx, run, prev, def, prompt)
 	if err != nil {
@@ -948,7 +951,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id.")
+		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; with wait it blocks until that run ends instead of queueing the prompt, so a result the next step needs is there when it returns.")
 	}
 	b.WriteString(" Set agent to \"fork\" to continue this conversation in parallel instead of starting fresh.")
 	b.WriteString("\n\nAgents:")
@@ -971,6 +974,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
 		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
+		params["wait"] = map[string]any{"type": "boolean", "description": "with send_to: block until that run ends instead of queueing the prompt, so its report is in the conversation when this call returns; its report arrives as a message either way"}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
@@ -992,12 +996,16 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		Agent       string `json:"agent"`
 		Background  bool   `json:"background"`
 		SendTo      string `json:"send_to"`
+		Wait        bool   `json:"wait"`
 	}
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	if strings.TrimSpace(in.Prompt) == "" {
 		return fantasy.NewTextErrorResponse("prompt is required"), nil
+	}
+	if in.Wait && in.SendTo == "" {
+		return fantasy.NewTextErrorResponse("wait waits on a run: pass its id as send_to"), nil
 	}
 	if resp, stop := t.h.preCheck("agent", call.Input); stop {
 		return resp, nil
@@ -1014,6 +1022,9 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		// its child session and bill belong to the conversation that started it
 		if run.parent != t.h.AgentSessionID() {
 			return fantasy.NewTextErrorResponse("agent " + run.id + " belongs to another session: start a fresh run"), nil
+		}
+		if in.Wait {
+			return t.wait(ctx, call.ID, run), nil
 		}
 		if run.isRunning() {
 			if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
@@ -1063,6 +1074,40 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	return t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
 		return t.h.runAgent(rctx, run, def, in.Prompt, progress)
 	})
+}
+
+// wait blocks until a run of this session ends, the user types, or the call
+// is stopped: the join a detached agent otherwise has none of. It answers
+// with the run's status and never with its report, which the run's own end
+// sends as a message.
+func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fantasy.ToolResponse {
+	h := t.h
+	answer := func() fantasy.ToolResponse {
+		status, _, took, _ := run.state()
+		where := fmt.Sprintf("agent %s %s (%s)", run.id, status, fmtDuration(took))
+		if status == RunRunning {
+			return fantasy.NewTextResponse(where + "; it goes on, and its report arrives as a message.")
+		}
+		return fantasy.NewTextResponse(where + "; its report arrives as a message of its own, and send_to continues it.")
+	}
+	if !run.isRunning() {
+		return answer()
+	}
+	h.setTool(callID, func(st *StreamTool) { st.Run = run.id })
+	end := run.waitEnd()
+	select {
+	case <-end:
+	case <-h.userSpoke():
+		// the user's own message takes the run: its report goes to the session
+		if run.detach() {
+			return fantasy.NewTextResponse(bgAgentText(run.id))
+		}
+		<-end
+	case <-ctx.Done():
+		// esc stops the wait, not the run
+		return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call it again with send_to " + run.id + " and wait, or read its report when it arrives.")
+	}
+	return answer()
 }
 
 // bgAgentText is what a call whose run reports as a message answers: a

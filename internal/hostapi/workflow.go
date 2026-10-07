@@ -955,6 +955,7 @@ type flowAction string
 
 const (
 	actStatus      flowAction = "status"
+	actWait        flowAction = "wait"
 	actPause       flowAction = "pause"
 	actResume      flowAction = "resume"
 	actStop        flowAction = "stop"
@@ -1320,7 +1321,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	tui := t.h.hooks() != nil
 	var desc strings.Builder
 	desc.WriteString(workflowToolDesc)
-	actions := []string{string(actStatus), "rerun"}
+	actions := []string{string(actStatus), string(actWait), "rerun"}
 	params := map[string]any{
 		"script":      map[string]any{"type": "string", "description": "Lua source"},
 		"name":        map[string]any{"type": "string", "description": "a saved workflow to run"},
@@ -1332,8 +1333,9 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {
 		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; status lists the run ids of its agents." +
+			" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
 			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
-		actions = []string{string(actStatus), string(actPause), string(actResume), string(actStop), "rerun"}
+		actions = []string{string(actStatus), string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
 	}
 	params["action"] = map[string]any{"type": "string", "enum": actions, "description": "what to do to run"}
@@ -1377,6 +1379,9 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	case in.Action != "" && in.Run == "":
 		return fantasy.NewTextErrorResponse("action acts on a run: pass its id as run"), nil
 	case in.Run != "" && !rerun:
+		if flowAction(in.Action) == actWait {
+			return t.wait(ctx, call.ID, in.Run), nil
+		}
 		act := flowAction(in.Action)
 		switch {
 		case act == "" && in.Concurrency > 0:
@@ -1475,6 +1480,43 @@ func (h *Host) approveRerun(id string) (string, error) {
 		return "", errors.New(tools.DeniedText(v, "workflow "+id))
 	}
 	return src, nil
+}
+
+// wait blocks until run id ends, the user types, or the call is stopped: the
+// join a detached run otherwise has none of. It answers with the run's status
+// and never with its report, which the same instant sends as a message.
+func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.ToolResponse {
+	h := t.h
+	f := h.tasks.flow(id)
+	if f == nil {
+		// a run this process no longer holds: its journal has how it ended
+		old, err := h.loadFlow(h.AgentSessionID(), id)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error())
+		}
+		return fantasy.NewTextResponse("workflow " + id + " already ended (" + string(old.status) + "); its report is in the conversation.")
+	}
+	if f.parent != h.AgentSessionID() {
+		// deliverReport would refuse this session and toast the report there
+		return fantasy.NewTextErrorResponse("workflow " + id + " belongs to another session: its report arrives there")
+	}
+	if !f.isRunning() {
+		return fantasy.NewTextResponse(f.statusText() + "\nIt has ended; its report is in the conversation.")
+	}
+	h.setTool(callID, func(st *StreamTool) { st.Run = id })
+	select {
+	case <-f.done:
+	case <-h.userSpoke():
+		// the user's own message takes the run: its report goes to the session
+		if f.detach() {
+			return fantasy.NewTextResponse(bgFlowText(f))
+		}
+		<-f.done
+	case <-ctx.Done():
+		// esc stops the wait, not the run
+		return fantasy.NewTextResponse("Stopped waiting; workflow " + id + " goes on. Call it again with run=" + id + " and action wait, or read its report when it arrives.")
+	}
+	return fantasy.NewTextResponse(f.statusText() + "\nIts report arrives as a message of its own; do not wait for it again.")
 }
 
 // control runs a control action on a run of this session.

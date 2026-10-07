@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -596,6 +597,23 @@ const (
 // out of the comparison entirely, so one poll cannot break a real loop's run.
 var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 
+// IsWaitCall is a call that waits on a run the model started detached: the
+// workflow tool's wait action, the agent tool's wait flag. Waiting is how the
+// model joins a run, so a step of it says nothing about progress either.
+func IsWaitCall(name, input string) bool {
+	if name != tools.ToolWorkflow && name != tools.ToolAgent {
+		return false
+	}
+	var in struct {
+		Action string `json:"action"`
+		Wait   bool   `json:"wait"`
+	}
+	if json.Unmarshal([]byte(input), &in) != nil {
+		return false
+	}
+	return in.Wait || in.Action == "wait"
+}
+
 // maxRetries is the provider retries a step gets; fantasy's default of 3
 // gives up on an overloaded provider inside a minute.
 var maxRetries = 5
@@ -631,7 +649,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		}
 		sig, polling := "", false
 		for _, c := range calls {
-			if pollingTools[c.ToolName] {
+			if pollingTools[c.ToolName] || IsWaitCall(c.ToolName, c.Input) {
 				polling = true
 				break
 			}

@@ -139,6 +139,7 @@ type agentRun struct {
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
 	dropped   int            // queued messages the run ended before reading
+	end       chan struct{}  // closed when the run's current attempt ends, fresh per attempt
 }
 
 type taskReg struct {
@@ -589,6 +590,9 @@ func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	run.flush()
+	if run.end != nil {
+		close(run.end)
+	}
 	cut := CallErr
 	if errors.Is(err, context.Canceled) {
 		cut = CallStopped
@@ -616,6 +620,14 @@ func (run *agentRun) finish(h *Host, err error) {
 		}
 	}
 	h.markRunRow(run.id, callMark(run.status))
+}
+
+// waitEnd is the channel a waiter selects on: closed when the run's current
+// attempt ends, nil before it started, so a wait never blocks on nothing.
+func (run *agentRun) waitEnd() chan struct{} {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.end
 }
 
 // callMark is a run's outcome as the chat marks the call that handed off to
