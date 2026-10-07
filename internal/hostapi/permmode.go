@@ -287,23 +287,19 @@ func (h *Host) SetPermMode(mode string) error {
 }
 
 // approvePlan is the plan tool's hook: it shows a plan in the approval popup.
-// The plan joins the transcript and is saved, then the user approves it,
-// types what to change, or dismisses it. A read-only agent (planner)
-// remembers what ran before it (prePlan), so approving a plan returns to
-// that agent and mode, yolo included, instead of asking; an approval records
-// an implementation handoff (planApproved) that the ended turn passes on to
-// planFollowup.
+// The plan joins the transcript, then the user approves it, keeps it without
+// starting, types what to change, or dismisses it; the file is written once
+// the verdict is in, so a dismissed plan cannot overwrite the session's own.
+// A read-only agent (planner) remembers what ran before it (prePlan), so any
+// approval returns to that agent and mode, yolo included; an approval that
+// starts the work records an implementation handoff (planApproved) that the
+// ended turn passes on to planFollowup, and a hold skips that handoff.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	ui := h.hooks()
 	if ui == nil {
 		return tools.PlanVerdict{}, false
 	}
 	var v tools.PlanVerdict
-	if path := h.planPath(h.AgentSessionID()); path != "" {
-		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
-			v.Path = path
-		}
-	}
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
 	restore, mode := "", ""
 	if h.readOnly() {
@@ -319,24 +315,31 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	if !ok {
 		return v, false
 	}
-	if verdict.Approved {
-		if restore != "" {
-			if err := h.SetProfile(restore); err != nil {
+	if !verdict.Approved {
+		v.Feedback = verdict.Feedback
+		return v, true
+	}
+	if path := h.planPath(h.AgentSessionID()); path != "" {
+		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
+			v.Path = path
+		}
+	}
+	if restore != "" {
+		if err := h.SetProfile(restore); err != nil {
+			return v, false
+		}
+		if mode != "" {
+			if err := h.SetPermMode(mode); err != nil {
 				return v, false
 			}
-			if mode != "" {
-				if err := h.SetPermMode(mode); err != nil {
-					return v, false
-				}
-			}
+		}
+		if !verdict.Hold {
 			// the read-only turn cannot implement the plan itself; the turn-end
 			// hook runs it as the restored agent
 			h.setPlanApproved(implementNow)
 		}
-		v.Approved = true
-		return v, true
 	}
-	v.Feedback = verdict.Feedback
+	v.Approved, v.Hold = true, verdict.Hold
 	return v, true
 }
 

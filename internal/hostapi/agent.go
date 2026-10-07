@@ -259,11 +259,7 @@ type agentHost struct {
 	loopRun  *Loop
 	byLoop   bool
 
-	// titled is false for a new session until its first exchange named it
-	// (autoTitle); firstUser is that session's first message.
-	titled    bool
-	firstUser string
-	env       string // pinned environment section (environmentPrompt)
+	env string // pinned environment section (environmentPrompt)
 }
 
 func newAgentHost(clock lua.Clock) *agentHost {
@@ -971,8 +967,8 @@ func (h *Host) appendUserRows(text string) bool {
 	if shown != "" {
 		h.AppendMessage(fantasy.MessageRoleUser, shown)
 	}
-	for _, line := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: line})
+	for _, n := range reportHeads(tail) {
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
 	return shown != ""
 }
@@ -997,7 +993,9 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
 			_, tail, _ := strings.Cut(m, agent.AttachMarker)
-			waiting = append(waiting, reportHeads(tail)...)
+			for _, n := range reportHeads(tail) {
+				waiting = append(waiting, n.Text)
+			}
 		}
 	} else {
 		if ag.planApproved != "" {
@@ -1192,7 +1190,7 @@ func queuedRows(msgs []string) []Queued {
 			out = append(out, Queued{Text: shown})
 		}
 		for _, h := range reportHeads(tail) {
-			out = append(out, Queued{Text: h, Notice: true})
+			out = append(out, Queued{Text: h.Text, Notice: true})
 		}
 	}
 	return out
@@ -1282,10 +1280,14 @@ func inputDiff(name, input string) string {
 	return capLines(tools.ChangeDiff(name, in), 24)
 }
 
-// toolStatus is a finished call's row status: stopped when the user
-// denied, dismissed or interrupted it (cancelled), so the row does not read
-// as a failure.
-func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus {
+// toolStatus is a finished call's row status, read from the result itself:
+// a tool that answers an error did not do what it was asked, whatever its
+// text says, and cancelled is the user denying, dismissing or interrupting
+// it, which is a stop rather than a failure. The only chooser of a
+// CallStatus, so no caller can hand it an outcome it made up.
+func toolStatus(name string, result fantasy.ToolResultOutputContent, cancelled bool) CallStatus {
+	output := agent.ToolOutput(result)
+	ok := !agent.ErrResult(result)
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
 		name == tools.ToolWorkflow && strings.HasPrefix(output, bgWorkflowStarted),
@@ -1723,7 +1725,6 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
-	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
 	ag.env = ""
 	ag.memAuto = 0
@@ -1731,6 +1732,14 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.mu.Unlock()
 	h.refreshPending()
 	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
+	// the tab, the exit banner and zemi.session.title() read the first
+	// message's line from here on, not after the model's title lands
+	h.tMu.Lock()
+	h.session.Title = title
+	h.tMu.Unlock()
+	if title != "" {
+		h.autoTitle(sid, title)
+	}
 	return nil
 }
 
@@ -1830,8 +1839,16 @@ const recapPrompt = `The user stepped away and is coming back. In one or two sho
 
 // Recap adds a live-only notice row saying where the session stands, from
 // an aside on the cached conversation. The UI calls it when nobody touched
-// the terminal since a turn ended well, and cancels ctx on the next input.
-func (h *Host) Recap(ctx context.Context) { h.GoSafe("recap", func() { h.recap(ctx) }) }
+// the terminal since a turn ended well, and cancels ctx on the next input;
+// it is a busy job too, so esc stops it and the working row names it.
+func (h *Host) Recap(ctx context.Context) {
+	h.GoSafe("recap", func() {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer h.Busy("Recapping", cancel)()
+		h.recap(ctx)
+	})
+}
 
 func (h *Host) recap(ctx context.Context) {
 	if !h.Settings.Bool("session.recap") {

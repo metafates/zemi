@@ -252,6 +252,9 @@ func (h *Host) CompactNow(focus string) error {
 func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reason, focus string) bool {
 	h.setCompacting(true)
 	defer h.setCompacting(false)
+	// the summary is a billed model call the user waits on, so it is named in
+	// the working row like any other job
+	defer h.Busy("Compacting the conversation", nil)()
 	err := h.compact(ctx, runner, reason, focus)
 	if err == nil {
 		return true

@@ -476,7 +476,9 @@ func TestAskWaitsOutReload(t *testing.T) {
 		ui := &fakeUI{}
 		ui.onAsk = func(PermRequest) (bool, string) {
 			if len(ui.asked) == 1 {
-				for h.AsksWaiting() < 2 {
+				// the second ask must reach the prompt before the reload; the
+				// bound fails the test here instead of hanging the package
+				for i := 0; h.AsksWaiting() < 2 && i < 1_000_000; i++ {
 					runtime.Gosched()
 				}
 				go func() { reloaded <- h.ForceReload(t.Context(), []lua.BootStep{steps[0], probe, steps[1]}) }()
@@ -488,7 +490,7 @@ func TestAskWaitsOutReload(t *testing.T) {
 		pipe := h.PipelineFor()
 		done := make(chan struct{})
 		go func() { pipe.Check(tools.Request{Subject: "tool.shell", Arg: "ls"}); close(done) }()
-		for h.AsksWaiting() < 1 {
+		for i := 0; h.AsksWaiting() < 1 && i < 1_000_000; i++ {
 			runtime.Gosched()
 		}
 		second := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "pwd"})

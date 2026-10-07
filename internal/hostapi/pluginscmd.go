@@ -273,7 +273,7 @@ func (h *Host) pluginItems() []any {
 		} else {
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": "plugins enable " + p.Name})
 		}
-		actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name})
+		actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "plugins open " + p.Name})
 		if p.Local {
 			actions = append(actions, map[string]any{"text": "Modify with zemi", "hotkey": "m", "fill": "/plugins modify " + p.Name + " "})
 		}

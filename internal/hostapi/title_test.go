@@ -7,9 +7,10 @@ import (
 	"charm.land/fantasy/providers/openaicompat"
 )
 
-// TestAutoTitle: the first finished exchange renames the session with the
-// model's short title, live and in the store; later turns keep it. The
-// title call carries the provider's body fields like a turn does.
+// TestAutoTitle: the first user message renames the session with the model's
+// short title, live and in the store, before that turn's reply lands; later
+// turns keep it. The title call carries the provider's body fields like a
+// turn does.
 func TestAutoTitle(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
@@ -20,7 +21,8 @@ func TestAutoTitle(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	h.reflectMu.Lock() // no detached reflector in this test
 	defer h.reflectMu.Unlock()
-	if err := h.AgentSend("the parser drops the last token, can you look?"); err != nil {
+	first := "the parser drops the last token, can you look?"
+	if err := h.AgentSend(first); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
@@ -50,13 +52,15 @@ func TestHeadlessTurnNamesNoTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
+	// the tab, the exit banner and the /resume list read it before any title
+	// call could land
+	if got := h.SessionTitle(); got != first {
+		t.Fatalf("live title = %q", got)
+	}
 	if s, err := h.DB.GetSession(h.AgentSessionID()); err != nil || s.Title != first {
 		t.Fatalf("stored title = %+v, %v", s, err)
 	}
-	h.agents.mu.Lock()
-	titled := h.agents.titled
-	h.agents.mu.Unlock()
-	if titled || m.calls.Load() != 0 {
+	if m.calls.Load() != 0 {
 		t.Fatal("a headless turn started a title call")
 	}
 }

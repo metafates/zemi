@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -32,7 +33,7 @@ type StreamHooks interface {
 	// ToolCallRunning is when the call starts to run: a serial call (shell)
 	// holds every later call of its step until it returns.
 	ToolCallRunning(id string)
-	ToolCallEnd(id, name string, ok bool, output, diff string)
+	ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, diff string)
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
 	StepStart()
@@ -377,7 +378,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	call.OnToolResult = func(res fantasy.ToolResultContent) error {
 		// fires for a call fantasy refused to run too, which Run never releases
 		tools.CallDone(tctx, res.ToolCallID)
-		hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
+		hooks.ToolCallEnd(res.ToolCallID, res.ToolName, res.Result, res.ClientMetadata)
 		return nil
 	}
 	call.OnStreamFinish = func(u fantasy.Usage, _ fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
@@ -596,6 +597,23 @@ const (
 // out of the comparison entirely, so one poll cannot break a real loop's run.
 var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 
+// IsWaitCall is a call that waits on a run the model started detached: the
+// workflow tool's wait action, the agent tool's wait flag. Waiting is how the
+// model joins a run, so a step of it says nothing about progress either.
+func IsWaitCall(name, input string) bool {
+	if name != tools.ToolWorkflow && name != tools.ToolAgent {
+		return false
+	}
+	var in struct {
+		Action string `json:"action"`
+		Wait   bool   `json:"wait"`
+	}
+	if json.Unmarshal([]byte(input), &in) != nil {
+		return false
+	}
+	return in.Wait || in.Action == "wait"
+}
+
 // maxRetries is the provider retries a step gets; fantasy's default of 3
 // gives up on an overloaded provider inside a minute.
 var maxRetries = 5
@@ -631,7 +649,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		}
 		sig, polling := "", false
 		for _, c := range calls {
-			if pollingTools[c.ToolName] {
+			if pollingTools[c.ToolName] || IsWaitCall(c.ToolName, c.Input) {
 				polling = true
 				break
 			}
@@ -926,6 +944,8 @@ func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 	return history
 }
 
-func isErrResult(c fantasy.ToolResultContent) bool {
-	return c.Result != nil && c.Result.GetType() == fantasy.ToolResultContentTypeError
+// ErrResult is whether a tool result is the error one: a call that did not
+// do what it was asked answers with it, whatever the text says.
+func ErrResult(c fantasy.ToolResultOutputContent) bool {
+	return c != nil && c.GetType() == fantasy.ToolResultContentTypeError
 }

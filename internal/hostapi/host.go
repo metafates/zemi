@@ -228,24 +228,25 @@ const (
 	CallWait      CallStatus = "wait" // arguments streaming, or queued behind a serial call
 	CallRun       CallStatus = "run"
 	CallOK        CallStatus = "ok"
+	CallWarn      CallStatus = "warn" // it finished, but something it ran failed
 	CallErr       CallStatus = "err"
 	CallStopped   CallStatus = "stopped"   // the user denied, dismissed or interrupted it
 	CallBG        CallStatus = "bg"        // its work goes on in the background
 	CallCancelled CallStatus = "cancelled" // an error row: the turn was interrupted
 )
 
-var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped, CallBG, CallCancelled}
+var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallWarn, CallErr, CallStopped, CallBG, CallCancelled}
 
 // Mark is a row's state mark: a glyph one cell wide and its theme group.
 type Mark struct{ Glyph, HL string }
 
 // Marks are the state marks every row shares, the chat's calls and the
 // lists' runs alike (zemi.ui.marks), one glyph and one meaning each:
-// running, finished, failed, stopped by the user, going on in the
-// background, waiting, reasoning and a notice. "spin" is drawn with the
-// "spin" effect, which steps its glyph through Spinner.
+// running, finished, finished with a failure inside, failed, stopped by the
+// user, going on in the background, waiting, reasoning and a notice. "spin"
+// is drawn with the "spin" effect, which steps its glyph through Spinner.
 var Marks = map[string]Mark{
-	"spin": {Spinner[0], "Dim"}, "ok": {"✓", "Ok"}, "err": {"✗", "Danger"}, "stop": {"■", "Dim"},
+	"spin": {Spinner[0], "Dim"}, "ok": {"✓", "Ok"}, "warn": {"!", "Warn"}, "err": {"✗", "Danger"}, "stop": {"■", "Dim"},
 	"bg": {"⧗", "Dim"}, "wait": {"·", "Dim"}, "thought": {"✻", "ThinkingMark"}, "note": {"◦", "Dim"},
 }
 
@@ -2051,7 +2052,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.119.0"))
+	api.RawSetString("version", glua.LString("0.120.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

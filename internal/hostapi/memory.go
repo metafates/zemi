@@ -899,7 +899,7 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 	}
 	return []any{
 		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID + " --yes"},
-		map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
+		map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
 	}
 }
 
@@ -1161,7 +1161,13 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 	if err != nil {
 		return "", err
 	}
-	return out.String(), nil
+	msg := out.String()
+	if out.Dropped || out.Duplicate != nil {
+		// nothing was stored, so the call answers an error: the row and the
+		// model both read a refusal as one
+		return "", errors.New(msg)
+	}
+	return msg, nil
 }
 
 // memoryFileTool is the memory tool's file mode (DESIGN §10.4): a freeform file in

@@ -141,10 +141,11 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	s.h.agentStream()
 }
 
-func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
+func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, changed string) {
 	ag := s.h.agents
 	t := s.h.turn.Load()
-	status := toolStatus(name, ok, output, t != nil && t.ctx.Err() != nil)
+	status := toolStatus(name, result, t != nil && t.ctx.Err() != nil)
+	ok, output := !agent.ErrResult(result), agent.ToolOutput(result)
 	row := StreamTool{ID: id, Name: name}
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
@@ -247,17 +248,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if ui != nil {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
 		ui.TurnDone(h.friendlyError(err), stopped)
-	}
-	// a zemi run exits before a title call answers: no UI, no title
-	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
-		ag.mu.Lock()
-		first := !ag.titled && ag.sessionID == sid
-		ag.titled = true
-		user := ag.firstUser
-		ag.mu.Unlock()
-		if first {
-			h.autoTitle(sid, user, text)
-		}
 	}
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})

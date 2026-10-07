@@ -57,7 +57,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 	}
 	live := shape(h.Session().Transcript)
 	want := `user/   "go"
-assistant/notice   "Background agent a1 (look around) finished"
+assistant/notice  ok "Background agent a1 (look around) finished"
 assistant/reasoning   "look first"
 assistant/   "I will look first."
 assistant/tool glob err "*.go"
@@ -221,7 +221,7 @@ func TestSessionLifecycle(t *testing.T) {
 			acts = fmt.Sprint(a)
 		}
 	}
-	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[danger:true hotkey:x run:sessions delete "+first+" --yes text:Delete]]" {
+	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[hotkey:n run:sessions rename "+first+"  text:Rename] map[danger:true hotkey:x run:sessions delete "+first+" --yes text:Delete]]" {
 		t.Fatalf("session actions: %s", acts)
 	}
 	pad := h.scratchFor(first)
@@ -302,6 +302,49 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 	}
 	if !slices.Equal(diffs, []string{diff, ""}) {
 		t.Fatalf("resumed tool row diffs = %q", diffs)
+	}
+}
+
+// TestRenameSession: one path names a session, the live one or a stored id:
+// the title is sanitized and clipped, the live transcript's title moves with
+// it, and an unknown id is named rather than renaming nothing.
+func TestRenameSession(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	sid := seedSession(t, h)
+
+	if err := h.RenameSession("", "fix \x1b[31mthe\x1b[0m parser"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.SessionTitle(); got != "fix the parser" {
+		t.Fatalf("live title = %q", got)
+	}
+	if sess, err := h.DB.GetSession(sid); err != nil || sess.Title != "fix the parser" {
+		t.Fatalf("stored title = %q, %v", sess.Title, err)
+	}
+	other := store.ShortID()
+	if err := h.DB.CreateSession(other, "", "other", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RenameSession(other, strings.Repeat("x", 90)); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.SessionTitle(); got != "fix the parser" {
+		t.Fatalf("renaming another session moved the live title: %q", got)
+	}
+	if sess, err := h.DB.GetSession(other); err != nil || sess.Title != clipRunes(strings.Repeat("x", 90), 60) {
+		t.Fatalf("clipped title = %q, %v", sess.Title, err)
+	}
+	if err := h.RenameSession("nosuchid", "x"); err == nil || !strings.Contains(err.Error(), "no session") {
+		t.Fatalf("unknown id: %v", err)
+	}
+	// no title: the prompt the picker's row action opens, on the live session
+	if err := h.RenameSession("", ""); err != nil {
+		t.Fatal(err)
+	}
+	if o := ui.overlays(); len(o) != 1 || !o[0].Input || o[0].Run != "rename " {
+		t.Fatalf("prompt = %+v", o)
 	}
 }
 
@@ -407,7 +450,7 @@ func TestPlanRowOutput(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			hk := h.streamHooks()
 			hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
-			hk.ToolCallEnd("c1", tools.ToolPlan, true, raw, "")
+			hk.ToolCallEnd("c1", tools.ToolPlan, out(raw), "")
 			hk.TurnDone(nil, fantasy.Usage{})
 			tr := h.Session().Transcript
 			return tr[len(tr)-1].Output

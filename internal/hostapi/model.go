@@ -406,6 +406,12 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
+// modelNumericKeys are a model entry's numeric fields: a quoted one, which
+// Lua makes easy, is refused rather than read as 0.
+var modelNumericKeys = []string{
+	"context_window", "max_output", "cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read",
+}
+
 func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	tb, ok := L.Get(idx).(*glua.LTable)
 	if !ok {
@@ -445,25 +451,30 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if !ok {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		if err := onlyKeys(e, at, "id", "display", "context_window", "max_output", "vision",
-			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read"); err != nil {
+		if err := onlyKeys(e, at, append([]string{"id", "display", "vision"}, modelNumericKeys...)...); err != nil {
 			return agent.Spec{}, err
 		}
-		positive := func(key string) float64 {
-			n, _ := e[key].(float64)
-			return max(n, 0)
+		nums := map[string]float64{}
+		for _, k := range modelNumericKeys {
+			switch v := e[k].(type) {
+			case nil:
+			case float64:
+				nums[k] = max(v, 0)
+			default:
+				return agent.Spec{}, fmt.Errorf("%s.%s must be a number, not a %T", at, k, v)
+			}
 		}
 		id, _ := e["id"].(string)
 		display, _ := e["display"].(string)
 		spec.Models = append(spec.Models, agent.Model{
 			ID:                  id,
 			Display:             display,
-			ContextWindow:       int64(positive("context_window")),
-			MaxOutput:           int64(positive("max_output")),
-			CostPer1MIn:         positive("cost_per_1m_in"),
-			CostPer1MOut:        positive("cost_per_1m_out"),
-			CostPer1MCacheWrite: positive("cost_per_1m_cache_write"),
-			CostPer1MCacheRead:  positive("cost_per_1m_cache_read"),
+			ContextWindow:       int64(nums["context_window"]),
+			MaxOutput:           int64(nums["max_output"]),
+			CostPer1MIn:         nums["cost_per_1m_in"],
+			CostPer1MOut:        nums["cost_per_1m_out"],
+			CostPer1MCacheWrite: nums["cost_per_1m_cache_write"],
+			CostPer1MCacheRead:  nums["cost_per_1m_cache_read"],
 			TextOnly:            e["vision"] == false,
 		})
 	}

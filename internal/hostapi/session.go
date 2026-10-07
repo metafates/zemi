@@ -95,18 +95,11 @@ func (h *Host) ResumeSession(id string) error {
 		return err
 	}
 	history, tr := resumeHistory(rows)
-	first := ""
-	for _, m := range tr {
-		if m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage {
-			first = m.Text
-			break
-		}
-	}
 	h.reconcileBrain(h.partition(store.ScopeProject))
 	brain, globs := h.brainFor()
 	ag := h.agents
 	err = h.closeSession(func() {
-		ag.sessionID, ag.titled, ag.firstUser = id, true, first
+		ag.sessionID = id
 		// A bare runner carries the history; AgentSend copies it into the
 		// runner it builds for the next turn.
 		ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
@@ -176,6 +169,7 @@ func (h *Host) OpenSessions(confirm string) error {
 			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item["actions"] = []any{
 				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
+				map[string]any{"text": "Rename", "hotkey": "n", "run": "sessions rename " + s.ID + " "},
 				map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
 			}
 		}
@@ -183,7 +177,7 @@ func (h *Host) OpenSessions(confirm string) error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one.",
-		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "x", Desc: "delete"}},
+		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "n", Desc: "rename"}, {Key: "x", Desc: "delete"}},
 	})
 	return nil
 }
@@ -464,7 +458,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
 					tr[i].Output = rowOutput(tr[i].Tool, out)
-					tr[i].Status = toolStatus(tr[i].Tool, p.Output.GetType() != fantasy.ToolResultContentTypeError, out, false)
+					tr[i].Status = toolStatus(tr[i].Tool, p.Output, false)
 				}
 			}
 		}
@@ -479,8 +473,8 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			if s = strings.TrimSpace(s); s != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s})
 			}
-			for _, head := range reportHeads(tail) {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
+			for _, n := range reportHeads(tail) {
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 			}
 			continue
 		}
@@ -492,12 +486,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	return history, tr
 }
 
-const titleSystem = `Name the coding conversation below for a session list. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
+const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
 
-// autoTitle names a new session from its first exchange with a short model
-// call in the background; any failure keeps the first-line title.
-func (h *Host) autoTitle(sid, user, reply string) {
-	if !h.Settings.Bool("session.auto_title") {
+// autoTitle names a new session from its first user message with a short
+// model call in the background; any failure keeps the first-line title. No
+// UI means no title: a zemi run exits before the call would answer.
+func (h *Host) autoTitle(sid, user string) {
+	if !h.Settings.Bool("session.auto_title") || h.hooks() == nil {
 		return
 	}
 	if h.DB == nil {
@@ -506,7 +501,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 	h.GoSafe("session title", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, nil, "titles")
+		res, err := h.generate(ctx, sid, titleSystem, "<message>\n"+truncRunes(user, 2000)+"\n</message>", nil, nil, "titles")
 		if err != nil {
 			h.Log.Debug("title generation failed", "origin", "session", "error", err)
 			return
@@ -527,6 +522,73 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			h.refresh()
 		}
 	})
+}
+
+// RenameSession names a session: the live one when id is "", else the stored
+// row id. One path for /rename, the sessions picker's row action and
+// zemi.session.rename. An empty title opens the one-line prompt the text of
+// it is typed into.
+func (h *Host) RenameSession(id, title string) error {
+	if h.DB == nil {
+		return errNoStore
+	}
+	if id = cmp.Or(id, h.AgentSessionID()); id == "" {
+		return Usagef("no session to rename; send a message or /new first")
+	}
+	if strings.TrimSpace(title) == "" {
+		ui, err := h.Screen()
+		if err != nil {
+			return err
+		}
+		sess, err := h.DB.GetSession(id)
+		if err != nil {
+			return h.noSession(id, err)
+		}
+		// the command the typed title runs: the live session's own /rename,
+		// else the one the sessions picker's row action runs
+		run := "sessions rename " + id + " "
+		if id == h.AgentSessionID() {
+			run = "rename "
+		}
+		ui.OpenOverlay(Overlay{
+			ID: "rename", Title: "Rename session", Origin: lua.OriginBuiltin, Input: true,
+			Default: clipRunes(sess.Title, 60), Run: run,
+		})
+		return nil
+	}
+	title = clipRunes(strings.TrimSpace(sanitize.String(title)), 60)
+	if title == "" {
+		return Usagef("usage: rename <title>")
+	}
+	if err := h.DB.RenameSession(id, title); err != nil {
+		return h.noSession(id, err)
+	}
+	h.recentStale.Store(true)
+	if id == h.AgentSessionID() {
+		h.tMu.Lock()
+		h.session.Title = title
+		h.tMu.Unlock()
+		h.refresh()
+	}
+	return nil
+}
+
+// noSession is a failed session write, an unknown id named as such.
+func (h *Host) noSession(id string, err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return Usagef("no session %q in this project", id)
+	}
+	return err
+}
+
+// renameCommands is /rename: a title given renames the live session at once,
+// none opens the prompt to type one.
+func (h *Host) renameCommands() []*Command {
+	return []*Command{{
+		Name: "rename", NArgs: NArgsOptional, Desc: "name this session", GoFn: func(h *Host, args string) error {
+			return h.RenameSession("", strings.TrimSpace(args))
+		},
+	}}
 }
 
 // recentSessions feeds the splash screen. Widget renders must not wait on
@@ -565,14 +627,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
-		title := L.CheckString(1)
-		h.tMu.Lock()
-		h.session.Title = title
-		h.tMu.Unlock()
-		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
-			_ = h.DB.RenameSession(sid, title)
-		}
-		h.refresh()
+		_ = h.RenameSession("", L.CheckString(1))
 		return 0
 	}))
 	tb.RawSetString("messages", L.NewFunction(func(L *glua.LState) int {

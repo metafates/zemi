@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
@@ -31,7 +32,7 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -49,6 +50,50 @@ func newTestHostUI(t *testing.T) *Host {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// out is a tool result as the stream hook receives it: the row's mark reads
+// this type, so a test builds one the way fantasy does.
+func out(s string) fantasy.ToolResultOutputContent {
+	return fantasy.ToolResultOutputContentText{Text: s}
+}
+
+// outErr is a call that answered an error: a tool that did not do what it
+// was asked answers with one.
+func outErr(s string) fantasy.ToolResultOutputContent {
+	return fantasy.ToolResultOutputContentError{Error: errors.New(s)}
+}
+
+// TestToolStatus: the mark comes from the result's own type, so a call that
+// refused, or a job_read of a job that died, draws a failure and never a
+// check; a handoff and an interrupt keep their own marks.
+func TestToolStatus(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		tool      string
+		result    fantasy.ToolResultOutputContent
+		cancelled bool
+		want      CallStatus
+	}{
+		{"a finished call", tools.ToolRead, out("package a"), false, CallOK},
+		{"a dropped memory", tools.ToolMemory, outErr("dropped: quote not found in this session's messages"), false, CallErr},
+		{"a near-duplicate memory", tools.ToolMemory, outErr("near-duplicate of m1 (project): \"deploy by hand\""), false, CallErr},
+		{"a job that died", tools.ToolJobRead, outErr("job-3 failed: exit status 1"), false, CallErr},
+		{"an ask the user denied", tools.ToolWrite, outErr("permission denied (user): fs.write /p/b.go"), false, CallStopped},
+		{"an ask the user dismissed", tools.ToolQuestion, outErr("The user dismissed the questions."), false, CallStopped},
+		{"an interrupted turn", tools.ToolRead, outErr("context canceled"), true, CallStopped},
+		{"a background agent", tools.ToolAgent, out(bgAgentStarted + " run=1"), false, CallBG},
+		{"a background workflow", tools.ToolWorkflow, out(bgWorkflowStarted + " run=1"), false, CallBG},
+		{"a shell that handed off", tools.ToolShell, out("still running, so it " + tools.JobHandoff + "job-3"), false, CallBG},
+		{"a job that started", tools.ToolJobStart, out("started job-2 (npm run dev)"), false, CallBG},
+		{"a shell that named a job but exited", tools.ToolShell, out(tools.JobHandoff + "job-3"), false, CallOK},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := toolStatus(c.tool, c.result, c.cancelled); got != c.want {
+				t.Fatalf("toolStatus(%s) = %s, want %s", c.tool, got, c.want)
+			}
+		})
+	}
 }
 
 // TestJobOf: only a call that started or handed off to a job names one, from
@@ -164,7 +209,7 @@ func waitFor(t *testing.T, cond func() error) {
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.119.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.120.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")

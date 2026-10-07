@@ -25,7 +25,7 @@ func (h *Host) BuiltinCommandsStep(extra ...*Command) lua.BootStep {
 		Name: "builtin commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			cmds := slices.Concat(extra, h.memoryCommands(), h.reflectorCommands(), h.skillsCommands(),
-				h.agentsCommands(), h.workflowCommands(), h.mcpCommands(), h.lspCommands(), h.pluginsCommands(), h.configCommands(), h.projectsCommands())
+				h.agentsCommands(), h.workflowCommands(), h.mcpCommands(), h.lspCommands(), h.pluginsCommands(), h.configCommands(), h.projectsCommands(), h.renameCommands())
 			for _, c := range cmds {
 				c.Origin, c.Gen = lua.OriginBuiltin, Gen(g.ID)
 				if _, err := h.Commands.Add(c); err != nil {

@@ -608,8 +608,7 @@ func TestSessionNamespace(t *testing.T) {
 
 	runUser(t, r, `
 		assert(zemi.session.id() == "", "session should start empty")
-		zemi.session.rename("my session")
-		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())
+		assert(zemi.session.title() == "zemi", "title=" .. zemi.session.title())
 		assert(#zemi.session.messages() == 0, "messages should be empty")
 	`)
 
@@ -619,6 +618,8 @@ func TestSessionNamespace(t *testing.T) {
 	if h.AgentSessionID() == "" {
 		t.Fatal("session id still empty after ensureSession")
 	}
+	runUser(t, r, `zemi.session.rename("my session")
+		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())`)
 	if err := h.persistMessage(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1111,10 +1112,10 @@ func TestTodoNag(t *testing.T) {
 		engage(h, 0)
 		s := h.streamHooks()
 		for i := range todoNagAfter * 2 {
-			s.ToolCallEnd(strconv.Itoa(i), "read", true, "", "")
+			s.ToolCallEnd(strconv.Itoa(i), "read", out(""), "")
 		}
 		s.StepDone(agent.Step{})
-		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
+		s.ToolCallEnd("t", tools.ToolTodos, out(""), "")
 		s.StepDone(agent.Step{})
 		for range todoNagAfter - 2 {
 			s.StepDone(agent.Step{})
@@ -1232,7 +1233,7 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	sa.ReasoningDelta("pondering")
 	sa.TextDelta("answer")
 	sa.ToolCallStart("t1", "shell", "ls")
-	sa.ToolCallEnd("t1", "shell", true, "", "")
+	sa.ToolCallEnd("t1", "shell", out(""), "")
 	sa.TextDelta("done")
 	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
 
@@ -1566,6 +1567,40 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	}
 }
 
+// TestProviderModelNumbers: a model entry's numeric fields are checked at the
+// boundary, so a quoted one is refused here instead of reading as 0 and
+// leaving /health to blame a field the user did set.
+func TestProviderModelNumbers(t *testing.T) {
+	for _, c := range []struct {
+		name, models string
+		want         int64
+		err          string
+	}{
+		{name: "numbers", models: `{ id = "m", context_window = 200000 }`, want: 200000},
+		{name: "a quoted number", models: `{ id = "m", context_window = "200000" }`, err: "models[1].context_window must be a number"},
+		{name: "a quoted cost", models: `{ id = "m", cost_per_1m_in = "1.5" }`, err: "models[1].cost_per_1m_in must be a number"},
+		{name: "a missing one", models: `{ id = "m" }`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			err := r.ExecuteChunk(t.Context(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { `+c.models+` } })`, "p.lua", lua.OriginUser)
+			if c.err != "" {
+				if err == nil || !strings.Contains(err.Error(), c.err) {
+					t.Fatalf("quoted field: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			spec, ok := h.Providers.Lookup("a")
+			if !ok || spec.Models[0].ContextWindow != c.want {
+				t.Fatalf("context window = %+v, want %d", spec.Models, c.want)
+			}
+		})
+	}
+}
+
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
 // not models.chat; compaction and a subagent without a model follow
@@ -1829,7 +1864,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 	} {
 		base := c.rows()
 		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
-		c.hooks.ToolCallEnd("c0", "read", true, "", "")
+		c.hooks.ToolCallEnd("c0", "read", out(""), "")
 		c.hooks.TextDelta("before ")
 		c.hooks.StepStart()
 		// the stream breaks while a call's arguments stream in
@@ -2301,7 +2336,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		hk.ToolCallPending("t1", "grep")
 		hk.ReasoningDelta("ning.")
 		hk.ToolCallStart("t1", "grep", `{"pattern":"x"}`)
-		hk.ToolCallEnd("t1", "grep", true, "", "")
+		hk.ToolCallEnd("t1", "grep", out(""), "")
 		hk.ReasoningDelta("next")
 		hk.TurnDone(nil, fantasy.Usage{})
 		if got := rowsOf(h.Session().Transcript); got != "reasoning:pinning. | tool:x | reasoning:next" {

@@ -166,7 +166,8 @@ function os.clock() end
 function os.time(t) end
 
 --- The date as text in a strftime `format` ("%c" by default; a leading "!"
---- means UTC), or as a table with "*t".
+--- means UTC; the specifiers are %Y, %m, %d, %H, %M, %S, %p, %c, %x, %X and
+--- %%, and any other raises), or as a table with "*t".
 ---@overload fun(format: "*t"|"!*t", time?: integer): { year: integer, month: integer, day: integer, hour: integer, min: integer, sec: integer, wday: integer, yday: integer, isdst: boolean }
 ---@param format? string
 ---@param time? integer Unix seconds; now by default.
@@ -743,6 +744,7 @@ function zemi.event.stats() end
 ---| "wait"       # its arguments stream, or a serial call ahead of it runs
 ---| "run"
 ---| "ok"
+---| "warn"       # it finished, but something it ran failed
 ---| "err"
 ---| "stopped"    # the user denied, dismissed or interrupted it
 ---| "bg"         # its work goes on in the background (a job, a background agent)
@@ -826,6 +828,7 @@ function zemi.event.stats() end
 ---@alias zemi.RunStatus
 ---| "running"
 ---| "done"
+---| "warn"
 ---| "failed"
 ---| "cancelled"
 
@@ -883,7 +886,7 @@ function zemi.event.stats() end
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
----@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
+---@field busy? { label: string, elapsed: number, cancellable: boolean }[] Every job the user waits on that is not a turn (/btw, a plugin install, the reflector, a recap, compaction), newest first: each one's label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer
 ---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
 ---@field workflows_running integer Workflows of this session still running, paused ones included.
@@ -1378,6 +1381,7 @@ function zemi.ui.width(text) end
 ---@class zemi.ui.marks
 ---@field spin zemi.Mark running: draw it with `effect = "spin"` so the UI steps it
 ---@field ok zemi.Mark finished
+---@field warn zemi.Mark finished, but something it ran failed
 ---@field err zemi.Mark failed
 ---@field stop zemi.Mark stopped by the user
 ---@field bg zemi.Mark going on in the background
@@ -1393,6 +1397,7 @@ zemi.ui.marks = {}
 ---@alias zemi.MarkKind
 ---| "spin"
 ---| "ok"
+---| "warn"
 ---| "err"
 ---| "stop"
 ---| "bg"

@@ -154,7 +154,7 @@ func TestViewedRunThinksLive(t *testing.T) {
 	if rows := run.transcript(); len(rows) != 3 || rows[1].Text != "pondering the cause I see" {
 		t.Fatalf("rows = %+v, want the late chunk joined", run.transcript())
 	}
-	hk.ToolCallEnd("c1", "read", true, "package a", "")
+	hk.ToolCallEnd("c1", "read", out("package a"), "")
 	hk.TextDelta("it reads a.go")
 	run.finish(h, nil)
 	rows := run.transcript()
