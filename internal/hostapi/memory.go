@@ -899,7 +899,7 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 	}
 	return []any{
 		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID + " --yes"},
-		map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
+		map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
 	}
 }
 

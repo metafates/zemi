@@ -1887,7 +1887,7 @@ func (h *Host) workflowsOverlay() Overlay {
 		}
 		if w.Source != lua.OriginBuiltin {
 			path = perm.TildePath(w.Path)
-			actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "workflows open " + w.Name})
+			actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "workflows open " + w.Name})
 		}
 		items = append(items, map[string]any{
 			"text":    w.Name,

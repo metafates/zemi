@@ -220,3 +220,7 @@ func luaLiteral(v any) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+// openInEditorLabel is the row action every list zemi keeps of files you can
+// edit offers: the verb's own open command puts it in the editor.
+const openInEditorLabel = "Open in the editor"

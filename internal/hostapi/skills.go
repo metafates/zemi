@@ -597,7 +597,7 @@ func (h *Host) skillItems() []any {
 		}
 		actions = append(actions, map[string]any{"text": "Read it", "hotkey": "r", "detail": body})
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
-			actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name})
+			actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "skills open " + s.Name})
 		}
 		item["actions"] = append(actions, map[string]any{"text": "Use now", "hotkey": "u", "fill": use})
 		if s.Source == skill.Recipe {
