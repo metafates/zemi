@@ -124,11 +124,11 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		kinds := make([]string, 0, len(ops))
+		kinds := make([]OpKind, 0, len(ops))
 		for _, op := range ops {
 			kinds = append(kinds, op.Op)
 		}
-		if !slices.Equal(kinds, []string{OpAdd, OpAdd, OpSupersede, OpAdd, OpForget, OpForget}) {
+		if !slices.Equal(kinds, []OpKind{OpAdd, OpAdd, OpSupersede, OpAdd, OpForget, OpForget}) {
 			t.Fatalf("op kinds = %v", kinds)
 		}
 	})
@@ -218,11 +218,11 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		kinds := make([]string, 0, len(ops))
+		kinds := make([]OpKind, 0, len(ops))
 		for _, op := range ops {
 			kinds = append(kinds, op.Op)
 		}
-		if !slices.Equal(kinds, []string{OpAdd, OpAdd, OpForget, OpForget}) {
+		if !slices.Equal(kinds, []OpKind{OpAdd, OpAdd, OpForget, OpForget}) {
 			t.Fatalf("op kinds = %v", kinds)
 		}
 	})

@@ -13,17 +13,20 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// OpKind is what one memory_ops row did (DESIGN §7).
+type OpKind string
+
 // Op kinds (DESIGN §7).
 const (
-	OpAdd       = "add"
-	OpSupersede = "supersede"
-	OpForget    = "forget"
-	OpEdit      = "edit"
-	OpWrite     = "write"
-	OpMoveOut   = "move-out"
-	OpMoveIn    = "move-in"
-	OpArchive   = "archive"
-	OpImport    = "import"
+	OpAdd       OpKind = "add"
+	OpSupersede OpKind = "supersede"
+	OpForget    OpKind = "forget"
+	OpEdit      OpKind = "edit"
+	OpWrite     OpKind = "write"
+	OpMoveOut   OpKind = "move-out"
+	OpMoveIn    OpKind = "move-in"
+	OpArchive   OpKind = "archive"
+	OpImport    OpKind = "import"
 )
 
 // ContentCap caps a brain file's content and the prior bytes a write op
@@ -35,7 +38,7 @@ const ContentCap = 32 << 10
 // text, hash and origin; write ops carry the replaced brain file's prior
 // bytes. Import entries are the permanent tombstones.
 type Op struct {
-	Op           string
+	Op           OpKind
 	ID           string // the memory id; the brain file's path for a write op
 	TS           int64  // millis; zero means now
 	Text         string // the line text this op wrote or removed

@@ -123,7 +123,7 @@ func TestRewindBrain(t *testing.T) {
 	}
 	// every removal wrote its forget entry
 	ops, _ := lg.Session(sid, 0, at.Add(time.Minute).UnixMilli())
-	kinds := map[string]int{}
+	kinds := map[brain.OpKind]int{}
 	for _, op := range ops {
 		kinds[op.Op]++
 	}
