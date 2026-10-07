@@ -102,7 +102,9 @@ func (d Dirs) Ensure() error {
 	}
 	init := filepath.Join(d.ConfigHome, "init.lua")
 	if _, err := os.Stat(init); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(init, []byte(StarterInit), 0o600); err != nil {
+		// atomic, as every other config write is: a half-written init.lua is a
+		// boot error nobody asked for
+		if err := WriteFileAtomic(init, []byte(StarterInit), 0o600); err != nil {
 			return fmt.Errorf("create %s: %w", init, err)
 		}
 	}
