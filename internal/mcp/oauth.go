@@ -100,7 +100,7 @@ func (a *Auth) save(t *Token) error {
 	if err != nil {
 		return err
 	}
-	return config.WriteFileAtomic(a.Path, b, 0o600)
+	return config.WriteFileAtomic(a.Path, b)
 }
 
 // Logout forgets the grant.

@@ -7,7 +7,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -104,7 +103,7 @@ func (d Dirs) Ensure() error {
 	if _, err := os.Stat(init); errors.Is(err, os.ErrNotExist) {
 		// atomic, as every other config write is: a half-written init.lua is a
 		// boot error nobody asked for
-		if err := WriteFileAtomic(init, []byte(StarterInit), 0o600); err != nil {
+		if err := WriteFileAtomic(init, []byte(StarterInit)); err != nil {
 			return fmt.Errorf("create %s: %w", init, err)
 		}
 	}
@@ -272,7 +271,7 @@ func (d Dirs) PluginsRoot() string {
 // WriteFileAtomic replaces path with data through a temp file in its
 // directory, made owner-only when missing, so a reader or a crash never sees
 // half a file and two zemi windows writing at once never share a temp file.
-func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
+func WriteFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -282,7 +281,7 @@ func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
 	}
 	defer os.Remove(f.Name()) // names nothing once renamed
 	_, err = f.Write(data)
-	if err := errors.Join(err, f.Chmod(mode), f.Sync(), f.Close()); err != nil {
+	if err := errors.Join(err, f.Chmod(0o600), f.Sync(), f.Close()); err != nil {
 		return err
 	}
 	return os.Rename(f.Name(), path)
@@ -313,7 +312,7 @@ func (d Dirs) WriteTrust(m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(filepath.Join(d.StateHome, "trust.json"), data, 0o600)
+	return WriteFileAtomic(filepath.Join(d.StateHome, "trust.json"), data)
 }
 
 // TrustRoot is the directory a trust decision belongs to: the repository

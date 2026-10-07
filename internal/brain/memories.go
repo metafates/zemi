@@ -454,7 +454,7 @@ func writeMemories(p Partition, raw []byte, next []Line) error {
 	if cur, err := readSafe(p, MemFile); err == nil && bytes.Equal(data, cur) {
 		return nil
 	}
-	return config.WriteFileAtomic(p.memPath(), data, 0o600)
+	return config.WriteFileAtomic(p.memPath(), data)
 }
 
 // removeLine takes the line at i out of lines and replaces the file with
@@ -524,7 +524,7 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 	if err := lg.Insert(op); err != nil {
 		return err
 	}
-	return config.WriteFileAtomic(path, content, 0o600)
+	return config.WriteFileAtomic(path, content)
 }
 
 // Locate resolves an id over memories.md and the ledger (DESIGN §7): the live

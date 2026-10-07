@@ -1409,7 +1409,7 @@ func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
 			if !applied {
 				clean = string(prior)
 			}
-		} else if err := config.WriteFileAtomic(path, []byte(clean), 0o600); err != nil {
+		} else if err := config.WriteFileAtomic(path, []byte(clean)); err != nil {
 			clean = string(prior)
 			note = "could not be cleaned: " + err.Error()
 		} else {
@@ -1457,7 +1457,7 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 		}
 		ids = append(ids, line.ID)
 	}
-	if err := config.WriteFileAtomic(path, clean, 0o600); err != nil {
+	if err := config.WriteFileAtomic(path, clean); err != nil {
 		return "could not be cleaned: " + err.Error(), false
 	}
 	if len(ids) > 0 {

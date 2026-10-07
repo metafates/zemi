@@ -484,7 +484,7 @@ func setDisabled(d config.Dirs, name string, off bool) error {
 	for _, n := range slices.Sorted(maps.Keys(set)) {
 		b.WriteString(n + "\n")
 	}
-	return config.WriteFileAtomic(filepath.Join(d.PluginsRoot(), "disabled"), []byte(b.String()), 0o600)
+	return config.WriteFileAtomic(filepath.Join(d.PluginsRoot(), "disabled"), []byte(b.String()))
 }
 
 // git runs git on a plugin repository, blanking the user's filter drivers too.

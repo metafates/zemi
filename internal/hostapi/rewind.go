@@ -393,7 +393,7 @@ func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain
 				err = nil
 			}
 		} else {
-			err = config.WriteFileAtomic(path, op.Prior, 0o600)
+			err = config.WriteFileAtomic(path, op.Prior)
 		}
 		if err != nil {
 			h.Log.Warn("brain file not rewound", "origin", "rewind", "path", path, "error", err)
