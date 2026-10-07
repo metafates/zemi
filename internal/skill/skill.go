@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/metafates/zemi/internal/learn"
 )
 
 // Source is where a skill was found (§10.5).
@@ -97,8 +99,8 @@ func Parse(dir string, source Source) (Skill, error) {
 	}
 	desc := fm.Description
 	var cut error
-	if runes := []rune(desc); len(runes) > MaxDescriptionRunes {
-		desc = string(runes[:MaxDescriptionRunes])
+	if short := learn.Truncate(desc, MaxDescriptionRunes); short != desc {
+		desc = short
 		cut = fmt.Errorf("skills: %s: %w to %d runes", sk.Name, ErrDescriptionCut, MaxDescriptionRunes)
 	}
 	sk.Description = desc
