@@ -48,11 +48,11 @@ Also: `modernc.org/sqlite` (pure-Go SQLite, keeps
 EXISTS` stamped with `PRAGMA user_version`; no migrations before the
 first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
-formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
+formatter that marks glamour's own margins), `charmbracelet/openai-go` (the SDK options an `OPENAI` provider's `body` sets, §6.3), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
 (sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
-already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` (the `fetch` tool: the article
+already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` and `golang.org/x/net/html` (the `fetch` tool: the article
 out of a page, as markdown the model can read), `mvdan.cc/sh/v3` (its
 `syntax` parser alone reads the model's shell commands, §9), `golang.org/x/text`
 (the case folding APFS does, for paths and program names),
@@ -323,8 +323,9 @@ Directories (XDG):
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)
   plans/<session id>.md   plans approved from a read-only agent
+  types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
-  zemi.db                 global store (user memory and its proposals, skills, kv)
+  zemi.db                 global store (proposals, the user partition's memory ledger, skills, kv)
   scratch/<session id>/   per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
@@ -1072,7 +1073,14 @@ like a background agent's report, and a failed run's result says how to
 rerun it. A call without `background` waits for its run, and the user's own
 message hands the run off: the call answers with the background text and the
 result arrives as a message like that one, since a call cannot hold the turn
-past a message the user sent (§4). `agent`'s `schema`
+past a message the user sent (§4). A handed-off run keeps its row, revised
+when the run ends - a run that finished with a failed agent inside it draws
+warn, a stopped one stop, a run that died err - and the outcome is stored with
+the session, so a restart draws the mark it ended with, not done. A run
+already under way can be waited on instead: the `workflow` tool's `wait`
+action and the `agent` tool's `wait` beside `send_to` block until that run
+ends, esc, or the user types, the row naming the run waited on, and the report
+still arrives as a message rather than in the call's result. `agent`'s `schema`
 asks in the task for a JSON object and the reply's outermost `{...}` is
 validated, asking again at most twice; the script gets a table. A run
 writes its script and a journal (a header, one line per agent that ended,
@@ -1254,7 +1262,9 @@ open, which its `open` field tells the model to decide), `plan` (shows the plan 
 read-only agent the agent and mode active before it are remembered at its start,
 and approval returns to them - the turn ends there because the read-only
 pipeline cannot implement, and its follow-up is a fresh send as the
-restored agent under the same claim; a read-only run that ends in plain
+restored agent under the same claim; Save, don't start approves it with no
+handoff, saving the plan and leaving the turn ended until the user says when; a
+read-only run that ends in plain
 text instead of the `question` or `plan` tool is told so once, since a
 question or a report is no plan to approve),
 `web_search` (DuckDuckGo Lite),
@@ -1454,7 +1464,8 @@ UI extensibility contract:
   toward `Normal`, and
   `effect = "spin"` steps a segment's first glyph through the running
   spinner; `ui.animations = false` keeps both static. The state marks
-  (`zemi.ui.marks`: running, done, failed, stopped, waiting, ...) are
+  (`zemi.ui.marks`: running, done, warn for a run that finished with a failed
+  agent inside it, failed, stopped, waiting, ...) are
   one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id and the widget spec
   carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
@@ -1637,7 +1648,8 @@ origins that may not register.
 
 ```
 sessions(id, parent_id, title, profile, created_at, updated_at,
-         prompt_tokens, completion_tokens, cost)
+         prompt_tokens, completion_tokens, cache_read_tokens,
+         cache_billed_tokens, cost, run_status)                    -- run_status: how the session's last run ended
 messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool and turn telemetry,
                                                                 -- compaction tails, goal events
 todos(id, session_id, content, status, active_form, ord, created_at)
@@ -1647,7 +1659,9 @@ memory(id, scope, text, quote, provenance_session_id,
 memory_ops(op, id, ts, text, prior_text, quote, session_id, hash,
            superseded_by, scope, origin, prior_bytes,
            prior_truncated, prior_existed, created_at, updated_at)
-                                                               -- the audit ledger, one per scope's DB
+                                                               -- the audit ledger: one per scope's DB, part of
+                                                               -- the store's own schema, so it is created and
+                                                               -- version-stamped with the rest
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, payload, created_at)                              -- pending, until reviewed
@@ -1739,7 +1753,8 @@ rides the `memories.md` line and its ledger entries.
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
-  `waiting`, `headless` and `agent.retry`/`compacting`/`checking_goal`),
+  `waiting`, `headless`, `busy` (its newest entry, the job the user waits on)
+  and `agent.retry`/`compacting`/`checking_goal`),
   the statusline below. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
@@ -1799,7 +1814,7 @@ rides the `memories.md` line and its ledger entries.
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
   position. Go screens key every action by its verb's initial, one verb per
   letter on a screen: `r` restart, resume or run, `a` ask or run with
-  arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
+  arguments, `s` sign in or stop, `e` enable, `d` disable, `n` rename, `o` open, `u`
   update or use now, `c` change, and `x` for what cannot be undone (delete,
   or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
   action per check takes its label's initial. An item or action with
@@ -1816,8 +1831,8 @@ rides the `memories.md` line and its ledger entries.
   from the list too, on the selected row, as its detail's button would (an
   action with a view of its own opens it over the list); a danger one opens
   the detail on it armed, so the view is its confirmation. A Go screen
-  declares the action keys its rows offer (`/sessions`' `r resume · x
-  delete`, `/projects`' `s switch · x delete`) as list keys with no command,
+  declares the action keys its rows offer (`/sessions`' `r resume · n
+  rename · x delete`, `/projects`' `s switch · x delete`) as list keys with no command,
   so its footer names them whatever row is selected; on a row without the
   action (the current session) the key toasts the row's detail, which says
   why. A destructive
@@ -2041,6 +2056,14 @@ rides the `memories.md` line and its ledger entries.
   exchange carries its readout: how long its turn ran, its tokens out and the
   clock; a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).
+  Under the transcript the chat draws what is still pending as one static row,
+  with no spinner and no clock, so an hour-long job never costs a frame: every
+  handed-off agent or workflow, background job and `Host.Busy` entry (a
+  compaction, the idle recap, a plugin install) by name, counted when several
+  are under way. The todo block follows it, in the order the items were
+  written: the header's meter and a window of at most 12 rows (a third of the
+  chat) follow the item in progress, saying `… N more todos` under the window
+  and `… N more todos above` when it starts past it.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
@@ -2084,7 +2107,9 @@ rides the `memories.md` line and its ledger entries.
   init.lua lines, which are wider: a config allow skips the secret re-ask the
   answer keeps, so the detail says so, and a network answer copies none),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
-  (list; `r` resumes the selected session, `x` opens its Delete, enter offers both), `/resume [id]` (latest without an id; history and
+  (list; `r` resumes the selected session, `n` renames it, `x` opens its
+  Delete, enter offers both), `/rename [title]` (names the session; without a
+  title, the same one-line input the picker's `n` opens), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/goal <condition>` (work until
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
