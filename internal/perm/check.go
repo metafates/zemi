@@ -148,9 +148,9 @@ func stepRunners(f []string) []string {
 }
 
 // Ruled reports an outcome a rule decided: a deny, ask or allow rule, or an
-// allow a not_match excluded.
+// ask a not_match exclusion forced.
 func (o Outcome) Ruled() bool {
-	return o.Rule != nil || strings.Contains(o.Reason, "excluded by not_match")
+	return o.Rule != nil || o.notMatched
 }
 
 // expandsToDotDot reports a path word the shell may still turn into a climb:

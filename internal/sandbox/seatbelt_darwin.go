@@ -167,7 +167,7 @@ func profile(p Policy) (string, []string) {
 	var parents []string
 	for _, w := range slices.Concat(p.Write, p.Read, p.List) {
 		for d := filepath.Dir(w); ; d = filepath.Dir(d) {
-			if slices.ContainsFunc(p.Hide, func(h string) bool { return within(d, h) }) {
+			if slices.ContainsFunc(p.Hide, func(h string) bool { _, in := perm.Under(h, d); return in }) {
 				parents = append(parents, d)
 			}
 			if d == "/" || d == "." {
@@ -182,7 +182,7 @@ func profile(p Policy) (string, []string) {
 	// renaming a root or a protected path's parent would move the protection away
 	keep := slices.Clone(p.Write)
 	for _, pr := range p.Protect {
-		for d := filepath.Dir(pr); slices.ContainsFunc(p.Write, func(w string) bool { return within(d, w) }); d = filepath.Dir(d) {
+		for d := filepath.Dir(pr); slices.ContainsFunc(p.Write, func(w string) bool { _, in := perm.Under(w, d); return in }); d = filepath.Dir(d) {
 			keep = append(keep, d)
 			if d == "/" {
 				break
@@ -204,12 +204,16 @@ func profile(p Policy) (string, []string) {
 	slices.SortStableFunc(roots, func(a, b string) int { return len(a) - len(b) })
 	for i, w := range roots {
 		hole := slices.ContainsFunc(p.Protect, func(pr string) bool {
-			return within(w, pr) && slices.ContainsFunc(roots, func(o string) bool { return o != w && within(pr, o) })
+			_, in := perm.Under(pr, w)
+			return in && slices.ContainsFunc(roots, func(o string) bool {
+				_, nested := perm.Under(o, pr)
+				return o != w && nested
+			})
 		})
 		if hole {
 			fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", param("NESTED", i, w))
 		}
-		if hole || slices.ContainsFunc(p.Protect, func(pr string) bool { return pr != w && within(pr, w) }) {
+		if hole || slices.ContainsFunc(p.Protect, func(pr string) bool { _, in := perm.Under(w, pr); return pr != w && in }) {
 			fmt.Fprintf(&b, "(deny file-write* (require-all (subpath %s) %s))\n", param("NESTED", i, w), nestedShapes(w))
 		}
 	}
@@ -224,7 +228,7 @@ func profile(p Policy) (string, []string) {
 		fmt.Fprintf(&b, "(deny file-write* (literal %s) (regex #\"^%s/(%s)(/|$)\" #\"^%s/(%s)$\"))\n", name, q, gitCode, q, gitParents)
 		fmt.Fprintf(&b, "(deny file-write-create (require-all (subpath %s) (vnode-type SYMLINK)))\n", name)
 		for j, pr := range p.Protect {
-			if pr != g && within(pr, g) {
+			if _, in := perm.Under(g, pr); pr != g && in {
 				fmt.Fprintf(&b, "(deny file-write* (subpath %s))\n", param("GITPROTECT", j, pr))
 			}
 		}

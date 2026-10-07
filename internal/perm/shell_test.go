@@ -18,34 +18,40 @@ import (
 // for a shell runs the real one, so the bodies it hands on run too.
 func TestRowsCoverShells(t *testing.T) {
 	t.Parallel()
-	cmds := []string{
-		"git log # \\\nrm -rf a",
-		"cat <<'EOF' | sh\nrm -rf d\nEOF",
-		`echo "$(rm e)" "$(echo "f $(rm f)")"`,
-		"echo `echo \\`rm g\\``",
-		`x="$(case a in a) rm h ;; esac)"`,
-		"echo $((1<<2))\nrm i",
-		"cat <<EOF\n$(rm j)\nEOF",
-		"cat <<'EOF'\n$(rm k)\nEOF",
-		"echo $(true)#'\nrm l #'",
-		"if grep -q x y; then ls; elif false; then :; else cat z; fi",
-		"for f in a b; do rm \"$f\"; done; while false; do rm m; done",
-		"f() { rm n; }; f",
-		"D=./build/o; rm -rf $D",
-		"sh -c 'rm p && echo q' && bash -c \"git push\"",
-		"xargs rm < list; find . -exec rm {} +",
-		"(cd sub && make) | tee log >/dev/null",
-		"sudo -u root rm s; timeout 5 rm t",
-		"sh <<EOF\necho \\`rm -rf z\\`\nEOF",
-		"alias l=rm\nl -rf aa",
+	cmds := []struct {
+		cmd string
+		// skip marks a row the POSIX parse cannot vouch for: the shell reads
+		// it otherwise, so the argv it runs is no row's.
+		skip bool
+	}{
+		{cmd: "git log # \\\nrm -rf a"},
+		{cmd: "cat <<'EOF' | sh\nrm -rf d\nEOF"},
+		{cmd: `echo "$(rm e)" "$(echo "f $(rm f)")"`},
+		{cmd: "echo `echo \\`rm g\\``"},
+		{cmd: `x="$(case a in a) rm h ;; esac)"`},
+		{cmd: "echo $((1<<2))\nrm i"},
+		{cmd: "cat <<EOF\n$(rm j)\nEOF"},
+		{cmd: "cat <<'EOF'\n$(rm k)\nEOF"},
+		{cmd: "echo $(true)#'\nrm l #'"},
+		{cmd: "if grep -q x y; then ls; elif false; then :; else cat z; fi"},
+		{cmd: "for f in a b; do rm \"$f\"; done; while false; do rm m; done"},
+		{cmd: "f() { rm n; }; f"},
+		{cmd: "D=./build/o; rm -rf $D"},
+		{cmd: "sh -c 'rm p && echo q' && bash -c \"git push\""},
+		{cmd: "xargs rm < list; find . -exec rm {} +"},
+		{cmd: "(cd sub && make) | tee log >/dev/null"},
+		{cmd: "sudo -u root rm s; timeout 5 rm t"},
+		{cmd: "sh <<EOF\necho \\`rm -rf z\\`\nEOF"},
+		// sh expands the alias in the line after it, so it runs rm
+		{cmd: "alias l=rm\nl -rf aa", skip: true},
 		// bash 3.2 ends the $( ) at the body's ), which proc.Shell does not
-		"echo $(cat <<EOF\n) ; rm ab\nEOF\n)",
-		"echo \"$(cat <<EOF\n) \" ; rm ac ; \"\nEOF\n)\"",
+		{cmd: "echo $(cat <<EOF\n) ; rm ab\nEOF\n)"},
+		{cmd: "echo \"$(cat <<EOF\n) \" ; rm ac ; \"\nEOF\n)\""},
 	}
 	stubs := t.TempDir()
 	names := map[string]bool{}
 	for _, c := range cmds {
-		for _, n := range regexp.MustCompile(`[a-z][a-z0-9-]*`).FindAllString(c, -1) {
+		for _, n := range regexp.MustCompile(`[a-z][a-z0-9-]*`).FindAllString(c.cmd, -1) {
 			names[n] = true
 		}
 	}
@@ -68,16 +74,25 @@ func TestRowsCoverShells(t *testing.T) {
 	for _, c := range cmds {
 		dir := t.TempDir()
 		log := filepath.Join(dir, "log")
-		cmd := exec.Command(sh, "-c", c)
+		cmd := exec.Command(sh, "-c", c.cmd)
 		cmd.Dir, cmd.Env = dir, []string{"PATH=" + stubs, "HOME=" + dir, "ZLOG=" + log}
 		cmd.Run()
 		b, _ := os.ReadFile(log)
-		n := Normalize(c)
+		n := Normalize(c.cmd)
+		if !c.skip && (n.doubt != "" || n.Fail != "") {
+			// the row's own parse is clean, or nothing below it, and no other
+			// row, is checked at all
+			t.Errorf("%q: parse doubt %q fail %q; mark the row skip if the shell reads it otherwise", c.cmd, n.doubt, n.Fail)
+			continue
+		}
+		if c.skip {
+			continue
+		}
 		for rec := range strings.SplitSeq(strings.TrimSuffix(string(b), "\x1e"), "\x1e") {
 			argv := strings.Split(strings.TrimSuffix(rec, "\x1f"), "\x1f")
 			// a call that fails never runs
-			if rec != "" && n.doubt == "" && n.Fail == "" && !slices.ContainsFunc(n.rows, func(r row) bool { return runs(r.args, argv) }) {
-				t.Errorf("%s ran %q, which no row of %q names: %v", sh, argv, c, n.rows)
+			if rec != "" && !slices.ContainsFunc(n.rows, func(r row) bool { return runs(r.args, argv) }) {
+				t.Errorf("%s ran %q, which no row of %q names: %v", sh, argv, c.cmd, n.rows)
 			}
 		}
 	}

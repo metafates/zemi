@@ -594,6 +594,7 @@ func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 		{"nope/../L/x", filepath.Join(out, "sub", "x")},
 		{"gone", filepath.Join(out, "new")},
 		{"loop1/x", ""},
+		{"", ""}, // an empty path names nothing, not the working directory
 	} {
 		if got := RealPath(c.in); got != c.want {
 			t.Errorf("RealPath(%q) = %q, want %q", c.in, got, c.want)
