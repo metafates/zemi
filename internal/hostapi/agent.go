@@ -29,6 +29,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -369,7 +370,7 @@ func (h *Host) webOff() bool {
 		return false
 	}
 	def := h.permModeDef()
-	if def.Base == "yolo" || def.Decide != nil {
+	if def.Base == config.PermModeYolo || def.Decide != nil {
 		return false
 	}
 	allows := func(r perm.Rule) bool { return r.Decision == perm.Allow && strings.HasPrefix(r.Subject, "net.") }
@@ -2675,7 +2676,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			// under yolo. Otherwise yolo allows everything and runs unconfined.
 			// A policy with no backend fails every wrap, so without one the
 			// planner keeps only Check's denies and asks.
-			if !h.sandboxLive() || !readOnly && h.permModeDef().Base == "yolo" {
+			if !h.sandboxLive() || !readOnly && h.permModeDef().Base == config.PermModeYolo {
 				return nil
 			}
 			p := h.sandboxPolicy(readOnly, pad)

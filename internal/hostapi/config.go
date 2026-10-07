@@ -197,7 +197,7 @@ func (h *Host) writeSetting(path string, v any) ([]config.WatchFired, error) {
 // project, allowing what the rules do not deny.
 func (h *Host) keepPick(path string) {
 	if h.GlobalDB == nil || h.RT.Booting() || !h.KeepPicks.Load() ||
-		path == "permissions.mode" && h.permModeDef().Base == "yolo" {
+		path == "permissions.mode" && h.permModeDef().Base == config.PermModeYolo {
 		return
 	}
 	live, _ := h.Settings.Get(path)
@@ -240,7 +240,7 @@ func (h *Host) loadPicks() {
 		if err == nil {
 			v, err = h.Settings.Check(path, v)
 		}
-		if err == nil && path == "permissions.mode" && v == "yolo" {
+		if err == nil && path == "permissions.mode" && v == config.PermModeYolo {
 			err = errors.New("yolo is never kept")
 		}
 		if err == nil {

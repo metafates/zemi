@@ -45,8 +45,8 @@ type PermModeDef struct {
 }
 
 var builtinModes = []PermModeDef{
-	{Name: "auto", Base: "auto", Description: config.PermModeAutoDesc},
-	{Name: "yolo", Base: "yolo", Description: config.PermModeYoloDesc},
+	{Name: config.PermModeAuto, Base: config.PermModeAuto, Description: config.PermModeAutoDesc},
+	{Name: config.PermModeYolo, Base: config.PermModeYolo, Description: config.PermModeYoloDesc},
 }
 
 // modeReg is the mode list in cycle order: the builtins until user config
@@ -265,7 +265,7 @@ func (h *Host) permModeDef() PermModeDef {
 		return list[i]
 	}
 	for _, d := range list {
-		if d.Base == "auto" {
+		if d.Base == config.PermModeAuto {
 			return d
 		}
 	}
