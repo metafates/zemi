@@ -3,6 +3,7 @@ package hostapi
 import (
 	"encoding/json/v2"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -115,6 +116,55 @@ func TestPlanApprovalSwitchesBack(t *testing.T) {
 	parts, _ := json.Marshal(fantasy.NewUserMessage(got), json.Deterministic(true))
 	if _, ok := userText(&store.Message{Role: "user", PartsJSON: string(parts)}); ok {
 		t.Fatal("handoff would be recalled from the store as typed input")
+	}
+}
+
+// TestPlanHold: the plan file is written for an approval only, so a dismissal
+// leaves the session's saved plan alone, and a hold puts the planner's
+// replacement back without recording the implementation handoff.
+func TestPlanHold(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
+	h.SetUIHooks(ui)
+	sid := seedSession(t, h)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := h.approvePlan("# The first plan"); !ok || v.Path == "" {
+		t.Fatalf("approve: %+v ok=%v", v, ok)
+	}
+	if h.takePlanApproved() != implementNow {
+		t.Fatal("a plain approval recorded no handoff")
+	}
+	path := h.planPath(sid)
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// a dismissed plan is not written: it would overwrite the saved one
+	ui.planOK = false
+	ui.planVerdict = tools.PlanVerdict{}
+	if _, ok := h.approvePlan("# A plan the user dismissed"); ok {
+		t.Fatal("a dismissed plan was approved")
+	}
+	if now, err := os.ReadFile(path); err != nil || string(now) != string(saved) {
+		t.Fatalf("the saved plan moved: %q, %v", now, err)
+	}
+	// a hold saves and restores, and starts nothing
+	ui.planOK = true
+	ui.planVerdict = tools.PlanVerdict{Approved: true, Hold: true}
+	v, ok := h.approvePlan("# The plan to keep")
+	if !ok || !v.Approved || !v.Hold || v.Path == "" {
+		t.Fatalf("hold: %+v ok=%v", v, ok)
+	}
+	if got := h.Settings.Str("agent.profile"); got != "default" {
+		t.Fatalf("profile after a hold = %q", got)
+	}
+	if h.takePlanApproved() != "" {
+		t.Fatal("a hold recorded the implementation handoff")
+	}
+	if now, err := os.ReadFile(path); err != nil || !strings.Contains(string(now), "The plan to keep") {
+		t.Fatalf("the held plan was not saved: %q, %v", now, err)
 	}
 }
 
