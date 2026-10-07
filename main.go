@@ -36,7 +36,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sandbox"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -438,14 +437,13 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			// the row action the sessions picker runs: sessions rename <id> [title]
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "rename "); ok {
 				id, title, _ := strings.Cut(strings.TrimSpace(rest), " ")
-				title = strings.TrimSpace(title)
-				if err := h.RenameSession(id, title); err != nil {
-					if errors.Is(err, store.ErrNotFound) {
-						return fmt.Errorf("no session %q in this project; /sessions lists them", id)
-					}
+				// an empty title opens the prompt itself, so nothing is renamed yet
+				if err := h.RenameSession(id, strings.TrimSpace(title)); err != nil {
 					return err
 				}
-				h.Notify(slog.LevelInfo, "Session renamed", title)
+				if title = strings.TrimSpace(title); title != "" {
+					h.Notify(slog.LevelInfo, "Session renamed", title)
+				}
 				return nil
 			}
 			err := h.OpenSessions("")
