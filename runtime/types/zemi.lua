@@ -207,7 +207,7 @@ function debug.traceback(msg) end
 
 --- The regions the default layout draws, plus "exit", which no layout draws: its
 --- widgets print once to the shell after zemi quits, foreground colors only, and code
---- below user config may not add one. A layout may draw any other name.
+--- below builtin may not add one. A layout may draw any other name.
 ---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|"exit"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
@@ -321,7 +321,7 @@ function zemi.config.schema() end
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
 ---@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
----@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with. User config only.
+---@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with. User or builtin origin only.
 
 ---@class zemi.Keymap
 ---@field key string
@@ -387,12 +387,12 @@ zemi.keymap = {}
 --- those. enter, esc, tab, shift+tab, space and backspace raise.
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
---- zemi.composer.insert <text> (these user config only),
+--- zemi.composer.insert <text> (these user or builtin origin only),
 --- zemi.ui.help, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
 --- zemi.ui.focus.set [id],
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
---- and zemi.agent.profile.{next,prev} (user config only).
+--- and zemi.agent.profile.{next,prev} (user or builtin origin only).
 ---
 --- ```lua
 --- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
@@ -678,8 +678,9 @@ function zemi.event.on(name, fn, opts) end
 function zemi.event.off(id) end
 
 --- Emit a `user.*` event, the only names Lua may emit from any origin.
---- Handlers get a copy made the way JSON copies: a table that is not a
---- sequence arrives with string keys (`{ [7] = "x" }` reads as `ev["7"]`).
+--- Handlers get a copy made the way JSON copies: every key arrives as a
+--- string (`{ [7] = "x" }` reads as `ev["7"]`). A sequence payload raises,
+--- since it carries no keys; send a table with string keys.
 ---@param name string
 ---@param payload? table
 function zemi.event.emit(name, payload) end
@@ -1704,6 +1705,7 @@ function zemi.model.pick(role) end
 ---@field name string
 ---@field description string
 ---@field source zemi.Origin
+---@field model string The file's `model:` (a role such as "agents" or a "provider/model"); "" when it omits one, which runs the "agents" role.
 
 ---@class zemi.AgentRunSpec
 ---@field prompt string
@@ -1754,7 +1756,7 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. User config only; a reload cancels it.
+--- Run a subagent off the interpreter. User or builtin origin only; a reload cancels it.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -2051,7 +2053,8 @@ function zemi.permission.rule.list() end
 zemi.permission.mode = {}
 
 --- Define a permission mode, or replace the one of that name: a lowercase
---- letter, then up to 15 lowercase letters, digits and "-". User config only.
+--- letter, then up to 15 lowercase letters, digits and "-". User or builtin
+--- origin only.
 ---
 --- ```lua
 --- zemi.permission.mode.add("review", {
@@ -2064,12 +2067,12 @@ zemi.permission.mode = {}
 ---@param spec zemi.PermModeSpec
 function zemi.permission.mode.add(name, spec) end
 
---- Remove a mode. User config only; raises for a name no mode has and for
+--- Remove a mode. User or builtin origin only; raises for a name no mode has and for
 --- the last mode.
 ---@param name string
 function zemi.permission.mode.del(name) end
 
---- Switch the active mode. User config only.
+--- Switch the active mode. User or builtin origin only.
 ---@param name string
 ---@return true|nil ok, string? err
 function zemi.permission.mode.set(name) end
@@ -2298,12 +2301,14 @@ function zemi.fs.remove(path) end
 --- Match the project's files, as the glob tool lists them (no .gitignored
 --- files, no symbolic links), in path order. `*` and `?` stay inside one segment,
 --- `**` spans directories ("**/*.go"), `{a,b}` alternates, `[...]` is a class.
+--- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
 ---@param pattern string
 ---@return string[] paths
 function zemi.fs.glob(pattern) end
 
 --- Search the project's files for a Go regular expression, in path order,
 --- skipping secret-shaped, binary and over 4 MB files.
+--- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
 ---@param pattern string
 ---@return zemi.GrepHit[]
 function zemi.fs.grep(pattern) end
@@ -2488,9 +2493,9 @@ function zemi.state.keys(prefix) end
 ---@class zemi.env
 zemi.env = {}
 
---- Read an environment variable, nil when it is not set. Secret-shaped
---- names resolve for user and builtin origin only; config fields hold
---- values, never variable names.
+--- Read an environment variable, nil when it is not set. A secret-shaped
+--- name raises for plugin or project code; config fields hold values, never
+--- variable names.
 ---@param name string
 ---@return string?
 function zemi.env.get(name) end
@@ -2734,6 +2739,7 @@ function zemi.health.add(name, fn) end
 
 --- One row per /health check, built-in rows first: this is how config
 --- written from Lua is verified without asking the user to run /health.
+--- It runs the checks inline, with no 50 ms ceiling: keep them short.
 ---@class zemi.HealthRow
 ---@field level zemi.HealthLevel
 ---@field name string

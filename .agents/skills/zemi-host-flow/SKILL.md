@@ -8,7 +8,7 @@ description: "Load before changing main.go, cli.go, run.go, internal/config, int
 ## CLI (cli.go, run.go)
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
-prompt on stdout, and `sessions` (and `sessions export [--full] <id>` and `sessions rename <id> [title]`, `hostapi.SessionMarkdown` on
+prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
 stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
 sweeps nothing and takes no lock a running zemi waits on), `projects` (`hostapi.ListProjects` with its
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),

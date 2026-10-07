@@ -1282,13 +1282,16 @@ question or a report is no plan to approve),
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
 server errors and warnings for any file), `lsp` (definition, implementation,
-references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
-four the host adds: `agent` (delegate to a subagent), `workflow` (run a
+references, rename, file symbols, project-wide symbol search by name and
+call hierarchy), `skill` (loads a SKILL.md body on demand), plus the
+five the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
 and pause, resume or stop a background one), `lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or read-only agent, and before a call that widens what
-zemi allows or starts a program outside the sandbox, §9), and `update` (what
+zemi allows or starts a program outside the sandbox, §9), `tool_search`
+(past ten MCP tools a step offers only it and what a search loaded, its
+description a catalog of names by server, §11), and `update` (what
 a subagent tells its caller mid-run, §6.3; only a subagent holds it).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
 `lua` (§6.3); `update` joins their set after the `tools` allowlist is read,
@@ -3110,7 +3113,7 @@ Autonomy is one knob that only user config sets:
 ```
 memory.autonomy = "auto"      -- memories the model or the reflector propose
                               -- store at once when policy-clean; "ask" queues them
-                              -- for /memory review instead
+                              -- for review in /memory instead
 ```
 
 `/memory <note>` is not governed by the knob: it is the user's own
