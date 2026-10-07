@@ -200,11 +200,15 @@ function M.looks(t)
 	return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil and (t.diff or "") == ""
 end
 
---- Calls counted by noun, first seen first: "2 files, 1 command".
+--- Calls counted by noun, first seen first: "2 files, 1 command". With verb,
+--- each part is led by what the calls did: "read 2 files". commands are the
+--- commands a shell family ran, listed after its part, which then reads last.
 ---@param calls (zemi.TranscriptRow|zemi.ToolCall)[]
+---@param commands string[]? The commands a shell family ran.
+---@param verb boolean? Lead each part with its family's verb.
 ---@return string
-function M.counts(calls)
-	---@type string[], table<string, integer>, table<string, string[]>
+function M.counts(calls, commands, verb)
+	---@type string[], table<string, integer>, table<string, { [1]: string, [2]: string?, [3]: string? }>
 	local order, n, c = {}, {}, {}
 	for _, t in ipairs(calls) do
 		local k = assert(M.family(M.tool(t)))
@@ -217,10 +221,18 @@ function M.counts(calls)
 	end
 	---@type string[]
 	local parts = {}
-	for i, key in ipairs(order) do
+	---@type string?
+	local ran
+	for _, key in ipairs(order) do
 		local k = c[key]
-		parts[i] = not k[2] and k[1] or M.count(n[key], k[2], k[3])
+		local part = not k[2] and k[1] or (verb and k[1] .. " " or "") .. M.count(n[key], k[2], k[3])
+		if commands and k == M.COUNT.shell then
+			ran = part .. ": " .. table.concat(commands, ", ")
+		else
+			parts[#parts + 1] = part
+		end
 	end
+	if ran then parts[#parts + 1] = ran end
 	return table.concat(parts, ", ")
 end
 

@@ -285,39 +285,14 @@ local function builder(ctx, width)
 	---@param group zemi.tui.Tool[]
 	---@return string
 	local function said(group)
-		---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
-		local order, seen = {}, {}
 		---@type string[]
 		local commands = {}
 		for _, t in ipairs(group) do
-			local c = assert(fmt.family(fmt.tool(t)))
-			local key = c[1] .. "|" .. (c[2] or "")
-			if not seen[key] then
-				seen[key] = { c = c, n = 0 }
-				order[#order + 1] = key
-			end
-			seen[key].n = seen[key].n + 1
 			if fmt.tool(t) == "shell" then
-				local cmd = relpath(t.text or t.input or ""):gsub("%s+", " ")
-				commands[#commands + 1] = cmd
+				commands[#commands + 1] = relpath(t.text or t.input or ""):gsub("%s+", " ")
 			end
 		end
-		---@type string[]
-		local parts = {}
-		---@type string?
-		local ran
-		for _, key in ipairs(order) do
-			local c, n = seen[key].c, seen[key].n
-			local part = c[2] and c[1] .. " " .. fmt.count(n, c[2], c[3]) or c[1]
-			if c == fmt.COUNT.shell then
-				-- last, so the commands read as its list
-				ran = part .. ": " .. table.concat(commands, ", ")
-			else
-				parts[#parts + 1] = part
-			end
-		end
-		parts[#parts + 1] = ran
-		return table.concat(parts, ", ")
+		return fmt.counts(group, commands, true)
 	end
 	-- A step's unlabelled counted calls as one rail row saying what they
 	-- did, marked as they are: every call it counts went well.
