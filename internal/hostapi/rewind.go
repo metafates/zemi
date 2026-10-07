@@ -306,6 +306,8 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
 			case brain.OpWrite:
 				writes = append(writes, op)
+			case brain.OpForget, brain.OpEdit:
+				// neither restores a line or a file here
 			}
 		}
 		// a pre-migration supersede has no op to replay: the frozen row the

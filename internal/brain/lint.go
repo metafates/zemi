@@ -109,6 +109,9 @@ func lintLedger(ops []*Op, lines []Line, add func(subject, format string, args .
 			d.added, d.explained = true, false
 		case OpSupersede, OpForget, OpArchive, OpMoveOut:
 			d.explained = true
+		case OpEdit, OpWrite:
+			// an edit rewrites the line and a write replaces the file: neither
+			// adds an id here or explains one going missing
 		}
 		if op.Hash != "" {
 			d.hashes[op.Hash] = true
