@@ -387,6 +387,11 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 			b.WriteString(note)
 		}
 	}
+	// a job that exited badly: the result is an error, so the model does not
+	// read its exit as done and its row is no green check (Job.Mark says err)
+	if j.Mark() == "err" {
+		return fantasy.NewTextErrorResponse(b.String()), nil
+	}
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
