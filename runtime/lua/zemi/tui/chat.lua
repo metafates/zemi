@@ -123,13 +123,16 @@ end
 -- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
 -- same counts with (Ok adds, Danger removes). A count of zero is left out: the
 -- sign alone would report nothing, and the "+++"/"---" headers are no changes.
--- Counted once per diff text: a render asks for a row's diff again and again.
+-- Counted once per row, whose diff the text settles on: a render asks for a
+-- row's diff again and again.
+---@type table<integer, { diff: string, add: integer, del: integer }>
 local counts = {}
 ---@param diff string
+---@param idx integer The row's transcript index, negative for a live call.
 ---@return zemi.Line
-local function diffstat(diff)
-	local c = counts[diff]
-	if not c then
+local function diffstat(diff, idx)
+	local c = counts[idx]
+	if not c or c.diff ~= diff then
 		local add, del = 0, 0
 		for l in diff:gmatch("[^\n]+") do
 			if l:match("^%+") and not l:match("^%+%+%+ ") then
@@ -138,13 +141,13 @@ local function diffstat(diff)
 				del = del + 1
 			end
 		end
-		c = { add, del }
-		counts[diff] = c
+		c = { diff = diff, add = add, del = del }
+		counts[idx] = c
 	end
 	---@type zemi.Line
 	local out = {}
-	if c[1] > 0 then out[#out + 1] = { text = "+" .. c[1], hl = "Ok" } end
-	if c[2] > 0 then out[#out + 1] = { text = (c[1] > 0 and " -" or "-") .. c[2], hl = "Danger" } end
+	if c.add > 0 then out[#out + 1] = { text = "+" .. c.add, hl = "Ok" } end
+	if c.del > 0 then out[#out + 1] = { text = (c.add > 0 and " -" or "-") .. c.del, hl = "Danger" } end
 	return out
 end
 
@@ -363,7 +366,7 @@ local function builder(ctx, width)
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
-		local tail = (t.diff or "") ~= "" and diffstat(t.diff) or {}
+		local tail = (t.diff or "") ~= "" and diffstat(t.diff, idx) or {}
 		---@param text string
 		local function add(text)
 			if #tail > 0 then tail[#tail + 1] = { text = " · ", hl = "Dim" } end
