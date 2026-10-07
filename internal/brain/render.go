@@ -13,10 +13,10 @@ const (
 	Backstop   = 32 << 10
 )
 
-// MemHeader is the two contract lines the one-liner section has carried
+// memHeader is the two contract lines the one-liner section has carried
 // since the digest, injected under ## Memory; the digest's own "# Memory"
 // H1 is not duplicated (DESIGN §10.7).
-const MemHeader = "Lines earlier sessions kept, as [id who age]. Follow a preference the user stated there unless this conversation or the project instructions say otherwise. Any other line held when it was written: check the file, command or flag it names before relying on it."
+const memHeader = "Lines earlier sessions kept, as [id who age]. Follow a preference the user stated there unless this conversation or the project instructions say otherwise. Any other line held when it was written: check the file, command or flag it names before relying on it."
 
 // scopeTitles is the digest's scope order and wording, private partition
 // first.
@@ -34,17 +34,17 @@ func Age(date, at time.Time) string {
 	return fmt.Sprintf(" %dd", days)
 }
 
-// RenderLine is one memory's injected form, the digest line's format.
-func RenderLine(l Line, at time.Time) string {
+// renderLine is one memory's injected form, the digest line's format.
+func renderLine(l Line, at time.Time) string {
 	return fmt.Sprintf("- [%s %s%s] %s", l.ID, l.Origin, Age(l.Date, at), l.Text)
 }
 
-// Catalog renders one partition's derived catalog (DESIGN §10.7): one line per file,
+// catalogText renders one partition's derived catalog (DESIGN §10.7): one line per file,
 // sorted by name, each field stripped and capped at render. A file that
 // cannot serve - no frontmatter, unreadable - renders a one-line
 // self-repair note in its place. Past CatalogCap the tail is cut
 // alphabetically last and the marker names the partition.
-func Catalog(l Loaded) string {
+func catalogText(l Loaded) string {
 	lines := make([]string, 0, len(l.Entries))
 	for _, e := range l.Entries {
 		lines = append(lines, catalogLine(e))
@@ -90,10 +90,10 @@ func catalogLine(e Entry) string {
 	return "- " + name + " - " + desc + ". (Read If: " + read + ".)"
 }
 
-// Memory renders one partition's memories.md (DESIGN §10.7): the digest's lines,
+// memoryText renders one partition's memories.md (DESIGN §10.7): the digest's lines,
 // cut at ScopeBudget when a hand-edited or corrupted file overflows it,
 // the marker naming memories.md. Unreadable is a marker, never an error.
-func Memory(l Loaded, at time.Time) string {
+func memoryText(l Loaded, at time.Time) string {
 	if l.MemErr != nil {
 		return fmt.Sprintf("- ... %s is unreadable (%s)", MemFile, strip(l.MemErr.Error()))
 	}
@@ -110,7 +110,7 @@ func Memory(l Loaded, at time.Time) string {
 	}
 	out := make([]string, 0, kept+1)
 	for _, ln := range lines[:kept] {
-		out = append(out, RenderLine(ln, at))
+		out = append(out, renderLine(ln, at))
 	}
 	if cut := len(lines) + len(bad) - kept; cut > 0 {
 		out = append(out, fmt.Sprintf("- ... %d more in %s", cut, l.Partition.memPath()))
@@ -118,10 +118,10 @@ func Memory(l Loaded, at time.Time) string {
 	return strings.Join(out, "\n")
 }
 
-// Warnings renders the findings as <brain-warning> lines (DESIGN §10.7): over
+// warningsText renders the findings as <brain-warning> lines (DESIGN §10.7): over
 // WarnCap the last finding is dropped, then the remaining line is cut to
 // fit. Findings are zemi-generated text; the strip is defense in depth.
-func Warnings(findings []Finding) string {
+func warningsText(findings []Finding) string {
 	lines := make([]string, 0, len(findings))
 	for _, f := range findings {
 		lines = append(lines, "<brain-warning>"+strip(f.Text)+"</brain-warning>")
@@ -162,7 +162,7 @@ func render(loop string, parts []Loaded, findings []Finding, at time.Time, drop 
 	if loop != "" {
 		b.WriteString("\n" + strings.TrimRight(loop, "\n") + "\n")
 	}
-	if w := Warnings(findings); w != "" {
+	if w := warningsText(findings); w != "" {
 		b.WriteString("\n" + w + "\n")
 	}
 	catalog := catalogSections(parts, drop)
@@ -171,7 +171,7 @@ func render(loop string, parts []Loaded, findings []Finding, at time.Time, drop 
 	}
 	memory := memorySections(parts, at)
 	if memory != "" {
-		b.WriteString("\n## Memory\n" + MemHeader + "\n" + memory)
+		b.WriteString("\n## Memory\n" + memHeader + "\n" + memory)
 	}
 	if out := strings.TrimRight(b.String(), "\n"); out != "# Brain" {
 		return out
@@ -190,7 +190,7 @@ func catalogSections(parts []Loaded, drop int) string {
 		if !ok {
 			continue
 		}
-		c := Catalog(l)
+		c := catalogText(l)
 		if c == "" {
 			continue
 		}
@@ -214,7 +214,7 @@ func memorySections(parts []Loaded, at time.Time) string {
 		if !ok {
 			continue
 		}
-		if lines := Memory(l, at); lines != "" {
+		if lines := memoryText(l, at); lines != "" {
 			b.WriteString("\n" + sc.title + "\n" + lines + "\n")
 		}
 	}

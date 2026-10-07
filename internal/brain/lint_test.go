@@ -184,7 +184,7 @@ func TestLintUnreadableMemories(t *testing.T) {
 	}
 	// the render degrades to the marker, never an error
 	l := Load(p)
-	if got := Memory(l, at); !strings.Contains(got, "is unreadable") {
+	if got := memoryText(l, at); !strings.Contains(got, "is unreadable") {
 		t.Fatalf("memory render = %q", got)
 	}
 }

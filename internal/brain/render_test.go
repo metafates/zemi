@@ -78,7 +78,7 @@ func TestRenderCuts(t *testing.T) {
 		for i := range 30 {
 			l.Entries = append(l.Entries, entry(string(rune('a'+i))+".md", strings.Repeat("d", 300), "r"))
 		}
-		got := Catalog(l)
+		got := catalogText(l)
 		if size(strings.Split(got, "\n")) > CatalogCap {
 			t.Fatalf("catalog is %d bytes", size(strings.Split(got, "\n")))
 		}
@@ -101,7 +101,7 @@ func TestRenderCuts(t *testing.T) {
 		l := Loaded{Partition: private, Over: true, Entries: []Entry{
 			entry("a.md", "d", "r"),
 		}}
-		got := Catalog(l)
+		got := catalogText(l)
 		if !strings.Contains(got, "more in "+private.Dir) {
 			t.Fatalf("scan-ceiling marker missing: %s", got)
 		}
@@ -116,7 +116,7 @@ func TestRenderCuts(t *testing.T) {
 		for range 10 {
 			l.Mem = append(l.Mem, serialize([]Line{{ID: "abcd2345", Origin: store.OriginLearned, Date: at, Text: strings.Repeat("w", 500)}})...)
 		}
-		got := Memory(l, at)
+		got := memoryText(l, at)
 		lines := strings.Split(got, "\n")
 		if len(lines) >= 10 || !strings.Contains(got, "more in "+l.Partition.memPath()) {
 			t.Fatalf("cut marker missing: %s", got)
@@ -184,7 +184,7 @@ func TestWarningsCap(t *testing.T) {
 	for i := range many {
 		many[i] = Finding{Text: strings.Repeat("w", 100)}
 	}
-	got := Warnings(many)
+	got := warningsText(many)
 	if size(strings.Split(got, "\n")) > WarnCap {
 		t.Fatalf("warnings block is %d bytes", size(strings.Split(got, "\n")))
 	}
@@ -192,7 +192,7 @@ func TestWarningsCap(t *testing.T) {
 		t.Fatalf("no finding was dropped: %d", n)
 	}
 	// a single over-cap finding is cut to one line, tags intact
-	one := Warnings([]Finding{{Text: strings.Repeat("w", WarnCap)}})
+	one := warningsText([]Finding{{Text: strings.Repeat("w", WarnCap)}})
 	if size([]string{one}) > WarnCap || strings.Count(one, "<brain-warning>") != 1 {
 		t.Fatalf("single finding not truncated: %d bytes", len(one))
 	}
@@ -207,7 +207,7 @@ func TestCatalogSelfRepairNote(t *testing.T) {
 		{Name: "broken.md", Err: errors.New("unterminated frontmatter block")},
 		{Name: "bad glob.md", FM: Frontmatter{Description: "d", ReadIf: "r", Paths: []string{"bad.["}}},
 	}}
-	got := Catalog(l)
+	got := catalogText(l)
 	for _, want := range []string{
 		"- empty.md - (needs description and read_if frontmatter; add them so this file can trigger)",
 		"- broken.md - (unterminated frontmatter block; add description and read_if frontmatter)",
@@ -223,11 +223,11 @@ func TestCatalogSelfRepairNote(t *testing.T) {
 // form, kept through the store swap (DESIGN §7).
 func TestRenderLine(t *testing.T) {
 	line := Line{ID: "abcd2345", Origin: store.OriginLearned, Date: at.Add(-10 * 24 * time.Hour), Text: "the dploy gate lives in ci/pipeline"}
-	if got, want := RenderLine(line, at), "- [abcd2345 learned 10d] the dploy gate lives in ci/pipeline"; got != want {
+	if got, want := renderLine(line, at), "- [abcd2345 learned 10d] the dploy gate lives in ci/pipeline"; got != want {
 		t.Fatalf("line = %q, want %q", got, want)
 	}
 	young := Line{ID: "abcd2345", Origin: store.OriginUser, Date: at.Add(-24 * time.Hour), Text: "x"}
-	if got, want := RenderLine(young, at), "- [abcd2345 user] x"; got != want {
+	if got, want := renderLine(young, at), "- [abcd2345 user] x"; got != want {
 		t.Fatalf("line = %q, want %q (under two days carries no age)", got, want)
 	}
 }

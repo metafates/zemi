@@ -13,13 +13,12 @@ import (
 )
 
 // Scan ceilings (DESIGN §10.7): the catalog is derived at render, so a pathological
-// tree costs at most this much. Past the caps the catalog renders its cut
+// tree costs at most this much. Past the cap the catalog renders its cut
 // marker naming the partition and a lint finding fires.
 const (
-	// MaxCatalogFiles caps a partition's non-reserved .md files.
+	// MaxCatalogFiles caps a partition's non-reserved .md files, and with
+	// FrontPeek the frontmatter one scan parses.
 	MaxCatalogFiles = 64
-	// MaxFrontBytes caps the frontmatter text one scan parses.
-	MaxFrontBytes = 256 << 10
 	// FrontPeek is how much of a file the frontmatter parse reads;
 	// frontmatter past it is an unterminated block.
 	FrontPeek = 4 << 10
@@ -68,7 +67,6 @@ func Load(p Partition) Loaded {
 		names = append(names, e.Name())
 	}
 	slices.Sort(names)
-	front := 0
 	for _, name := range names {
 		if name == MemFile {
 			l.Mem, l.MemErr = readSafe(p, MemFile)
@@ -77,34 +75,32 @@ func Load(p Partition) Loaded {
 		if !strings.HasSuffix(name, ".md") || !safe(p.Dir, name) {
 			continue
 		}
-		if len(l.Entries) >= MaxCatalogFiles || front >= MaxFrontBytes {
+		if len(l.Entries) >= MaxCatalogFiles {
 			l.Over = true
 			continue
 		}
-		e, n := readEntry(p.Dir, name)
-		front += n
-		l.Entries = append(l.Entries, e)
+		l.Entries = append(l.Entries, readEntry(p.Dir, name))
 	}
 	return l
 }
 
 // readEntry reads a file's first FrontPeek bytes and parses their
 // frontmatter: the whole parse rides the peek.
-func readEntry(dir, name string) (e Entry, peeked int) {
-	e.Name = name
+func readEntry(dir, name string) Entry {
+	e := Entry{Name: name}
 	f, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
 		e.Err = err
-		return e, 0
+		return e
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, FrontPeek))
 	if err != nil {
 		e.Err = err
-		return e, 0
+		return e
 	}
 	e.FM, e.Err = ParseFrontmatter(string(data))
-	return e, len(data)
+	return e
 }
 
 // readSafe reads a brain file through the bar every cataloged file passes: a

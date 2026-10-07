@@ -48,7 +48,7 @@ func Lint(p Partition) []Finding {
 		}
 	}
 	if l.Over {
-		add(p.Dir, "%s: catalog scan past its ceiling (%d files, %d bytes of frontmatter)", p.Dir, MaxCatalogFiles, MaxFrontBytes)
+		add(p.Dir, "%s: catalog scan past its ceiling (%d files)", p.Dir, MaxCatalogFiles)
 	}
 	lines, bad := ParseMemories(l.Mem)
 	if l.MemErr != nil {
