@@ -107,7 +107,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		limit := 20
-		if opts, ok := L.Get(1).(*glua.LTable); ok {
+		if opts, ok := arg[*glua.LTable](L, 1, "zemi.session.list"); ok {
 			if n, ok := opt[glua.LNumber](L, opts, "limit"); ok && n > 0 {
 				limit = min(int(n), 200)
 			}

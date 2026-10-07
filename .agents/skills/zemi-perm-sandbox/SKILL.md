@@ -24,7 +24,7 @@ The lua tool's script can drive the run's own tools: `zemi.tool.call(name, args)
 (hostapi/luatool.go) starts one through that same pipeline off the interpreter, capped at 8
 at once, and only the script's print and return values reach the model, so it
 batches and filters what would otherwise be a step per call. Its output comes back whole
-(`Pipeline.Script` on the per-call pipeline copy, which `tools.(*Pipeline).cmdOut` reads),
+(`Pipeline.Script` on the per-call pipeline copy, which `tools.(*Pipeline).cut` reads),
 and only the running script reaches it, so a script that only drives tools needs no approval
 of its own: its calls are gated as the model's own are.
 
@@ -59,9 +59,11 @@ the shell could still expand into a climb (`{`, `$`, a glob after a leading dot)
 into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the segment's `perm.canonical` form
 (runner prefixes like `env`, `sudo`, `timeout 5` stepped past, the program
 by `perm.ProgramName`, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
-allow is judged as written, and a git alias still slips past (NOTE in the code). Every
-program lookup in perm and the always answer goes through `perm.ProgramName`, the base name
-case folded as APFS folds it, since `/bin/RM` runs rm and `ſh` (long s) runs sh.
+allow is judged as written, and a git alias still slips past (NOTE in the code). The lookups that
+decide risk - the canonical form, the runner, subcommand, plain-flag and destructive lists - go
+through `perm.ProgramName`, the base name case folded as APFS folds it, since `/bin/RM` runs rm and
+`ſh` (long s) runs sh; `safeSegment`'s refused-flag and reader tables, the `cd` test and the always
+answer's rule name read the word as written.
 
 File tools (internal/tools/fs_tools.go): `write` refuses a file the
 model has not read (outside the free zone: `perm.FreeZone`, the scratchpad and the temp dirs) or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get

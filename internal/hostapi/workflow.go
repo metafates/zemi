@@ -1948,7 +1948,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
-		onDone, _ := L.Get(2).(*glua.LFunction)
+		onDone, _ := arg[*glua.LFunction](L, 2, "zemi.workflow.run")
 		// agents act with the user's tools and permissions: only user config
 		// (and shipped code) may start them from Lua
 		h.refuseBelowUser(L, "workflow.run")

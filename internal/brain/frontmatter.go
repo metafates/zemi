@@ -9,6 +9,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/skill"
 )
 
@@ -69,11 +70,7 @@ func Oversized(s string) bool { return len([]rune(strip(s))) > FieldCap }
 // newlines stripped, capped at FieldCap runes. Intake applies it and the
 // render applies it again (DESIGN §10.4).
 func Normalize(s string) string {
-	s = strip(s)
-	if r := []rune(s); len(r) > FieldCap {
-		return string(r[:FieldCap])
-	}
-	return s
+	return learn.Truncate(strip(s), FieldCap)
 }
 
 // errLine is an error's first line, stripped: a yaml error's caret

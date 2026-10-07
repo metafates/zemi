@@ -292,6 +292,11 @@ func (h *Host) forgetTrust(root string) error {
 // store and state dir, its sessions' scratchpads and plans, its build caches
 // and its trust decision. The claim refuses while another zemi has it open.
 func (h *Host) deleteProject(p Project) error {
+	// without a root or a state home the paths below are the working
+	// directory's, or the state home itself
+	if p.Root == "" || h.Dirs.StateHome == "" {
+		return Usagef("zemi keeps nothing for %s; /projects lists what it does", perm.TildePath(p.Root))
+	}
 	ids, release, err := store.ClaimForDelete(store.ProjectDBPath(h.Dirs.StateHome, p.Root))
 	if errors.Is(err, store.ErrInUse) {
 		return Usagef("zemi has %s open in another window; quit it there first", perm.TildePath(p.Root))

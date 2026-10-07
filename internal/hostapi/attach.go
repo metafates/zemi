@@ -211,7 +211,7 @@ func (h *Host) AttachLabel(rel string) string {
 func (h *Host) AttachPath(path string) string {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return quotePath(path)
+		return tools.ShellQuote(path)
 	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
 	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) && canCarry(rel) {
@@ -221,15 +221,15 @@ func (h *Host) AttachPath(path string) string {
 		return attachToken(rel, image)
 	}
 	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
-		return quotePath(path)
+		return tools.ShellQuote(path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || (!image && !utf8.Valid(data)) {
-		return quotePath(path)
+		return tools.ShellQuote(path)
 	}
 	name, err := h.saveDrop(filepath.Base(path), data)
 	if err != nil {
-		return quotePath(path)
+		return tools.ShellQuote(path)
 	}
 	return attachToken(name, image)
 }
@@ -302,11 +302,4 @@ func sweepDrops(dir string) {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
-}
-
-func quotePath(p string) string {
-	if strings.ContainsAny(p, " \t'\"$`\\") {
-		return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(p) + `"`
-	}
-	return p
 }
