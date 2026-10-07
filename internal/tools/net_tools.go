@@ -230,11 +230,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if b.Len() > 0 {
 		b.WriteString("\n")
 	}
-	if cut := TruncOut(text, 10000); cut != text {
-		b.WriteString(cut + Spill(p.Pad, "fetch", text))
-	} else {
-		b.WriteString(text)
-	}
+	b.WriteString(p.cut("fetch", text, resultMaxOut))
 	return fantasy.NewTextResponse(b.String()), nil
 }
 

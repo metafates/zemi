@@ -479,8 +479,7 @@ func applyTextEdits(p *Pipeline, path perm.Path, edits []lsp.TextEdit) (int, err
 		s, t := lsp.Offset(text, e.Range.Start), lsp.Offset(text, e.Range.End)
 		text = text[:s] + e.NewText + text[t:]
 	}
-	p.checkpoint(path.String())
-	if err := WriteFile(path, []byte(text), fi.Mode().Perm()); err != nil {
+	if err := p.writeThrough(path, []byte(text), fi.Mode().Perm()); err != nil {
 		return 0, err
 	}
 	fi, _ = os.Stat(path.String())

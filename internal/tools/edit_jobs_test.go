@@ -324,6 +324,48 @@ func TestJobReadSpillsTheCut(t *testing.T) {
 	}
 }
 
+// TestJobReadOfAFailedJobIsAnError: a read of a job that ended badly is an
+// error response, so the model does not read the exit as done and the row is
+// no green check; a clean exit and a job job_kill stopped stay success, as
+// Job.Mark says.
+func TestJobReadOfAFailedJobIsAnError(t *testing.T) {
+	for _, c := range []struct {
+		name, command string
+		killed        bool
+		wantErr       bool
+	}{
+		{"a clean exit", "echo done", false, false},
+		{"a failed command", "printf boom; exit 2", false, true},
+		{"a job the user killed", "sleep 30", true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := &Pipeline{Jobs: NewJobs(), Pad: t.TempDir()}
+			start, _ := runJobStart(t.Context(), p, map[string]any{"command": c.command})
+			if start.IsError {
+				t.Fatal(start.Content)
+			}
+			id := JobID(ToolJobStart, start.Content)
+			if c.killed {
+				if res, _ := runJobKill(t.Context(), p, map[string]any{"id": id}); res.IsError {
+					t.Fatal(res.Content)
+				}
+			}
+			j, err := p.Jobs.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitJobDone(t, j)
+			res, _ := runJobRead(t.Context(), p, map[string]any{"id": id})
+			if res.IsError != c.wantErr {
+				t.Fatalf("a read of %q is an error %v, want %v: %q", c.command, res.IsError, c.wantErr, res.Content)
+			}
+			if c.wantErr && (!strings.Contains(res.Content, "exited (2)") || !strings.Contains(res.Content, "boom")) {
+				t.Fatalf("the exit state or the last output is missing: %q", res.Content)
+			}
+		})
+	}
+}
+
 // TestFileToolsSymlinkRace: a directory flipped between a real one and a
 // symlink out of the jail while write, edit and read run never lets one of
 // them act outside.

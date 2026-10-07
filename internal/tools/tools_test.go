@@ -462,6 +462,7 @@ func TestGlobAndGrep(t *testing.T) {
 	}{
 		{tool: glob, input: `{"pattern":"*.go"}`, want: "sub/x.go", not: "node_modules"},
 		{tool: glob, input: `{"pattern":"*.go"}`, want: "main.go", not: "link.go"},
+		{tool: glob, input: `{"pattern":"*.go","path":"main.go"}`, want: "is a file: pass its directory as path", not: "no such file"},
 		{tool: glob, input: `{"pattern":"sub/**/*.go"}`, want: "sub/x.go", not: "main.go"},
 		{tool: glob, input: `{"pattern":"*.{go,txt}"}`, want: "notes.txt", not: "node_modules"},
 		{tool: grep, input: `{"pattern":"package sub"}`, want: "x.go:1", not: "main.go"},
@@ -1111,7 +1112,7 @@ func TestCmdOutScript(t *testing.T) {
 			if cut := strings.Contains(out, "output saved to"); cut != c.cut {
 				t.Fatalf("cut %v, want %v: %q", cut, c.cut, trunc(out, 120))
 			}
-			if c.cut && len(out) > cmdMaxOut+200 {
+			if c.cut && len(out) > resultMaxOut+200 {
 				t.Fatalf("the cut kept %d bytes", len(out))
 			}
 			if !c.cut && out != cmdText(raw) {

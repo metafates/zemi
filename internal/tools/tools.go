@@ -402,8 +402,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly, req.Pad, req.Script = plan, p.Pad, p.Script
 	if req.Subject == perm.SubjectShell && req.cmd == nil {
-		n := perm.Normalize(req.Arg)
-		req.cmd = &n
+		req.cmd = new(perm.Normalize(req.Arg))
 	}
 	// pad is the scratchpad, in zemi's own state dir: its writes are free and
 	// no protected path either. A temp dir is free too, but .git, the Lua in
@@ -516,6 +515,10 @@ func hiddenSecret(p string) bool {
 	return perm.PathIsStrictSecret(p) || strings.HasPrefix(filepath.Base(p), ".env.")
 }
 
+// sandboxOff is the one escape a confined failure offers when the run's
+// schema carries sandbox: false; the clauses below add their own lead-in.
+const sandboxOff = "call it again with sandbox: false (needs approval)"
+
 // sandboxHint is the line a confined command's failure gets when the
 // sandbox may be why: the limit a denied path hit and the one next step; ""
 // otherwise. It offers only the escapes the run's schema carries: none
@@ -561,7 +564,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case sandbox.Killed(out, err):
 		line = "it died from a signal: if it needs a system service (a browser, a GUI app, docker), "
 		if all {
-			line += "call it again with sandbox: false (needs approval); a crash of its own repeats there"
+			line += sandboxOff + "; a crash of its own repeats there"
 		} else {
 			line += "it cannot run here: say what you could not check"
 		}
@@ -573,28 +576,28 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		root := perm.TildePath(l.root)
 		// a credential dir is no place to send the read tool either
 		if p.Secret != nil && p.Secret(l.root) {
-			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, call it again with sandbox: false (needs approval)")
+			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, "+sandboxOff)
 			break
 		}
-		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
+		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or "+sandboxOff)
 	case b.HidesSecretFiles && has(func(l limit) bool { return hiddenSecret(l.path) }):
-		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, call it again with sandbox: false (needs approval)")
+		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, "+sandboxOff)
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
 		switch {
 		case pol.Git == l.root:
-			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; call it again with sandbox: false (needs approval)")
+			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; "+sandboxOff)
 		case filepath.Base(l.root) == ".agents":
 			line += ": create and edit files there with the write and edit tools"
 		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):
-			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise call it again with sandbox: false (needs approval)")
+			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise "+sandboxOff)
 		case slices.Contains(filepath.SplitList(os.Getenv("PATH")), l.root):
-			line += ": zemi runs programs from it unconfined" + or(all, "; call it again with sandbox: false (needs approval)")
+			line += ": zemi runs programs from it unconfined" + or(all, "; "+sandboxOff)
 		default:
-			line += or(all, ": call it again with sandbox: false (needs approval)")
+			line += or(all, ": "+sandboxOff)
 		}
 	case len(pol.Write) > 0 && has(is(outside)):
-		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
+		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or "+sandboxOff)
 	case all:
 		line += ": network: true adds the network, sandbox: false drops every limit; both need approval"
 	case net:
@@ -806,7 +809,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	var reqs []Request
 	if t.subjects != nil {
-		if reqs, err = t.subjects(pipe, input); err != nil {
+		// &run, not pipe: a subjects func that writes a field on the pipeline
+		// (web_search's URL) writes the copy the run below gets
+		if reqs, err = t.subjects(&run, input); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
@@ -1167,7 +1172,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn, ""),
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad or a temp dir, and not changed since. To change part of a file use edit.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -1176,7 +1181,7 @@ Chain dependent steps with &&.`,
 			changeReq(ToolWrite),
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, as written and without read's line-number prefix; once the file is read a difference in whitespace alone still matches and new_string takes the file's indentation. Keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -1345,23 +1350,23 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			runMemory),
 
-		mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
+		gated(mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
 			true,
 			map[string]any{
 				"path": map[string]any{"type": "string"},
 			},
 			[]string{"path"},
 			pathReq(perm.SubjectRead, pathIn, "read diagnostics"),
-			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+			func(_ context.Context, p *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
 					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
 				}
-				out, err := p.Diagnostics(str(in["path"]))
+				out, err := p.Diagnostics(p.Path.String())
 				if err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				return fantasy.NewTextResponse(out), nil
-			}),
+			})),
 
 		gated(mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP)),
 

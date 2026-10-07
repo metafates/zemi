@@ -17,6 +17,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 const (
@@ -303,7 +305,7 @@ func setupNamespaces(p Policy) error {
 	}
 	var binds []bind
 	inWrite := func(path string) bool {
-		return slices.ContainsFunc(p.Write, func(w string) bool { return within(path, w) })
+		return slices.ContainsFunc(p.Write, func(w string) bool { _, in := perm.Under(w, path); return in })
 	}
 	for _, pr := range p.Protect {
 		if inWrite(pr) {
@@ -311,7 +313,7 @@ func setupNamespaces(p Policy) error {
 		}
 	}
 	for _, w := range p.Write {
-		if slices.ContainsFunc(p.Protect, func(pr string) bool { return w != pr && within(w, pr) }) {
+		if slices.ContainsFunc(p.Protect, func(pr string) bool { _, in := perm.Under(pr, w); return w != pr && in }) {
 			binds = append(binds, bind{w, false})
 		}
 	}
@@ -466,7 +468,7 @@ func addRead(add func(string, uint64) error, dir string, hide []string) error {
 	if slices.Contains(hide, dir) {
 		return nil
 	}
-	if !slices.ContainsFunc(hide, func(h string) bool { return within(h, dir) }) {
+	if !slices.ContainsFunc(hide, func(h string) bool { _, in := perm.Under(dir, h); return in }) {
 		return add(dir, fsReadRights)
 	}
 	if err := add(dir, unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {

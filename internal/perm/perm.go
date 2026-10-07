@@ -134,6 +134,9 @@ type Outcome struct {
 	// Rule is the winning rule; nil means the default applied.
 	Rule   *Rule
 	Reason string
+	// notMatched: a rule's match was excluded by its not_match, so the ask is
+	// the rule's own and not the default's.
+	notMatched bool
 }
 
 // subjectMatches compares a rule's subject with the one being asked about.
@@ -182,9 +185,6 @@ func FreeZone(pad, path string) bool {
 		return true
 	}
 	real := CanonPath(path)
-	if real == "" {
-		return false
-	}
 	for _, root := range TempRoots() {
 		if _, ok := Under(root, real); ok {
 			return true
@@ -197,9 +197,6 @@ func FreeZone(pad, path string) bool {
 // cannot lead out. The pad is zemi's own zone, where no path is a protected
 // one, though it sits in zemi's state dir.
 func InPad(pad, path string) bool {
-	if pad == "" || path == "" {
-		return false
-	}
 	real := CanonPath(path)
 	_, ok := Under(CanonPath(pad), real)
 	return ok && real != ""
@@ -222,8 +219,12 @@ func TempRoots() []string {
 // component is joined lexically, so a file about to be created is judged by
 // its real parent directory, and a later .. climbs back to resolving
 // components that exist (new/../L/x). A symlink loop gives
-// "", which is inside no root.
+// "", which is inside no root, and so does an empty path: it names nothing,
+// where resolving it to the working directory would judge the project.
 func RealPath(p string) string {
+	if p == "" {
+		return ""
+	}
 	sep := string(filepath.Separator)
 	p = filepath.FromSlash(p)
 	if !filepath.IsAbs(p) {
@@ -431,7 +432,7 @@ func (s *Store) evaluator(subject, principal string, segment bool) func(arg stri
 			return Outcome{Decision: d, Rule: &r}
 		}
 		if len(fellThru) > 0 {
-			return Outcome{Decision: Ask, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
+			return Outcome{Decision: Ask, notMatched: true, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
 		}
 		if s.Default != nil {
 			if d := s.Default(subject, arg); d != Ask {

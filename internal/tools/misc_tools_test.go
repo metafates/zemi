@@ -7,6 +7,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -617,6 +618,24 @@ func TestParseDDGLite(t *testing.T) {
 	}
 	if got := formatHits(nil, 10); got != "(no results)" {
 		t.Fatalf("empty: %q", got)
+	}
+}
+
+// TestWebSearchURLReachesRun: web_search's subjects writes the URL the gate
+// approved onto the per-run pipeline the run reads. Run used to copy the
+// pipeline before subjects ran, so the first call answered "empty query" and
+// the next one fetched the previous query's URL.
+func TestWebSearchURLReachesRun(t *testing.T) {
+	p, _ := testPipeline(t, false, perm.Rule{Subject: "net.lite.duckduckgo.com", Pattern: "*", Decision: perm.Allow})
+	ag := *toolNamed(t, ToolWebSearch, p).(*tool)
+	ag.run = func(_ context.Context, run *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
+		if run.search == nil {
+			return fantasy.NewTextErrorResponse("no search URL on the per-run pipeline"), nil
+		}
+		return fantasy.NewTextResponse(run.search.Query().Get("q")), nil
+	}
+	if resp := call(t, &ag, `{"query":"go generics"}`); resp.IsError || resp.Content != "go generics" {
+		t.Fatalf("the run read %+v, want the query its subjects built", resp)
 	}
 }
 

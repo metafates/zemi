@@ -36,7 +36,8 @@ func DispatchHelper() {
 
 // Policy is what a sandboxed command may touch. Everything is readable
 // except Hide, where Read and List open parts again; only Write is
-// writable, minus Protect.
+// writable, minus Protect. Every path is resolved by Wrap before a backend
+// reads it, so the backends compare paths as the kernel does.
 type Policy struct {
 	Write    []string          // writable roots
 	Protect  []string          // read-only even inside Write
@@ -236,11 +237,4 @@ func (p Policy) WriteNames(project string) string {
 		return strings.Join(names, "")
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-}
-
-// within reports whether p is root or below it, on the strings as given:
-// policy paths are already clean and resolved. perm.Under is the version
-// for paths that still need filepath treatment.
-func within(p, root string) bool {
-	return p == root || strings.HasPrefix(p, strings.TrimSuffix(root, "/")+"/")
 }
