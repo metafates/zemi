@@ -157,16 +157,25 @@ func TestPlanOutcome(t *testing.T) {
 		name          string
 		v             PlanVerdict
 		verdict, path string
+		stop          bool
 	}{
-		{"approved and saved", PlanVerdict{Approved: true, Path: "/p.md"}, "approved", "/p.md"},
-		{"approved, back to the agent", PlanVerdict{Approved: true, Profile: "default"}, "approved", ""},
-		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", ""},
+		{"approved and saved", PlanVerdict{Approved: true, Path: "/p.md"}, "approved", "/p.md", false},
+		{"approved, back to the agent", PlanVerdict{Approved: true, Profile: "default"}, "approved", "", true},
+		{"approved and held", PlanVerdict{Approved: true, Hold: true, Path: "/p.md"}, "approved", "/p.md", true},
+		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", "", false},
 	} {
 		p, _ := testPipeline(t, false)
 		p.ApprovePlan = func(string) (PlanVerdict, bool) { return c.v, true }
 		resp := call(t, toolNamed(t, "plan", p), `{"plan":"1. do it"}`)
 		if v, path := PlanOutcome(resp.Content); v != c.verdict || path != c.path {
 			t.Errorf("%s: verdict %q, path %q", c.name, v, path)
+		}
+		if resp.StopTurn != c.stop {
+			t.Errorf("%s: stop %v", c.name, resp.StopTurn)
+		}
+		// a held plan is kept, never started: the model is not told to implement it
+		if c.v.Hold && strings.Contains(resp.Content, ImplementPlan) {
+			t.Errorf("%s: told to implement a held plan: %q", c.name, resp.Content)
 		}
 	}
 }
