@@ -36,7 +36,8 @@ func DispatchHelper() {
 
 // Policy is what a sandboxed command may touch. Everything is readable
 // except Hide, where Read and List open parts again; only Write is
-// writable, minus Protect.
+// writable, minus Protect. Every path is resolved by Wrap before a backend
+// reads it, so the backends compare paths as the kernel does.
 type Policy struct {
 	Write    []string          // writable roots
 	Protect  []string          // read-only even inside Write
