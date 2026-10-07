@@ -66,7 +66,7 @@ local M = {}
 -- spins, unless the open prompt asks about it: that one waits on the user,
 -- so it neither spins nor counts.
 ---@type table<string, string>
-local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg" }
+local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg", warn = "warn", cancelled = "stop" }
 
 -- A row's mark: the spinner while it runs, else how it ended. A mark never
 -- hovers: a hovered header changes only its text.
@@ -571,7 +571,7 @@ local function builder(ctx, width)
 		end
 		for i = first, last do
 			local m = list[i]
-			local row = { mark("note"), { text = m.text, hl = "Dim" } }
+			local row = { mark(MARK_OF[m.status] or "note"), { text = m.text, hl = "Dim" } }
 			if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
 			B.lines[#B.lines + 1] = row
 		end
