@@ -229,6 +229,13 @@ func TestSessionLifecycle(t *testing.T) {
 	if s, _ = db.GetSession("s1"); s.UpdatedAt == 1 {
 		t.Fatal("a message did not bump updated_at")
 	}
+	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
+	if err := db.RenameSession("s1", "relabelled"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 || s.Title != "relabelled" {
+		t.Fatalf("rename: %+v", s)
+	}
 	if err := db.CreateSession("top", "", "top", ""); err != nil {
 		t.Fatal(err)
 	}

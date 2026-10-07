@@ -79,10 +79,10 @@ func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	return collect(rows, err, scanSession)
 }
 
-// RenameSession sets the session title. Unknown ids are ErrNotFound.
+// RenameSession sets the session title. Unknown ids are ErrNotFound. It
+// leaves updated_at alone: a title is a label, not activity.
 func (s *DB) RenameSession(id, title string) error {
-	return s.execOne("rename session", `UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`,
-		title, now(), id)
+	return s.execOne("rename session", `UPDATE sessions SET title = ? WHERE id = ?`, title, id)
 }
 
 // DeleteSession removes a session and its subagent runs (parent_id has no
