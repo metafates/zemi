@@ -27,6 +27,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
@@ -519,11 +520,11 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 	}
 	text = sanitize.String(text)
 	switch style, _ := a.host.NotifyStyle(); style {
-	case "osc":
+	case config.NotifyOSC:
 		return tea.Raw(ansi.Notify(text))
-	case "bell":
+	case config.NotifyBell:
 		return tea.Raw("\a")
-	case "native":
+	case config.NotifyNative:
 		args := hostapi.NotifyArgv(text)
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

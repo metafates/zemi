@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -356,7 +357,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	// mode's base is auto or yolo (zemi.permission.mode.add refuses others),
 	// and tui/statusline.lua reads the same pair. A shell draft (!) says so
 	// with its own glyph, since it never reaches the model.
-	prefix, promptHL := "> ", map[string]string{"auto": "ModeAuto", "yolo": "ModeYolo"}[a.modeBase()]
+	prefix, promptHL := "> ", map[string]string{config.PermModeAuto: "ModeAuto", config.PermModeYolo: "ModeYolo"}[a.modeBase()]
 	if glyph, hl, _ := a.draftMode(); glyph != "" && len(rows) > 0 && len(rows[0]) > 0 {
 		// the glyph stands for the draft's own first character, so the row leaves it out
 		prefix, promptHL = glyph+" ", hl
