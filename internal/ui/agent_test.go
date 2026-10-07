@@ -2095,40 +2095,69 @@ func seedTodos(t testing.TB, host *hostapi.Host, todos []store.Todo) {
 	}
 }
 
-// TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
-// progress and the pending ones first, and folds the done tail into one row.
-func TestTodoRowsKeepTheLiveItem(t *testing.T) {
+// TestTodoRowsFollowTheLiveItem: the rows keep the order the model wrote them
+// in, the window trails the item in progress, and the fold rows account for
+// what the window leaves out on either side.
+func TestTodoRowsFollowTheLiveItem(t *testing.T) {
 	for _, c := range []struct {
-		h    int
-		want []string
+		name       string
+		h          int
+		live, last store.TodoStatus // the 13th and the 14th item
+		want, gone []string
 	}{
-		{40, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 2 done"}},
-		// a short screen keeps a third of the chat for the list
-		{14, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 11 done"}},
+		{
+			name: "long list",
+			h:    40,
+			live: "in_progress", last: "pending",
+			want: []string{"… 1 more todo above", "✓ step 02", "▸ step 13", "… 1 more todo"},
+			gone: []string{"step 01", "step 14"},
+		},
+		{
+			// a short screen keeps a third of the chat for the list, so the
+			// window trails the live item further in
+			name: "short screen",
+			h:    14,
+			live: "in_progress", last: "pending",
+			want: []string{"… 10 more todos above", "✓ step 11", "✓ step 12", "▸ step 13", "… 1 more todo"},
+			gone: []string{"step 10", "step 14"},
+		},
+		{
+			// nothing in progress: the window starts at the first item
+			name: "nothing in progress",
+			h:    40,
+			live: "done", last: "pending",
+			want: []string{"✓ step 01", "✓ step 12", "… 2 more todos"},
+			gone: []string{"step 14"},
+		},
 	} {
-		t.Run(strconv.Itoa(c.h), func(t *testing.T) { todoRows(t, c.h, c.want) })
+		t.Run(c.name, func(t *testing.T) { todoRows(t, c.h, c.live, c.last, c.want, c.gone) })
 	}
 }
 
-func todoRows(t *testing.T, h int, want []string) {
+func todoRows(t *testing.T, h int, live, last store.TodoStatus, want, gone []string) {
 	app, host := bootAgentApp(t, 100, h)
 	var todos []store.Todo
-	for i := range 13 {
+	for i := range 12 {
 		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done"})
 	}
-	todos[12].Status = "in_progress"
-	todos = append(todos, store.Todo{Content: "step 14", Status: "pending"})
+	todos = append(todos, store.Todo{Content: "step 13", Status: live}, store.Todo{Content: "step 14", Status: last})
 	seedTodos(t, host, todos)
 	host.AppendMessage("user", "do it")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range want {
-		if !strings.Contains(frame, want) {
-			t.Fatalf("missing %q:\n%s", want, frame)
+	// in order, so a reordered list fails even with every row present
+	at := 0
+	for _, w := range want {
+		i := strings.Index(frame[at:], w)
+		if i < 0 {
+			t.Fatalf("missing %q in order:\n%s", w, frame)
 		}
+		at += i + len(w)
 	}
-	if strings.Contains(frame, "step 11") || strings.Contains(frame, "step 12") {
-		t.Fatalf("the done tail must fold:\n%s", frame)
+	for _, g := range gone {
+		if strings.Contains(frame, g) {
+			t.Fatalf("%q is outside the window:\n%s", g, frame)
+		}
 	}
 }
 

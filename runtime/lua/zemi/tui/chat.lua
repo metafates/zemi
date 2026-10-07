@@ -1026,14 +1026,24 @@ zemi.ui.widget.add({
 		end
 		if left > 0 then
 			B.blank()
+			-- at most 12 rows and a third of the chat, in the order the model
+			-- wrote them: the window trails the item in progress, so a long
+			-- list never hides what is being worked on
+			local cap = math.min(12, math.max(3, math.floor((ctx.height or 36) / 3)))
+			local live = 0
+			for n, td in ipairs(todos) do
+				if td.status == "in_progress" then live = n end
+			end
+			local first = math.max(1, math.min(live - cap + 1, #todos - cap + 1))
+			local last = math.min(#todos, first + cap - 1)
 			-- a header in the composer rule's voice: the name, how far along, and
-			-- a short meter of one cell per item
+			-- a short meter of one cell per item shown under it
 			local head = {
 				{ text = "Todos ", hl = "TodoTitle" },
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
-			for n, td in ipairs(todos) do
-				if n > 12 then break end
+			for n = first, last do
+				local td = todos[n]
 				head[#head + 1] = {
 					text = td.status == "done" and "█" or "░",
 					hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule",
@@ -1041,41 +1051,17 @@ zemi.ui.widget.add({
 				}
 			end
 			lines[#lines + 1] = head
-			-- at most 12 rows and a third of the chat, the live ones first: in
-			-- progress, then pending, then done, so a long list never hides the
-			-- item being worked on
-			local cap = math.min(12, math.max(3, math.floor((ctx.height or 36) / 3)))
-			local rank = { in_progress = 1, pending = 2, done = 3 }
-			---@type { td: zemi.Todo, n: integer }[]
-			local shown = {}
-			for n, td in ipairs(todos) do
-				shown[#shown + 1] = { td = td, n = n }
+			---@param hidden integer
+			---@param above boolean?
+			local function fold(hidden, above)
+				lines[#lines + 1] = {
+					{ text = "  … ", hl = "Dim", copy = false },
+					{ text = fmt.count(hidden, "more todo", "more todos") .. (above and " above" or ""), hl = "Dim" },
+				}
 			end
-			table.sort(shown, function(a, b)
-				local ra, rb = rank[a.td.status] or 2, rank[b.td.status] or 2
-				if ra ~= rb then return ra < rb end
-				return a.n < b.n
-			end)
-			for n, it in ipairs(shown) do
-				local td = it.td
-				if n > cap then
-					local hidden, done_n = #shown - cap, 0
-					for i = cap + 1, #shown do
-						if shown[i].td.status == "done" then done_n = done_n + 1 end
-					end
-					if done_n == hidden then
-						lines[#lines + 1] = {
-							{ text = "  ✓ ", hl = "TodoDone", copy = false },
-							{ text = done_n .. " done", hl = "Dim" },
-						}
-					else
-						lines[#lines + 1] = {
-							{ text = "  … ", hl = "Dim", copy = false },
-							{ text = fmt.count(hidden, "more todo", "more todos"), hl = "Dim" },
-						}
-					end
-					break
-				end
+			if first > 1 then fold(first - 1, true) end
+			for n = first, last do
+				local td = todos[n]
 				local tick, mhl, hl, item = "  ○ ", "Rule", "Normal", td.content
 				if td.status == "done" then
 					tick, mhl, hl = "  ✓ ", "TodoDone", "Dim"
@@ -1085,6 +1071,7 @@ zemi.ui.widget.add({
 				end
 				lines[#lines + 1] = { { text = tick, hl = mhl, copy = false }, { text = item, hl = hl } }
 			end
+			if last < #todos then fold(#todos - last) end
 		end
 		return lines, more
 	end,
