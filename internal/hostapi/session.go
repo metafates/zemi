@@ -95,18 +95,11 @@ func (h *Host) ResumeSession(id string) error {
 		return err
 	}
 	history, tr := resumeHistory(rows)
-	first := ""
-	for _, m := range tr {
-		if m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage {
-			first = m.Text
-			break
-		}
-	}
 	h.reconcileBrain(h.partition(store.ScopeProject))
 	brain, globs := h.brainFor()
 	ag := h.agents
 	err = h.closeSession(func() {
-		ag.sessionID, ag.titled, ag.firstUser = id, true, first
+		ag.sessionID = id
 		// A bare runner carries the history; AgentSend copies it into the
 		// runner it builds for the next turn.
 		ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
@@ -493,12 +486,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	return history, tr
 }
 
-const titleSystem = `Name the coding conversation below for a session list. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
+const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
 
-// autoTitle names a new session from its first exchange with a short model
-// call in the background; any failure keeps the first-line title.
-func (h *Host) autoTitle(sid, user, reply string) {
-	if !h.Settings.Bool("session.auto_title") {
+// autoTitle names a new session from its first user message with a short
+// model call in the background; any failure keeps the first-line title. No
+// UI means no title: a zemi run exits before the call would answer.
+func (h *Host) autoTitle(sid, user string) {
+	if !h.Settings.Bool("session.auto_title") || h.hooks() == nil {
 		return
 	}
 	if h.DB == nil {
@@ -507,7 +501,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 	h.GoSafe("session title", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, nil, "titles")
+		res, err := h.generate(ctx, sid, titleSystem, "<message>\n"+truncRunes(user, 2000)+"\n</message>", nil, nil, "titles")
 		if err != nil {
 			h.Log.Debug("title generation failed", "origin", "session", "error", err)
 			return

@@ -259,11 +259,7 @@ type agentHost struct {
 	loopRun  *Loop
 	byLoop   bool
 
-	// titled is false for a new session until its first exchange named it
-	// (autoTitle); firstUser is that session's first message.
-	titled    bool
-	firstUser string
-	env       string // pinned environment section (environmentPrompt)
+	env string // pinned environment section (environmentPrompt)
 }
 
 func newAgentHost(clock lua.Clock) *agentHost {
@@ -1729,7 +1725,6 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		return err
 	}
 	ag.sessionID = sid
-	ag.titled, ag.firstUser = false, firstText
 	h.recentStale.Store(true)
 	ag.env = ""
 	ag.memAuto = 0
@@ -1737,6 +1732,14 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	ag.mu.Unlock()
 	h.refreshPending()
 	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
+	// the tab, the exit banner and zemi.session.title() read the first
+	// message's line from here on, not after the model's title lands
+	h.tMu.Lock()
+	h.session.Title = title
+	h.tMu.Unlock()
+	if title != "" {
+		h.autoTitle(sid, title)
+	}
 	return nil
 }
 

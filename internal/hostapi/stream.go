@@ -249,17 +249,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
-	// a zemi run exits before a title call answers: no UI, no title
-	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
-		ag.mu.Lock()
-		first := !ag.titled && ag.sessionID == sid
-		ag.titled = true
-		user := ag.firstUser
-		ag.mu.Unlock()
-		if first {
-			h.autoTitle(sid, user, text)
-		}
-	}
 	if err != nil {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
