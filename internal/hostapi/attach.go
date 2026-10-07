@@ -211,7 +211,7 @@ func attachToken(name string, image bool) string {
 func (h *Host) AttachLabel(rel string) string {
 	name := projectRef(rel)
 	if !canCarry(name) {
-		return quotePath(h.projectAbs(rel))
+		return tools.ShellQuote(h.projectAbs(rel))
 	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
 	return attachToken(name, image)

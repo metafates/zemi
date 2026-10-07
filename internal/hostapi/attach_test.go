@@ -16,6 +16,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestExpandAttachments: project files referenced with @ attach; secret-
@@ -134,7 +135,7 @@ func TestAttachLabel(t *testing.T) {
 		{"internal/ui/app.go", "[File internal/ui/app.go]"},
 		{"shot.png", "[Image ./shot.png]"},
 		{"notes.txt", "[File ./notes.txt]"},
-		{"a]b.go", quotePath(slash)},
+		{"a]b.go", tools.ShellQuote(slash)},
 	} {
 		if got := h.AttachLabel(c.rel); got != c.want {
 			t.Errorf("AttachLabel(%q) = %q, want %q", c.rel, got, c.want)
