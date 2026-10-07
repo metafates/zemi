@@ -1465,8 +1465,7 @@ UI extensibility contract:
   toward `Normal`, and
   `effect = "spin"` steps a segment's first glyph through the running
   spinner; `ui.animations = false` keeps both static. The state marks
-  (`zemi.ui.marks`: running, done, warn for a run that finished with a failed
-  agent inside it, failed, stopped, waiting, ...) are
+  (`zemi.ui.marks`: running, done, warn, failed, stopped, waiting, ...) are
   one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id and the widget spec
   carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
@@ -1660,9 +1659,8 @@ memory(id, scope, text, quote, provenance_session_id,
 memory_ops(op, id, ts, text, prior_text, quote, session_id, hash,
            superseded_by, scope, origin, prior_bytes,
            prior_truncated, prior_existed, created_at, updated_at)
-                                                               -- the audit ledger: one per scope's DB, part of
-                                                               -- the store's own schema, so it is created and
-                                                               -- version-stamped with the rest
+                                                               -- the audit ledger: one per scope's DB, part of the
+                                                               -- store's schema the version stamp covers
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, payload, created_at)                              -- pending, until reviewed
@@ -2058,13 +2056,13 @@ rides the `memories.md` line and its ledger entries.
   clock; a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).
   Under the transcript the chat draws what is still pending as one static row,
-  with no spinner and no clock, so an hour-long job never costs a frame: every
-  handed-off agent or workflow, background job and `Host.Busy` entry (a
-  compaction, the idle recap, a plugin install) by name, counted when several
-  are under way. The todo block follows it, in the order the items were
-  written: the header's meter and a window of at most 12 rows (a third of the
-  chat) follow the item in progress, saying `… N more todos` under the window
-  and `… N more todos above` when it starts past it.
+  with no spinner and no clock, so an hour-long job never costs a frame. It
+  names every handed-off agent and workflow, background job and `Host.Busy`
+  entry (a compaction, the idle recap, a plugin install). The todo block
+  follows it, in the order the items were written: the header's meter and a
+  window of at most 12 rows (a third of the chat) follow the item in progress,
+  saying `… N more todos` under the window and `… N more todos above` when it
+  starts past it.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
@@ -2265,8 +2263,8 @@ rides the `memories.md` line and its ledger entries.
   `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
 - **JSON lines** (run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
-  not carry is left out, and a run that failed before its turn prints `done`
-  alone.
+  not carry is left out, and a run that failed before its turn prints that
+  `done` line alone, no events before it.
 
   | `type` | its fields |
   |---|---|
