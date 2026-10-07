@@ -1567,6 +1567,40 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	}
 }
 
+// TestProviderModelNumbers: a model entry's numeric fields are checked at the
+// boundary, so a quoted one is refused here instead of reading as 0 and
+// leaving /health to blame a field the user did set.
+func TestProviderModelNumbers(t *testing.T) {
+	for _, c := range []struct {
+		name, models string
+		want         int64
+		err          string
+	}{
+		{name: "numbers", models: `{ id = "m", context_window = 200000 }`, want: 200000},
+		{name: "a quoted number", models: `{ id = "m", context_window = "200000" }`, err: "models[1].context_window must be a number"},
+		{name: "a quoted cost", models: `{ id = "m", cost_per_1m_in = "1.5" }`, err: "models[1].cost_per_1m_in must be a number"},
+		{name: "a missing one", models: `{ id = "m" }`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			err := r.ExecuteChunk(t.Context(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { `+c.models+` } })`, "p.lua", lua.OriginUser)
+			if c.err != "" {
+				if err == nil || !strings.Contains(err.Error(), c.err) {
+					t.Fatalf("quoted field: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			spec, ok := h.Providers.Lookup("a")
+			if !ok || spec.Models[0].ContextWindow != c.want {
+				t.Fatalf("context window = %+v, want %d", spec.Models, c.want)
+			}
+		})
+	}
+}
+
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
 // not models.chat; compaction and a subagent without a model follow

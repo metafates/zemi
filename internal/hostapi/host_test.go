@@ -32,7 +32,7 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
