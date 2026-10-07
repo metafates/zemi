@@ -846,8 +846,7 @@ func (h *Host) BusyList() []BusyEntry {
 	h.busyMu.Lock()
 	defer h.busyMu.Unlock()
 	out := make([]BusyEntry, 0, len(h.busy))
-	for i := len(h.busy) - 1; i >= 0; i-- {
-		j := h.busy[i]
+	for _, j := range slices.Backward(h.busy) {
 		out = append(out, BusyEntry{j.label, time.Since(j.start), j.cancel != nil})
 	}
 	return out

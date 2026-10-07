@@ -228,13 +228,11 @@ func (a *App) acceptCompletion() {
 	if !f.open || f.selected >= f.count() {
 		return
 	}
-	at, text := f.start+1, ""
 	if n := len(f.extra); f.selected < n {
-		text = f.extra[f.selected].label
+		a.composer.replace(f.start+1, f.extra[f.selected].label+" ")
 	} else {
-		at, text = f.start, a.host.AttachLabel(f.files[f.matches[f.selected-n].Index])
+		a.composer.replace(f.start, a.host.AttachLabel(f.files[f.matches[f.selected-n].Index])+" ")
 	}
-	a.composer.replace(at, text+" ")
 	f.close()
 }
 
