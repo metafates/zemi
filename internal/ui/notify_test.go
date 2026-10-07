@@ -15,13 +15,20 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
+// notifyApp is a bare zemi for the tests that drive ticks and turn ends
+// alone: no config tree, no boot.
+func notifyApp(t *testing.T) (*App, *hostapi.Host) {
+	t.Helper()
+	log := slog.New(slog.DiscardHandler)
+	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
+	return NewApp(host, log), host
+}
+
 // TestNotifyWhenAway: a finished turn notifies in the ui.notify style only
 // while the terminal reports zemi unfocused, once the agent reads idle; a
 // loop's run ends quietly, and the loop's end notifies.
 func TestNotifyWhenAway(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
-	app := NewApp(host, log)
+	app, host := notifyApp(t)
 	frame := func() string {
 		_, cmd := app.Update(frameTickMsg{})
 		app.wakeTick() // the tick in the batch returns at the next frame boundary
@@ -74,8 +81,6 @@ func TestNotifyWhenAway(t *testing.T) {
 // after recapDelay when the turn ended well with no input since, and the
 // next input stops it; the reflector runs after ReflectIdle whatever came.
 func TestRecapWhenIdle(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
 		name           string
@@ -94,7 +99,7 @@ func TestRecapWhenIdle(t *testing.T) {
 		{"a chain goes on", turnDoneMsg{}, nil, true, false, false, false},
 		{"a loop's run", turnDoneMsg{}, nil, false, true, false, true},
 	} {
-		app := NewApp(host, log)
+		app, host := notifyApp(t)
 		start := time.Unix(1000, 0)
 		now := start
 		app.now = func() time.Time { return now }
@@ -133,8 +138,6 @@ func TestRecapWhenIdle(t *testing.T) {
 // while a turn runs, ? while a prompt waits, and how a turn ended while the
 // window was away until it is focused again.
 func TestWindowTitle(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	running := func(app *App) { app.turnActive = true }
 	for _, c := range []struct {
 		name  string
@@ -156,10 +159,10 @@ func TestWindowTitle(t *testing.T) {
 		{"done here", false, nil, []tea.Msg{turnDoneMsg{}, frameTickMsg{}}, 0, "zemi"},
 		{"cancelled away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}, frameTickMsg{}}, 0, "zemi"},
 	} {
+		app, host := notifyApp(t)
 		if _, err := host.Settings.SetQuiet("ui.animations", !c.still); err != nil {
 			t.Fatal(err)
 		}
-		app := NewApp(host, log)
 		app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
 		for _, m := range c.msgs {
 			app.Update(m)
@@ -177,8 +180,7 @@ func TestWindowTitle(t *testing.T) {
 // level and title, newest first; a twin restarts its row, an expired toast's
 // rows leave, and a short stage cuts the tray with its frame closed.
 func TestToastTray(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	app := NewApp(hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{}), log)
+	app, _ := notifyApp(t)
 	type push struct {
 		level       slog.Level
 		title, body string

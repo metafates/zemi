@@ -1498,7 +1498,6 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	t.Logf("active=%v", host.AgentActive())
 	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
@@ -1587,7 +1586,6 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
-	t.Logf("active=%v", host.AgentActive())
 	if r := row(2500); !strings.HasPrefix(r, " @·· ─") {
 		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
 	}
@@ -1601,7 +1599,6 @@ func TestWorkingRowMascot(t *testing.T) {
 		app.Update(c.msg)
 		app.Update(frameTickMsg{})
 		host.SeedStream(hostapi.StreamSnapshot{})
-		t.Logf("active=%v", host.AgentActive())
 		app.Update(frameTickMsg{})
 		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
 			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
