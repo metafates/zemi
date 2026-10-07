@@ -131,10 +131,17 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   what it sits on: `hostBox` and the composer frame put theirs on the panel, where a
   style that paints the canvas takes the panel instead (`segStyle`).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
-  attachment tokens: `[Image <name>]` or `[File <name>]`, the kind read from the MIME type,
-  the name the project-relative path for a file in the project and the copy's own basename
-  for one outside it, capped at 60 cells; a name the project root already holds is refused,
-  and a clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. `expandAttachments`
-  resolves a bracketed name in the drops directory first, then project-relative, so a forged
-  reference cannot attach other files; a `@name` the user typed stays a reference and keeps
-  its form.
+  composer tokens via `hostapi.AttachPath`, and the `@` popup inserts the same form for a
+  project file via `hostapi.AttachLabel`: an `@<path>` reference the user can go on editing,
+  which the completion picks up again. A file from outside the project zemi copies in becomes
+  `[Image <name>]` or `[File <name>]`, the kind read from the extension, the name the copy's
+  own basename, capped at 60 cells; a name the project root already holds is refused, a
+  directory or a secret-shaped, binary or oversized file keeps its quoted path, and a
+  clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. A project path an `@` word
+  would not read back whole - one holding whitespace, or ending in the punctuation a sentence
+  ends on - keeps the chip, named project-relative with the `./` a bare root name needs; one
+  no chip carries either (`]` beside one of those, a tab, a newline) is the file's path,
+  quoted, or the drops copy a drop makes of it. `expandAttachments` resolves a bracketed name
+  in the drops directory first, then project-relative, so a forged reference cannot attach
+  other files; a `@name` resolves in the project alone, whatever the user or the popup put
+  there.

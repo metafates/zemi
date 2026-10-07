@@ -56,7 +56,8 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 }
 
 // attachRef finds what attaches: a typed @name, and the [Image name] or
-// [File name] chip zemi inserts for a file the user dropped or picked.
+// [File name] chip zemi writes for a file it copied in, or for a project path
+// an @ word cannot carry whole.
 var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)|\[(Image|File) ([^\]\n]+)\]`)
 
 func overLimit(limit int64) string {
@@ -186,6 +187,12 @@ func dropName(name string) bool {
 // canCarry reports whether a name travels in a token unchanged.
 func canCarry(name string) bool { return !strings.ContainsAny(name, "]\n\t") }
 
+// canRef reports whether rel reads back unchanged as an @ word: it ends at
+// whitespace, and its trailing punctuation is trimmed as a sentence's is.
+func canRef(rel string) bool {
+	return rel != "" && !strings.ContainsAny(rel, " \t\n\f\r") && strings.TrimRight(rel, ".,;:!?)") == rel
+}
+
 // projectRef is a project file's name in a token. A bare root file would read
 // as one of the drops directory's copies, which another project's file of the
 // same name could answer, so it carries the ./ that tells them apart.
@@ -196,8 +203,8 @@ func projectRef(rel string) string {
 	return rel
 }
 
-// attachToken is what the composer shows for an attachment: the name the user
-// knows, in the one form every attachment takes.
+// attachToken is the composer's chip for an attachment: the name the user
+// knows, whole, for a file from outside the project or one no @ word carries.
 func attachToken(name string, image bool) string {
 	if image {
 		return "[Image " + name + "]"
@@ -205,35 +212,48 @@ func attachToken(name string, image bool) string {
 	return "[File " + name + "]"
 }
 
-// AttachLabel is the token for a project file the completion popup picked:
-// the same form AttachPath gives, its kind from the extension. A name a token
-// cannot carry is the file's path instead, as AttachPath falls back.
+// attachRefToken is a project file as the composer writes it: an @reference
+// the user can go on editing, and the completion picks up again, where what
+// zemi reads back is the same path. Else the chip, which carries the name
+// whole.
+func attachRefToken(rel string, image bool) string {
+	if canRef(rel) {
+		return "@" + rel
+	}
+	return attachToken(projectRef(rel), image)
+}
+
+// AttachLabel is what the completion popup inserts for a project file the
+// user picked. A path no token carries, where the @ word and the chip both
+// refuse it, is its quoted absolute path instead, for the model to reach with
+// its tools.
 func (h *Host) AttachLabel(rel string) string {
-	name := projectRef(rel)
-	if !canCarry(name) {
+	if !canRef(rel) && !canCarry(rel) {
 		return tools.ShellQuote(h.projectAbs(rel))
 	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
-	return attachToken(name, image)
+	return attachRefToken(rel, image)
 }
 
 // AttachPath turns a path the user dropped or pasted into a composer token:
-// [Image name] or [File name] for a file zemi attaches - under its
-// project-relative path when it is the project's, under its own name when it
-// is copied into the drops directory - and otherwise the quoted path (a
-// directory, a large, binary or secret-shaped file) for the model to reach
-// with its tools.
+// the form AttachLabel gives a project file, where a token names it, [Image
+// name] or [File name] for a file zemi copies into the drops directory under
+// its own name, and otherwise the quoted path (a directory, a large, binary or
+// secret-shaped file) for the model to reach with its tools.
 func (h *Host) AttachPath(path string) string {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return tools.ShellQuote(path)
 	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
-	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) && canCarry(rel) {
+	// either token names the project's own file, so only a name neither
+	// carries is copied in
+	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) &&
+		(canRef(rel) || canCarry(rel)) {
 		if fi.IsDir() {
 			return rel + string(filepath.Separator)
 		}
-		return attachToken(projectRef(rel), image)
+		return attachRefToken(rel, image)
 	}
 	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return tools.ShellQuote(path)

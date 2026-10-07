@@ -272,8 +272,17 @@ func TestCompletionFlow(t *testing.T) {
 	if app.completion.open {
 		t.Fatal("popup open after accept")
 	}
-	if got := app.composer.text; got != "see [File internal/ui/app.go] " {
+	if got := app.composer.text; got != "see @internal/ui/app.go " {
 		t.Fatalf("accepted text: %q", got)
+	}
+	// the reference stays editable: back inside its word, the popup returns
+	app.composerKey("left", tea.KeyPressMsg{})
+	if !app.completion.open || app.completion.token != "internal/ui/app.go" {
+		t.Fatalf("popup on the accepted word: open=%v token=%q", app.completion.open, app.completion.token)
+	}
+	app.composerKey("right", tea.KeyPressMsg{}) // back past the word, where the popup closes
+	if app.completion.open {
+		t.Fatal("popup open at the end of the accepted word")
 	}
 	// A trigger mid-word does not open; esc closes an open palette.
 	send(k{"a", "a"}, k{"@", "@"})

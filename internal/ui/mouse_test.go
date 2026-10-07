@@ -175,6 +175,16 @@ func TestDropPaste(t *testing.T) {
 			t.Errorf("paste %q: composer %q, want %q", c.paste, app.composer.text, c.want)
 		}
 	}
+	// a wide space is no word start for an @ reference: space the token from it
+	proj := t.TempDir()
+	app.host.Dirs.ProjectDir = proj
+	main := filepath.Join(proj, "main.go")
+	os.WriteFile(main, []byte("package main"), 0o600)
+	app.composer.text, app.composer.cursor = "see\u00a0", 4
+	app.Update(tea.PasteMsg{Content: main})
+	if want := "see\u00a0 @main.go "; app.composer.text != want {
+		t.Errorf("drop after a wide space: composer %q, want %q", app.composer.text, want)
+	}
 }
 
 func TestComposerCursorColumn(t *testing.T) {

@@ -221,8 +221,9 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 
 // acceptCompletion replaces what follows the trigger with the selected match
 // (plus a trailing space) and closes the popup. A row a Lua source offered
-// keeps the trigger, which is its own; a file the popup picked becomes the
-// attachment the host gives every attachment.
+// keeps the trigger, which is its own; a project file becomes the host's token
+// for it, an @reference where one carries the path whole, which the user can
+// go on editing.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {

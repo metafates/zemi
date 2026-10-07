@@ -137,7 +137,7 @@ The palette: `/new`, `/sessions` (resume, rename or delete), `/rename [title]` (
 
 Typed only: `/resume`, `/fork`, `/export [full] [path]` (full adds reasoning, every tool call expanded and the subagent runs), `/effort`, `/lsp`, `/reflect`, `/reload`.
 
-`@path` attaches a project file as a reference; a file dropped on the terminal or an image pasted with ctrl+v is attached too and reads in the message as `[Image <name>]` or `[File <name>]`, `<name>` the path into the project or the dropped file's own. Images are png, jpg, gif or webp up to 20 MB, shrunk past 2000 px or 3.75 MB, and reach only a model that takes images.
+`@path` attaches a project file as a reference, which the `@` completion popup inserts for one, as does a drop of a project file; a path the reference cannot carry keeps a chip or its quoted path. A file from outside the project dropped on the terminal, or an image pasted with ctrl+v, becomes `[Image <name>]` or `[File <name>]`, `<name>` the copy's own name; a directory, or a secret-shaped, binary or oversized file, keeps its quoted path instead. Images are png, jpg, gif or webp up to 20 MB, shrunk past 2000 px or 3.75 MB, and reach only a model that takes images.
 
 ## Project config and trust
 

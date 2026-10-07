@@ -123,23 +123,39 @@ func TestChipAttachment(t *testing.T) {
 	}
 }
 
-// TestAttachLabel: the popup's token for a project root file keeps the ./ that
-// tells it apart from the drops directory's bare names, so another project's
-// copy of that name cannot take the project file's place nor skip its read
-// check.
+// TestAttachLabel: the popup inserts an @reference, which no drops copy can
+// answer, so another project's file of the same name cannot take the project
+// file's place nor skip its read check. A path an @ word would not read back
+// whole, or that no token carries, keeps the form that does.
 func TestAttachLabel(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
-	slash := filepath.Join(h.Dirs.ProjectDir, "a]b.go")
 	for _, c := range []struct{ rel, want string }{
-		{"internal/ui/app.go", "[File internal/ui/app.go]"},
-		{"shot.png", "[Image ./shot.png]"},
-		{"notes.txt", "[File ./notes.txt]"},
-		{"a]b.go", tools.ShellQuote(slash)},
+		{"internal/ui/app.go", "@internal/ui/app.go"},
+		{"shot.png", "@shot.png"},
+		{"notes.txt", "@notes.txt"},
+		{"a]b.go", "@a]b.go"},
+		{"todo!", "[File ./todo!]"},
+		{"docs/My Notes.md", "[File docs/My Notes.md]"},
 	} {
 		if got := h.AttachLabel(c.rel); got != c.want {
 			t.Errorf("AttachLabel(%q) = %q, want %q", c.rel, got, c.want)
 		}
+	}
+	tricky := filepath.Join(h.Dirs.ProjectDir, "My ]Notes.md")
+	if got, want := h.AttachLabel("My ]Notes.md"), tools.ShellQuote(tricky); got != want {
+		t.Errorf("AttachLabel of a path no token carries = %q, want %q", got, want)
+	}
+	// a name ending in punctuation the @ word trims must not resolve to the
+	// sibling without it
+	for name, text := range map[string]string{"x": "PLAIN", "x!": "BANG"} {
+		if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := h.expandAttachments(h.AttachLabel("x!"))
+	if !strings.Contains(got, "BANG") || strings.Contains(got, "PLAIN") {
+		t.Fatalf("a trimmed name attached another file: %q", got)
 	}
 	// a copy another project left under a name this project also has
 	name, err := h.saveDrop("notes.txt", []byte("another project's"))
@@ -149,7 +165,7 @@ func TestAttachLabel(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := h.expandAttachments(h.AttachLabel(name))
+	got, _ = h.expandAttachments(h.AttachLabel(name))
 	if !strings.Contains(got, "the project's") || strings.Contains(got, "another project's") {
 		t.Fatalf("the project's own file must attach: %q", got)
 	}
@@ -210,9 +226,10 @@ func TestImageAttachment(t *testing.T) {
 	}
 }
 
-// TestAttachPath: a dropped project file becomes its token, an image from
-// elsewhere a copy that attaches under its own name, a directory or secret
-// its path, and a bare chip name cannot climb out of the drops directory.
+// TestAttachPath: a dropped project file becomes its @reference where an @
+// word reads it back whole, an image from elsewhere a copy that attaches under
+// its own name, a directory or secret its path, and a bare chip name cannot
+// climb out of the drops directory.
 func TestAttachPath(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -220,13 +237,19 @@ func TestAttachPath(t *testing.T) {
 	shot := filepath.Join(out, "Screen Shot 1.png")
 	os.WriteFile(shot, tinyPNG(), 0o600)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "My Notes.md"), []byte("notes"), 0o600)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "todo!"), []byte("notes"), 0o600)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "a]b.go"), []byte("package a"), 0o600)
 	os.WriteFile(filepath.Join(out, ".env"), []byte("TOKEN=x"), 0o600)
 	// an outside file the project root has too: the copy cannot take its name
 	elsewhere := filepath.Join(t.TempDir(), "main.go")
 	os.WriteFile(elsewhere, []byte("package other"), 0o600)
 
 	for path, want := range map[string]string{
-		filepath.Join(h.Dirs.ProjectDir, "main.go"): "[File ./main.go]",
+		filepath.Join(h.Dirs.ProjectDir, "main.go"):     "@main.go",
+		filepath.Join(h.Dirs.ProjectDir, "a]b.go"):      "@a]b.go",
+		filepath.Join(h.Dirs.ProjectDir, "My Notes.md"): "[File ./My Notes.md]",
+		filepath.Join(h.Dirs.ProjectDir, "todo!"):       "[File ./todo!]",
 		shot:                       "[Image Screen Shot 1.png]",
 		out:                        out,
 		filepath.Join(out, ".env"): filepath.Join(out, ".env"),

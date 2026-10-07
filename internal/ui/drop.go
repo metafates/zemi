@@ -107,9 +107,12 @@ func (a *App) insertAttachments(paths []string) {
 	a.insertToken(strings.Join(tokens, " "))
 }
 
+// insertToken puts tok at the cursor, spaced from the text around it. The
+// space in front is what an @ reference needs to start a word, and the
+// expander reads a word start as ASCII whitespace alone.
 func (a *App) insertToken(tok string) {
 	r := a.composer.runes()
-	if c := a.composer.cursor; c > 0 && c <= len(r) && !unicode.IsSpace(r[c-1]) {
+	if c := a.composer.cursor; c > 0 && c <= len(r) && !strings.ContainsRune(" \t\n\f\r", r[c-1]) {
 		tok = " " + tok
 	}
 	a.composer.insert(tok + " ")
