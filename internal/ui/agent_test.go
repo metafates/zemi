@@ -1498,7 +1498,6 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	t.Logf("active=%v", host.AgentActive())
 	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
@@ -1587,7 +1586,6 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
-	t.Logf("active=%v", host.AgentActive())
 	if r := row(2500); !strings.HasPrefix(r, " @·· ─") {
 		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
 	}
@@ -1601,7 +1599,6 @@ func TestWorkingRowMascot(t *testing.T) {
 		app.Update(c.msg)
 		app.Update(frameTickMsg{})
 		host.SeedStream(hostapi.StreamSnapshot{})
-		t.Logf("active=%v", host.AgentActive())
 		app.Update(frameTickMsg{})
 		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
 			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
@@ -2051,23 +2048,37 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 	}
 }
 
-// TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
-// progress and the pending ones first, and folds the done tail into one row.
-func TestTodoRowsKeepTheLiveItem(t *testing.T) {
+// TestPendingRow: work that will change this conversation later - a job the
+// user waits on, a compaction - draws one static row at the chat's tail,
+// above the todos. A running flow is pinned by TestGoldenWorkflows.
+func TestPendingRow(t *testing.T) {
 	for _, c := range []struct {
-		h    int
-		want []string
+		name string
+		work func(h *hostapi.Host)
+		want string
 	}{
-		{40, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 2 done"}},
-		// a short screen keeps a third of the chat for the list
-		{14, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 11 done"}},
+		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
+		{"compaction", func(h *hostapi.Host) { h.SeedStream(hostapi.StreamSnapshot{Active: true, Compacting: true}) }, "⧗ compacting the conversation"},
 	} {
-		t.Run(strconv.Itoa(c.h), func(t *testing.T) { todoRows(t, c.h, c.want) })
+		t.Run(c.name, func(t *testing.T) { pendingRow(t, c.work, c.want) })
 	}
 }
 
-func todoRows(t *testing.T, h int, want []string) {
-	app, host := bootAgentApp(t, 100, h)
+func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
+	t.Helper()
+	app, host := bootAgentApp(t, 100, 24)
+	seedTodos(t, host, []store.Todo{{Content: "step one", Status: "pending"}})
+	work(host)
+	rows := chatRows(t, app, 80)
+	at, todos := slices.Index(rows, want), slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "Todos ") })
+	if at < 0 || todos < 0 || at > todos {
+		t.Fatalf("want %q above the todos header, at %d of %d:\n%s", want, at, todos, strings.Join(rows, "\n"))
+	}
+}
+
+// seedTodos writes a session's todo list, as the todos tool would.
+func seedTodos(t testing.TB, host *hostapi.Host, todos []store.Todo) {
+	t.Helper()
 	db := testStore(t, host)
 	sid := store.ShortID()
 	if err := db.CreateSession(sid, "", "t", ""); err != nil {
@@ -2076,25 +2087,74 @@ func todoRows(t *testing.T, h int, want []string) {
 	if err := host.ResumeSession(sid); err != nil {
 		t.Fatal(err)
 	}
-	var todos []store.Todo
-	for i := range 13 {
-		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done"})
-	}
-	todos[12].Status = "in_progress"
-	todos = append(todos, store.Todo{Content: "step 14", Status: "pending"})
 	if err := host.PipelineFor().TodosWrite(todos); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestTodoRowsFollowTheLiveItem: the rows keep the order the model wrote them
+// in, the window trails the item in progress, and the fold rows account for
+// what the window leaves out on either side.
+func TestTodoRowsFollowTheLiveItem(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		h          int
+		live, last store.TodoStatus // the 13th and the 14th item
+		want, gone []string
+	}{
+		{
+			name: "long list",
+			h:    40,
+			live: "in_progress", last: "pending",
+			want: []string{"… 1 more todo above", "✓ step 02", "▸ step 13", "… 1 more todo"},
+			gone: []string{"step 01", "step 14"},
+		},
+		{
+			// a short screen keeps a third of the chat for the list, so the
+			// window trails the live item further in
+			name: "short screen",
+			h:    14,
+			live: "in_progress", last: "pending",
+			want: []string{"… 10 more todos above", "✓ step 11", "✓ step 12", "▸ step 13", "… 1 more todo"},
+			gone: []string{"step 10", "step 14"},
+		},
+		{
+			// nothing in progress: the window starts at the first item
+			name: "nothing in progress",
+			h:    40,
+			live: "done", last: "pending",
+			want: []string{"✓ step 01", "✓ step 12", "… 2 more todos"},
+			gone: []string{"step 14"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { todoRows(t, c.h, c.live, c.last, c.want, c.gone) })
+	}
+}
+
+func todoRows(t *testing.T, h int, live, last store.TodoStatus, want, gone []string) {
+	app, host := bootAgentApp(t, 100, h)
+	var todos []store.Todo
+	for i := range 12 {
+		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done"})
+	}
+	todos = append(todos, store.Todo{Content: "step 13", Status: live}, store.Todo{Content: "step 14", Status: last})
+	seedTodos(t, host, todos)
 	host.AppendMessage("user", "do it")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range want {
-		if !strings.Contains(frame, want) {
-			t.Fatalf("missing %q:\n%s", want, frame)
+	// in order, so a reordered list fails even with every row present
+	at := 0
+	for _, w := range want {
+		i := strings.Index(frame[at:], w)
+		if i < 0 {
+			t.Fatalf("missing %q in order:\n%s", w, frame)
 		}
+		at += i + len(w)
 	}
-	if strings.Contains(frame, "step 11") || strings.Contains(frame, "step 12") {
-		t.Fatalf("the done tail must fold:\n%s", frame)
+	for _, g := range gone {
+		if strings.Contains(frame, g) {
+			t.Fatalf("%q is outside the window:\n%s", g, frame)
+		}
 	}
 }
 

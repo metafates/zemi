@@ -50,7 +50,8 @@ func TestPlanApproval(t *testing.T) {
 	}{
 		{"enter approves", "auto", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
 		{"a approves outside plan mode", "", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
-		{"down enter opens the changes input", "", []string{"j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
+		{"s saves without starting it", "", []string{"s"}, tools.PlanVerdict{Approved: true, Hold: true}, true},
+		{"down down enter opens the changes input", "", []string{"j", "j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
 		{"typing requests changes", "", []string{"e", "u", "s", "e", " ", "s", "q", "l", "enter"}, tools.PlanVerdict{Feedback: "use sql"}, true},
 		{"esc dismisses", "", []string{"esc"}, tools.PlanVerdict{}, false},
 	}
@@ -59,7 +60,7 @@ func TestPlanApproval(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 18)
 			done := planAsync(t, app, "# Plan\n\n- one\n- two", c.mode)
 			pressKeys(app, c.keys...)
-			if r := awaitPlan(t, app, done); r.ok != c.want || r.v.Approved != c.wantV.Approved || r.v.Feedback != c.wantV.Feedback {
+			if r := awaitPlan(t, app, done); r.ok != c.want || r.v != c.wantV {
 				t.Fatalf("verdict %+v ok=%v, want %+v ok=%v", r.v, r.ok, c.wantV, c.want)
 			}
 		})

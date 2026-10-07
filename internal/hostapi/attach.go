@@ -24,6 +24,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -32,6 +33,8 @@ const (
 	attachMax      = 64 << 10           // bytes per text file
 	attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
+	// dropNameMax is how long a copied file's name may read in a token
+	dropNameMax = 60
 )
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
@@ -52,7 +55,9 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}
 }
 
-var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)`)
+// attachRef finds what attaches: a typed @name, and the [Image name] or
+// [File name] chip zemi inserts for a file the user dropped or picked.
+var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)|\[(Image|File) ([^\]\n]+)\]`)
 
 func overLimit(limit int64) string {
 	if limit >= 1<<20 {
@@ -73,28 +78,31 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
 	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
-		rel := strings.TrimRight(m[1], ".,;:!?)")
-		if seen[rel] {
-			continue
+		// a chip names a file zemi itself copied, or one of the project's: the
+		// copy wins, since a name saveDrop handed out is not the project's
+		chip, name := m[2] != "", m[3]
+		if !chip {
+			name = strings.TrimRight(m[1], ".,;:!?)")
 		}
-		seen[rel] = true
 		var path perm.Path
 		var err error
 		drop := false
-		if name, ok := strings.CutPrefix(rel, "drop:"); ok {
-			// only copies of what the user dropped live there (AttachPath)
-			if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") || h.dropsDir() == "" {
+		if chip && dropName(name) && h.dropsDir() != "" {
+			if p, err := perm.Resolve(filepath.Join(h.dropsDir(), name)); err == nil {
+				path, drop = p, true
+			}
+		}
+		if !drop {
+			path, err = h.resolveJailed(name, []string{h.Dirs.ProjectDir}, false)
+			if err != nil {
 				continue
 			}
-			path, err = perm.Resolve(filepath.Join(h.dropsDir(), name))
-			drop = true
-		} else {
-			path, err = h.resolveJailed(rel, []string{h.Dirs.ProjectDir}, false)
-		}
-		if err != nil {
-			continue
 		}
 		abs := path.String()
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
 		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
 		limit, tag := int64(attachMax), "file"
 		if image {
@@ -103,8 +111,8 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		// say why instead of dropping the reference: the model is told the
 		// file was meant to be there and can still read it itself
 		note := func(why string) {
-			fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, rel, why, tag)
-			refused = append(refused, rel+": "+why)
+			fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, name, why, tag)
+			refused = append(refused, name+": "+why)
 		}
 		// a FIFO blocks the turn, and an @word naming no file is just prose
 		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() {
@@ -112,7 +120,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		}
 		// the model reads the file, so the model's rules apply, before it is
 		// opened: opening a device has effects
-		if !drop && h.Perm.Evaluate(perm.SubjectRead, h.projectAbs(rel), perm.PrincipalModel).Decision != perm.Allow {
+		if !drop && h.Perm.Evaluate(perm.SubjectRead, h.projectAbs(name), perm.PrincipalModel).Decision != perm.Allow {
 			note("reading it needs your approval")
 			continue
 		}
@@ -139,18 +147,18 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 				continue
 			}
 			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: fit, MediaType: fitMT})
-			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", rel)
+			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", name)
 		case !utf8.Valid(data):
 			note("it is not text")
 		default:
-			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)
+			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", name, data)
 		}
 	}
 	switch len(refused) {
 	case 0:
 	case 1:
-		rel, why, _ := strings.Cut(refused[0], ": ")
-		h.Notify(slog.LevelWarn, "Could not attach "+rel, why)
+		name, why, _ := strings.Cut(refused[0], ": ")
+		h.Notify(slog.LevelWarn, "Could not attach "+name, why)
 	default:
 		h.Notify(slog.LevelWarn, fmt.Sprintf("Could not attach %d files", len(refused)), strings.Join(refused, "\n"))
 	}
@@ -163,26 +171,55 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 }
 
 // dropsDir holds copies of files the user dropped or pasted from outside the
-// project. @drop:name reaches only this directory, so a reference typed in
-// (or smuggled into) a message cannot attach anything else from outside.
+// project. A chip naming a bare file reaches only this directory, so a
+// reference typed in (or smuggled into) a message cannot attach anything else
+// from outside.
 func (h *Host) dropsDir() string { return joinIf(h.Dirs.DataHome, "drops") }
 
+// dropName reports whether name is one zemi's copies can have: a bare name,
+// no separator and no leading dot. A chip with one resolves in the drops
+// directory; any other chip names a project file.
+func dropName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, `/\`) && !strings.HasPrefix(name, ".")
+}
+
+// canCarry reports whether a name travels in a token unchanged.
+func canCarry(name string) bool { return !strings.ContainsAny(name, "]\n\t") }
+
+// attachToken is what the composer shows for an attachment: the name the user
+// knows, in the one form every attachment takes.
+func attachToken(name string, image bool) string {
+	if image {
+		return "[Image " + name + "]"
+	}
+	return "[File " + name + "]"
+}
+
+// AttachLabel is the token for a project file the completion popup picked:
+// the same form AttachPath gives, its kind from the extension.
+func (h *Host) AttachLabel(rel string) string {
+	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
+	return attachToken(rel, image)
+}
+
 // AttachPath turns a path the user dropped or pasted into a composer token:
-// @rel for a file in the project, @drop:name for a copy of an image or text
-// file from elsewhere, and otherwise the quoted path (a directory, a large,
-// binary or secret-shaped file) for the model to reach with its tools.
+// [Image name] or [File name] for a file zemi attaches - under its
+// project-relative path when it is the project's, under its own name when it
+// is copied into the drops directory - and otherwise the quoted path (a
+// directory, a large, binary or secret-shaped file) for the model to reach
+// with its tools.
 func (h *Host) AttachPath(path string) string {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return quotePath(path)
 	}
-	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) && !strings.ContainsAny(rel, " \t") {
+	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
+	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) && canCarry(rel) {
 		if fi.IsDir() {
 			return rel + string(filepath.Separator)
 		}
-		return "@" + rel
+		return attachToken(rel, image)
 	}
-	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
 	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return quotePath(path)
 	}
@@ -194,7 +231,7 @@ func (h *Host) AttachPath(path string) string {
 	if err != nil {
 		return quotePath(path)
 	}
-	return "@drop:" + name
+	return attachToken(name, image)
 }
 
 // AttachImage stores image data (a clipboard paste) and returns its token.
@@ -206,13 +243,16 @@ func (h *Host) AttachImage(data []byte, ext string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "@drop:" + name, nil
+	return attachToken(name, true), nil
 }
 
-var dropUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+// dropUnsafe is what a name cannot carry: a cell that would end the token, and
+// the separators that would make it a path.
+var dropUnsafe = regexp.MustCompile("[\x00-\x1f\x7f/\\\\\\]]+")
 
-// saveDrop writes data under a token-safe, unused name (the same content
-// keeps its name) and returns that name.
+// saveDrop writes data under an unused name of its own (the same content
+// keeps its name) and returns that name. The name is the source's, cut to
+// what a token carries and shortened only where it breaks one.
 func (h *Host) saveDrop(base string, data []byte) (string, error) {
 	dir := h.dropsDir()
 	if dir == "" {
@@ -227,11 +267,15 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 		base = "file"
 	}
 	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
+	stem := learn.Truncate(strings.TrimSuffix(base, ext), max(dropNameMax-len([]rune(ext)), 1))
 	for i := 1; ; i++ {
-		name := base
+		name := stem + ext
 		if i > 1 {
 			name = fmt.Sprintf("%s-%d%s", stem, i, ext)
+		}
+		// a name the project root has too would resolve to that file instead
+		if _, err := os.Stat(filepath.Join(h.Dirs.ProjectDir, name)); err == nil {
+			continue
 		}
 		target := filepath.Join(dir, name)
 		old, err := os.ReadFile(target)
@@ -249,7 +293,7 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 }
 
 // sweepDrops removes copies idle past dropTTL; without it the directory
-// grows for the life of the install. An @drop: reference older than that
+// grows for the life of the install. An attachment whose copy is older than that
 // stops resolving, like a scratchpad file.
 func sweepDrops(dir string) {
 	entries, _ := os.ReadDir(dir)

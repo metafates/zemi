@@ -833,6 +833,26 @@ func (h *Host) BusyNow() (label string, elapsed time.Duration, cancellable bool)
 	return j.label, time.Since(j.start), slices.ContainsFunc(h.busy, func(b *busyJob) bool { return b.cancel != nil })
 }
 
+// BusyEntry is one busy job as ctx.busy carries it: what the job is, how long
+// it has run, and whether esc stops it.
+type BusyEntry struct {
+	Label       string
+	Elapsed     time.Duration
+	Cancellable bool
+}
+
+// BusyList is every busy job, newest first, so a widget can name each of them
+// instead of the newest alone.
+func (h *Host) BusyList() []BusyEntry {
+	h.busyMu.Lock()
+	defer h.busyMu.Unlock()
+	out := make([]BusyEntry, 0, len(h.busy))
+	for _, j := range slices.Backward(h.busy) {
+		out = append(out, BusyEntry{j.label, time.Since(j.start), j.cancel != nil})
+	}
+	return out
+}
+
 type titleSet struct {
 	text string
 	gen  Gen
@@ -1639,11 +1659,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("permission_mode", glua.LString(mode.Name))
 	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
-	if label, elapsed, cancellable := h.BusyNow(); label != "" {
-		b := L.CreateTable(0, 3)
-		b.RawSetString("label", glua.LString(label))
-		b.RawSetString("elapsed", glua.LNumber(elapsed.Seconds()))
-		b.RawSetString("cancellable", glua.LBool(cancellable))
+	if jobs := h.BusyList(); len(jobs) > 0 {
+		b := L.CreateTable(len(jobs), 0)
+		for _, j := range jobs {
+			e := L.CreateTable(0, 3)
+			e.RawSetString("label", glua.LString(j.Label))
+			e.RawSetString("elapsed", glua.LNumber(j.Elapsed.Seconds()))
+			e.RawSetString("cancellable", glua.LBool(j.Cancellable))
+			b.Append(e)
+		}
 		tb.RawSetString("busy", b)
 	}
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))

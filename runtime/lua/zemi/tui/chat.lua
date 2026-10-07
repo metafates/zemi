@@ -66,7 +66,7 @@ local M = {}
 -- spins, unless the open prompt asks about it: that one waits on the user,
 -- so it neither spins nor counts.
 ---@type table<string, string>
-local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg" }
+local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg", warn = "warn", cancelled = "stop" }
 
 -- A row's mark: the spinner while it runs, else how it ended. A mark never
 -- hovers: a hovered header changes only its text.
@@ -123,13 +123,16 @@ end
 -- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
 -- same counts with (Ok adds, Danger removes). A count of zero is left out: the
 -- sign alone would report nothing, and the "+++"/"---" headers are no changes.
--- Counted once per diff text: a render asks for a row's diff again and again.
+-- Counted once per row, whose diff the text settles on: a render asks for a
+-- row's diff again and again.
+---@type table<integer, { diff: string, add: integer, del: integer }>
 local counts = {}
 ---@param diff string
+---@param idx integer The row's transcript index, negative for a live call.
 ---@return zemi.Line
-local function diffstat(diff)
-	local c = counts[diff]
-	if not c then
+local function diffstat(diff, idx)
+	local c = counts[idx]
+	if not c or c.diff ~= diff then
 		local add, del = 0, 0
 		for l in diff:gmatch("[^\n]+") do
 			if l:match("^%+") and not l:match("^%+%+%+ ") then
@@ -138,13 +141,13 @@ local function diffstat(diff)
 				del = del + 1
 			end
 		end
-		c = { add, del }
-		counts[diff] = c
+		c = { diff = diff, add = add, del = del }
+		counts[idx] = c
 	end
 	---@type zemi.Line
 	local out = {}
-	if c[1] > 0 then out[#out + 1] = { text = "+" .. c[1], hl = "Ok" } end
-	if c[2] > 0 then out[#out + 1] = { text = (c[1] > 0 and " -" or "-") .. c[2], hl = "Danger" } end
+	if c.add > 0 then out[#out + 1] = { text = "+" .. c.add, hl = "Ok" } end
+	if c.del > 0 then out[#out + 1] = { text = (c.add > 0 and " -" or "-") .. c.del, hl = "Danger" } end
 	return out
 end
 
@@ -282,39 +285,14 @@ local function builder(ctx, width)
 	---@param group zemi.tui.Tool[]
 	---@return string
 	local function said(group)
-		---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
-		local order, seen = {}, {}
 		---@type string[]
 		local commands = {}
 		for _, t in ipairs(group) do
-			local c = assert(fmt.family(fmt.tool(t)))
-			local key = c[1] .. "|" .. (c[2] or "")
-			if not seen[key] then
-				seen[key] = { c = c, n = 0 }
-				order[#order + 1] = key
-			end
-			seen[key].n = seen[key].n + 1
 			if fmt.tool(t) == "shell" then
-				local cmd = relpath(t.text or t.input or ""):gsub("%s+", " ")
-				commands[#commands + 1] = cmd
+				commands[#commands + 1] = relpath(t.text or t.input or ""):gsub("%s+", " ")
 			end
 		end
-		---@type string[]
-		local parts = {}
-		---@type string?
-		local ran
-		for _, key in ipairs(order) do
-			local c, n = seen[key].c, seen[key].n
-			local part = c[2] and c[1] .. " " .. fmt.count(n, c[2], c[3]) or c[1]
-			if c == fmt.COUNT.shell then
-				-- last, so the commands read as its list
-				ran = part .. ": " .. table.concat(commands, ", ")
-			else
-				parts[#parts + 1] = part
-			end
-		end
-		parts[#parts + 1] = ran
-		return table.concat(parts, ", ")
+		return fmt.counts(group, commands, true)
 	end
 	-- A step's unlabelled counted calls as one rail row saying what they
 	-- did, marked as they are: every call it counts went well.
@@ -363,7 +341,7 @@ local function builder(ctx, width)
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
-		local tail = (t.diff or "") ~= "" and diffstat(t.diff) or {}
+		local tail = (t.diff or "") ~= "" and diffstat(t.diff, idx) or {}
 		---@param text string
 		local function add(text)
 			if #tail > 0 then tail[#tail + 1] = { text = " · ", hl = "Dim" } end
@@ -571,7 +549,7 @@ local function builder(ctx, width)
 		end
 		for i = first, last do
 			local m = list[i]
-			local row = { mark("note"), { text = m.text, hl = "Dim" } }
+			local row = { mark(MARK_OF[m.status] or "note"), { text = m.text, hl = "Dim" } }
 			if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
 			B.lines[#B.lines + 1] = row
 		end
@@ -727,7 +705,11 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local width = ctx.width or 80
 		local count = ctx.transcript_count or 0
-		if count == 0 and not ctx.agent_active then
+		-- work that outlives this view of the session, drawn at the tail: a
+		-- session's counts are about other work, so a run's view leaves it out
+		local pending = fmt.pending(ctx)
+		if ctx.view then pending = nil end
+		if count == 0 and not ctx.agent_active and not pending then
 			return {} -- the splash widget fills the empty chat
 		end
 		-- An agent run's transcript mutates in place and reports epoch 0, so
@@ -1008,6 +990,12 @@ zemi.ui.widget.add({
 				end
 			end
 		end
+		-- What will change this conversation later sits between it and the
+		-- todos: a static row, so nothing here keeps the frame clock awake.
+		if pending then
+			if #B.lines > 0 then B.blank() end
+			B.lines[#B.lines + 1] = pending
+		end
 		local lines = B.lines
 		-- The todo list stays under the conversation until every item is done.
 		local todos, left = ctx.todos or {}, 0
@@ -1016,14 +1004,24 @@ zemi.ui.widget.add({
 		end
 		if left > 0 then
 			B.blank()
+			-- at most 12 rows and a third of the chat, in the order the model
+			-- wrote them: the window trails the item in progress, so a long
+			-- list never hides what is being worked on
+			local cap = math.min(12, math.max(3, math.floor((ctx.height or 36) / 3)))
+			local live = 0
+			for n, td in ipairs(todos) do
+				if td.status == "in_progress" then live = n end
+			end
+			local first = math.max(1, math.min(live - cap + 1, #todos - cap + 1))
+			local last = math.min(#todos, first + cap - 1)
 			-- a header in the composer rule's voice: the name, how far along, and
-			-- a short meter of one cell per item
+			-- a short meter of one cell per item shown under it
 			local head = {
 				{ text = "Todos ", hl = "TodoTitle" },
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
-			for n, td in ipairs(todos) do
-				if n > 12 then break end
+			for n = first, last do
+				local td = todos[n]
 				head[#head + 1] = {
 					text = td.status == "done" and "█" or "░",
 					hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule",
@@ -1031,41 +1029,17 @@ zemi.ui.widget.add({
 				}
 			end
 			lines[#lines + 1] = head
-			-- at most 12 rows and a third of the chat, the live ones first: in
-			-- progress, then pending, then done, so a long list never hides the
-			-- item being worked on
-			local cap = math.min(12, math.max(3, math.floor((ctx.height or 36) / 3)))
-			local rank = { in_progress = 1, pending = 2, done = 3 }
-			---@type { td: zemi.Todo, n: integer }[]
-			local shown = {}
-			for n, td in ipairs(todos) do
-				shown[#shown + 1] = { td = td, n = n }
+			---@param hidden integer
+			---@param above boolean?
+			local function fold(hidden, above)
+				lines[#lines + 1] = {
+					{ text = "  … ", hl = "Dim", copy = false },
+					{ text = fmt.count(hidden, "more todo", "more todos") .. (above and " above" or ""), hl = "Dim" },
+				}
 			end
-			table.sort(shown, function(a, b)
-				local ra, rb = rank[a.td.status] or 2, rank[b.td.status] or 2
-				if ra ~= rb then return ra < rb end
-				return a.n < b.n
-			end)
-			for n, it in ipairs(shown) do
-				local td = it.td
-				if n > cap then
-					local hidden, done_n = #shown - cap, 0
-					for i = cap + 1, #shown do
-						if shown[i].td.status == "done" then done_n = done_n + 1 end
-					end
-					if done_n == hidden then
-						lines[#lines + 1] = {
-							{ text = "  ✓ ", hl = "TodoDone", copy = false },
-							{ text = done_n .. " done", hl = "Dim" },
-						}
-					else
-						lines[#lines + 1] = {
-							{ text = "  … ", hl = "Dim", copy = false },
-							{ text = fmt.count(hidden, "more todo", "more todos"), hl = "Dim" },
-						}
-					end
-					break
-				end
+			if first > 1 then fold(first - 1, true) end
+			for n = first, last do
+				local td = todos[n]
 				local tick, mhl, hl, item = "  ○ ", "Rule", "Normal", td.content
 				if td.status == "done" then
 					tick, mhl, hl = "  ✓ ", "TodoDone", "Dim"
@@ -1075,6 +1049,7 @@ zemi.ui.widget.add({
 				end
 				lines[#lines + 1] = { { text = tick, hl = mhl, copy = false }, { text = item, hl = hl } }
 			end
+			if last < #todos then fold(#todos - last) end
 		end
 		return lines, more
 	end,

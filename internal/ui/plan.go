@@ -36,7 +36,11 @@ type planAnswer struct {
 // choices is the plan's buttons: the rows, the keys and the hit test all read
 // them, and a button's key is what it does (planKey).
 func (p *planAskPrompt) choices() []promptChoice {
-	return []promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}
+	return []promptChoice{
+		{key: "a", label: "Approve"},
+		{key: "s", label: "Save, don't start"},
+		{key: "e", label: "Request changes"},
+	}
 }
 
 // AskPlan implements hostapi.UIHooks. It blocks the caller (the plan tool on
@@ -92,6 +96,8 @@ func (a *App) planKey(key, text string) {
 	switch key {
 	case "a":
 		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
+	case "s": // the same approval, held: the file is saved, the work waits
+		a.finishPlan(tools.PlanVerdict{Approved: true, Hold: true}, true)
 	case "e": // edit: every key, j/k included, types from here on
 		p.typing = true
 	case "esc":

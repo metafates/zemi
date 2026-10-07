@@ -163,9 +163,9 @@ func TestDropPaste(t *testing.T) {
 	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
 	os.WriteFile(notes, []byte("hello"), 0o600)
 	for _, c := range []struct{ paste, want string }{
-		{strings.ReplaceAll(shot, " ", `\ `) + " " + notes, "@drop:My-Shot.png @drop:notes.txt "},
-		{"'" + shot + "'", "@drop:My-Shot.png "},
-		{"file://" + strings.ReplaceAll(shot, " ", "%20") + "\n", "@drop:My-Shot.png "},
+		{strings.ReplaceAll(shot, " ", `\ `) + " " + notes, "[Image My Shot.png] [File notes.txt] "},
+		{"'" + shot + "'", "[Image My Shot.png] "},
+		{"file://" + strings.ReplaceAll(shot, " ", "%20") + "\n", "[Image My Shot.png] "},
 		{"see " + notes, "see " + notes},
 		{"/no/such/file.png", "/no/such/file.png"},
 	} {
