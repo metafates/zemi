@@ -92,6 +92,28 @@ local function tip(ctx, listed)
 	return { key("/resume", "resume"), dim(" picks up the latest session") }
 end
 
+--- The row the block ends with: the pending row the chat yields to the
+--- splash, clipped to room, else a blank one. The row is kept either way, so
+--- the content above it never moves as the boot's work comes and goes.
+---@param ctx zemi.WidgetCtx
+---@param room integer
+---@return zemi.Line
+local function lastRow(ctx, room)
+	local pending = ctx.view and nil or fmt.pending(ctx)
+	if not pending then return { { text = "" } } end
+	---@type zemi.Line
+	local row = {}
+	---@type integer, zemi.Segment
+	local used = 0
+	for _, s in ipairs(pending) do
+		if used >= room then break end
+		local text = fmt.clip(s.text, room - used)
+		used = used + zemi.ui.width(text)
+		row[#row + 1] = { text = text, hl = s.hl, hover = s.hover, copy = s.copy }
+	end
+	return row
+end
+
 --- The splash rows: the logo, recent sessions to pick up and one tip, each
 --- group centered in ctx.width and the whole a little below the middle of
 --- ctx.height, near the composer.
@@ -106,11 +128,16 @@ function M.render(ctx)
 	local recent = ctx.projects or ctx.recent or {}
 	local tips = flow(tip(ctx, #recent > 0), room, 7)
 	table.insert(tips[1], 1, { text = "● Tip  ", hl = "Accent", copy = false })
+	-- the region's last row: the pending row the chat would draw at the same
+	-- place, kept as a row whether or not anything pends
+	local last = lastRow(ctx, room)
 	local version = ctx.version or ""
 
 	-- a short chat drops the recent rows, then the version, then the logo's art
 	local logo = snail.logo(room)
-	local function count() return #logo + (version ~= "" and 1 or 0) + (#recent > 0 and #recent + 1 or 0) + 1 + #tips end
+	local function count()
+		return #logo + (version ~= "" and 1 or 0) + (#recent > 0 and #recent + 1 or 0) + 1 + #tips + 1
+	end
 	if count() > fit then recent = {} end
 	if count() > fit then version = "" end
 	if count() > fit then logo = snail.logo(0) end
@@ -174,8 +201,13 @@ function M.render(ctx)
 			out[#out + 1] = line
 		end
 	end
-	for _ = #out + 1, fit do
-		out[#out + 1] = { { text = "" } }
+	-- the last row the region has, where the chat draws its pending row: the
+	-- block ends with it, blank when nothing pends
+	if fit > 0 then
+		for _ = #out + 1, fit - 1 do
+			out[#out + 1] = { { text = "" } }
+		end
+		out[#out + 1] = last
 	end
 	return out
 end
@@ -190,7 +222,7 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		if ctx.headless or ctx.transcript_count > 0 or ctx.agent_active then return {} end
+		if not fmt.empty_chat(ctx) then return {} end
 		return M.render(ctx)
 	end,
 })

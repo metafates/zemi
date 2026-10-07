@@ -73,16 +73,17 @@ assert(require("zemi.tui") == d, "view not cached")`
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then
-// the version, then the logo's art, and always keeps the tip.
+// the version, then the logo's art, and always keeps the tip. The pending
+// row's row is reserved, so each drop happens one row earlier.
 func TestSplashFitsShortChat(t *testing.T) {
 	for _, c := range []struct {
 		h         int
 		want, not []string
 	}{
-		{15, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
-		{14, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
-		{10, []string{"╭────╮", "● Tip"}, []string{"v1"}},
-		{9, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
+		{16, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
+		{15, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
+		{11, []string{"╭────╮", "● Tip"}, []string{"v1"}},
+		{10, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
 	} {
 		app, _ := bootAgentApp(t, 80, c.h)
 		runLua(t, app, `
@@ -172,6 +173,37 @@ zemi.ui.widget.add({
 				app.composer.text = ""
 			}
 		}
+	}
+}
+
+// TestSplashTakesBootWork: the pending row of a boot's MCP start is drawn in
+// the splash's own block, which still fits the chat region, so the region
+// overflows by no row: no scrollbar, and the logo stays where it is as the
+// work comes and goes.
+func TestSplashTakesBootWork(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	app.screen(t)
+	x, y := findCell(t, app, "╭────╮")
+	stop := host.Busy("Starting mcp_filesystem", nil)
+	stop2 := host.Busy("Starting mcp_github", nil)
+	app.frameGen++
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "starting mcp_github") {
+		t.Fatalf("the boot work is not drawn in the chat:\n%s", frame)
+	}
+	for _, row := range app.lastRows {
+		for _, seg := range row {
+			if seg.Bar {
+				t.Fatalf("the pending row overflowed the region:\n%s", ansi.Strip(app.Frame()))
+			}
+		}
+	}
+	stop()
+	stop2()
+	app.frameGen++
+	app.renderSync(t)
+	if nx, ny := findCell(t, app, "╭────╮"); nx != x || ny != y {
+		t.Fatalf("the logo moved from %d,%d to %d,%d", x, y, nx, ny)
 	}
 }
 

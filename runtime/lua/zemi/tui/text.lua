@@ -101,6 +101,20 @@ function M.pending(ctx)
 	return row
 end
 
+--- Whether the splash owns the chat this frame: an empty transcript with no
+--- turn running and no todo left. The chat yields the region to it, since the
+--- splash draws the pending row itself in a block that fits; two widgets whose
+--- rows overflow the region scroll the splash away as boot work comes and goes.
+---@param ctx zemi.WidgetCtx
+---@return boolean
+function M.empty_chat(ctx)
+	if ctx.headless or ctx.agent_active or (ctx.transcript_count or 0) > 0 then return false end
+	for _, td in ipairs(ctx.todos or {}) do
+		if td.status ~= "done" then return false end
+	end
+	return true
+end
+
 --- The on_click of a widget whose click ids are a command and its
 --- arguments ("resume 3f9c", "mode"), or "fill <text>", which puts the text
 --- in the composer for the user to send.

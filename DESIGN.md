@@ -1961,7 +1961,12 @@ rides the `memories.md` line and its ledger entries.
   it stands on, whose cells under it become that border whatever the rule carried there.
   Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
-  would never let it shrink.
+  would never let it shrink. A widget that pads to the whole region, the splash,
+  needs the region to itself: while it shows, the chat yields to it
+  (`zemi.tui.text.empty_chat`) and the splash draws the pending row in its own
+  block, on a row it keeps either way - a row of the chat's there would overflow
+  the region and the viewport would scroll the splash up as the boot's work
+  comes and goes.
 - **Rendering loop**: the state generation is bumped at most once per
   renderer tick, not per tea message (a refresh from any goroutine waits in
   the hook queue at most once); keymaps, widget clicks, one-shot timers,
@@ -2067,7 +2072,9 @@ rides the `memories.md` line and its ledger entries.
   Under the transcript the chat draws what is still pending as one static row,
   with no spinner and no clock, so an hour-long job never costs a frame. It
   names every handed-off agent and workflow, background job and `Host.Busy`
-  entry (a compaction, the idle recap, a plugin install). The todo block
+  entry (a compaction, the idle recap, a plugin install). An empty transcript
+  has no chat rows at all: the splash draws that row, on the row its block
+  reserves for it. The todo block
   follows it, in the order the items were written: the header's meter and a
   window of at most 12 rows (a third of the chat) follow the item in progress,
   saying `… N more todos` under the window and `… N more todos above` when it
