@@ -39,17 +39,18 @@ type RunStatus string
 const (
 	RunRunning   RunStatus = "running"
 	RunDone      RunStatus = "done"
+	RunWarn      RunStatus = "warn"
 	RunFailed    RunStatus = "failed"
 	RunCancelled RunStatus = "cancelled"
 )
 
-var runStatuses = []RunStatus{RunRunning, RunDone, RunFailed, RunCancelled}
+var runStatuses = []RunStatus{RunRunning, RunDone, RunWarn, RunFailed, RunCancelled}
 
 // RunMarks are the Marks a run's or an agent's status word draws, as the
 // chat marks a call: queued and paused wait, running spins.
 var RunMarks = map[string]string{
 	"queued": "wait", "paused": "wait", string(RunRunning): "spin", string(RunDone): "ok",
-	string(RunFailed): "err", string(RunCancelled): "stop",
+	string(RunWarn): "warn", string(RunFailed): "err", string(RunCancelled): "stop",
 }
 
 // runState is the lifecycle agentRun and flowRun share: both are registered,

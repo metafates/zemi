@@ -743,6 +743,7 @@ function zemi.event.stats() end
 ---| "wait"       # its arguments stream, or a serial call ahead of it runs
 ---| "run"
 ---| "ok"
+---| "warn"       # it finished, but something it ran failed
 ---| "err"
 ---| "stopped"    # the user denied, dismissed or interrupted it
 ---| "bg"         # its work goes on in the background (a job, a background agent)
@@ -826,6 +827,7 @@ function zemi.event.stats() end
 ---@alias zemi.RunStatus
 ---| "running"
 ---| "done"
+---| "warn"
 ---| "failed"
 ---| "cancelled"
 
@@ -1378,6 +1380,7 @@ function zemi.ui.width(text) end
 ---@class zemi.ui.marks
 ---@field spin zemi.Mark running: draw it with `effect = "spin"` so the UI steps it
 ---@field ok zemi.Mark finished
+---@field warn zemi.Mark finished, but something it ran failed
 ---@field err zemi.Mark failed
 ---@field stop zemi.Mark stopped by the user
 ---@field bg zemi.Mark going on in the background
@@ -1393,6 +1396,7 @@ zemi.ui.marks = {}
 ---@alias zemi.MarkKind
 ---| "spin"
 ---| "ok"
+---| "warn"
 ---| "err"
 ---| "stop"
 ---| "bg"
