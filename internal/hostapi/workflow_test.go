@@ -723,8 +723,10 @@ func TestWorkflowWait(t *testing.T) {
 			tool := h.workflowTool(h.PipelineFor())
 			started := make(chan fantasy.ToolResponse, 1)
 			go func() {
-				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWorkflow,
-					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')","background":true}`})
+				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+					ID: "c1", Name: tools.ToolWorkflow,
+					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')","background":true}`,
+				})
 				started <- resp
 			}()
 			f := waitLiveFlow(t, h)
@@ -735,8 +737,10 @@ func TestWorkflowWait(t *testing.T) {
 			defer cancel()
 			waited := make(chan fantasy.ToolResponse, 1)
 			go func() {
-				resp, _ := tool.Run(ctx, fantasy.ToolCall{ID: "c2", Name: tools.ToolWorkflow,
-					Input: `{"run":"` + f.id + `","action":"wait"}`})
+				resp, _ := tool.Run(ctx, fantasy.ToolCall{
+					ID: "c2", Name: tools.ToolWorkflow,
+					Input: `{"run":"` + f.id + `","action":"wait"}`,
+				})
 				waited <- resp
 			}()
 			if c.esc {

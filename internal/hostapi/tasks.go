@@ -640,8 +640,9 @@ func callMark(s RunStatus) CallStatus {
 		return CallWarn
 	case RunCancelled:
 		return CallStopped
+	default:
+		return CallErr
 	}
-	return CallErr
 }
 
 // markRunRow revises the row of a run that ended: a handed-off call's row and

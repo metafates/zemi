@@ -944,10 +944,6 @@ func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 	return history
 }
 
-func isErrResult(c fantasy.ToolResultContent) bool {
-	return ErrResult(c.Result)
-}
-
 // ErrResult is whether a tool result is the error one: a call that did not
 // do what it was asked answers with it, whatever the text says.
 func ErrResult(c fantasy.ToolResultOutputContent) bool {
