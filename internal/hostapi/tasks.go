@@ -765,7 +765,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 // the marker where @ refs do not attach: a report's shape under a tag of its
 // own, so the chat draws the update's line rather than the user's words.
 func (h *Host) updateMessage(pad, id, agentName, text string) string {
-	return agent.AttachMarker + fmt.Sprintf("\n<agent-update run=%q agent=%q>\n", id, agentName) + h.truncOutput(pad, "agent", text) + "\n</agent-update>\n</attached-files>"
+	return agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", id, agentName), h.truncOutput(pad, "agent", text))
 }
 
 // reportHead is the one line the user sees of a background report, named by
@@ -785,7 +785,7 @@ func reportHead(id, agent, status, description string) string {
 // model reads it (appendUserRows), so it never lands above the rows of the
 // turn it arrives in.
 func (h *Host) reportMessage(pad, id, agentName, status, description, report string) string {
-	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput(pad, "agent", report) + "\n</agent-report>\n</attached-files>"
+	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", id, agentName, status, description), h.truncOutput(pad, "agent", report))
 }
 
 // reportFailed heads a failed run's report for the model; the toast of one

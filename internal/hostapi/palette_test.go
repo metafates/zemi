@@ -3,10 +3,31 @@ package hostapi
 import (
 	"image/color"
 	"math"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/lucasb-eyer/go-colorful"
 )
+
+// TestPaletteRoles: Roles names Palette's fields in their own order and
+// role() answers every one of them, so a field added here is named once and
+// nothing but the spec's own words reaches a theme.
+func TestPaletteRoles(t *testing.T) {
+	typ := reflect.TypeFor[Palette]()
+	var p Palette
+	for i, name := range Roles {
+		if i >= typ.NumField() || !strings.EqualFold(typ.Field(i).Name, name) {
+			t.Fatalf("Roles[%d] = %q, Palette field %d is not its own", i, name, i)
+		}
+		if p.role(name) == nil {
+			t.Errorf("role(%q) is nil", name)
+		}
+	}
+	if n := typ.NumField(); n != len(Roles) {
+		t.Fatalf("Palette has %d fields, Roles names %d", n, len(Roles))
+	}
+}
 
 // TestPaletteDerive: a role the spec leaves out comes from ansi, the
 // literal lands near the scheme's own orange, and a role that would not read

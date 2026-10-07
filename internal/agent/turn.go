@@ -158,17 +158,21 @@ const AttachMarker = "\n\n<attached-files>"
 
 // Attached puts text the user did not type (piped stdin, a command file's
 // body, a note from zemi) behind AttachMarker as one element, so it never
-// reads as the user's words or as unlabeled attachment text.
+// reads as the user's words or as unlabeled attachment text. tag is the
+// element's name, with any attributes after it: the close names the element
+// alone.
 func Attached(tag, text string) string {
-	return AttachMarker + "\n<" + tag + ">\n" + text + "\n</" + tag + ">\n</attached-files>"
+	name, _, _ := strings.Cut(tag, " ")
+	return AttachMarker + "\n<" + tag + ">\n" + text + "\n</" + name + ">\n</attached-files>"
 }
 
 // CutAttached splits a message into what was typed and its trailer.
 func CutAttached(s string) (typed, trailer string) {
-	if i := strings.Index(s, AttachMarker); i >= 0 {
-		return s[:i], s[i:]
+	before, after, found := strings.Cut(s, AttachMarker)
+	if !found {
+		return s, ""
 	}
-	return s, ""
+	return before, AttachMarker + after
 }
 
 // Note wraps text zemi itself sends the model (a nag, a plan handoff).

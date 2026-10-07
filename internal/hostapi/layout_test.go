@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +14,21 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
+
+// TestDefaultLayoutMatchesShipped: the layout zemi draws before the shipped
+// UI loads is the one runtime/lua/zemi/tui/layout.lua sets, so a change to
+// either cannot quietly draw another screen.
+func TestDefaultLayoutMatchesShipped(t *testing.T) {
+	h := newTestHostUI(t) // boots zemi.tui, which requires tui/layout.lua
+	if h.layout.Load() == nil {
+		t.Fatal("the shipped tui/layout.lua set no layout")
+	}
+	if shipped := h.Layout(); !reflect.DeepEqual(DefaultLayout, shipped) {
+		a, _ := json.Marshal(DefaultLayout, jsontext.WithIndent("  "))
+		b, _ := json.Marshal(shipped, jsontext.WithIndent("  "))
+		t.Fatalf("DefaultLayout is not what tui/layout.lua sets:\n%s\n%s", a, b)
+	}
+}
 
 func TestLayoutSetRefusesBadLayouts(t *testing.T) {
 	_, r := newTestHost(t)

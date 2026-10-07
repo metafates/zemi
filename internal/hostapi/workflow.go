@@ -1461,7 +1461,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if !ok {
 		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
 	}
-	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil}
+	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil
+}
 
 // flowSource reads run id's script from pad once: a sandboxed command or the
 // model's file tools may rewrite the file, so what is approved is what runs.
