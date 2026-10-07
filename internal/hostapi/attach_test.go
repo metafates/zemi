@@ -129,10 +129,12 @@ func TestChipAttachment(t *testing.T) {
 func TestAttachLabel(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
+	slash := filepath.Join(h.Dirs.ProjectDir, "a]b.go")
 	for _, c := range []struct{ rel, want string }{
 		{"internal/ui/app.go", "[File internal/ui/app.go]"},
 		{"shot.png", "[Image ./shot.png]"},
 		{"notes.txt", "[File ./notes.txt]"},
+		{"a]b.go", quotePath(slash)},
 	} {
 		if got := h.AttachLabel(c.rel); got != c.want {
 			t.Errorf("AttachLabel(%q) = %q, want %q", c.rel, got, c.want)

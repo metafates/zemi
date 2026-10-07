@@ -206,10 +206,15 @@ func attachToken(name string, image bool) string {
 }
 
 // AttachLabel is the token for a project file the completion popup picked:
-// the same form AttachPath gives, its kind from the extension.
+// the same form AttachPath gives, its kind from the extension. A name a token
+// cannot carry is the file's path instead, as AttachPath falls back.
 func (h *Host) AttachLabel(rel string) string {
+	name := projectRef(rel)
+	if !canCarry(name) {
+		return quotePath(h.projectAbs(rel))
+	}
 	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
-	return attachToken(projectRef(rel), image)
+	return attachToken(name, image)
 }
 
 // AttachPath turns a path the user dropped or pasted into a composer token:
