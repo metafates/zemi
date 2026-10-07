@@ -1836,8 +1836,16 @@ const recapPrompt = `The user stepped away and is coming back. In one or two sho
 
 // Recap adds a live-only notice row saying where the session stands, from
 // an aside on the cached conversation. The UI calls it when nobody touched
-// the terminal since a turn ended well, and cancels ctx on the next input.
-func (h *Host) Recap(ctx context.Context) { h.GoSafe("recap", func() { h.recap(ctx) }) }
+// the terminal since a turn ended well, and cancels ctx on the next input;
+// it is a busy job too, so esc stops it and the working row names it.
+func (h *Host) Recap(ctx context.Context) {
+	h.GoSafe("recap", func() {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer h.Busy("Recapping", cancel)()
+		h.recap(ctx)
+	})
+}
 
 func (h *Host) recap(ctx context.Context) {
 	if !h.Settings.Bool("session.recap") {
