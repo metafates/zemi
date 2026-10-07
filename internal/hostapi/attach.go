@@ -186,6 +186,16 @@ func dropName(name string) bool {
 // canCarry reports whether a name travels in a token unchanged.
 func canCarry(name string) bool { return !strings.ContainsAny(name, "]\n\t") }
 
+// projectRef is a project file's name in a token. A bare root file would read
+// as one of the drops directory's copies, which another project's file of the
+// same name could answer, so it carries the ./ that tells them apart.
+func projectRef(rel string) string {
+	if dropName(rel) {
+		return "./" + rel
+	}
+	return rel
+}
+
 // attachToken is what the composer shows for an attachment: the name the user
 // knows, in the one form every attachment takes.
 func attachToken(name string, image bool) string {
@@ -199,7 +209,7 @@ func attachToken(name string, image bool) string {
 // the same form AttachPath gives, its kind from the extension.
 func (h *Host) AttachLabel(rel string) string {
 	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
-	return attachToken(rel, image)
+	return attachToken(projectRef(rel), image)
 }
 
 // AttachPath turns a path the user dropped or pasted into a composer token:
@@ -218,7 +228,7 @@ func (h *Host) AttachPath(path string) string {
 		if fi.IsDir() {
 			return rel + string(filepath.Separator)
 		}
-		return attachToken(rel, image)
+		return attachToken(projectRef(rel), image)
 	}
 	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return quotePath(path)

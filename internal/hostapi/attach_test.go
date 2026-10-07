@@ -122,6 +122,36 @@ func TestChipAttachment(t *testing.T) {
 	}
 }
 
+// TestAttachLabel: the popup's token for a project root file keeps the ./ that
+// tells it apart from the drops directory's bare names, so another project's
+// copy of that name cannot take the project file's place nor skip its read
+// check.
+func TestAttachLabel(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	for _, c := range []struct{ rel, want string }{
+		{"internal/ui/app.go", "[File internal/ui/app.go]"},
+		{"shot.png", "[Image ./shot.png]"},
+		{"notes.txt", "[File ./notes.txt]"},
+	} {
+		if got := h.AttachLabel(c.rel); got != c.want {
+			t.Errorf("AttachLabel(%q) = %q, want %q", c.rel, got, c.want)
+		}
+	}
+	// a copy another project left under a name this project also has
+	name, err := h.saveDrop("notes.txt", []byte("another project's"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := h.expandAttachments(h.AttachLabel(name))
+	if !strings.Contains(got, "the project's") || strings.Contains(got, "another project's") {
+		t.Fatalf("the project's own file must attach: %q", got)
+	}
+}
+
 // TestDropsSweptAfterTTL: idle drop copies age out, one attached again stays.
 func TestDropsSweptAfterTTL(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -193,7 +223,7 @@ func TestAttachPath(t *testing.T) {
 	os.WriteFile(elsewhere, []byte("package other"), 0o600)
 
 	for path, want := range map[string]string{
-		filepath.Join(h.Dirs.ProjectDir, "main.go"): "[File main.go]",
+		filepath.Join(h.Dirs.ProjectDir, "main.go"): "[File ./main.go]",
 		shot:                       "[Image Screen Shot 1.png]",
 		out:                        out,
 		filepath.Join(out, ".env"): filepath.Join(out, ".env"),
