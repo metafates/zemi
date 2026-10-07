@@ -806,7 +806,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	var reqs []Request
 	if t.subjects != nil {
-		if reqs, err = t.subjects(pipe, input); err != nil {
+		// &run, not pipe: a subjects func that writes a field on the pipeline
+		// (web_search's URL) writes the copy the run below gets
+		if reqs, err = t.subjects(&run, input); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
