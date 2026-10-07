@@ -435,7 +435,8 @@ func tableInt(tb *glua.LTable, name string, def int) int {
 
 // date implements the subset of os.date zemi needs: %c, %x, %X and the
 // individual specifiers, with optional Unix time argument, in the clock's
-// zone.
+// zone. A specifier outside it raises: printing its bare letter is a wrong
+// date, not a missing feature.
 func (s *Sandbox) date(L *glua.LState) int {
 	format := L.OptString(1, "%c")
 	t := s.now()
@@ -495,7 +496,7 @@ func (s *Sandbox) date(L *glua.LState) int {
 		case '%':
 			b.WriteByte('%')
 		default:
-			b.WriteByte(format[i])
+			L.RaiseError("os.date: unsupported format specifier %%%c", format[i])
 		}
 	}
 	L.Push(glua.LString(b.String()))

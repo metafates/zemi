@@ -78,6 +78,17 @@ func TestSandboxStrippedSurface(t *testing.T) {
 	`)
 }
 
+// os.date formats the specifiers zemi implements and raises for the rest: the
+// bare letter it printed before was a wrong date, not a fallback.
+func TestSandboxDateFormat(t *testing.T) {
+	sb := newTestSandbox(t)
+	mustRun(t, sb, `
+		assert(os.date("!%Y-%m-%d %H:%M:%S", 0) == "1970-01-01 00:00:00", os.date("!%Y-%m-%d %H:%M:%S", 0))
+		assert(os.date("!*t", 0).year == 1970, "the *t table")
+	`)
+	wantRaise(t, sb, `os.date("%A")`, "unsupported format specifier %A")
+}
+
 func TestSandboxFrozenTables(t *testing.T) {
 	sb := newTestSandbox(t)
 	want := "cannot modify frozen"
