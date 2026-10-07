@@ -1762,7 +1762,7 @@ function zemi.agent.list() end
 --- end)
 --- ```
 ---@param spec zemi.AgentRunSpec
----@param on_done fun(text: string|nil, err: string|nil)
+---@param on_done? fun(text: string|nil, err: string|nil)
 ---@return zemi.RunHandle
 function zemi.agent.run(spec, on_done) end
 
