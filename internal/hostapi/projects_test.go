@@ -164,6 +164,30 @@ func TestProjectsCommand(t *testing.T) {
 	}
 }
 
+// TestDeleteProjectWithoutState: a project with no root, or a host with no
+// state home, is refused: the paths deleteProject removes would be the
+// working directory's, or the state home itself.
+func TestDeleteProjectWithoutState(t *testing.T) {
+	h, _ := newTestHost(t)
+	dirs := h.Dirs
+	defer func() { h.Dirs = dirs }()
+	dirs.StateHome = t.TempDir()
+	for _, c := range []struct{ name, root, state string }{
+		{"no root", "", dirs.StateHome},
+		{"no state home", t.TempDir(), ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h.Dirs.StateHome, h.Dirs.ProjectDir = c.state, c.root
+			if err := h.deleteProject(Project{Root: c.root}); err == nil {
+				t.Error("delete ran with no state to delete")
+			}
+		})
+	}
+	if _, err := os.Stat(dirs.StateHome); err != nil {
+		t.Errorf("the state home went with it: %v", err)
+	}
+}
+
 // TestResumeCommand: a run started with -C names its dir as one shell word,
 // ~-shortened only where the shell expands it.
 func TestResumeCommand(t *testing.T) {
