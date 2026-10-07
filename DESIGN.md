@@ -995,6 +995,12 @@ zemi.provider.add({
 })
 ```
 
+A session is named at creation from the first line of the user's first
+message, which the store row, the tab, the exit banner and
+`zemi.session.title()` read at once; `session.auto_title` then has the `titles`
+role's model replace that name in the background, never waiting for the first
+reply, and a failed or empty answer keeps it. A `zemi run` makes no title call.
+
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `general`, `web` and `plan`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
