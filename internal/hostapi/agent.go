@@ -1295,6 +1295,8 @@ func toolStatus(name string, result fantasy.ToolResultOutputContent, cancelled b
 		name == tools.ToolShell && strings.Contains(output, "so it "+tools.JobHandoff),
 		name == tools.ToolJobStart && ok:
 		return CallBG
+	case name == tools.ToolWorkflow && strings.HasPrefix(output, warnWorkflowFinished):
+		return CallWarn
 	case ok:
 		return CallOK
 	case cancelled || tools.UserStopped(output):
