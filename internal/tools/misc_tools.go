@@ -23,13 +23,12 @@ import (
 )
 
 func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	if p.TodosRead == nil {
+	out, cancelled, ok, err := ParseTodos(input)
+	// a run whose host wired no todo hook has no list to write or read
+	if p.TodosRead == nil || ok && p.TodosWrite == nil {
 		return fantasy.NewTextErrorResponse("there is no todo list in this run: keep the steps in your reply instead"), nil
 	}
-	if out, cancelled, ok, err := ParseTodos(input); ok {
-		if p.TodosWrite == nil {
-			return fantasy.NewTextErrorResponse("there is no todo list in this run: keep the steps in your reply instead"), nil
-		}
+	if ok {
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}

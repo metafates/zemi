@@ -1173,7 +1173,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn, ""),
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad or a temp dir, and not changed since. To change part of a file use edit.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -1182,7 +1182,7 @@ Chain dependent steps with &&.`,
 			changeReq(ToolWrite),
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, as written and without read's line-number prefix; once the file is read a difference in whitespace alone still matches and new_string takes the file's indentation. Keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},

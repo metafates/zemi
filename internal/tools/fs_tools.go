@@ -1414,8 +1414,12 @@ func walk(ctx context.Context, root string, fn func(rel string) error) error {
 	}
 	// the handler below drops errors so an unreadable subdirectory is skipped,
 	// and a missing root would read as no matches
-	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+	fi, err := os.Stat(root)
+	if err != nil {
 		return fmt.Errorf("no such file or directory: %s", root)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is a file: pass its directory as path", root)
 	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if ctx.Err() != nil {
