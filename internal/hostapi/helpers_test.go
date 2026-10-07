@@ -24,3 +24,29 @@ func TestSpecFieldTypes(t *testing.T) {
 		})
 	}
 }
+
+// TestArgTypes pins the same for a positional argument, which a bare
+// assertion used to drop without a word.
+func TestArgTypes(t *testing.T) {
+	_, r := newTestHost(t)
+	cases := []struct{ name, src, want string }{
+		{"agent.run on_done", `zemi.agent.run({ prompt = "x" }, "x")`,
+			"zemi.agent.run: the argument must be a function, not a string"},
+		{"workflow.run on_done", `zemi.workflow.run({ script = "return 1" }, 1)`,
+			"zemi.workflow.run: the argument must be a function, not a number"},
+		{"session.list opts", `zemi.session.list("x")`,
+			"zemi.session.list: the argument must be a table, not a string"},
+		{"http.get opts", `zemi.http.get("http://127.0.0.1:1/x", "x")`,
+			"zemi.http.get: the argument must be a table, not a string"},
+		{"job.start on_stdout",
+			`zemi.permission.rule.add({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "true" })
+			zemi.job.start({ cmd = "true", on_stdout = "x" })`,
+			"on_stdout must be a function, not a string"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runUser(t, r, fmt.Sprintf(`local ok, err = pcall(function() %s end)
+				assert(not ok and tostring(err):find(%q, 1, true), tostring(err))`, c.src, c.want))
+		})
+	}
+}

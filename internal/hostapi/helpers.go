@@ -77,6 +77,17 @@ func opt[T glua.LValue](L *glua.LState, tb *glua.LTable, key string) (T, bool) {
 	return t, ok
 }
 
+// arg is opt for a positional argument: false when it is absent, and a raise
+// naming where when it holds another type.
+func arg[T glua.LValue](L *glua.LState, n int, where string) (T, bool) {
+	v := L.Get(n)
+	t, ok := v.(T)
+	if !ok && v != glua.LNil {
+		L.RaiseError("%s: the argument must be a %s, not a %s", where, t.Type(), v.Type())
+	}
+	return t, ok
+}
+
 func rawString(L *glua.LState, tb *glua.LTable, key string) string {
 	s, _ := opt[glua.LString](L, tb, key)
 	return string(s)

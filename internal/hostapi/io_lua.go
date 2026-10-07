@@ -713,7 +713,7 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		var onDone *glua.LFunction
-		if opts, ok := L.Get(2).(*glua.LTable); ok {
+		if opts, ok := arg[*glua.LTable](L, 2, "zemi.http.get"); ok {
 			onDone, _ = opt[*glua.LFunction](L, opts, "on_done")
 		}
 		return h.httpStart(L, httpReq{method: "GET", url: L.CheckString(1), headers: map[string]string{}}, onDone)
@@ -1119,7 +1119,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
-			if fn, ok := spec.RawGetString(key).(*glua.LFunction); ok {
+			if fn, _ := opt[*glua.LFunction](L, spec, key); fn != nil {
 				return &lineSink{h: h, at: at, fn: fn, what: "zemi.job " + key}
 			}
 			return nil
