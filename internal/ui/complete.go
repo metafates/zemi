@@ -219,21 +219,22 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 	return out
 }
 
-// acceptCompletion replaces the token after the trigger with the selected match (plus
-// a trailing space) and closes the popup. The trigger stays: "@path" is what
-// attaches the file.
+// acceptCompletion replaces what follows the trigger with the selected match
+// (plus a trailing space) and closes the popup. A row a Lua source offered
+// keeps the trigger, which is its own; a file the popup picked becomes the
+// attachment the host gives every attachment.
 func (a *App) acceptCompletion() {
 	f := &a.completion
-	var text string
-	switch n := len(f.extra); {
-	case !f.open || f.selected >= f.count():
+	if !f.open || f.selected >= f.count() {
 		return
-	case f.selected < n:
-		text = f.extra[f.selected].label
-	default:
-		text = f.files[f.matches[f.selected-n].Index]
 	}
-	a.composer.replace(f.start+1, text+" ")
+	at, text := f.start+1, ""
+	if n := len(f.extra); f.selected < n {
+		text = f.extra[f.selected].label
+	} else {
+		at, text = f.start, a.host.AttachLabel(f.files[f.matches[f.selected-n].Index])
+	}
+	a.composer.replace(at, text+" ")
 	f.close()
 }
 

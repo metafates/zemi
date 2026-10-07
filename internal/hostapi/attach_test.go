@@ -93,6 +93,35 @@ func TestExpandAttachments(t *testing.T) {
 	}
 }
 
+// TestChipAttachment: a chip attaches the copy its bare name names, the drops
+// copy winning over a project file of the same name, while a name with a
+// separator is the project's and one climbing out attaches nothing.
+func TestChipAttachment(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	name, err := h.saveDrop("notes.txt", []byte("dropped copy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := h.expandAttachments("see [File " + name + "]")
+	if !strings.Contains(got, "dropped copy") || strings.Contains(got, "the project's") {
+		t.Fatalf("the copy must win over the project file: %q", got)
+	}
+	if got, _ := h.expandAttachments("see [File ../attach_test.go]"); got != "see [File ../attach_test.go]" {
+		t.Fatalf("a chip must not climb out of the project: %q", got)
+	}
+	long, err := h.saveDrop(strings.Repeat("n", 200)+".txt", []byte("long"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len([]rune(long)); n > dropNameMax || filepath.Ext(long) != ".txt" {
+		t.Fatalf("a name travels in a token: %d runes, %q", n, long)
+	}
+}
+
 // TestDropsSweptAfterTTL: idle drop copies age out, one attached again stays.
 func TestDropsSweptAfterTTL(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -148,9 +177,9 @@ func TestImageAttachment(t *testing.T) {
 	}
 }
 
-// TestAttachPath: a dropped project file becomes @rel, an image from
-// elsewhere a @drop copy that attaches, a directory or secret its path, and
-// @drop cannot climb out of the drops directory.
+// TestAttachPath: a dropped project file becomes its token, an image from
+// elsewhere a copy that attaches under its own name, a directory or secret
+// its path, and a bare chip name cannot climb out of the drops directory.
 func TestAttachPath(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -159,21 +188,25 @@ func TestAttachPath(t *testing.T) {
 	os.WriteFile(shot, tinyPNG(), 0o600)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
 	os.WriteFile(filepath.Join(out, ".env"), []byte("TOKEN=x"), 0o600)
+	// an outside file the project root has too: the copy cannot take its name
+	elsewhere := filepath.Join(t.TempDir(), "main.go")
+	os.WriteFile(elsewhere, []byte("package other"), 0o600)
 
 	for path, want := range map[string]string{
-		filepath.Join(h.Dirs.ProjectDir, "main.go"): "@main.go",
-		shot:                       "@drop:Screen-Shot-1.png",
+		filepath.Join(h.Dirs.ProjectDir, "main.go"): "[File main.go]",
+		shot:                       "[Image Screen Shot 1.png]",
 		out:                        out,
 		filepath.Join(out, ".env"): filepath.Join(out, ".env"),
+		elsewhere:                  "[File main-2.go]",
 	} {
 		if got := h.AttachPath(path); got != want {
 			t.Errorf("AttachPath(%s) = %q, want %q", path, got, want)
 		}
 	}
-	if again := h.AttachPath(shot); again != "@drop:Screen-Shot-1.png" {
+	if again := h.AttachPath(shot); again != "[Image Screen Shot 1.png]" {
 		t.Errorf("same content must keep its name: %q", again)
 	}
-	msg := h.composeUserMessage("what is this @drop:Screen-Shot-1.png @drop:../attach_test.go", true)
+	msg := h.composeUserMessage("what is this [Image Screen Shot 1.png] [Image ../attach_test.go]", true)
 	if len(msg.Content) != 2 {
 		t.Fatalf("parts = %d", len(msg.Content))
 	}
