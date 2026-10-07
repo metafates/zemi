@@ -521,8 +521,7 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 	}
 	var re *openai.ReasoningEffort
 	if effort != "" {
-		e := openai.ReasoningEffort(effort)
-		re = &e
+		re = new(openai.ReasoningEffort(effort))
 	}
 	if spec.Kind == KindOpenAI {
 		var key *string
@@ -545,8 +544,7 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 	case KindAnthropic:
 		o := &anthropic.ProviderOptions{ExtraBody: spec.Body}
 		if re != nil {
-			e := anthropic.Effort(effort)
-			o.Effort = &e
+			o.Effort = new(anthropic.Effort(effort))
 		}
 		return anthropic.NewProviderOptions(o)
 	case KindOpenAICompat:
@@ -568,7 +566,6 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 			level := strings.ToUpper(effort)
 			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
 		}
-	case KindOpenAI: // answered above
 	}
 	return nil
 }
