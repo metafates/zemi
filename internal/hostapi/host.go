@@ -1616,9 +1616,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	run := h.viewedRun()
 	transcript := sess.Transcript
 	var view *glua.LTable
+	var rev uint64
 	if run != nil {
-		status, rows, live := run.view(stream)
-		transcript, stream = rows, live
+		status, rows, live, vrev := run.view(stream)
+		transcript, stream, rev = rows, live, vrev
 		v := L.NewTable()
 		v.RawSetString("id", glua.LString(run.id))
 		v.RawSetString("agent", glua.LString(sanitize.String(run.label())))
@@ -1697,13 +1698,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	if view != nil { // absent while the session shows
 		tb.RawSetString("view", view)
 	}
-	// 0 while an agent run is shown: its rows mutate in place as the run
-	// goes, so the chat widget must not cache them.
+	// 0 while an agent run or a printed run is shown: the session's epoch
+	// counts replacements of its own rows, and neither shows those. A shown
+	// run reports the revision of its own rows beside it.
 	epoch := h.trEpoch.Load()
 	if run != nil || printed != nil {
 		epoch = 0
 	}
 	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
+	tb.RawSetString("view_revision", glua.LNumber(rev))
 	tb.RawSetString("transcript_edit", glua.LNumber(edit))
 
 	lazy := map[string]func(L *glua.LState) glua.LValue{

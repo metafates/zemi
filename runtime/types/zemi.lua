@@ -873,8 +873,9 @@ function zemi.event.stats() end
 ---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running, and `agent` is that run's name, the model's description or the definition's when it wrote none.
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_count integer Rows in `transcript`, without building it.
----@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
+---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run or a printed run is shown, whose rows it does not describe.
 ---@field transcript_edit integer Changes when a settled row's text grew in place: every unit redraws, unlike `transcript_epoch`, whose bump also drops the rows the reader opened.
+---@field view_revision integer Changes when the shown run rewrites its transcript, in place included; 0 while the session shows.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.

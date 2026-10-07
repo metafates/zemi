@@ -96,6 +96,54 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 	}
 }
 
+// TestViewedRunRevision: the ctx reports the shown run's transcript revision,
+// which moves when the run writes a row and holds while only its reply
+// streams, so the chat can cache the rows it drew of it. The session reports
+// none of its own: its rows are the epoch's.
+func TestViewedRunRevision(t *testing.T) {
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
+	const src = `tostring(ctx.view_revision)`
+	if err := h.RT.ExecuteChunk(t.Context(),
+		`zemi.ui.widget.add({ id = "probe", region = "statusline.right", render = function(ctx) return { { { text = `+src+` } } } end })`,
+		"probe.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	probe := func() string {
+		t.Helper()
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return SegsText(lines[0])
+	}
+	if got := probe(); got != "0" {
+		t.Fatalf("the session's ctx reads %q, want no revision of its own", got)
+	}
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "d", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	if got := probe(); got != "0" {
+		t.Fatalf("a fresh run's ctx reads %q, want revision 0", got)
+	}
+	// a delta of the reply writes no row: the rows the chat drew still stand
+	run.mu.Lock()
+	run.text += "and this"
+	run.mu.Unlock()
+	h.refreshViewed(run)
+	if got := probe(); got != "0" {
+		t.Fatalf("a streamed delta moved the revision to %q", got)
+	}
+	(&subagentHooks{h: h, run: run, def: AgentDef{Name: "explore"}}).ToolCallStart("c1", "shell", "ls")
+	if got := probe(); got == "0" {
+		t.Fatalf("a written row left the revision at %q", got)
+	}
+}
+
 // BenchmarkWidgetCtx renders a statusline-like widget that reads one field
 // over an empty and a 500-row transcript: the gap is what building the
 // transcript for widgets that never read it costs.
