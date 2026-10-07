@@ -727,7 +727,11 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local width = ctx.width or 80
 		local count = ctx.transcript_count or 0
-		if count == 0 and not ctx.agent_active then
+		-- work that outlives this view of the session, drawn at the tail: a
+		-- session's counts are about other work, so a run's view leaves it out
+		local pending = fmt.pending(ctx)
+		if ctx.view then pending = nil end
+		if count == 0 and not ctx.agent_active and not pending then
 			return {} -- the splash widget fills the empty chat
 		end
 		-- An agent run's transcript mutates in place and reports epoch 0, so
@@ -1007,6 +1011,12 @@ zemi.ui.widget.add({
 					B.user(q.text, "queued")
 				end
 			end
+		end
+		-- What will change this conversation later sits between it and the
+		-- todos: a static row, so nothing here keeps the frame clock awake.
+		if pending then
+			if #B.lines > 0 then B.blank() end
+			B.lines[#B.lines + 1] = pending
 		end
 		local lines = B.lines
 		-- The todo list stays under the conversation until every item is done.

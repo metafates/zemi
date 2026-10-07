@@ -2051,6 +2051,50 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 	}
 }
 
+// TestPendingRow: work that will change this conversation later - a job the
+// user waits on, a compaction - draws one static row at the chat's tail,
+// above the todos. A running flow is pinned by TestGoldenWorkflows.
+func TestPendingRow(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		work func(h *hostapi.Host)
+		want string
+	}{
+		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
+		{"compaction", func(h *hostapi.Host) { h.SeedStream(hostapi.StreamSnapshot{Active: true, Compacting: true}) }, "⧗ compacting the conversation"},
+	} {
+		t.Run(c.name, func(t *testing.T) { pendingRow(t, c.work, c.want) })
+	}
+}
+
+func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
+	t.Helper()
+	app, host := bootAgentApp(t, 100, 24)
+	seedTodos(t, host, []store.Todo{{Content: "step one", Status: "pending"}})
+	work(host)
+	rows := chatRows(t, app, 80)
+	at, todos := slices.Index(rows, want), slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "Todos ") })
+	if at < 0 || todos < 0 || at > todos {
+		t.Fatalf("want %q above the todos header, at %d of %d:\n%s", want, at, todos, strings.Join(rows, "\n"))
+	}
+}
+
+// seedTodos writes a session's todo list, as the todos tool would.
+func seedTodos(t testing.TB, host *hostapi.Host, todos []store.Todo) {
+	t.Helper()
+	db := testStore(t, host)
+	sid := store.ShortID()
+	if err := db.CreateSession(sid, "", "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.PipelineFor().TodosWrite(todos); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
 // progress and the pending ones first, and folds the done tail into one row.
 func TestTodoRowsKeepTheLiveItem(t *testing.T) {
@@ -2068,23 +2112,13 @@ func TestTodoRowsKeepTheLiveItem(t *testing.T) {
 
 func todoRows(t *testing.T, h int, want []string) {
 	app, host := bootAgentApp(t, 100, h)
-	db := testStore(t, host)
-	sid := store.ShortID()
-	if err := db.CreateSession(sid, "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.ResumeSession(sid); err != nil {
-		t.Fatal(err)
-	}
 	var todos []store.Todo
 	for i := range 13 {
 		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done"})
 	}
 	todos[12].Status = "in_progress"
 	todos = append(todos, store.Todo{Content: "step 14", Status: "pending"})
-	if err := host.PipelineFor().TodosWrite(todos); err != nil {
-		t.Fatal(err)
-	}
+	seedTodos(t, host, todos)
 	host.AppendMessage("user", "do it")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())

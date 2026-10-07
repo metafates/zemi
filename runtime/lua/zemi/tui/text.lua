@@ -67,6 +67,40 @@ function M.hint(noun, cmd, click, hl)
 	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Dim", click = click } }
 end
 
+--- What the session still waits on as one row: the runs and jobs of other
+--- work, the jobs the user waits on, and a compaction. Static text, so an
+--- hour-long job holds no frame clock; nil when nothing pends.
+---@param ctx zemi.WidgetCtx
+---@return zemi.Line?
+function M.pending(ctx)
+	---@type string[]
+	local parts = {}
+	-- the live rail already names the run the turn waits on: counts are other work
+	if not ctx.agent_active then
+		local flows, agents, jobs = ctx.workflows_running or 0, ctx.agents_running or 0, ctx.jobs_running or 0
+		---@type string[]
+		local counts = {}
+		if flows > 0 then counts[#counts + 1] = M.count(flows, "workflow", "workflows") end
+		if agents > 0 then counts[#counts + 1] = M.count(agents, "agent", "agents") end
+		if jobs > 0 then counts[#counts + 1] = M.count(jobs, "job", "jobs") end
+		if #counts > 0 then parts[#parts + 1] = table.concat(counts, ", ") end
+	end
+	for _, job in ipairs(ctx.busy or {}) do
+		parts[#parts + 1] = M.lower(job.label)
+	end
+	if (ctx.agent or {}).compacting then parts[#parts + 1] = "compacting the conversation" end
+	if #parts == 0 then return nil end
+	---@type zemi.Mark
+	local mark = zemi.ui.marks.bg
+	---@type zemi.Line
+	local row = { { text = mark.glyph .. " ", hl = mark.hl, copy = false, hover = false } }
+	for i, part in ipairs(parts) do
+		if i > 1 then row[#row + 1] = { text = " · ", hl = "Dim", copy = false, hover = false } end
+		row[#row + 1] = { text = part, hl = "Dim" }
+	end
+	return row
+end
+
 --- The on_click of a widget whose click ids are a command and its
 --- arguments ("resume 3f9c", "mode"), or "fill <text>", which puts the text
 --- in the composer for the user to send.

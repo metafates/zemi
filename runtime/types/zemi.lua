@@ -883,7 +883,7 @@ function zemi.event.stats() end
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
----@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
+---@field busy? { label: string, elapsed: number, cancellable: boolean }[] Jobs the user waits on that are not a turn (/btw, a plugin install, the reflector), newest first: each one's label, seconds it has run, and whether esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer
 ---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
 ---@field workflows_running integer Workflows of this session still running, paused ones included.

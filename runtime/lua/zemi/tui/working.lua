@@ -37,7 +37,10 @@ zemi.ui.widget.add({
 		---@return zemi.Line
 		local function plain(text, hl) return { { text = text, hl = hl or "Dim" } } end
 		local state = "idle"
-		local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
+		---@type { label: string, elapsed: number, cancellable: boolean }?
+		local busy = (ctx.busy or {})[1]
+		-- a job that just started is not worth the block that comes and goes
+		if busy and busy.elapsed < 0.3 then busy = nil end
 		-- a printed run takes no key but the shell's interrupt
 		local key, verb = "esc", "interrupt"
 		if ctx.headless then
