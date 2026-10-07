@@ -555,9 +555,10 @@ func TestPromptBudget(t *testing.T) {
 	// hands its run off on the user's message, so the turn reads it (291 chars).
 	// 24500: the memory tool's file mode: path, content and its brain-file
 	// paragraph write a private brain map (DESIGN §10.4).
-	// 24459 today: the wait fits inside that - the workflow action, the agent
-	// tool's wait flag and the clauses naming them; 41 chars of headroom left.
-	const ceiling = 24500
+	// 25000: the workflow and agent tools' wait action and the clauses naming
+	// it, and the file tools' descriptions matching the code again (the free
+	// zone write's exemption, the tolerant edit match); 24577 today.
+	const ceiling = 25000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
