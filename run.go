@@ -25,8 +25,8 @@ import (
 	"github.com/metafates/zemi/internal/ui"
 )
 
-// event is one line of zemi run --json but the last (README.md has the
-// table); a field its type does not carry is left out.
+// event is one line of zemi run --json but the last (DESIGN §8 has the
+// tables); a field its type does not carry is left out.
 type event struct {
 	Type    string `json:"type"`
 	Session string `json:"session,omitempty"`

@@ -456,7 +456,7 @@ func sessionsCommand(o *options) *cobra.Command {
 					}{s.ID, sanitize.Line(s.Title), updated, s.Cost})
 					continue
 				}
-				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), cmp.Or(sanitize.Line(s.Title), "(untitled)"))
+				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
 			}
 			return err
 		},
