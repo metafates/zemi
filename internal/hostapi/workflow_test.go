@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -202,6 +203,36 @@ func TestWorkflowRun(t *testing.T) {
 	}
 	if peak.Load() < 2 {
 		t.Fatalf("parallel agents never overlapped (peak %d)", peak.Load())
+	}
+}
+
+// TestWorkflowCallWarns: a foreground workflow call whose run finished with a
+// failed agent inside answers under a mark that warns, so its row reads the
+// run's own outcome rather than a check; a run that only succeeded keeps its
+// check.
+func TestWorkflowCallWarns(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	echoAgents(h)
+	tool := h.workflowTool(h.PipelineFor())
+	call := func(script string) string {
+		t.Helper()
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWorkflow, Input: `{"script":` + strconv.Quote("local wf = zemi.workflow\n"+script) + `}`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.IsError {
+			t.Fatalf("a run that finished answered an error: %q", resp.Content)
+		}
+		return resp.Content
+	}
+	warned := call(`local r, e = wf.agent("fail") return "the run went on"`)
+	if got := toolStatus(tools.ToolWorkflow, fantasy.ToolResultOutputContentText{Text: warned}, false); got != CallWarn {
+		t.Fatalf("a call whose run warned reads %s: %q", got, warned)
+	}
+	clean := call(`wf.agent("ok") return "done"`)
+	if got := toolStatus(tools.ToolWorkflow, fantasy.ToolResultOutputContentText{Text: clean}, false); got != CallOK {
+		t.Fatalf("a call whose run finished reads %s: %q", got, clean)
 	}
 }
 

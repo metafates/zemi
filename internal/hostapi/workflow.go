@@ -1307,6 +1307,12 @@ return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 // background, whose row reads as still running (toolStatus).
 const bgWorkflowStarted = "Started workflow "
 
+// warnWorkflowFinished opens the answer of a foreground workflow call whose
+// run finished with a failed agent inside: the model hears the result may be
+// partial, and the call's own row warns rather than reading a check
+// (toolStatus). The run's report follows it.
+const warnWorkflowFinished = "Finished workflow "
+
 // bgFlowText is what a call whose run reports as a message answers: a
 // background start, or a foreground call the user's message handed off.
 func bgFlowText(f *flowRun) string {
@@ -1455,7 +1461,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if !ok {
 		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
 	}
-	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
+	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil
 }
 
 // flowSource reads run id's script from pad once: a sandboxed command or the
@@ -1578,6 +1584,15 @@ func (f *flowRun) reportAs() (attr, status, report string) {
 		status = string(RunWarn)
 	}
 	return attr, status, report
+}
+
+// asCall is a finished run's report as the foreground call answers it: a run
+// that went on past a failed agent says so first.
+func (f *flowRun) asCall(report string) string {
+	if f.status != RunWarn {
+		return report
+	}
+	return warnWorkflowFinished + f.id + " with an agent that failed inside: the result below may be partial.\n\n" + report
 }
 
 // /workflows and zemi.workflow

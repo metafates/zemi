@@ -136,6 +136,7 @@ type agentRun struct {
 	thinkAt   time.Time      // when the open reasoning block began, zero when none is
 	thought   time.Duration  // closed reasoning blocks since the last row
 	rows      map[string]int // tool call id -> tr index
+	rev       uint64         // bumped on every tr write (run.mu held): the chat caches the shown run's rows by it
 	queue     []string       // messages waiting for the next step boundary
 	closed    bool           // past its last step boundary: a message would be lost
 	dropped   int            // queued messages the run ended before reading
@@ -427,8 +428,9 @@ func (run *agentRun) transcriptLocked() []ChatMessage {
 // view is what the chat draws while this run is shown: its transcript and the
 // live stream of its own turn, read under one lock. base is the session's
 // snapshot, for what belongs to the process rather than to a turn: the model,
-// the profile and the usage tally.
-func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, StreamSnapshot) {
+// the profile and the usage tally. rev is the transcript's revision, so the
+// chat can cache what it rendered of rows this copy has.
+func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, StreamSnapshot, uint64) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	base.Active, base.Elapsed = run.status == RunRunning, run.took()
@@ -439,13 +441,18 @@ func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, Stream
 	base.Text, base.Tools = "", nil
 	base.Retries, base.Retrying, base.RetryIn, base.RetryWhy = 0, false, 0, ""
 	base.Compacting, base.CheckingGoal = false, false
-	return run.status, run.transcriptLocked(), base
+	return run.status, run.transcriptLocked(), base, run.rev
 }
+
+// touch marks the transcript as written (run.mu held): every tr write goes
+// through it, or the chat caches rows the run has since rewritten.
+func (run *agentRun) touch() { run.rev++ }
 
 // flush moves the streamed thinking and reply into rows, in the order they
 // streamed: the run's flushOutput (run.mu held).
 func (run *agentRun) flush() {
 	run.endThinking()
+	rows := len(run.tr)
 	if strings.TrimSpace(run.reason) != "" {
 		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: run.reason, Stat: &TurnStat{ThoughtMS: run.thought.Milliseconds()}})
 	}
@@ -453,6 +460,9 @@ func (run *agentRun) flush() {
 		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
 	}
 	run.reason, run.text, run.thought = "", "", 0
+	if len(run.tr) != rows {
+		run.touch()
+	}
 }
 
 // beginThinking opens a reasoning block (run.mu held).
@@ -510,6 +520,9 @@ func (run *agentRun) take() []string {
 	for _, m := range q {
 		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: m})
 	}
+	if len(q) > 0 {
+		run.touch()
+	}
 	return q
 }
 
@@ -561,6 +574,7 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 	}
 	run.status, run.closed, run.started, run.finished, run.dropped = RunRunning, false, time.Now(), time.Time{}, 0
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
+	run.touch()
 	// a continuation outlives the call like any run: the call that started it
 	// hands it off when the user speaks, and cancels it through run.cancel
 	ctx, run.cancel = context.WithCancel(context.WithoutCancel(ctx))
@@ -613,6 +627,7 @@ func (run *agentRun) finish(h *Host, err error) {
 	default:
 		run.status = RunDone
 	}
+	run.touch()
 	if h.DB != nil && run.sessionID != "" {
 		// a restart reads this back instead of calling every run done
 		if err := h.DB.SetSessionRunStatus(run.sessionID, string(run.status)); err != nil {
@@ -750,7 +765,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 // the marker where @ refs do not attach: a report's shape under a tag of its
 // own, so the chat draws the update's line rather than the user's words.
 func (h *Host) updateMessage(pad, id, agentName, text string) string {
-	return agent.AttachMarker + fmt.Sprintf("\n<agent-update run=%q agent=%q>\n", id, agentName) + h.truncOutput(pad, "agent", text) + "\n</agent-update>\n</attached-files>"
+	return agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", id, agentName), h.truncOutput(pad, "agent", text))
 }
 
 // reportHead is the one line the user sees of a background report, named by
@@ -770,7 +785,7 @@ func reportHead(id, agent, status, description string) string {
 // model reads it (appendUserRows), so it never lands above the rows of the
 // turn it arrives in.
 func (h *Host) reportMessage(pad, id, agentName, status, description, report string) string {
-	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput(pad, "agent", report) + "\n</agent-report>\n</attached-files>"
+	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", id, agentName, status, description), h.truncOutput(pad, "agent", report))
 }
 
 // reportFailed heads a failed run's report for the model; the toast of one

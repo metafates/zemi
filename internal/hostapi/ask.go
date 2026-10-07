@@ -114,13 +114,13 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	if req.Subject == perm.SubjectWrite && !req.InPad() {
 		why = h.protectedWhy(req.Arg)
 	}
-	if why != "" && base != "auto" {
+	if why != "" && base != config.PermModeAuto {
 		note(why)
 	}
 	switch {
-	case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectShell && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
+	case base == config.PermModeYolo && req.ReadOnly && (req.Subject == perm.SubjectShell && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
 		note("read-only agent: nothing confines this call")
-	case base == "yolo":
+	case base == config.PermModeYolo:
 		return resolved(true, tools.ByMode(def.Name))
 	case req.Unsandboxed:
 		// a mode settles a command only to run it sandboxed; the Lua tool
@@ -134,7 +134,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	case req.Explicit:
 		// whoever wrote the rule wanted to see this; only yolo overrides it
 		note("a rule asks for this")
-	case base == "auto":
+	case base == config.PermModeAuto:
 		if h.autoLocal(req) {
 			return resolved(true, tools.ByMode(def.Name))
 		}

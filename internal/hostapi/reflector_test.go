@@ -29,9 +29,11 @@ import (
 // Stream with a fixed text (Stream records the prompt size); object calls
 // refuse.
 type reflectStubModel struct {
-	resp       string
-	err        error
-	block      time.Duration
+	resp string
+	err  error
+	// how long a call takes, in ns: a race-free read, since a title call
+	// and a turn's calls run at once
+	block      atomic.Int64
 	calls      atomic.Int32
 	lastPrompt atomic.Int32
 	lastOpts   atomic.Pointer[fantasy.ProviderOptions] // the last Generate call's provider options
@@ -52,11 +54,11 @@ func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fa
 	if m.during != nil {
 		m.during()
 	}
-	if m.block > 0 {
+	if d := time.Duration(m.block.Load()); d > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(m.block):
+		case <-time.After(d):
 		}
 	}
 	if m.err != nil {
@@ -593,7 +595,7 @@ func TestReflectTimeout(t *testing.T) {
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, `{"memories":[]}`)
-	m.block = time.Hour
+	m.block.Store(int64(time.Hour))
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	if _, err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
@@ -771,7 +773,7 @@ func TestReflectTrigger(t *testing.T) {
 			reflectNow(h, sid)
 		}, calls: 2, badge: true},
 		{name: "a cancelled run spends no try and leaves no news", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
-			m.block = time.Minute
+			m.block.Store(int64(time.Minute))
 			m.during = h.CancelBusy
 			if !reflectNow(h, sid) || h.agents.reflectErr != nil {
 				t.Fatalf("ran, or left /health news: %v", h.agents.reflectErr)

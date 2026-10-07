@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 func TestCompactNowCancels(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "") // an empty reply starts no title call
-	m.block = time.Minute
+	m.block.Store(int64(time.Minute))
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
 	sender(t, h)("hi")
@@ -197,19 +198,21 @@ func TestCompactionMidTurn(t *testing.T) {
 			h.SetUIHooks(ui)
 			// the summary runs inside the turn: the working rule has a clock
 			// to show "Compacting" against, and esc reaches it
-			var elapsed time.Duration
+			// a title call runs its own Generate beside the turn's, so both
+			// fields it and the model share move atomically
+			var elapsed atomic.Int64
 			m.during = func() {
 				// the title's call comes after the turn
 				if s := h.AgentStream(); s.Compacting {
-					elapsed = s.Elapsed
+					elapsed.Store(int64(s.Elapsed))
 				}
 				if c.cancel {
 					h.AgentCancel()
-					m.block = time.Second
+					m.block.Store(int64(time.Second))
 				}
 			}
 			sender(t, h)("go")
-			if elapsed <= 0 {
+			if elapsed.Load() <= 0 {
 				t.Fatal("no turn clock while summarizing")
 			}
 			if n := m.streams.Load(); n != c.streams {

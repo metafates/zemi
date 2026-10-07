@@ -22,6 +22,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -203,12 +204,12 @@ var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string) {
 	tool := notifiers[goos]
 	switch setting {
-	case "native":
+	case config.NotifyNative:
 		if tool != "" && has(tool) {
-			return "native", "via " + tool
+			return config.NotifyNative, "via " + tool
 		}
-		return "bell", "native: " + cmp.Or(tool, "a notifier") + " not found"
-	case "auto":
+		return config.NotifyBell, "native: " + cmp.Or(tool, "a notifier") + " not found"
+	case config.NotifyAuto:
 	default:
 		return setting, "set in config"
 	}
@@ -216,15 +217,15 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	if env("TMUX") == "" && env("STY") == "" && env("ZELLIJ") == "" {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
 			if v := env(k); slices.Contains(oscTerms, v) {
-				return "osc", "auto: " + k + "=" + v
+				return config.NotifyOSC, "auto: " + k + "=" + v
 			}
 		}
 	}
 	// over ssh a native notification would show on the remote machine
 	if tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool) {
-		return "native", "auto: via " + tool
+		return config.NotifyNative, "auto: via " + tool
 	}
-	return "bell", "auto: no OSC 9 terminal or local notifier found"
+	return config.NotifyBell, "auto: no OSC 9 terminal or local notifier found"
 }
 
 // NotifyStyle is notifyStyle for this process.
@@ -325,7 +326,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
 
 	switch style, why := h.NotifyStyle(); {
-	case style == "off":
+	case style == config.NotifyOff:
 		add(HealthOK, "notify", "off")
 	case strings.HasPrefix(why, "native: "):
 		add(HealthWarn, "notify", style+", "+why)

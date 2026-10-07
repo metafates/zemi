@@ -470,7 +470,8 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 	g := &sandboxGuard{}
 	for _, pr := range p.Protect {
 		writable := slices.ContainsFunc(p.Write, func(w string) bool {
-			return pr == w || strings.HasPrefix(pr, strings.TrimSuffix(w, string(filepath.Separator))+string(filepath.Separator))
+			_, under := perm.Under(w, pr)
+			return under
 		})
 		if _, err := os.Lstat(pr); err != nil && writable && !slices.Contains(g.missing, pr) {
 			g.missing = append(g.missing, pr)

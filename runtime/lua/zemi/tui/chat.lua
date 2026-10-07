@@ -712,9 +712,11 @@ zemi.ui.widget.add({
 		if count == 0 and not ctx.agent_active and not pending then
 			return {} -- the splash widget fills the empty chat
 		end
-		-- An agent run's transcript mutates in place and reports epoch 0, so
-		-- only the session's settled rows are cached.
+		-- An agent run's transcript mutates in place and reports epoch 0: the
+		-- run's own revision says when it did, so its rows are cached like the
+		-- session's, its last row aside.
 		local epoch = ctx.transcript_epoch or 0
+		local rev = ctx.view_revision or 0
 		-- rows are keyed by transcript index, and an agent view reports epoch 0
 		-- for whichever run it shows: that run is the identity instead
 		local ident = ctx.view and ctx.view.id or epoch
@@ -831,8 +833,9 @@ zemi.ui.widget.add({
 
 		-- markdown and code carry the theme's colors: a light terminal's
 		-- variant renders them anew. A settled row whose text grew in place (a
-		-- joined reasoning chunk) re-renders every unit, which the 30 ms budget
+		-- joined reasoning chunk) re-renders its unit, which the 30 ms budget
 		-- bounds; the rows the reader opened keep their place.
+		-- The view is in the key: two runs report revisions of their own.
 		local key = table.concat({
 			epoch,
 			width,
@@ -840,10 +843,15 @@ zemi.ui.widget.add({
 			ctx.cwd or "",
 			zemi.ui.theme.get(),
 			tostring(ctx.transcript_edit or 0),
+			ctx.view and ctx.view.id or "",
+			rev,
 		}, "|")
 		local reset = key ~= units_key
 		if reset then counts = {} end
-		if reset or epoch == 0 then
+		-- a printed run is a snapshot and reports epoch 0: only the session and
+		-- a shown run cache their rows
+		local cacheable = epoch ~= 0 or ctx.view ~= nil
+		if reset or not cacheable then
 			units, units_key, settled = {}, key, nil
 		end
 		-- A long session resumed, a new width or a new theme leave every unit
@@ -857,7 +865,10 @@ zemi.ui.widget.add({
 		-- the turn is working in is its last activity run, while that reaches the
 		-- tail and the turn is not answering.
 		local replying = (ag.text or "") ~= ""
-		local done = settled
+		-- A viewed run's rows change under a count that does not: its view
+		-- never takes the whole-output shortcut, its tail redraws instead.
+		local done = not ctx.view
+			and settled
 			and settled.count == count
 			and settled.active == active
 			and settled.replying == replying
@@ -882,22 +893,27 @@ zemi.ui.widget.add({
 				if ctx.headless or first == live_first then return "rail" end
 				return unfolded[first] and "unfold" or "fold"
 			end
-			local deadline = epoch ~= 0 and os.clock() + 0.03
+			local deadline = cacheable and os.clock() + 0.03
 			---@type zemi.tui.ChatUnit[]
 			local shown = {}
 			local rendered, got = 0, 0
-			local function stale(first, last)
+			---@param tail boolean? The group holding the last row: a run rewrites it in place as it streams, so it always redraws.
+			local function stale(first, last, tail)
+				if tail then return true end
 				local u = units[first]
 				return not u or u.next ~= last + 1 or u.mode ~= mode_of(first)
 			end
-			local function cached(first, last)
-				if stale(first, last) then
+			local function cached(first, last, tail)
+				if stale(first, last, tail) then
 					units[first] = unit(tr, first, last, mode_of(first))
-					rendered = rendered + 1
+					-- the tail redraws every frame and is no work the budget
+					-- needs to bound: only a group the cache lost counts
+					if not tail then rendered = rendered + 1 end
 				end
 				return units[first]
 			end
 			local last = #tr
+			local tail = true
 			while last >= 1 do
 				local first = last
 				if notice(tr[last]) then
@@ -913,7 +929,8 @@ zemi.ui.widget.add({
 					more = true
 					break
 				end
-				local u = cached(first, last)
+				local u = cached(first, last, tail)
+				tail = false
 				shown[#shown + 1] = u
 				got = got + #u.lines
 				last = first - 1

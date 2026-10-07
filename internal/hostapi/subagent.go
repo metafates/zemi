@@ -65,7 +65,7 @@ var builtinAgents = []AgentDef{
 	{
 		Name:        "explore",
 		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
-		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "web_search", "skill"},
+		Tools:       []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolWebSearch, tools.ToolSkill},
 		ReadOnly:    true,
 		System:      "Search broadly, read what matters, never guess. Lead with the answer, quote code only when the exact text matters, and when you did not find it, say where you looked.",
 		Source:      lua.OriginBuiltin,
@@ -81,7 +81,7 @@ var builtinAgents = []AgentDef{
 	{
 		Name:        "web",
 		Description: "Searches the web, reads pages and follows links, answering with its sources. Give it the question, not just a URL.",
-		Tools:       []string{"web_search", "fetch", "read", "grep", "glob"},
+		Tools:       []string{tools.ToolWebSearch, tools.ToolFetch, tools.ToolRead, tools.ToolGrep, tools.ToolGlob},
 		ReadOnly:    true,
 		System:      "Break the question into short, specific searches, fetch the pages that look relevant and follow their links when they hold the answer. A long page is saved to a file the fetch result names: grep and read that file instead of fetching again. Answer only what was asked, quote the exact text when it matters, and end with a Sources list of the URLs that contributed.",
 		Source:      lua.OriginBuiltin,
@@ -92,7 +92,7 @@ var builtinAgents = []AgentDef{
 		// sending agent turns into a plan tool call.
 		Name:        "plan",
 		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
-		Tools:       []string{"read", "glob", "grep", "lsp", "skill", "fetch", "web_search"},
+		Tools:       []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolSkill, tools.ToolFetch, tools.ToolWebSearch},
 		ReadOnly:    true,
 		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
 		Source:      lua.OriginBuiltin,
@@ -722,6 +722,7 @@ func (run *agentRun) joinThought(text string) bool {
 		m := &run.tr[i]
 		if m.Kind == RowReasoning {
 			m.Text += text
+			run.touch()
 			return true
 		}
 		if m.Kind != RowTool || (m.Status != CallRun && m.Status != CallWait) {
@@ -745,6 +746,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: name, Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
+	run.touch()
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
@@ -757,6 +759,7 @@ func (s *subagentHooks) ToolCallRunning(id string) {
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		run.tr[i].Status = CallRun
+		run.touch()
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
@@ -776,6 +779,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 			t.Diff = "" // the change did not happen
 		}
 		diff = t.Diff
+		run.touch()
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
