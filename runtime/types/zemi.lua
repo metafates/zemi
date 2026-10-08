@@ -2433,7 +2433,7 @@ function zemi.http.get(url, opts) end
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads. A missing dir is the returned error.
----@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined.
+---@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined. A plugin's own job settles only with it: without one it asks.
 ---@field stdin? boolean Needed before `write`.
 ---@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
 ---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.
@@ -2456,8 +2456,9 @@ function zemi.http.get(url, opts) end
 
 --- Child processes run in their own session and process group, with the
 --- project directory as their working directory. User and project code need
---- `lua.job.start` allowed for the command line (a plugin's own job settles
---- while it is enabled): rules match it normalized like `tool.shell`
+--- `lua.job.start` allowed for the command line; a plugin's own job settles
+--- while it is enabled only when it asks for the sandbox (`sandbox = true`).
+--- Rules match the command line normalized like `tool.shell`
 --- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job
 zemi.job = {}

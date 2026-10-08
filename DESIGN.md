@@ -2536,7 +2536,9 @@ rides the `memories.md` line and its ledger entries.
   `lua.agent.send` and `lua.model.ask`) is `ask`. The one exception is an
   enabled plugin's own calls: switching a plugin on in `/plugins` is the
   user's trust decision, so its `lua.model.ask`, `lua.classify.ask`,
-  `lua.agent.send`, `lua.http.*`, `lua.job.start` and `lua.fs.write` settle
+  `lua.agent.send`, `lua.http.*`, `lua.fs.write` and a `lua.job.start` that
+  asked for the sandbox (`sandbox = true`: one without it still asks, since
+  it would run with the whole environment) settle
   while it is on (a disabled plugin never loads), and so does a `tool.<name>`
   whose tool a plugin registered, when the model calls it, since registering
   the tool was itself part of what the switch allowed; a protected write

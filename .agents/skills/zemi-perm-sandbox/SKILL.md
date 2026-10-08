@@ -234,9 +234,11 @@ plugin code may add or drop a mode, the project refused, the builtin names (`aut
 are refused by name to everyone, and `mayReplace` refuses another plugin's name to a plugin;
 the gate lives at the namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 Enabling a plugin is its own trust decision (`Host.pluginTrusted`): an ask no rule decided settles for its own
-`lua.model.ask`, `lua.classify.ask`, `lua.agent.send`, `lua.http.*`, `lua.job.start` and `lua.fs.write`,
+`lua.model.ask`, `lua.classify.ask`, `lua.agent.send`, `lua.http.*`, `lua.fs.write` and its `lua.job.start` only
+when the job asked for the sandbox (`sandbox = true`: an unconfined one runs with the whole environment),
 a protected write (`protectedWhy`) and a secret shape aside, and `autoLocal` settles a `tool.<name>` whose tool
-a plugin registered. A rule of the user's still decides first, and a test zemi answers only its stubs.
+a plugin registered. A rule of the user's still decides first - an ask rule or a `not_match` exclusion is the
+rule's ask, which `decidedBy` reports as `rule` - and a test zemi answers only its stubs.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal
 (`Rule.Network` when the ask was a `network: true` command, so `SandboxFor` keeps the policy and
