@@ -79,6 +79,9 @@ func (h *Host) modelErr(id string) error {
 		}
 		return fmt.Errorf("provider %q is not registered: %s", prov, h.addProvider())
 	}
+	if _, _, decisions := h.Providers.Decisions(id); decisions {
+		return fmt.Errorf("%s is a decisions model: zemi.classify.ask judges with it, and no turn runs on one", id)
+	}
 	// openai_compat may point at a local server that needs none
 	if spec.Kind != agent.KindOpenAICompat && !h.Providers.HasKey(prov) {
 		return fmt.Errorf("%s: api_key is empty in %s", prov, h.initPath())
@@ -369,6 +372,10 @@ type modelTarget struct {
 	Origin lua.Origin
 	Path   string
 	Prof   *Profile
+	// Classify marks a slot zemi.model.add made for classification: /model
+	// offers it the decisions models beside the chat ones, and nothing else
+	// gets them, since a turn cannot run on one.
+	Classify bool
 }
 
 // def is the model the target was registered with; a profile's is its own.
@@ -775,7 +782,11 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if !ok {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		if err := onlyKeys(e, at, append([]string{"id", "display", "vision"}, modelNumericKeys...)...); err != nil {
+		if err := onlyKeys(e, at, append([]string{"id", "display", "vision", "decisions"}, modelNumericKeys...)...); err != nil {
+			return agent.Spec{}, err
+		}
+		decided, err := modelBool(e, at, "decisions")
+		if err != nil {
 			return agent.Spec{}, err
 		}
 		nums := map[string]float64{}
@@ -800,12 +811,37 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			CostPer1MCacheWrite: nums["cost_per_1m_cache_write"],
 			CostPer1MCacheRead:  nums["cost_per_1m_cache_read"],
 			TextOnly:            e["vision"] == false,
+			Decisions:           decided,
 		})
+	}
+	switch {
+	case decisions(spec) && spec.Kind != agent.KindSystemOne:
+		return agent.Spec{}, errors.New("decisions is set only by the SYSTEM_ONE kind: a chat model is never a classifier")
+	case spec.Kind == agent.KindSystemOne && !decisions(spec):
+		return agent.Spec{}, errors.New("a SYSTEM_ONE provider needs a model with decisions = true; it answers nothing else")
 	}
 	if spec.ID == "" || spec.Kind == "" {
 		return agent.Spec{}, errors.New("provider needs id and kind")
 	}
 	return spec, nil
+}
+
+// decisions reports whether a spec carries a decisions model.
+func decisions(spec agent.Spec) bool {
+	return slices.ContainsFunc(spec.Models, func(m agent.Model) bool { return m.Decisions })
+}
+
+// modelBool reads a model entry's boolean field: absent is false, and anything
+// but a boolean is refused rather than read as one.
+func modelBool(e map[string]any, at, key string) (bool, error) {
+	switch v := e[key].(type) {
+	case nil:
+		return false, nil
+	case bool:
+		return v, nil
+	default:
+		return false, fmt.Errorf("%s.%s must be a boolean, not a %T", at, key, v)
+	}
 }
 
 func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
@@ -866,7 +902,11 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		h.refuseTargetOrigin(L, "model.add")
 		spec := L.CheckTable(2)
-		t := modelTarget{Desc: listDesc(rawString(L, spec, "desc")), Def: rawString(L, spec, "model")}
+		t := modelTarget{
+			Desc:     listDesc(rawString(L, spec, "desc")),
+			Def:      rawString(L, spec, "model"),
+			Classify: rawBool(L, spec, "classify"),
+		}
 		if t.Desc == "" {
 			L.RaiseError("zemi.model.add: desc is what /model roles shows for the slot")
 		}

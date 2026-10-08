@@ -793,6 +793,8 @@ func stubKind(subject string) string {
 		return "job"
 	case subject == "lua.model.ask":
 		return "model"
+	case subject == "lua.classify.ask":
+		return "classify"
 	case subject == "lua.agent.send":
 		return "send"
 	case subject == "lua.fs.write":
@@ -806,7 +808,7 @@ func (t *PluginTest) stub(L *glua.LState) int {
 	subject := L.CheckString(1)
 	kind := stubKind(subject)
 	if kind == "" {
-		L.RaiseError("test.stub: %q is not a call a stub answers: lua.http.<method>, lua.job.start, lua.model.ask, lua.agent.send or lua.fs.write", subject)
+		L.RaiseError("test.stub: %q is not a call a stub answers: lua.http.<method>, lua.job.start, lua.model.ask, lua.classify.ask, lua.agent.send or lua.fs.write", subject)
 	}
 	pattern, reply := L.OptString(2, "*"), L.Get(3)
 	switch reply.(type) {
@@ -834,11 +836,12 @@ func (t *PluginTest) stub(L *glua.LState) int {
 // stubFields are the fields a reply to each kind of call takes, and their
 // types: the rest would be dropped without a word, so a typo passes.
 var stubFields = map[string]map[string]glua.LValueType{
-	"http":  {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable, "error": glua.LTString},
-	"job":   {"code": glua.LTNumber, "stdout": glua.LTString, "stderr": glua.LTString},
-	"model": {"text": glua.LTString, "error": glua.LTString},
-	"send":  {},
-	"write": {},
+	"http":     {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable, "error": glua.LTString},
+	"job":      {"code": glua.LTNumber, "stdout": glua.LTString, "stderr": glua.LTString},
+	"model":    {"text": glua.LTString, "error": glua.LTString},
+	"classify": {"answers": glua.LTTable, "strategy": glua.LTString, "error": glua.LTString},
+	"send":     {},
+	"write":    {},
 }
 
 // checkReply is why a reply table cannot answer a call of kind, or "".
@@ -950,6 +953,8 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 		return `test.stub("lua.job.start", ` + luaLiteral(pattern) + `, { stdout = "..." })`
 	case "model":
 		return `test.stub("lua.model.ask", "*", "...")`
+	case "classify":
+		return `test.stub("lua.classify.ask", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
 	}
 	return "test.stub(" + luaLiteral(subject) + ")"
 }

@@ -2062,6 +2062,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.permission", h.permissionNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
 		{"zemi.model", h.modelNamespace(L), nil},
+		{"zemi.classify", h.classifyNamespace(L), nil},
 		{"zemi.agent", h.agentNamespace(L), nil},
 		{"zemi.workflow", h.workflowNamespace(L), nil},
 		{"zemi.json", h.jsonNamespace(L), nil},

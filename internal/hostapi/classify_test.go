@@ -1,0 +1,259 @@
+package hostapi
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
+)
+
+// fakeEndpoint serves one reply to every request and reports the bodies it
+// was sent.
+type fakeEndpoint struct {
+	srv *httptest.Server
+	mu  sync.Mutex
+	got []string
+}
+
+func newEndpoint(t *testing.T, reply func(body string) string) *fakeEndpoint {
+	t.Helper()
+	f := &fakeEndpoint{}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.got = append(f.got, string(raw))
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, reply(string(raw)))
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *fakeEndpoint) bodies() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.got...)
+}
+
+func (f *fakeEndpoint) called() bool { return len(f.bodies()) > 0 }
+
+// chatCompletion is one openai-shaped reply: content, and the token
+// probabilities of its first token where top is set.
+func chatCompletion(content string, top map[string]float64) string {
+	lp := "null"
+	if len(top) > 0 {
+		var entries []string
+		for token, p := range top {
+			entries = append(entries, fmt.Sprintf(`{"token":%q,"logprob":%v}`, token, p))
+		}
+		lp = `{"content":[{"token":` + fmt.Sprintf("%q", content) + `,"logprob":` +
+			fmt.Sprintf("%v", top[content]) + `,"top_logprobs":[` + strings.Join(entries, ",") + `]}]}`
+	}
+	return `{"id":"1","object":"chat.completion","created":0,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":` +
+		fmt.Sprintf("%q", content) + `},"finish_reason":"stop","logprobs":` + lp + `}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}`
+}
+
+// classifyAskSrc is one classify call: its questions are always the one bool,
+// and what it learned lands in the state for the test to read.
+const classifyAskSrc = `
+	local res, err = zemi.classify.ask({
+		model = "clf",
+		state = { cmd = "rm -rf build" },
+		questions = {
+			safe = {
+				type = "bool",
+				instructions = "is this command safe to run",
+				criteria = { ["true"] = "it deletes nothing the user made", ["false"] = "it deletes their work" },
+			},
+		},
+	}):wait()
+	if err then
+		zemi.state.set("failed", err)
+		return
+	end
+	zemi.state.set("strategy", res.strategy)
+	zemi.state.set("value", res.answers.safe.value)
+	zemi.state.set("probability", res.answers.safe.probability or -1)
+	zemi.state.set("cost", res.usage.cost)
+	zemi.state.set("in", res.usage["in"])
+`
+
+// TestClassifyAsk: one call per strategy over the Lua surface. Each one answers
+// through its own route, reports which strategy it was, and bills the session.
+func TestClassifyAsk(t *testing.T) {
+	const systemOne = `{"answers": {"safe": {"type": "noul", "noul": 0.97}}, "usage": {"input_tokens": 120, "output_tokens": 6}}`
+	for _, c := range []struct {
+		name          string
+		providers     string // zemi.provider.add lines, with %s the endpoint
+		reply         string
+		wantStrategy  string
+		wantValue     string
+		wantProb      string
+		wantRequests  int
+		requestMarker string
+	}{
+		{
+			name:          "a decisions model over its own protocol",
+			providers:     `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "%s", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "jev/m" })`,
+			reply:         systemOne,
+			wantStrategy:  "protocol",
+			wantValue:     "true",
+			wantProb:      "0.97",
+			wantRequests:  1,
+			requestMarker: `"model":"m"`,
+		},
+		{
+			name:          "a chat model whose provider returns token probabilities",
+			providers:     `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:         chatCompletion("Yes", map[string]float64{"Yes": -0.1, "No": -2.0}),
+			wantStrategy:  "logprobs",
+			wantValue:     "true",
+			wantProb:      "0.869",
+			wantRequests:  1,
+			requestMarker: `"top_logprobs"`,
+		},
+		{
+			name:          "a chat model that returns none falls through to a schema",
+			providers:     `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:         chatCompletion(`{"safe":true}`, nil),
+			wantStrategy:  "schema",
+			wantValue:     "true",
+			wantProb:      "-1",
+			wantRequests:  4, // the readout at each depth, then the object call
+			requestMarker: "safe",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newEndpoint(t, func(string) string { return c.reply })
+			h, r := newTestHostDB(t)
+			sid := seedSession(t, h)
+			runUser(t, r, fmt.Sprintf(c.providers, f.srv.URL))
+			runUser(t, r, classifyAskSrc)
+			if failed, _ := h.GlobalDB.GetKV("failed"); failed != "" {
+				t.Fatalf("the call failed: %s", failed)
+			}
+			got := func(key string) string {
+				v, _ := h.GlobalDB.GetKV(key)
+				return strings.Trim(v, `"`)
+			}
+			if got("strategy") != c.wantStrategy {
+				t.Errorf("strategy = %s, want %s", got("strategy"), c.wantStrategy)
+			}
+			if got("value") != c.wantValue {
+				t.Errorf("value = %s, want %s", got("value"), c.wantValue)
+			}
+			if p := got("probability"); !strings.HasPrefix(p, c.wantProb) {
+				t.Errorf("probability = %s, want %s", p, c.wantProb)
+			}
+			if n := len(f.bodies()); n != c.wantRequests {
+				t.Errorf("the endpoint saw %d requests, want %d", n, c.wantRequests)
+			}
+			for _, body := range f.bodies() {
+				if !strings.Contains(body, c.requestMarker) {
+					t.Errorf("a request does not carry %s: %s", c.requestMarker, body)
+				}
+			}
+			sess, err := h.DB.GetSession(sid)
+			if err != nil || sess.PromptTokens == 0 || sess.CompletionTokens == 0 {
+				t.Errorf("session = %+v, %v; want the call billed", sess, err)
+			}
+			if got("cost") == "0" {
+				t.Errorf("cost = %s, want a priced call", got("cost"))
+			}
+		})
+	}
+}
+
+// TestClassifyAskErrors: a call no strategy answered is an error, and so is a
+// question zemi cannot put to a model.
+func TestClassifyAskErrors(t *testing.T) {
+	f := newEndpoint(t, func(string) string { return "not json" })
+	h, r := newTestHostDB(t)
+	runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`, f.srv.URL))
+	runUser(t, r, classifyAskSrc)
+	if failed, _ := h.GlobalDB.GetKV("failed"); failed == "" {
+		t.Fatal("a provider answering nothing but prose answered the call")
+	} else if v, _ := h.GlobalDB.GetKV("strategy"); v != "" {
+		t.Errorf("strategy = %s, want none", v)
+	}
+	for _, c := range []struct{ name, src, want string }{
+		{"no state", `zemi.classify.ask({ questions = {} })`, "state is the data to judge"},
+		{"no questions", `zemi.classify.ask({ state = {} })`, "questions are what to judge"},
+		{"no instructions", `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", criteria = { ["true"] = "x", ["false"] = "y" } } } })`, "question q needs instructions"},
+		{"no criteria", `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x" } } })`, `question q needs criteria: { ["true"] = "what true means"`},
+		{"an unknown type", `zemi.classify.ask({ state = {}, questions = { q = { type = "maybe", instructions = "x", criteria = { a = "b" } } } })`, `question q has type "maybe"`},
+		{"an answer that is not true or false", `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { sure = "y" } } } })`, `question q is answered "true" or "false", not "sure"`},
+		{"one label", `zemi.classify.ask({ state = {}, questions = { q = { type = "choice", instructions = "x", criteria = { a = "b" } } } })`, "question q needs at least 2 labels"},
+	} {
+		if err := r.ExecuteChunk(t.Context(), c.src, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
+		}
+	}
+	// a decisions model is no chat model: neither a turn nor /model takes one
+	h2, r2 := newTestHost(t)
+	runUser(t, r2, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })`)
+	if err := r2.ExecuteChunk(t.Context(), `zemi.model.set("jev/m")`, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
+		t.Errorf("model.set: err %v, want a refusal", err)
+	}
+	if _, err := h2.Providers.Resolve("jev/m"); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
+		t.Errorf("resolve: err %v, want a refusal", err)
+	}
+}
+
+// TestClassifyGate: a plugin needs a rule for lua.classify.ask, project code
+// may not call a model, and the picker offers decisions models to the slots
+// that classify alone.
+func TestClassifyGate(t *testing.T) {
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })
+		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "big" } } })
+		zemi.model.add("clf", { desc = "the classifier", classify = true })`)
+	if err := h.OpenModelPicker("clf"); err != nil {
+		t.Fatal(err)
+	}
+	if !pickerHas(ui.opened[0].Items, "jev/m") {
+		t.Error("a classifier slot is not offered the decisions model")
+	}
+	if err := h.OpenModelPicker("titles"); err != nil {
+		t.Fatal(err)
+	}
+	if pickerHas(ui.opened[1].Items, "jev/m") {
+		t.Error("a chat role is offered a decisions model")
+	}
+	if !pickerHas(ui.opened[1].Items, "a/big") {
+		t.Error("a chat role lost the chat models")
+	}
+
+	// the gate: a plugin's call without a rule raises naming the rule
+	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
+	err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin)
+	if err == nil || !strings.Contains(err.Error(), `lua.classify.ask`) || !strings.Contains(err.Error(), `principal = "plugin:a"`) {
+		t.Errorf("a plugin without a rule: err = %v", err)
+	}
+	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
+	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
+		t.Errorf("a plugin with a rule: %v", err)
+	}
+	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code may not call a model") {
+		t.Errorf("project code: err = %v", err)
+	}
+}
+
+// pickerHas reports whether a model id is one of an overlay's rows.
+func pickerHas(items []any, id string) bool {
+	return slices.ContainsFunc(items, func(it any) bool {
+		row, _ := it.(map[string]any)
+		s, _ := row["copy"].(string)
+		return s == id
+	})
+}

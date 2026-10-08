@@ -2017,12 +2017,21 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.Items = []any{head}
 	}
 	heads := len(o.Items)
+	// a decisions model answers classification only, so it is offered to the
+	// slots that classify and never to a chat one
+	classifier := false
+	if t, ok := h.target(name); ok {
+		classifier = t.Classify
+	}
 	for _, s := range h.Providers.List() {
 		section := s.ID
 		if !h.Providers.HasKey(s.ID) {
 			section += " · no API key"
 		}
 		for _, m := range s.Models {
+			if m.Decisions && !classifier {
+				continue
+			}
 			id := s.ID + "/" + m.ID
 			item := map[string]any{"text": m.ID, "section": section, "desc": modelDesc(id, m), "run": run + id, "copy": id}
 			if id == cur {
@@ -2287,6 +2296,9 @@ func (h *Host) warnUnlisted(id string) {
 func (h *Host) modelSetErr(id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
+		return usageError{h.modelErr(id)}
+	}
+	if _, _, decisions := h.Providers.Decisions(id); decisions {
 		return usageError{h.modelErr(id)}
 	}
 	return nil

@@ -1548,6 +1548,7 @@ function zemi.log.list() end
 ---@field cost_per_1m_cache_read? number
 ---@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
 ---@field vision? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
+---@field decisions? boolean A model that answers classification through its provider's own protocol; only the `system_one` kind takes it, and no chat turn runs on one.
 
 ---@class zemi.ProviderSpec
 ---@field id string
@@ -1566,6 +1567,7 @@ function zemi.log.list() end
 ---| "google"
 ---| "openrouter"
 ---| "vercel"
+---| "system_one"     # a classifier endpoint (`zemi.classify.ask`), never a chat model
 
 --- What the provider is made to do with a schema. A model that answers an
 --- object call with a sentence is pinned to `tool` or `text`.
@@ -1613,6 +1615,7 @@ zemi.provider = {}
 ---@field GOOGLE "google"
 ---@field OPENROUTER "openrouter"
 ---@field VERCEL "vercel"
+---@field SYSTEM_ONE "system_one"
 zemi.provider.kind = {}
 
 ---@class zemi.provider.object_mode
@@ -1672,6 +1675,7 @@ function zemi.model.list() end
 ---@class zemi.ModelTargetSpec
 ---@field desc string What `/model roles` shows for the slot.
 ---@field model? zemi.ModelTarget|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows chat.
+---@field classify? boolean true for a slot `zemi.classify.ask` runs on: `/model <slot>` then offers the decisions models beside the chat ones.
 
 --- Register a model slot of its own, for code that runs a model on a job and
 --- not a conversation: `/model roles` lists it among the roles and
@@ -1741,6 +1745,80 @@ function zemi.model.ask(spec) end
 --- `/model <target> <id>` for another target. Raises for an unknown target.
 ---@param role? zemi.ModelTarget
 function zemi.model.pick(role) end
+
+-- zemi.classify
+
+---@class zemi.classify
+zemi.classify = {}
+
+--- How a call was answered. `protocol` is a decisions model (a `system_one`
+--- provider), `logprobs` a chat model whose provider returned token
+--- probabilities, `schema` a chat model that returned neither.
+---@alias zemi.ClassifyStrategy
+---| "protocol" # the provider judged the state itself; the answers carry probabilities
+---| "logprobs" # the answer was read off the next-token probabilities of a one-label prompt
+---| "schema"   # the reply was decoded against a schema; no confidence comes with it
+
+---@alias zemi.ClassifierType
+---| "bool"   # value and probability
+---| "choice" # choice, probabilities and confidence
+---| "score"  # score and confidence
+
+---@class zemi.ClassifierQuestion
+---@field type zemi.ClassifierType
+---@field instructions string One line saying what to judge about the state.
+---@field criteria table A bool's `{ ["true"] = "...", ["false"] = "..." }` (what each answer means), a choice's `{ label = "what it means", ... }`, or a score's list of levels, lowest first.
+
+---@class zemi.ClassifierAnswer
+---@field value? boolean A bool question's answer.
+---@field probability? number How likely `true` was, where a probability answered: absent from a `schema` answer, so a caller that needs certainty checks it.
+---@field choice? string A choice question's answer: one of its labels. The labels are read in sorted order, which is the order the logprobs strategy's letters stand for.
+---@field probabilities? table<string, number> Per-label odds, where a probability answered.
+---@field score? number A score question's level, 0-based, fractional where it is a probability-weighted one.
+---@field confidence? number How one-sided the answer was, 1 for a unanimous one and 0 for a tie; absent where nothing was answered with probabilities.
+
+---@class zemi.ClassifyResult
+---@field strategy zemi.ClassifyStrategy Which strategy answered.
+---@field answers table<string, zemi.ClassifierAnswer> One per question, by name.
+---@field usage zemi.Usage What the call cost.
+
+---@class zemi.ClassifySpec
+---@field model? zemi.ModelTarget|string Any model target or `"provider/model"` id; the conversation's model by default.
+---@field state table The data to judge, handed to the model as data. A prompt-injection attempt inside it is data too.
+---@field questions table<string, zemi.ClassifierQuestion> What to ask about the state.
+---@field timeout? number Seconds to wait, 60 by default.
+
+---@class zemi.ClassifyHandle
+---@field wait fun(self: zemi.ClassifyHandle): zemi.ClassifyResult|nil, string|nil Suspends the task until the verdict, `timeout` at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
+---@field cancel fun(self: zemi.ClassifyHandle)
+
+--- Judge data with a model: every question gets a validated answer, or the
+--- call is an error. Nothing here parses a sentence - the strategy that
+--- answers is reported back, and a strategy that fails does not settle
+--- anything for the next one.
+---
+--- Plugin code needs a user rule for `lua.classify.ask` with its principal;
+--- project code raises. The provider's key is read in Go.
+---
+--- ```lua
+--- local res = zemi.classify.ask({
+--- 	model = "classifier",
+--- 	state = { cmd = "rm -rf build", cwd = "~/src/app" },
+--- 	questions = {
+--- 		destructive = {
+--- 			type = "bool",
+--- 			instructions = "Does this command delete anything the user made?",
+--- 			criteria = { ["true"] = "it deletes their work", ["false"] = "it only removes a build artifact" },
+--- 		},
+--- 	},
+--- }):wait()
+--- if res and res.answers.destructive.probability and res.answers.destructive.probability > 0.9 then
+--- 	-- the model is sure
+--- end
+--- ```
+---@param spec zemi.ClassifySpec
+---@return zemi.ClassifyHandle
+function zemi.classify.ask(spec) end
 
 -- zemi.agent
 
@@ -3013,11 +3091,14 @@ function zemi.test.answer(choice, action) end
 --- with the requests it answered as they arrive (`reqs[1].url`).
 --- A reply's fields and defaults: http `{ status = 200, body = "", headers = {} }`,
 --- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
---- model a string or `{ text }`, send and write none (a stubbed write
+--- model a string or `{ text }`, classify `{ answers = {...}, strategy = ... }`
+--- (the whole result `zemi.classify.ask` hands back), send and write none (a
+--- stubbed write
 --- writes); an http or model reply `{ error = "..." }` fails at the
 --- transport. Any other field raises. The requests: http
 --- `{ method, url, headers, body }`, job `{ cmd, args, cwd }`, model
---- `{ model, prompt, system }`, send `{ text }`, write `{ path }`.
+--- `{ model, prompt, system }`, classify `{ model, questions }`, send
+--- `{ text }`, write `{ path }`.
 ---
 --- ```lua
 --- local reqs = test.stub("lua.http.get", "https://wttr.in/*", { body = '{"temp":"21"}' })

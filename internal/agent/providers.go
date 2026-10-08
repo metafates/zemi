@@ -51,11 +51,14 @@ type Model struct {
 	CostPer1MIn   float64 // USD per million prompt tokens
 	CostPer1MOut  float64 // USD per million completion tokens
 	// prompt cache prices, billed apart from the prompt tokens
-	CostPer1MCacheWrite float64  // USD per million tokens written to the cache
-	CostPer1MCacheRead  float64  // USD per million tokens read from it
-	TextOnly            bool     // the model refuses image parts
-	Efforts             []string // a builtin's reasoning levels; empty takes no effort
-	Effort              string   // a builtin's level when /effort is unset
+	CostPer1MCacheWrite float64 // USD per million tokens written to the cache
+	CostPer1MCacheRead  float64 // USD per million tokens read from it
+	TextOnly            bool    // the model refuses image parts
+	// Decisions marks a model that answers classification through its
+	// provider's own protocol (a SYSTEM_ONE one), never a chat turn.
+	Decisions bool
+	Efforts   []string // a builtin's reasoning levels; empty takes no effort
+	Effort    string   // a builtin's level when /effort is unset
 }
 
 // Kind is a provider kind: which fantasy implementation talks to the
@@ -69,10 +72,13 @@ const (
 	KindGoogle       Kind = "google"
 	KindOpenRouter   Kind = "openrouter"
 	KindVercel       Kind = "vercel"
+	// KindSystemOne is no fantasy provider: a classifier endpoint zemi POSTs a
+	// state and questions to (classify.Protocol).
+	KindSystemOne Kind = "system_one"
 )
 
 // Kinds is every kind Resolve knows.
-var Kinds = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
+var Kinds = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel, KindSystemOne}
 
 // Spec describes one provider: kind selects the fantasy implementation.
 // Headers ride every request (a gateway's attribution or team header); they
@@ -434,6 +440,9 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {
 		return errors.New("base_url is required for OPENAI_COMPAT")
 	}
+	if spec.Kind == KindSystemOne && spec.BaseURL == "" {
+		return errors.New("base_url is required for SYSTEM_ONE")
+	}
 	if spec.Kind == KindOpenRouter && spec.BaseURL != "" {
 		return errors.New("OPENROUTER has a fixed base_url; a proxy in front of it is OPENAI_COMPAT")
 	}
@@ -457,6 +466,50 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	}
 	return nil
 }
+
+// Decisions reports the spec and the catalog entry an id names when that model
+// answers classification through its provider's own protocol: a decisions
+// model is never resolved as a chat model.
+func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
+	providerID, model, _ := strings.Cut(modelID, "/")
+	spec, ok := r.Lookup(providerID)
+	if !ok {
+		return Spec{}, Model{}, false
+	}
+	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
+	if i < 0 || !spec.Models[i].Decisions {
+		return Spec{}, Model{}, false
+	}
+	return spec, spec.Models[i], true
+}
+
+// LogprobOptions are the provider options that ask for the next token's
+// probabilities, its top k of them, in the kind's own shape; false when this
+// kind returns none. A gateway in front of one of these kinds answers with the
+// same options, since it is the same provider.
+func (r *Registry) LogprobOptions(modelID string, k int64) (fantasy.ProviderOptions, bool) {
+	providerID, _, _ := strings.Cut(modelID, "/")
+	spec, ok := r.Lookup(providerID)
+	if !ok {
+		return nil, false
+	}
+	switch spec.Kind {
+	case KindOpenAI:
+		return openai.NewProviderOptions(&openai.ProviderOptions{LogProbs: new(true), TopLogProbs: new(k)}), true
+	case KindOpenAICompat:
+		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ExtraBody: map[string]any{"logprobs": true, "top_logprobs": k}}), true
+	case KindOpenRouter:
+		// its options carry no top_logprobs field; the request root takes both
+		return openrouter.NewProviderOptions(&openrouter.ProviderOptions{ExtraBody: map[string]any{"logprobs": true, "top_logprobs": k}}), true
+	case KindVercel:
+		return vercel.NewProviderOptions(&vercel.ProviderOptions{LogProbs: new(true), TopLogProbs: new(k)}), true
+	}
+	return nil, false
+}
+
+// Key is a provider's API key, for the code that speaks a provider's own
+// protocol instead of fantasy's (a decisions model's classify.Protocol).
+func (r *Registry) Key(providerID string) string { return r.apiKey(providerID) }
 
 // List returns all provider specs.
 func (r *Registry) List() []Spec {
@@ -651,6 +704,8 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	case KindVercel:
 		return languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
 			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) }, vercel.WithObjectMode)
+	case KindSystemOne:
+		return nil, fmt.Errorf("%s is a decisions model: the %s protocol answers classification, and no chat turn runs on it", modelID, KindSystemOne)
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}
