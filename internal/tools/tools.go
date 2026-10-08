@@ -1543,11 +1543,10 @@ func TruncOut(s string, n int) string {
 	return s[:h] + fmt.Sprintf("... (lines %d-%d of %d cut) ...\n", a, a+strings.Count(s[h:t], "\n")-1, strings.Count(strings.TrimSuffix(s, "\n"), "\n")+1) + s[t:]
 }
 
-// cutLinesMarker is the ... line TruncOut writes where it dropped whole lines,
-// so a reader of the result can name what fell out.
+// cutLinesMarker is the marker TruncOut leaves where it dropped whole lines.
 var cutLinesMarker = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
 
-// CutLines reads that marker back: the first and last line it dropped, in the
+// CutLines reads that marker back: the first and last line dropped, in the
 // numbering of the text the cut came from.
 func CutLines(line string) (from, to int, ok bool) {
 	m := cutLinesMarker.FindStringSubmatch(line)
