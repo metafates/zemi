@@ -174,6 +174,7 @@ func (h *Host) cfgSource(path string) string {
 func (h *Host) cfgBase(path string) (v any, set bool) {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
+	h.cfgRotate() // a generation that moved has not written the key yet
 	if w := h.cfgNow[path]; len(w) > 0 {
 		return w[len(w)-1], true
 	}

@@ -903,11 +903,14 @@ func TestModePickDroppedWhenYolo(t *testing.T) {
 		}
 	}
 	var h *Host
+	steps := func() []lua.BootStep {
+		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+	}
 	start := func() {
 		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 		h = NewHost(r, log, config.NewStore(), dirs)
 		t.Cleanup(h.Close)
-		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+		if err := r.Boot(t.Context(), steps()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -953,6 +956,43 @@ zemi.permission.mode.add("x", { base = "yolo" })`), 0o600); err != nil {
 	}
 	if _, err := h.GlobalDB.GetKV("config:permissions.mode"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the pick row is still stored (%v)", err)
+	}
+	// a reload keeps the pick's value live (a replay skips a write matching the
+	// last load), so the re-check reads config's own value, not whether config
+	// wrote the key at all: the yolo-based mode must not stay active
+	if err := os.WriteFile(initLua, []byte(`zemi.config.set("permissions.mode", "auto")
+zemi.permission.mode.add("x", { base = "auto" })`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.GlobalDB.SetKV("config:permissions.mode", `"x"`); err != nil {
+		t.Fatal(err)
+	}
+	start()
+	if err := h.GlobalDB.SetKV("config:permissions.mode", `"x"`); err != nil {
+		t.Fatal(err)
+	}
+	h.KeepPicks.Store(true)
+	if err := h.SetPermMode("x"); err != nil { // the pick the user made while it was auto-based
+		t.Fatal(err)
+	}
+	if pick, _ := h.picked["permissions.mode"]; pick != "x" {
+		t.Fatalf("the runtime pick was not kept: %v", pick)
+	}
+	if err := os.WriteFile(initLua, []byte(`zemi.config.set("permissions.mode", "auto")
+zemi.permission.mode.add("x", { base = "yolo" })`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ForceReload(t.Context(), steps()); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.PermMode(); got != config.PermModeAuto {
+		t.Fatalf("a yolo-based mode stayed active through a reload: %q", got)
+	}
+	if _, ok := h.picked["permissions.mode"]; ok {
+		t.Error("the pick is still held after the reload")
+	}
+	if _, err := h.GlobalDB.GetKV("config:permissions.mode"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the pick row is still stored after the reload (%v)", err)
 	}
 }
 
