@@ -285,8 +285,12 @@ func (h *Host) pluginSettles(name, subject, arg string, sandboxed bool) bool {
 	if cap == "" || !h.pluginDeclares(name, cap) {
 		return false
 	}
-	// a read-only agent changes nothing, whoever allowed it (DESIGN §9)
-	return cap != "fs.write" || !h.readOnly() && !h.secretPath(arg) && !h.protectedWrite(arg)
+	// a read-only agent changes nothing, whoever allowed it (DESIGN §9), and an
+	// unconfined job would leave it with the writable project the sandbox denies
+	if cap == "fs.write" {
+		return !h.readOnly() && !h.secretPath(arg) && !h.protectedWrite(arg)
+	}
+	return cap != "job.unsandboxed" || !h.readOnly()
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.

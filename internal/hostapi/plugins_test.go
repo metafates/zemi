@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -522,6 +524,48 @@ func TestPluginSettings(t *testing.T) {
 	}
 }
 
+// TestPluginCapVocabulary pins the gate's subject mapping to the manifest's
+// vocabulary in both directions, so a word one adds and the other does not
+// cannot drift.
+func TestPluginCapVocabulary(t *testing.T) {
+	for _, c := range pluginCaps {
+		probe := c.prefix
+		if strings.HasSuffix(probe, ".") {
+			probe += "x"
+		}
+		if got := pluginCap(probe, true); got != c.cap {
+			t.Errorf("pluginCap(%q) = %q, want its row's %q", probe, got, c.cap)
+		}
+		if !slices.Contains(plugin.Uses, c.cap) {
+			t.Errorf("%q maps to %q, which is no capability in plugin.Uses", c.prefix, c.cap)
+		}
+	}
+	for _, c := range []struct {
+		subject   string
+		sandboxed bool
+		cap       string
+	}{
+		{"lua.job.start", true, "job"},
+		{"lua.job.start", false, "job.unsandboxed"},
+		{"lua.fs.read", false, ""},  // a read is not declarable
+		{"zemi.env.get", false, ""}, // nor is the plugin's own env
+	} {
+		if got := pluginCap(c.subject, c.sandboxed); got != c.cap {
+			t.Errorf("pluginCap(%q, sandboxed=%v) = %q, want %q", c.subject, c.sandboxed, got, c.cap)
+		}
+	}
+	// every word the manifest may declare is one a subject maps to
+	mapped := map[string]bool{"job": true, "job.unsandboxed": true}
+	for _, c := range pluginCaps {
+		mapped[c.cap] = true
+	}
+	for _, u := range plugin.Uses {
+		if !mapped[u] {
+			t.Errorf("plugin.Uses names %q and no subject maps to it", u)
+		}
+	}
+}
+
 // pluginFixture writes the local plugin a of the plugins root: its init.lua
 // and, when uses is not empty, the manifest declaring that uses array. It
 // returns the plugin's root.
@@ -573,6 +617,7 @@ func TestPluginUses(t *testing.T) {
 		rule     *perm.Rule
 		readOnly bool
 		stub     bool   // h.modelFn answers "pong"
+		send     bool   // the call starts a turn of the agent
 		call     string // %project% is the project dir, %plugin% the plugin's own root
 		err      string // the substring the call raises; "" when it goes through
 	}{
@@ -630,8 +675,27 @@ func TestPluginUses(t *testing.T) {
 			call: `assert(zemi.job.start({ cmd = "true" }):wait(5000).code == 0, "unconfined")`,
 		},
 		{
+			name: "a read-only turn leaves an unconfined job to the user", uses: `["job.unsandboxed"]`, readOnly: true,
+			call: `zemi.job.start({ cmd = "true" })`,
+			err:  "permission ask required",
+		},
+		{
+			name: "a declared agent send settles", uses: `["agent"]`, stub: true, send: true,
+			call: `assert(zemi.agent.send("hi"), "the send")`,
+		},
+		{
+			name: "an undeclared agent send is refused",
+			call: `zemi.agent.send("hi")`,
+			err:  `plugin a declares no "agent"`,
+		},
+		{
 			name: "a declared write settles", uses: `["fs.write"]`,
 			call: `assert(zemi.fs.write("%project%/notes.txt", "x") == true, "the project write")`,
+		},
+		{
+			name: "a secret-shaped write still asks with fs.write declared", uses: `["fs.write"]`,
+			call: `zemi.fs.write("%project%/.env", "x")`,
+			err:  "permission ask required",
 		},
 		{
 			name: "a read-only turn's write no longer settles", uses: `["fs.write"]`, readOnly: true,
@@ -673,6 +737,8 @@ func TestPluginUses(t *testing.T) {
 				t.Fatal(err)
 			}
 			fakeSandbox(h, true)
+			ui := &fakeUI{}
+			h.SetUIHooks(ui)
 			if c.stub {
 				seedSession(t, h)
 				reflectStub(t, h, "pong")
@@ -691,6 +757,22 @@ func TestPluginUses(t *testing.T) {
 				t.Fatalf("the call did not settle: %v", err)
 			case c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)):
 				t.Fatalf("err = %v, want %q", err, c.err)
+			}
+			// refused or settled, never a prompt: a Lua call has no overlay
+			if len(ui.asked) != 0 {
+				t.Errorf("the call asked the user: %+v", ui.asked)
+			}
+			// a send starts a turn: let it store its message and end before the
+			// state dir goes (a late write fails TempDir's cleanup)
+			if c.send {
+				waitFor(t, func() error {
+					msgs, err := h.DB.UserMessages(1)
+					if err != nil || len(msgs) == 0 {
+						return errors.New("no message yet")
+					}
+					return nil
+				})
+				waitIdle(t, h)
 			}
 		})
 	}
