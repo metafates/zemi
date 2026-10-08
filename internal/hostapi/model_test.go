@@ -112,7 +112,7 @@ func TestModelTargetNames(t *testing.T) {
 		{"default", `zemi.model.add("default", { desc = "x" })`, `"default" is a shipped profile`},
 		{"a dotted name", `zemi.model.add("a.b", { desc = "x" })`, `name "a.b" must be a lowercase letter`},
 		{"no desc", `zemi.model.add("x", { model = "a/big" })`, "desc is what /model roles shows"},
-		{"a typo'd key", `zemi.model.add("x", { desc = "x", modle = "a/big" })`, `spec: unknown field "modle"`},
+		{"a typo'd key", `zemi.model.add("x", { desc = "x", model_id = "a/big" })`, `spec: unknown field "model_id"`},
 		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (chat, agents, titles, compact, memory) or a provider/model id`},
 		{"another target as its model", `zemi.model.add("x", { desc = "x", model = "clf" })`, `model "clf" must name a builtin role`},
 		{"a profile named after a role", `zemi.agent.profile.add("titles", {})`, `"titles" is a builtin role`},
