@@ -827,6 +827,11 @@ func TestModeOwnership(t *testing.T) {
 		{"a user may", add("p", "yolo"), "u.lua", lua.OriginUser, ""},
 		{"and the plugin may not take it back", add("p", "auto"), plugin("a"), lua.OriginPlugin, "is registered by user config"},
 		{"a builtin name is refused a del too", `zemi.permission.mode.del("auto")`, "u.lua", lua.OriginUser, "is a builtin mode"},
+		// a mode's rules match every principal, so an allow widens as far as
+		// rule.add's and needs user config; a plugin keeps deny and ask
+		{"a plugin's rule may not allow", `zemi.permission.mode.add("r", { base = "auto", rules = { { "tool.shell", "ls *", "allow" } } })`, plugin("a"), lua.OriginPlugin, "allow rules may only come from user config"},
+		{"a plugin's deny rule is taken", `zemi.permission.mode.add("r2", { base = "auto", rules = { { "tool.shell", "ls *", "deny" } } })`, plugin("a"), lua.OriginPlugin, ""},
+		{"a user's allow rule is taken", `zemi.permission.mode.add("r", { base = "auto", rules = { { "tool.shell", "ls *", "allow" } } })`, "u.lua", lua.OriginUser, ""},
 	} {
 		err := h.RT.ExecuteChunk(t.Context(), c.src, c.path, c.origin)
 		if c.want == "" {
@@ -854,6 +859,12 @@ func TestModeOwnership(t *testing.T) {
 	}
 	if got := h.permModeDef(); got.Name != "q" || got.Origin != lua.OriginPlugin || got.Path != plugin("a") {
 		t.Fatalf("mode q = %+v", got)
+	}
+	// a mode the setting names and config then drops falls back to the default,
+	// not to whatever the list happens to hold first
+	runUser(t, h.RT, `zemi.permission.mode.del("q")`)
+	if got := h.PermMode(); got != config.PermModeAuto {
+		t.Fatalf("the mode after the active one was dropped = %q", got)
 	}
 }
 
