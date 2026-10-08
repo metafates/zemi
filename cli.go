@@ -631,8 +631,8 @@ func pad(p colorprofile.Profile, role, text string, w int) string {
 	return paint(p, role, text) + strings.Repeat(" ", max(w-ansi.StringWidth(text), 0))
 }
 
-// printPlugins writes one aligned line per plugin, the free-text source
-// last so cut and awk read the name, and a header only on a terminal.
+// printPlugins writes one aligned line per plugin, the free-text columns last
+// so cut and awk read the name, and a header only on a terminal.
 func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 	p := colorprofile.Detect(w, os.Environ())
 	var rows [][5]string
