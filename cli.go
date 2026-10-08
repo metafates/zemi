@@ -219,7 +219,7 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.StringVar(&o.mode, "mode", "", "permission `mode`: auto, yolo or one init.lua adds")
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
-	f.BoolVar(&o.unsafe, "unsafe", false, "run with no sandbox, no secret hiding and no private-address deny, in a trusted project; the modes and their asks stay")
+	f.BoolVar(&o.unsafe, "unsafe", false, "run with no sandbox, no secret hiding and no private-address deny, in a trusted project; the modes stay, a secret-shaped path stops asking")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 	_ = c.RegisterFlagCompletionFunc("profile", completeBooted((*hostapi.Host).ProfileNames))

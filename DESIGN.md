@@ -2590,7 +2590,8 @@ rides the `memories.md` line and its ledger entries.
   while it is on (a disabled plugin never loads), and so does a `tool.<name>`
   whose tool a plugin registered, when the model calls it, since registering
   the tool was itself part of what the switch allowed; a protected write
-  (above) or a secret-shaped path still asks, and a rule of the user's still
+  (above) or a secret-shaped path still asks - except under `--unsafe`, where
+  a secret-shaped path stops being special (below) - and a rule of the user's still
   decides first. User and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is

@@ -37,7 +37,7 @@ func TestUnsafeModeBox(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := ui.overlays()
-	if len(o) != 1 || !strings.Contains(o[0].Body, "--unsafe: no sandbox") || !strings.Contains(o[0].Body, "still answers every ask") {
+	if len(o) != 1 || !strings.Contains(o[0].Body, "--unsafe: no sandbox") || !strings.Contains(o[0].Body, "a secret-shaped path stops asking") || !strings.Contains(o[0].Body, "Every other ask the mode would make stands") {
 		t.Fatalf("the mode box under --unsafe: %+v", o)
 	}
 }
