@@ -1,8 +1,8 @@
 // Package agent is the chat core (DESIGN §6.3): a provider registry
-// (kinds: anthropic, openai, openai_compat, google, openrouter, vercel;
-// seeded from the builtin catwalk catalog, then user config), model
-// catalog and the turn runner that streams fantasy agent output into the
-// UI and persists messages.
+// (kinds: anthropic, openai, openai_compat, google, openrouter, vercel,
+// system_one; seeded from the builtin catwalk catalog, then user config),
+// model catalog and the turn runner that streams fantasy agent output into
+// the UI and persists messages.
 package agent
 
 import (
@@ -102,6 +102,15 @@ type Spec struct {
 	Builtin      bool
 	KeyEnv       string // the env var a builtin's key came from, so a rejected key names it
 	DefaultModel string // the model Default picks
+}
+
+// Model finds this spec's catalog entry for a model id.
+func (s Spec) Model(id string) (Model, bool) {
+	i := slices.IndexFunc(s.Models, func(m Model) bool { return m.ID == id })
+	if i < 0 {
+		return Model{}, false
+	}
+	return s.Models[i], true
 }
 
 // Catalog is the builtin providers with their env vars resolved: a
@@ -476,11 +485,11 @@ func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
 	if !ok {
 		return Spec{}, Model{}, false
 	}
-	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
-	if i < 0 || !spec.Models[i].Decisions {
+	m, ok := spec.Model(model)
+	if !ok || !m.Decisions {
 		return Spec{}, Model{}, false
 	}
-	return spec, spec.Models[i], true
+	return spec, m, true
 }
 
 // LogprobOptions is the function that adds a request for the next token's
@@ -598,16 +607,16 @@ func (r *Registry) Effort(modelID string, pick Effort) string {
 	}
 	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, _ := r.Lookup(providerID)
-	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
+	m, found := spec.Model(model)
 	switch {
-	case !spec.Builtin || i < 0:
+	case !spec.Builtin || !found:
 		return string(pick)
-	case len(spec.Models[i].Efforts) == 0:
+	case len(m.Efforts) == 0:
 		return ""
 	case pick == "":
-		return spec.Models[i].Effort
+		return m.Effort
 	}
-	return nearestEffort(spec.Models[i].Efforts, string(pick))
+	return nearestEffort(m.Efforts, string(pick))
 }
 
 // CallOptions are the provider options a turn runs with: the reasoning

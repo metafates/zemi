@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -702,10 +701,9 @@ func ContextUsed(u fantasy.Usage) int64 {
 // breakpoint; the openrouter and vercel providers read it too, the rest
 // ignore options keyed by another provider's name.
 func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
-	out := fantasy.ProviderOptions{}
-	maps.Copy(out, o)
-	out[anthropic.Name] = &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}}
-	return out
+	return mergeOptions(o, fantasy.ProviderOptions{
+		anthropic.Name: &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}},
+	})
 }
 
 // signed drops the thinking whose signed prefix (system, tool set, earlier
