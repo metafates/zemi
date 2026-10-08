@@ -1712,10 +1712,10 @@ function zemi.model.set(id) end
 ---@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
 ---@field max_output? integer The reply's token cap, 1024 by default.
 ---@field schema? table The shape the reply must have, a JSON schema in the same fields a tool's schema has: `{ type = "object", properties = {...}, required = {...} }` for an object, or a bare `{ type = "string" }`, `{ type = "integer", minimum = 0, maximum = 9 }`, `{ type = "boolean" }` or `{ type = "array", items = ... }`. `enum` pins the values, `description` is read by the model. Any other field and any other type raises. With it the call returns a decoded value instead of text (see `zemi.ModelHandle.wait`).
----@field on_done? fun(value: any, raw: string?, err: string?) Runs as a task when the reply is in: the value, the raw reply, or the error.
+---@field on_done? fun(value: any, err_or_raw: string?) Runs as a task when the reply is in: the reply's text alone without a `schema`, else the decoded value with the raw reply beside it, or nil and the error when the call failed.
 
 ---@class zemi.ModelHandle
----@field wait fun(self: zemi.ModelHandle): any, string|nil, string|nil Suspends the task until the reply, 10 minutes at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. Without a `schema`: the text, or nil and the error. With one: the decoded value (a table for an object, a number, string or boolean for a scalar) and the raw reply, or nil, the error and the reply inside its text when it did not fit the schema.
+---@field wait fun(self: zemi.ModelHandle): any, string|nil Suspends the task until the reply, 10 minutes at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. Without a `schema`: the text, or nil and the error. With one: the decoded value (a table for an object, a number, string or boolean for a scalar) and the raw reply, or nil and the error, whose text carries the reply when it did not fit the schema.
 ---@field cancel fun(self: zemi.ModelHandle)
 
 --- One tool-less model call, run off the interpreter and billed to the live
@@ -1731,7 +1731,7 @@ function zemi.model.set(id) end
 --- zemi hands back the decoded value, so nothing parses the reply:
 ---
 --- ```lua
---- local v, raw, err = zemi.model.ask({
+--- local v, raw = zemi.model.ask({
 --- 	prompt = "Is this command safe to run?\n" .. cmd,
 --- 	schema = { type = "object", properties = { safe = { type = "boolean" } }, required = { "safe" } },
 --- }):wait()
