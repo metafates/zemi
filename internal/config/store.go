@@ -89,6 +89,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.titles", Kind: KindString, Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
 		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
 		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
+		{Path: "models.planner", Kind: KindString, Default: "", Desc: "the model the planner profile runs on (provider/model; empty uses the model it was defined with, else models.chat)"},
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: KindString, Default: PermModeAuto, Desc: "the permission mode zemi starts in: auto (" + PermModeAutoDesc + "), yolo (" + PermModeYoloDesc + "), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},

@@ -110,13 +110,18 @@ type StreamTool struct {
 	partial string // the head of the streaming input, until Label is known
 }
 
-// agentHost owns the live agent session: profiles, the runner, the
-// steering queue and the stream view the UI renders.
+// agentHost owns the live agent session: the model slots config registered,
+// the runner, the steering queue and the stream view the UI renders.
 type agentHost struct {
 	mu        sync.Mutex
-	profiles  map[string]*Profile
 	runner    *agent.Runner
 	sessionID string
+
+	// targetsMu guards targets, the slots zemi.model.add and
+	// zemi.agent.profile.add registered. It is a leaf: roleModel reads it with
+	// mu held (liveModelID), so nothing under it takes another lock.
+	targetsMu sync.RWMutex
+	targets   map[string]*modelTarget
 
 	active    bool
 	textBuf   string
@@ -264,7 +269,7 @@ type agentHost struct {
 }
 
 func newAgentHost(clock lua.Clock) *agentHost {
-	return &agentHost{profiles: map[string]*Profile{}, clock: clock}
+	return &agentHost{targets: map[string]*modelTarget{}, clock: clock}
 }
 
 // host wiring
@@ -278,17 +283,14 @@ func (h *Host) Effort(modelID string) string {
 // agent.profile key. A defined profile wins; else default is the implicit
 // shipped shape (nil) and planner the shipped read-only agent.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
 	}
-	if p, ok := ag.profiles[name]; ok {
-		return p, nil
+	if t, ok := h.target(name); ok && t.Prof != nil {
+		return t.Prof, nil
 	}
-	if name == "planner" {
-		return &Profile{Name: "planner", ReadOnly: true}, nil
+	if name == planner {
+		return &Profile{Name: planner, ReadOnly: true}, nil
 	}
 	if name != "default" {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
@@ -303,13 +305,28 @@ func (h *Host) readOnly() bool {
 	return p != nil && p.ReadOnly
 }
 
-// currentModelID picks the model the main conversation runs on: a profile
-// override, else the chat role.
+// currentModelID picks the model the main conversation runs on: the slot the
+// active profile names, or the profile's own model for a one-off run
+// (zemi.model.ask, a subagent) that sets no name.
 func (h *Host) currentModelID(p *Profile) string {
-	if p != nil && p.Model != "" {
-		return h.modelRef(p.Model)
+	switch {
+	case p == nil:
+		return h.roleModel("chat")
+	case p.Name == "":
+		return p.Model
 	}
-	return h.roleModel("chat")
+	return h.roleModel(p.Name)
+}
+
+// ConversationTarget is the slot a pick for the conversation writes: the active
+// profile's own, the shipped planner included, else chat. default has no slot
+// of its own, and neither does the shipped shape, so both are chat.
+func (h *Host) ConversationTarget() string {
+	p, _ := h.resolveProfile("")
+	if p == nil || p.Name == "default" {
+		return "chat"
+	}
+	return p.Name
 }
 
 // liveModelID is the model turns run on: the running turn's, else the
@@ -319,7 +336,8 @@ func (h *Host) liveModelID() string {
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	return h.currentModelID(ag.profiles[h.Settings.Str("agent.profile")])
+	p, _ := h.resolveProfile("")
+	return h.currentModelID(p)
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -1949,35 +1967,38 @@ func strs[T ~string](vals []T) []string {
 	return out
 }
 
-// roleIDs is the model id each role runs on, in roles order. chat is
-// models.chat even while the active profile runs its own model, since that
-// is what every role following chat and a model reference "chat" get.
-func (h *Host) roleIDs() []string {
-	ids := make([]string, len(roles))
-	for i, r := range roles {
-		ids[i] = h.roleModel(r.Name)
-	}
-	return ids
-}
-
-// OpenModelPicker lists the registered models for role, where enter sets
+// OpenModelPicker lists the registered models for a target, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
-// Role "" is /model, which sets chat under a row opening /model roles;
-// another role's list is a step of /model roles and opens on a row that
-// makes the role follow chat.
-func (h *Host) OpenModelPicker(role string) error {
+// Name "" is /model, which sets chat under a row opening /model roles; "chat"
+// is the conversation's list; another target's list opens on a row leaving it
+// to its own model.
+func (h *Host) OpenModelPicker(name string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(h.modelPicker(role))
+	ui.OpenOverlay(h.modelPicker(name))
 	return nil
 }
 
-func (h *Host) modelPicker(role string) Overlay {
+// followRow is a target's list head: what it runs on with no pick of its own.
+func (h *Host) followRow(name, run string) map[string]any {
+	head := map[string]any{"text": "Follow the chat model", "desc": h.roleModel("chat"), "run": run + "chat"}
+	t, _ := h.target(name)
+	switch {
+	case t == nil || t.def() == "":
+	case t.Prof != nil:
+		head["text"], head["desc"] = "Follow the profile's model", h.modelRef(t.def())
+	default:
+		head["text"], head["desc"] = "Follow the registered model", h.modelRef(t.def())
+	}
+	return head
+}
+
+func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	run, cur := "model ", h.roleModel("chat")
-	switch role {
+	switch name {
 	case "":
 		o.Items = []any{
 			map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
@@ -1986,8 +2007,8 @@ func (h *Host) modelPicker(role string) Overlay {
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
-		o.ID, o.Title, run, cur = "model "+role, "Model roles / "+role, "model "+role+" ", h.Settings.Str("models."+role)
-		head := map[string]any{"text": "Follow the chat model", "desc": h.roleModel("chat"), "run": run + "chat"}
+		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str("models."+name)
+		head := h.followRow(name, run)
 		if cur == "" {
 			head["key"] = "current"
 		}
@@ -2030,12 +2051,13 @@ func (h *Host) modelPicker(role string) Overlay {
 	return o
 }
 
-// ownRoles names the roles config gave a model of their own.
+// ownRoles names the targets config gave a model of their own, chat apart: it
+// is the conversation's slot, not one leaving the chat model.
 func (h *Host) ownRoles() []string {
 	var own []string
-	for _, r := range roles[1:] {
-		if h.Settings.Str("models."+r.Name) != "" {
-			own = append(own, r.Name)
+	for _, n := range h.targetNames()[1:] {
+		if h.Settings.Str("models."+n) != "" {
+			own = append(own, n)
 		}
 	}
 	return own
@@ -2053,32 +2075,74 @@ func rolesDesc(own []string) string {
 	}
 }
 
-// OpenModelRoles lists the roles and the model each runs on. Enter opens a
-// role's model list over it, and the list rebuilds when that one closes.
+// OpenModelRoles lists the conversation, the roles and the profiles with the
+// model each runs on. Enter opens a slot's model list over it, and the list
+// rebuilds when that one closes.
 func (h *Host) OpenModelRoles() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	build := func() ([]any, [][]Segment) {
-		p, _ := h.resolveProfile("")
-		var items []any
-		for i, id := range h.roleIDs() {
-			r := roles[i]
-			item := map[string]any{"text": r.Name, "desc": cmp.Or(id, "no model") + " · " + r.Desc, "verb": "open", "run": "model " + r.Name}
-			switch {
-			case i == 0 && h.ProfileModelErr() != nil:
-				item["key"] = "profile " + p.Name
-			case i > 0 && h.Settings.Str("models."+r.Name) == "":
-				item["key"] = "follows chat"
-			}
-			items = append(items, item)
-		}
-		return items, nil
+		return h.modelRoleItems(), nil
 	}
 	items, _ := build()
 	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: OverlayBottomRight, Reload: build})
 	return nil
+}
+
+// modelRoleItems is /model roles: the conversation's slot first, then the
+// roles, then the profiles. default is the conversation's own slot, so it is
+// never a second row, and neither is the profile row one shows.
+func (h *Host) modelRoleItems() []any {
+	first, firstDesc := "chat", roles[0].Desc
+	if p, _ := h.resolveProfile(""); p != nil {
+		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
+	}
+	items := []any{h.modelSlotRow(first, first, firstDesc)}
+	for _, r := range roles[1:] {
+		items = append(items, h.modelSlotRow(first, r.Name, r.Desc))
+	}
+	plain, profiles := h.registeredTargets()
+	rows := make([]any, 0, len(plain))
+	for _, t := range plain {
+		rows = append(rows, h.modelSlotRow(first, t.Name, t.Desc))
+	}
+	items = append(append(items, rows...), h.modelSlotRow(first, planner, h.profileSlotDesc(planner)))
+	for _, t := range profiles {
+		if t.Name != first {
+			items = append(items, h.modelSlotRow(first, t.Name, h.profileSlotDesc(t.Name)))
+		}
+	}
+	return items
+}
+
+// modelSlotRow is one /model roles row. first is the slot row one already
+// shows: it is what the conversation runs on, so it carries no tag, and the
+// list never repeats it.
+func (h *Host) modelSlotRow(first, name, desc string) map[string]any {
+	item := map[string]any{
+		"text": name, "desc": cmp.Or(h.roleModel(name), "no model") + " · " + desc,
+		"verb": "open", "run": "model " + name,
+	}
+	if name != first {
+		if tag := h.slotTag(name); tag != "" {
+			item["key"] = tag
+		}
+	}
+	return item
+}
+
+// slotTag is what a row shows past the model id: the default a slot with no
+// pick of its own falls back to.
+func (h *Host) slotTag(name string) string {
+	if h.Settings.Str("models."+name) != "" {
+		return ""
+	}
+	if def := h.targetDef(name); def != "" {
+		return h.modelRef(def)
+	}
+	return "follows chat"
 }
 
 // modelDesc is the picker's second column: display name, context window
@@ -2121,18 +2185,18 @@ func (h *Host) SetModel(args string) error {
 		return h.OpenModelRoles()
 	case len(f) == 1 && f[0] == "update":
 		return h.updateCatalog()
-	case len(f) == 1 && isRole(f[0]):
+	case len(f) == 1 && h.isTarget(f[0]):
 		return picker(f[0])
-	case len(f) == 1:
-		f = []string{"chat", f[0]}
-	case len(f) > 2 || !isRole(f[0]):
-		return Usagef("usage: /model [roles | update | <role> | [<role>] provider/model | <role> chat]; roles: %s", strings.Join(roleNames(), ", "))
+	case len(f) == 1: // a bare id is the conversation's, not chat's alone
+		f = []string{h.ConversationTarget(), f[0]}
+	case len(f) > 2 || !h.isTarget(f[0]):
+		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> chat]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
 	role, id := f[0], f[1]
-	if id == "chat" { // chat following chat is the default model
+	if id == "chat" { // a target following its own model, else chat
 		id = ""
 	}
-	if err := h.modelSetErr(role, id); err != nil {
+	if err := h.modelSetErr(id); err != nil {
 		return err
 	}
 	if err := h.setWatched("models."+role, id); err != nil {
@@ -2190,14 +2254,12 @@ func (h *Host) updateCatalog() error {
 // CompleteModel offers /model's arguments in SetModel's grammar.
 func (h *Host) CompleteModel(lead, line string) []string {
 	first, ids := []string{"roles", "update"}, h.ModelIDs()
-	for _, r := range roles {
-		first = append(first, r.Name)
-	}
+	first = append(first, h.targetNames()...)
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
 		case sub == "chat":
 			return ids
-		case isRole(sub):
+		case h.isTarget(sub):
 			return append([]string{"chat"}, ids...)
 		}
 		return nil
@@ -2214,13 +2276,10 @@ func (h *Host) warnUnlisted(id string) {
 	}
 }
 
-// modelSetErr refuses a model pick under a provider nobody registered, or
-// a chat pick the active profile would hide. An id the provider does not
-// list is taken and warned about, like -m and config: the provider decides.
-func (h *Host) modelSetErr(role, id string) error {
-	if err := h.ProfileModelErr(); err != nil && role == "chat" {
-		return err
-	}
+// modelSetErr refuses a model pick under a provider nobody registered. An id
+// the provider does not list is taken and warned about, like -m and config: the
+// provider decides.
+func (h *Host) modelSetErr(id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
 		return usageError{h.modelErr(id)}
@@ -2246,15 +2305,6 @@ func (h *Host) OfferModel() {
 	}
 }
 
-// ProfileModelErr refuses a models.chat write the active profile would
-// hide: the key would change and the conversation would not.
-func (h *Host) ProfileModelErr() error {
-	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" && p.Model != "chat" {
-		return Usagef("profile %s sets its model; /profile default or drop model from it", p.Name)
-	}
-	return nil
-}
-
 // setWatched writes a config key from any goroutine: the watches it fires
 // run later on the interpreter queue. It checks only the kind: SetConfig
 // sends a key with a setter of its own there first.
@@ -2277,12 +2327,11 @@ func (h *Host) setWatched(path string, val any) error {
 
 // ProfileNames lists default, the shipped planner, and the defined profiles.
 func (h *Host) ProfileNames() []string {
-	h.agents.mu.Lock()
-	defer h.agents.mu.Unlock()
-	names := []string{"default", "planner"}
-	for _, n := range slices.Sorted(maps.Keys(h.agents.profiles)) {
-		if n != "default" && n != "planner" {
-			names = append(names, n)
+	_, profiles := h.registeredTargets()
+	names := []string{"default", planner}
+	for _, t := range profiles {
+		if t.Name != "default" && t.Name != planner {
+			names = append(names, t.Name)
 		}
 	}
 	return names
@@ -2415,15 +2464,7 @@ func (h *Host) OpenProfilePicker() error {
 	cur, sel := h.Settings.Str("agent.profile"), 0
 	var items []any
 	for i, name := range h.ProfileNames() {
-		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
-		h.agents.mu.Lock()
-		_, defined := h.agents.profiles[name]
-		h.agents.mu.Unlock()
-		if name == "planner" && !defined {
-			item["desc"] = "read-only: plan and present for approval"
-		} else if p, _ := h.resolveProfile(name); p != nil {
-			item["desc"] = profileDesc(p)
-		}
+		item := map[string]any{"text": name, "run": "profile " + name, "desc": h.profileDesc(name)}
 		if name == cur {
 			item["key"], sel = "current", i
 		}
@@ -2433,17 +2474,28 @@ func (h *Host) OpenProfilePicker() error {
 	return nil
 }
 
-// profileDesc says in words what a profile changes, for its picker row.
-func profileDesc(p *Profile) string {
+// profileDesc is a /profile row: the model the profile runs on and what it
+// changes.
+func (h *Host) profileDesc(name string) string {
+	return cmp.Or(h.roleModel(name), "no model") + " · " + h.profileSlotDesc(name)
+}
+
+// profileSlotDesc is what /model roles and /profile say a profile is: the
+// shipped planner's read-only note, else the tools it changes.
+func (h *Host) profileSlotDesc(name string) string {
+	if t, ok := h.target(name); name == planner && (!ok || t.Prof == nil) {
+		return plannerDesc
+	}
+	p, _ := h.resolveProfile(name)
+	if p == nil { // the shipped default
+		return "the shipped prompt and every tool"
+	}
 	tools := "every tool"
 	if len(p.Tools) > 0 {
 		tools = "only " + strings.Join(p.Tools, ", ")
 		if !slices.ContainsFunc(p.Tools, func(t string) bool { return !strings.HasPrefix(t, "-") }) {
 			tools = "every tool but " + strings.ReplaceAll(tools[len("only -"):], ", -", ", ")
 		}
-	}
-	if p.Model != "" {
-		return p.Model + " · " + tools
 	}
 	return tools
 }
@@ -2469,9 +2521,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		if ctx, ok := opt[*glua.LTable](L, spec, "context"); ok {
 			p.ContextFiles = rawStrings(L, ctx, "files")
 		}
-		h.agents.mu.Lock()
-		h.agents.profiles[name] = p
-		h.agents.mu.Unlock()
+		if err := h.addTarget(L, name, modelTarget{Prof: p}); err != nil {
+			L.RaiseError("zemi.agent.profile.add: %v", err)
+		}
 		return 0
 	}))
 

@@ -1727,9 +1727,9 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 }
 
-// TestProfileSwitch: /profile refuses a name nobody defined, /model and
-// zemi.model.set refuse under a profile that sets its own model, and both
-// pickers mark what the next send runs on.
+// TestProfileSwitch: /profile refuses a name nobody defined, a profile's own
+// key is its slot (models.<name>), and both pickers mark what the next send
+// runs on.
 func TestProfileSwitch(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
@@ -1763,23 +1763,27 @@ func TestProfileSwitch(t *testing.T) {
 			return h.SetModel("a/main")
 		}, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
-		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
-		{"zemi.model.set under it", func() error {
-			return r.ExecuteChunk(t.Context(), `zemi.model.set("a/main")`, "test.lua", lua.OriginUser)
-		}, "profile cheap sets its model"},
+		{"a profile's own slot is its key", func() error { return h.SetModel("cheap a/main") }, ""},
 	} {
 		err := c.do()
 		if (c.wantErr == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), c.wantErr) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
 		}
 	}
-	for p, want := range map[*Profile]string{
-		{}:                        "every tool",
-		{Tools: []string{"-lua"}}: "every tool but lua",
-		{Model: "a/m", Tools: []string{"shell", "read"}}: "a/m · only shell, read",
+	if err := h.SetModel("chat a/main"); err != nil { // the chat slot, named explicitly
+		t.Fatal(err)
+	}
+	if id := h.roleModel("cheap"); id != "a/main" {
+		t.Errorf("cheap runs on %q, want the pick over its own model", id)
+	}
+	for _, c := range []struct{ name, want string }{
+		{"onchat", "a/main · every tool"},
+		{"cheap", "a/main · every tool"},
+		{"planner", "a/main · read-only: plan and present for approval"},
+		{"default", "a/main · the shipped prompt and every tool"},
 	} {
-		if got := profileDesc(p); got != want {
-			t.Errorf("desc %q, want %q", got, want)
+		if got := h.profileDesc(c.name); got != c.want {
+			t.Errorf("%s desc %q, want %q", c.name, got, c.want)
 		}
 	}
 	if h.OpenProfilePicker() != nil || h.OpenModelPicker("chat") != nil {

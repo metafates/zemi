@@ -910,12 +910,12 @@ func (h *Host) ModelIDs() []string {
 }
 
 // checkModelID refuses a model reference config does not know, naming the
-// ones it does. A role name always passes: an unset role follows chat.
+// ones it does. A target name always passes: an unset slot follows chat.
 func (h *Host) checkModelID(id string) error {
-	if id == "" || isRole(id) || slices.Contains(h.ModelIDs(), id) {
+	if id == "" || h.isTarget(id) || slices.Contains(h.ModelIDs(), id) {
 		return nil
 	}
-	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, strings.Join(roleNames(), ", "), strings.Join(h.ModelIDs(), ", "))
+	return fmt.Errorf("unknown model %q; targets: %s; configured models: %s", id, strings.Join(h.targetNames(), ", "), strings.Join(h.ModelIDs(), ", "))
 }
 
 // the agent tool
