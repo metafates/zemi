@@ -135,6 +135,18 @@ func TestClassifyAsk(t *testing.T) {
 			wantRequests:  4, // the readout at each depth, then the object call
 			requestMarker: "safe",
 		},
+		{
+			// vercel surfaces no token probabilities, so the readout is not
+			// worth asking for: one call answers it
+			name:          "a kind that surfaces none goes straight to a schema",
+			providers:     `zemi.provider.add({ id = "a", kind = "vercel", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:         chatCompletion(`{"safe":true}`, nil),
+			wantStrategy:  "schema",
+			wantValue:     "true",
+			wantProb:      "-1",
+			wantRequests:  1,
+			requestMarker: "You must respond with valid JSON",
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newEndpoint(t, func(string) string { return c.reply })

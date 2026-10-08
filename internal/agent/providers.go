@@ -485,8 +485,11 @@ func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
 
 // LogprobOptions are the provider options that ask for the next token's
 // probabilities, its top k of them, in the kind's own shape; false when this
-// kind returns none. A gateway in front of one of these kinds answers with the
-// same options, since it is the same provider.
+// kind surfaces none. Only openai and openai_compat do: openrouter and vercel
+// override fantasy's usage function with their own metadata type, which carries
+// no logprobs, and anthropic and google return none at all. A gateway in front
+// of a kind that does answers with the same options, since it is the same
+// provider.
 func (r *Registry) LogprobOptions(modelID string, k int64) (fantasy.ProviderOptions, bool) {
 	providerID, _, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
@@ -497,12 +500,8 @@ func (r *Registry) LogprobOptions(modelID string, k int64) (fantasy.ProviderOpti
 	case KindOpenAI:
 		return openai.NewProviderOptions(&openai.ProviderOptions{LogProbs: new(true), TopLogProbs: new(k)}), true
 	case KindOpenAICompat:
+		// its own options carry no top-k field, so both go in the body
 		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ExtraBody: map[string]any{"logprobs": true, "top_logprobs": k}}), true
-	case KindOpenRouter:
-		// its options carry no top_logprobs field; the request root takes both
-		return openrouter.NewProviderOptions(&openrouter.ProviderOptions{ExtraBody: map[string]any{"logprobs": true, "top_logprobs": k}}), true
-	case KindVercel:
-		return vercel.NewProviderOptions(&vercel.ProviderOptions{LogProbs: new(true), TopLogProbs: new(k)}), true
 	}
 	return nil, false
 }
