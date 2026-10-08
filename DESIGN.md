@@ -2673,13 +2673,19 @@ rides the `memories.md` line and its ledger entries.
   auto mode sends every other command to the user ("no
   sandbox"), since an approved one would run unconfined.
   `--unsafe` is that boot by choice: the project is trusted, the pipeline
-  carries no policy at all, no secret-shaped file is hidden from a listing, a
-  grep, the prompt's file list, an attachment or a child's environment, a fetch
-  reaches a private address, and the prompt says so. The modes and their asks
-  are not removed (`--unsafe --mode yolo` is the boot nothing asks in), and a
-  read-only agent's denials stand: a `ReadCommand` it settles runs unconfined
-  and one the user approves has the project writable, the sandbox being what
-  made it read-only.
+  carries no policy at all, the private-address set is off, and nothing is
+  hidden - not from a listing, a grep, the prompt's file list, an attachment or
+  a child's environment. A secret-shaped path stops being special: it is read,
+  written, listed and grepped like any other file, and it stops asking - the
+  built-in `fs.read` default above, an `always` answer's secret re-ask, the
+  write tool's link check and the free zone all read that one predicate
+  (`Host.secretPath`) - and the prompt says what the run is. Every other ask of
+  the modes stands under `auto`: a destructive or non-reader command, the
+  network, a protected write, a rule's own ask. `--unsafe --mode yolo` settles
+  those too, but not a read-only agent's: it keeps its denials and its ask for
+  anything but a `ReadCommand`, since nothing confines a command now - a
+  `ReadCommand` it settles runs unconfined, and one the user approves has the
+  project writable, the sandbox being what made it read-only.
   A mode added from config, a plugin's included, may carry a `decide`
   function that answers one ask from Lua: "allow", "deny", or a table naming
   the decision and how far an allow reaches (`once`, `session`, `wider`,
