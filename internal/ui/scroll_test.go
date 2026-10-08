@@ -579,9 +579,8 @@ func TestBoxFade(t *testing.T) {
 	// the ramp steps over the rows a window left empty: a list cut to whole
 	// items pads past its content with nil, and the last row that shows
 	// something is still the deepest
-	v := viewport{viewH: 6, rows: 20}
 	rows := [][]hostapi.Segment{{{Text: "a"}}, {{Text: "b"}}, nil, nil, nil, nil}
-	v.edgeFade(rows, 2)
+	edgeRamp(rows, 0, 14, boxFade, func(i int) bool { return len(rows[i]) == 0 })
 	if !near(rows[0][0].Fade, 1.0/3) || !near(rows[1][0].Fade, 2.0/3) {
 		t.Fatalf("the padded ramp is %v %v, want 1/3, 2/3", rows[0][0].Fade, rows[1][0].Fade)
 	}

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -167,16 +168,34 @@ func TestWrapComposer(t *testing.T) {
 	}
 }
 
-// TestComposerHiddenRows: the row under a tall draft counts the lines on the
-// side the cursor left out of view.
+// TestComposerHiddenRows: a draft taller than the window shows
+// composerMaxRows rows, fading the ones past an edge while content lies past
+// it, deepest at the edge, and keeping the cursor row off the ramp with a row
+// of headroom under it.
 func TestComposerHiddenRows(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.composer.text = strings.Repeat("line\n", 9) + "end"
-	for cursor, want := range map[int]string{0: "  … 2 more lines", len(app.composer.text): "  … 2 more lines above"} {
-		app.composer.cursor = cursor
+	app.composer.text = strings.Repeat("line\n", 11) + "end" // 12 rows
+	near := func(got, want float64) bool { return math.Abs(got-want) < 1e-9 }
+	for _, c := range []struct {
+		name   string
+		cursor int
+		want   []float64 // the fade of the rows shown, top down
+	}{
+		{"at the head only the rows below fade", 0,
+			[]float64{0, 0, 0, 0, 0, 0, 1.0 / 3, 2.0 / 3}},
+		{"at the tail only the rows above fade", 58,
+			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 0}},
+		{"a cursor with a row below it is off the ramp", 40,
+			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 2.0 / 3}},
+	} {
+		app.composer.cursor = c.cursor
 		rows := app.composerRows(40, "")
-		if len(rows) != composerMaxRows+1 || hostapi.SegsText(rows[len(rows)-1]) != want {
-			t.Fatalf("cursor %d: rows %d, last %q", cursor, len(rows), hostapi.SegsText(rows[len(rows)-1]))
+		got := make([]float64, len(rows))
+		for i, r := range rows {
+			got[i] = r[0].Fade
+		}
+		if len(rows) != composerMaxRows || !slices.EqualFunc(got, c.want, near) {
+			t.Errorf("%s: %d rows %v, want %d %v", c.name, len(rows), got, composerMaxRows, c.want)
 		}
 	}
 }
@@ -191,20 +210,20 @@ func TestComposerPlaceholder(t *testing.T) {
 		name, text, focus, want string
 		cursor                  int // the cursor cell's column, -1 for none
 	}{
-		{"empty", "", "", "> Ask anything", 2},
-		{"typed", "h", "", "> h", 3},
+		{"empty", "", "", "Ask anything", 0},
+		{"typed", "h", "", "h", 1},
 		{"command draft", "/", "", "/", 2},
-		{"a node has the keys", "", "side", "> Ask anything", -1},
+		{"a node has the keys", "", "side", "Ask anything", -1},
 	} {
 		app.composer.text, app.composer.cursor = c.text, len(c.text)
 		app.host.SetFocus(c.focus)
 		segs := app.composerRows(40, "Ask anything")[0]
 		cursor, col := -1, 0
-		for i, s := range segs {
+		for _, s := range segs {
 			if s.HL == hostapi.ChromeCursor {
 				cursor = col
 			}
-			if i > 0 && c.text == "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
+			if c.text == "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
 				t.Errorf("%s: placeholder segment %+v copies or reads as text", c.name, s)
 			}
 			col += ansi.StringWidth(s.Text)
@@ -215,18 +234,42 @@ func TestComposerPlaceholder(t *testing.T) {
 	}
 }
 
-// TestComposerGutter: rows after the first carry the same prompt, dimmed, so
-// a tall draft hangs off one glyph; a shell draft says so with its own.
+// TestComposerGutter: a plain draft starts at the frame's inner edge with no
+// gutter down its rows; a shell draft says so with its own glyph on the first
+// row and holds the cells it opens on the ones after it.
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = "one\ntwo"
 	rows := app.composerRows(40, "")
-	if len(rows) != 2 || rows[0][0].Text != "> " || rows[1][0].Text != "> " || rows[1][0].HL != "Dim" {
-		t.Fatalf("rows %+v", rows)
+	if len(rows) != 2 {
+		t.Fatalf("a two-line draft drew %d rows", len(rows))
 	}
-	app.composer.text = "!ls"
-	if got := app.composerRows(40, "")[0][0]; got.Text != "! " || got.HL != "PromptShell" {
-		t.Fatalf("shell prompt %+v", got)
+	for i, want := range []string{"one", "two"} {
+		if got := hostapi.SegsText(rows[i]); got != want || hostapi.SegsWidth(rows[i]) != 3 {
+			t.Fatalf("row %d is %q over %d cells, want %q in 3: no gutter", i, got, hostapi.SegsWidth(rows[i]), want)
+		}
+	}
+	app.composer.text = "!ls\ntwo"
+	rows = app.composerRows(40, "")
+	if got := rows[0][0]; got.Text != "! " || got.HL != "PromptShell" || hostapi.SegsText(rows[0]) != "! ls" {
+		t.Fatalf("shell prompt %+v", rows[0])
+	}
+	if got := rows[1][0]; got.Text != "  " || got.HL != "" || hostapi.SegsText(rows[1]) != "  two" {
+		t.Fatalf("shell gutter %+v", rows[1])
+	}
+	// a full row ends at the cell the cursor mark keeps free, and a shell row
+	// a cell short of that, its glyph standing in for the draft's own first one
+	for _, c := range []struct {
+		name, text string
+		want       int
+	}{
+		{"plain", strings.Repeat("a", 60), 39},
+		{"shell", "!" + strings.Repeat("a", 60), 38},
+	} {
+		app.composer.text = c.text
+		if got := hostapi.SegsWidth(app.composerRows(40, "")[0]); got != c.want {
+			t.Fatalf("the %s row is %d cells wide, want %d", c.name, got, c.want)
+		}
 	}
 }
 

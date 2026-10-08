@@ -14,7 +14,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -344,38 +343,42 @@ func (c *composerState) histNext() {
 
 const composerMaxRows = 8
 
-// composerRows renders the composer as visual rows wrapped to width w:
-// "> " on every row, dimmed after the first, the cursor cell placed in
-// the cursor row. At most composerMaxRows rows are shown, scrolled to keep the
-// cursor row visible. An empty draft shows placeholder dim under the cursor,
-// where typing replaces it without moving a cell.
+// composerRows renders the composer as visual rows wrapped to width w: at
+// most composerMaxRows rows, scrolled to keep the cursor row in view with a
+// row of headroom below it, the rows past either edge fading toward the
+// panel. A plain draft starts at the frame's inner edge; a shell (!) or slash
+// (/) draft keeps its glyph on the first row and the gutter it opens down the
+// others. An empty draft shows placeholder dim under the cursor, where typing
+// replaces it without moving a cell.
 func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
-	// one cell stays free for the cursor mark at the end of a full row
-	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - 3)
-	start := max(0, cursorRow-composerMaxRows+1)
-	// The prompt takes the permission mode's color, one of the two groups: a
-	// mode's base is auto or yolo (zemi.permission.mode.add refuses others),
-	// and tui/statusline.lua reads the same pair. A shell draft (!) says so
-	// with its own glyph, since it never reaches the model.
-	prefix, promptHL := "> ", map[string]string{config.PermModeAuto: "ModeAuto", config.PermModeYolo: "ModeYolo"}[a.modeBase()]
-	if glyph, hl, _ := a.draftMode(); glyph != "" && len(rows) > 0 && len(rows[0]) > 0 {
-		// the glyph stands for the draft's own first character, so the row leaves it out
-		prefix, promptHL = glyph+" ", hl
-		rows[0] = rows[0][1:]
-		if cursorRow == 0 {
-			cursorCol = max(cursorCol-1, 0)
-		}
+	glyph, promptHL, _ := a.draftMode()
+	// one cell stays free for the cursor mark at the end of a full row, and a
+	// shell or slash draft keeps the two its glyph and gutter take
+	wrap := w - 1
+	if glyph != "" {
+		wrap = w - 3
 	}
+	cursorRow, cursorCol, rows, soft := a.wrapComposer(wrap)
+	start := max(0, cursorRow-composerMaxRows+1)
+	if cursorRow < len(rows)-1 {
+		// a row of headroom, so the bottom ramp lands below the live cursor
+		start = max(0, cursorRow-composerMaxRows+2)
+	}
+	focused := a.focusedNode() != "" // no cursor while a node has the keys
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
-		// a dim prompt down the rows after the first, reading as the same hold
-		// the first row's glyph does without a second border beside the frame's
-		p, hl := "> ", "Dim"
-		if i == 0 {
-			p, hl = prefix, promptHL
+		text, col := rows[i], cursorCol
+		var gutter []hostapi.Segment
+		switch {
+		case glyph == "":
+		case i == 0:
+			// the glyph stands for the draft's own first character, so the row leaves it out
+			text, col = text[1:], max(col-1, 0)
+			gutter = []hostapi.Segment{{Text: glyph + " ", HL: promptHL, NoCopy: true}}
+		default:
+			gutter = []hostapi.Segment{{Text: "  ", NoCopy: true}}
 		}
-		segs := []hostapi.Segment{{Text: p, HL: hl, NoCopy: true}}
-		focused := a.focusedNode() != "" // no cursor while a node has the keys
+		var segs []hostapi.Segment
 		switch {
 		case a.composer.text == "" && placeholder != "":
 			hint := []hostapi.Segment{{Text: placeholder, HL: "Dim"}}
@@ -385,21 +388,19 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 			for j := range hint {
 				hint[j].NoCopy = true
 			}
-			segs = append(segs, truncateSegs(hint, w-2)...)
+			segs = truncateSegs(hint, max(wrap, 1)) // a row never comes out empty
 		case i == cursorRow && !focused:
-			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
+			segs = cursorSegs(text, min(col, len(text)), "Normal")
 		default:
-			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})
+			segs = []hostapi.Segment{{Text: string(text), HL: "Normal"}}
+		}
+		if len(gutter) > 0 {
+			segs = append(gutter, segs...)
 		}
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
-	// the lines below the view, else those above it: the side the cursor left
-	if below := len(rows) - start - len(out); below > 0 {
-		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(below), HL: "Dim", NoCopy: true}})
-	} else if start > 0 {
-		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(start) + " above", HL: "Dim", NoCopy: true}})
-	}
+	edgeRamp(out, start, len(rows)-start-len(out), boxFade, func(i int) bool { return i == cursorRow-start })
 	return out
 }
 
