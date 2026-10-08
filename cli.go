@@ -634,7 +634,7 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 	for _, pl := range ps {
 		version, source, on := pl.Version, pl.URL, "on"
 		if pl.Local {
-			version, source = "local", pl.Dir
+			version, source = cmp.Or(version, "local"), pl.Dir
 		}
 		if !pl.Enabled {
 			on = "off"

@@ -316,7 +316,8 @@ Directories (XDG):
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
   plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
-                          skills|agents|commands|workflows/ as in the config dir
+                          skills|agents|commands|workflows/ as in the config dir, and .zemi/plugin.json
+                          the manifest: its optional version and description
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
   plugins/disabled        names turned off, one per line
@@ -443,8 +444,9 @@ files never resolve.
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
-no git. A plugin's skills, agents, commands and workflows come from the
-same list, sorted by name, whether or not its `init.lua` ran; the user's
+no git and reads no manifest. A plugin's skills, agents, commands and
+workflows come from the same list, sorted by name, whether or not its
+`init.lua` ran; the user's
 and the builtin ones win a name, a name two plugins ship goes to the first
 and `/errors` names both, and a skill a plugin ships never runs a
 `zemi-skill.lua`. A plugin that fails does not stop the rest; each one's error goes
@@ -469,11 +471,15 @@ the list names each update from local refs; `enable`, `disable` and
 link only; `zemi plugins delete` asks first, and needs `--yes` off a
 terminal). `zemi plugins` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
-after `--`.
+after `--`. A plugin may carry a manifest, `.zemi/plugin.json` at its root:
+`{ "version": "1.2.0", "description": "..." }`, both optional, which is
+what a list shows in place of the checked-out tag (else the short commit)
+and `init.lua`'s first line. It never names the plugin: the directory does,
+in the settings keys, the principals and every verb.
 `/plugins` is a toggle list built off the key loop, local plugins first,
-each row's state first (`failed`, an update), then its version and the
-`init.lua` description; its detail names the source, the load status and
-what the plugin registered, and the git verbs run on a goroutine that
+each row's state first (`failed`, an update), then its version and its
+description; its detail names the source, the load status and what the
+plugin registered, and the git verbs run on a goroutine that
 refreshes the list when they end, unless the user closed it meanwhile. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `init.lua` in the editor, or its directory without one),
@@ -491,9 +497,10 @@ fails: code the files share goes in a subdirectory (`tests/lib/`, loaded
 with `require("./lib/<name>")`), which the runner does not glob. Each case
 whose "file: name" holds the pattern runs in a zemi of
 its own, booted in the process from temp dirs holding a filtered copy of
-the plugin (no dot entries, `node_modules` or links leading out) and
-nothing else: no user or project config, no trust step, no other plugin,
-no `~/.agents`. The file's top level runs where `init.lua` would, so it is
+the plugin (its code and its manifest, no other dot entry, `node_modules`
+or link leading out) and nothing else: no user or project config, no trust
+step, no other plugin, no `~/.agents`. The file's top level runs where
+`init.lua` would, so it is
 the case's setup, and a first boot collects the case names. `zemi.test`,
 registered only there, declares cases and drives what the plugin
 registered the way zemi runs it: `run`, `keys`, `tool` (through the

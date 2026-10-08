@@ -255,7 +255,7 @@ func (h *Host) pluginItems() []any {
 		desc = append(desc, p.Version, p.Desc)
 		source, section, version, errText := p.URL, "Installed", p.Version, ""
 		if p.Local {
-			source, section, version = "local", "Local", ""
+			source, section = "local", "Local"
 		}
 		if loadErr != nil {
 			errText = loadErr.Error()

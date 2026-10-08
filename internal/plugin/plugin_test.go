@@ -22,6 +22,42 @@ func TestHighest(t *testing.T) {
 	}
 }
 
+// TestManifest pins what a plugin's manifest answers: its version and
+// description when it has one, and init.lua's line when it has none.
+func TestManifest(t *testing.T) {
+	d := config.Dirs{DataHome: t.TempDir()}
+	local := filepath.Join(d.PluginsRoot(), "local")
+	if err := os.CopyFS(filepath.Join(local, "demo"), os.DirFS("../../testdata/plugins/demo")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(local, "bare"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "bare", "init.lua"), []byte("-- the bare plugin\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ps, err := List(t.Context(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Plugin{}
+	for _, p := range ps {
+		got[p.Name] = p
+	}
+	for _, c := range []struct{ name, version, desc string }{
+		{name: "bare", desc: "the bare plugin"},
+		{name: "demo", version: "1.2.0", desc: "snippets, the git branch and the weather"},
+	} {
+		p, ok := got[c.name]
+		if !ok {
+			t.Fatalf("%s is not listed", c.name)
+		}
+		if p.Version != c.version || p.Desc != c.desc {
+			t.Errorf("%s: version %q, desc %q; want %q, %q", c.name, p.Version, p.Desc, c.version, c.desc)
+		}
+	}
+}
+
 // TestPlugins walks one plugin tree through the CLI verbs, in order.
 func TestPlugins(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -148,6 +184,15 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "delete", args: []string{"delete", "x"}},
 		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
+		{
+			name: "a manifest outranks the tag",
+			before: func() {
+				manifest := filepath.Join(installed, "x", ".zemi", "plugin.json")
+				os.MkdirAll(filepath.Dir(manifest), 0o755)
+				os.WriteFile(manifest, []byte(`{"version": "3.0.0", "description": "from the manifest"}`), 0o644)
+			},
+			args: nil, want: "x 3.0.0 true file://",
+		},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},
 		{name: "enable takes one name", args: []string{"enable"}, want: "usage:", err: true},
 	} {

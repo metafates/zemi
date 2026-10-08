@@ -289,6 +289,24 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 	}
 }
 
+// TestCopyPluginManifest: the manifest sits under a dot dir, which the walk
+// skips, so zemi plugins test copies it on its own.
+func TestCopyPluginManifest(t *testing.T) {
+	src := filepath.Join("testdata", "plugins", "demo")
+	want, err := os.ReadFile(filepath.Join(src, ".zemi", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "demo")
+	if err := copyPlugin(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dst, ".zemi", "plugin.json"))
+	if err != nil || string(got) != string(want) {
+		t.Errorf("the copy holds %q, %v; want %q", got, err, want)
+	}
+}
+
 // TestPluginStylua: the stylua.toml plugins.md has an agent write into a
 // plugin is the repository's own.
 func TestPluginStylua(t *testing.T) {

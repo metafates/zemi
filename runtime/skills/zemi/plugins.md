@@ -4,21 +4,23 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
 
 ```
 <name>/                  the plugin's name: lowercase letters, digits, "_", "-", starting with a letter or digit
-  init.lua               runs as the `plugin` origin; line 1 "-- <what it does>" is its /plugins description
+  .zemi/plugin.json      optional: what /plugins reports as its version and description
+  init.lua               runs as the `plugin` origin; line 1 "-- <what it does>" is its description when
+                         the manifest has none
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
   skills/  agents/  commands/  workflows/    as in the config dir; the user's and zemi's own win a
                          name, and a skill's zemi-skill.lua does not run
   tests/<topic>.lua      its tests (Testing, below); shared code in tests/lib/
 ```
 
-There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source the `origin` remote. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too and asks first); `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
+`.zemi/plugin.json` is the manifest: `{ "version": "1.2.0", "description": "what it does, one line" }`, both fields optional. It marks the directory as a zemi plugin and is what `/plugins` and `zemi plugins` show; a plugin without one reports the checked-out `vX.Y.Z` tag (else the short commit) and `init.lua`'s first line, as it always has. Write one for a new plugin, and bump its `version` when the user asks for a release; what `install` and `update` follow is still the git tag a published plugin carries. The name is never in it: the directory is the plugin's name in the settings keys (`plugins.<name>.<key>`), the principal (`plugin:<name>`) and every verb. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too and asks first), each with the `origin` remote as its source; `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
 
 ## Plugin steps
 
 `/plugins new` and `/plugins modify` send you here, or the user asked for a plugin or a change to one. A plugin is checked by its tests, never by trying it in this session.
 
 1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a statusline widget, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` (id, region, priority) and `zemi.tool.list()`. If a setting, a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first (the prompt names its directory) and ask only if the request is unclear.
-2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, a `README.md` naming its commands, keys, settings and every rule it needs, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
+2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, `.zemi/plugin.json` (`{"version": "0.1.0", "description": "<one line>"}`, the version the user sees in `/plugins`), a `README.md` naming its commands, keys, settings and every rule it needs, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
 3. A widget or a key: read `ui.md` first (placement by priority, clicks, render rules). Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model, a permission rule); for what a widget's render gets, grep `@class zemi.WidgetCtx` in the types file and read that block.
 4. Run `<zemi> plugins test <name>` with the shell tool and fix until it passes, `<zemi>` being the path the zemi skill ends with ("This zemi runs from"): a bare `zemi` may be an older one on PATH. Name the plugin, not its path: with a sandbox, auto mode runs that without asking. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`, widget listings) unless the user asks, and write the tests even then.
 5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. Only this shows a clash with the user's own config (a key or an id they hold). Fix a `plugin <name>:` error and go back to 4.
@@ -181,4 +183,4 @@ end)
 
 ## Publishing
 
-`git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the highest tag once that tag is ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
+`git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag, with the manifest's `version` in step with it: `/plugins` shows the manifest's, and it is what to bump. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the highest tag once that tag is ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.

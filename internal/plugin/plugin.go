@@ -5,10 +5,10 @@
 package plugin
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"crypto/rand"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -32,12 +32,23 @@ import (
 // Plugin is one directory under installed/ or local/.
 type Plugin struct {
 	Name, Dir string
-	Desc      string // line 1 of init.lua when it is a -- comment
+	Desc      string // the manifest's description, else line 1 of init.lua when it is a -- comment
 	URL       string // the origin remote; "" for a local plugin
-	Version   string // the checked-out semver tag, else the short commit
+	Version   string // the manifest's version, else the checked-out semver tag, else the short commit
 	Latest    string // a newer tag in the same major, "v2.0.0 (major)" or "3 new commits"
 	Local     bool
 	Enabled   bool
+}
+
+// ManifestFile is the plugin's manifest, relative to its root: what marks the
+// directory as a plugin and answers its version and description. A plugin
+// without one reports its git tag and init.lua's first line, as before.
+const ManifestFile = ".zemi/plugin.json"
+
+// manifest is ManifestFile parsed; both fields are optional.
+type manifest struct {
+	Version     string `json:"version"`
+	Description string `json:"description"`
 }
 
 // a dot dir, such as a clone in flight, is never a plugin, and no name
@@ -327,7 +338,13 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p := Plugin{Name: filepath.Base(dir), Dir: dir, Local: local, Enabled: enabled}
-	if line := firstLine(filepath.Join(dir, "init.lua")); strings.HasPrefix(line, "--") {
+	var m manifest
+	// the manifest is the plugin's own answer; init.lua's line fills in only
+	// what it leaves out
+	if err := json.Unmarshal(readHead(filepath.Join(dir, ManifestFile)), &m); err == nil {
+		p.Version, p.Desc = m.Version, m.Description
+	}
+	if line := firstLine(filepath.Join(dir, "init.lua")); p.Desc == "" && strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}
 	// git would read the config of whatever repository a symlink names
@@ -337,7 +354,7 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p.URL, _ = git(ctx, dir, "config", "--get", "remote.origin.url")
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
 	if cur := highest(here, ""); cur != "" {
-		p.Version = cur
+		p.Version = cmp.Or(p.Version, cur)
 		tags, _ := git(ctx, dir, "tag", "--list")
 		if top := highest(tags, semver.Major(cur)); semver.Compare(top, cur) > 0 {
 			p.Latest = top
@@ -347,7 +364,9 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 		}
 		return p
 	}
-	p.Version, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
+	if p.Version == "" {
+		p.Version, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
+	}
 	if p.Latest = tagAhead(ctx, dir); p.Latest != "" {
 		return p
 	}
@@ -373,24 +392,30 @@ func tagAhead(ctx context.Context, dir string) string {
 	return top
 }
 
-// firstLine reads line 1 of a regular file, 4 KB at most: a clone can hold
-// a symlink to /dev/zero or a FIFO, which would never end.
+// firstLine reads line 1 of a regular file, or "" for anything else.
 func firstLine(path string) string {
+	line, _, _ := strings.Cut(string(readHead(path)), "\n")
+	return line
+}
+
+// readHead reads the first 4 KB of a regular file: a clone can hold a symlink
+// to /dev/zero or a FIFO, which would never end.
+func readHead(path string) []byte {
 	lfi, err := os.Lstat(path)
 	if err != nil || !lfi.Mode().IsRegular() {
-		return ""
+		return nil
 	}
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer f.Close()
 	// the file opened must be the one checked, not a link swapped in since
 	if fi, err := f.Stat(); err != nil || !os.SameFile(lfi, fi) {
-		return ""
+		return nil
 	}
-	line, _ := bufio.NewReader(io.LimitReader(f, 4<<10)).ReadString('\n')
-	return line
+	data, _ := io.ReadAll(io.LimitReader(f, 4<<10))
+	return data
 }
 
 // idFile, in a clone's .git, holds the random id Install gave it.

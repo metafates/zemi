@@ -46,9 +46,10 @@ func TestPluginsCommand(t *testing.T) {
 	dirs := config.Dirs{ProjectDir: tmp, DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
 	src := filepath.Join(tmp, "src", "x")
 	for p, text := range map[string]string{
-		filepath.Join(dirs.PluginsRoot(), "local", "a", "init.lua"): "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
-		filepath.Join(dirs.PluginsRoot(), "local", "b", "init.lua"): "error('broken')",
-		filepath.Join(src, "init.lua"):                              "-- the x plugin\n",
+		filepath.Join(dirs.PluginsRoot(), "local", "a", "init.lua"):             "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
+		filepath.Join(dirs.PluginsRoot(), "local", "a", ".zemi", "plugin.json"): `{"version": "0.1.0", "description": "a todo list in the statusline"}`,
+		filepath.Join(dirs.PluginsRoot(), "local", "b", "init.lua"):             "error('broken')",
+		filepath.Join(src, "init.lua"):                                          "-- the x plugin\n",
 	} {
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte(text), 0o644)
@@ -80,7 +81,8 @@ func TestPluginsCommand(t *testing.T) {
 			name: "the list", args: "",
 			want: []string{
 				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
-				"desc:a todo list", "[provides command /todo · setting plugins.a.live]", "on:true run:plugins toggle a section:Local text:a",
+				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
+				"[version 0.1.0]", "on:true run:plugins toggle a section:Local text:a",
 				"desc:failed", "[status failed]", "broken", "hotkey:d run:plugins disable a",
 				"danger:true hotkey:x run:plugins delete a --yes text:Delete",
 			},

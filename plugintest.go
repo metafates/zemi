@@ -238,12 +238,27 @@ func pluginSource(arg string) (string, error) {
 }
 
 // copyPlugin copies the plugin at src to dst the way a test zemi should
-// load it: its code (plugin.Code, plugin.Kept), a
+// load it: its code (plugin.Code, plugin.Kept), its manifest, a
 // symbolic link only when it is relative and stays inside the plugin, at
 // most copyFiles files and copyBytes bytes.
 func copyPlugin(src, dst string) error {
 	files, size := 0, int64(0)
 	inside := func(p string) bool { _, ok := perm.Under(src, p); return ok }
+	// the manifest sits under a dot dir, which the walk skips
+	from := filepath.Join(src, plugin.ManifestFile)
+	if fi, err := os.Lstat(from); err == nil && fi.Mode().IsRegular() {
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(dst, plugin.ManifestFile)
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, fi.Mode().Perm()); err != nil {
+			return err
+		}
+	}
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
