@@ -292,14 +292,18 @@ func (h *Host) pluginItems() []any {
 	return items
 }
 
-// pluginDetail is the detail pane's prose: what the plugin ships and, while it
-// is enabled, what switching it on grants and what still asks.
+// pluginDetail is the detail pane's prose: what the plugin ships, the set its
+// manifest declares and, while it is enabled, what that grants.
 func pluginDetail(p plugin.Plugin) string {
-	if !p.Enabled {
-		return p.Desc
+	detail := p.Desc + "\n\nIt declares nothing, so every call zemi gates is refused or asks."
+	if len(p.Uses) > 0 {
+		detail = p.Desc + "\n\nIt declares " + strings.Join(p.Uses, ", ") + ": what enabling it grants."
+		if p.Enabled {
+			detail += " Anything else it calls is refused, and its writes to its own code, .git," +
+				" .agents and zemi's own files still ask."
+		}
 	}
-	return strings.TrimSpace(p.Desc + "\n\nEnabled: its own model, HTTP, job and fs calls and the tools it" +
-		" registered need no permission rule; writes to plugin code, .git, .agents and zemi's own files still ask.")
+	return strings.TrimSpace(detail)
 }
 
 // pluginStatus is how the last boot left p: "starting" when it is on but no

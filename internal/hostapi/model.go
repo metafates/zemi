@@ -213,7 +213,7 @@ func objectFromText(raw string) (any, error) {
 
 // modelAsk is zemi.model.ask: one tool-less call on a role's model or an
 // id, billed to the live session and run off the interpreter. It costs
-// money, and switching the plugin on is what consents to it; project code
+// money, and the manifest's `uses` naming `model` is what consents to it; project code
 // may not call it. A spec with a schema asks for an object instead: the
 // provider decodes the reply into the schema's shape and the call returns
 // that value, with the raw reply beside it.
