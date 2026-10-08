@@ -466,7 +466,7 @@ type Host struct {
 	evlog eventLog // recent events and notifications for Lua reflection
 
 	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
-	pluginRoots atomic.Pointer[[]string]     // the plugins that boot runs, for their skills, agents, commands and workflows
+	pluginGrant atomic.Pointer[pluginGrant]  // the plugins the last boot loaded: their roots and what each manifest declared
 	// madePlugins holds the local plugin dirs whose creation the user or yolo
 	// allowed: auto settles the model's edits there until zemi exits
 	madePlugins sync.Map

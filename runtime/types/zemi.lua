@@ -1720,8 +1720,9 @@ function zemi.model.set(id) end
 ---@field cancel fun(self: zemi.ModelHandle)
 
 --- One tool-less model call, run off the interpreter and billed to the live
---- session; a reload cancels it. A plugin's own call settles while it is
---- enabled; project code raises.
+--- session; a reload cancels it. A plugin's own call settles where its
+--- manifest declares `model` (one it does not declare is refused, not asked);
+--- project code raises.
 ---
 --- ```lua
 --- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
@@ -1798,7 +1799,7 @@ zemi.classify = {}
 --- answers is reported back, and a strategy that fails does not settle
 --- anything for the next one.
 ---
---- A plugin's own call settles while it is enabled; project code raises. The
+--- A plugin's own call settles where its manifest declares `model`; project code raises. The
 --- provider's key is read in Go.
 ---
 --- ```lua
@@ -1872,9 +1873,9 @@ function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
---- a turn it joins at the next step. A plugin's own send settles while it is
---- enabled, and raises in `zemi run`; its text reaches the model as the
---- plugin's, never the user's words. Project code raises.
+--- a turn it joins at the next step. A plugin's own send settles where its
+--- manifest declares `agent`, and raises in `zemi run`; its text reaches the
+--- model as the plugin's, never the user's words. Project code raises.
 ---@param text string
 ---@return true?, string?
 function zemi.agent.send(text) end
@@ -2303,8 +2304,8 @@ zemi.tool = {}
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
 --- `tool.<name>` with the name as the argument: auto mode settles it only
---- for a tool a plugin registered (the plugin is enabled, so it is trusted),
---- while a tool the user's or a project's config registered asks until they
+--- for a tool a plugin registered and its manifest declared `tool`, while a
+--- tool the user's or a project's config registered asks until they
 --- allow it, for the session at the prompt or for good with a user config rule
 --- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
 --- yolo allows it.
@@ -2405,8 +2406,9 @@ function zemi.tool.describe(name) end
 --- Writes reach only the launch directory (`ctx.cwd`, not
 --- `zemi.project.root()`: the dir a sandboxed command may write) and, for
 --- user config, `zemi.fs.data_dir`; user code needs a `lua.fs.write` allow
---- rule, while a plugin's own write settles while it is enabled, its own
---- code, a secret-shaped name and the other protected paths aside.
+--- rule, while a plugin's own write settles where its manifest declares
+--- `fs.write`, its own code, a secret-shaped name, the other protected paths
+--- and every write of a read-only run aside.
 ---@class zemi.fs
 zemi.fs = {}
 
@@ -2540,7 +2542,7 @@ function zemi.http.get(url, opts) end
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads. A missing dir is the returned error.
----@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined. A plugin's own job settles only with it: without one it asks.
+---@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined. A plugin's own job settles where its manifest declares `job` with it and `job.unsandboxed` without one, since that job runs with the whole environment.
 ---@field stdin? boolean Needed before `write`.
 ---@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
 ---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.
@@ -2564,7 +2566,8 @@ function zemi.http.get(url, opts) end
 --- Child processes run in their own session and process group, with the
 --- project directory as their working directory. User and project code need
 --- `lua.job.start` allowed for the command line; a plugin's own job settles
---- while it is enabled only when it asks for the sandbox (`sandbox = true`).
+--- where its manifest declares `job`, or `job.unsandboxed` for one that does
+--- not ask for the sandbox (`sandbox = true`).
 --- Rules match the command line normalized like `tool.shell`
 --- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job

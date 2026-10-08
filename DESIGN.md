@@ -317,7 +317,7 @@ Directories (XDG):
 ~/.local/share/zemi/      data
   plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
                           skills|agents|commands|workflows/ as in the config dir, and .zemi/plugin.json
-                          the manifest: its optional version and description
+                          the manifest: its optional version, description and uses (§9)
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
   plugins/disabled        names turned off, one per line
@@ -444,7 +444,8 @@ files never resolve.
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
-no git and reads no manifest. A plugin's skills, agents, commands and
+no git and reads each manifest only for its declared `uses`, which a name
+outside §9's vocabulary refuses at load. A plugin's skills, agents, commands and
 workflows come from the same list, sorted by name, whether or not its
 `init.lua` ran; the user's
 and the builtin ones win a name, a name two plugins ship goes to the first
@@ -472,14 +473,16 @@ link only; `zemi plugins delete` asks first, and needs `--yes` off a
 terminal). `zemi plugins` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
 after `--`. A plugin may carry a manifest, `.zemi/plugin.json` at its root:
-`{ "version": "1.2.0", "description": "..." }`, both optional, which is
-what a list shows in place of the checked-out tag (else the short commit)
-and `init.lua`'s first line. It never names the plugin: the directory does,
+`{ "version": "1.2.0", "description": "...", "uses": ["model", "http"] }`,
+every field optional, which is what a list shows in place of the
+checked-out tag (else the short commit) and `init.lua`'s first line; `uses`
+is the set of host capabilities the plugin's code calls, and what §9 makes
+the switch grant. It never names the plugin: the directory does,
 in the settings keys, the principals and every verb.
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and its
-description; its detail names the source, the load status and what the
-plugin registered, and the git verbs run on a goroutine that
+description; its detail names the source, the load status, the manifest's
+`uses` and what the plugin registered, and the git verbs run on a goroutine that
 refreshes the list when they end, unless the user closed it meanwhile. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `init.lua` in the editor, or its directory without one),
@@ -1167,7 +1170,7 @@ exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
-It costs money, and enabling the plugin is what consents to it (§9); project
+It costs money, and the manifest's `uses` naming `model` is what consents to it (§9); project
 code may not call it, and a reload cancels it. `zemi.agent.send` from a plugin
 settles the same way; project code may not send at all. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
@@ -1441,7 +1444,7 @@ is `ask`, the call raises `permission ask required` (a
 outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
 the agent worker (§4). Keymap- and command-bound use of an ask-default
 API therefore needs a pre-existing allow rule from the user's own config
-(a plugin's own gated calls settle while it is enabled, §9), or it fails closed every time. URLs go through the permission gate like tools do
+(a plugin's own gated calls settle where its manifest declares them, §9), or it fails closed every time. URLs go through the permission gate like tools do
 (§9 covers redirects and IP rules). Subprocess environments are filtered:
 a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
@@ -2377,7 +2380,7 @@ rides the `memories.md` line and its ledger entries.
   |---|---|
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
-  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source` |
+  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
@@ -2584,17 +2587,19 @@ rides the `memories.md` line and its ledger entries.
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
   `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
   `lua.agent.send` and `lua.model.ask`) is `ask`. The one exception is an
-  enabled plugin's own calls: switching a plugin on in `/plugins` is the
-  user's trust decision, so its `lua.model.ask`, `lua.classify.ask`,
-  `lua.agent.send`, `lua.http.*`, `lua.fs.write` and a `lua.job.start` that
-  asked for the sandbox (`sandbox = true`: one without it still asks, since
-  it would run with the whole environment) settle
+  enabled plugin's own calls: its manifest's `uses` is the user's decision, so
+  a declared `lua.model.ask`, `lua.classify.ask`, `lua.agent.send`,
+  `lua.http.*`, `lua.fs.write` or `lua.job.start` (`job` for one that asked for
+  the sandbox, `job.unsandboxed` for one that did not, since it runs with the
+  whole environment) settles
   while it is on (a disabled plugin never loads), and so does a `tool.<name>`
-  whose tool a plugin registered, when the model calls it, since registering
-  the tool was itself part of what the switch allowed; a protected write
-  (above) or a secret-shaped path still asks - except under `--unsafe`, where
-  a secret-shaped path stops being special (below) - and a rule of the user's still
-  decides first. User and builtin code
+  whose tool a plugin registered and declared `tool`, when the model calls it
+  and the run is not read-only. A call the declaration does not cover is refused,
+  naming the manifest field to add: never asked, and no rule of the user's
+  widens it (a rule still narrows a declared one). A protected write
+  (above), a secret-shaped path or any write of a read-only agent still asks -
+  except under `--unsafe`, where
+  a secret-shaped path stops being special (below). User and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is
   refused for project code (§5); a Lua-originated call to one of these

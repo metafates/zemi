@@ -25,8 +25,8 @@ const classifyTimeout = time.Minute
 
 // classifyAsk is zemi.classify.ask({ model, state, questions, timeout }):
 // every question judged in one call, by whichever strategy the model's provider
-// answers with, billed to the live session. It costs money, and switching the
-// plugin on is what consents to it; project code may not call a model at all.
+// answers with, billed to the live session. It costs money, and the manifest's
+// `uses` naming `model` is what consents to it; project code may not call a model at all.
 func (h *Host) classifyAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	state := classifyState(L, spec)

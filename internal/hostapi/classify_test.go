@@ -265,11 +265,12 @@ func TestClassifyAskErrors(t *testing.T) {
 	}
 }
 
-// TestClassifyGate: an enabled plugin's own call settles with no rule, a rule
-// of the user's still decides first, project code may not call a model, and the
-// picker offers decisions models to the slots that classify alone.
+// TestClassifyGate: a plugin's own call settles where its manifest declares
+// "model", a rule of the user's still decides first, project code may not call
+// a model, and the picker offers decisions models to the slots that classify
+// alone.
 func TestClassifyGate(t *testing.T) {
-	h, r := newTestHost(t)
+	h, r := newTestHostPlugin(t, `["model"]`)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })
@@ -308,9 +309,9 @@ func TestClassifyGate(t *testing.T) {
 		t.Errorf("models.titles = %q after a refused pick", got)
 	}
 
-	// the gate: a plugin's own call settles with no rule while it is enabled
-	// (the /plugins switch is the consent), an explicit user rule still
-	// decides first, and project code may not call it at all
+	// the gate: a plugin's declared call settles with no rule (its manifest's
+	// `model` is the consent), an explicit user rule still decides first, and
+	// project code may not call it at all
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
 	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin with no rule: %v", err)

@@ -32,6 +32,7 @@ import (
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
@@ -169,14 +170,24 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // transport, a call none answers raises naming the stub to add, and a false
 // reply is refused whatever rules exist; req is a func so no other zemi
 // builds it. sandboxed is what a subject that runs a command passes: a
-// plugin's job settles only confined; one that passes no flag does not
-// settle (Host.pluginTrusted).
+// plugin's job needs "job" declared when it runs confined and
+// "job.unsandboxed" when it does not (Host.pluginSettles).
 func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any, sandboxed ...bool) (tools.Verdict, *stubReply) {
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
 	// through its callback would keep the rest.
 	if h.Inert && subject != "lua.fs.read" {
 		L.RaiseError("%s %s: permission denied (inert)", subject, arg)
+	}
+	confined := len(sandboxed) > 0 && sandboxed[0]
+	// a plugin calls nothing its manifest does not declare, and no rule widens
+	// that: the manifest is what the user reviewed when they switched it on
+	name := ""
+	if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
+		name = h.PluginOf(h.RT.CurrentPath(L))
+	}
+	if cap := pluginCap(subject, confined); name != "" && cap != "" && !h.pluginDeclares(name, cap) {
+		L.RaiseError("%s %s: plugin %s declares no %q; add %q to uses in %s", subject, arg, name, cap, cap, plugin.ManifestFile)
 	}
 	stubbed := false
 	if h.test != nil {
@@ -211,7 +222,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	case v.Decision == perm.Allow:
 	case v.Decision == perm.Ask && approved:
 		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByUser}
-	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginTrusted(L, subject, arg, len(sandboxed) > 0 && sandboxed[0]):
+	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginSettles(name, subject, arg, confined):
 		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByPlugin}
 	case v.Decision == perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
@@ -231,27 +242,55 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	return v, nil
 }
 
-// pluginTrusted reports whether switching a plugin on is what answers this
-// call: its own model, agent, HTTP and file-write calls settle, since a
-// disabled plugin never loads and the /plugins switch is the user's consent.
-// A job settles only when it runs confined (sandboxed): one that does not
-// reads with the whole environment and answers nobody. It answers only an ask
-// no rule decided (the caller checks that), a protected write still asks (it
-// changes what a later boot runs), and a test zemi answers IO through its
-// stubs alone.
-func (h *Host) pluginTrusted(L *glua.LState, subject, arg string, sandboxed bool) bool {
-	if h.test != nil || h.RT.CurrentOrigin(L) != lua.OriginPlugin {
+// pluginCaps is the capability each gated subject needs declared, keyed by
+// subject prefix: every lua.http.<method> and every tool.<name> share one row.
+var pluginCaps = []struct{ prefix, cap string }{
+	{"lua.model.ask", "model"},
+	{"lua.classify.ask", "model"},
+	{"lua.agent.send", "agent"},
+	{"lua.fs.write", "fs.write"},
+	{"lua.http.", "http"},
+	{"tool.", "tool"},
+}
+
+// pluginCap is the capability a plugin must declare for a gated subject, ""
+// when no capability covers it (lua.fs.read, zemi.state.*, zemi.env.get): a
+// subject nothing declares keeps its own default.
+func pluginCap(subject string, sandboxed bool) string {
+	if subject == "lua.job.start" {
+		// one that asks for the sandbox does not run with the whole environment
+		if sandboxed {
+			return "job"
+		}
+		return "job.unsandboxed"
+	}
+	for _, c := range pluginCaps {
+		if strings.HasPrefix(subject, c.prefix) {
+			return c.cap
+		}
+	}
+	return ""
+}
+
+// pluginSettles reports whether the calling plugin's manifest is what answers
+// this call: its own model, agent, HTTP, file-write and job calls settle where
+// it declared the capability. A protected write, which changes what a later
+// boot runs, a secret-shaped path, and every write a read-only agent asks for
+// still ask, and a test zemi answers IO through its stubs alone.
+func (h *Host) pluginSettles(name, subject, arg string, sandboxed bool) bool {
+	if h.test != nil || name == "" {
 		return false
 	}
-	switch subject {
-	case "lua.model.ask", "lua.classify.ask", "lua.agent.send":
-		return true
-	case "lua.job.start":
-		return sandboxed
-	case "lua.fs.write":
-		return !h.secretPath(arg) && !h.protectedWrite(arg)
+	cap := pluginCap(subject, sandboxed)
+	if cap == "" || !h.pluginDeclares(name, cap) {
+		return false
 	}
-	return strings.HasPrefix(subject, "lua.http.")
+	// a read-only agent changes nothing, whoever allowed it (DESIGN §9), and an
+	// unconfined job would leave it with the writable project the sandbox denies
+	if cap == "fs.write" {
+		return !h.readOnly() && !h.secretPath(arg) && !h.protectedWrite(arg)
+	}
+	return cap != "job.unsandboxed" || !h.readOnly()
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.

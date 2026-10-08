@@ -649,12 +649,13 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 		}
 		if asJSON {
 			writeJSON(w, struct {
-				Name    string `json:"name"`
-				Version string `json:"version"`
-				Local   bool   `json:"local"`
-				Enabled bool   `json:"enabled"`
-				Source  string `json:"source"`
-			}{pl.Name, version, pl.Local, pl.Enabled, source})
+				Name    string   `json:"name"`
+				Version string   `json:"version"`
+				Local   bool     `json:"local"`
+				Enabled bool     `json:"enabled"`
+				Source  string   `json:"source"`
+				Uses    []string `json:"uses"`
+			}{pl.Name, version, pl.Local, pl.Enabled, source, pl.Uses})
 			continue
 		}
 		rows = append(rows, [4]string{pl.Name, version, on, source})

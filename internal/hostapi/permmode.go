@@ -537,10 +537,10 @@ func modeRow(L *glua.LState, d PermModeDef) *glua.LTable {
 // autoLocal is everything auto mode settles: reading and editing files
 // inside the jail that are not secret-shaped (editing a local plugin whose
 // creation was allowed too), commands (unsettled), running workflows (their
-// agents' tools are checked one by one), a tool a plugin registered, and MCP
-// tools their server marks read-only. Anything else goes to the user with a
-// reason (askHook); a network request always does, since the URL is the
-// model's.
+// agents' tools are checked one by one), a tool a plugin registered and
+// declared, and MCP tools their server marks read-only. Anything else goes to
+// the user with a reason (askHook); a network request always does, since the
+// URL is the model's.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case perm.SubjectRead:
@@ -552,7 +552,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// (it is in no project, and $HOME is never trusted), so text the model
 		// reads later can steer code every later boot runs, in every project.
 		// Plugin origin bounds it: it adds no allow rule, and what it may do is
-		// what enabling a plugin covers, no more.
+		// what its manifest declares, no more.
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectShell:
 		return h.unsettled(req) == ""
@@ -560,10 +560,11 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return true // the script is sandboxed and each agent it starts is gated
 	}
 	if name, ok := strings.CutPrefix(req.Subject, "tool."); ok {
-		// a tool a plugin registered: switching the plugin on is what let it
-		// register the tool, so the model's call of it needs no rule of its own
+		// a tool a plugin registered: the model's call of it needs no rule
+		// where the plugin's manifest declares "tool", but a read-only agent
+		// changes nothing, so it asks there
 		t := h.luaTools.get(name)
-		return t != nil && t.Origin == lua.OriginPlugin
+		return t != nil && t.Origin == lua.OriginPlugin && !req.ReadOnly && h.pluginDeclares(h.PluginOf(t.Path), pluginCap(req.Subject, false))
 	}
 	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {
 		return h.mcpReadOnly(server, req.Arg)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,16 +45,44 @@ func TestManifest(t *testing.T) {
 	for _, p := range ps {
 		got[p.Name] = p
 	}
-	for _, c := range []struct{ name, version, desc string }{
+	for _, c := range []struct {
+		name, version, desc string
+		uses                []string
+	}{
 		{name: "bare", desc: "the bare plugin"},
-		{name: "demo", version: "1.2.0", desc: "snippets, the git branch and the weather"},
+		{name: "demo", version: "1.2.0", desc: "snippets, the git branch and the weather", uses: []string{"agent", "http", "job.unsandboxed", "model"}},
 	} {
 		p, ok := got[c.name]
 		if !ok {
 			t.Fatalf("%s is not listed", c.name)
 		}
-		if p.Version != c.version || p.Desc != c.desc {
-			t.Errorf("%s: version %q, desc %q; want %q, %q", c.name, p.Version, p.Desc, c.version, c.desc)
+		if p.Version != c.version || p.Desc != c.desc || !slices.Equal(p.Uses, c.uses) {
+			t.Errorf("%s: version %q, desc %q, uses %v; want %q, %q, %v", c.name, p.Version, p.Desc, p.Uses, c.version, c.desc, c.uses)
+		}
+	}
+}
+
+// TestCheckUses pins the vocabulary a manifest's uses draws from.
+func TestCheckUses(t *testing.T) {
+	want := []string{"agent", "fs.write", "http", "job", "job.unsandboxed", "model", "tool"}
+	if !slices.Equal(Uses, want) {
+		t.Errorf("the vocabulary is %v, want %v", Uses, want)
+	}
+	for _, c := range []struct {
+		name string
+		uses []string
+		want string
+	}{
+		{name: "the whole list", uses: want},
+		{name: "none", uses: nil},
+		{name: "an unknown word", uses: []string{"http", "fs.read"}, want: `uses "fs.read" is not a capability; the valid ones are ` + strings.Join(Uses, ", ")},
+	} {
+		err := CheckUses(c.uses)
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.want != "" && (err == nil || err.Error() != c.want):
+			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
 		}
 	}
 }

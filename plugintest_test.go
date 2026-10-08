@@ -51,9 +51,14 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		t.Fatal(err)
 	}
 	example := map[string]string{}
-	for path, heading := range map[string]string{"init.lua": "`init.lua`:\n", "lua/branch/init.lua": "`lua/branch/init.lua`:", "tests/branch.lua": "`tests/branch.lua` for the plugin above:"} {
-		_, after, _ := strings.Cut(string(skill), heading)
-		_, block, _ := strings.Cut(after, "```lua\n")
+	for path, c := range map[string]struct{ at, lang string }{
+		"init.lua":            {"`init.lua`:\n", "lua"},
+		".zemi/plugin.json":   {"`.zemi/plugin.json`: the manifest", "json"},
+		"lua/branch/init.lua": {"`lua/branch/init.lua`:\n", "lua"},
+		"tests/branch.lua":    {"`tests/branch.lua` for the plugin above:\n", "lua"},
+	} {
+		_, after, _ := strings.Cut(string(skill), c.at)
+		_, block, _ := strings.Cut(after, "```"+c.lang+"\n")
 		example[path], _, _ = strings.Cut(block, "```")
 	}
 
@@ -133,8 +138,9 @@ for i = 1, 300 do test("case " .. i, function() end) end
 `},
 		// waits, so no one slice meets the 1s ceiling that stops a Lua spin first
 		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, hangs: true, plugin: map[string]string{
-			"init.lua":    `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
-			"tests/a.lua": `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
+			"init.lua":          `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
+			".zemi/plugin.json": `{"uses": ["http"]}`,
+			"tests/a.lua":       `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
 		}, want: "FAIL tests/a.lua:1: spins\n  timed out after 2s in test.run(\"spin\") at tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a handler past its deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua":    `zemi.event.on("tool.pre", function() while true do end end)`,
@@ -197,6 +203,7 @@ end)`,
 			"init.lua": `zemi.command.add("log", function()
   zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })
 end)`,
+			".zemi/plugin.json": `{"uses": ["job.unsandboxed"]}`,
 			"tests/a.lua": `local test = zemi.test
 test.stub("lua.job.start", "git log", { stdout = "a\nb" })
 test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { "a", "b" }) end)`,
