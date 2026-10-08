@@ -1321,6 +1321,8 @@ func TestSavedWorkflows(t *testing.T) {
 		{0, "", ""},
 		{0, "sum-up", "exists: /workflows save "},
 		{0, "Sum Up", "lowercase letters"},
+		{0, strings.Repeat("a", 64), ""}, // the loader's name cap
+		{0, strings.Repeat("a", 65), "up to 63"},
 		{1, "", "a workflow review exists"},
 	} {
 		path, err := h.saveFlow(runs[c.run].id, c.name)

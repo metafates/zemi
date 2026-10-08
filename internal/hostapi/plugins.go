@@ -276,7 +276,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 				continue
 			}
 			if !skill.ValidName(name) {
-				h.RecordErrorOnce(sub, path+": name must match [a-z0-9][a-z0-9-]*")
+				h.RecordErrorOnce(sub, path+": name must be "+skill.NameRule)
 				continue
 			}
 			if load(layerFile{name, path, d.origin}) {

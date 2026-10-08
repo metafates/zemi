@@ -26,7 +26,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,6 +39,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -1225,8 +1225,6 @@ func (h *Host) flowAgentIDs(sid string) map[string]bool {
 	return ids
 }
 
-var savedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
 // saveFlow copies run id's script as it ran to workflows/<name>.lua in the
 // config dir, headed by the run's description when it has no leading
 // comment; no name names it after the description. Only a run this process
@@ -1244,8 +1242,9 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 			return "", Usagef("a workflow %s exists: /workflows save %s <name> saves it under another", name, id)
 		}
 	}
-	if !savedName.MatchString(name) {
-		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
+	// the loader's own rule, so a saved name is one workflows() takes back
+	if !skill.ValidName(name) {
+		return "", Usagef("a workflow name is %s, not %q", skill.NameRule, name)
 	}
 	src := []byte(f.src)
 	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {
