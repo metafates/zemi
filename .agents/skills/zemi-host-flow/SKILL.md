@@ -411,5 +411,6 @@ is refused with its path, to delete (the owner is the only user).
   `set` or `watch` of one whose plugin did not load do nothing); only
   user config sets them, and a read of a key outside it panics under `go test`. Providers ship
   none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
-  `zemi.env.get` reads secret-shaped names for user and builtin origin only). Config fields
+  `zemi.env.get` reads secret-shaped names for user and builtin origin only, and for any
+  origin under `--unsafe`). Config fields
   hold values, never names of env vars.

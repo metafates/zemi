@@ -1162,7 +1162,8 @@ while a builtin's key may be exported for other tools.
 from a plugin or a project cannot call them (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
 gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
-variables for user and builtin origin only) and is never exposed back to Lua.
+variables for user and builtin origin only, and for any origin under `--unsafe`) and is never
+exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
