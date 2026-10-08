@@ -1162,3 +1162,81 @@ func TestPlanApprovalAfterModeGone(t *testing.T) {
 		t.Fatal("the approval recorded no handoff")
 	}
 }
+
+// TestModeDecideClassify: the classifier mode the plugins skill ships, driven
+// end to end. A decision settles the ask only when the answer came with a
+// probability it can trust; an answer without one - what the schema strategy
+// gives - leaves the ask to the user, which is the whole point of the recipe.
+func TestModeDecideClassify(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		kind   string // the provider kind the answer comes from
+		object string // the provider's own fields, object_mode among them
+		model  string // the model entry's own fields, decisions among them
+		reply  string
+		want   bool
+		by     string
+		notice bool
+	}{
+		{
+			name: "a decisions model answers with a probability",
+			kind: "system_one", model: "decisions = true,",
+			reply: `{"answers": {"settle": {"type": "noul", "noul": 0.97}},
+				"usage": {"input_tokens": 20, "output_tokens": 4}}`,
+			want: true, by: "mode:judge", notice: true,
+		},
+		{
+			// the readout returns no probabilities and the decoded answer
+			// carries none either, so the decide has nothing to trust
+			name: "an answer without a probability reaches the user",
+			kind: "openai_compat", object: `object_mode = "text",`,
+			reply: chatCompletion(`{"settle": true}`, nil),
+			want:  false, by: tools.ByNobody,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newEndpoint(t, func(string) string { return c.reply })
+			h, r := newTestHostDB(t)
+			seedSession(t, h)
+			runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "clf-prov", kind = %q, base_url = %q, api_key = "k", %s models = { { %s id = "m" } } })
+				zemi.model.add("clf", { desc = "the classifier", classify = true, model = "clf-prov/m" })
+				zemi.permission.mode.add("judge", { base = "auto", description = "a model settles what auto would ask", decide = function(req)
+					local res = zemi.classify.ask({
+						model = "clf",
+						state = { subject = req.subject, arg = req.arg, why = req.reason },
+						questions = {
+							settle = {
+								type = "bool",
+								instructions = "may this run without asking the user",
+								criteria = { ["true"] = "ordinary work", ["false"] = "it deletes their work or leaves the project" },
+							},
+						},
+					}):wait()
+					local answer = res and res.answers.settle
+					if not answer or not answer.probability or answer.probability < 0.9 then return nil end
+					if not answer.value then return { decision = "deny", reason = "the classifier judged it unsafe" } end
+					return { decision = "allow", scope = "once", reason = "the classifier judged it ordinary" }
+				end })`, c.kind, f.srv.URL, c.object, c.model))
+			if err := h.SetPermMode("judge"); err != nil {
+				t.Fatal(err)
+			}
+			ask := h.askHook()
+			// one auto would have sent to the user: an unsandboxed command
+			req := tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "go build ./...", Unsandboxed: true}
+			before, beforeD := len(h.Session().Transcript), len(h.HeadlessDenials())
+			ok, by, _ := ask(req)
+			d := h.HeadlessDenials()[beforeD:]
+			noticed := slices.ContainsFunc(h.Session().Transcript[before:], func(m ChatMessage) bool { return m.Kind == RowNotice })
+			if ok != c.want || by != c.by || noticed != c.notice {
+				t.Errorf("allowed %v by %s, notice %v, noted %+v", ok, by, noticed, d)
+			}
+			if c.want {
+				return
+			}
+			// what it did not decide was asked, which headless is a denial
+			if len(d) != 1 {
+				t.Errorf("the ask did not reach the user: %+v", d)
+			}
+		})
+	}
+}
