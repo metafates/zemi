@@ -112,8 +112,11 @@ decision, fewest wildcards then longest literal prefix wins. A `not_match` hit f
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
 `fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except
 secret-shaped paths, writes ask) and finally ask - there
-is no fail-open path. Past all of that, an enabled plugin's own gated calls are the one allow added
-(`Host.pluginTrusted`, below). A file request in the free zone (`perm.FreeZone`: the pipeline's
+is no fail-open path. Past all of that, a plugin's own gated calls are the one allow added:
+what its manifest's `uses` declares settles (`Host.pluginSettles`), and a call it does not
+declare is refused before the pipeline runs, naming the manifest line to add, so no rule of
+the user's can widen it (`Host.pluginDeclares` reads the set the plugins step fixed for the
+generation). A file request in the free zone (`perm.FreeZone`: the pipeline's
 scratchpad, or a native temp dir) allows before any rule, a secret-shaped name and a
 `protectedWrite` (`.git`, the Lua in `.agents`, zemi's own dirs, a local plugin) aside, and the
 file tools need no prior read there (`perm.InPad` is the narrower pad-only check the protected
@@ -126,8 +129,8 @@ into by writing the mode. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
 `Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), shell commands
-(`unsettled`), a `tool.<name>` a plugin registered (`Host.pluginTrusted` settles a plugin's own gated calls the same
-way), and MCP tools a server annotates
+(`unsettled`), a `tool.<name>` a plugin registered and declared `tool` (a plugin's own gated calls settle the same
+way, §9 of its manifest), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
 recipes it asks every time, with no always answer, except one whose creating write the user or
@@ -236,12 +239,15 @@ or switch the mode
 plugin code may add or drop a mode, the project refused, the builtin names (`auto`, `yolo`)
 are refused by name to everyone, and `mayReplace` refuses another plugin's name to a plugin;
 the gate lives at the namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
-Enabling a plugin is its own trust decision (`Host.pluginTrusted`): an ask no rule decided settles for its own
+A plugin declares what it calls in its manifest's `uses` (`internal/plugin`'s vocabulary,
+refused at load by name), and enabling it grants exactly that: `Host.pluginSettles` settles its
 `lua.model.ask`, `lua.classify.ask`, `lua.agent.send`, `lua.http.*`, `lua.fs.write` and its `lua.job.start` only
-when the job asked for the sandbox (`sandbox = true`: an unconfined one runs with the whole environment),
-a protected write (`protectedWhy`) and a secret shape aside, and `autoLocal` settles a `tool.<name>` whose tool
-a plugin registered. A rule of the user's still decides first - an ask rule or a `not_match` exclusion is the
-rule's ask, which `decidedBy` reports as `rule` - and a test zemi answers only its stubs.
+when the job asked for the sandbox (`job`; an unconfined one runs with the whole environment and needs
+`job.unsandboxed`), a protected write (`protectedWhy`), a secret shape and every write of a read-only run aside,
+and `autoLocal` settles a `tool.<name>` whose tool a plugin registered and declared `tool`. A call the
+manifest does not declare is refused, naming it, before any ask: a rule of the user's cannot widen it, while
+an ask rule or a `not_match` exclusion of a declared call stays the rule's ask, which `decidedBy` reports as
+`rule`. A test zemi answers only its stubs.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal
 (`Rule.Network` when the ask was a `network: true` command, so `SandboxFor` keeps the policy and

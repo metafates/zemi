@@ -1798,7 +1798,7 @@ zemi.classify = {}
 --- answers is reported back, and a strategy that fails does not settle
 --- anything for the next one.
 ---
---- A plugin's own call settles while it is enabled; project code raises. The
+--- A plugin's own call settles where its manifest declares `model`; project code raises. The
 --- provider's key is read in Go.
 ---
 --- ```lua
@@ -2303,8 +2303,8 @@ zemi.tool = {}
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
 --- `tool.<name>` with the name as the argument: auto mode settles it only
---- for a tool a plugin registered (the plugin is enabled, so it is trusted),
---- while a tool the user's or a project's config registered asks until they
+--- for a tool a plugin registered and its manifest declared `tool`, while a
+--- tool the user's or a project's config registered asks until they
 --- allow it, for the session at the prompt or for good with a user config rule
 --- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
 --- yolo allows it.
@@ -2405,8 +2405,9 @@ function zemi.tool.describe(name) end
 --- Writes reach only the launch directory (`ctx.cwd`, not
 --- `zemi.project.root()`: the dir a sandboxed command may write) and, for
 --- user config, `zemi.fs.data_dir`; user code needs a `lua.fs.write` allow
---- rule, while a plugin's own write settles while it is enabled, its own
---- code, a secret-shaped name and the other protected paths aside.
+--- rule, while a plugin's own write settles where its manifest declares
+--- `fs.write`, its own code, a secret-shaped name, the other protected paths
+--- and every write of a read-only run aside.
 ---@class zemi.fs
 zemi.fs = {}
 
@@ -2564,7 +2565,8 @@ function zemi.http.get(url, opts) end
 --- Child processes run in their own session and process group, with the
 --- project directory as their working directory. User and project code need
 --- `lua.job.start` allowed for the command line; a plugin's own job settles
---- while it is enabled only when it asks for the sandbox (`sandbox = true`).
+--- where its manifest declares `job`, or `job.unsandboxed` for one that does
+--- not ask for the sandbox (`sandbox = true`).
 --- Rules match the command line normalized like `tool.shell`
 --- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job

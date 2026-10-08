@@ -4,7 +4,7 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
 
 ```
 <name>/                  the plugin's name: lowercase letters, digits, "_", "-", starting with a letter or digit
-  .zemi/plugin.json      optional: what /plugins reports as its version and description
+  .zemi/plugin.json      optional: its version, description and what it uses (below)
   init.lua               runs as the `plugin` origin; line 1 "-- <what it does>" is its description when
                          the manifest has none
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
@@ -13,14 +13,28 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
   tests/<topic>.lua      its tests (Testing, below); shared code in tests/lib/
 ```
 
-`.zemi/plugin.json` is the manifest: `{ "version": "1.2.0", "description": "what it does, one line" }`, both fields optional. It marks the directory as a zemi plugin and is what `/plugins` and `zemi plugins` show; a plugin without one reports the checked-out `vX.Y.Z` tag (else the short commit) and `init.lua`'s first line, as it always has. Write one for a new plugin, and bump its `version` when the user asks for a release; what `install` and `update` follow is still the git tag a published plugin carries. The name is never in it: the directory is the plugin's name in the settings keys (`plugins.<name>.<key>`), the principal (`plugin:<name>`) and every verb. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too and asks first), each with the `origin` remote as its source; `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
+`.zemi/plugin.json` is the manifest: `{ "version": "1.2.0", "description": "what it does, one line", "uses": ["model", "http"] }`, every field optional. It marks the directory as a zemi plugin and is what `/plugins` and `zemi plugins` show; a plugin without one reports the checked-out `vX.Y.Z` tag (else the short commit) and `init.lua`'s first line, as it always has. Write one for a new plugin, and bump its `version` when the user asks for a release; what `install` and `update` follow is still the git tag a published plugin carries. The name is never in it: the directory is the plugin's name in the settings keys (`plugins.<name>.<key>`), the principal (`plugin:<name>`) and every verb. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too and asks first), each with the `origin` remote as its source; `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
+
+`uses` is what the plugin calls, and the user reads it before switching the plugin on: enabling a plugin grants exactly the names it declares and nothing else. A name outside this set refuses the plugin at load, with the valid ones in the error.
+
+| name | what it grants |
+| --- | --- |
+| `model` | `zemi.model.ask`, `zemi.classify.ask`: a model call, billed to the user |
+| `agent` | `zemi.agent.send`: text into the model's conversation |
+| `http` | `zemi.http.*`: a request to any URL |
+| `job` | `zemi.job.start` with `sandbox = true`: a command in the sandbox |
+| `job.unsandboxed` | a `zemi.job.start` without it: a command with the whole environment |
+| `fs.write` | a `zemi.fs` write |
+| `tool` | the model may call a tool the plugin registered without asking |
+
+Reading files needs no declaration, and neither does the plugin's own state or its settings.
 
 ## Plugin steps
 
 `/plugins new` and `/plugins modify` send you here, or the user asked for a plugin or a change to one. A plugin is checked by its tests, never by trying it in this session.
 
 1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a statusline widget, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` (id, region, priority) and `zemi.tool.list()`. If a setting, a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first (the prompt names its directory) and ask only if the request is unclear.
-2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, `.zemi/plugin.json` (`{"version": "0.1.0", "description": "<one line>"}`, the version the user sees in `/plugins`), a `README.md` naming its commands, keys and settings, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
+2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, `.zemi/plugin.json` (`{"version": "0.1.0", "description": "<one line>", "uses": [...]}`, the version the user sees in `/plugins` and the names it calls, `uses` above), a `README.md` naming its commands, keys and settings, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
 3. A widget or a key: read `ui.md` first (placement by priority, clicks, render rules). Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model, a permission rule); for what a widget's render gets, grep `@class zemi.WidgetCtx` in the types file and read that block.
 4. Run `<zemi> plugins test <name>` with the shell tool and fix until it passes, `<zemi>` being the path the zemi skill ends with ("This zemi runs from"): a bare `zemi` may be an older one on PATH. Name the plugin, not its path: with a sandbox, auto mode runs that without asking. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`, widget listings) unless the user asks, and write the tests even then.
 5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. Only this shows a clash with the user's own config (a key or an id they hold). Fix a `plugin <name>:` error and go back to 4.
@@ -33,6 +47,16 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
 ```lua
 -- the git branch in the statusline
 require("branch")
+```
+
+`.zemi/plugin.json`: the manifest, whose `uses` is what the plugin calls and what enabling it grants.
+
+```json
+{
+  "version": "0.1.0",
+  "description": "the git branch in the statusline",
+  "uses": ["job.unsandboxed"]
+}
 ```
 
 `lua/branch/init.lua`:
@@ -79,7 +103,7 @@ zemi.event.on("app.ready", function()
 end)
 ```
 
-The README lists its settings and what the user may add to their init.lua. A plugin's own calls need no rule - switching it on in `/plugins` is the consent - so say what it calls and what a rule can take back: a `deny`, or an `ask`, which raises the call the same way a refusal does, since Lua shows no prompt. That rule carries the plugin's principal, and only the user's init.lua writes one; you never add it yourself unless the user asks:
+The README lists its settings and what the user may add to their init.lua. A plugin's declared calls need no rule - the manifest is what the user consented to - so put what it calls in `uses` and say what a rule can take back: a `deny`, or an `ask`, which raises the call the same way a refusal does, since Lua shows no prompt. That rule carries the plugin's principal, and only the user's init.lua writes one; you never add it yourself unless the user asks:
 
 ```lua
 -- stop the plugin's git reads
@@ -116,7 +140,7 @@ enabled = false
 
 Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`, and a user or builtin one always wins, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Only it answers `require("<name>...")`, and another plugin gets its modules read-only.
 
-Permissions: switching a plugin on in `/plugins` is the user's consent to what it does, so its own gated calls - a model call (`zemi.model.ask`), a classifier call (`zemi.classify.ask`), a message to the agent (`zemi.agent.send`), an HTTP request, a job that asks for the sandbox (`sandbox = true`, the default being no) and a `zemi.fs` write - run with no rule, and so does the model's call of a tool it registered (`tool.<name>`). A job without `sandbox = true` still asks: it would run with the whole environment and read what the plugin's own jail keeps it from. A write that changes what a later boot runs still asks: the plugin's own code, another plugin's, `.git`, the Lua in `.agents` and zemi's own files, as does a secret-shaped path (`.env`, `*.pem`, `*.key`), read or written - unless the run hides nothing (`--unsafe`), where no such ask is made. A rule the user wrote still decides first, a `deny` refusing and an `ask` asking. Enabling grants nothing else: a provider, MCP server or language server stays the user's own line in init.lua. A plugin cannot edit the composer, change settings, the theme, the layout, the model or the mode, add allow rules, or read secret-shaped env vars: a key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua (under `--unsafe` a plugin reads them: that denylist is off).
+Permissions: the manifest declares what the plugin calls, and enabling it grants exactly that. A call the declaration covers runs with no rule (the whole set is the table above), and one it does not is refused, naming the line to add: `lua.http.get https://x: plugin jira declares no "http"; add "http" to uses in .zemi/plugin.json`. Never an ask: the manifest is the decision the user made, and a rule cannot widen it - an `allow` scoped to the plugin (`principal = "plugin:<name>"`) does nothing for an undeclared call, while a `deny` or an `ask` still narrows a declared one. The carve-outs stand: a write that changes what a later boot runs still asks (the plugin's own code, another plugin's, `.git`, the Lua in `.agents`, zemi's own files), as does a secret-shaped path (`.env`, `*.pem`, `*.key`), read or written, and so does every write of a read-only agent, whose run changes nothing. A read-only agent's call of a tool the plugin registered asks the same way. Under `--unsafe` no such ask is made: that run hides nothing. Enabling grants nothing else: a provider, MCP server or language server stays the user's own line in init.lua. A plugin cannot edit the composer, change settings, the theme, the layout, the model or the mode, add allow rules, or read secret-shaped env vars: a key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua (under `--unsafe` a plugin reads them: that denylist is off).
 
 What a plugin cannot do at all: register providers, MCP servers or language servers (they run unconfined or hold keys, so the README gives the user the `zemi.provider.add` or `zemi.mcp.add` line to paste), rewrite the conversation or the provider request, draw its own transcript rows or a panel, change the tool set per turn (a profile does it once), or replace a builtin tool (`zemi.tool.override` adds `pre` and `post` around one). Each would break the prompt cache, the conversation or the UI rules below.
 
@@ -124,7 +148,7 @@ What a plugin cannot do at all: register providers, MCP servers or language serv
 
 A plugin may add a permission mode, and a mode's `decide` is the one hook that answers what auto mode would otherwise ask - so a plugin can put a model between the ask and the user. `decide` runs as a task for at most 60 s, so it may wait on a classify call; unlike the mode's own `rules`, which a plugin may only make deny or ask like `zemi.permission.rule.add`, it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could. The user still picks the mode (`/mode`, `permissions.mode`): a plugin cannot switch one on, and cannot take a name another plugin or the user holds (`auto` and `yolo` are refused to everyone).
 
-A decision is not a sentence, so ask for one: `zemi.classify.ask` answers typed questions about a state, with a probability, and never leaves the caller parsing text. Give the model its own slot so a user who keeps a cheap one for this can say so - `zemi.model.add("classifier", { desc = "settles permission asks", classify = true })`, which follows `models.chat` until the user sets `models.classifier` from `/model`. `classify = true` is what makes it a classifier slot: `/model classifier` then offers a decisions model (a `system_one` provider's, which answers the question itself with real probabilities) beside the chat ones, and the slot asks through whichever the user picked. A slot added by a plugin disappears with it, the user's pick included.
+A decision is not a sentence, so ask for one: `zemi.classify.ask` answers typed questions about a state, with a probability, and never leaves the caller parsing text. It is a model call, so the manifest declares `model` (above). Give the model its own slot so a user who keeps a cheap one for this can say so - `zemi.model.add("classifier", { desc = "settles permission asks", classify = true })`, which follows `models.chat` until the user sets `models.classifier` from `/model`. `classify = true` is what makes it a classifier slot: `/model classifier` then offers a decisions model (a `system_one` provider's, which answers the question itself with real probabilities) beside the chat ones, and the slot asks through whichever the user picked. A slot added by a plugin disappears with it, the user's pick included.
 
 ```lua
 -- lua/<name>/init.lua: one classify call per ask auto did not settle
@@ -178,7 +202,7 @@ zemi.permission.mode.add("classify", {
 
 Say what the mode costs and does in the README: it is a model call per ask, billed to the user, and its allows of a call no rule may settle are in the transcript as a row naming the mode, with the session rules it writes listed in `/permissions`. Keep the state small (the preview of a write can be long) and ask one question per answer you need.
 
-The call settles on its own while the plugin is enabled: enabling a plugin is the user's consent to what it runs, so there is no rule to paste for it and a mode that answers is one that works. What keeps asking is anything the state is not: this call carries no path and no secret, so the carve-outs that keep a plugin's write to a protected file - its own code, `.git`, `.agents`, another plugin's tree - and its read of a secret-shaped file in the user's hands have nothing to bite on here. A rule the user wrote still reaches them: `zemi.permission.rule.add({ subject = "lua.classify.ask", pattern = "*", decision = "ask", principal = "plugin:<name>" })` hands every verdict back, and `deny` refuses them, so a plugin that wants to keep its mode's answers out of the user's way should offer that line in its README rather than need it.
+The call settles on its own: `uses` declaring `model` is the consent to it, so there is no rule to paste for it and a mode that answers is one that works. What keeps asking is anything the state is not: this call carries no path and no secret, so the carve-outs that keep a plugin's write to a protected file - its own code, `.git`, `.agents`, another plugin's tree - and its read of a secret-shaped file in the user's hands have nothing to bite on here. A rule the user wrote still reaches them: `zemi.permission.rule.add({ subject = "lua.classify.ask", pattern = "*", decision = "ask", principal = "plugin:<name>" })` hands every verdict back, and `deny` refuses them, so a plugin that wants to keep its mode's answers out of the user's way should offer that line in its README rather than need it.
 
 A failure is a state, not a crash: `zemi.classify.ask` returns `nil, err` when no strategy answered (a key not exported, a provider down, a model that cannot answer the question), so the plugin reports it in a `zemi.health.add` row and its mode leaves the ask to the user, so the user sees why the mode is quiet instead of finding out from a mode that never answers.
 
