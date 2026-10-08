@@ -1079,21 +1079,29 @@ func (a *App) Screenshot() string {
 	return b.String()
 }
 
-// dimRows repaints rows in the one Host:Dim style, as text that joins no
-// line. It copies each row: rows share slices with widget caches. Image
-// placeholders keep their color, which names the image.
-func dimRows(rows [][]hostapi.Segment) {
+// mapRows copies rows through f: rows share slices with widget caches. An
+// image placeholder keeps its color, which names the image.
+func mapRows(rows [][]hostapi.Segment, f func(hostapi.Segment) hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
-			// the edge fade stays under a modal, so the backdrop keeps its depth
-			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Fade: s.Fade}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
+				continue
 			}
+			out[j] = f(s)
 		}
 		rows[i] = out
 	}
+}
+
+// dimRows repaints rows in the one Host:Dim style, as text that joins no line.
+// A dim segment keeps the edge fade the row came with, so the backdrop under
+// a modal keeps its depth.
+func dimRows(rows [][]hostapi.Segment) {
+	mapRows(rows, func(s hostapi.Segment) hostapi.Segment {
+		return hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Fade: s.Fade}
+	})
 }
 
 // modalFade is how far the backdrop under a box sinks toward the canvas: its
@@ -1104,25 +1112,16 @@ const modalFade = 0.7
 // cell keeps its text, style and effect, so a spinner behind the box keeps
 // stepping, and nothing that acts or joins, so no backdrop row answers the
 // box's prompt, no backdrop line joins its border and no backdrop bar takes a
-// drag. It copies each row: rows share slices with widget caches. Image
-// placeholders keep their color, which names the image. A row a box drew on
-// its panel sinks to the canvas with the rest: the backdrop is one surface.
+// drag. A row a box drew on its panel sinks to the canvas with the rest: the
+// backdrop is one surface.
 func fadeRows(rows [][]hostapi.Segment) {
-	for i, r := range rows {
-		out := make([]hostapi.Segment, len(r))
-		for j, s := range r {
-			if strings.ContainsRune(s.Text, kitty.Placeholder) {
-				out[j] = s
-				continue
-			}
-			out[j] = hostapi.Segment{
-				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
-				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
-				Fill: s.Fill, Fade: max(s.Fade, modalFade),
-			}
+	mapRows(rows, func(s hostapi.Segment) hostapi.Segment {
+		return hostapi.Segment{
+			Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
+			NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
+			Fill: s.Fill, Fade: max(s.Fade, modalFade),
 		}
-		rows[i] = out
-	}
+	})
 }
 
 // floatPopup draws the open composer popup, the palette or the completion
