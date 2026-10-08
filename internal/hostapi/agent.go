@@ -1997,7 +1997,9 @@ func (h *Host) followRow(name, run string) map[string]any {
 
 func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
-	run, cur := "model ", h.roleModel("chat")
+	// a bare pick from the list /model opens writes the conversation's slot,
+	// so that is the row it marks
+	run, cur := "model ", h.roleModel(h.ConversationTarget())
 	switch name {
 	case "":
 		o.Items = []any{
@@ -2005,7 +2007,7 @@ func (h *Host) modelPicker(name string) Overlay {
 			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "run", "run": "model update"},
 		}
 	case "chat":
-		o.ID, o.Title = "model chat", "Model roles / chat"
+		o.ID, o.Title, cur = "model chat", "Model roles / chat", h.roleModel("chat")
 	default:
 		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str("models."+name)
 		head := h.followRow(name, run)
@@ -2092,43 +2094,46 @@ func (h *Host) OpenModelRoles() error {
 }
 
 // modelRoleItems is /model roles: the conversation's slot first, then the
-// roles, then the profiles. default is the conversation's own slot, so it is
-// never a second row, and neither is the profile row one shows.
+// roles, then the profiles. default and the shipped shape have no key of their
+// own, so row one is the chat slot for them, named for what the conversation
+// is; a profile row one shows is never repeated.
 func (h *Host) modelRoleItems() []any {
-	first, firstDesc := "chat", roles[0].Desc
+	slot := h.ConversationTarget()
+	first, firstDesc := slot, roles[0].Desc
 	if p, _ := h.resolveProfile(""); p != nil {
 		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
 	}
-	items := []any{h.modelSlotRow(first, first, firstDesc)}
+	items := []any{map[string]any{
+		"text": first, "desc": cmp.Or(h.roleModel(slot), "no model") + " · " + firstDesc,
+		"verb": "open", "run": "model " + slot,
+	}}
 	for _, r := range roles[1:] {
-		items = append(items, h.modelSlotRow(first, r.Name, r.Desc))
+		items = append(items, h.modelSlotRow(r.Name, r.Desc))
 	}
 	plain, profiles := h.registeredTargets()
-	rows := make([]any, 0, len(plain))
 	for _, t := range plain {
-		rows = append(rows, h.modelSlotRow(first, t.Name, t.Desc))
+		items = append(items, h.modelSlotRow(t.Name, t.Desc))
 	}
-	items = append(append(items, rows...), h.modelSlotRow(first, planner, h.profileSlotDesc(planner)))
+	if first != planner {
+		items = append(items, h.modelSlotRow(planner, h.profileSlotDesc(planner)))
+	}
 	for _, t := range profiles {
 		if t.Name != first {
-			items = append(items, h.modelSlotRow(first, t.Name, h.profileSlotDesc(t.Name)))
+			items = append(items, h.modelSlotRow(t.Name, h.profileSlotDesc(t.Name)))
 		}
 	}
 	return items
 }
 
-// modelSlotRow is one /model roles row. first is the slot row one already
-// shows: it is what the conversation runs on, so it carries no tag, and the
-// list never repeats it.
-func (h *Host) modelSlotRow(first, name, desc string) map[string]any {
+// modelSlotRow is one /model roles row: what /model <name> opens, and the tag
+// naming what a slot with no pick of its own falls back to.
+func (h *Host) modelSlotRow(name, desc string) map[string]any {
 	item := map[string]any{
 		"text": name, "desc": cmp.Or(h.roleModel(name), "no model") + " · " + desc,
 		"verb": "open", "run": "model " + name,
 	}
-	if name != first {
-		if tag := h.slotTag(name); tag != "" {
-			item["key"] = tag
-		}
+	if tag := h.slotTag(name); tag != "" {
+		item["key"] = tag
 	}
 	return item
 }
