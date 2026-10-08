@@ -188,7 +188,7 @@ So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Wa
 
 ## Developing one
 
-- Reads under `local/` need no approval. Writes ask the user, with no always answer and no mode but yolo settling them, since plugin code runs in every project; the exceptions are the plugin you created and the one `/plugins modify` sent you to change: once the user approved the write that created its directory, or sent you there, auto mode settles your later edits there until zemi exits (its `.git` aside), while any other plugin asks every time. Say in one message what you will write.
+- Reads under `local/` need no approval. Writes ask the user, with no always answer and no mode's rules settling them, since plugin code runs in every project (a mode whose `decide` answers does settle one); the exceptions are the plugin you created and the one `/plugins modify` sent you to change: once the user approved the write that created its directory, or sent you there, auto mode settles your later edits there until zemi exits (its `.git` aside), while any other plugin asks every time. Say in one message what you will write.
 - zemi reloads within a second of an edit once no turn runs, and the Lua tool reloads before its script. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
 - zemi writes the plugin's `.luarc.json` and `.emmyrc.json` (editor types, with this machine's
   paths, one per editor): never write them, and add both to `.gitignore` when publishing. With
