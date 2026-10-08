@@ -1969,9 +1969,9 @@ func strs[T ~string](vals []T) []string {
 
 // OpenModelPicker lists the registered models for a target, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
-// Name "" is /model, which sets chat under a row opening /model roles; "chat"
-// is the conversation's list; another target's list opens on a row leaving it
-// to its own model.
+// Name "" is /model and "chat" the model key's list, both of them the
+// conversation's: under a profile a pick writes its slot, else chat. Another
+// target's list opens on a row leaving it to its own model.
 func (h *Host) OpenModelPicker(name string) error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -1997,8 +1997,8 @@ func (h *Host) followRow(name, run string) map[string]any {
 
 func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
-	// a bare pick from the list /model opens writes the conversation's slot,
-	// so that is the row it marks
+	// a bare pick writes the conversation's slot, so that is the row the lists
+	// without a target of their own mark: /model and /model chat
 	run, cur := "model ", h.roleModel(h.ConversationTarget())
 	switch name {
 	case "":
@@ -2007,7 +2007,7 @@ func (h *Host) modelPicker(name string) Overlay {
 			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "run", "run": "model update"},
 		}
 	case "chat":
-		o.ID, o.Title, cur = "model chat", "Model roles / chat", h.roleModel("chat")
+		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
 		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str("models."+name)
 		head := h.followRow(name, run)

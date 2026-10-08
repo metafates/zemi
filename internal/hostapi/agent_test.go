@@ -1770,7 +1770,7 @@ func TestProfileSwitch(t *testing.T) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
 		}
 	}
-	if err := h.SetModel("chat a/main"); err != nil { // the chat slot, named explicitly
+	if err := h.SetModel("chat a/small"); err != nil { // the chat slot, named explicitly
 		t.Fatal(err)
 	}
 	if id := h.roleModel("cheap"); id != "a/main" {
@@ -1779,8 +1779,8 @@ func TestProfileSwitch(t *testing.T) {
 	for _, c := range []struct{ name, want string }{
 		{"onchat", "a/main · every tool"},
 		{"cheap", "a/main · every tool"},
-		{"planner", "a/main · read-only: plan and present for approval"},
-		{"default", "a/main · the shipped prompt and every tool"},
+		{"planner", "a/small · read-only: plan and present for approval"},
+		{"default", "a/small · the shipped prompt and every tool"},
 	} {
 		if got := h.profileDesc(c.name); got != c.want {
 			t.Errorf("%s desc %q, want %q", c.name, got, c.want)
@@ -1789,11 +1789,19 @@ func TestProfileSwitch(t *testing.T) {
 	if h.OpenProfilePicker() != nil || h.OpenModelPicker("chat") != nil {
 		t.Fatal("a picker did not open")
 	}
-	// the profile is cheap's, the chat role stays models.chat
-	for i, want := range []string{"cheap", "a/main"} {
+	// each picker marks what an enter there runs: the active profile, and the
+	// conversation's model for /model chat, which under a profile is cheap's
+	// slot and not models.chat
+	for i, want := range []struct{ id, run string }{
+		{"profile", "profile cheap"},
+		{"model chat", "model a/main"},
+	} {
 		o := ui.opened[len(ui.opened)-2+i] // after the /model refreshes the SetModel calls sent
-		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || !strings.HasSuffix(item["run"].(string), " "+want) {
-			t.Errorf("%s picker marks %v, want %s", o.ID, item, want)
+		if o.ID != want.id {
+			t.Fatalf("picker %d is %q, want %q", i, o.ID, want.id)
+		}
+		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || item["run"] != want.run {
+			t.Errorf("%s picker marks %v, want run %q", o.ID, item, want.run)
 		}
 	}
 }
