@@ -225,8 +225,8 @@ func TestQuestionLabelsChecked(t *testing.T) {
 		q    Question
 		want string
 	}{
-		{"a choice of one label", Question{Type: TypeChoice, Criteria: map[string]string{"only": "x"}}, "a choice question needs 2 to 26 labels"},
-		{"a score of one level", Question{Type: TypeScore, Levels: []string{"only"}}, "a score question needs 2 to 10 levels"},
+		{"a choice of one label", Question{Type: TypeChoice, Criteria: map[string]string{"only": "x"}}, "a choice question needs at least 2 labels, got 1"},
+		{"a score of one level", Question{Type: TypeScore, Levels: []string{"only"}}, "a score question needs at least 2 levels, got 1"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: map[string]Question{"q": c.q}, Chat: &chat})

@@ -222,18 +222,17 @@ func classifyQuestion(L *glua.LState, name string, tb *glua.LTable) classify.Que
 			}
 			q.Criteria[string(key)] = criteriaText(L, name, v)
 		})
-		if len(q.Criteria) < 2 {
-			L.RaiseError("zemi.classify.ask: question %s needs at least 2 labels", name)
-		}
 	case classify.TypeScore:
 		criteria.ForEach(func(_, v glua.LValue) {
 			q.Levels = append(q.Levels, criteriaText(L, name, v))
 		})
-		if len(q.Levels) < 2 {
-			L.RaiseError("zemi.classify.ask: question %s needs at least 2 levels", name)
-		}
 	default:
 		L.RaiseError("zemi.classify.ask: question %s has type %q; use bool, choice or score", name, q.Type)
+	}
+	// the same check a strategy runs, so a question is refused with one message
+	// wherever it is asked
+	if err := q.Check(); err != nil {
+		L.RaiseError("zemi.classify.ask: question %s: %v", name, err)
 	}
 	return q
 }

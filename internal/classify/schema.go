@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"charm.land/fantasy"
@@ -57,27 +56,22 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 
 // schema is the value a question's type asks for.
 func (q Question) schema() (fantasy.Schema, error) {
+	if err := q.Check(); err != nil {
+		return fantasy.Schema{}, err
+	}
 	switch q.Type {
 	case TypeBool:
 		return fantasy.Schema{Type: "boolean", Description: q.Instructions}, nil
-	case TypeChoice:
-		labels := q.labels()
-		if len(labels) < 2 {
-			return fantasy.Schema{}, fmt.Errorf("a choice question needs at least 2 labels, got %d", len(labels))
-		}
-		enum := make([]any, len(labels))
-		for i, l := range labels {
-			enum[i] = l
-		}
-		return fantasy.Schema{Type: "string", Enum: enum, Description: q.Instructions}, nil
 	case TypeScore:
-		if len(q.Levels) < 2 {
-			return fantasy.Schema{}, fmt.Errorf("a score question needs at least 2 levels, got %d", len(q.Levels))
-		}
 		high := q.max()
 		return fantasy.Schema{Type: "integer", Minimum: new(0.0), Maximum: &high, Description: q.Instructions}, nil
 	}
-	return fantasy.Schema{}, fmt.Errorf("unknown question type %q", q.Type)
+	labels := q.labels() // the only type left: Check ran
+	enum := make([]any, len(labels))
+	for i, l := range labels {
+		enum[i] = l
+	}
+	return fantasy.Schema{Type: "string", Enum: enum, Description: q.Instructions}, nil
 }
 
 // schemaAnswers checks one decoded value per question. A missing one, one of
@@ -113,9 +107,8 @@ func (q Question) answerValue(v any) (Answer, error) {
 		if !ok {
 			return Answer{}, fmt.Errorf("answered a %T, want a label", v)
 		}
-		labels := q.labels()
-		if i := slices.Index(labels, s); i < 0 {
-			return Answer{}, fmt.Errorf("answered %q, which is not one of %s", s, strings.Join(labels, ", "))
+		if err := q.checkChoice(s); err != nil {
+			return Answer{}, err
 		}
 		return Answer{Type: TypeChoice, Choice: s}, nil
 	case TypeScore:
@@ -123,8 +116,8 @@ func (q Question) answerValue(v any) (Answer, error) {
 		if !ok {
 			return Answer{}, fmt.Errorf("answered a %T, want a number", v)
 		}
-		if f < 0 || f > q.max() {
-			return Answer{}, fmt.Errorf("score %v is outside 0..%v", f, q.max())
+		if err := q.checkScore(f); err != nil {
+			return Answer{}, err
 		}
 		return Answer{Type: TypeScore, Score: &f}, nil
 	}

@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"charm.land/fantasy"
 )
@@ -59,6 +61,45 @@ func (q Question) labels() []string {
 
 // max is a score's highest level.
 func (q Question) max() float64 { return float64(len(q.Levels) - 1) }
+
+// Check is what a question needs before a strategy can answer it: two labels or
+// levels at least, and a type a strategy knows. Every caller runs it, so a
+// question is refused with one message wherever it is asked.
+func (q Question) Check() error {
+	switch q.Type {
+	case TypeBool:
+		return nil
+	case TypeChoice:
+		if n := len(q.Criteria); n < 2 {
+			return fmt.Errorf("a choice question needs at least 2 labels, got %d", n)
+		}
+	case TypeScore:
+		if n := len(q.Levels); n < 2 {
+			return fmt.Errorf("a score question needs at least 2 levels, got %d", n)
+		}
+	default:
+		return fmt.Errorf("unknown question type %q", q.Type)
+	}
+	return nil
+}
+
+// checkChoice and checkScore are an answer checked against its question: one of
+// a choice's labels, a score within its levels. Both strategies that answer
+// with a value written out check them the same way.
+func (q Question) checkChoice(c string) error {
+	labels := q.labels()
+	if !slices.Contains(labels, c) {
+		return fmt.Errorf("answered %q, which is not one of %s", c, strings.Join(labels, ", "))
+	}
+	return nil
+}
+
+func (q Question) checkScore(score float64) error {
+	if score < 0 || score > q.max() {
+		return fmt.Errorf("score %v is outside 0..%v", score, q.max())
+	}
+	return nil
+}
 
 // Answer is one question's answer, in the shape its type asks for: Value and
 // Probability for a bool, Choice and Probabilities for a choice, Score for a

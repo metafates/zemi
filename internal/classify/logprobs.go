@@ -58,24 +58,26 @@ func logprobsAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 
 // labelTokens is a question's answer labels and what each stands for: a bool's
 // true and false, a choice's labels in the order its criteria sort, or a
-// score's levels by their number.
+// score's levels by their number. The alphabets are also the caps: a label is
+// one token the provider answers with.
 func (q Question) labelTokens() (labels, keys []string, err error) {
+	if err := q.Check(); err != nil {
+		return nil, nil, err
+	}
 	switch q.Type {
 	case TypeBool:
 		return boolLabels, []string{"true", "false"}, nil
-	case TypeChoice:
-		keys = q.labels()
-		if len(keys) < 2 || len(keys) > len(choiceLabels) {
-			return nil, nil, fmt.Errorf("a choice question needs 2 to %d labels, got %d", len(choiceLabels), len(keys))
-		}
-		return choiceLabels[:len(keys)], keys, nil
 	case TypeScore:
-		if len(q.Levels) < 2 || len(q.Levels) > len(scoreLabels) {
-			return nil, nil, fmt.Errorf("a score question needs 2 to %d levels, got %d", len(scoreLabels), len(q.Levels))
+		if len(q.Levels) > len(scoreLabels) {
+			return nil, nil, fmt.Errorf("a score question takes at most %d levels, got %d", len(scoreLabels), len(q.Levels))
 		}
 		return scoreLabels[:len(q.Levels)], scoreLabels[:len(q.Levels)], nil
 	}
-	return nil, nil, fmt.Errorf("unknown question type %q", q.Type)
+	keys = q.labels() // the only type left: Check ran
+	if len(keys) > len(choiceLabels) {
+		return nil, nil, fmt.Errorf("a choice question takes at most %d labels, got %d", len(choiceLabels), len(keys))
+	}
+	return choiceLabels[:len(keys)], keys, nil
 }
 
 // logprobsAnswer is one question's call: the prompt asks for the label, and the
@@ -121,27 +123,15 @@ func (q Question) answerFromProbabilities(keys []string, probs []float64) (Answe
 			byLabel[k] = probs[i]
 		}
 		best := slices.Index(probs, slices.Max(probs))
-		return Answer{Type: TypeChoice, Choice: keys[best], Probabilities: byLabel, Confidence: softmaxConfidence(probs)}, nil
+		return Answer{Type: TypeChoice, Choice: keys[best], Probabilities: byLabel, Confidence: confidence(probs)}, nil
 	case TypeScore:
 		var score float64
 		for i, p := range probs {
 			score += float64(i) * p
 		}
-		return Answer{Type: TypeScore, Score: &score, Confidence: softmaxConfidence(probs)}, nil
+		return Answer{Type: TypeScore, Score: &score, Confidence: confidence(probs)}, nil
 	}
 	return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
-}
-
-// softmaxConfidence is how one-sided a label distribution is: 1 for a
-// unanimous answer, 0 for a tie.
-func softmaxConfidence(probs []float64) *float64 {
-	n := len(probs)
-	if n < 2 {
-		return nil
-	}
-	c := (float64(n)*slices.Max(probs) - 1) / float64(n-1)
-	c = min(1, max(0, c))
-	return &c
 }
 
 // labelProbabilities is the softmax over the log probabilities of the labels,

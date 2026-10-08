@@ -169,21 +169,20 @@ func (a protocolAnswer) answer(q Question) (Answer, error) {
 		if a.Type != string(TypeChoice) {
 			return Answer{}, fmt.Errorf("want a choice answer, got type %q", a.Type)
 		}
-		labels := q.labels()
-		if !slices.Contains(labels, a.Choice) {
-			return Answer{}, fmt.Errorf("answered %q, which is not one of %s", a.Choice, strings.Join(labels, ", "))
+		if err := q.checkChoice(a.Choice); err != nil {
+			return Answer{}, err
 		}
-		probs, err := probabilities(labels, a.Probabilities)
+		probs, err := probabilities(q.labels(), a.Probabilities)
 		if err != nil {
 			return Answer{}, err
 		}
-		return Answer{Type: TypeChoice, Choice: a.Choice, Probabilities: probs, Confidence: confidence(probs)}, nil
+		return Answer{Type: TypeChoice, Choice: a.Choice, Probabilities: probs, Confidence: confidence(slices.Collect(maps.Values(probs)))}, nil
 	case TypeScore:
 		if a.Type != string(TypeScore) || a.Score == nil {
 			return Answer{}, fmt.Errorf("want a score answer, got type %q", a.Type)
 		}
-		if *a.Score < 0 || *a.Score > q.max() {
-			return Answer{}, fmt.Errorf("score %v is outside 0..%v", *a.Score, q.max())
+		if err := q.checkScore(*a.Score); err != nil {
+			return Answer{}, err
 		}
 		if a.Confidence != nil {
 			c, err := probability(*a.Confidence)
@@ -230,14 +229,14 @@ func probability(p float64) (float64, error) {
 }
 
 // confidence is how one-sided a distribution is: 1 for a unanimous answer, 0
-// for a tie over n labels, absent when nothing was answered with probabilities.
-func confidence(probs map[string]float64) *float64 {
+// for a tie over n labels, absent when fewer than two answered with a
+// probability.
+func confidence(probs []float64) *float64 {
 	n := len(probs)
 	if n < 2 {
 		return nil
 	}
-	peak := slices.Max(slices.Collect(maps.Values(probs)))
-	c := (float64(n)*peak - 1) / float64(n-1)
+	c := (float64(n)*slices.Max(probs) - 1) / float64(n-1)
 	c = min(1, max(0, c))
 	return &c
 }

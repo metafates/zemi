@@ -248,7 +248,7 @@ func TestClassifyAskErrors(t *testing.T) {
 		{"no criteria", `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x" } } })`, `question q needs criteria: { ["true"] = "what true means"`},
 		{"an unknown type", `zemi.classify.ask({ state = {}, questions = { q = { type = "maybe", instructions = "x", criteria = { a = "b" } } } })`, `question q has type "maybe"`},
 		{"an answer that is not true or false", `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { sure = "y" } } } })`, `question q is answered "true" or "false", not "sure"`},
-		{"one label", `zemi.classify.ask({ state = {}, questions = { q = { type = "choice", instructions = "x", criteria = { a = "b" } } } })`, "question q needs at least 2 labels"},
+		{"one label", `zemi.classify.ask({ state = {}, questions = { q = { type = "choice", instructions = "x", criteria = { a = "b" } } } })`, "question q: a choice question needs at least 2 labels, got 1"},
 	} {
 		if err := r.ExecuteChunk(t.Context(), c.src, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
