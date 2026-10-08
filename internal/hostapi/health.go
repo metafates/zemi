@@ -295,7 +295,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		m := h.roleModel(name)
 		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
-			if row := h.modelCheck(name+" model", m); row.Level != HealthOK {
+			if row := h.modelCheck(name+" model", m, h.classifies(name)); row.Level != HealthOK {
 				out = append(out, row)
 			}
 		}
@@ -518,13 +518,19 @@ func (h *Host) goHealthRows() []HealthRow {
 
 // modelRow is the conversation's model check. A reload toasts it, so a
 // models.chat nobody can run is not silent.
-func (h *Host) modelRow() HealthRow { return h.modelCheck("model", h.sessionModelID()) }
+func (h *Host) modelRow() HealthRow { return h.modelCheck("model", h.sessionModelID(), false) }
 
 // modelCheck is what a call on id would fail with, or an id the provider's
-// list does not carry (a typo runs until the provider refuses it).
-func (h *Host) modelCheck(name, id string) HealthRow {
+// list does not carry (a typo runs until the provider refuses it). classify is
+// a classify slot, the one kind a decisions model is for: it checks that a
+// call reaches the model, not that a turn could run on it.
+func (h *Host) modelCheck(name, id string, classify bool) HealthRow {
+	err := h.modelErr(id)
+	if classify {
+		err = h.modelRunErr(id)
+	}
 	_, known := h.modelSpec(id)
-	switch err := h.modelErr(id); {
+	switch {
 	case err != nil:
 		return HealthRow{Level: HealthError, Name: name, Detail: err.Error()}
 	case !known:

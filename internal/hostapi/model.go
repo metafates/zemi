@@ -58,10 +58,23 @@ func (h *Host) NoModelHint() string {
 	return h.addProvider()
 }
 
-// modelErr says why id cannot run, before a provider is built: an SDK
+// modelErr says why id cannot run a turn, before a provider is built: an SDK
 // would otherwise fail with its own words ("run ant auth login"). /health
 // and a failed send share it.
 func (h *Host) modelErr(id string) error {
+	if err := h.modelRunErr(id); err != nil {
+		return err
+	}
+	if _, _, decisions := h.Providers.Decisions(id); decisions {
+		return fmt.Errorf("%s is a decisions model: zemi.classify.ask judges with it, and no turn runs on one", id)
+	}
+	return nil
+}
+
+// modelRunErr says why no call reaches id at all: nothing named, a provider
+// nobody registered, or the key one needs. A decisions model passes here: it
+// is what a classify call runs on.
+func (h *Host) modelRunErr(id string) error {
 	if id == "" {
 		hint := h.NoModelHint()
 		if len(h.Providers.Missing()) > 1 && h.hooks() != nil {
@@ -78,9 +91,6 @@ func (h *Host) modelErr(id string) error {
 			return fmt.Errorf("builtin provider %q needs its key: export %s and start zemi again", prov, missing[i].Env)
 		}
 		return fmt.Errorf("provider %q is not registered: %s", prov, h.addProvider())
-	}
-	if _, _, decisions := h.Providers.Decisions(id); decisions {
-		return fmt.Errorf("%s is a decisions model: zemi.classify.ask judges with it, and no turn runs on one", id)
 	}
 	// openai_compat may point at a local server that needs none
 	if spec.Kind != agent.KindOpenAICompat && !h.Providers.HasKey(prov) {

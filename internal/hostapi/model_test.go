@@ -242,14 +242,21 @@ func TestModelTargetBuiltinKey(t *testing.T) {
 }
 
 // TestModelTargetHealth: /health checks every target, so an id the provider
-// does not list is named there rather than failing the slot's first run.
+// does not list is named there rather than failing the slot's first run. A
+// classify slot holds a decisions model by design, which is no turn.
 func TestModelTargetHealth(t *testing.T) {
 	h, r := newTestHostDB(t)
-	runUser(t, r, rolesProvider+`zemi.model.add("clf", { desc = "the classifier", model = "a/nope" })`)
+	runUser(t, r, rolesProvider+
+		`zemi.model.add("clf", { desc = "the classifier", model = "a/nope" })`+
+		`zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true } } })`+
+		`zemi.model.add("judge", { desc = "settles asks", classify = true, model = "jev/m" })`)
 	rows := h.HealthRows()
 	i := slices.IndexFunc(rows, func(r HealthRow) bool { return r.Name == "clf model" })
 	if i < 0 || rows[i].Level != HealthWarn || !strings.HasPrefix(rows[i].Detail, "a/nope: not in the provider's models list") {
 		t.Fatalf("clf row in %+v", rows)
+	}
+	if j := slices.IndexFunc(rows, func(r HealthRow) bool { return r.Name == "judge model" }); j >= 0 {
+		t.Fatalf("a classify slot's decisions model is checked as a chat one: %+v", rows[j])
 	}
 }
 
