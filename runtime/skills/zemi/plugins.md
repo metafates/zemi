@@ -175,19 +175,9 @@ zemi.permission.mode.add("classify", {
 
 Say what the mode costs and does in the README: it is a model call per ask, billed to the user, and its allows of a call no rule may settle are in the transcript as a row naming the mode, with the session rules it writes listed in `/permissions`. Keep the state small (the preview of a write can be long) and ask one question per answer you need.
 
-That call is gated like any other model call a plugin makes, and the plugin cannot allow itself: without the user's rule the raise leaves the ask to the user, so the mode loads and does nothing. The rule matches the model id the slot resolves to, which moves with the user's pick, and names the principal, so `pattern = "*"` is the one to paste:
+The call settles on its own while the plugin is enabled: enabling a plugin is the user's consent to what it runs, so there is no rule to paste for it and a mode that answers is one that works. What keeps asking is anything the state is not: this call carries no path and no secret, so the carve-outs that keep a plugin's write to a protected file - its own code, `.git`, `.agents`, another plugin's tree - and its read of a secret-shaped file in the user's hands have nothing to bite on here. A rule the user wrote still reaches them: `zemi.permission.rule.add({ subject = "lua.classify.ask", pattern = "*", decision = "ask", principal = "plugin:<name>" })` hands every verdict back, and `deny` refuses them, so a plugin that wants to keep its mode's answers out of the user's way should offer that line in its README rather than need it.
 
-```lua
-zemi.permission.rule.add({
-	subject = "lua.classify.ask",
-	pattern = "*",
-	decision = "allow",
-	match = "anthropic/claude-haiku-4-5",
-	principal = "plugin:<name>",
-})
-```
-
-Report it the way any gated call is reported: a missing rule is a state, not a crash, so the plugin keeps the raise in a local (the way the branch example above keeps `missing`) and a `zemi.health.add` row names the line to paste, so the user sees why the mode is quiet instead of finding out from a mode that never answers.
+A failure is a state, not a crash: `zemi.classify.ask` returns `nil, err` when no strategy answered (a key not exported, a provider down, a model that cannot answer the question), so the plugin reports it in a `zemi.health.add` row and its mode leaves the ask to the user, so the user sees why the mode is quiet instead of finding out from a mode that never answers.
 
 ## Style
 
