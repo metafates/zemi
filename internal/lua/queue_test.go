@@ -31,7 +31,7 @@ func TestRetiredGenerationFrames(t *testing.T) {
 	r := newTestRuntime(t)
 	oldL := r.current().L
 	stale := r.PushFrame(oldL, OriginProject, "old.lua")
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+	if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
 	L := r.current().L
@@ -75,7 +75,7 @@ func TestQueuePriorityOrder(t *testing.T) {
 			return nil, nil
 		}
 		var wg sync.WaitGroup
-		wg.Go(func() { _, _ = r.Do(context.Background(), ClassIO, 0, 0, sleepDo) })
+		wg.Go(func() { _, _ = r.Do(t.Context(), ClassIO, 0, 0, sleepDo) })
 
 		select {
 		case <-started:
@@ -83,9 +83,9 @@ func TestQueuePriorityOrder(t *testing.T) {
 			t.Fatal("sleeper never started")
 		}
 		// Enqueued in reverse priority order while the interpreter is busy.
-		wg.Go(func() { _, _ = r.Do(context.Background(), ClassAgent, 0, 0, record("agent")) })
-		wg.Go(func() { _, _ = r.Do(context.Background(), ClassIO, 0, 0, record("io")) })
-		wg.Go(func() { _, _ = r.Do(context.Background(), ClassUI, 0, 0, record("ui")) })
+		wg.Go(func() { _, _ = r.Do(t.Context(), ClassAgent, 0, 0, record("agent")) })
+		wg.Go(func() { _, _ = r.Do(t.Context(), ClassIO, 0, 0, record("io")) })
+		wg.Go(func() { _, _ = r.Do(t.Context(), ClassUI, 0, 0, record("ui")) })
 
 		done := make(chan struct{})
 		go func() { wg.Wait(); close(done) }()
@@ -150,12 +150,12 @@ func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
 		spin = g.L.Get(-1)
 		return err
 	}}
-	if err := r.Boot(context.Background(), []BootStep{boot}); err != nil {
+	if err := r.Boot(t.Context(), []BootStep{boot}); err != nil {
 		t.Fatal(err)
 	}
 	run := func(ceiling time.Duration, src string, arg glua.LValue) (glua.LValue, error) {
 		var out glua.LValue
-		_, err := r.Do(context.Background(), ClassIO, ceiling, 2*time.Second, func(L *glua.LState) ([]any, error) {
+		_, err := r.Do(t.Context(), ClassIO, ceiling, 2*time.Second, func(L *glua.LState) ([]any, error) {
 			fn, err := L.LoadString(src)
 			if err != nil {
 				return nil, err
@@ -193,7 +193,7 @@ func TestQueueWatchdogAbandonHot(t *testing.T) {
 		defer close(release)
 
 		start := time.Now()
-		_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+		_, err := r.Do(t.Context(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
 			func(L *glua.LState) ([]any, error) {
 				<-release
 				return nil, nil
@@ -208,18 +208,18 @@ func TestQueueWatchdogAbandonHot(t *testing.T) {
 		if !r.IsHot() {
 			t.Fatal("runtime not hot after abandon")
 		}
-		if _, err := r.Do(context.Background(), ClassUI, 0, 0,
+		if _, err := r.Do(t.Context(), ClassUI, 0, 0,
 			func(L *glua.LState) ([]any, error) { return nil, nil }); !errors.Is(err, ErrHot) {
 			t.Fatalf("expected ErrHot while hot, got %v", err)
 		}
 
-		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 			t.Fatalf("ForceReload: %v", err)
 		}
 		if r.IsHot() {
 			t.Fatal("runtime still hot after ForceReload")
 		}
-		vals, err := r.Do(context.Background(), ClassUI, 0, 0,
+		vals, err := r.Do(t.Context(), ClassUI, 0, 0,
 			func(L *glua.LState) ([]any, error) {
 				return []any{L.GetGlobal("bootmark") == glua.LNil}, nil
 			})
@@ -242,7 +242,7 @@ func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
 		defer close(release)
 		errc := make(chan error, 1)
 		go func() {
-			_, err := r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+			_, err := r.Do(t.Context(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
 				func(L *glua.LState) ([]any, error) {
 					close(started)
 					<-release
@@ -251,7 +251,7 @@ func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
 			errc <- err
 		}()
 		<-started
-		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 			t.Fatalf("ForceReload: %v", err)
 		}
 		if err := <-errc; !errors.Is(err, ErrAbandoned) {
@@ -275,7 +275,7 @@ func TestQueuePendingDroppedOnReload(t *testing.T) {
 		started := make(chan struct{})
 		running := make(chan error, 1)
 		go func() {
-			_, err := r.Do(context.Background(), ClassIO, 10*time.Second, time.Second,
+			_, err := r.Do(t.Context(), ClassIO, 10*time.Second, time.Second,
 				func(L *glua.LState) ([]any, error) {
 					close(started)
 					<-L.Context().Done()
@@ -287,13 +287,13 @@ func TestQueuePendingDroppedOnReload(t *testing.T) {
 
 		pending := make(chan error, 1)
 		go func() {
-			_, err := r.Do(context.Background(), ClassUI, 0, 0,
+			_, err := r.Do(t.Context(), ClassUI, 0, 0,
 				func(L *glua.LState) ([]any, error) { return nil, nil })
 			pending <- err
 		}()
 		synctest.Wait() // it waits in the queue
 
-		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+		if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 			t.Fatalf("ForceReload: %v", err)
 		}
 		if err := <-pending; !errors.Is(err, ErrReloaded) {
@@ -310,7 +310,7 @@ func TestQueuePendingDroppedOnReload(t *testing.T) {
 func TestChunkAfterReload(t *testing.T) {
 	r := newTestRuntime(t)
 	old := r.current().L
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+	if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
 	if err := r.runChunk(t.Context(), old, "return 1", "late.lua", OriginUser); !errors.Is(err, ErrReloaded) {
@@ -334,11 +334,11 @@ func TestQueueForceReloadReplays(t *testing.T) {
 		},
 	}}
 
-	if err := r.Boot(context.Background(), steps); err != nil {
+	if err := r.Boot(t.Context(), steps); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	readMark := func() int64 {
-		vals, err := r.Do(context.Background(), ClassUI, 0, 0,
+		vals, err := r.Do(t.Context(), ClassUI, 0, 0,
 			func(L *glua.LState) ([]any, error) {
 				n, _ := L.GetGlobal("genmark").(glua.LNumber)
 				return []any{int64(n)}, nil
@@ -353,7 +353,7 @@ func TestQueueForceReloadReplays(t *testing.T) {
 	}
 	first := readMark()
 
-	if err := r.ForceReload(context.Background(), steps, func() { purgeCount++ }); err != nil {
+	if err := r.ForceReload(t.Context(), steps, func() { purgeCount++ }); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
 	if boots != 2 {
@@ -378,7 +378,7 @@ func TestQueueHotAnswersQueued(t *testing.T) {
 		started, release := make(chan struct{}), make(chan struct{})
 		defer close(release)
 		go func() {
-			_, _ = r.Do(context.Background(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
+			_, _ = r.Do(t.Context(), ClassIO, 50*time.Millisecond, 50*time.Millisecond,
 				func(L *glua.LState) ([]any, error) {
 					close(started)
 					<-release
@@ -393,7 +393,7 @@ func TestQueueHotAnswersQueued(t *testing.T) {
 
 		queued := make(chan error, 1)
 		go func() {
-			_, err := r.Do(context.Background(), ClassUI, 0, 0,
+			_, err := r.Do(t.Context(), ClassUI, 0, 0,
 				func(L *glua.LState) ([]any, error) { return nil, nil })
 			queued <- err
 		}()
@@ -421,14 +421,14 @@ func TestQueueIntegrityGoesHot(t *testing.T) {
 		ns.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
 		return g.SB.RegisterNamespace("zemi.ui", ns, nil)
 	}}
-	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
+	if err := r.Boot(t.Context(), []BootStep{step}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	noop := func(L *glua.LState) ([]any, error) { return nil, nil }
-	if _, err := r.Do(context.Background(), ClassUI, 0, 0, noop); err != nil {
+	if _, err := r.Do(t.Context(), ClassUI, 0, 0, noop); err != nil {
 		t.Fatalf("clean request: %v", err)
 	}
-	_, err := r.Do(context.Background(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+	_, err := r.Do(t.Context(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		ns.RawSetString("sneaked", glua.LTrue) // a Go-side bypass of the freeze
 		return nil, nil
 	})
@@ -451,19 +451,19 @@ func TestEval(t *testing.T) {
 		tbl.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
 		return g.SB.RegisterNamespace("zemi.ui", tbl, nil)
 	}}
-	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
+	if err := r.Boot(t.Context(), []BootStep{step}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	discard := func(string) {}
-	if _, err := r.Eval(context.Background(), `zemi = { ui = false }`, "lua-tool", OriginProject, time.Second, discard); err == nil {
+	if _, err := r.Eval(t.Context(), `zemi = { ui = false }`, "lua-tool", OriginProject, time.Second, discard); err == nil {
 		t.Fatal("assignment to the protected zemi global was accepted")
 	}
-	vals, err := r.Eval(context.Background(), `x = 5 return x`, "lua-tool", OriginProject, time.Second, discard)
+	vals, err := r.Eval(t.Context(), `x = 5 return x`, "lua-tool", OriginProject, time.Second, discard)
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("ordinary global in the wrapper env: %v (%v)", err, vals)
 	}
 	cyclic := `local t = {} t.t = t return setmetatable(t, {__tostring = function() error("boom") end})`
-	if vals, err := r.Eval(context.Background(), cyclic, "lua-tool", OriginProject, time.Second, discard); err != nil || len(vals) != 1 {
+	if vals, err := r.Eval(t.Context(), cyclic, "lua-tool", OriginProject, time.Second, discard); err != nil || len(vals) != 1 {
 		t.Fatalf("unmarshalable result with a raising __tostring: %v (%v)", err, vals)
 	}
 	// a one-chunk error is its message; a nested call keeps the frame that
@@ -473,7 +473,7 @@ func TestEval(t *testing.T) {
 		{"local function f() error('boom') end\nf()", "in function 'f'", "@user:"},
 		{"x = = 1", "lua-tool:1: ", "@user:"},
 	} {
-		_, err := r.Eval(context.Background(), c.src, "lua-tool", OriginUser, time.Second, discard)
+		_, err := r.Eval(t.Context(), c.src, "lua-tool", OriginUser, time.Second, discard)
 		if err == nil || !strings.Contains(err.Error(), c.want) || c.not != "" && strings.Contains(err.Error(), c.not) {
 			t.Errorf("%q: %v", c.src, err)
 		}
@@ -491,10 +491,10 @@ func TestRaiseEscapingRequestUnwinds(t *testing.T) {
 		L.Call(0, 0)
 		return nil, nil
 	}
-	if _, err := r.Do(context.Background(), ClassIO, 0, 0, raise); err == nil || !strings.Contains(err.Error(), "escaped") {
+	if _, err := r.Do(t.Context(), ClassIO, 0, 0, raise); err == nil || !strings.Contains(err.Error(), "escaped") {
 		t.Fatalf("escaping raise: %v", err)
 	}
-	_, _ = r.Do(context.Background(), ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	_, _ = r.Do(t.Context(), ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
 		if _, deeper := L.GetStack(1); deeper || L.GetTop() != 0 {
 			t.Errorf("next request starts on a dirty state: frames below %v, top %d", deeper, L.GetTop())
 		}
@@ -505,7 +505,7 @@ func TestRaiseEscapingRequestUnwinds(t *testing.T) {
 // TestQueueDoBeforeBoot fails fast instead of panicking.
 func TestQueueDoBeforeBoot(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})
-	_, err := r.Do(context.Background(), ClassUI, 0, 0,
+	_, err := r.Do(t.Context(), ClassUI, 0, 0,
 		func(L *glua.LState) ([]any, error) { return nil, nil })
 	if err == nil || err.Error() != "zemi: lua runtime not booted" {
 		t.Fatalf("expected not-booted error, got %v", err)
@@ -524,10 +524,10 @@ func TestReloadWaitsForBoot(t *testing.T) {
 		<-release
 		return nil
 	}}
-	go func() { booted <- r.Boot(context.Background(), []BootStep{slow}) }()
+	go func() { booted <- r.Boot(t.Context(), []BootStep{slow}) }()
 	<-started
 	reloaded := make(chan error, 1)
-	go func() { reloaded <- r.ForceReload(context.Background(), nil, nil) }()
+	go func() { reloaded <- r.ForceReload(t.Context(), nil, nil) }()
 	select {
 	case <-reloaded:
 		t.Fatal("reload ran while the first boot was still running")
@@ -547,12 +547,12 @@ func TestReloadWaitsForBoot(t *testing.T) {
 func TestQueueDoAfterFailedBoot(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})
 	fail := BootStep{Name: "fail", Run: func(context.Context, *Runtime, *Generation) error { return errors.New("bad config") }}
-	if err := r.Boot(context.Background(), []BootStep{fail}); err == nil {
+	if err := r.Boot(t.Context(), []BootStep{fail}); err == nil {
 		t.Fatal("boot with a failing step succeeded")
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := r.Do(context.Background(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
+		_, err := r.Do(t.Context(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
 		done <- err
 	}()
 	select {
@@ -563,10 +563,10 @@ func TestQueueDoAfterFailedBoot(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("request after a failed boot never answered")
 	}
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+	if err := r.ForceReload(t.Context(), nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Do(context.Background(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
+	if _, err := r.Do(t.Context(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
 		t.Fatalf("request after a good reload: %v", err)
 	}
 }
@@ -580,15 +580,15 @@ func TestReloadWindowReportsReloaded(t *testing.T) {
 	var during error
 	r := newTestRuntime(t)
 	purge := func() {
-		_, during = r.Do(context.Background(), ClassUI, 0, 0, noop)
+		_, during = r.Do(t.Context(), ClassUI, 0, 0, noop)
 	}
-	if err := r.ForceReload(context.Background(), nil, purge); err != nil {
+	if err := r.ForceReload(t.Context(), nil, purge); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
 	if !errors.Is(during, ErrReloaded) {
 		t.Fatalf("during the purge: %v, want ErrReloaded", during)
 	}
-	if _, err := NewRuntime(RuntimeOptions{}).Do(context.Background(), ClassUI, 0, 0, noop); errors.Is(err, ErrReloaded) {
+	if _, err := NewRuntime(RuntimeOptions{}).Do(t.Context(), ClassUI, 0, 0, noop); errors.Is(err, ErrReloaded) {
 		t.Fatalf("a runtime that never booted reports a reload: %v", err)
 	}
 }
