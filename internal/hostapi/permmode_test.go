@@ -1029,7 +1029,9 @@ func TestModeDecideScopes(t *testing.T) {
 		then    func(t *testing.T)
 	}{
 		{
-			"a session scope writes the always rules", tools.Request{Subject: perm.SubjectShell, Arg: "go test ./..."}, true, "mode:judge", "",
+			"a session scope writes the always rules",
+			tools.Request{Subject: perm.SubjectShell, Arg: "go test ./..."},
+			true, "mode:judge", "",
 			func(t *testing.T) {
 				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("go test -run X ./pkg"), perm.PrincipalModel).Decision; got != perm.Allow {
 					t.Errorf("go test rule: %v", got)
@@ -1037,7 +1039,9 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a project scope writes the project file", tools.Request{Subject: perm.SubjectShell, Arg: "cargo build"}, true, "mode:judge", "",
+			"a project scope writes the project file",
+			tools.Request{Subject: perm.SubjectShell, Arg: "cargo build"},
+			true, "mode:judge", "",
 			func(t *testing.T) {
 				b, err := os.ReadFile(h.projectPermissionsPath())
 				if err != nil || !strings.Contains(string(b), "cargo build") {
@@ -1046,7 +1050,9 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a scope not on offer narrows", tools.Request{Subject: perm.SubjectRead, Arg: read}, true, "mode:judge", "",
+			"a scope not on offer narrows",
+			tools.Request{Subject: perm.SubjectRead, Arg: read},
+			true, "mode:judge", "",
 			func(t *testing.T) {
 				// "wider" needs a repository above the file: the directory rule stands
 				abs := perm.RealPath(read)
@@ -1056,7 +1062,9 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a rule's deny outranks the decide", tools.Request{Subject: perm.SubjectShell, Arg: "git push origin main"}, false, "mode:judge", "",
+			"a rule's deny outranks the decide",
+			tools.Request{Subject: perm.SubjectShell, Arg: "git push origin main"},
+			false, "mode:judge", "",
 			func(t *testing.T) {
 				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("git push origin main"), perm.PrincipalModel).Decision; got == perm.Allow {
 					t.Error("the deny rule's answer was widened")
@@ -1066,15 +1074,21 @@ func TestModeDecideScopes(t *testing.T) {
 		{
 			// the payload's own fields reach the decide: what no rule settles and
 			// what an allow could take here
-			"a protected write", tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false, "mode:judge",
+			"a protected write",
+			tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")},
+			false, "mode:judge",
 			"protected: this changes .git, which decides what git runs", nil,
 		},
 		{
-			"and the scopes on offer", tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(h.Dirs.ProjectDir, "advise.go")}, false, "mode:judge",
+			"and the scopes on offer",
+			tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(h.Dirs.ProjectDir, "advise.go")},
+			false, "mode:judge",
 			"options: once,session", nil,
 		},
 		{
-			"a decide's own reason reaches whoever reads the denial", tools.Request{Subject: perm.SubjectShell, Arg: "rm -rf /"}, false, "mode:judge",
+			"a decide's own reason reaches whoever reads the denial",
+			tools.Request{Subject: perm.SubjectShell, Arg: "rm -rf /"},
+			false, "mode:judge",
 			"that deletes the machine", nil,
 		},
 	} {

@@ -314,7 +314,9 @@ func (h *Host) dropModePick(def PermModeDef) {
 	// live, so what config wrote is what decides
 	base, _ := h.cfgBase("permissions.mode")
 	if live, _ := h.Settings.Get("permissions.mode"); live == any(pick) && live != base {
-		h.Settings.SetQuiet("permissions.mode", h.Settings.Default("permissions.mode"))
+		if _, err := h.Settings.SetQuiet("permissions.mode", h.Settings.Default("permissions.mode")); err != nil {
+			h.Log.Warn("could not reset a dropped mode pick", "origin", "config", "path", "permissions.mode", "error", err)
+		}
 	}
 }
 

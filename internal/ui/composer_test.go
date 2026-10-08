@@ -181,12 +181,18 @@ func TestComposerHiddenRows(t *testing.T) {
 		cursor int
 		want   []float64 // the fade of the rows shown, top down
 	}{
-		{"at the head only the rows below fade", 0,
-			[]float64{0, 0, 0, 0, 0, 0, 1.0 / 3, 2.0 / 3}},
-		{"at the tail only the rows above fade", 58,
-			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 0}},
-		{"a cursor with a row below it is off the ramp", 40,
-			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 2.0 / 3}},
+		{
+			"at the head only the rows below fade", 0,
+			[]float64{0, 0, 0, 0, 0, 0, 1.0 / 3, 2.0 / 3},
+		},
+		{
+			"at the tail only the rows above fade", 58,
+			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			"a cursor with a row below it is off the ramp", 40,
+			[]float64{2.0 / 3, 1.0 / 3, 0, 0, 0, 0, 0, 2.0 / 3},
+		},
 	} {
 		app.composer.cursor = c.cursor
 		rows := app.composerRows(40, "")

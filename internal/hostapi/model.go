@@ -368,8 +368,8 @@ func (h *Host) modelRef(ref string) string {
 // refuseTargetOrigin raises for project code: a model slot is registered by
 // config or by a plugin that runs a model of its own, not by a project.
 func (h *Host) refuseTargetOrigin(L *glua.LState, what string) {
-	switch h.RT.CurrentOrigin(L) {
-	case lua.OriginUser, lua.OriginBuiltin, lua.OriginPlugin:
+	o := h.RT.CurrentOrigin(L)
+	if o == lua.OriginUser || o == lua.OriginBuiltin || o == lua.OriginPlugin {
 		return
 	}
 	L.RaiseError("zemi.%s: project code registers no model target", what)
