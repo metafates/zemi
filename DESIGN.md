@@ -2665,7 +2665,8 @@ rides the `memories.md` line and its ledger entries.
   request does not offer narrowing to the closest one below it, and a mode
   below user origin narrowing `project` to `session`, since the durable
   project file is the user's own grant, as an allow rule is). It runs as a
-  task (§4) for at most 60s, long enough for a model call of its own, and,
+  task (§4) for at most 60s, long enough for a model call of its own
+  (`zemi.classify.ask`, §6.3, the one that answers with a probability), and,
   unlike the mode's rules, it may settle what only yolo or the user could - an
   unsandboxed or network request, an ask a rule asked for, a protected write -
   since a human could; each such allow appends a notice row saying so.
