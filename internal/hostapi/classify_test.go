@@ -353,3 +353,31 @@ end)`), 0o600); err != nil {
 		t.Fatalf("the plugin test failed: %v", lines)
 	}
 }
+
+// TestLogprobKinds: only the kinds whose provider reports token probabilities
+// take a readout request. The rest go straight to the schema strategy, instead
+// of asking for probabilities that never come and re-sending the state at every
+// depth.
+func TestLogprobKinds(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.provider.add({ id = "c", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
+		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "m" } } })
+		zemi.provider.add({ id = "or", kind = "openrouter", models = { { id = "m" } } })
+		zemi.provider.add({ id = "v", kind = "vercel", models = { { id = "m" } } })
+		zemi.provider.add({ id = "g", kind = "google", models = { { id = "m" } } })
+		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })
+		zemi.provider.add({ id = "s", kind = "system_one", base_url = "http://x", models = { { id = "m", decisions = true } } })`)
+	for _, c := range []struct {
+		id   string
+		want bool
+	}{
+		{"c/m", true}, {"o/m", true},
+		{"or/m", false}, {"v/m", false}, {"g/m", false}, {"a/m", false}, {"s/m", false},
+		// a responses model drops logprobs itself, with a warning
+		{"o/gpt-5", false},
+	} {
+		if got := h.Providers.LogprobOptions(c.id) != nil; got != c.want {
+			t.Errorf("%s takes a readout = %v, want %v", c.id, got, c.want)
+		}
+	}
+}
