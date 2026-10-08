@@ -11,8 +11,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestGoldenWorkflows pins a run's view at 80 columns, opened by enter on its
@@ -45,9 +43,7 @@ func TestGoldenWorkflows(t *testing.T) {
 
 	app, host := bootAgentApp(t, 80, 30)
 	ctx := t.Context()
-	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host)
 	runLua(t, app, fmt.Sprintf(`
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = %q, api_key = "k", models = { { id = "m" } } })
 		zemi.config.set("models.chat", "p/m")
@@ -64,18 +60,22 @@ func TestGoldenWorkflows(t *testing.T) {
 			})
 		]] })`, srv.URL+"/v1"))
 
-	// durations tick while the test runs; each is under 10s, so one width
-	elapsed, runID := regexp.MustCompile(`\d\.\ds`), regexp.MustCompile(`run +([0-9a-hjkmnp-tv-z]{8})`)
+	// the reviewers stay held for as long as the test runs, so the clock keeps
+	// ticking and any duration it prints normalizes to one value, whatever
+	// width the seconds grew to
+	elapsed, runID := regexp.MustCompile(`\d+(\.\d+)?s`), regexp.MustCompile(`run +([0-9a-hjkmnp-tv-z]{8})`)
 	frame := func() string {
 		t.Helper()
 		for app.Pump() {
 		}
 		app.renderSync(t)
-		out := elapsed.ReplaceAllString(app.Frame(), "0.0s")
+		out := app.Frame()
+		// the id first: its random base32 can hold a "<digit>s" pair that the
+		// clock would rewrite, leaving a half-masked id the mask can no longer find
 		if m := runID.FindStringSubmatch(ansi.Strip(out)); m != nil {
 			out = strings.ReplaceAll(out, m[1], "0000000a")
 		}
-		return out
+		return elapsed.ReplaceAllString(out, "0.0s")
 	}
 	if err := host.RunCommand(ctx, "workflows", ""); err != nil {
 		t.Fatal(err)

@@ -57,10 +57,7 @@ func TestGoldenPlugins(t *testing.T) {
 	step := host.PluginsStep()
 	run := step.Run
 	step.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error { run(ctx, r, g); return nil }
-	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"), step}
-	if err := host.ForceReload(ctx, steps); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host, step)
 	frame := func(name string) {
 		t.Helper()
 		for app.Pump() {
@@ -82,9 +79,7 @@ func TestGoldenPlugins(t *testing.T) {
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	write(todo, "-- a todo list in the statusline\n")
-	if err := host.ForceReload(ctx, steps); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host, step)
 	app.SignalBoot(nil)
 	frame("reloaded")
 }

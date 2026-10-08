@@ -66,7 +66,12 @@ local M = {}
 -- spins, unless the open prompt asks about it: that one waits on the user,
 -- so it neither spins nor counts.
 ---@type table<string, string>
-local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg", warn = "warn", cancelled = "stop" }
+local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg", warn = "warn" }
+
+-- A detail row hangs under its head by one corner, every later row the same
+-- cells in, two less when the row is nested under a branch mark, whose own
+-- cells stand above it.
+local HANG, INDENT = "  ⎿ ", "    "
 
 -- A row's mark: the spinner while it runs, else how it ended. A mark never
 -- hovers: a hovered header changes only its text.
@@ -393,9 +398,7 @@ local function builder(ctx, width)
 		end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
-		-- under the head one corner, every later row the same cells in, two less
-		-- when the row hangs off a branch mark, whose own cells come above it
-		local hang, indent = pad and "⎿ " or "  ⎿ ", pad and "  " or "    "
+		local hang, indent = pad and "⎿ " or HANG, pad and "  " or INDENT
 		local corner = true
 		---@param text string|zemi.Line
 		---@param hl string
@@ -529,6 +532,18 @@ local function builder(ctx, width)
 		return whole[key] and "… show the rest" or "… " .. n .. " earlier", "more:" .. key
 	end
 
+	-- A notice row: the status mark it came in with, what it says, and any
+	-- detail in brackets after it.
+	---@param status string?
+	---@param text string
+	---@param detail string?
+	---@return zemi.Line
+	function B.note(status, text, detail)
+		local row = { mark(MARK_OF[status] or "note"), { text = text, hl = "Dim" } }
+		if (detail or "") ~= "" then row[3] = { text = " (" .. detail .. ")", hl = "Dim", copy = false } end
+		return row
+	end
+
 	-- A burst of notice rows as one block, no blank row between them: reports
 	-- and updates arrive together, and the older ones of a long burst sit
 	-- behind one row a click opens, as a long rail's do.
@@ -549,9 +564,7 @@ local function builder(ctx, width)
 		end
 		for i = first, last do
 			local m = list[i]
-			local row = { mark(MARK_OF[m.status] or "note"), { text = m.text, hl = "Dim" } }
-			if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
-			B.lines[#B.lines + 1] = row
+			B.lines[#B.lines + 1] = B.note(m.status, m.text, m.detail)
 		end
 	end
 
@@ -768,9 +781,7 @@ zemi.ui.widget.add({
 				B.notices(tr, first, last)
 			elseif m.kind == "compact" then
 				B.gap("note")
-				local row = { mark("note"), { text = m.text, hl = "Dim" } }
-				if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
-				B.lines[#B.lines + 1] = row
+				B.lines[#B.lines + 1] = B.note("note", m.text, m.detail)
 			elseif m.kind == "error" then
 				-- the headline, then the raw error as its detail
 				B.gap("note")
@@ -783,7 +794,7 @@ zemi.ui.widget.add({
 						}
 					else
 						B.lines[#B.lines + 1] = {
-							{ text = n == 2 and "  ⎿ " or "    ", hl = "Dim", copy = false },
+							{ text = n == 2 and HANG or INDENT, hl = "Dim", copy = false },
 							{ text = text, hl = "Dim" },
 						}
 					end

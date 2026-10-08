@@ -53,6 +53,21 @@ function M.clock(t) return os.date("%H:%M", t) end
 ---@return string
 function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
+--- The work running besides this turn as one string, "2 workflows, 1 agent",
+--- nil when nothing runs.
+---@param ctx zemi.WidgetCtx
+---@return string?
+function M.running(ctx)
+	local flows, agents, jobs = ctx.workflows_running or 0, ctx.agents_running or 0, ctx.jobs_running or 0
+	if flows == 0 and agents == 0 and jobs == 0 then return nil end
+	---@type string[]
+	local parts = {}
+	if flows > 0 then parts[#parts + 1] = M.count(flows, "workflow", "workflows") end
+	if agents > 0 then parts[#parts + 1] = M.count(agents, "agent", "agents") end
+	if jobs > 0 then parts[#parts + 1] = M.count(jobs, "job", "jobs") end
+	return table.concat(parts, ", ")
+end
+
 --- A pointer to what deals with something: the noun in Title (hl overrides
 --- it, Danger for a failure), then the command or key in Dim ("errors
 --- /errors", "↓ 25 ctrl+end"). Both segments click as click, a command's own
@@ -77,13 +92,8 @@ function M.pending(ctx)
 	local parts = {}
 	-- the live rail already names the run the turn waits on: counts are other work
 	if not ctx.agent_active then
-		local flows, agents, jobs = ctx.workflows_running or 0, ctx.agents_running or 0, ctx.jobs_running or 0
-		---@type string[]
-		local counts = {}
-		if flows > 0 then counts[#counts + 1] = M.count(flows, "workflow", "workflows") end
-		if agents > 0 then counts[#counts + 1] = M.count(agents, "agent", "agents") end
-		if jobs > 0 then counts[#counts + 1] = M.count(jobs, "job", "jobs") end
-		if #counts > 0 then parts[#parts + 1] = table.concat(counts, ", ") end
+		local running = M.running(ctx)
+		if running then parts[#parts + 1] = running end
 	end
 	for _, job in ipairs(ctx.busy or {}) do
 		parts[#parts + 1] = M.lower(job.label)

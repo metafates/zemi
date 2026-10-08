@@ -419,7 +419,13 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutComposer && n.Frame:
 		rows = a.composerFrame(n, w)
 	case n.Kind == hostapi.LayoutComposer:
+		// the composer is on the panel, its rows padded to the node so the
+		// whole block is one surface, as the frame's own rows are
 		rows = a.composerRows(w, n.Placeholder)
+		for i := range rows {
+			rows[i] = padSegs(rows[i], w)
+		}
+		onPanel(rows)
 	case n.Kind == hostapi.LayoutBar:
 		rows = [][]hostapi.Segment{a.statusRow(w, n.Left, n.Right)}
 	}

@@ -39,18 +39,8 @@ func tempConfig(t testing.TB) string {
 // composed frame is pinned as a golden.
 func TestGoldenFrame(t *testing.T) {
 	ctx := t.Context()
-	cfg, data, state, project := tempConfig(t), t.TempDir(), t.TempDir(), t.TempDir()
-	// Classify on EvalSymlinks-resolved prefixes (DESIGN §5): on macOS
-	// t.TempDir() hands out /var/... while resolved paths are /private/var/...
-	resolve := func(p string) string {
-		r, err := filepath.EvalSymlinks(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return r
-	}
-	cfg, data, state = resolve(cfg), resolve(data), resolve(state)
-	projectResolved := resolve(project)
+	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
+	cfg, data, state = resolved(t, cfg), resolved(t, data), resolved(t, state)
 
 	initLua := `
 zemi.keymap.set("ctrl+t", function()
@@ -76,7 +66,6 @@ zemi.ui.widget.add({
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
-		{Prefix: filepath.Join(projectResolved, ".agents"), Origin: lua.OriginProject},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS})
 	host := hostapi.NewHost(rt, log, settings, dirs)

@@ -15,7 +15,6 @@ import (
 
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -82,9 +81,7 @@ func TestGoldenMemory(t *testing.T) {
 	}
 	host.Dirs.ProjectDir = repo
 	host.RekeyProject()
-	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host)
 	testStore(t, host)
 	frame := func(name string) {
 		t.Helper()

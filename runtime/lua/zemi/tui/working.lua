@@ -99,9 +99,8 @@ zemi.ui.widget.add({
 				state, tick = "idle", nil
 				parts = { { plain("save and close the editor to continue"), 5 } }
 			end
-			-- the open prompt says what answers it, so the rule shrinks to the
-			-- mascot alone rather than repeating it; in a view the back key is
-			-- already on the rule
+			-- the open prompt names what answers it and esc answers it, so the
+			-- rule shrinks to the mascot alone rather than repeating a key
 			if ctx.waiting ~= "" then
 				state, parts, tick = "asking", {}, nil
 			elseif ctx.cancelling then
