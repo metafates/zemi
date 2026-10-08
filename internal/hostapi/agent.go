@@ -2210,7 +2210,7 @@ func (h *Host) SetModel(args string) error {
 	if id == "chat" { // a target following its own model, else chat
 		id = ""
 	}
-	if err := h.modelSetErr(id); err != nil {
+	if err := h.modelSetErr(role, id); err != nil {
 		return err
 	}
 	if err := h.setWatched("models."+role, id); err != nil {
@@ -2292,16 +2292,25 @@ func (h *Host) warnUnlisted(id string) {
 
 // modelSetErr refuses a model pick under a provider nobody registered. An id
 // the provider does not list is taken and warned about, like -m and config: the
-// provider decides.
-func (h *Host) modelSetErr(id string) error {
+// provider decides. A decisions model is refused for every slot but a
+// classifier one: it is no chat model, and that slot is what it is for.
+func (h *Host) modelSetErr(slot, id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
 		return usageError{h.modelErr(id)}
 	}
-	if _, _, decisions := h.Providers.Decisions(id); decisions {
+	if _, _, decisions := h.Providers.Decisions(id); decisions && !h.classifies(slot) {
 		return usageError{h.modelErr(id)}
 	}
 	return nil
+}
+
+// classifies reports whether a slot was registered for classification
+// (zemi.model.add's classify), which is the one kind of slot a decisions model
+// may be picked for.
+func (h *Host) classifies(name string) bool {
+	t, _ := h.target(name)
+	return t != nil && t.Classify
 }
 
 // WarnModel toasts the model row's warning after a reload, if any: a

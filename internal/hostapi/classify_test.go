@@ -238,6 +238,23 @@ func TestClassifyGate(t *testing.T) {
 	if !pickerHas(ui.opened[1].Items, "a/big") {
 		t.Error("a chat role lost the chat models")
 	}
+	// the row the classifier slot was offered is one a pick actually runs:
+	// that slot takes the decisions model, a chat role does not
+	if err := h.SetModel("clf jev/m"); err != nil {
+		t.Errorf("/model clf jev/m: %v", err)
+	}
+	if got := h.Settings.Str("models.clf"); got != "jev/m" {
+		t.Errorf("models.clf = %q, want the decisions model", got)
+	}
+	if id := h.roleModel("clf"); id != "jev/m" {
+		t.Errorf("the classifier slot runs on %q", id)
+	}
+	if err := h.SetModel("titles jev/m"); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
+		t.Errorf("/model titles jev/m: err %v, want a refusal", err)
+	}
+	if got := h.Settings.Str("models.titles"); got != "" {
+		t.Errorf("models.titles = %q after a refused pick", got)
+	}
 
 	// the gate: a plugin's call without a rule raises naming the rule
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`

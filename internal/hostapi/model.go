@@ -875,7 +875,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "model.set")
 		id := L.CheckString(1)
-		if err := h.modelSetErr(id); err != nil {
+		if err := h.modelSetErr(h.ConversationTarget(), id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 		}
 		// the conversation's slot, so a call under a profile moves what the
