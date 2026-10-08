@@ -547,8 +547,8 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// NOTE: a plugin whose creation was allowed settles with no trust check
 		// (it is in no project, and $HOME is never trusted), so text the model
 		// reads later can steer code every later boot runs, in every project.
-		// Plugin origin bounds it: it adds no allow rule, and gated calls need a
-		// rule, though a user one with no principal covers it too.
+		// Plugin origin bounds it: it adds no allow rule, and what it may do is
+		// what enabling a plugin covers, no more.
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectShell:
 		return h.unsettled(req) == ""

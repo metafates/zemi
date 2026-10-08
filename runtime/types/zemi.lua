@@ -1698,8 +1698,8 @@ function zemi.model.set(id) end
 ---@field cancel fun(self: zemi.ModelHandle)
 
 --- One tool-less model call, run off the interpreter and billed to the
---- live session; a reload cancels it. Plugin code needs a user rule for
---- `lua.model.ask` with its principal; project code raises.
+--- live session; a reload cancels it. A plugin's own call settles while it
+--- is enabled; project code raises.
 ---
 --- ```lua
 --- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
@@ -1765,8 +1765,8 @@ function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
---- a turn it joins at the next step. Plugin code needs a user rule for
---- `lua.agent.send` with its principal, and raises in `zemi run`; its
+--- a turn it joins at the next step. A plugin's own send settles while it
+--- is enabled, and raises in `zemi run`; its
 --- text reaches the model as the plugin's, never the user's words. Project
 --- code raises.
 ---@param text string
@@ -2196,8 +2196,10 @@ zemi.tool = {}
 --- Register a tool the model can call. A call is checked against `required`
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
---- `tool.<name>` with the name as the argument, which auto mode never
---- settles: it asks until the user allows it, for the session at the prompt
+--- `tool.<name>` with the name as the argument, which auto mode settles
+--- only for a tool a plugin registered (the plugin is enabled, so it is
+--- trusted): the user's own and a project's ask until they allow it, for the
+--- session at the prompt
 --- or for good with a user config rule
 --- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
 --- yolo allows it.
@@ -2297,7 +2299,9 @@ function zemi.tool.describe(name) end
 --- jail; reads pass the `lua.fs.read` gate and changes `lua.fs.write`.
 --- Writes reach only the launch directory (`ctx.cwd`, not
 --- `zemi.project.root()`: the dir a sandboxed command may write) and, for
---- user config, `zemi.fs.data_dir`; each needs a `lua.fs.write` allow rule.
+--- user config, `zemi.fs.data_dir`; user code needs a `lua.fs.write` allow
+--- rule, while a plugin's own write settles while it is enabled, its own
+--- code, a secret-shaped name and the other protected paths aside.
 ---@class zemi.fs
 zemi.fs = {}
 
@@ -2329,7 +2333,8 @@ function zemi.fs.exists(path) end
 --- `<data>/lua/<name>`, where config code keeps its files: inside the
 --- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
 --- outside the config tree, so a write never reloads the config. Reads
---- settle; writes need a `lua.fs.write` rule like any other. Nothing is
+--- settle; writes need a `lua.fs.write` allow rule like any other user
+--- config write. Nothing is
 --- created: `write` makes the parents, and a job's `cwd` needs `mkdir` first.
 ---@param name string One directory name, no separators.
 ---@return string path
@@ -2452,8 +2457,9 @@ function zemi.http.get(url, opts) end
 ---@field close_stdin fun(self: zemi.JobHandle)
 
 --- Child processes run in their own session and process group, with the
---- project directory as their working directory. Needs `lua.job.start`
---- allowed for the command line: rules match it normalized like `tool.shell`
+--- project directory as their working directory. User and project code need
+--- `lua.job.start` allowed for the command line (a plugin's own job settles
+--- while it is enabled): rules match it normalized like `tool.shell`
 --- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job
 zemi.job = {}

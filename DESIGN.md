@@ -1394,8 +1394,8 @@ is `ask`, the call raises `permission ask required` (a
 `permission.request` event is emitted, post-hoc and informational: the
 outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
 the agent worker (§4). Keymap- and command-bound use of an ask-default
-API therefore needs a pre-existing allow rule from the user's own config,
-or it fails closed every time. URLs go through the permission gate like tools do
+API therefore needs a pre-existing allow rule from the user's own config
+(a plugin's own gated calls settle while it is enabled, §9), or it fails closed every time. URLs go through the permission gate like tools do
 (§9 covers redirects and IP rules). Subprocess environments are filtered:
 a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never

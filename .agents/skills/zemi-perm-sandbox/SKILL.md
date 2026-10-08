@@ -227,8 +227,7 @@ it is read as a Go boot step, so it never goes through the Lua origin gate below
 permission overlay's `p` answer appends the command to it, offered only when
 the file would load exactly the rules the label names (`projectChoice`). Only `user`
 origin may add allow rules (project may tighten only), scope a rule to one plugin
-(`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;
-a plugin's `zemi.agent.send` and `zemi.model.ask` ask `lua.agent.send` and `lua.model.ask`)
+(`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names)
 or switch the mode
 (`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); user, builtin and
 plugin code may add or drop a mode, the project refused, the builtin names (`auto`, `yolo`)
