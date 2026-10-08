@@ -35,7 +35,7 @@ func TestCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeFile(t, filepath.Join(home, "data", "plugins", "local", "ver", ".zemi", "plugin.json"), `{"version": "1.2.0"}`)
+	writeFile(t, filepath.Join(home, "data", "plugins", "local", "ver", ".zemi", "plugin.json"), `{"version": "1.2.0", "uses": ["job"]}`)
 	// stdin is no terminal, as for an agent's command
 	stdin, w, err := os.Pipe()
 	if err != nil {
@@ -120,6 +120,7 @@ func TestCLI(t *testing.T) {
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub  local  on  "},
 		{name: "plugins as JSON", args: []string{"plugins", "--json"}, stdout: `{"name":"rub","version":"local","local":true,"enabled":true,"source":"`},
+		{name: "the JSON carries the declared uses", args: []string{"plugins", "--json"}, stdout: `"uses":["job"]`},
 		{name: "a local plugin's manifest is the version it lists", args: []string{"plugins"}, stdout: "ver  1.2.0  on  "},
 		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},

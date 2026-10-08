@@ -2380,7 +2380,7 @@ rides the `memories.md` line and its ledger entries.
   |---|---|
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
-  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source` |
+  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`

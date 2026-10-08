@@ -260,6 +260,9 @@ func (h *Host) pluginItems() []any {
 			version = cmp.Or(version, "local")
 		}
 		desc = append(desc, version, p.Desc)
+		if len(p.Uses) > 0 {
+			desc = append(desc, "uses: "+strings.Join(p.Uses, ", "))
+		}
 		if loadErr != nil {
 			errText = loadErr.Error()
 		}
@@ -292,16 +295,35 @@ func (h *Host) pluginItems() []any {
 	return items
 }
 
+// pluginGloss is what each declared name grants, for the detail pane: the same
+// words as the skill's table, short enough to sit in one line of prose.
+var pluginGloss = map[string]string{
+	"model":           "a model or classify call",
+	"agent":           "a message to the agent",
+	"http":            "a fetch",
+	"job":             "a command in the sandbox",
+	"job.unsandboxed": "a command with the whole environment",
+	"fs.write":        "a file write outside the secret and protected ones",
+	"tool":            "a tool it registers being called",
+}
+
 // pluginDetail is the detail pane's prose: what the plugin ships, the set its
 // manifest declares and, while it is enabled, what that grants.
 func pluginDetail(p plugin.Plugin) string {
-	detail := p.Desc + "\n\nIt declares nothing, so every call zemi gates is refused or asks."
-	if len(p.Uses) > 0 {
-		detail = p.Desc + "\n\nIt declares " + strings.Join(p.Uses, ", ") + ": what enabling it grants."
-		if p.Enabled {
-			detail += " Anything else it calls is refused, and its writes to its own code, .git," +
-				" .agents and zemi's own files still ask."
+	if len(p.Uses) == 0 {
+		return strings.TrimSpace(p.Desc + "\n\nIt declares nothing, so every call zemi gates is refused or asks.")
+	}
+	glossed := make([]string, len(p.Uses))
+	for i, u := range p.Uses {
+		if gloss := pluginGloss[u]; gloss != "" {
+			u += " (" + gloss + ")"
 		}
+		glossed[i] = u
+	}
+	detail := p.Desc + "\n\nDeclares " + strings.Join(glossed, ", ") + ": what switching it on grants."
+	if p.Enabled {
+		detail += " Anything else it calls is refused, and its writes to its own code, .git," +
+			" .agents and zemi's own files still ask."
 	}
 	return strings.TrimSpace(detail)
 }
