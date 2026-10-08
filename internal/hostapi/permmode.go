@@ -267,13 +267,7 @@ func (h *Host) permModeDef() PermModeDef {
 	if i := modeIndex(list, h.Settings.Str("permissions.mode")); i >= 0 {
 		return list[i]
 	}
-	for _, d := range list {
-		if d.Base == config.PermModeAuto {
-			return d
-		}
-	}
-	// never list[0]: user config builds the list, and one holding no
-	// auto-based mode must not fall back on what allows everything
+	// a value no mode has still lands on the builtin auto
 	return builtinModes[0]
 }
 
@@ -314,8 +308,8 @@ func (h *Host) dropModePick(def PermModeDef) {
 		}
 	}
 	// the setting goes back to its default only when the pick is what set it:
-	// init.lua writing the mode is a choice of its own
-	if live, _ := h.Settings.Get("permissions.mode"); live == any(pick) {
+	// config writing the same name this boot is a choice of its own
+	if live, _ := h.Settings.Get("permissions.mode"); live == any(pick) && len(h.cfgNow["permissions.mode"]) == 0 {
 		h.Settings.SetQuiet("permissions.mode", h.Settings.Default("permissions.mode"))
 	}
 }
@@ -835,8 +829,9 @@ func whitelists(path string) bool {
 }
 
 // modeDecideCeiling bounds a mode's decide in wall time, long enough for a
-// model call over zemi.http; a wait in it frees the interpreter.
-const modeDecideCeiling = 60 * time.Second
+// model call over zemi.http; a wait in it frees the interpreter. A var so a
+// test can bring the ceiling within reach.
+var modeDecideCeiling = 60 * time.Second
 
 // modeAnswer is what a mode's decide returned: the decision, the scope an
 // allow takes (askChoices), and its own reason for the row and the denial.

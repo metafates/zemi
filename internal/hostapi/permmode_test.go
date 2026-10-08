@@ -393,6 +393,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 func TestPermModeDecide(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.permission.mode.add("review", { base = "auto", decide = function(req)
+		if req.arg == "slow" then while true do end end
 		if req.arg == "boom" then error("the judge broke") end
 		if req.arg == "rm -rf /" or req.agent == "explore agent" then return "deny" end
 		if req.arg ~= "cat x" then return "allow" end
@@ -429,6 +430,21 @@ func TestPermModeDecide(t *testing.T) {
 		if ok != c.want || by != c.by || (c.why == "") != (len(d) == 0) || len(d) > 0 && (d[0].Why != c.why || d[0].Subject != c.req.Subject) || noticed != c.notice {
 			t.Errorf("%s: allowed %v by %s, noted %+v, notice %v", c.name, ok, by, d, noticed)
 		}
+	}
+	// a decide that outlives its ceiling leaves the ask to the user: the path
+	// where dropping the settleable gate could fail open
+	long := modeDecideCeiling
+	modeDecideCeiling = 100 * time.Millisecond
+	defer func() { modeDecideCeiling = long }()
+	before := len(h.HeadlessDenials())
+	start := time.Now()
+	ok, by, _ := ask(tools.Request{Subject: "tool.shell", Arg: "slow"})
+	d := h.HeadlessDenials()[before:]
+	if ok || by != tools.ByNobody || len(d) != 1 || d[0].Why != DenyApproval {
+		t.Fatalf("a decide past its ceiling: allowed %v by %s, noted %+v", ok, by, d)
+	}
+	if elapsed := time.Since(start); elapsed < modeDecideCeiling {
+		t.Fatalf("the decide answered in %v, so the ceiling never fired", elapsed)
 	}
 }
 
@@ -922,6 +938,22 @@ func TestModePickDroppedWhenYolo(t *testing.T) {
 	if _, err := h.GlobalDB.GetKV("config:permissions.mode"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the pick row is still stored (%v)", err)
 	}
+	// config writing the same name is a choice of its own: the pick row goes,
+	// the setting stays
+	if err := os.WriteFile(initLua, []byte(`zemi.config.set("permissions.mode", "x")
+zemi.permission.mode.add("x", { base = "yolo" })`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.GlobalDB.SetKV("config:permissions.mode", `"x"`); err != nil {
+		t.Fatal(err)
+	}
+	start()
+	if got := h.PermMode(); got != "x" {
+		t.Fatalf("config's own choice was reset: %q", got)
+	}
+	if _, err := h.GlobalDB.GetKV("config:permissions.mode"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the pick row is still stored (%v)", err)
+	}
 }
 
 // TestModeDecideScopes: a decide's table answer names the decision, how far it
@@ -1017,6 +1049,40 @@ func TestModeDecideScopes(t *testing.T) {
 	}
 	if h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("rm -rf /"), perm.PrincipalModel).Decision == perm.Allow {
 		t.Error("a decided deny wrote a rule")
+	}
+}
+
+// TestModeDecidePluginScopes: a decide below user origin settles the ask and
+// writes session rules, but the durable project file is the user's own grant,
+// as an allow rule is (rule.add): its "project" answer narrows to session.
+func TestModeDecidePluginScopes(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
+	h.SetProjectTrusted(true)
+	path := filepath.Join(h.pluginsRoot(), "local", "judge", "init.lua")
+	if err := h.RT.ExecuteChunk(t.Context(), `zemi.permission.mode.add("judge", { base = "auto", decide = function(req)
+		if req.arg == "cargo build" then return { decision = "allow", scope = "project", reason = "routine" } end
+		return { decision = "allow", scope = "session", reason = "routine" }
+	end })`, path, lua.OriginPlugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetPermMode("judge"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, arg, rule string }{
+		{"a session answer writes a session rule", "go test ./...", "go test -run X ./pkg"},
+		{"a project answer narrows to session", "cargo build", "cargo build --release"},
+	} {
+		ok, by, _ := h.askHook()(tools.Request{Subject: perm.SubjectShell, Arg: c.arg})
+		if !ok || by != "mode:judge" {
+			t.Fatalf("%s: allowed %v by %s", c.name, ok, by)
+		}
+		if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize(c.rule), perm.PrincipalModel).Decision; got != perm.Allow {
+			t.Errorf("%s: the session rule is %v", c.name, got)
+		}
+	}
+	if b, err := os.ReadFile(h.projectPermissionsPath()); err == nil && strings.Contains(string(b), "cargo") {
+		t.Errorf("a plugin's decide wrote the project file: %q", b)
 	}
 }
 
