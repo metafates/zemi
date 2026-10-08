@@ -19,12 +19,13 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// fakeEndpoint serves one reply to every request and reports the bodies it
-// was sent.
+// fakeEndpoint serves one reply to every request and reports the bodies and
+// headers it was sent.
 type fakeEndpoint struct {
-	srv *httptest.Server
-	mu  sync.Mutex
-	got []string
+	srv  *httptest.Server
+	mu   sync.Mutex
+	got  []string
+	head []http.Header
 }
 
 func newEndpoint(t *testing.T, reply func(body string) string) *fakeEndpoint {
@@ -34,6 +35,7 @@ func newEndpoint(t *testing.T, reply func(body string) string) *fakeEndpoint {
 		raw, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.got = append(f.got, string(raw))
+		f.head = append(f.head, r.Header.Clone())
 		f.mu.Unlock()
 		w.Header().Set("content-type", "application/json")
 		_, _ = io.WriteString(w, reply(string(raw)))
@@ -46,6 +48,13 @@ func (f *fakeEndpoint) bodies() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.got...)
+}
+
+// headers is one request's headers, in order.
+func (f *fakeEndpoint) headers() []http.Header {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]http.Header(nil), f.head...)
 }
 
 func (f *fakeEndpoint) called() bool { return len(f.bodies()) > 0 }
@@ -181,6 +190,13 @@ func TestClassifyAsk(t *testing.T) {
 			for _, body := range f.bodies() {
 				if !strings.Contains(body, c.requestMarker) {
 					t.Errorf("a request does not carry %s: %s", c.requestMarker, body)
+				}
+			}
+			// every request of the call carries the session's affinity, so a
+			// router keeps the questions of one call on one replica
+			for _, head := range f.headers() {
+				if got := head.Get("x-session-affinity"); got != sid {
+					t.Errorf("x-session-affinity = %q, want %q", got, sid)
 				}
 			}
 			sess, err := h.DB.GetSession(sid)

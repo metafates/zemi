@@ -27,6 +27,7 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		Prompt:      []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(schemaPrompt(req))},
 		Schema:      fantasy.Schema{Type: "object", Properties: props, Required: sortedKeys(req.Questions)},
 		Temperature: chat.Temperature,
+		Headers:     chat.Headers,
 		// the schema description reaches a tool call and a prompt alike
 		SchemaDescription: "one answer per question, keyed by the question's name",
 		ProviderOptions:   chat.Options,

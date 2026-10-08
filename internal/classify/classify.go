@@ -110,6 +110,9 @@ type Chat struct {
 	Logprobs func(k int64) fantasy.ProviderOptions
 	// Options ride every call (a gateway's routing, the session's affinity).
 	Options fantasy.ProviderOptions
+	// Headers ride every call too (x-session-affinity, so a router sends the
+	// questions of one session to the replica holding its cache).
+	Headers map[string]string
 	// Temperature is what the decoded strategies ask with, 0 when the caller
 	// pinned it. A probability readout leaves it alone: the provider reports
 	// the distribution its own sampling produced, and a greedy one is a

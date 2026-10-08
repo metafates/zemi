@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/classify"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -49,16 +50,16 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	}
 	// a stub stands in for the whole call, a model and all
 	req := classify.Request{State: state, Questions: questions}
+	sid := h.AgentSessionID()
 	if stub == nil {
 		if id == "" {
 			L.RaiseError("zemi.classify.ask: %v", h.modelErr(id))
 		}
 		var err error
-		if req, err = h.classifyRequest(id, state, questions); err != nil {
+		if req, err = h.classifyRequest(id, sid, state, questions); err != nil {
 			L.RaiseError("zemi.classify.ask: %v", err)
 		}
 	}
-	sid := h.AgentSessionID()
 	var (
 		res     classify.Result
 		askErr  error
@@ -107,15 +108,17 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 
 // classifyRequest is how the model id is reached: a decisions model answers
 // through its provider's own protocol, and everything else through the chat
-// model, with token probabilities where the provider returns them.
-func (h *Host) classifyRequest(id string, state map[string]any, questions map[string]classify.Question) (classify.Request, error) {
+// model, with token probabilities where the provider returns them. sid is the
+// session the call is billed to, and its affinity rides the requests, since the
+// questions of one call share a prompt.
+func (h *Host) classifyRequest(id, sid string, state map[string]any, questions map[string]classify.Question) (classify.Request, error) {
 	req := classify.Request{State: state, Questions: questions}
 	if spec, model, ok := h.Providers.Decisions(id); ok {
 		req.Protocol = &classify.Protocol{
 			BaseURL: spec.BaseURL,
 			APIKey:  h.Providers.Key(spec.ID),
 			Model:   model.ID,
-			Headers: spec.Headers,
+			Headers: classifyHeaders(spec.Headers, sid),
 		}
 		return req, nil
 	}
@@ -125,7 +128,8 @@ func (h *Host) classifyRequest(id string, state map[string]any, questions map[st
 	}
 	req.Chat = &classify.Chat{
 		Model:   chat,
-		Options: h.Providers.CallOptions(id, "", ""),
+		Options: h.Providers.CallOptions(id, "", sid),
+		Headers: agent.SessionHeaders(sid),
 		// a decoded answer is the model's own words, so it is asked greedily
 		Temperature: new(0.0),
 	}
@@ -136,6 +140,18 @@ func (h *Host) classifyRequest(id string, state map[string]any, questions map[st
 		}
 	}
 	return req, nil
+}
+
+// classifyHeaders are a request's HTTP headers: the provider's own, with the
+// session's affinity beside them.
+func classifyHeaders(spec map[string]string, sid string) map[string]string {
+	session := agent.SessionHeaders(sid)
+	if len(spec) == 0 {
+		return session
+	}
+	out := maps.Clone(spec)
+	maps.Copy(out, session)
+	return out
 }
 
 // classifyState is the data to judge: a table, so the model reads it as data

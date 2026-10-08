@@ -88,6 +88,7 @@ func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q 
 		res, err := chat.Model.Generate(ctx, fantasy.Call{
 			Prompt:          []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(logprobsPrompt(req, name, q, labels))},
 			ProviderOptions: mergeOptions(chat.Options, chat.Logprobs(k)),
+			Headers:         chat.Headers,
 		})
 		if err != nil {
 			return Answer{}, usage, err
