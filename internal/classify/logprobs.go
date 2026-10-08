@@ -244,8 +244,9 @@ func answerInstruction(q Question) string {
 		return "Answer with one letter."
 	case TypeScore:
 		return "Answer with one level number."
+	default: // a bool question: the two labels
+		return "Answer Yes or No."
 	}
-	return "Answer Yes or No."
 }
 
 // renderJSON is the state as the model reads it, indented by one space and

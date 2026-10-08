@@ -523,6 +523,9 @@ func (r *Registry) LogprobOptions(modelID string) func(fantasy.ProviderOptions, 
 			o.ExtraBody["logprobs"], o.ExtraBody["top_logprobs"] = true, k
 			return mergeOptions(base, openaicompat.NewProviderOptions(o))
 		}
+	case KindAnthropic, KindGoogle, KindOpenRouter, KindVercel, KindSystemOne:
+		// their providers return no token probabilities (openrouter and vercel
+		// build their own metadata), or run no chat call at all
 	}
 	return nil
 }
@@ -669,6 +672,7 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
 		}
 	case KindOpenAI: // answered above; the exhaustive linter wants the case
+	case KindSystemOne: // a decisions provider runs no chat call
 	}
 	return nil
 }

@@ -59,8 +59,6 @@ func (f *fakeEndpoint) headers() []http.Header {
 	return append([]http.Header(nil), f.head...)
 }
 
-func (f *fakeEndpoint) called() bool { return len(f.bodies()) > 0 }
-
 // chatCompletion is one openai-shaped reply: content, and the token
 // probabilities of its first token where top is set.
 func chatCompletion(content string, top map[string]float64) string {
@@ -310,15 +308,20 @@ func TestClassifyGate(t *testing.T) {
 		t.Errorf("models.titles = %q after a refused pick", got)
 	}
 
-	// the gate: a plugin's call without a rule raises naming the rule
+	// the gate: a plugin's own call settles with no rule while it is enabled
+	// (the /plugins switch is the consent), an explicit user rule still
+	// decides first, and project code may not call it at all
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
-	err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), `lua.classify.ask`) || !strings.Contains(err.Error(), `principal = "plugin:a"`) {
-		t.Errorf("a plugin without a rule: err = %v", err)
+	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
+		t.Errorf("a plugin with no rule: %v", err)
 	}
-	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
-	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
-		t.Errorf("a plugin with a rule: %v", err)
+	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
+	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err == nil {
+		t.Error("a user's deny rule did not refuse a plugin's classify call")
+	}
+	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:b"})
+	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err == nil {
+		t.Error("another plugin's allow rule settled plugin a's call")
 	}
 	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code may not call a model") {
 		t.Errorf("project code: err = %v", err)
@@ -387,8 +390,13 @@ func TestLogprobKinds(t *testing.T) {
 		id   string
 		want bool
 	}{
-		{"c/m", true}, {"o/m", true},
-		{"or/m", false}, {"v/m", false}, {"g/m", false}, {"a/m", false}, {"s/m", false},
+		{"c/m", true},
+		{"o/m", true},
+		{"or/m", false},
+		{"v/m", false},
+		{"g/m", false},
+		{"a/m", false},
+		{"s/m", false},
 		// a responses model drops logprobs itself, with a warning
 		{"o/gpt-5", false},
 	} {
