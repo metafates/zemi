@@ -33,15 +33,9 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	questions := classifyQuestions(L, spec)
 	ref := cmp.Or(rawString(L, spec, "model"), h.ConversationTarget())
 	id := h.modelRef(ref)
-	var stub *stubReply
-	switch o := h.RT.CurrentOrigin(L); {
-	case o.Rank() <= lua.OriginProject.Rank():
-		L.RaiseError("zemi.classify.ask: %s code may not call a model", o)
-	case o == lua.OriginPlugin:
-		_, stub = h.luaGate(L, "lua.classify.ask", id, func() map[string]any {
-			return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
-		})
-	}
+	stub := h.gateAsk(L, "zemi.classify.ask", "lua.classify.ask", id, func() map[string]any {
+		return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
+	})
 	timeout := classifyTimeout
 	if n, ok := opt[glua.LNumber](L, spec, "timeout"); ok && n > 0 {
 		timeout = time.Duration(float64(n) * float64(time.Second))

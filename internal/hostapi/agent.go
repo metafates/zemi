@@ -2019,10 +2019,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	heads := len(o.Items)
 	// a decisions model answers classification only, so it is offered to the
 	// slots that classify and never to a chat one
-	classifier := false
-	if t, ok := h.target(name); ok {
-		classifier = t.Classify
-	}
+	classifier := h.classifies(name)
 	for _, s := range h.Providers.List() {
 		section := s.ID
 		if !h.Providers.HasKey(s.ID) {
@@ -2113,7 +2110,7 @@ func (h *Host) modelRoleItems() []any {
 		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
 	}
 	items := []any{map[string]any{
-		"text": first, "desc": cmp.Or(h.roleModel(slot), "no model") + " · " + firstDesc,
+		"text": first, "desc": h.slotLine(slot, firstDesc),
 		"verb": "open", "run": "model " + slot,
 	}}
 	for _, r := range roles[1:] {
@@ -2138,7 +2135,7 @@ func (h *Host) modelRoleItems() []any {
 // naming what a slot with no pick of its own falls back to.
 func (h *Host) modelSlotRow(name, desc string) map[string]any {
 	item := map[string]any{
-		"text": name, "desc": cmp.Or(h.roleModel(name), "no model") + " · " + desc,
+		"text": name, "desc": h.slotLine(name, desc),
 		"verb": "open", "run": "model " + name,
 	}
 	if tag := h.slotTag(name); tag != "" {
@@ -2503,7 +2500,13 @@ func (h *Host) OpenProfilePicker() error {
 // profileDesc is a /profile row: the model the profile runs on and what it
 // changes.
 func (h *Host) profileDesc(name string) string {
-	return cmp.Or(h.roleModel(name), "no model") + " · " + h.profileSlotDesc(name)
+	return h.slotLine(name, h.profileSlotDesc(name))
+}
+
+// slotLine is what a model row shows: the model the slot runs on and the
+// description beside it, in one place so /model roles and /profile agree.
+func (h *Host) slotLine(name, desc string) string {
+	return cmp.Or(h.roleModel(name), "no model") + " · " + desc
 }
 
 // profileSlotDesc is what /model roles and /profile say a profile is: the

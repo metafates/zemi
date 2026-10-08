@@ -242,6 +242,21 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	return v, nil
 }
 
+// gateAsk is the origin gate both ask paths share: project code may not call a
+// model at all, and a plugin's call goes through luaGate, which is where its
+// manifest's declaration is checked. The stub a test zemi answers with comes
+// back for the caller to stand in for the transport.
+func (h *Host) gateAsk(L *glua.LState, api, subject, id string, payload func() map[string]any) *stubReply {
+	switch o := h.RT.CurrentOrigin(L); {
+	case o.Rank() <= lua.OriginProject.Rank():
+		L.RaiseError("%s: %s code may not call a model", api, o)
+	case o == lua.OriginPlugin:
+		_, stub := h.luaGate(L, subject, id, payload)
+		return stub
+	}
+	return nil
+}
+
 // pluginCaps is the capability each gated subject needs declared, keyed by
 // subject prefix: every lua.http.<method> and every tool.<name> share one row.
 var pluginCaps = []struct{ prefix, cap string }{
