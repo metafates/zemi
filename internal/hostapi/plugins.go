@@ -26,6 +26,14 @@ type pluginLoad struct {
 	err       error
 }
 
+// pluginGrant is what the plugins step fixed for one generation: the roots it
+// loaded and the capabilities each manifest declared. One swap, so a reload, a
+// disable or a delete cannot leave a stale grant.
+type pluginGrant struct {
+	roots []string
+	uses  map[string][]string // by plugin name
+}
+
 // PluginsStep loads every enabled plugin's init.lua as plugin origin, sorted
 // by name (DESIGN §5), after fixing the generation's plugin roots, so one
 // plugin may require another's modules. A failing plugin does not stop the
@@ -41,16 +49,17 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.sweepPluginState(ps)
 			}
 			run, loads := pickPlugins(ps)
-			roots := make([]string, len(run))
+			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}}
 			for i, p := range run {
 				kind := "installed"
 				if p.Local {
 					kind = "local"
 				}
-				roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
+				grant.roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
+				grant.uses[p.Name] = p.Uses
 			}
-			g.Plugins = roots
-			h.pluginRoots.Store(&roots)
+			g.Plugins = grant.roots
+			h.pluginGrant.Store(&grant)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, "init.lua")
 				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
@@ -80,8 +89,11 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 	slices.SortStableFunc(ps, func(a, b plugin.Plugin) int { return cmp.Compare(a.Name, b.Name) })
 	for _, p := range ps {
 		fi, err := os.Lstat(p.Dir)
+		uses := plugin.CheckUses(p.Uses)
 		switch {
 		case !p.Enabled:
+		case uses != nil:
+			refused = append(refused, pluginLoad{p.Name, p.Dir, uses})
 		case p.Local && installed[p.Name]:
 			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
 		case err == nil && !fi.IsDir():
@@ -122,10 +134,17 @@ func PluginDir(d config.Dirs, name string) (string, error) {
 // pluginDirs is the plugin roots the last boot fixed for its generation,
 // resolved as PluginOf reads them.
 func (h *Host) pluginDirs() []string {
-	if p := h.pluginRoots.Load(); p != nil {
-		return *p
+	if p := h.pluginGrant.Load(); p != nil {
+		return p.roots
 	}
 	return nil
+}
+
+// pluginDeclares reports whether the plugin named name declared the capability
+// cap in the manifest of the generation that loaded it.
+func (h *Host) pluginDeclares(name, cap string) bool {
+	g := h.pluginGrant.Load()
+	return g != nil && name != "" && slices.Contains(g.uses[name], cap)
 }
 
 // sweepPluginState drops the zemi.state keys and kept setting picks of a
