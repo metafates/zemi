@@ -44,13 +44,13 @@ func logprobsAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		q := req.Questions[name]
 		labels, keys, err := q.labelTokens()
 		if err != nil {
-			return Result{}, err
+			return Result{Strategy: StrategyLogprobs, Usage: usage}, err
 		}
 		answer, used, err := logprobsAnswer(ctx, chat, req, name, q, labels, keys)
-		if err != nil {
-			return Result{}, fmt.Errorf("%s: %w", name, err)
-		}
 		usage.add(used)
+		if err != nil {
+			return Result{Strategy: StrategyLogprobs, Usage: usage}, fmt.Errorf("%s: %w", name, err)
+		}
 		answers[name] = answer
 	}
 	return Result{Strategy: StrategyLogprobs, Answers: answers, Usage: usage}, nil

@@ -81,12 +81,12 @@ type Answer struct {
 	Confidence *float64
 }
 
-// Result is what a call answered.
+// Result is what a call answered. Usage is what the call cost even when it
+// failed: the strategies a later one replaced were billed too.
 type Result struct {
 	Strategy Strategy
 	Answers  map[string]Answer
-	// Usage is what the strategies' calls cost, in the providers' token counts.
-	Usage Usage
+	Usage    Usage
 }
 
 // Usage is what a call used.
@@ -130,12 +130,19 @@ type Request struct {
 // Ask runs the questions through the ladder and returns the first strategy
 // that answered. A strategy the model cannot answer through is skipped, one
 // that failed does not stop the next, and when the last one fails the call is
-// an error: a caller that cannot get a verdict asks the user.
+// an error: a caller that cannot get a verdict asks the user. What every
+// attempt used is in the result either way, since every attempt was billed.
 func Ask(ctx context.Context, req Request) (Result, error) {
+	var used Usage
 	var errs []error
+	done := func(res Result, err error) (Result, error) {
+		used.add(res.Usage)
+		res.Usage = used
+		return res, err
+	}
 	if req.Protocol != nil {
 		res, err := protocolAsk(ctx, *req.Protocol, req)
-		if err == nil {
+		if res, err = done(res, err); err == nil {
 			return res, nil
 		}
 		errs = append(errs, err)
@@ -143,16 +150,16 @@ func Ask(ctx context.Context, req Request) (Result, error) {
 	if req.Chat != nil {
 		if req.Chat.Logprobs != nil {
 			res, err := logprobsAsk(ctx, *req.Chat, req)
-			if err == nil {
+			if res, err = done(res, err); err == nil {
 				return res, nil
 			}
 			errs = append(errs, err)
 		}
 		res, err := schemaAsk(ctx, *req.Chat, req)
-		if err == nil {
+		if res, err = done(res, err); err == nil {
 			return res, nil
 		}
 		errs = append(errs, err)
 	}
-	return Result{}, fmt.Errorf("no strategy answered: %w", errors.Join(errs...))
+	return Result{Usage: used}, fmt.Errorf("no strategy answered: %w", errors.Join(errs...))
 }

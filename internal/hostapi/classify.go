@@ -73,7 +73,10 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 		if stub != nil {
 			// a test zemi's stub stands in for the whole call
 			stubbed = stub.fields
-		} else if res, askErr = classify.Ask(ctx, req); askErr == nil {
+		} else {
+			// every attempt the ladder made was billed, so what it used is
+			// reported whether or not one answered
+			res, askErr = classify.Ask(ctx, req)
 			h.bill(sid, id, fantasy.Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens})
 		}
 		close(done)

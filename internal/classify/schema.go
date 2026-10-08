@@ -2,6 +2,7 @@ package classify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -31,21 +32,31 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		ProviderOptions:   chat.Options,
 	})
 	if err != nil {
-		return Result{}, err
+		// a reply that arrived and did not decode was billed too
+		none, ok := errors.AsType[*fantasy.NoObjectGeneratedError](err)
+		if !ok {
+			return Result{Strategy: StrategySchema}, err
+		}
+		return Result{Strategy: StrategySchema, Usage: Usage{InputTokens: none.Usage.InputTokens, OutputTokens: none.Usage.OutputTokens}}, err
 	}
 	obj, ok := res.Object.(map[string]any)
 	if !ok {
-		return Result{}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
+		return Result{Strategy: StrategySchema, Usage: usageOf(res)}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
 	}
 	answers, err := schemaAnswers(req.Questions, obj)
 	if err != nil {
-		return Result{}, err
+		return Result{Strategy: StrategySchema, Usage: usageOf(res)}, err
 	}
 	return Result{
 		Strategy: StrategySchema,
 		Answers:  answers,
-		Usage:    Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens},
+		Usage:    usageOf(res),
 	}, nil
+}
+
+// usageOf is a call's token counts.
+func usageOf(res *fantasy.ObjectResponse) Usage {
+	return Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens}
 }
 
 // schema is the value a question's type asks for.

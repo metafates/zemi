@@ -120,14 +120,16 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 		return Result{}, fmt.Errorf("%s: %w", url, err)
 	}
 	answers, err := protocolAnswers(req.Questions, out.Answers)
-	if err != nil {
-		return Result{}, err
-	}
-	return Result{
+	// the request was billed whatever its answers were worth
+	res := Result{
 		Strategy: StrategyProtocol,
 		Answers:  answers,
 		Usage:    Usage{InputTokens: out.Usage.InputTokens, OutputTokens: out.Usage.OutputTokens},
-	}, nil
+	}
+	if err != nil {
+		return res, err
+	}
+	return res, nil
 }
 
 // protocolAnswers checks one answer per question: a missing one, one of

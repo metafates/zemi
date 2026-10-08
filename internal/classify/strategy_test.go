@@ -194,12 +194,23 @@ func TestAskLadder(t *testing.T) {
 		t.Fatalf("strategy = %q, err = %v", res.Strategy, err)
 	}
 
-	// both fail: the error names both, and nothing is answered
+	// both fail: the error names both, nothing is answered, and what the
+	// abandoned attempts used is still reported
 	m = &fakeModel{objectErr: errors.New("no object either"), replies: []tokenLogprobs{{metadata: logprobs(TokenLogprob{"Maybe", -1})}}}
 	chat = chatOf(m)
-	_, err = Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Chat: &chat})
+	res, err = Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Chat: &chat})
 	if err == nil || !strings.Contains(err.Error(), "no probability for Yes, No") || !strings.Contains(err.Error(), "no object either") {
 		t.Errorf("err = %v, want both strategies' errors", err)
+	}
+	if want := (Usage{InputTokens: int64(len(readoutDepth)) * 10, OutputTokens: int64(len(readoutDepth))}); res.Usage != want {
+		t.Errorf("usage = %+v, want %+v from the abandoned readouts", res.Usage, want)
+	}
+
+	// a reply that arrived and did not decode was billed too
+	m = &fakeModel{objectErr: &fantasy.NoObjectGeneratedError{RawText: "not json", Usage: fantasy.Usage{InputTokens: 7, OutputTokens: 2}}}
+	res, err = Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Chat: &Chat{Model: m}})
+	if err == nil || res.Usage != (Usage{InputTokens: 7, OutputTokens: 2}) {
+		t.Errorf("usage = %+v, err = %v; want the object call's usage", res.Usage, err)
 	}
 
 	// nothing to answer with at all

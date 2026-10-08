@@ -103,6 +103,7 @@ func TestClassifyAsk(t *testing.T) {
 		wantValue     string
 		wantProb      string
 		wantRequests  int
+		wantInput     int64 // prompt tokens the endpoint reports per request
 		requestMarker string
 	}{
 		{
@@ -113,6 +114,7 @@ func TestClassifyAsk(t *testing.T) {
 			wantValue:     "true",
 			wantProb:      "0.97",
 			wantRequests:  1,
+			wantInput:     120,
 			requestMarker: `"model":"m"`,
 		},
 		{
@@ -123,6 +125,7 @@ func TestClassifyAsk(t *testing.T) {
 			wantValue:     "true",
 			wantProb:      "0.869",
 			wantRequests:  1,
+			wantInput:     10,
 			requestMarker: `"top_logprobs"`,
 		},
 		{
@@ -133,6 +136,7 @@ func TestClassifyAsk(t *testing.T) {
 			wantValue:     "true",
 			wantProb:      "-1",
 			wantRequests:  4, // the readout at each depth, then the object call
+			wantInput:     10,
 			requestMarker: "safe",
 		},
 		{
@@ -145,6 +149,7 @@ func TestClassifyAsk(t *testing.T) {
 			wantValue:     "true",
 			wantProb:      "-1",
 			wantRequests:  1,
+			wantInput:     10,
 			requestMarker: "You must respond with valid JSON",
 		},
 	} {
@@ -179,8 +184,10 @@ func TestClassifyAsk(t *testing.T) {
 				}
 			}
 			sess, err := h.DB.GetSession(sid)
-			if err != nil || sess.PromptTokens == 0 || sess.CompletionTokens == 0 {
-				t.Errorf("session = %+v, %v; want the call billed", sess, err)
+			// every request the ladder made is billed, abandoned attempts
+			// included
+			if err != nil || sess.PromptTokens != c.wantInput*int64(len(f.bodies())) {
+				t.Errorf("session = %+v, %v; want %d requests billed", sess, err, len(f.bodies()))
 			}
 			if got("cost") == "0" {
 				t.Errorf("cost = %s, want a priced call", got("cost"))
