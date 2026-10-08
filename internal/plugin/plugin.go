@@ -38,6 +38,10 @@ type Plugin struct {
 	Latest    string // a newer tag in the same major, "v2.0.0 (major)" or "3 new commits"
 	Local     bool
 	Enabled   bool
+
+	// revision is what the checkout is at, the tag else the short commit: what
+	// update compares, since a manifest version may stand still across one
+	revision string
 }
 
 // ManifestFile is the plugin's manifest, relative to its root: what marks the
@@ -294,7 +298,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		was, all := map[string]string{}, len(rest) == 0
 		for _, p := range ps {
 			if !p.Local {
-				was[p.Name] = p.Version
+				was[p.Name] = p.revision
 				if all {
 					rest = append(rest, p.Name)
 				}
@@ -306,8 +310,8 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			p, err := update(ctx, d, name)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", name, err))
-			} else if p.Version != was[name] {
-				fmt.Fprintf(out, "%s %s -> %s\n", p.Name, was[name], p.Version)
+			} else if p.revision != was[name] {
+				fmt.Fprintf(out, "%s %s -> %s\n", p.Name, was[name], p.revision)
 				moved = true
 			}
 		}
@@ -353,19 +357,21 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	}
 	p.URL, _ = git(ctx, dir, "config", "--get", "remote.origin.url")
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
-	if cur := highest(here, ""); cur != "" {
-		p.Version = cmp.Or(p.Version, cur)
+	if tag := highest(here, ""); tag != "" {
+		p.revision = tag
+		p.Version = cmp.Or(p.Version, tag)
 		tags, _ := git(ctx, dir, "tag", "--list")
-		if top := highest(tags, semver.Major(cur)); semver.Compare(top, cur) > 0 {
+		if top := highest(tags, semver.Major(tag)); semver.Compare(top, tag) > 0 {
 			p.Latest = top
-		} else if top := highest(tags, ""); semver.Compare(top, cur) > 0 {
-			// nothing newer in cur's major, so a newer top is a new major
+		} else if top := highest(tags, ""); semver.Compare(top, tag) > 0 {
+			// nothing newer in tag's major, so a newer top is a new major
 			p.Latest = top + " (major)"
 		}
 		return p
 	}
+	p.revision, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
 	if p.Version == "" {
-		p.Version, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
+		p.Version = p.revision
 	}
 	if p.Latest = tagAhead(ctx, dir); p.Latest != "" {
 		return p

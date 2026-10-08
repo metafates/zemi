@@ -193,6 +193,11 @@ func TestPlugins(t *testing.T) {
 			},
 			args: nil, want: "x 3.0.0 true file://",
 		},
+		{
+			name:   "a manifest version does not hide a move",
+			before: func() { gitIn(filepath.Join(installed, "x"), "checkout", "-q", "refs/tags/v0.1.0") },
+			args:   []string{"update", "x"}, want: "\nx v0.1.0 -> v0.10.0\n",
+		},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},
 		{name: "enable takes one name", args: []string{"enable"}, want: "usage:", err: true},
 	} {
