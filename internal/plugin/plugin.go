@@ -38,6 +38,7 @@ type Plugin struct {
 	Latest    string // a newer tag in the same major, "v2.0.0 (major)" or "3 new commits"
 	Local     bool
 	Enabled   bool
+	Uses      []string // the manifest's declared capabilities: what enabling it grants
 
 	// revision is what the checkout is at, the tag else the short commit: what
 	// update compares, since a manifest version may stand still across one
@@ -53,10 +54,34 @@ const ManifestFile = ".zemi/plugin.json"
 // have none: the reader and the copier take the same 4 KB of a regular file.
 func Manifest(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile)) }
 
-// manifest is ManifestFile parsed; both fields are optional.
+// manifest is ManifestFile parsed; every field is optional.
 type manifest struct {
-	Version     string `json:"version"`
-	Description string `json:"description"`
+	Version     string   `json:"version"`
+	Description string   `json:"description"`
+	Uses        []string `json:"uses"`
+}
+
+// Uses is the vocabulary a manifest's "uses" draws from, one word per host
+// capability a plugin may call: what switching the plugin on grants.
+var Uses = []string{"agent", "fs.write", "http", "job", "job.unsandboxed", "model", "tool"}
+
+// CheckUses refuses a uses list naming something outside the vocabulary: the
+// plugin does not load, and the error carries the names that would.
+func CheckUses(u []string) error {
+	for _, name := range u {
+		if !slices.Contains(Uses, name) {
+			return fmt.Errorf("uses %q is not a capability; the valid ones are %s", name, strings.Join(Uses, ", "))
+		}
+	}
+	return nil
+}
+
+// manifestOf parses the manifest of the plugin in dir; a missing or malformed
+// one is the zero manifest, which declares nothing.
+func manifestOf(dir string) manifest {
+	var m manifest
+	_ = json.Unmarshal(Manifest(dir), &m)
+	return m
 }
 
 // a dot dir, such as a clone in flight, is never a plugin, and no name
@@ -79,8 +104,8 @@ func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 	return ps, err
 }
 
-// Scan is List without git: only Name, Dir, Local and Enabled, for the boot
-// step that loads plugins.
+// Scan is List without git: Name, Dir, Local, Enabled and the manifest's
+// declared uses, for the boot step that loads plugins.
 func Scan(d config.Dirs) ([]Plugin, error) {
 	off, err := disabled(d)
 	if err != nil {
@@ -96,7 +121,8 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 		for _, e := range entries {
 			// a symlink is listed so the loader can say why it refuses it
 			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
-				ps = append(ps, Plugin{Name: e.Name(), Dir: filepath.Join(dir, e.Name()), Local: kind == "local", Enabled: !off[e.Name()]})
+				root := filepath.Join(dir, e.Name())
+				ps = append(ps, Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off[e.Name()], Uses: manifestOf(root).Uses})
 			}
 		}
 	}
@@ -345,12 +371,10 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p := Plugin{Name: filepath.Base(dir), Dir: dir, Local: local, Enabled: enabled}
-	var m manifest
 	// the manifest is the plugin's own answer; init.lua's line fills in only
 	// what it leaves out
-	if err := json.Unmarshal(Manifest(dir), &m); err == nil {
-		p.Version, p.Desc = m.Version, m.Description
-	}
+	m := manifestOf(dir)
+	p.Version, p.Desc, p.Uses = m.Version, m.Description, m.Uses
 	if line := firstLine(filepath.Join(dir, "init.lua")); p.Desc == "" && strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}
