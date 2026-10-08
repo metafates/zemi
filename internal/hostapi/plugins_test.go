@@ -96,8 +96,8 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
-				"local/a/init.lua": `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true" }) print("a job", ok)`,
-				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true" }) print("b job", ok)`,
+				"local/a/init.lua": `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("a job", ok)`,
+				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("b job", ok)`,
 			},
 			seed: []string{"plugin:gone:k", "plugin:a:old"},
 			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", "plugin|a job false", "plugin|b job true"},
@@ -530,6 +530,7 @@ func TestPluginTrust(t *testing.T) {
 	if err := os.MkdirAll(own, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	fakeSandbox(h, true)
 	chunk := func(src string) error {
 		return r.ExecuteChunk(t.Context(), src, filepath.Join(own, "init.lua"), lua.OriginPlugin)
 	}
@@ -539,9 +540,18 @@ func TestPluginTrust(t *testing.T) {
 		-- the gate settles it; the §9 address check still refuses loopback,
 		-- which only a user allow rule for the host earns
 		assert(res == nil and tostring(err):find("is private", 1, true) ~= nil, tostring(err))
-		assert(zemi.job.start({ cmd = "true" }):wait(5000).code == 0, "job")
 		assert(zemi.fs.write(%q, "x") == true, "project write")
 	`, srv.URL+"/x", filepath.Join(dir, "notes.txt"))); err != nil {
+		t.Fatal(err)
+	}
+
+	// a job settles only when it asks to be confined: one without reads with
+	// the whole environment, so it asks like before the switch
+	if err := chunk(`
+		assert(zemi.job.start({ cmd = "true", sandbox = true }):wait(5000).code == 0, "confined")
+		local ok, err = pcall(zemi.job.start, { cmd = "true" })
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -562,8 +572,19 @@ func TestPluginTrust(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// a rule the user wrote decides first: here a deny, and an ask raises as
-	// it did before there was a switch at all
+	// a rule decides first even when it lets the call through in general: the
+	// write its not_match excludes is the rule's ask, not the floor's
+	excluded := filepath.Join(dir, "notes.txt")
+	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow, NotMatch: excluded})
+	if err := chunk(fmt.Sprintf(`
+		assert(zemi.fs.write(%q, "x") == true, "the rule allows this one")
+		local ok, err = pcall(zemi.fs.write, %q, "x")
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`, filepath.Join(dir, "other.txt"), excluded)); err != nil {
+		t.Fatal(err)
+	}
+
+	// here a deny, and an ask raises as it did before there was a switch at all
 	h.Perm.Add(perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Deny})
 	if err := chunk(fmt.Sprintf(`
 		local ok, err = pcall(zemi.http.get, %q)
@@ -573,7 +594,7 @@ func TestPluginTrust(t *testing.T) {
 	}
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Ask})
 	if err := chunk(`
-		local ok, err = pcall(zemi.job.start, { cmd = "true" })
+		local ok, err = pcall(zemi.job.start, { cmd = "true", sandbox = true })
 		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
 	`); err != nil {
 		t.Fatal(err)
