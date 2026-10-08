@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -153,6 +154,24 @@ func TestGoldenComposerCompletion(t *testing.T) {
 	app.timeStr = "09:41"
 	app.renderSync(t)
 
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenComposerFade pins a draft taller than the composer's window
+// (§8): the rows past either edge sink toward the panel, deepest at the edge,
+// while the cursor row stays clear of the ramp with a row of headroom below
+// it.
+func TestGoldenComposerFade(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 20)
+	var draft strings.Builder
+	for i := range 14 {
+		fmt.Fprintf(&draft, "draft line %d\n", i+1)
+	}
+	app.composer.text = strings.TrimSuffix(draft.String(), "\n")
+	app.composer.cursor = strings.Index(app.composer.text, "draft line 9")
+
+	app.timeStr = "09:41"
+	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 }
 
