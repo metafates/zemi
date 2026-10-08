@@ -68,8 +68,9 @@ local M = {}
 ---@type table<string, string>
 local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg", warn = "warn" }
 
--- A detail row hangs off the row above it by one corner, every later row the
--- same cells in; a row nested under a branch mark hangs where its own stands.
+-- A detail row hangs under its head by one corner, every later row the same
+-- cells in, two less when the row is nested under a branch mark, whose own
+-- cells stand above it.
 local HANG, INDENT = "  ⎿ ", "    "
 
 -- A row's mark: the spinner while it runs, else how it ended. A mark never
@@ -397,7 +398,6 @@ local function builder(ctx, width)
 		end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
-		-- the row's own mark stands two cells above where a hanging corner ends
 		local hang, indent = pad and "⎿ " or HANG, pad and "  " or INDENT
 		local corner = true
 		---@param text string|zemi.Line
