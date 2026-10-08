@@ -2578,8 +2578,9 @@ rides the `memories.md` line and its ledger entries.
   scrubbed at the memory store boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
-  `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
-  `lua.agent.send` and `lua.model.ask`) is `ask`; user and builtin code
+  `lua.http.<method>`, a plugin's `zemi.agent.send`, `zemi.model.ask` and
+  `zemi.classify.ask` as
+  `lua.agent.send`, `lua.model.ask` and `lua.classify.ask`) is `ask`; user and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is
   refused for project code (§5); a Lua-originated call to one of these

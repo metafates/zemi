@@ -206,7 +206,7 @@ So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Wa
 
 ## Testing
 
-`<zemi> plugins test <name|dir> [pattern]`, by the path your prompt names, runs every case of `tests/*.lua` in a fresh zemi holding only the plugin: no user config, no rules, a clock at 2026-01-01 00:00 UTC that only `test.advance` moves. Each top-level file there is a test file, and one that declares no case fails; code the files share goes in a subdirectory (`tests/lib/x.lua`, loaded with `require("./lib/x")`). A file's top level runs where init.lua would, before `app.ready`: stub there what the plugin calls at boot. Drivers run only inside a case. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless a stub answers it, and the error names the stub to add. Drivers wait until zemi is quiet and return `nil, err` instead of raising, so call them bare, never under `pcall` or `test.raises`; an error zemi records meanwhile fails the case at the call.
+`<zemi> plugins test <name|dir> [pattern]`, by the path your prompt names, runs every case of `tests/*.lua` in a fresh zemi holding only the plugin: no user config, no rules, a clock at 2026-01-01 00:00 UTC that only `test.advance` moves. Each top-level file there is a test file, and one that declares no case fails; code the files share goes in a subdirectory (`tests/lib/x.lua`, loaded with `require("./lib/x")`). A file's top level runs where init.lua would, before `app.ready`: stub there what the plugin calls at boot. Drivers run only inside a case. A job, HTTP request, model ask, classify call, agent send or `zemi.fs` write raises unless a stub answers it, and the error names the stub to add. Drivers wait until zemi is quiet and return `nil, err` instead of raising, so call them bare, never under `pcall` or `test.raises`; an error zemi records meanwhile fails the case at the call.
 
 ```
 local test = zemi.test
@@ -224,11 +224,12 @@ test.advance(ms)                move the clock, firing due timers
 test.set(key, value)            one of the plugin's settings, as /config changes it
 test.stub(subject, pattern?, reply?) -> requests
                                 answer lua.http.<method>, lua.job.start, lua.model.ask,
-                                lua.agent.send or lua.fs.write; false refuses like a missing rule
+                                lua.classify.ask, lua.agent.send or lua.fs.write; false refuses
+                                like a missing rule
 test.eq(got, want)  test.neq(got, other)  test.contains(s, sub)  test.raises(fn, sub?) -> message
 ```
 
-Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields and their defaults: http `{ status = 200, body = "", headers = {} }`, job `{ code = 0, stdout = "", stderr = "" }`, model a string or `{ text }`; `{ error = "..." }` (http and model replies) fails at the transport. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch.lua` for the plugin above:
+Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields and their defaults: http `{ status = 200, body = "", headers = {} }`, job `{ code = 0, stdout = "", stderr = "" }`, model a string or `{ text }`, classify the whole result `{ strategy = "...", answers = { <question> = { value = true, probability = 0.9 } } }`; `{ error = "..." }` (http and model replies) fails at the transport. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch.lua` for the plugin above:
 
 ```lua
 local test = zemi.test
