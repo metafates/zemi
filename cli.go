@@ -635,9 +635,9 @@ func pad(p colorprofile.Profile, role, text string, w int) string {
 // last so cut and awk read the name, and a header only on a terminal.
 func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 	p := colorprofile.Detect(w, os.Environ())
-	var rows [][4]string
+	var rows [][5]string
 	if !asJSON && p != colorprofile.NoTTY && len(ps) > 0 {
-		rows = append(rows, [4]string{"name", "version", "on", "source"})
+		rows = append(rows, [5]string{"name", "version", "on", "source", "uses"})
 	}
 	for _, pl := range ps {
 		version, source, on := pl.Version, pl.URL, "on"
@@ -658,20 +658,20 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 			}{pl.Name, version, pl.Local, pl.Enabled, source, pl.Uses})
 			continue
 		}
-		rows = append(rows, [4]string{pl.Name, version, on, source})
+		rows = append(rows, [5]string{pl.Name, version, on, source, strings.Join(pl.Uses, ",")})
 	}
-	var width [3]int
+	var width [4]int
 	for _, r := range rows {
 		for i := range width {
 			width[i] = max(width[i], ansi.StringWidth(r[i])+2)
 		}
 	}
 	for i, r := range rows {
-		roles := [4]string{"", "hint", statusRole[r[2]], "hint"}
+		roles := [5]string{"", "hint", statusRole[r[2]], "hint", "hint"}
 		if i == 0 && len(rows) > len(ps) {
-			roles = [4]string{"title", "title", "title", "title"}
+			roles = [5]string{"title", "title", "title", "title", "title"}
 		}
-		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+paint(p, roles[3], r[3]))
+		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+pad(p, roles[3], r[3], width[3])+paint(p, roles[4], r[4]))
 	}
 }
 

@@ -259,10 +259,11 @@ func (h *Host) pluginItems() []any {
 			// the user's own code: no manifest and no clone to read a version from
 			version = cmp.Or(version, "local")
 		}
-		desc = append(desc, version, p.Desc)
+		desc = append(desc, version)
 		if len(p.Uses) > 0 {
 			desc = append(desc, "uses: "+strings.Join(p.Uses, ", "))
 		}
+		desc = append(desc, p.Desc)
 		if loadErr != nil {
 			errText = loadErr.Error()
 		}
