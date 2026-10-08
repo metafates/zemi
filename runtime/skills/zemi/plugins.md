@@ -117,6 +117,71 @@ Permissions: a job, an HTTP request, a `zemi.fs` write, a model call (`zemi.mode
 
 What a plugin cannot do at all: register providers, MCP servers or language servers (they run unconfined or hold keys, so the README gives the user the `zemi.provider.add` or `zemi.mcp.add` line to paste), rewrite the conversation or the provider request, draw its own transcript rows or a panel, change the tool set per turn (a profile does it once), or replace a builtin tool (`zemi.tool.override` adds `pre` and `post` around one). Each would break the prompt cache, the conversation or the UI rules below.
 
+## A classifier mode
+
+A plugin may add a permission mode, and a mode's `decide` is the one hook that answers what auto mode would otherwise ask - so a plugin can put a model between the ask and the user. `decide` runs as a task for at most 60 s, so it may wait on a model call; unlike the mode's own `rules`, which a plugin may only make deny or ask like `zemi.permission.rule.add`, it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could. The user still picks the mode (`/mode`, `permissions.mode`): a plugin cannot switch one on, and cannot take a name another plugin or the user holds (`auto` and `yolo` are refused to everyone).
+
+Give the model its own slot so a user who keeps a cheap model for this can say so - `zemi.model.add("classifier", { desc = "settles permission asks" })`, which follows `models.chat` until the user sets `models.classifier` from `/model` or `/config`. A target's own model is what the slot runs on, and a slot added by a plugin disappears with it, the user's pick included.
+
+```lua
+-- lua/<name>/init.lua: one model call per ask auto did not settle
+zemi.model.add("classifier", { desc = "settles permission asks" })
+
+zemi.permission.mode.add("classify", {
+	base = "auto",
+	description = "a model settles what auto would ask",
+	decide = function(req)
+		local h = zemi.model.ask({
+			model = "classifier",
+			max_output = 256,
+			system = "You settle one permission request for a coding agent. Answer in one line: "
+				.. "'ALLOW <once|session|project> because <why>' or 'DENY because <why>'.",
+			prompt = table.concat({
+				"tool: " .. req.tool,
+				"subject: " .. req.subject,
+				"target: " .. req.arg,
+				"why it asks: " .. req.reason,
+				"scopes on offer: " .. table.concat(req.options, ", "),
+				"trusted project: " .. tostring(req.trusted),
+				"read-only turn: " .. tostring(req.read_only),
+				req.preview ~= "" and ("preview:\n" .. req.preview) or "",
+			}, "\n"),
+		})
+		local text = h:wait()
+		if not text then
+			return nil -- an error or the 60s ceiling leaves the ask to the user
+		end
+		local verdict, rest = text:match("^[^\n]*"):match("^(%u+)%s*(.*)$")
+		if verdict == "ALLOW" and rest ~= "" then
+			local scope, why = rest:match("^(%a+)%s*(.*)$")
+			return { decision = "allow", scope = scope, reason = why }
+		end
+		if verdict == "DENY" then
+			return { decision = "deny", reason = rest }
+		end
+		return nil -- anything else: the user answers
+	end,
+})
+```
+
+`req` is `zemi.PermRequest` (grep the types file for the field list): the subject, the path or command, why it asks, the scopes on offer, whether the project is trusted, whether an agent runs read-only, and the sandbox and network flags. `req.options` is what an allow may take here, so answer with one of them; a scope the request does not offer narrows to the closest one below it, never wider, and a plugin's `project` narrows to `session` - the durable permissions file is the user's own grant. Anything but `"allow"`, `"deny"` or a verdict table leaves the ask to the user, which is the answer to give when the model's line does not parse: a decide that answers nothing is how a user sees every ask.
+
+Say what the mode costs and does in the README: it is a model call per ask, billed to the user, and its allows of a call no rule may settle are in the transcript as a row naming the mode, with the session rules it writes listed in `/permissions`. Keep the prompt small (the preview of a write can be long) and the output short.
+
+That call is gated like any other plugin model call, and the plugin cannot allow itself: without the user's rule the raise leaves the ask to the user, so the mode loads and does nothing. The rule matches the model id the slot resolves to, which moves with the user's pick, and names the principal, so `pattern = "*"` is the one to paste:
+
+```lua
+zemi.permission.rule.add({
+	subject = "lua.model.ask",
+	pattern = "*",
+	decision = "allow",
+	match = "anthropic/claude-sonnet-4-5",
+	principal = "plugin:<name>",
+})
+```
+
+Report it the way any gated call is reported: a missing rule is a state, not a crash, so the plugin keeps the raise in a local (the way the branch example above keeps `missing`) and a `zemi.health.add` row names the line to paste, so the user sees why the mode is quiet instead of finding out from a mode that never answers.
+
 ## Style
 
 So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Warn`, `Danger`, ...), never hex, so the user's theme applies. No state change adds or removes a row: status goes in a statusline widget that renders `{}` when there is nothing to say (with a high priority, since it comes and goes) or in a toast (`zemi.notify`), whose title says what happened like zemi's own: "Plugin installed" with the name in the body, "Could not reach the server" with the cause in the body. A tool's call row is zemi's own, labeled by a string `about` parameter, with `run:progress(text)` for the running line. Slow work goes in a `wait` inside a task or a job's `on_exit`, never in a render.
