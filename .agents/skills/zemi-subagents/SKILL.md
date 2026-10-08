@@ -122,7 +122,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
   a namespace, and a script `luaUnlisted` finds reaching past them asks `tool.lua` once, as
-  `Request.Unsandboxed` so no mode settles it. A new API member is guarded until added to
+  `Request.Unsandboxed`, so no mode's rules settle it. A new API member is guarded until added to
   `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
   flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
