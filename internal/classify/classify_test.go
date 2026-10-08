@@ -2,10 +2,13 @@ package classify
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"charm.land/fantasy"
@@ -14,14 +17,20 @@ import (
 )
 
 // server answers one classification the way a decisions provider does, and
-// reports what it was sent.
+// reports what it was sent. The handler runs on conn goroutines, so seen is
+// under a mutex.
 func server(t *testing.T, reply string) (*Protocol, func() string) {
 	t.Helper()
+	var mu sync.Mutex
 	var seen string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading the request: %v", err)
+		}
+		mu.Lock()
 		seen = string(body)
+		mu.Unlock()
 		if got := r.Header.Get("authorization"); got != "Bearer k" {
 			t.Errorf("authorization = %q, want the bearer key", got)
 		}
@@ -32,7 +41,11 @@ func server(t *testing.T, reply string) (*Protocol, func() string) {
 		_, _ = w.Write([]byte(reply))
 	}))
 	t.Cleanup(srv.Close)
-	return &Protocol{BaseURL: srv.URL, APIKey: "k", Model: "m", HTTP: srv.Client()}, func() string { return seen }
+	return &Protocol{BaseURL: srv.URL, APIKey: "k", Model: "m", HTTP: srv.Client()}, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return seen
+	}
 }
 
 // questions is the three question types, one of each.
@@ -149,6 +162,9 @@ type fakeModel struct {
 }
 
 func (m *fakeModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
+	if len(m.replies) == 0 {
+		return nil, errors.New("the fake model was given no replies")
+	}
 	i := min(m.calls, len(m.replies)-1)
 	m.calls++
 	if m.replies[i].err != nil {
