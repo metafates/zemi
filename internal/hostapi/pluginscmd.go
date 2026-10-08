@@ -281,12 +281,22 @@ func (h *Host) pluginItems() []any {
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
-			"detail": p.Desc, "actions": actions,
+			"detail": pluginDetail(p), "actions": actions,
 			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
 				"provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
 	}
 	return items
+}
+
+// pluginDetail is the detail pane's prose: what the plugin ships and, while it
+// is enabled, what switching it on grants and what still asks.
+func pluginDetail(p plugin.Plugin) string {
+	if !p.Enabled {
+		return p.Desc
+	}
+	return strings.TrimSpace(p.Desc + "\n\nEnabled: its own model, HTTP, job and fs calls and the tools it" +
+		" registered need no permission rule; writes to plugin code, .git, .agents and zemi's own files still ask.")
 }
 
 // pluginStatus is how the last boot left p: "starting" when it is on but no

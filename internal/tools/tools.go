@@ -157,6 +157,8 @@ const (
 	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
 	ByReadOnly = "read-only agent"
+	// ByPlugin is a call switching the calling plugin on settled (DESIGN §9)
+	ByPlugin   = "plugin"
 	modePrefix = "mode:"
 	// ByRecheck is an asker's answer that the request's Recheck now settles;
 	// the pipeline returns that verdict whole, its Rule included

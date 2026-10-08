@@ -206,6 +206,8 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	case v.Decision == perm.Allow:
 	case v.Decision == perm.Ask && approved:
 		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByUser}
+	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginTrusted(L, subject, arg):
+		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByPlugin}
 	case v.Decision == perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
@@ -222,6 +224,25 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
 	return v, nil
+}
+
+// pluginTrusted reports whether switching a plugin on is what answers this
+// call: its own model, agent, HTTP, job and file-write calls settle, since a
+// disabled plugin never loads and the /plugins switch is the user's consent.
+// It answers only an ask no rule decided (the caller checks that), a protected
+// write still asks (it changes what a later boot runs), and a test zemi
+// answers IO through its stubs alone.
+func (h *Host) pluginTrusted(L *glua.LState, subject, arg string) bool {
+	if h.test != nil || h.RT.CurrentOrigin(L) != lua.OriginPlugin {
+		return false
+	}
+	switch subject {
+	case "lua.model.ask", "lua.model.classify", "lua.agent.send", "lua.job.start":
+		return true
+	case "lua.fs.write":
+		return !h.secretPath(arg) && !h.protectedWrite(arg)
+	}
+	return strings.HasPrefix(subject, "lua.http.")
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.
