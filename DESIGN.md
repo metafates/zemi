@@ -1834,7 +1834,10 @@ rides the `memories.md` line and its ledger entries.
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`); only the stuck and errors pills are Go-drawn. A boot that
+  (`rows_below`), and (`statusline.unsafe`, `ctx.unsafe`) a `--unsafe` run its
+  own `unsafe` pill beside the mode, in the `Danger` group, at the mode's own
+  priority so a short row drops both together; only the stuck and errors pills
+  are Go-drawn. A boot that
   failed leaves the runtime hot, so no widget, theme, config text or composer
   exists at all: the whole screen left is Go's, and the boot box states the
   error, the log that holds the whole traceback, and the two keys that work
@@ -2667,6 +2670,14 @@ rides the `memories.md` line and its ledger entries.
   `ReadCommand` commands, which run unconfined, and
   auto mode sends every other command to the user ("no
   sandbox"), since an approved one would run unconfined.
+  `--unsafe` is that boot by choice: the project is trusted, the pipeline
+  carries no policy at all, no secret-shaped file is hidden from a listing, a
+  grep, the prompt's file list, an attachment or a child's environment, a fetch
+  reaches a private address, and the prompt says so. The modes and their asks
+  are not removed (`--unsafe --mode yolo` is the boot nothing asks in), and a
+  read-only agent's denials stand: a `ReadCommand` it settles runs unconfined
+  and one the user approves has the project writable, the sandbox being what
+  made it read-only.
   A mode added from config, a plugin's included, may carry a `decide`
   function that answers one ask from Lua: "allow", "deny", or a table naming
   the decision and how far an allow reaches (`once`, `session`, `wider`,
@@ -2750,7 +2761,8 @@ rides the `memories.md` line and its ledger entries.
   allows unprivileged user namespaces, else Landlock plus seccomp) is
   probed once in `NewHost`, before
   boot (the probe is fast), so `zemi health` and the first turn's tool schema
-  see the result; `/health` has a `sandbox` row. `sandboxPolicy`: everything
+  see the result; `/health` has a `sandbox` row, which reads `off (--unsafe)`
+  when the run asked for none. `sandboxPolicy`: everything
   readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
   `~/.npmrc`, `~/.git-credentials`, shell histories, ..., under `$HOME` and
   the account's home when `HOME` was moved), zemi's config,

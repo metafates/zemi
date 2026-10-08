@@ -544,6 +544,15 @@ func TestFetchGates(t *testing.T) {
 		}
 	}
 
+	// a --unsafe run denies no address: the same URL passes the gate's ask and
+	// is dialed, with no rule at all
+	unsafe, unsafeAsked := testPipeline(t, true)
+	unsafe.Unsafe = true
+	res := call(t, toolNamed(t, "fetch", unsafe), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
+	if res.IsError || res.Content != "hi" || len(*unsafeAsked) != 1 {
+		t.Fatalf("--unsafe fetch of a private host: %+v asked %+v", res, *unsafeAsked)
+	}
+
 	// the rules an "always" answer writes also cover a redirect hop
 	hops, hopAsks := testPipeline(t, false,
 		perm.Rule{Subject: "net.example.com", Pattern: "https://example.com/*", Decision: perm.Allow})

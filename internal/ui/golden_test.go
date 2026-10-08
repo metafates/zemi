@@ -101,6 +101,17 @@ zemi.ui.widget.add({
 	golden.RequireEqual(t, app.Frame())
 }
 
+// TestGoldenUnsafe: a --unsafe run says so in a pill beside the mode, and
+// nothing else of the shipped frame changes.
+func TestGoldenUnsafe(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.Unsafe = true
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
 // renderSync renders every visible widget synchronously on the caller's
 // goroutine (the frame loop is not running in tests) and fills the caches.
 func (a *App) renderSync(tb testing.TB) {
