@@ -113,7 +113,7 @@ test("the third failing run asks the titles model", function()
 	test.eq({ n.level, n.title, n.body }, { "warn", "Tests keep failing", "The fixture is missing." })
 end)
 
-test("a missing rule is a health row", function()
+test("a refused job leaves a health row", function()
 	test.stub("lua.job.start", "*", false)
 	test.advance(30000)
 	local row

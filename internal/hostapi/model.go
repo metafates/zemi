@@ -123,7 +123,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 
 // modelAsk is zemi.model.ask: one tool-less call on a role's model or an
 // id, billed to the live session and run off the interpreter. It costs
-// money, so plugin code needs a user rule for lua.model.ask and project code
+// money, and switching the plugin on is what consents to it; project code
 // may not call it.
 func (h *Host) modelAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
