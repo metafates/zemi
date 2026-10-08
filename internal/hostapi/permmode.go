@@ -857,7 +857,7 @@ func (h *Host) decidePayload(req tools.Request, options []string) map[string]any
 		"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
 		"options": options, "read_only": req.ReadOnly, "trusted": h.ProjectTrusted(), "sandbox": h.sandboxLive(),
 		"unsandboxed": req.Unsandboxed, "network": req.Network, "explicit": req.Explicit,
-		"protected": protected != "", "protected_why": protected,
+		"protected_write": protected != "", "protected_why": protected,
 	}
 }
 

@@ -1999,8 +1999,13 @@ function zemi.composer.edit() end
 ---@field base? string The mode this one starts from: "auto" or "yolo".
 ---@field description? string
 ---@field prompt? string A system prompt section while the mode is active.
----@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on.
----@field decide? fun(req: zemi.PermRequest): "allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs as a task for at most 60s, so it may wait on a model call (zemi.http), which frees the interpreter.
+---@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on. Allow rules need user config, as in `zemi.permission.rule.add`.
+---@field decide? fun(req: zemi.PermRequest): zemi.PermVerdict|"allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs as a task for at most 60s, so it may wait on a model call (zemi.http), which frees the interpreter. Unlike the mode's rules it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could; the transcript gets a row saying so.
+
+---@class zemi.PermVerdict
+---@field decision "allow"|"deny"
+---@field scope? "once"|"session"|"wider"|"project" How far an allow reaches: one call, the session rules an "always" answer writes, a file read's whole repository, or the project's permissions file. A scope the request does not offer narrows to the closest one below it, never wider.
+---@field reason? string Why, added to what the ask says and to the row a settled fenced call leaves.
 
 ---@class zemi.PermRequest
 ---@field subject string
@@ -2010,6 +2015,15 @@ function zemi.composer.edit() end
 ---@field preview string
 ---@field description string
 ---@field agent string The subagent asking, such as "explore agent"; "" for the main agent.
+---@field options string[] The scopes an allow may take here, "once" first; a scope left out is not on offer.
+---@field read_only boolean A read-only agent's turn.
+---@field trusted boolean The project is trusted.
+---@field sandbox boolean A sandbox backend is live, so a settled command runs confined.
+---@field unsandboxed boolean A command asked to leave the sandbox.
+---@field network boolean A command asked for sockets.
+---@field explicit boolean A rule asked for this call: a deny, or an ask whose exclusion matched.
+---@field protected_write boolean A write that changes what zemi runs or allows (.git, the Lua in .agents, zemi's own dirs, a local plugin).
+---@field protected_why string Why it is protected, "" otherwise.
 
 ---@class zemi.PermMode
 ---@field name string
@@ -2053,8 +2067,9 @@ function zemi.permission.rule.list() end
 zemi.permission.mode = {}
 
 --- Define a permission mode, or replace the one of that name: a lowercase
---- letter, then up to 15 lowercase letters, digits and "-". User or builtin
---- origin only.
+--- letter, then up to 15 lowercase letters, digits and "-". User, builtin or
+--- plugin origin; the project may not. "auto" and "yolo" are reserved, and a
+--- name another plugin holds is refused.
 ---
 --- ```lua
 --- zemi.permission.mode.add("review", {
@@ -2067,8 +2082,8 @@ zemi.permission.mode = {}
 ---@param spec zemi.PermModeSpec
 function zemi.permission.mode.add(name, spec) end
 
---- Remove a mode. User or builtin origin only; raises for a name no mode has and for
---- the last mode.
+--- Remove a mode. User, builtin or plugin origin; raises for a name no mode has
+--- hold of, for "auto" and "yolo", and for the last mode.
 ---@param name string
 function zemi.permission.mode.del(name) end
 

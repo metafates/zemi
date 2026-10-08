@@ -924,6 +924,11 @@ func TestModeDecideScopes(t *testing.T) {
 		base = "auto",
 		rules = { { "tool.shell", "git push *", "deny" } },
 		decide = function(req)
+			if req.protected_write then return { decision = "deny", reason = "protected: " .. req.protected_why } end
+			if req.subject == "fs.read" then
+				if req.arg:match("advise") then return { decision = "deny", reason = "options: " .. table.concat(req.options, ",") } end
+				return { decision = "allow", scope = "wider", reason = "widest on offer" }
+			end
 			if req.arg == "rm -rf /" then return { decision = "deny", reason = "that deletes the machine" } end
 			if req.arg == "cargo build" then return { decision = "allow", scope = "project", reason = "routine" } end
 			if req.arg == "go test ./..." then return { decision = "allow", scope = "session", reason = "routine" } end
@@ -934,14 +939,14 @@ func TestModeDecideScopes(t *testing.T) {
 	}
 	read := filepath.Join(h.Dirs.ProjectDir, "a.go")
 	for _, c := range []struct {
-		name string
-		req  tools.Request
-		ok   bool
-		by   string
-		then func(t *testing.T)
+		name    string
+		req     tools.Request
+		ok      bool
+		by, why string // why is what a denial hands back, "" when it need not match
+		then    func(t *testing.T)
 	}{
 		{
-			"a session scope writes the always rules", tools.Request{Subject: perm.SubjectShell, Arg: "go test ./..."}, true, "mode:judge",
+			"a session scope writes the always rules", tools.Request{Subject: perm.SubjectShell, Arg: "go test ./..."}, true, "mode:judge", "",
 			func(t *testing.T) {
 				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("go test -run X ./pkg"), perm.PrincipalModel).Decision; got != perm.Allow {
 					t.Errorf("go test rule: %v", got)
@@ -949,7 +954,7 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a project scope writes the project file", tools.Request{Subject: perm.SubjectShell, Arg: "cargo build"}, true, "mode:judge",
+			"a project scope writes the project file", tools.Request{Subject: perm.SubjectShell, Arg: "cargo build"}, true, "mode:judge", "",
 			func(t *testing.T) {
 				b, err := os.ReadFile(h.projectPermissionsPath())
 				if err != nil || !strings.Contains(string(b), "cargo build") {
@@ -958,7 +963,7 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a scope not on offer narrows", tools.Request{Subject: perm.SubjectRead, Arg: read}, true, "mode:judge",
+			"a scope not on offer narrows", tools.Request{Subject: perm.SubjectRead, Arg: read}, true, "mode:judge", "",
 			func(t *testing.T) {
 				// "wider" needs a repository above the file: the directory rule stands
 				abs := perm.RealPath(read)
@@ -968,25 +973,36 @@ func TestModeDecideScopes(t *testing.T) {
 			},
 		},
 		{
-			"a rule's deny outranks the decide", tools.Request{Subject: perm.SubjectShell, Arg: "git push origin main"}, false, "mode:judge",
+			"a rule's deny outranks the decide", tools.Request{Subject: perm.SubjectShell, Arg: "git push origin main"}, false, "mode:judge", "",
 			func(t *testing.T) {
 				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("git push origin main"), perm.PrincipalModel).Decision; got == perm.Allow {
 					t.Error("the deny rule's answer was widened")
 				}
 			},
 		},
+		{
+			// the payload's own fields reach the decide: what no rule settles and
+			// what an allow could take here
+			"a protected write", tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false, "mode:judge",
+			"protected: this changes .git, which decides what git runs", nil,
+		},
+		{
+			"and the scopes on offer", tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(h.Dirs.ProjectDir, "advise.go")}, false, "mode:judge",
+			"options: once,session", nil,
+		},
+		{
+			"a decide's own reason reaches whoever reads the denial", tools.Request{Subject: perm.SubjectShell, Arg: "rm -rf /"}, false, "mode:judge",
+			"that deletes the machine", nil,
+		},
 	} {
-		ok, by, _ := h.askHook()(c.req)
-		if ok != c.ok || by != c.by {
-			t.Errorf("%s: allowed %v by %s", c.name, ok, by)
+		ok, by, why := h.askHook()(c.req)
+		if ok != c.ok || by != c.by || c.why != "" && why != c.why {
+			t.Errorf("%s: allowed %v by %s, %q", c.name, ok, by, why)
 			continue
 		}
-		c.then(t)
-	}
-	// a decide's own reason reaches whoever reads the denial
-	ok, by, why := h.askHook()(tools.Request{Subject: perm.SubjectShell, Arg: "rm -rf /"})
-	if ok || by != "mode:judge" || why != "that deletes the machine" {
-		t.Errorf("a decided deny: allowed %v by %s, %q", ok, by, why)
+		if c.then != nil {
+			c.then(t)
+		}
 	}
 	if h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("rm -rf /"), perm.PrincipalModel).Decision == perm.Allow {
 		t.Error("a decided deny wrote a rule")

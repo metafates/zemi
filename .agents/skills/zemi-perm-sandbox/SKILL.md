@@ -118,7 +118,9 @@ file tools need no prior read there (`perm.InPad` is the narrower pad-only check
 ones use). New host-API side effects need the same `lua.` subject.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules and
-the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
+the `permission.request` veto, and its own rules are deterministic: no model screens anything.
+The one exception is a mode's own `decide` (below): a model call there is what the user opted
+into by writing the mode. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
 `Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), shell commands
@@ -134,11 +136,17 @@ workflows) loads nothing into the interpreter and is an ordinary project write).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
 command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
-Network requests are never settled: the URL is the model's. A mode from config may carry
+Network requests are never settled by a rule: the URL is the model's. A mode from config, a
+plugin's included, may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it runs as a task for at
-most 60s, long enough for a model call of its own, and, like the mode's own rules,
-cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
+most 60s, long enough for a model call of its own, and, unlike the mode's own rules, it may
+allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`, since a
+human could; each such allow leaves a `RowNotice` row saying so. Its table answer
+`{ decision = "allow", scope = ..., reason = ... }` writes what the user's own answer of that
+scope writes (`alwaysChoice`, `repoChoice`, `projectChoice`), a scope the request does not offer
+narrowing to the closest below it (`req.options` says which are on offer), and its `reason`
+rides the row and a denial. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Normalized.Destructive` list (bulk deletes,
 DESIGN §9; an `rm` whose every operand is below the scratchpad or a temp dir is outside it), a git command that writes what the sandbox keeps read-only in `.git`, reaches the
 network or can drop commits for good (`perm.Normalized.GitWrites`, whose `gitDir` says whether the
@@ -219,7 +227,9 @@ origin may add allow rules (project may tighten only), scope a rule to one plugi
 (`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;
 a plugin's `zemi.agent.send` and `zemi.model.ask` ask `lua.agent.send` and `lua.model.ask`)
 or switch the mode
-(`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); the gate lives at the
+(`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); user, builtin and
+plugin code may add or drop a mode, the project refused, and `mayReplace` refuses a builtin
+name (`auto`, `yolo`) to everyone and another plugin's name to a plugin; the gate lives at the
 namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal
