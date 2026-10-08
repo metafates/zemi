@@ -12,7 +12,7 @@ import (
 )
 
 // SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
-// The seatbelt policy (internal/sandbox) hides strictSecretShape, .env
+// The seatbelt policy (internal/sandbox) hides PathIsHiddenSecret, .env
 // templates included, and DESIGN §9 lists it: the three move together.
 var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*secret*")
 
@@ -36,6 +36,13 @@ func PathIsStrictSecret(p string) bool {
 		return false
 	}
 	return secretShaped(base, strictSecretShape)
+}
+
+// PathIsHiddenSecret is what the sandbox hides from a confined command: the
+// strict shapes with the .env templates included, which PathIsStrictSecret
+// exempts because grep and a directory listing may show them.
+func PathIsHiddenSecret(p string) bool {
+	return secretShaped(fold(filepath.Base(p)), strictSecretShape)
 }
 
 // secretShaped takes a folded base name.

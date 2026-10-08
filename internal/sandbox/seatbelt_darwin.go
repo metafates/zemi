@@ -68,10 +68,12 @@ func foldCase(re string) string {
 //go:embed profile.sb
 var baseProfile string
 
-// secretShapes are the strict shapes of perm.SecretPathShape. The broad
-// *secret* and *credential* stay in the ask layer: Go's own stdlib has
-// runtime/secret.go, so a kernel rule for them breaks go build.
-const secretShapes = `(regex #"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"/\.npmrc$" #"/\.yarnrc\.yml$" #"/\.pgpass$" #"/\.pypirc$" #"/\.htpasswd$" #"/\.my\.cnf$" #"\.(env|pem|key|p12|pfx|jks|keystore)$" #"/id_(rsa|dsa|ecdsa|ed25519)$")`
+// secretShapes are the shapes of perm.PathIsHiddenSecret. The broad *secret*
+// and *credential* stay in the ask layer: Go's own stdlib has
+// runtime/secret.go, so a kernel rule for them breaks go build. A key name
+// takes what follows it, perm's id_* globs; POSIX regex has no lookahead, so
+// the tail spells out "not ending in .pub", which perm leaves shareable.
+const secretShapes = `(regex #"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"/\.npmrc$" #"/\.yarnrc\.yml$" #"/\.pgpass$" #"/\.pypirc$" #"/\.htpasswd$" #"/\.my\.cnf$" #"\.(env|pem|key|p12|pfx|jks|keystore)$" #"/id_(rsa|dsa|ecdsa|ed25519)([^/]{0,3}|[^/]*([^b]|[^u]b|[^p]ub|[^.]pub))$")`
 
 func probe() (Backend, error) {
 	if _, err := os.Stat(sandboxExec); err != nil {

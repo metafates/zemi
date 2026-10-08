@@ -522,13 +522,6 @@ func (p *Pipeline) guard() func() string {
 	return p.Guard(*p.Sandboxed)
 }
 
-// hiddenSecret reports a path the backend hides: the secret shapes with the
-// .env templates included, which perm.PathIsStrictSecret exempts because grep
-// and a directory listing may show them.
-func hiddenSecret(p string) bool {
-	return perm.PathIsStrictSecret(p) || strings.HasPrefix(filepath.Base(p), ".env.")
-}
-
 // sandboxOff is the one escape a confined failure offers when the run's
 // schema carries sandbox: false; the clauses below add their own lead-in.
 const sandboxOff = "call it again with sandbox: false (needs approval)"
@@ -594,7 +587,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 			break
 		}
 		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or "+sandboxOff)
-	case b.HidesSecretFiles && has(func(l limit) bool { return hiddenSecret(l.path) }):
+	case b.HidesSecretFiles && has(func(l limit) bool { return perm.PathIsHiddenSecret(l.path) }):
 		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, "+sandboxOff)
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
