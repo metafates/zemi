@@ -1812,7 +1812,8 @@ rides the `memories.md` line and its ledger entries.
   one on top, which gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot a cell in from the left corner, a cell of
   rule either side of it, the state in its eyes alone: swapping while the model thinks or
-  tools run, `??` while the user is asked, then for a few seconds `^^`
+  tools run, lowered while a reading call, a compaction or a goal check runs,
+  `??` while the user is asked, then for a few seconds `^^`
   when the turn finished ok, `><` when it failed and idle eyes when it was
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
