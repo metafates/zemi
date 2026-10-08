@@ -41,7 +41,10 @@ type PermModeDef struct {
 	// is what refuses it (0 for a builtin, which has no decide).
 	Decide *glua.LFunction
 	Origin lua.Origin
-	Gen    Gen
+	// Path is the file that registered the mode: it tells two plugins' modes
+	// of one name apart (mayReplace), and a builtin has none.
+	Path string
+	Gen  Gen
 }
 
 var builtinModes = []PermModeDef{
@@ -269,7 +272,9 @@ func (h *Host) permModeDef() PermModeDef {
 			return d
 		}
 	}
-	return list[0]
+	// never list[0]: user config builds the list, and one holding no
+	// auto-based mode must not fall back on what allows everything
+	return builtinModes[0]
 }
 
 // SetPermMode switches the mode at runtime (/mode, ctrl+y).
@@ -284,6 +289,35 @@ func (h *Host) SetPermMode(mode string) error {
 		return Usagef("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
 	return h.setWatched("permissions.mode", mode)
+}
+
+// dropModePick forgets a kept permissions.mode pick that named a mode whose
+// base just turned yolo. keepPick refuses to store a new one, and loadPicks
+// drops a literal yolo row, both before any Lua runs; a pick made while the
+// mode was auto-based would otherwise start every later boot allowing what
+// the rules do not deny. Registration is where the base becomes known, so a
+// fresh boot re-checks too, not only a replay.
+func (h *Host) dropModePick(def PermModeDef) {
+	if def.Base != config.PermModeYolo {
+		return
+	}
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	pick, _ := h.picked["permissions.mode"].(string)
+	if pick != def.Name {
+		return
+	}
+	delete(h.picked, "permissions.mode")
+	if h.GlobalDB != nil {
+		if _, err := h.GlobalDB.DelKV("config:permissions.mode"); err != nil {
+			h.Log.Warn("could not drop a kept pick", "origin", "config", "path", "permissions.mode", "error", err)
+		}
+	}
+	// the setting goes back to its default only when the pick is what set it:
+	// init.lua writing the mode is a choice of its own
+	if live, _ := h.Settings.Get("permissions.mode"); live == any(pick) {
+		h.Settings.SetQuiet("permissions.mode", h.Settings.Default("permissions.mode"))
+	}
 }
 
 // approvePlan is the plan tool's hook: it shows a plan in the approval popup.
@@ -325,12 +359,14 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	if restore != "" {
+		// a profile or mode the config dropped since is no reason to read the
+		// approval as a dismissal: the fallbacks (default, auto) stand
 		if err := h.SetProfile(restore); err != nil {
-			return v, false
+			h.Log.Info("plan restore skipped a profile", "origin", "permissions", "profile", restore, "error", err)
 		}
 		if mode != "" {
 			if err := h.SetPermMode(mode); err != nil {
-				return v, false
+				h.Log.Info("plan restore skipped a mode", "origin", "permissions", "mode", mode, "error", err)
 			}
 		}
 		if !verdict.Hold {
@@ -353,12 +389,16 @@ func (h *Host) cyclePermMode(step int) error {
 
 var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 
-// modeNamespace is zemi.permission.mode: add, del and set modes from
-// user config (a mode answers permission asks, so no other origin may).
+// modeNamespace is zemi.permission.mode: add and del register modes from
+// user, builtin or plugin code (a mode answers permission asks, so the
+// project may not); only user config switches the active one.
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	gate := func(L *glua.LState, fn string) {
-		h.refuseBelowUser(L, "permission.mode."+fn)
+		if o := h.RT.CurrentOrigin(L); o.Rank() > lua.OriginProject.Rank() {
+			return
+		}
+		L.RaiseError("zemi.permission.mode.%s: project code may not register a permission mode", fn)
 	}
 	// add(name, { base, description, prompt, rules = { { subject, pattern, decision }, ... } })
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
@@ -366,7 +406,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		gate(L, "add")
 		def := PermModeDef{
 			Name: name, Base: rawString(L, spec, "base"), Description: rawString(L, spec, "description"), Prompt: rawString(L, spec, "prompt"),
-			Origin: h.RT.CurrentOrigin(L), Gen: h.currentGen(),
+			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen(),
 		}
 		def.Decide, _ = opt[*glua.LFunction](L, spec, "decide")
 		if !modeName.MatchString(name) {
@@ -374,6 +414,11 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		}
 		if modeIndex(builtinModes, def.Base) < 0 {
 			L.RaiseError("zemi.permission.mode.add: base must be auto or yolo")
+		}
+		// the builtins carry no origin, so their names are reserved by name:
+		// auto and yolo are what settles every ask nobody answered otherwise
+		if modeIndex(builtinModes, name) >= 0 {
+			L.RaiseError("zemi.permission.mode.add: %q is a builtin mode", name)
 		}
 		if rules, ok := opt[*glua.LTable](L, spec, "rules"); ok {
 			def.Rules = new(perm.Store)
@@ -392,11 +437,16 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 					return string(s)
 				}
 				r := perm.Rule{Subject: field(1, "subject"), Pattern: field(2, "pattern"), Decision: perm.Decision(field(3, "decision"))}
-				if err := h.ruleShape(r); err != nil {
+				switch err := h.ruleShape(r); {
+				case err != nil:
 					bad = err.Error()
-					return
+				case r.Decision == perm.Allow && def.Origin != lua.OriginUser:
+					// a mode's rules match every principal (ask.go), so its allow
+					// widens as far as rule.add's: user config alone writes one
+					bad = "allow rules may only come from user config"
+				default:
+					def.Rules.Add(r)
 				}
-				def.Rules.Add(r)
 			})
 			if bad != "" {
 				L.RaiseError("zemi.permission.mode.add: %s", bad)
@@ -405,19 +455,29 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		if def.Description == "" {
 			def.Description = "like " + def.Base
 		}
-		_ = h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
+		if err := h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
 			if i := modeIndex(list, name); i >= 0 {
+				if err := mayReplace(h.PluginOf, "permission mode "+name, list[i].Origin, list[i].Path, def.Origin, def.Path); err != nil {
+					return nil, err
+				}
 				list[i] = def
 				return list, nil
 			}
 			return append(list, def), nil
-		})
+		}); err != nil {
+			L.RaiseError("zemi.permission.mode.add: %v", err)
+		}
+		h.dropModePick(def)
 		h.refresh()
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		gate(L, "del")
+		by, byPath := h.RT.CurrentOrigin(L), h.RT.CurrentPath(L)
+		if modeIndex(builtinModes, name) >= 0 {
+			L.RaiseError("zemi.permission.mode.del: %q is a builtin mode", name)
+		}
 		err := h.setModes(func(list []PermModeDef) ([]PermModeDef, error) {
 			i := modeIndex(list, name)
 			switch {
@@ -425,6 +485,9 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 				return nil, fmt.Errorf("no mode %q", name)
 			case len(list) == 1:
 				return nil, errors.New("the last mode cannot be removed")
+			}
+			if err := mayReplace(h.PluginOf, "permission mode "+name, list[i].Origin, list[i].Path, by, byPath); err != nil {
+				return nil, err
 			}
 			return slices.Delete(list, i, i+1), nil
 		})
@@ -437,7 +500,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	// set(name) switches the active mode; get() reads it back.
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		gate(L, "set")
+		h.refuseBelowUser(L, "permission.mode.set")
 		if modeIndex(h.PermModeList(), name) >= 0 && h.cfgReplayed("permissions.mode", name) {
 			L.Push(glua.LTrue)
 			return 1
@@ -775,10 +838,33 @@ func whitelists(path string) bool {
 // model call over zemi.http; a wait in it frees the interpreter.
 const modeDecideCeiling = 60 * time.Second
 
+// modeAnswer is what a mode's decide returned: the decision, the scope an
+// allow takes (askChoices), and its own reason for the row and the denial.
+type modeAnswer struct {
+	Decision, Scope, Reason string
+}
+
+// decidePayload is what a decide sees: the request as the ask shows it, what
+// no mode rule may settle (fencedWhy), the host's own facts, and the scopes an
+// allow may take.
+func (h *Host) decidePayload(req tools.Request, options []string) map[string]any {
+	protected := ""
+	if req.Subject == perm.SubjectWrite && !req.InPad() {
+		protected = h.protectedWhy(req.Arg)
+	}
+	return map[string]any{
+		"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
+		"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
+		"options": options, "read_only": req.ReadOnly, "trusted": h.ProjectTrusted(), "sandbox": h.sandboxLive(),
+		"unsandboxed": req.Unsandboxed, "network": req.Network, "explicit": req.Explicit,
+		"protected": protected != "", "protected_why": protected,
+	}
+}
+
 // modeDecide runs a mode's decide function for one ask, as a task, and
-// returns what it said; "" (an error, a timeout, a reload, anything but
+// returns what it answered; "" (an error, a timeout, a reload, anything but
 // allow or deny) leaves the request to the user.
-func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
+func (h *Host) modeDecide(def PermModeDef, payload map[string]any) modeAnswer {
 	ctx := context.Background()
 	if t := h.turn.Load(); t != nil {
 		ctx = t.ctx // an interrupt stops the decision too
@@ -791,27 +877,36 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 			if def.Gen != 0 && h.currentGen() != def.Gen {
 				return nil, nil, lua.ErrReloaded
 			}
-			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
-				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
-				"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
-			})}, nil
+			return def.Decide, []glua.LValue{lua.FromGo(L, payload)}, nil
 		},
 		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {
-			s, _ := lua.ToGo(rets[0])
-			return []any{s}, nil
+			var ans modeAnswer
+			if len(rets) > 0 {
+				v, _ := lua.ToGo(rets[0])
+				switch t := v.(type) {
+				case string:
+					ans.Decision = t
+				case map[string]any:
+					// a table answer names the decision and how far it goes
+					ans.Decision, _ = t["decision"].(string)
+					ans.Scope, _ = t["scope"].(string)
+					ans.Reason, _ = t["reason"].(string)
+				}
+			}
+			return []any{ans}, nil
 		},
 	})
 	if err != nil {
 		if !errors.Is(err, lua.ErrReloaded) {
 			h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
 		}
-		return ""
+		return modeAnswer{}
 	}
 	if len(out) == 0 {
-		return ""
+		return modeAnswer{}
 	}
-	s, _ := out[0].(string)
-	return s
+	ans, _ := out[0].(modeAnswer)
+	return ans
 }
 
 func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {

@@ -2,11 +2,13 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -390,6 +393,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 func TestPermModeDecide(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.permission.mode.add("review", { base = "auto", decide = function(req)
+		if req.arg == "boom" then error("the judge broke") end
 		if req.arg == "rm -rf /" or req.agent == "explore agent" then return "deny" end
 		if req.arg ~= "cat x" then return "allow" end
 	end })`)
@@ -398,28 +402,32 @@ func TestPermModeDecide(t *testing.T) {
 	}
 	ask := h.askHook()
 	for _, c := range []struct {
-		name string
-		req  tools.Request
-		want bool
-		by   string
-		why  DenialWhy // the denial noted, "" for none
+		name   string
+		req    tools.Request
+		want   bool
+		by     string
+		why    DenialWhy // the denial noted, "" for none
+		notice bool      // the row a fenced allow leaves in the transcript
 	}{
-		{"allowed", tools.Request{Subject: "tool.shell", Arg: "ls"}, true, "mode:review", ""},
-		{"denied", tools.Request{Subject: "tool.shell", Arg: "rm -rf /"}, false, "mode:review", ""},
-		{"a subagent's", tools.Request{Subject: "tool.shell", Arg: "ls", Agent: "explore agent"}, false, "mode:review", ""},
-		{"left to the user", tools.Request{Subject: "tool.shell", Arg: "cat x"}, false, tools.ByNobody, DenyApproval},
-		// what the mode's own rules may not settle, decide may not either
-		{"a rule asked for it", tools.Request{Subject: "tool.shell", Arg: "ls", Explicit: true}, false, tools.ByNobody, DenyApproval},
-		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false, tools.ByNobody, DenyApproval},
-		{"unsandboxed", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "ls", Unsandboxed: true}, false, tools.ByNobody, DenyOutsideSandbox},
-		{"network", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "curl x", Network: true}, false, tools.ByNobody, DenyNetwork},
-		{"a lua script", tools.Request{Tool: tools.ToolLua, Subject: "tool.lua", Arg: "zemi.x()", Unsandboxed: true}, false, tools.ByNobody, DenyNeedsTUI},
+		{"allowed", tools.Request{Subject: "tool.shell", Arg: "ls"}, true, "mode:review", "", false},
+		{"denied", tools.Request{Subject: "tool.shell", Arg: "rm -rf /"}, false, "mode:review", "", false},
+		{"a subagent's", tools.Request{Subject: "tool.shell", Arg: "ls", Agent: "explore agent"}, false, "mode:review", "", false},
+		{"left to the user", tools.Request{Subject: "tool.shell", Arg: "cat x"}, false, tools.ByNobody, DenyApproval, false},
+		{"a decide that raised", tools.Request{Subject: "tool.shell", Arg: "boom"}, false, tools.ByNobody, DenyApproval, false},
+		// what the mode's own rules may not settle a decide may, since a model
+		// call is what writing the mode asked for; each leaves a row saying so
+		{"a rule asked for it", tools.Request{Subject: "tool.shell", Arg: "ls", Explicit: true}, true, "mode:review", "", true},
+		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, true, "mode:review", "", true},
+		{"unsandboxed", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "ls", Unsandboxed: true}, true, "mode:review", "", true},
+		{"network", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "curl x", Network: true}, true, "mode:review", "", true},
+		{"a lua script", tools.Request{Tool: tools.ToolLua, Subject: "tool.lua", Arg: "zemi.x()", Unsandboxed: true}, true, "mode:review", "", true},
 	} {
-		before := len(h.HeadlessDenials())
+		before, beforeD := len(h.Session().Transcript), len(h.HeadlessDenials())
 		ok, by, _ := ask(c.req)
-		d := h.HeadlessDenials()[before:]
-		if ok != c.want || by != c.by || (c.why == "") != (len(d) == 0) || len(d) > 0 && (d[0].Why != c.why || d[0].Subject != c.req.Subject) {
-			t.Errorf("%s: allowed %v by %s, noted %+v", c.name, ok, by, d)
+		d := h.HeadlessDenials()[beforeD:]
+		noticed := slices.ContainsFunc(h.Session().Transcript[before:], func(m ChatMessage) bool { return m.Kind == RowNotice })
+		if ok != c.want || by != c.by || (c.why == "") != (len(d) == 0) || len(d) > 0 && (d[0].Why != c.why || d[0].Subject != c.req.Subject) || noticed != c.notice {
+			t.Errorf("%s: allowed %v by %s, noted %+v, notice %v", c.name, ok, by, d, noticed)
 		}
 	}
 }
@@ -440,7 +448,7 @@ func TestModeDecideStaleGeneration(t *testing.T) {
 	if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.modeDecide(def, tools.Request{Subject: "tool.shell", Arg: "ls"}); got != "" {
+	if got := h.modeDecide(def, nil); got.Decision != "" {
 		t.Fatalf("a stale decide answered %q", got)
 	}
 }
@@ -697,9 +705,10 @@ func TestYoloToggle(t *testing.T) {
 }
 
 // TestBrainWritesProtected: a file-tool write to a state-dir brain path is a
-// protected ask no store rule, mode rule or decide settles, in every mode
-// yolo aside; the reserved file names its owner, a freeform file zemi's own
-// files (DESIGN §10.4). The lsp rename asks like the write it is.
+// protected ask no store rule or mode rule settles, in every mode except yolo;
+// a decide settles it, as the user could, and the row it leaves says so. The
+// reserved file names its owner, a freeform file zemi's own files (DESIGN
+// §10.4). The lsp rename asks like the write it is.
 func TestBrainWritesProtected(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -720,21 +729,22 @@ func TestBrainWritesProtected(t *testing.T) {
 	for _, c := range []struct {
 		name, mode, why string
 		req             tools.Request
+		want            perm.Decision
 	}{
-		{"user memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
-		{"user freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: userFile}},
-		{"private memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: privateMem}},
-		{"private freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: privateFile}},
-		{"mode rule", "open", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
-		{"decide", "decider", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}},
-		{"lsp rename", "auto", "the memory tool owns this file", rename},
+		{"user memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}, perm.Deny},
+		{"user freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: userFile}, perm.Deny},
+		{"private memories.md", "auto", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: privateMem}, perm.Deny},
+		{"private freeform", "auto", "zemi's own files", tools.Request{Subject: "fs.write", Arg: privateFile}, perm.Deny},
+		{"mode rule", "open", "the memory tool owns this file", tools.Request{Subject: "fs.write", Arg: userMem}, perm.Deny},
+		{"decide", "decider", "", tools.Request{Subject: "fs.write", Arg: userMem}, perm.Allow},
+		{"lsp rename", "auto", "the memory tool owns this file", rename, perm.Deny},
 	} {
 		if err := h.SetPermMode(c.mode); err != nil {
 			t.Fatal(err)
 		}
 		v := pipe.Check(c.req)
-		if v.Decision != perm.Deny || c.why != "" && !strings.Contains(v.Reason, c.why) {
-			t.Errorf("%s (%s): %s %q, want deny naming %s", c.name, c.mode, v.Decision, v.Reason, c.why)
+		if v.Decision != c.want || c.why != "" && !strings.Contains(v.Reason, c.why) {
+			t.Errorf("%s (%s): %s %q, want %s naming %s", c.name, c.mode, v.Decision, v.Reason, c.want, c.why)
 		}
 	}
 }
@@ -789,5 +799,219 @@ func TestBrainAskNotes(t *testing.T) {
 	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true)
 	if r := ask(mem); !strings.Contains(r, "outside the machine") {
 		t.Errorf("a session that fetched: %q", r)
+	}
+}
+
+// TestModeOwnership: mode names follow the registry's origins. The builtins are
+// reserved by name, since one mode.add("auto", {base = "yolo"}) would hand away
+// the mode every later boot falls back on; a holder a less trusted origin may
+// not replace, two plugins are told apart by their file, and the user may still
+// take a plugin's name back.
+func TestModeOwnership(t *testing.T) {
+	h, _ := newTestHost(t)
+	plugin := func(name string) string { return filepath.Join(h.pluginsRoot(), "local", name, "init.lua") }
+	add := func(name, base string) string {
+		return fmt.Sprintf(`zemi.permission.mode.add(%q, { base = %q })`, name, base)
+	}
+	for _, c := range []struct {
+		name, src, path string
+		origin          lua.Origin
+		want            string // what the refusal names, "" when it must be taken
+	}{
+		{"a user may not take the auto name", add("auto", "yolo"), "u.lua", lua.OriginUser, "is a builtin mode"},
+		{"nor yolo's", add("yolo", "auto"), "u.lua", lua.OriginUser, "is a builtin mode"},
+		{"a plugin may not either", add("auto", "yolo"), plugin("a"), lua.OriginPlugin, "is a builtin mode"},
+		{"a plugin registers its own mode", add("p", "auto"), plugin("a"), lua.OriginPlugin, ""},
+		{"another plugin may not replace it", add("p", "yolo"), plugin("b"), lua.OriginPlugin, "is registered by plugin a, not b"},
+		{"nor drop it", `zemi.permission.mode.del("p")`, plugin("b"), lua.OriginPlugin, "is registered by plugin a, not b"},
+		{"a user may", add("p", "yolo"), "u.lua", lua.OriginUser, ""},
+		{"and the plugin may not take it back", add("p", "auto"), plugin("a"), lua.OriginPlugin, "is registered by user config"},
+		{"a builtin name is refused a del too", `zemi.permission.mode.del("auto")`, "u.lua", lua.OriginUser, "is a builtin mode"},
+	} {
+		err := h.RT.ExecuteChunk(t.Context(), c.src, c.path, c.origin)
+		if c.want == "" {
+			if err != nil {
+				t.Errorf("%s: %v", c.name, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", c.name, err, c.want)
+		}
+	}
+	if err := h.SetPermMode("p"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.permModeDef(); got.Origin != lua.OriginUser || got.Base != "yolo" {
+		t.Fatalf("the active mode is %+v, want the user's def", got)
+	}
+	// a plugin's own mode is selectable like any other
+	if err := h.RT.ExecuteChunk(t.Context(), add("q", "auto"), plugin("a"), lua.OriginPlugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetPermMode("q"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.permModeDef(); got.Name != "q" || got.Origin != lua.OriginPlugin || got.Path != plugin("a") {
+		t.Fatalf("mode q = %+v", got)
+	}
+}
+
+// TestModePickDroppedWhenYolo: a mode picked while it was auto-based must not
+// start a later boot in that mode once its base turns yolo. keepPick refuses to
+// store a yolo pick and loadPicks drops a literal yolo row, both before any Lua
+// runs, and neither knows a mode that was auto-based when it was picked; the
+// registration site is where the base becomes known, so a fresh boot re-checks
+// too, not only a replay.
+func TestModePickDroppedWhenYolo(t *testing.T) {
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
+	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
+	initLua := filepath.Join(dir, "init.lua")
+	// the mode as the config defines it, and the pick /mode kept while it was
+	// auto-based, before the boot that must re-check the base
+	writeInit := func(base string) {
+		t.Helper()
+		if err := os.WriteFile(initLua, []byte(fmt.Sprintf(`zemi.permission.mode.add("x", { base = %q })`, base)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var h *Host
+	start := func() {
+		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+		h = NewHost(r, log, config.NewStore(), dirs)
+		t.Cleanup(h.Close)
+		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeInit("auto")
+	start()
+	if err := h.GlobalDB.SetKV("config:permissions.mode", `"x"`); err != nil {
+		t.Fatal(err)
+	}
+	start()
+	if got := h.PermMode(); got != "x" {
+		t.Fatalf("an auto-based mode's pick did not apply: %q", got)
+	}
+	if pick, _ := h.picked["permissions.mode"]; pick != "x" {
+		t.Fatalf("the first boot kept no pick: %v", pick)
+	}
+	// the plugin updates the mode to a yolo base, the pick still naming it
+	writeInit("yolo")
+	if err := h.GlobalDB.SetKV("config:permissions.mode", `"x"`); err != nil {
+		t.Fatal(err)
+	}
+	start()
+	if got := h.PermMode(); got != config.PermModeAuto {
+		t.Fatalf("a yolo-based mode started active: %q", got)
+	}
+	if _, ok := h.picked["permissions.mode"]; ok {
+		t.Error("the pick is still held")
+	}
+	if _, err := h.GlobalDB.GetKV("config:permissions.mode"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the pick row is still stored (%v)", err)
+	}
+}
+
+// TestModeDecideScopes: a decide's table answer names the decision, how far it
+// goes and why; the scope writes what the user's own answer of that scope
+// writes, and one this request does not offer narrows to the closest below it.
+func TestModeDecideScopes(t *testing.T) {
+	h, r := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
+	h.SetProjectTrusted(true)
+	runUser(t, r, `zemi.permission.mode.add("judge", {
+		base = "auto",
+		rules = { { "tool.shell", "git push *", "deny" } },
+		decide = function(req)
+			if req.arg == "rm -rf /" then return { decision = "deny", reason = "that deletes the machine" } end
+			if req.arg == "cargo build" then return { decision = "allow", scope = "project", reason = "routine" } end
+			if req.arg == "go test ./..." then return { decision = "allow", scope = "session", reason = "routine" } end
+			return { decision = "allow", scope = "wider", reason = "widest on offer" }
+		end })`)
+	if err := h.SetPermMode("judge"); err != nil {
+		t.Fatal(err)
+	}
+	read := filepath.Join(h.Dirs.ProjectDir, "a.go")
+	for _, c := range []struct {
+		name string
+		req  tools.Request
+		ok   bool
+		by   string
+		then func(t *testing.T)
+	}{
+		{
+			"a session scope writes the always rules", tools.Request{Subject: perm.SubjectShell, Arg: "go test ./..."}, true, "mode:judge",
+			func(t *testing.T) {
+				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("go test -run X ./pkg"), perm.PrincipalModel).Decision; got != perm.Allow {
+					t.Errorf("go test rule: %v", got)
+				}
+			},
+		},
+		{
+			"a project scope writes the project file", tools.Request{Subject: perm.SubjectShell, Arg: "cargo build"}, true, "mode:judge",
+			func(t *testing.T) {
+				b, err := os.ReadFile(h.projectPermissionsPath())
+				if err != nil || !strings.Contains(string(b), "cargo build") {
+					t.Errorf("project permissions: %q, %v", b, err)
+				}
+			},
+		},
+		{
+			"a scope not on offer narrows", tools.Request{Subject: perm.SubjectRead, Arg: read}, true, "mode:judge",
+			func(t *testing.T) {
+				// "wider" needs a repository above the file: the directory rule stands
+				abs := perm.RealPath(read)
+				if got := h.Perm.Evaluate(perm.SubjectRead, abs, perm.PrincipalModel).Decision; got != perm.Allow {
+					t.Errorf("the narrowed session rule: %v", got)
+				}
+			},
+		},
+		{
+			"a rule's deny outranks the decide", tools.Request{Subject: perm.SubjectShell, Arg: "git push origin main"}, false, "mode:judge",
+			func(t *testing.T) {
+				if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("git push origin main"), perm.PrincipalModel).Decision; got == perm.Allow {
+					t.Error("the deny rule's answer was widened")
+				}
+			},
+		},
+	} {
+		ok, by, _ := h.askHook()(c.req)
+		if ok != c.ok || by != c.by {
+			t.Errorf("%s: allowed %v by %s", c.name, ok, by)
+			continue
+		}
+		c.then(t)
+	}
+	// a decide's own reason reaches whoever reads the denial
+	ok, by, why := h.askHook()(tools.Request{Subject: perm.SubjectShell, Arg: "rm -rf /"})
+	if ok || by != "mode:judge" || why != "that deletes the machine" {
+		t.Errorf("a decided deny: allowed %v by %s, %q", ok, by, why)
+	}
+	if h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("rm -rf /"), perm.PrincipalModel).Decision == perm.Allow {
+		t.Error("a decided deny wrote a rule")
+	}
+}
+
+// TestPlanApprovalAfterModeGone: a mode the config dropped since the read-only
+// agent was picked is no reason to read an approved plan as a dismissal. The
+// restore skips it, the fallback mode stands, and the handoff is still recorded.
+func TestPlanApprovalAfterModeGone(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
+	h.SetUIHooks(ui)
+	h.Settings.SetQuiet("permissions.mode", "gone") // the mode the agent was picked under, gone since
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	v, ok := h.approvePlan("# The plan")
+	if !ok || !v.Approved {
+		t.Fatalf("approve: %+v ok=%v", v, ok)
+	}
+	if got := h.PermMode(); got != config.PermModeAuto {
+		t.Fatalf("mode after the approval = %q, want the fallback", got)
+	}
+	if h.takePlanApproved() != implementNow {
+		t.Fatal("the approval recorded no handoff")
 	}
 }
