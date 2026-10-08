@@ -1190,6 +1190,38 @@ their own route. A schema zemi cannot read raises at the call, and a reply
 that arrived and did not fit the schema comes back as `nil` and the error,
 whose text carries the reply.
 
+Classifying a state is its own call. `zemi.classify.ask({ model, state,
+questions, timeout })` (`zemi.ClassifySpec`) judges `state` and answers one
+typed answer per question - a bool with its probability, a choice with its
+label probabilities, a score - and nothing parses a sentence. `model` is any
+target or `"provider/model"` id, the conversation's model by default. The
+call answers through the first of three strategies that can:
+
+1. `protocol`: the model is a `decisions` model of a `system_one` provider, so
+   the state and the questions go to `{base_url}/systemone` with the key as a
+   bearer token and the answers come back with real probabilities. A decisions
+   model is never resolved as a chat model: `/model` offers it to the slots
+   `zemi.model.add(name, { classify = true })` made for classification, and
+   neither a turn nor a chat role takes one.
+2. `logprobs`: a chat model whose provider returns token probabilities. Each
+   question becomes one prompt whose answer is a single label (`Yes`/`No`, a
+   letter, a digit) and the answer is the softmax over the label tokens among
+   the returned top-k, at a deeper readout when a label is missing. The
+   temperature is left alone here: the provider reports the distribution its
+   own sampling produced.
+3. `schema`: the structured ask above, with a schema per question type, so the
+   provider decodes the answer and zemi validates it. It has no probability to
+   report, so its answer carries no confidence.
+
+A strategy the model cannot answer through is skipped, one that fails does not
+stop the next, and the call is an error when the last one fails: a caller that
+cannot get a verdict asks the user rather than guessing. Every answer is
+validated against its question - an unknown label, a probability outside
+0..1, a question the response left out, a score outside its levels and a body
+that is not JSON are errors, never a nearest match. The call is gated as
+`lua.classify.ask` (project code may not call a model at all) and billed to the
+live session like `zemi.model.ask`, and the provider's key is read in Go.
+
 `/goal <condition>` gives a session a finish line. The message carries abrief naming the condition, and storing it sets the goal (a `goal` row after
 it, with the session's spend then); only the brief `/goal` just sent counts,
 so a plugin's text, a file or a report quoting one sets nothing. After each turn that ended cleanly with
