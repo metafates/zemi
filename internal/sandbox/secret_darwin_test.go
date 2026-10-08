@@ -41,8 +41,21 @@ func TestSecretShapesMatchPerm(t *testing.T) {
 		{"id_rsa_old", true},
 		{"ID_RSA_OLD", true},
 		{"id_ed25519.pem", true},
+		{"id_ed25519_backup", true},
+		// short and pub-shaped tails, spelled out: an interval here is dead in the
+		// engine, and the exact name comes back readable without this
+		{"id_rsa1", true},
+		{"id_rsab", true},
+		{"id_rsaub", true},
+		{"id_rsapub", true},
+		{"id_rsa.pu", true},
+		{"id_rsa.xpub", true},
+		{"id_rsaXpub", true},
 		{"id_rsa.pub", false},
 		{"ID_RSA.PUB", false},
+		{"id_rsa.PUB", false},
+		{"id_rsa.Pub", false},
+		{"id_rsab.pub", false},
 		{"id_rsa_old.pub", false},
 		// the tail may not reach past a separator: perm judges the base name, and
 		// pub here matches no shape
