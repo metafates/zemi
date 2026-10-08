@@ -1765,10 +1765,9 @@ function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
---- a turn it joins at the next step. A plugin's own send settles while it
---- is enabled, and raises in `zemi run`; its
---- text reaches the model as the plugin's, never the user's words. Project
---- code raises.
+--- a turn it joins at the next step. A plugin's own send settles while it is
+--- enabled, and raises in `zemi run`; its text reaches the model as the
+--- plugin's, never the user's words. Project code raises.
 ---@param text string
 ---@return true?, string?
 function zemi.agent.send(text) end
@@ -2196,11 +2195,10 @@ zemi.tool = {}
 --- Register a tool the model can call. A call is checked against `required`
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
---- `tool.<name>` with the name as the argument, which auto mode settles
---- only for a tool a plugin registered (the plugin is enabled, so it is
---- trusted): the user's own and a project's ask until they allow it, for the
---- session at the prompt
---- or for good with a user config rule
+--- `tool.<name>` with the name as the argument: auto mode settles it only
+--- for a tool a plugin registered (the plugin is enabled, so it is trusted),
+--- while a tool the user's or a project's config registered asks until they
+--- allow it, for the session at the prompt or for good with a user config rule
 --- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
 --- yolo allows it.
 ---
@@ -2334,8 +2332,8 @@ function zemi.fs.exists(path) end
 --- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
 --- outside the config tree, so a write never reloads the config. Reads
 --- settle; writes need a `lua.fs.write` allow rule like any other user
---- config write. Nothing is
---- created: `write` makes the parents, and a job's `cwd` needs `mkdir` first.
+--- config write. Nothing is created: `write` makes the parents, and a job's
+--- `cwd` needs `mkdir` first.
 ---@param name string One directory name, no separators.
 ---@return string path
 function zemi.fs.data_dir(name) end
