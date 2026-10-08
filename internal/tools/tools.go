@@ -400,7 +400,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 	// Path is resolved already and named that way: a second resolve could land
 	// elsewhere than the tool opens. NOTE: so the gated file tools are judged
 	// by the target alone; a secret-named link to a plain file opens with no
-	// ask, while a plain-named link to a secret still asks.
+	// ask, while a plain-named link to a secret still asks (a run that hides
+	// nothing, `--unsafe`, asks about neither).
 	written := req.Arg
 	if PathSubject(req.Subject) && (p.Path == perm.Path{} || req.Arg != p.Path.String()) {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
