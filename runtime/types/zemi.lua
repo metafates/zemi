@@ -1655,7 +1655,7 @@ function zemi.model.list() end
 
 ---@class zemi.ModelTargetSpec
 ---@field desc string What `/model roles` shows for the slot.
----@field model? zemi.ModelRole|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows chat.
+---@field model? zemi.ModelTarget|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows chat.
 
 --- Register a model slot of its own, for code that runs a model on a job and
 --- not a conversation: `/model roles` lists it among the roles and
@@ -1738,7 +1738,7 @@ function zemi.model.pick(role) end
 ---@field name string
 ---@field description string
 ---@field source zemi.Origin
----@field model string The file's `model:` (a target such as "agents", or a "provider/model"); "" when it omits one, which runs the "agents" role.
+---@field model zemi.ModelTarget|string The file's `model:` (a target such as "agents", or a "provider/model"); "" when it omits one, which runs the "agents" role.
 
 ---@class zemi.AgentRunSpec
 ---@field prompt string

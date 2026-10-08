@@ -37,7 +37,7 @@ import (
 type AgentDef struct {
 	Name        string
 	Description string
-	// Model is a role name or a provider/model id; "" takes models.agents.
+	// Model is a target name or a provider/model id; "" takes models.agents.
 	Model    string
 	Tools    []string // nil = every tool a subagent may use
 	System   string
@@ -892,7 +892,7 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 }
 
 // subagentModelID picks a subagent's model: the definition's reference (a
-// role name or a provider/model id, which a workflow may set per run), then
+// target name or a provider/model id, which a workflow may set per run), then
 // the agents role.
 func (h *Host) subagentModelID(def AgentDef) string {
 	return cmp.Or(h.modelRef(def.Model), h.roleModel("agents"))
