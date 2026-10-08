@@ -21,7 +21,9 @@ type Protocol struct {
 	APIKey  string
 	Model   string
 	Headers map[string]string
-	HTTP    *http.Client
+	// HTTP is the client the call goes through: the caller passes the one the
+	// chat path uses, so the wait for response headers is bounded here too.
+	HTTP *http.Client
 }
 
 // protocolPath is what the base URL is a base of.

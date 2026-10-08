@@ -118,6 +118,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 			APIKey:  h.Providers.Key(spec.ID),
 			Model:   model.ID,
 			Headers: classifyHeaders(spec.Headers, sid),
+			HTTP:    agent.ModelHTTP(),
 		}
 		return req, nil
 	}

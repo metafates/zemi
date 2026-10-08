@@ -328,6 +328,25 @@ func TestClassifyGate(t *testing.T) {
 	}
 }
 
+// TestClassifyProtocolClient: a decisions model's call goes out on the client
+// the chat path uses, whose header timeout bounds a gateway that accepts the
+// connection and then says nothing.
+func TestClassifyProtocolClient(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true } } })`)
+	req, err := h.classifyRequest("jev/m", "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Protocol.HTTP == nil {
+		t.Fatal("the protocol call runs on http.DefaultClient, which waits for headers forever")
+	}
+	tr, ok := req.Protocol.HTTP.Transport.(*http.Transport)
+	if !ok || tr.ResponseHeaderTimeout == 0 {
+		t.Fatalf("the protocol call's client has no header timeout: %+v", req.Protocol.HTTP.Transport)
+	}
+}
+
 // pickerHas reports whether a model id is one of an overlay's rows.
 func pickerHas(items []any, id string) bool {
 	return slices.ContainsFunc(items, func(it any) bool {

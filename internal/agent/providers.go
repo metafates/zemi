@@ -754,11 +754,11 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	}
 }
 
-// modelHTTP bounds the wait for response headers: a gateway that accepts the
-// connection and then says nothing would otherwise hold the turn until the
-// user interrupts it. Client.Timeout stays zero, so a long stream is never
-// cut; a stalled one is idleModel's job.
-var modelHTTP = sync.OnceValue(func() *http.Client {
+// ModelHTTP bounds the wait for response headers, for a chat call and a
+// classify protocol call alike: a gateway that accepts the connection and then
+// says nothing would otherwise hold the caller until they give up. Client.Timeout
+// stays zero, so a long stream is never cut; a stalled one is idleModel's job.
+var ModelHTTP = sync.OnceValue(func() *http.Client {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.ResponseHeaderTimeout = 2 * time.Minute
 	return &http.Client{Transport: t}
@@ -768,7 +768,7 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	withBaseURL, withAPIKey func(string) O, withHeaders func(map[string]string) O, withClient func(*http.Client) O,
 	withObjectMode func(fantasy.ObjectMode) O,
 ) (fantasy.LanguageModel, error) {
-	opts := []O{withClient(modelHTTP())}
+	opts := []O{withClient(ModelHTTP())}
 	if spec.BaseURL != "" && withBaseURL != nil {
 		opts = append(opts, withBaseURL(spec.BaseURL))
 	}

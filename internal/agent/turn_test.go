@@ -843,9 +843,9 @@ func TestCacheBreakpoints(t *testing.T) {
 		fmt.Fprint(w, `{"error":{"message":"no model here"}}`)
 	}))
 	defer srv.Close()
-	orig := modelHTTP
-	t.Cleanup(func() { modelHTTP = orig })
-	modelHTTP = func() *http.Client {
+	orig := ModelHTTP
+	t.Cleanup(func() { ModelHTTP = orig })
+	ModelHTTP = func() *http.Client {
 		return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 			mu.Lock()
 			sent, affinity = r.URL.String(), r.Header.Get("x-session-affinity")
