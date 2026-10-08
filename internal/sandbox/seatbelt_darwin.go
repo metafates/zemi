@@ -75,14 +75,10 @@ var baseProfile string
 // a kernel rule for them breaks go build.
 var secretShapes = "(regex " + foldCase(`#"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"/\.npmrc$" #"/\.yarnrc\.yml$" #"/\.pgpass$" #"/\.pypirc$" #"/\.htpasswd$" #"/\.my\.cnf$" #"\.(env|pem|key|p12|pfx|jks|keystore)$"`) + " " + idShapes + ")"
 
-// idShapes hides a key name with anything after it, perm's id_* globs, but not
-// one ending in .pub, which perm leaves shareable. POSIX regex has no
-// lookahead, so the tail lists where the last bytes can differ from "pub";
-// foldCase cannot fold a negated class, so those letters carry both cases here.
-// No tail class matches a /, since perm judges the base name alone and a tail
-// reaching a separator would hide a path it does not. The exemption's own .
-// joins the / as the range .-/, because a class holding both is ignored here.
-var idShapes = `#"/` + foldCase(`id_(rsa|dsa|ecdsa|ed25519)`) + `([^/]{0,3}|[^/]*([^/bB]|[^/uU][bB]|[^/pP][uU][bB]|[^.-/][pP][uU][bB]))$"`
+// idShapes hides perm's id_* names but not the .pub half, which perm shares:
+// tails are spelled out because the engine ignores {n,m}, and no class may
+// match a / (perm judges the base name; its own . joins that / as .-/).
+var idShapes = `#"/` + foldCase(`id_(rsa|dsa|ecdsa|ed25519)`) + `(|[^/]|[^/][^/]|[^/][^/][^/]|[^/]*[^/bB]|[^/]*[^/uU][bB]|[^/]*[^/pP][uU][bB]|[^/]*[^.-/][pP][uU][bB])$"`
 
 func probe() (Backend, error) {
 	if _, err := os.Stat(sandboxExec); err != nil {

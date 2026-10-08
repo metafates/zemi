@@ -76,4 +76,9 @@ func TestSecretShapesMatchPerm(t *testing.T) {
 			t.Errorf("%s: the sandbox hides %v, perm %v, want %v", c.name, got, want, c.hidden)
 		}
 	}
+	// the engine ignores {n,m}, so an interval matches nothing there and the name
+	// it covers reads back: the cases above cannot see it, only the profile text
+	if strings.Contains(idShapes, "{") {
+		t.Errorf("idShapes holds an interval, which the sandbox engine ignores")
+	}
 }
