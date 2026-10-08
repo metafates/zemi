@@ -847,8 +847,8 @@ func TestGoldenModelPicker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	// a hold on the interpreter is a hang, not a slow return, so the wait is
-	// generous rather than the interpreter's own 2s
+	// a hold on the interpreter is a hang, not a slow return, so a loaded
+	// machine must never fail this wait
 	case <-time.After(10 * time.Second):
 		t.Fatal("zemi.model.pick holds the interpreter while the picker is open")
 	}
