@@ -337,6 +337,27 @@ func TestModelTargetUI(t *testing.T) {
 	}
 }
 
+// TestProviderObjectMode: object_mode pins how a provider answers an object
+// call (§10); it is refused for the kinds that do not take one and for a value
+// that is not a mode.
+func TestProviderObjectMode(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.provider.add({ id = "o", kind = "openai_compat", base_url = "http://x", object_mode = "text", models = { { id = "m" } } })`)
+	spec, ok := h.Providers.Lookup("o")
+	if !ok || spec.ObjectMode != fantasy.ObjectModeText {
+		t.Errorf("spec = %+v, want object_mode text", spec)
+	}
+	for _, c := range []struct{ name, src, want string }{
+		{"a kind that takes none", `zemi.provider.add({ id = "b", kind = "anthropic", object_mode = "tool" })`, "object_mode is taken only by the openai, openai_compat, google, openrouter, vercel kinds"},
+		{"a mode that is not one", `zemi.provider.add({ id = "b", kind = "openai", object_mode = "json_mode" })`, `object_mode "json_mode": use auto, json, tool, text`},
+		{"a typo", `zemi.provider.add({ id = "b", kind = "openai", object_mdoe = "auto" })`, `spec: unknown field "object_mdoe"`},
+	} {
+		if err := r.ExecuteChunk(t.Context(), c.src, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
+		}
+	}
+}
+
 // TestSetModelArgs: /model's grammar. The cases share one host, in order.
 func TestSetModelArgs(t *testing.T) {
 	h, r := newTestHost(t)

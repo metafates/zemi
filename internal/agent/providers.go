@@ -85,8 +85,12 @@ type Spec struct {
 	// Body holds extra request-body fields merged into every request
 	// (service_tier, a gateway's routing block, a vendor's thinking flag).
 	// Only KindsWithBody carry it.
-	Body   map[string]any
-	Models []Model
+	Body map[string]any
+	// ObjectMode pins how this provider answers an object call (a schema in,
+	// a value out): "" leaves the kind's own ladder (native JSON, a forced
+	// tool call, the schema in the prompt). Only KindsWithObjectMode take it.
+	ObjectMode fantasy.ObjectMode
+	Models     []Model
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
 	Builtin      bool
@@ -315,6 +319,12 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 
 // KindsWithBody are the kinds that send Spec.Body.
 var KindsWithBody = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindOpenRouter, KindVercel}
+
+// ObjectModes are what object_mode takes, in fantasy's words.
+var ObjectModes = []fantasy.ObjectMode{fantasy.ObjectModeAuto, fantasy.ObjectModeJSON, fantasy.ObjectModeTool, fantasy.ObjectModeText}
+
+// KindsWithObjectMode are the kinds that take Spec.ObjectMode.
+var KindsWithObjectMode = []Kind{KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
@@ -614,7 +624,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	switch spec.Kind {
 	case KindAnthropic:
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
-			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) })
+			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) }, nil)
 	case KindOpenAI:
 		// fantasy sends only the models openai.IsResponsesModel accepts to
 		// /responses, the rest to /chat/completions
@@ -627,20 +637,20 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 			return openai.New(o...)
 		}
 		return languageModel(spec, key, model, responses, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
-			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) })
+			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) }, openai.WithObjectMode)
 	case KindOpenAICompat:
 		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
-			func(c *http.Client) openaicompat.Option { return openaicompat.WithHTTPClient(c) })
+			func(c *http.Client) openaicompat.Option { return openaicompat.WithHTTPClient(c) }, openaicompat.WithObjectMode)
 	case KindGoogle:
 		return languageModel(spec, key, model, google.New, google.WithBaseURL, google.WithGeminiAPIKey, google.WithHeaders,
-			func(c *http.Client) google.Option { return google.WithHTTPClient(c) })
+			func(c *http.Client) google.Option { return google.WithHTTPClient(c) }, google.WithObjectMode)
 	case KindOpenRouter:
 		// its URL is fixed; Register refuses a base_url, and a builtin's is the same URL
 		return languageModel(spec, key, model, openrouter.New, nil, openrouter.WithAPIKey, openrouter.WithHeaders,
-			func(c *http.Client) openrouter.Option { return openrouter.WithHTTPClient(c) })
+			func(c *http.Client) openrouter.Option { return openrouter.WithHTTPClient(c) }, openrouter.WithObjectMode)
 	case KindVercel:
 		return languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
-			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) })
+			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) }, vercel.WithObjectMode)
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}
@@ -658,6 +668,7 @@ var modelHTTP = sync.OnceValue(func() *http.Client {
 
 func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (fantasy.Provider, error),
 	withBaseURL, withAPIKey func(string) O, withHeaders func(map[string]string) O, withClient func(*http.Client) O,
+	withObjectMode func(fantasy.ObjectMode) O,
 ) (fantasy.LanguageModel, error) {
 	opts := []O{withClient(modelHTTP())}
 	if spec.BaseURL != "" && withBaseURL != nil {
@@ -668,6 +679,9 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	}
 	if len(spec.Headers) > 0 {
 		opts = append(opts, withHeaders(spec.Headers))
+	}
+	if spec.ObjectMode != "" && withObjectMode != nil {
+		opts = append(opts, withObjectMode(spec.ObjectMode))
 	}
 	p, err := newProvider(opts...)
 	if err != nil {
@@ -745,6 +759,18 @@ func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Re
 	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
 	defer cancel()
 	res, err := m.LanguageModel.Generate(ctx, call)
+	if res != nil {
+		res.Usage = m.usage(res.Usage)
+	}
+	return res, m.wrap(err)
+}
+
+// GenerateObject is bound by idle time like Generate: an object call is one
+// request too, and a provider that stalls on it would hold the caller.
+func (m idleModel) GenerateObject(ctx context.Context, call fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
+	defer cancel()
+	res, err := m.LanguageModel.GenerateObject(ctx, call)
 	if res != nil {
 		res.Usage = m.usage(res.Usage)
 	}

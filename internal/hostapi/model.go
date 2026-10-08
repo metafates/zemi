@@ -6,6 +6,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -121,10 +122,88 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 	return res, err
 }
 
+// generateObject runs one tool-less object call: the schema is handed to the
+// provider, which is left to make the model fill it (its own ladder: native
+// JSON, a forced tool call, the schema in the prompt), and fantasy decodes the
+// reply against it, so nothing here parses text. The call is billed to sid like
+// any other, including one whose reply did not fit the schema.
+func (h *Host) generateObject(ctx context.Context, sid, system, prompt string, schema fantasy.Schema, maxOut *int64, temp *float64, ref string) (any, string, error) {
+	id := h.modelRef(ref)
+	model, err := h.resolveModel(&Profile{Model: id})
+	if err != nil {
+		return nil, "", err
+	}
+	call := fantasy.ObjectCall{
+		Prompt:          objectPrompt(system, prompt),
+		Schema:          schema,
+		MaxOutputTokens: maxOut,
+		Temperature:     temp,
+		ProviderOptions: h.Providers.CallOptions(id, "", sid),
+		Headers:         agent.SessionHeaders(sid),
+	}
+	res, err := model.GenerateObject(ctx, call)
+	if err != nil {
+		// a reply that arrived and did not fit the schema is the caller's to see
+		none, ok := errors.AsType[*fantasy.NoObjectGeneratedError](err)
+		if !ok {
+			return nil, "", err
+		}
+		h.bill(sid, id, none.Usage)
+		return nil, none.RawText, err
+	}
+	h.bill(sid, id, res.Usage)
+	return res.Object, res.RawText, nil
+}
+
+// objectPrompt is a system line when the caller wrote one, then the prompt.
+func objectPrompt(system, prompt string) fantasy.Prompt {
+	if system == "" {
+		return fantasy.Prompt{agent.UserMessage(prompt)}
+	}
+	return fantasy.Prompt{fantasy.NewSystemMessage(system), agent.UserMessage(prompt)}
+}
+
+// checkSchema reads a Lua schema table, which holds a JSON schema in the shape
+// fantasy.Schema has: an object asks for properties, a scalar for a bare type.
+// A field zemi does not know and a type that is not one are refused here, so a
+// typo never travels to the provider as a schema that means something else.
+func checkSchema(L *glua.LState, tb *glua.LTable) fantasy.Schema {
+	raw, err := lua.ToGo(tb)
+	if err != nil {
+		L.RaiseError("zemi.model.ask: schema: %v", err)
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		L.RaiseError("zemi.model.ask: schema: %v", err)
+	}
+	var s fantasy.Schema
+	if err := json.Unmarshal(data, &s, json.RejectUnknownMembers(true)); err != nil {
+		L.RaiseError("zemi.model.ask: schema: %v", err)
+	}
+	switch s.Type {
+	case "object", "array", "string", "number", "integer", "boolean":
+	default:
+		L.RaiseError("zemi.model.ask: schema type %q must be object, array, string, number, integer or boolean", s.Type)
+	}
+	return s
+}
+
+// objectFromText is a test stub's stand-in for an object call, whose reply is
+// the JSON a provider would have decoded.
+func objectFromText(raw string) (any, error) {
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // modelAsk is zemi.model.ask: one tool-less call on a role's model or an
 // id, billed to the live session and run off the interpreter. It costs
 // money, so plugin code needs a user rule for lua.model.ask and project code
-// may not call it.
+// may not call it. A spec with a schema asks for an object instead: the
+// provider decodes the reply into the schema's shape and the call returns
+// that value, with the raw reply beside it.
 func (h *Host) modelAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	prompt := rawString(L, spec, "prompt")
@@ -134,6 +213,11 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	ref := cmp.Or(rawString(L, spec, "model"), "chat")
 	id := h.modelRef(ref)
 	system := rawString(L, spec, "system")
+	var schema *fantasy.Schema
+	if tb, ok := opt[*glua.LTable](L, spec, "schema"); ok {
+		s := checkSchema(L, tb)
+		schema = &s
+	}
 	var stub *stubReply
 	switch o := h.RT.CurrentOrigin(L); {
 	case o.Rank() <= lua.OriginProject.Rank():
@@ -147,36 +231,50 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	}
 	onDone, _ := opt[*glua.LFunction](L, spec, "on_done")
 	sid, at := h.AgentSessionID(), h.callerOf(L)
-	ask := func(ctx context.Context) (string, error) {
-		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)
-		if err != nil {
-			return "", err
+	var (
+		text, raw string
+		obj       any
+		askErr    error
+	)
+	ask := func(ctx context.Context) error {
+		if schema != nil {
+			obj, raw, askErr = h.generateObject(ctx, sid, system, prompt, *schema, &maxOut, nil, id)
+			return askErr
 		}
-		return concatText(res.Response.Content), nil
+		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)
+		if err == nil {
+			text = concatText(res.Response.Content)
+		}
+		return err
 	}
 	if stub != nil {
 		// a test zemi's stub stands in for the provider
-		ask = func(context.Context) (string, error) {
-			text, _ := stub.fields["text"].(string)
-			return text, stub.err
+		ask = func(context.Context) error {
+			reply, _ := stub.fields["text"].(string)
+			raw, askErr = reply, nil
+			if schema != nil {
+				obj, askErr = objectFromText(reply)
+			} else {
+				text = reply
+			}
+			return errors.Join(askErr, stub.err)
 		}
 	}
-	var text string
-	var askErr error
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	stopID := h.stops.add(cancel) // a reload cancels it, like a job
 	h.GoSafe("zemi.model.ask", func() {
 		defer h.stops.remove(stopID)
 		defer cancel()
-		var err error
-		text, err = ask(ctx)
+		err := ask(ctx)
 		askErr = err
 		close(done)
 		switch {
 		case onDone == nil:
 		case err != nil:
 			h.callLuaAsync("zemi.model.ask on_done", at, onDone, nil, err.Error())
+		case schema != nil:
+			h.callLuaAsync("zemi.model.ask on_done", at, onDone, obj, raw)
 		default:
 			h.callLuaAsync("zemi.model.ask on_done", at, onDone, text)
 		}
@@ -188,8 +286,15 @@ func (h *Host) modelAsk(L *glua.LState) int {
 			if err == nil { // askErr is set only once done has closed
 				err = askErr
 			}
-			if err != nil {
+			// a Suspending wrapper raises a third value, so a failure is the
+			// usual nil, error and the reply it did not fit rides the text
+			switch {
+			case err != nil && raw != "":
+				return []glua.LValue{glua.LNil, glua.LString(err.Error() + "; the reply was: " + clipLine(raw, 200))}
+			case err != nil:
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			case schema != nil:
+				return []glua.LValue{lua.FromGo(L, obj), glua.LString(raw)}
 			}
 			return []glua.LValue{glua.LString(text)}
 		})
@@ -598,6 +703,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
+	tb.RawSetString("object_mode", enumTable(L, agent.ObjectModes...))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, s := range h.Providers.List() {
@@ -630,7 +736,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		return agent.Spec{}, fmt.Errorf("spec: %w", err)
 	}
 	fields, _ := raw.(map[string]any)
-	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models"); err != nil {
+	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models", "object_mode"); err != nil {
 		return agent.Spec{}, err
 	}
 	spec := agent.Spec{
@@ -638,6 +744,16 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		Kind:    agent.Kind(rawString(L, tb, "kind")),
 		BaseURL: rawString(L, tb, "base_url"),
 		Headers: rawStringMap(L, tb, "headers"),
+	}
+	switch mode := fantasy.ObjectMode(rawString(L, tb, "object_mode")); mode {
+	case "":
+	case fantasy.ObjectModeAuto, fantasy.ObjectModeJSON, fantasy.ObjectModeTool, fantasy.ObjectModeText:
+		if !slices.Contains(agent.KindsWithObjectMode, spec.Kind) {
+			return agent.Spec{}, fmt.Errorf("object_mode is taken only by the %s kinds", strings.Join(strs(agent.KindsWithObjectMode), ", "))
+		}
+		spec.ObjectMode = mode
+	default:
+		return agent.Spec{}, fmt.Errorf("object_mode %q: use %s", mode, strings.Join(strs(agent.ObjectModes), ", "))
 	}
 	switch b := fields["body"].(type) {
 	case map[string]any:

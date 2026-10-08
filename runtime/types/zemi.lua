@@ -1556,6 +1556,7 @@ function zemi.log.list() end
 ---@field base_url? string Required for openai_compat, refused for openrouter; overrides the default endpoint for the other kinds.
 ---@field headers? table<string, string> Sent with every request; as secret as the key.
 ---@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). Not sent by google.
+---@field object_mode? zemi.ProviderObjectMode Pins how this provider answers an object call (`zemi.model.ask` with a schema, `zemi.classify.ask`). Only the openai, openai_compat, google, openrouter and vercel kinds take it: anthropic always picks its own.
 ---@field models zemi.ModelSpec[]
 
 ---@alias zemi.ProviderKind
@@ -1565,6 +1566,14 @@ function zemi.log.list() end
 ---| "google"
 ---| "openrouter"
 ---| "vercel"
+
+--- What the provider is made to do with a schema. A model that answers an
+--- object call with a sentence is pinned to `tool` or `text`.
+---@alias zemi.ProviderObjectMode
+---| "auto" # the kind's own ladder: JSON mode, then a forced tool call, then the prompt
+---| "json" # the provider's native JSON mode where it has one
+---| "tool" # a forced tool call whose arguments are the object
+---| "text" # the schema written into the prompt, the reply parsed as JSON
 
 ---@class zemi.ProviderInfo
 ---@field id string
@@ -1605,6 +1614,13 @@ zemi.provider = {}
 ---@field OPENROUTER "openrouter"
 ---@field VERCEL "vercel"
 zemi.provider.kind = {}
+
+---@class zemi.provider.object_mode
+---@field AUTO "auto"
+---@field JSON "json"
+---@field TOOL "tool"
+---@field TEXT "text"
+zemi.provider.object_mode = {}
 
 --- Register a provider and its models. User config only. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
@@ -1691,18 +1707,30 @@ function zemi.model.set(id) end
 ---@field system? string
 ---@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
 ---@field max_output? integer The reply's token cap, 1024 by default.
----@field on_done? fun(text: string?, err: string?) Runs as a task when the reply is in.
+---@field schema? table The shape the reply must have, a JSON schema in the same fields a tool's schema has: `{ type = "object", properties = {...}, required = {...} }` for an object, or a bare `{ type = "string" }`, `{ type = "integer", minimum = 0, maximum = 9 }`, `{ type = "boolean" }` or `{ type = "array", items = ... }`. `enum` pins the values, `description` is read by the model. Any other field and any other type raises. With it the call returns a decoded value instead of text (see `zemi.ModelHandle.wait`).
+---@field on_done? fun(value: any, raw: string?, err: string?) Runs as a task when the reply is in: the value, the raw reply, or the error.
 
 ---@class zemi.ModelHandle
----@field wait fun(self: zemi.ModelHandle): string|nil, string|nil Suspends the task until the reply, 10 minutes at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
+---@field wait fun(self: zemi.ModelHandle): any, string|nil, string|nil Suspends the task until the reply, 10 minutes at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. Without a `schema`: the text, or nil and the error. With one: the decoded value (a table for an object, a number, string or boolean for a scalar) and the raw reply, or nil, the error and the reply inside its text when it did not fit the schema.
 ---@field cancel fun(self: zemi.ModelHandle)
 
---- One tool-less model call, run off the interpreter and billed to the
---- live session; a reload cancels it. Plugin code needs a user rule for
+--- One tool-less model call, run off the interpreter and billed to the live
+--- session; a reload cancels it. Plugin code needs a user rule for
 --- `lua.model.ask` with its principal; project code raises.
 ---
 --- ```lua
 --- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
+--- ```
+---
+--- With a `schema` the provider is left to make the model fill it - its
+--- native JSON mode, a forced tool call, or the schema in the prompt - and
+--- zemi hands back the decoded value, so nothing parses the reply:
+---
+--- ```lua
+--- local v, raw, err = zemi.model.ask({
+--- 	prompt = "Is this command safe to run?\n" .. cmd,
+--- 	schema = { type = "object", properties = { safe = { type = "boolean" } }, required = { "safe" } },
+--- }):wait()
 --- ```
 ---@param spec zemi.ModelAsk
 ---@return zemi.ModelHandle

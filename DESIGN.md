@@ -1176,8 +1176,21 @@ send marks the session not local-only. `zemi run` refuses a
 plugin's send: nothing would bound a chain of turns, and `zemi run` exits after
 its own.
 
-`/goal <condition>` gives a session a finish line. The message carries a
-brief naming the condition, and storing it sets the goal (a `goal` row after
+A `zemi.model.ask` with a `schema` asks for a value instead of text. The
+schema is a JSON schema in the fields a tool's input has (`type`,
+`properties`, `required`, `items`, `enum`, `description`, the numeric and
+length bounds), and it goes to the provider as one: whichever route the
+kind's ladder takes - native JSON mode, a forced tool call, or the schema
+written into the prompt - fantasy decodes the reply against it, so zemi
+returns the object itself, a table for an object schema and a number,
+string or boolean for a scalar, with the raw reply as the second return.
+A model that answers with a sentence is pinned per provider: `object_mode`
+(`auto`, `json`, `tool`, `text`) is refused for the kinds that always pick
+their own route. A schema zemi cannot read raises at the call, and a reply
+that arrived and did not fit the schema comes back as `nil` and the error,
+whose text carries the reply.
+
+`/goal <condition>` gives a session a finish line. The message carries abrief naming the condition, and storing it sets the goal (a `goal` row after
 it, with the session's spend then); only the brief `/goal` just sent counts,
 so a plugin's text, a file or a report quoting one sets nothing. After each turn that ended cleanly with
 nothing queued and no background run of the session going, the model judges
