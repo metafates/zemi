@@ -3363,7 +3363,8 @@ written, so a file, command or flag it names is checked before the model
 relies on it. Memory lines are
 labeled `user` or `learned` from their origin, so users can audit
 what the model was told and which of it the agent wrote itself. A brain
-file whose `paths:` globs match a file the session reads or edits earns a
+file whose `paths:` globs (rg-style, as the file tools match them: `**` crosses
+directories) match a file the session reads or edits earns a
 one-line pointer as tool-result text, at most three per result, once per
 conversation - outside the pinned prefix, so recall never moves the cache.
 Context
@@ -3466,7 +3467,7 @@ internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group) and hardened git
 internal/plugin/            plugin install, update, check and delete over plain git, and on/off
-internal/glob/              rg-style glob matching for the file tools and LSP
+internal/glob/              rg-style glob matching for the file tools, LSP and brain paths
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler quotes)
 internal/logging/           the slog log file, one per launch
 runtime/lua/                embedded Lua userland (tui: widgets, themes)

@@ -93,7 +93,7 @@ func TestLintFindings(t *testing.T) {
 	for _, want := range []string{
 		"no-desc.md: no description",
 		"no-read.md: no read_if",
-		`bad-glob.md: bad paths glob "bad.[": syntax error in pattern`,
+		`bad-glob.md: bad glob "bad.[": [ without a closing ]`,
 		"long.md: description is 201 characters, over the 200 the render caps",
 		"broken.md: [1:14] sequence end token ']' not found",
 		"memories.md: line 7 is not a memory line",

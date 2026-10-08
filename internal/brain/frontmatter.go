@@ -2,13 +2,12 @@ package brain
 
 import (
 	"errors"
-	"fmt"
-	"path/filepath"
 	"strings"
 	"unicode"
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/skill"
 )
@@ -51,15 +50,26 @@ func ParseFrontmatter(content string) (fm Frontmatter, err error) {
 	return Frontmatter{Description: raw.Description, ReadIf: raw.ReadIf, Paths: raw.Paths}, nil
 }
 
+// Matchers compiles Paths into rg-style path matchers, one per glob, for the
+// code that arms them: a glob that will not compile fails the whole file,
+// which is the check lint and intake run too (DESIGN §10.7).
+func (fm Frontmatter) Matchers() ([]func(rel string) bool, error) {
+	out := make([]func(rel string) bool, 0, len(fm.Paths))
+	for _, p := range fm.Paths {
+		match, err := glob.Match(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, match)
+	}
+	return out, nil
+}
+
 // BadGlob names the first malformed glob in Paths, for lint and intake: a
 // file with one stays visible in the catalog but triggers nothing (DESIGN §10.7).
 func (fm Frontmatter) BadGlob() error {
-	for _, glob := range fm.Paths {
-		if _, err := filepath.Match(glob, ""); err != nil {
-			return fmt.Errorf("bad paths glob %q: %w", glob, err)
-		}
-	}
-	return nil
+	_, err := fm.Matchers()
+	return err
 }
 
 // Oversized reports a frontmatter field whose stripped length is over
