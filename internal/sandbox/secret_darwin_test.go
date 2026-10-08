@@ -52,6 +52,7 @@ func TestSecretShapesMatchPerm(t *testing.T) {
 		{"id_rsa.xpub", true},
 		{"id_rsaXpub", true},
 		{"id_rsa.pub", false},
+		{"id_rsa-pub", true},
 		{"ID_RSA.PUB", false},
 		{"id_rsa.PUB", false},
 		{"id_rsa.Pub", false},
