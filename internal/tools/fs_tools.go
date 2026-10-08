@@ -334,28 +334,27 @@ func lastFrames(s string) string {
 const resultMaxOut = 10_000
 
 // Cut cuts tool output to n and spills the whole text to dir, so the cut part
-// stays one read away and its line numbers are read offsets.
-func Cut(dir, name, s string, n int) string {
+// stays one read away and its line numbers are read offsets. whole keeps the
+// text as it is: a call a lua script drove keeps its output whole, since the
+// script reads it and says what of it the model gets.
+func Cut(dir, name, s string, n int, whole bool) string {
+	if whole {
+		return s
+	}
 	if out := TruncOut(s, n); out != s {
 		return out + Spill(dir, name, s)
 	}
 	return s
 }
 
-// cut is Cut for this run: a call a lua script drove keeps its output whole,
-// since the script reads it and says what of it the model gets.
-func (p *Pipeline) cut(name, s string, n int) string {
-	if p.Script != "" {
-		return s
-	}
-	return Cut(p.Pad, name, s, n)
-}
+// cut is Cut for this run.
+func (p *Pipeline) cut(name, s string, n int) string { return Cut(p.Pad, name, s, n, p.Script != "") }
 
 // CmdOut is a command's output as a result carries it: cmdText cut to
 // resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
 // already dropped from the middle, which no spill file can hold.
-func CmdOut(dir, name, raw string, lost int64) string {
-	out := Cut(dir, name, cmdText(raw), resultMaxOut)
+func CmdOut(dir, name, raw string, lost int64, whole bool) string {
+	out := Cut(dir, name, cmdText(raw), resultMaxOut, whole)
 	if lost > 0 {
 		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
 	}
@@ -364,11 +363,7 @@ func CmdOut(dir, name, raw string, lost int64) string {
 
 // cmdOut is CmdOut for this run.
 func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
-	out := p.cut(name, cmdText(raw), resultMaxOut)
-	if lost > 0 {
-		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
-	}
-	return out
+	return CmdOut(p.Pad, name, raw, lost, p.Script != "")
 }
 
 // Spill saves output too long for a result under dir and names the file,

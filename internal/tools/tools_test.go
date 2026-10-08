@@ -995,6 +995,18 @@ func TestTruncOut(t *testing.T) {
 	}
 }
 
+// TestCutLines reads the marker TruncOut writes, so the wording lives with
+// its reader.
+func TestCutLines(t *testing.T) {
+	line := strings.Split(TruncOut("aaaa\nbb\ncccccc\nd\neeeee\nff", 20), "\n")[1]
+	if from, to, ok := CutLines(line); !ok || from != 2 || to != 3 {
+		t.Errorf("CutLines(%q) = %d, %d, %v", line, from, to, ok)
+	}
+	if _, _, ok := CutLines("a plain line"); ok {
+		t.Error("a plain line read as a cut marker")
+	}
+}
+
 func TestCmdText(t *testing.T) {
 	for _, c := range []struct{ name, raw, want string }{
 		{"tqdm frames lead with \\r", "\r  0%|   | 0/80\r 50%|#  | 40/80\r100%|###| 80/80\ntrained\n", "100%|###| 80/80\ntrained"},

@@ -40,7 +40,7 @@ func (h *Host) RunShell(cmd string) {
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)
 		raw, written := out.Snapshot()
-		text := tools.CmdOut(h.ScratchDir(), "shell", raw, written-int64(out.Max))
+		text := tools.CmdOut(h.ScratchDir(), "shell", raw, written-int64(out.Max), false)
 		status := CallOK
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):

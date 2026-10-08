@@ -11,9 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -283,8 +281,6 @@ type ChatMessage struct {
 	ID     string // the live turn's tool rows: the call id, so zemi run reports a call once
 }
 
-var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
-
 // Plural is one when n is 1, else many.
 func Plural(n int, one, many string) string {
 	if n == 1 {
@@ -338,9 +334,7 @@ func shortOutput(s string) string {
 	if n := len(lines) - 9; n > 1 {
 		// a tools.TruncOut marker stands for the lines it cut
 		for _, l := range lines[3 : len(lines)-6] {
-			if m := cutLines.FindStringSubmatch(l); m != nil {
-				a, _ := strconv.Atoi(m[1])
-				b, _ := strconv.Atoi(m[2])
+			if a, b, ok := tools.CutLines(l); ok {
 				n += b - a
 			}
 		}
