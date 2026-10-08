@@ -265,9 +265,9 @@ func TestClassifyAskErrors(t *testing.T) {
 	}
 }
 
-// TestClassifyGate: a plugin needs a rule for lua.classify.ask, project code
-// may not call a model, and the picker offers decisions models to the slots
-// that classify alone.
+// TestClassifyGate: an enabled plugin's own call settles with no rule, a rule
+// of the user's still decides first, project code may not call a model, and the
+// picker offers decisions models to the slots that classify alone.
 func TestClassifyGate(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}

@@ -1797,8 +1797,8 @@ zemi.classify = {}
 --- answers is reported back, and a strategy that fails does not settle
 --- anything for the next one.
 ---
---- Plugin code needs a user rule for `lua.classify.ask` with its principal;
---- project code raises. The provider's key is read in Go.
+--- A plugin's own call settles while it is enabled; project code raises. The
+--- provider's key is read in Go.
 ---
 --- ```lua
 --- local res = zemi.classify.ask({
