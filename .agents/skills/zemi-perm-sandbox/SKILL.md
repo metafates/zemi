@@ -18,7 +18,8 @@ overlay available fails closed; a denied result says who decided and why; errors
 tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `lua`,
 `update`, MCP and Lua tools) call the gate themselves and run the events through `preCheck`
 (which refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`.
-A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
+A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`); a
+`--unsafe` run has no backend at all, so nothing it settles is confined.
 
 The lua tool's script can drive the run's own tools: `zemi.tool.call(name, args)`
 (hostapi/luatool.go) starts one through that same pipeline off the interpreter, capped at 8
@@ -175,7 +176,9 @@ tool error, never an unconfined run. Rule-allowed and user-approved runs, `!comm
 `zemi.job`, MCP servers and `Host.git` stay unconfined, except under a read-only agent, whose
 every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` then skips the
 `Destructive` and `GitWrites` asks, since the confined run fails on its own); language servers
-run under `serverPolicy`. `NewHost` probes the backend synchronously, so `zemi health` and the first turn's
+run under `serverPolicy`; a `--unsafe` run gives no policy, so a code-running server starts
+unconfined, where a probe that failed leaves it out. `NewHost` probes the backend synchronously, so
+`zemi health` and the first turn's
 schema see it.
 
 `sandboxPolicy` writes the policy; DESIGN §9 has the whys behind it: the scratchpad and the
