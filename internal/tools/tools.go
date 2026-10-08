@@ -1160,6 +1160,10 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	if p != nil && p.Images != nil && !p.Images() {
 		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source and with the project's build or tests, or ask the user to look."
 	}
+	addresses := " Local and private addresses are refused."
+	if p != nil && p.Unsafe {
+		addresses = " Local and private addresses are fetched like any other."
+	}
 
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a command with sh -c. Every call starts in the working directory: never cd to it. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays. A bash -c body is POSIX sh too: write a bash script to a file and run bash file. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
@@ -1226,7 +1230,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot, ""),
 			runGrep),
 
-		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
+		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation."+addresses,
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
