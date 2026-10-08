@@ -101,10 +101,11 @@ func (h *Host) HeadlessDenials() []Denial {
 func (h *Host) PermModeList() []PermModeDef {
 	h.modes.mu.Lock()
 	defer h.modes.mu.Unlock()
-	if h.modes.list == nil {
-		return builtinModes
+	list := h.modes.list
+	if list == nil {
+		list = builtinModes
 	}
-	return slices.Clone(h.modes.list)
+	return slices.Clone(list)
 }
 
 func (h *Host) setModes(fn func([]PermModeDef) ([]PermModeDef, error)) error {

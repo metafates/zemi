@@ -43,11 +43,7 @@ var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".
 // attachments, then any images as file parts. A text-only model gets a
 // note in their place instead of a refused request.
 func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
-	expanded, imgs := h.expandAttachments(text)
-	if !images && len(imgs) > 0 {
-		expanded = strings.ReplaceAll(expanded, "attached below</image>", "omitted: the current model does not take images</image>")
-		imgs = nil
-	}
+	expanded, imgs := h.expandAttachments(text, images)
 	parts := []fantasy.MessagePart{fantasy.TextPart{Text: expanded}}
 	for _, img := range imgs {
 		parts = append(parts, img)
@@ -69,10 +65,11 @@ func overLimit(limit int64) string {
 
 // expandAttachments also carries instruction files edited since the prompt
 // was pinned and output of the user's !commands since the last message,
-// behind the same marker, and returns referenced images.
-func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
+// behind the same marker, and returns referenced images. images is whether
+// the model takes them at all: it gets a note in their place when not.
+func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.FilePart) {
 	var b strings.Builder
-	var images []fantasy.FilePart
+	var imgs []fantasy.FilePart
 	var refused []string // "path: why", which the user hears too
 	seen := map[string]bool{}
 	// what follows the marker is host-composed from model output (agent
@@ -141,13 +138,15 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 			note("it could not be read")
 		case int64(len(data)) > limit:
 			note(overLimit(limit))
+		case image && !images:
+			fmt.Fprintf(&b, "\n<image path=%q>omitted: the current model does not take images</image>", name)
 		case image:
 			fit, fitMT, err := tools.FitImage(data, mt)
 			if err != nil {
 				note(err.Error())
 				continue
 			}
-			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: fit, MediaType: fitMT})
+			imgs = append(imgs, fantasy.FilePart{Filename: filepath.Base(abs), Data: fit, MediaType: fitMT})
 			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", name)
 		case !utf8.Valid(data):
 			note("it is not text")
@@ -166,9 +165,9 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	b.WriteString(h.instructionEdits())
 	b.WriteString(h.takeShellNotes())
 	if b.Len() == 0 {
-		return text, images
+		return text, imgs
 	}
-	return text + agent.AttachMarker + b.String() + "\n</attached-files>", images
+	return text + agent.AttachMarker + b.String() + "\n</attached-files>", imgs
 }
 
 // dropsDir holds copies of files the user dropped or pasted from outside the

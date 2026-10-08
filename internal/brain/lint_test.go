@@ -102,7 +102,7 @@ func TestLintFindings(t *testing.T) {
 		"memory vwxy2345 was rewritten outside the ledger (a hand edit)",
 		"memory efgh6789 reads like an instruction (detection only; the line still injects)",
 		"memory mnop5678 is in the ledger, gone from memories.md (a crash between the ledger and the file, a lost update, or a hand edit)",
-		p.memPath() + ": memory lines render past the 3072-byte budget",
+		MemFile + ": memory lines render past the 3072-byte budget",
 	} {
 		if !slices.Contains(texts, want) {
 			t.Fatalf("missing finding %q in:\n%s", want, strings.Join(texts, "\n"))

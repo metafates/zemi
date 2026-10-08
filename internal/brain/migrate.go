@@ -54,7 +54,7 @@ func Reconcile(p Partition, rows []*store.Memory, at time.Time) error {
 		if slices.ContainsFunc(lines, func(l Line) bool { return l.ID == m.ID }) {
 			continue
 		}
-		added = append(added, Line{ID: m.ID, Origin: m.Origin, Date: day(time.UnixMilli(m.UpdatedAt)), Text: m.Text})
+		added = append(added, Line{ID: m.ID, Origin: m.Origin, Date: Day(time.UnixMilli(m.UpdatedAt)), Text: m.Text})
 	}
 	if len(added) > 0 {
 		lines = append(lines, added...)

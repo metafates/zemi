@@ -39,7 +39,7 @@ func TestExpandAttachments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go")
+	got, _ := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go", true)
 	if !strings.HasPrefix(got, "look at @main.go, @.env, @notes.md and @missing.go"+agent.AttachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
@@ -58,7 +58,7 @@ func TestExpandAttachments(t *testing.T) {
 	pipe := filepath.Join(proj, "pipe")
 	if exec.Command("mkfifo", pipe).Run() == nil {
 		done := make(chan string)
-		go func() { s, _ := h.expandAttachments("@pipe"); done <- s }()
+		go func() { s, _ := h.expandAttachments("@pipe", true); done <- s }()
 		select {
 		case s := <-done:
 			if s != "@pipe" {
@@ -70,7 +70,7 @@ func TestExpandAttachments(t *testing.T) {
 	}
 	write(filepath.Join(proj, "big.txt"), strings.Repeat("x", attachMax+1))
 	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
-	got, _ = h.expandAttachments("@big.txt @blob.txt @.env")
+	got, _ = h.expandAttachments("@big.txt @blob.txt @.env", true)
 	for _, want := range []string{
 		`<file path="big.txt">not attached: it is over the 64 KB`,
 		`<file path="blob.txt">not attached: it is not text`,
@@ -86,10 +86,10 @@ func TestExpandAttachments(t *testing.T) {
 		t.Fatalf("agent.Note = %q", note)
 	}
 	report := "Background agent a1 finished." + agent.AttachMarker + "\nsee @main.go\n</attached-files>"
-	if got, _ := h.expandAttachments(report); got != report {
+	if got, _ := h.expandAttachments(report, true); got != report {
 		t.Fatalf("model-written text behind the marker must not attach: %q", got)
 	}
-	if plain, _ := h.expandAttachments("no references here"); plain != "no references here" {
+	if plain, _ := h.expandAttachments("no references here", true); plain != "no references here" {
 		t.Fatalf("plain text changed: %q", plain)
 	}
 }
@@ -107,11 +107,11 @@ func TestChipAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := h.expandAttachments("see [File " + name + "]")
+	got, _ := h.expandAttachments("see [File "+name+"]", true)
 	if !strings.Contains(got, "dropped copy") || strings.Contains(got, "the project's") {
 		t.Fatalf("the copy must win over the project file: %q", got)
 	}
-	if got, _ := h.expandAttachments("see [File ../attach_test.go]"); got != "see [File ../attach_test.go]" {
+	if got, _ := h.expandAttachments("see [File ../attach_test.go]", true); got != "see [File ../attach_test.go]" {
 		t.Fatalf("a chip must not climb out of the project: %q", got)
 	}
 	long, err := h.saveDrop(strings.Repeat("n", 200)+".txt", []byte("long"))
@@ -153,7 +153,7 @@ func TestAttachLabel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, _ := h.expandAttachments(h.AttachLabel("x!"))
+	got, _ := h.expandAttachments(h.AttachLabel("x!"), true)
 	if !strings.Contains(got, "BANG") || strings.Contains(got, "PLAIN") {
 		t.Fatalf("a trimmed name attached another file: %q", got)
 	}
@@ -165,7 +165,7 @@ func TestAttachLabel(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = h.expandAttachments(h.AttachLabel(name))
+	got, _ = h.expandAttachments(h.AttachLabel(name), true)
 	if !strings.Contains(got, "the project's") || strings.Contains(got, "another project's") {
 		t.Fatalf("the project's own file must attach: %q", got)
 	}

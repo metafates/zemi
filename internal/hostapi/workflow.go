@@ -86,12 +86,7 @@ func (h *Host) workflows() []Workflow {
 		return true
 	})
 	sortBySource(out, func(w Workflow) lua.Origin { return w.Source })
-	seen := map[string]bool{}
-	return slices.DeleteFunc(out, func(w Workflow) bool {
-		dup := seen[w.Name]
-		seen[w.Name] = true
-		return dup
-	})
+	return dedupeByName(out, func(w Workflow) string { return w.Name }, nil)
 }
 
 func leadingComment(src string) string {
@@ -126,7 +121,7 @@ func (h *Host) workflowSource(name string) (string, error) {
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", Usagef("workflow %q is in %s, and this project is not trusted: the user runs %s to load it (or it can be saved under %s)", name, pdir, h.trustHint(), filepath.Join(h.Dirs.ConfigHome, "workflows"))
+			return "", Usagef("%s (or it can be saved under %s)", h.untrustedNote("workflow", name, pdir), filepath.Join(h.Dirs.ConfigHome, "workflows"))
 		}
 	}
 	if len(names) == 0 {

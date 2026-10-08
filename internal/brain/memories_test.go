@@ -206,7 +206,7 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err := Forget(p, "s1", a.ID, later); err != nil {
 			t.Fatal(err)
 		}
-		back := Line{ID: a.ID, Origin: store.OriginLearned, Date: day(at), Text: "one"}
+		back := Line{ID: a.ID, Origin: store.OriginLearned, Date: Day(at), Text: "one"}
 		if err := Restore(p, "s1", []Line{back}, []string{b.ID}, later); err != nil {
 			t.Fatal(err)
 		}

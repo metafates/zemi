@@ -101,12 +101,10 @@ func memoryText(l Loaded, at time.Time) string {
 	if len(lines) == 0 && len(bad) == 0 {
 		return ""
 	}
-	used, kept := 0, 0
-	for _, ln := range lines {
-		if used += LineSize(ln.Text); used > ScopeBudget {
-			break
-		}
-		kept++
+	// the render keeps the longest prefix of lines the budget holds
+	kept := len(lines)
+	for used := Used(lines); kept > 0 && used > ScopeBudget; kept-- {
+		used -= LineSize(lines[kept-1].Text)
 	}
 	out := make([]string, 0, kept+1)
 	for _, ln := range lines[:kept] {

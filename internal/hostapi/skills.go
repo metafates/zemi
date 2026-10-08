@@ -287,13 +287,10 @@ func (h *Host) projectOnlySkills() []skill.Skill {
 	if p := h.projectSkills.Load(); p != nil {
 		all = slices.Clone(*p)
 	}
-	seen := map[string]bool{}
 	// NOTE: every recipe is a line of every prompt; past a few dozen, rank
 	// them with FTS over the descriptions.
-	return slices.DeleteFunc(append(all, recipes...), func(s skill.Skill) bool {
-		_, taken := h.skillsReg.get(s.Name)
-		taken = taken || seen[s.Name]
-		seen[s.Name] = true
+	return dedupeByName(append(all, recipes...), func(s skill.Skill) string { return s.Name }, func(n string) bool {
+		_, taken := h.skillsReg.get(n)
 		return taken
 	})
 }
@@ -566,6 +563,25 @@ func sortBySource[T any, S ~string](rows []T, source func(T) S) {
 	slices.SortStableFunc(rows, func(a, b T) int {
 		return cmp.Compare(lua.Origin(source(b)).Rank(), lua.Origin(source(a)).Rank())
 	})
+}
+
+// dedupeByName keeps the first row of each name, over rows already in section
+// order: the more trusted origin won the name. taken, when given, also drops a
+// name something outside the list holds.
+func dedupeByName[T any](rows []T, name func(T) string, taken func(string) bool) []T {
+	seen := map[string]bool{}
+	return slices.DeleteFunc(rows, func(r T) bool {
+		n := name(r)
+		dup := seen[n] || taken != nil && taken(n)
+		seen[n] = true
+		return dup
+	})
+}
+
+// untrustedNote is why a project file did not load: one sentence for every
+// layered resource, the caller adding its own way out.
+func (h *Host) untrustedNote(kind, name, dir string) string {
+	return fmt.Sprintf("%s %q is in %s, and this project is not trusted: the user runs %s to load it", kind, name, dir, h.trustHint())
 }
 
 func (h *Host) skillItems() []any {

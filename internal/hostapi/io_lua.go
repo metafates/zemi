@@ -696,7 +696,7 @@ func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, 
 	if err != nil {
 		return nil, err
 	}
-	files = slices.DeleteFunc(files, func(rel string) bool { return !h.Unsafe && perm.PathIsSecret(filepath.Join(root, rel)) })
+	files = slices.DeleteFunc(files, func(rel string) bool { return h.secretPath(filepath.Join(root, rel)) })
 	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
 }
 

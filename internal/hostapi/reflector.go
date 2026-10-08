@@ -444,7 +444,7 @@ func (h *Host) reflectPrompt(sid string) (string, []*store.Message, error) {
 			budgetUse(used[store.ScopeProject]), budgetUse(used[store.ScopeUser]))
 		now := time.Now()
 		for _, m := range mems {
-			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID, m.Scope, m.Origin, brain.Age(dayOf(m.UpdatedAt), now), m.Text)
+			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID, m.Scope, m.Origin, brain.Age(brain.Day(time.UnixMilli(m.UpdatedAt).UTC()), now), m.Text)
 			if m.Quote != "" {
 				fmt.Fprintf(&b, "  quote: %q\n", m.Quote)
 			}
