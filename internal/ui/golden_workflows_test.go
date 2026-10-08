@@ -69,11 +69,13 @@ func TestGoldenWorkflows(t *testing.T) {
 		for app.Pump() {
 		}
 		app.renderSync(t)
-		out := elapsed.ReplaceAllString(app.Frame(), "0.0s")
+		out := app.Frame()
+		// the id first: its random base32 can hold a "<digit>s" pair that the
+		// clock would rewrite, leaving a half-masked id the mask can no longer find
 		if m := runID.FindStringSubmatch(ansi.Strip(out)); m != nil {
 			out = strings.ReplaceAll(out, m[1], "0000000a")
 		}
-		return out
+		return elapsed.ReplaceAllString(out, "0.0s")
 	}
 	if err := host.RunCommand(ctx, "workflows", ""); err != nil {
 		t.Fatal(err)
