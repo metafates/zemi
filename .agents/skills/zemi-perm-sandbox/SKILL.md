@@ -192,8 +192,9 @@ in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), wit
 checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
-`/trust`. The shell tool and `job_start` take two escapes no mode settles and each of which
-asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
+`/trust`. The shell tool and `job_start` take two escapes no mode's rules settle, each of
+which asks unless a mode's `decide` answers it: `network: true` only adds sockets,
+`sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes, a death by signal (`sandbox.Killed`) included, gets `Pipeline.sandboxHint`; the limits themselves
 are the system prompt's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
 project walk, which must not delay the first request).
@@ -228,9 +229,9 @@ origin may add allow rules (project may tighten only), scope a rule to one plugi
 a plugin's `zemi.agent.send` and `zemi.model.ask` ask `lua.agent.send` and `lua.model.ask`)
 or switch the mode
 (`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); user, builtin and
-plugin code may add or drop a mode, the project refused, and `mayReplace` refuses a builtin
-name (`auto`, `yolo`) to everyone and another plugin's name to a plugin; the gate lives at the
-namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
+plugin code may add or drop a mode, the project refused, the builtin names (`auto`, `yolo`)
+are refused by name to everyone, and `mayReplace` refuses another plugin's name to a plugin;
+the gate lives at the namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal
 (`Rule.Network` when the ask was a `network: true` command, so `SandboxFor` keeps the policy and

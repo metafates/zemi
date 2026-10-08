@@ -2004,8 +2004,8 @@ function zemi.composer.edit() end
 
 ---@class zemi.PermVerdict
 ---@field decision "allow"|"deny"
----@field scope? "once"|"session"|"wider"|"project" How far an allow reaches: one call, the session rules an "always" answer writes, a file read's whole repository, or the project's permissions file. A scope the request does not offer narrows to the closest one below it, never wider.
----@field reason? string Why, added to what the ask says and to the row a settled fenced call leaves.
+---@field scope? "once"|"session"|"wider"|"project" How far an allow reaches: one call, the session rules an "always" answer writes, a file read's whole repository, or the project's permissions file. A scope the request does not offer narrows to the closest one below it, never wider, and a mode below user origin narrows "project" to "session": that durable file is the user's own grant.
+---@field reason? string Why: on a denial it stands in for the ask's reason, and a settled allow of a call no rule may settle carries it on the notice row.
 
 ---@class zemi.PermRequest
 ---@field subject string
