@@ -44,6 +44,9 @@ func TestSecretShapesMatchPerm(t *testing.T) {
 		{"id_rsa.pub", false},
 		{"ID_RSA.PUB", false},
 		{"id_rsa_old.pub", false},
+		// the tail may not reach past a separator: perm judges the base name, and
+		// pub here matches no shape
+		{"id_rsa/pub", false},
 		{".env", true},
 		{".ENV", true},
 		{".env.example", true},

@@ -79,7 +79,10 @@ var secretShapes = "(regex " + foldCase(`#"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.
 // one ending in .pub, which perm leaves shareable. POSIX regex has no
 // lookahead, so the tail lists where the last bytes can differ from "pub";
 // foldCase cannot fold a negated class, so those letters carry both cases here.
-var idShapes = `#"/` + foldCase(`id_(rsa|dsa|ecdsa|ed25519)`) + `([^/]{0,3}|[^/]*([^bB]|[^uU][bB]|[^pP][uU][bB]|[^.][pP][uU][bB]))$"`
+// No tail class matches a /, since perm judges the base name alone and a tail
+// reaching a separator would hide a path it does not. The exemption's own .
+// joins the / as the range .-/, because a class holding both is ignored here.
+var idShapes = `#"/` + foldCase(`id_(rsa|dsa|ecdsa|ed25519)`) + `([^/]{0,3}|[^/]*([^/bB]|[^/uU][bB]|[^/pP][uU][bB]|[^.-/][pP][uU][bB]))$"`
 
 func probe() (Backend, error) {
 	if _, err := os.Stat(sandboxExec); err != nil {
