@@ -76,11 +76,12 @@ func skipEscape(s string, i int) int {
 		}
 		return j
 	default:
-		// nF (ESC ( B): intermediates then a final byte; otherwise two bytes
+		// nF (ESC ( B): intermediates then a final byte. A control byte after
+		// ESC starts no sequence, so a newline or a tab keeps its meaning.
 		for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
 			j++
 		}
-		if j < len(s) {
+		if j < len(s) && s[j] >= 0x20 && s[j] < 0x7f {
 			j++
 		}
 		return j
