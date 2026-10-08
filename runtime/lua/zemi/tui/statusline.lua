@@ -5,7 +5,7 @@
 -- goes sits inner, where it moves nothing.
 local fmt = require("zemi.tui.text")
 
--- The permission mode, colored like the composer prompt. A click opens the
+-- The permission mode, the only place its color shows. A click opens the
 -- mode picker.
 zemi.ui.widget.add({
 	id = "statusline.mode",
@@ -17,7 +17,7 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local mode = ctx.permission_mode or "auto"
 		-- the base is auto or yolo (zemi.permission.mode.add refuses others),
-		-- the pair ui/composer.go colors the prompt with
+		-- and it picks the mode's color
 		local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[ctx.permission_mode_base]
 		return { { { text = mode, hl = hl, click = "mode" } } }
 	end,
