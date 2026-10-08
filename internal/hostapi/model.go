@@ -231,13 +231,9 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		s := checkSchema(L, tb)
 		schema = &s
 	}
-	var stub *stubReply
-	switch o := h.RT.CurrentOrigin(L); {
-	case o.Rank() <= lua.OriginProject.Rank():
-		L.RaiseError("zemi.model.ask: %s code may not call a model", o)
-	case o == lua.OriginPlugin:
-		_, stub = h.luaGate(L, "lua.model.ask", id, func() map[string]any { return map[string]any{"model": ref, "prompt": prompt, "system": system} })
-	}
+	stub := h.gateAsk(L, "zemi.model.ask", "lua.model.ask", id, func() map[string]any {
+		return map[string]any{"model": ref, "prompt": prompt, "system": system}
+	})
 	maxOut := int64(1024)
 	if n, ok := opt[glua.LNumber](L, spec, "max_output"); ok && n > 0 {
 		maxOut = int64(n)
@@ -903,6 +899,15 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		h.refuseTargetOrigin(L, "model.add")
 		spec := L.CheckTable(2)
+		raw, err := lua.ToGo(spec)
+		if err != nil {
+			L.RaiseError("zemi.model.add: spec: %v", err)
+		}
+		fields, _ := raw.(map[string]any)
+		// a typo'd key would register a slot with no model and no complaint
+		if err := onlyKeys(fields, "spec", "desc", "model", "classify"); err != nil {
+			L.RaiseError("zemi.model.add: %v", err)
+		}
 		t := modelTarget{
 			Desc:     listDesc(rawString(L, spec, "desc")),
 			Def:      rawString(L, spec, "model"),
