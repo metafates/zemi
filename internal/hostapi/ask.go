@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -116,6 +117,12 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 				}
 				h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: sanitize.String(text)})
 			}
+			// a mode below user origin may settle the ask and write session
+			// rules, but the durable project file is the user's own grant, as an
+			// allow rule is (rule.add): its "project" answer narrows to session
+			if def.Origin != lua.OriginUser && ans.Scope == "project" {
+				ans.Scope = "session"
+			}
 			h.grant(req, ch, ans.Scope)
 			return resolved(true, tools.ByMode(def.Name))
 		case "deny":
@@ -149,7 +156,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			req.Reason = "the model asked to leave the sandbox"
 		}
 	case req.Network:
-		// the host is the model's, like a fetch URL, so no mode settles it
+		// the host is the model's, like a fetch URL, so no mode's rules settle it
 		req.Reason = "the model asked for the network"
 	case req.Explicit:
 		// whoever wrote the rule wanted to see this; only yolo overrides it
