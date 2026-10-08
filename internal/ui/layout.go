@@ -482,7 +482,7 @@ func barText(width int) int {
 // window is the rows of lines the view shows, each padded to width cells
 // and followed by its bar cell while the content overflows, which a box
 // draws in its border. fade sinks the rows at an edge content lies past; see
-// edgeFade.
+// edgeRamp.
 func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
@@ -506,42 +506,45 @@ func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostap
 		}
 		out = append(out, row)
 	}
-	v.edgeFade(out, fade)
+	// the pins are drawn over the window, and a list cut to whole items pads
+	// past its content with nil: neither takes a step of the ramp
+	edgeRamp(out, v.top, v.rows-v.top-v.viewH, fade, func(i int) bool {
+		return i < len(v.pins) || len(out[i]) == 0
+	})
 	return out
 }
 
-// boxFade is how many rows a box's scrolled view sinks at an edge: the
-// chat's four would ghost away half a menu, so a box ramps two, eased off by
-// how much lies past it.
+// boxFade is how many rows a box's scrolled view, or the composer's, sinks at
+// an edge: the chat's four would ghost away half a menu, so both ramp two,
+// eased off by how much lies past it.
 const boxFade = 2
 
-// edgeFade sinks the rows at a window's edges while content lies past them,
-// deepest at the edge: the rows under the pins at the top and the last rows
-// at the bottom while scrolled up, so each edge says there is more. The sink
-// eases off as the last rows come into view, in step with how many lie past
-// the edge, and is at most a third of the view. The pins and the bar never
-// fade, and the rows a window left empty - a list cut to whole items pads
-// past its content with nil - take no step of the ramp.
-func (v *viewport) edgeFade(rows [][]hostapi.Segment, fade int) {
-	if fade = min(fade, v.viewH/3); fade <= 0 {
+// edgeRamp sinks the rows at a window's edges while content lies past them,
+// deepest at the edge, so each edge says there is more: above and below are
+// how many rows lie past each one. The sink eases off as the last rows come
+// into view, in step with how many lie past the edge, and is at most a third
+// of the rows. skip names the rows the ramp leaves alone: a pin, the row a
+// draft's cursor is on.
+func edgeRamp(rows [][]hostapi.Segment, above, below, fade int, skip func(int) bool) {
+	if fade = min(fade, len(rows)/3); fade <= 0 {
 		return
 	}
 	depth := func(past int) float64 { return min(1, float64(past)/float64(fade)) }
-	above, below := depth(v.top), depth(v.rows-v.top-v.viewH)
-	first, last := len(v.pins), len(rows)-1
-	for first < len(rows) && len(rows[first]) == 0 {
+	top, bottom := depth(above), depth(below)
+	first, last := 0, len(rows)-1
+	for first < len(rows) && skip(first) {
 		first++
 	}
-	for last >= first && len(rows[last]) == 0 {
+	for last >= first && skip(last) {
 		last--
 	}
 	for k := range fade {
 		t := float64(fade-k) / float64(fade+1)
-		if i := first + k; above > 0 && i <= last {
-			rows[i] = faded(rows[i], t*above)
+		if i := first + k; top > 0 && i <= last && !skip(i) {
+			rows[i] = faded(rows[i], t*top)
 		}
-		if i := last - k; below > 0 && i >= len(v.pins) {
-			rows[i] = faded(rows[i], t*below)
+		if i := last - k; bottom > 0 && i >= first && !skip(i) {
+			rows[i] = faded(rows[i], t*bottom)
 		}
 	}
 }

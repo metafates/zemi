@@ -11,7 +11,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -563,18 +562,6 @@ func keyText(msg tea.KeyPressMsg) string {
 		}
 	}
 	return msg.Text
-}
-
-// modeBase is the behavior of the active permission mode (auto or yolo),
-// which picks its colors.
-func (a *App) modeBase() string {
-	cur := a.host.PermMode()
-	for _, m := range a.host.PermModeList() {
-		if m.Name == cur {
-			return m.Base
-		}
-	}
-	return config.PermModeAuto
 }
 
 // modal is a prompt drawn over the composer, which takes keys, the wheel,

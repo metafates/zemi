@@ -1754,8 +1754,9 @@ rides the `memories.md` line and its ledger entries.
 ## 8. UI core detail
 
 - **Layout**: header (no default widget; the region stays for Lua), chat
-  (flex), then the composer (1..8 rows plus a "… n more lines" row) inside a
-  square frame two rows taller, whose rules carry regions: the `working`
+  (flex), then the composer (1..8 rows, those past either edge fading toward
+  the panel) inside a square frame two rows taller, whose rules carry
+  regions: the `working`
   one on top, which gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot a cell in from the left corner, a cell of
   rule either side of it, the state in its eyes alone: swapping while the model thinks or
@@ -2098,8 +2099,13 @@ rides the `memories.md` line and its ledger entries.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
-  A prompt glyph opens every row, dimmed after the first, so a
-  multi-line draft reads as one block. The composer stays editable during
+  An input-mode draft starts at the frame's inner edge and runs the width of
+  it, so a multi-line draft reads as one block; a `!` shell or `/` command
+  draft keeps its glyph on the first row, the rows under it holding the two
+  cells it took. A draft taller than the window keeps the cursor row in view
+  with a row of headroom below it, and the rows past either edge fade, so
+  neither edge needs a row of its own to say there is more. The composer
+  stays editable during
   a turn: a submit while the turn runs queues as steering (§4) instead of
   spawning a second turn, and hands off any foreground agent or workflow call
   waiting on its run, so the turn reads the message instead of waiting for it.
@@ -2321,17 +2327,18 @@ rides the `memories.md` line and its ledger entries.
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
   A scrolled view sinks the rows at an edge content lies past toward the
-  surface it sits on: a region's toward the canvas, a box's toward its panel,
-  which the fill a box puts its rows on carries. A region fades the `fade`
-  rows its layout node sets (the shipped chat uses 4), a box two, and
-  neither more than a third of the view; deepest at the edge - under the pins
-  while rows are scrolled above, and at the bottom while scrolled up - so each
-  edge says there is more, easing off as the last rows come into view. The
-  pins, the bar and the rows a window left empty never fade, and a list
-  reveals its selection a fade's rows clear of the window's edge, so the ramp
-  never covers the selected row. A widget may sink a block it clips itself by
-  setting `fade` on those rows (a segment field): the deeper of the two sinks
-  holds.
+  surface it sits on: a region's toward the canvas, a box's and the
+  composer's toward the panel, which the fill a box puts its rows on carries.
+  A region fades the `fade` rows its layout node sets (the shipped chat uses
+  4), a box and the composer two, and none more than a third of the view;
+  deepest at the edge - under the pins while rows are scrolled above, and at
+  the bottom while scrolled up - so each edge says there is more, easing off
+  as the last rows come into view. The
+  pins, the bar, the composer's cursor row and the rows a window left empty
+  never fade, and a list reveals its selection a fade's rows clear of the
+  window's edge, so the ramp never covers the selected row. A widget may sink
+  a block it clips itself by setting `fade` on those rows (a segment field):
+  the deeper of the two sinks holds.
 
 ## 9. Permissions and safety
 
