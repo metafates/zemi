@@ -377,6 +377,19 @@ func must[T any](v T, err error) T {
 	return v
 }
 
+// TestReflectorSystemCaps: the prompt tells the model the caps intake applies,
+// so a cap change cannot leave it lying about the length it accepts.
+func TestReflectorSystemCaps(t *testing.T) {
+	for _, want := range []string{
+		fmt.Sprintf("at most %d characters", learn.MaxTextLen),
+		fmt.Sprintf("at most %d characters", learn.MaxQuoteLen),
+	} {
+		if !strings.Contains(reflectorSystem, want) {
+			t.Errorf("the reflector prompt does not say %q", want)
+		}
+	}
+}
+
 // TestReflectPrompt pins what the reflector reads: the delta's tail with a
 // compaction summary labeled as one and secrets redacted, the failed tool
 // results, this session's pending proposals, the whole index with budget
