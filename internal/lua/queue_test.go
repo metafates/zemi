@@ -16,7 +16,7 @@ import (
 func newTestRuntime(t *testing.T) *Runtime {
 	t.Helper()
 	r := NewRuntime(RuntimeOptions{})
-	if err := r.Boot(context.Background(), nil); err != nil {
+	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	// a synctest bubble does not end while the dispatcher waits for requests
@@ -119,7 +119,7 @@ func TestQueueCancellationPreempts(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := newTestRuntime(t)
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if c.stop > 0 {
 				time.AfterFunc(c.stop, cancel)

@@ -3450,6 +3450,7 @@ internal/hostapi/           zemi.* namespaces and the host services behind them:
                             lsp wiring, rewind, scratchpads, health, export,
                             zemi.test
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
+internal/classify/          judging data with a model: protocol, logprobs, schema
 internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              rules engine, bash normalizer, ReadCommand, env gates

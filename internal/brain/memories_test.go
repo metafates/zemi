@@ -181,7 +181,8 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := Apply(p, mem("s1", strings.Repeat("w", 3200)), "", later); !errors.As(err, &UserCutError{}) {
+		_, _, err = Apply(p, mem("s1", strings.Repeat("w", 3200)), "", later)
+		if _, cut := errors.AsType[UserCutError](err); !cut {
 			t.Fatalf("user cut = %v", err)
 		}
 		lines, _, _ := readMemories(p)
