@@ -593,6 +593,10 @@ type Host struct {
 
 	// sandbox is the startup probe's result (sandbox.go)
 	sandbox atomic.Pointer[sandboxProbe]
+	// Unsafe is a --unsafe boot: no sandbox, no secret hiding, no
+	// private-address deny, and the project is trusted. Set once in main,
+	// before boot, so every read sees the same run.
+	Unsafe bool
 	// guards holds, per running sandboxed command, the protected paths that
 	// were missing when it started (guardSandbox)
 	guardMu sync.Mutex
@@ -1662,6 +1666,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	mode := h.permModeDef()
 	tb.RawSetString("permission_mode", glua.LString(mode.Name))
 	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
+	tb.RawSetString("unsafe", glua.LBool(h.Unsafe))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
 	if jobs := h.BusyList(); len(jobs) > 0 {
 		b := L.CreateTable(len(jobs), 0)

@@ -321,6 +321,10 @@ type Pipeline struct {
 	// SandboxParam gives shell and job_start the sandbox: false escape; set
 	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
+	// Unsafe is a --unsafe run's pipeline: no listing or grep hides a
+	// secret-shaped name, no child environment is filtered, and SafeClient
+	// denies no address.
+	Unsafe bool
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy

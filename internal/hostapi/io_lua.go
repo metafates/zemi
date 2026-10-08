@@ -41,7 +41,11 @@ import (
 // secretPath matches the §9 secret shapes on the path as written and on the
 // resolved one, so an innocently named symlink cannot hide a secret, and
 // the home paths the sandbox hides (secretDirs), whose names say nothing.
+// A --unsafe run hides nothing, so this is its one switch.
 func (h *Host) secretPath(p string) bool {
+	if h.Unsafe {
+		return false
+	}
 	if perm.PathIsSecret(p) {
 		return true
 	}
@@ -268,8 +272,9 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		// user config reads its own keys (api_key = zemi.env.get(...));
-		// plugins and projects never see secret-shaped names
-		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
+		// plugins and projects never see secret-shaped names, unless the run
+		// hides nothing (--unsafe)
+		if o := h.RT.CurrentOrigin(L); !h.Unsafe && perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
 		// unset is nil, never "": an empty api_key registers a provider that
@@ -692,7 +697,7 @@ func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, 
 	if err != nil {
 		return nil, err
 	}
-	files = slices.DeleteFunc(files, func(rel string) bool { return perm.PathIsSecret(filepath.Join(root, rel)) })
+	files = slices.DeleteFunc(files, func(rel string) bool { return !h.Unsafe && perm.PathIsSecret(filepath.Join(root, rel)) })
 	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
 }
 
@@ -764,8 +769,9 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
 	})
 	// §9 localhost development opt-in: an explicit user allow rule for the
-	// host overrides the resolved-address deny. Project callers never get it.
-	allowPrivate := tools.UserRule(v.Rule) && origin.Rank() > lua.OriginProject.Rank()
+	// host overrides the resolved-address deny, which a project's rule may not
+	// and a --unsafe run does not have.
+	allowPrivate := h.Unsafe || tools.UserRule(v.Rule) && origin.Rank() > lua.OriginProject.Rank()
 	fetch := func(ctx context.Context) (map[string]any, error) {
 		return h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
 	}

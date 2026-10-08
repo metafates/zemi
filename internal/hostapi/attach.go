@@ -255,7 +255,8 @@ func (h *Host) AttachPath(path string) string {
 		}
 		return attachRefToken(rel, image)
 	}
-	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
+	// a secret-shaped name is copied in unless the run hides nothing (--unsafe)
+	if fi.IsDir() || !h.Unsafe && perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return tools.ShellQuote(path)
 	}
 	data, err := os.ReadFile(path)

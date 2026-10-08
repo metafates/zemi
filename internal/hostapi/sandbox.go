@@ -32,11 +32,17 @@ type sandboxProbe struct {
 	err     error
 }
 
-// sandboxLive reports a working backend. It never changes after NewHost
+// sandboxLive reports a working backend for this run; --unsafe has none, so
+// every command it settles runs unconfined. It never changes after NewHost
 // (tests swap it), so a command settled as sandboxed always finds it.
-func (h *Host) sandboxLive() bool {
+func (h *Host) sandboxLive() bool { return !h.Unsafe && !h.sandboxBroken() }
+
+// sandboxBroken reports the probe failing on this machine, --unsafe aside:
+// where a backend exists but the user asked for none, the servers and
+// subprocesses a live backend would confine still start.
+func (h *Host) sandboxBroken() bool {
 	s := h.sandbox.Load()
-	return s != nil && s.err == nil
+	return s == nil || s.err != nil
 }
 
 // secretDirs are home paths a sandboxed command can neither read nor write:
@@ -249,6 +255,13 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 		ask, approved = "need the user's approval, which nobody can give in this run", ""
 	}
 	switch {
+	case h.Unsafe:
+		b := "Sandbox: none: this run has --unsafe, so a command you run is unconfined, with the whole environment (a secret-shaped variable included), and nothing is hidden from it: no credential directory, no .env-shaped file, and a fetch reaches a private address. "
+		if readOnly {
+			// the denials stay, the confinement does not
+			return b + "This agent stays read-only: writes are refused and any command but one that only reads " + ask + ", but what runs has the project writable.\n"
+		}
+		return b + "A command that changes anything " + ask + approved + ".\n"
 	case !h.sandboxLive():
 		return "Sandbox: none on this machine, so commands that change anything " + ask + ".\n"
 	case !h.ProjectTrusted():

@@ -335,6 +335,8 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	switch s := h.sandbox.Load(); {
+	case h.Unsafe:
+		add(HealthWarn, "sandbox", "off (--unsafe): commands run unconfined with the whole environment, and no file is hidden")
 	case s.err != nil:
 		add(HealthWarn, "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
 	case !s.backend.EnforcesProtect:

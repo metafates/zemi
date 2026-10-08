@@ -141,7 +141,11 @@ func (h *Host) OpenModePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
+	body := ""
+	if h.Unsafe {
+		body = "--unsafe: no sandbox, so a command the mode settles runs unconfined, with the whole environment; no file is hidden. A mode still answers every ask it would."
+	}
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Body: body, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
 	return nil
 }
 
@@ -802,7 +806,7 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 		switch {
 		case err != nil:
 			return err
-		case n > 10000 || perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
+		case n > 10000 || !h.Unsafe && perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
 			return unsafe
 		case d.Type()&fs.ModeSymlink != 0:
 			if st, err := os.Stat(path); err != nil || st.IsDir() || !h.inJail(path, roots...) || h.secretPath(path) {

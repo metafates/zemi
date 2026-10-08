@@ -494,10 +494,13 @@ func (h *Host) instructionFile(p string) bool {
 // command. scratchOwn names a subagent run's own directory in its task,
 // since per run it would bust the cached prompt.
 const (
-	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. The temp dirs (/tmp and the system's own) are free the same way. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
-	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. The temp dirs (/tmp and the system's own) are free the same way."
+	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent."
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
-	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
+	// scratchSecret is what the two above say of the names that still ask
+	// there; a --unsafe run hides nothing and leaves it out
+	scratchSecret = " Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchOwn    = "Other agents share the scratchpad: keep your own files in %s."
 	// forkTask opens the only message a fork receives, after the conversation
 	// it continues: the caller's own prompt says it may ask and delegate, and
 	// this run may do neither.
@@ -514,11 +517,15 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 	scratch := ""
 	if pad != "" {
 		scratch = "Scratchpad: " + pad + "\n"
+		secret := ""
+		if !h.Unsafe {
+			secret = scratchSecret
+		}
 		switch {
 		case hasTool(toolset, tools.ToolShell):
-			rules = scratchUse
+			rules = scratchUse + secret
 		case writes:
-			rules = scratchWrite
+			rules = scratchWrite + secret
 		default:
 			rules = scratchRead
 		}
@@ -603,7 +610,7 @@ func (h *Host) topLevel() string {
 	var names []string
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasPrefix(name, ".") || perm.PathIsStrictSecret(name) || strings.ContainsFunc(name, unicode.IsControl) || ruledOut(filepath.Join(h.Dirs.ProjectDir, name)) {
+		if strings.HasPrefix(name, ".") || !h.Unsafe && perm.PathIsStrictSecret(name) || strings.ContainsFunc(name, unicode.IsControl) || ruledOut(filepath.Join(h.Dirs.ProjectDir, name)) {
 			continue
 		}
 		if e.IsDir() {
