@@ -74,8 +74,9 @@ replaces an open one in place and opens nothing once esc closed it).
 
 `zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
 plugin's `tests/*.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
-copies the plugin into temp dirs (`copyPlugin`: no dot entries or `node_modules`, a link only when
-relative and inside, capped), and boots one zemi per case in this process (`hostapi.NewPluginTest`,
+copies the plugin into temp dirs (`copyPlugin`: its code and manifest, no other dot entry or
+`node_modules`, a link only when relative and inside, capped), and boots one zemi per case in this
+process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
 first boot collects the case names. `proc.Refuse` makes the process start nothing, git and the
 sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with

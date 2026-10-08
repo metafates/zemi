@@ -339,9 +339,10 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 
 // localPluginCode is what of the hidden data dir a sandboxed command may
 // read, so zemi plugins test runs confined: each local plugin's code
-// (plugin.Code), and the names in the plugin dirs and the disabled list
-// the runner resolves a name with; hide is what below the code the runner
-// does not copy (plugin.Kept). A plugin's .git and the rest stay hidden.
+// (plugin.Code) and manifest, and the names in the plugin dirs and the
+// disabled list the runner resolves a name with; hide is what below the code
+// the runner does not copy (plugin.Kept). A plugin's .git and the rest stay
+// hidden.
 // NOTE: on Landlock, which hides no secret file by name, a key.pem in the
 // code is readable, and a List dir lists the names of every dir below it.
 func localPluginCode(d config.Dirs) (read, list, hide []string) {
@@ -359,6 +360,8 @@ func localPluginCode(d config.Dirs) (read, list, hide []string) {
 		}
 		dir := filepath.Join(local, e.Name())
 		list = append(list, dir)
+		// the copier takes the manifest beside the code, so the read does too
+		read = append(read, filepath.Join(dir, plugin.ManifestFile))
 		// a link reads as its target, which a rule on its own path never opens
 		files, _ := os.ReadDir(dir)
 		for _, f := range files {

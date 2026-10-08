@@ -244,18 +244,14 @@ func pluginSource(arg string) (string, error) {
 func copyPlugin(src, dst string) error {
 	files, size := 0, int64(0)
 	inside := func(p string) bool { _, ok := perm.Under(src, p); return ok }
-	// the manifest sits under a dot dir, which the walk skips
-	from := filepath.Join(src, plugin.ManifestFile)
-	if fi, err := os.Lstat(from); err == nil && fi.Mode().IsRegular() {
-		data, err := os.ReadFile(from)
-		if err != nil {
-			return err
-		}
+	// the manifest sits under a dot dir, which the walk skips; plugin.Manifest
+	// bounds it the way load reads it
+	if data := plugin.Manifest(src); data != nil {
 		to := filepath.Join(dst, plugin.ManifestFile)
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(to, data, fi.Mode().Perm()); err != nil {
+		if err := os.WriteFile(to, data, 0o644); err != nil {
 			return err
 		}
 	}

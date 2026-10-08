@@ -49,6 +49,10 @@ type Plugin struct {
 // without one reports its git tag and init.lua's first line, as before.
 const ManifestFile = ".zemi/plugin.json"
 
+// Manifest is the raw manifest of the plugin in dir, nil for the plugins that
+// have none: the reader and the copier take the same 4 KB of a regular file.
+func Manifest(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile)) }
+
 // manifest is ManifestFile parsed; both fields are optional.
 type manifest struct {
 	Version     string `json:"version"`
@@ -100,9 +104,8 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 }
 
 // Code reports whether an entry of a plugin's root is what zemi loads or its
-// tests read: the .lua files, lua/, tests/ and the layered dirs. zemi plugins
-// test copies only these, and a sandboxed command may read only these of a
-// local plugin.
+// tests read: the .lua files, lua/, tests/ and the layered dirs. The copier
+// and the read jail take these plus ManifestFile, which is no Code entry.
 func Code(name string, dir bool) bool {
 	if dir {
 		return slices.Contains([]string{"lua", "tests", "skills", "agents", "commands", "workflows"}, name)
@@ -345,7 +348,7 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	var m manifest
 	// the manifest is the plugin's own answer; init.lua's line fills in only
 	// what it leaves out
-	if err := json.Unmarshal(readHead(filepath.Join(dir, ManifestFile)), &m); err == nil {
+	if err := json.Unmarshal(Manifest(dir), &m); err == nil {
 		p.Version, p.Desc = m.Version, m.Description
 	}
 	if line := firstLine(filepath.Join(dir, "init.lua")); p.Desc == "" && strings.HasPrefix(line, "--") {
