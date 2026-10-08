@@ -85,7 +85,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 		}
 		body.Questions[name] = wire
 	}
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(body, json.Deterministic(true))
 	if err != nil {
 		return Result{}, err
 	}
