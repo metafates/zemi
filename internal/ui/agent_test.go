@@ -37,6 +37,28 @@ func appendReasoning(h *hostapi.Host, text string, stat hostapi.TurnStat) {
 	h.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
 
+// resolved is EvalSymlinks: on macOS t.TempDir() hands out /var/... while the
+// resolved paths are /private/var/..., and the path classes and origins
+// classify on the resolved prefix (DESIGN §5).
+func resolved(t testing.TB, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// reloadUI replays the TUI boot on host, with extra steps after the shipped
+// ones, in the order main.go runs them.
+func reloadUI(t testing.TB, host *hostapi.Host, extra ...lua.BootStep) {
+	t.Helper()
+	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}
+	if err := host.ForceReload(t.Context(), append(steps, extra...)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
@@ -49,14 +71,7 @@ func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Hos
 	t.Helper()
 	ctx := t.Context()
 	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
-	resolve := func(p string) string {
-		r, err := filepath.EvalSymlinks(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return r
-	}
-	cfg, data, state = resolve(cfg), resolve(data), resolve(state)
+	cfg, data, state = resolved(t, cfg), resolved(t, data), resolved(t, state)
 
 	log := slog.New(slog.DiscardHandler)
 	settings := config.NewStore()
@@ -1697,9 +1712,7 @@ func TestLuaInput(t *testing.T) {
 // changes nothing.
 func TestConfigEdit(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
-	if err := host.ForceReload(t.Context(), []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host)
 	for _, c := range []struct {
 		path, prefill, typed, desc, toast string
 	}{

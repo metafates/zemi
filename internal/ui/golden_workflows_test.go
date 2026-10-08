@@ -11,8 +11,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestGoldenWorkflows pins a run's view at 80 columns, opened by enter on its
@@ -45,9 +43,7 @@ func TestGoldenWorkflows(t *testing.T) {
 
 	app, host := bootAgentApp(t, 80, 30)
 	ctx := t.Context()
-	if err := host.ForceReload(ctx, []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host)
 	runLua(t, app, fmt.Sprintf(`
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = %q, api_key = "k", models = { { id = "m" } } })
 		zemi.config.set("models.chat", "p/m")

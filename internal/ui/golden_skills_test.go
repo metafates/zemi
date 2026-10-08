@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/exp/golden"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestGoldenSkillsList pins /skills: a toggle list sectioned by source, the
@@ -22,10 +20,7 @@ func TestGoldenSkillsList(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
-	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"), host.SkillsUserHooksStep()}
-	if err := host.ForceReload(ctx, steps); err != nil {
-		t.Fatal(err)
-	}
+	reloadUI(t, host, host.SkillsUserHooksStep())
 	if err := host.RunCommand(ctx, "skills", ""); err != nil {
 		t.Fatal(err)
 	}
