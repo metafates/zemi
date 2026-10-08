@@ -58,6 +58,16 @@ func TestRoleModel(t *testing.T) {
 			want:   map[string]string{"conversation": "a/small", "p": "a/small"},
 		},
 		{
+			name:   "a defined default profile runs the conversation",
+			config: `zemi.agent.profile.add("default", { model = "a/small" })`,
+			want:   map[string]string{"conversation": "a/small", "default": "a/small", "titles": "a/big"},
+		},
+		{
+			name:   "and the chat pick wins over its model",
+			config: `zemi.agent.profile.add("default", { model = "a/small" }) zemi.config.set("models.chat", "a/big")`,
+			want:   map[string]string{"conversation": "a/big", "default": "a/big", "chat": "a/big", "titles": "a/big"},
+		},
+		{
 			name:   "a key refuses a target name",
 			config: `zemi.config.set("models.titles", "chat")`,
 			err:    `config key models.titles expects a provider/model id or ""`,
@@ -71,7 +81,7 @@ func TestRoleModel(t *testing.T) {
 			}
 			runUser(t, r, rolesProvider+c.config)
 			p, _ := h.resolveProfile("")
-			got := map[string]string{"conversation": h.currentModelID(p)}
+			got := map[string]string{"conversation": h.currentModelID(p), "default": h.roleModel("default")}
 			for _, n := range h.targetNames() {
 				got[n] = h.roleModel(n)
 			}
@@ -300,9 +310,30 @@ func TestModelTargetUI(t *testing.T) {
 	if err := h.OpenModelPicker("cheap"); err != nil {
 		t.Fatal(err)
 	}
-	head = ui.opened[3].Items[0].(map[string]any)
+	head = ui.opened[len(ui.opened)-1].Items[0].(map[string]any)
 	if head["text"] != "Follow the profile's model" || head["desc"] != "a/small" {
 		t.Errorf("cheap's first row %v", head)
+	}
+	// a profile named default is row one under its own name, but what it opens
+	// is the conversation's slot, chat
+	runUser(t, r, `zemi.agent.profile.add("default", { model = "a/small" }) zemi.config.set("agent.profile", "default")`)
+	if err := h.OpenModelRoles(); err != nil {
+		t.Fatal(err)
+	}
+	if row := ui.opened[len(ui.opened)-1].Items[0].(map[string]any); row["text"] != "default" || row["run"] != "model chat" || row["key"] != nil {
+		t.Errorf("row one under a defined default %v", row)
+	}
+	// and the list a bare /model opens marks the model the conversation runs
+	// on, which is the active profile's slot
+	if err := h.SetProfile("cheap"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.OpenModelPicker(""); err != nil {
+		t.Fatal(err)
+	}
+	o := ui.opened[len(ui.opened)-1]
+	if row := o.Items[o.Selected].(map[string]any); row["key"] != "current" || row["run"] != "model a/small" {
+		t.Errorf("the bare list marks %v, want the conversation's model", row)
 	}
 }
 
