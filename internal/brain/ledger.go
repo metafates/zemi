@@ -218,8 +218,10 @@ func collectOps(rows *sql.Rows, err error, prior bool) ([]*Op, error) {
 	for rows.Next() {
 		op := &Op{}
 		var scope, origin string
-		dest := []any{&op.Op, &op.ID, &op.TS, &op.Text, &op.PriorText, &op.Quote,
-			&op.SessionID, &op.Hash, &op.SupersededBy, &scope, &origin}
+		dest := []any{
+			&op.Op, &op.ID, &op.TS, &op.Text, &op.PriorText, &op.Quote,
+			&op.SessionID, &op.Hash, &op.SupersededBy, &scope, &origin,
+		}
 		if prior {
 			dest = append(dest, &op.Prior, &op.Truncated, &op.Existed)
 		}
