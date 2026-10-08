@@ -38,9 +38,9 @@ inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, 
 guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
 server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
-reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
-`models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
-`--profile` applies before `-m`), since the key would change and the conversation would not.
+reads. `-m`, `/model <provider/model>` and `zemi.model.set` write the conversation's slot - the active
+profile's own (`Host.ConversationTarget`), else `models.chat` - so a pick under a profile moves what the
+conversation runs on (`--profile` applies before `-m`).
 `Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
 `--profile` and `/profile` (`Host.SetProfile`) write `agent.profile` for the next send: a switch
 changes the prompt and the tool set, so it busts the provider's prompt cache once.
@@ -187,14 +187,18 @@ is refused with its path, to delete (the owner is the only user).
 
 ## Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
-- **Models are roles.** `models.chat` runs the conversation; `models.agents` (subagents with
-  no model of their own), `models.titles`, `models.compact` and `models.memory` (the
-  reflector) each follow it while empty (`roleModel`). Nothing falls back to a cheaper model on
-  its own, so the `/model roles` list shows every mapping. A `models.*` value is `""` or an id
-  with a `/` (`config.set` refuses a role name), so roles never nest. A profile's own model
-  runs the conversation and moves no role: `chat` is always `models.chat` (`roleIDs`). Anything that takes a
-  model - a profile, an agent definition, a workflow - takes a role name or a
-  `provider/model` id (`modelRef`). `/health` checks each distinct role model.
+- **Models are targets.** `models.chat` runs the conversation; `models.agents` (subagents with
+  no model of their own), `models.titles`, `models.compact`, `models.memory` (the
+  reflector) and `models.planner` each fall back to it while empty (`roleModel`). Nothing falls
+  back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
+  `models.*` value is `""` or an id with a `/` (`config.set` refuses a bare word), so targets
+  never nest. A profile is a target: its definition's `model` is the slot's default and
+  `models.<name>` overrides it, while `models.chat` moves the conversation and no other slot. A
+  slot `zemi.model.add` registered is a target like the roles, with no shape of its own
+  (`addTarget`; the registry lives in `agentHost.targets` under its own leaf mutex, cleared by
+  `PurgeGeneration`). Anything that takes a model — a profile, an agent definition, a workflow —
+  takes a target name or a `provider/model` id (`modelRef`). `/health` checks each distinct
+  target model.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. A runner's call counts as its stream
   finishes (`StreamHooks.StreamDone`), before its tools run, so the tally and a subagent's

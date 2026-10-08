@@ -288,14 +288,14 @@ func (h *Host) goHealthRows() []HealthRow {
 
 	id := h.sessionModelID()
 	out = append(out, h.modelRow())
-	// a role's own model would otherwise fail only at its first title,
-	// summary or run, where nobody looks
+	// a target's own model would otherwise fail only at its first run, title or
+	// summary, where nobody looks
 	ids := []string{id}
-	for _, r := range roles[1:] {
-		m := h.roleModel(r.Name)
+	for _, name := range h.targetNames()[1:] {
+		m := h.roleModel(name)
 		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
-			if row := h.modelCheck(r.Name+" model", m); row.Level != HealthOK {
+			if row := h.modelCheck(name+" model", m); row.Level != HealthOK {
 				out = append(out, row)
 			}
 		}

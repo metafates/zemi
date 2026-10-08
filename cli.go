@@ -763,7 +763,7 @@ func applyOptions(h *hostapi.Host, o options) error {
 		}
 	}
 	if o.model != "" {
-		if err := h.SetModel("chat " + o.model); err != nil {
+		if err := h.SetModel(h.ConversationTarget() + " " + o.model); err != nil {
 			return err
 		}
 	}

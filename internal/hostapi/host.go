@@ -422,7 +422,10 @@ type Host struct {
 	// picked mirrors the picks kept in the global store as config:<path>,
 	// unchecked for a plugin key not registered yet
 	picked map[string]any
-	// pluginKeys is the generation that last registered each plugin setting
+	// pluginKeys is the generation that last registered each key a
+	// registration owns (a plugin setting, a model target's models.<name>);
+	// dropPluginKeys drops the ones a replay did not register again, never one
+	// the schema owns
 	pluginKeys map[string]Gen
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
 	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
@@ -2079,7 +2082,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.120.0"))
+	api.RawSetString("version", glua.LString("0.121.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -2300,9 +2303,9 @@ func (h *Host) PurgeGeneration() {
 	h.modes.mu.Lock()
 	h.modes.list = nil
 	h.modes.mu.Unlock()
-	h.agents.mu.Lock()
-	clear(h.agents.profiles)
-	h.agents.mu.Unlock()
+	h.agents.targetsMu.Lock()
+	clear(h.agents.targets)
+	h.agents.targetsMu.Unlock()
 	h.luaRulesMu.Lock()
 	h.staleRules = append(h.staleRules, h.luaRules...)
 	h.luaRules = nil

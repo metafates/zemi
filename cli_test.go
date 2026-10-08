@@ -422,18 +422,40 @@ func TestHeadlessNotices(t *testing.T) {
 	}
 }
 
-// TestModelFlagUnderProfile: -m is refused when --profile names a profile
-// with its own model, since the run would measure the profile's.
+// TestModelFlagUnderProfile: -m writes the conversation's slot, which under a
+// profile is the profile's own, so the run measures the flag's model; the
+// shipped default profile has no slot, so it is chat.
 func TestModelFlagUnderProfile(t *testing.T) {
 	_, h, r := newTrustGate(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
+	provider := `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })`
+	if err := r.ExecuteChunk(t.Context(), provider+`zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err == nil || !strings.Contains(err.Error(), "sets its model") {
-		t.Fatalf("err = %v", err)
+	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Settings.Str("models.cheap"); got != "a/main" {
+		t.Fatalf("models.cheap = %q, want the flag's model", got)
+	}
+	if got := h.Settings.Str("models.chat"); got != "" {
+		t.Fatalf("models.chat = %q, want the flag to leave it alone", got)
+	}
+	// a bare /model <id> follows the slot the same way, and models.chat keeps
+	// its own pick for the profiles that have none
+	if err := h.SetModel("a/cheap"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Settings.Str("models.cheap"); got != "a/cheap" {
+		t.Fatalf("models.cheap = %q, want the bare pick", got)
+	}
+	if err := h.SetModel("chat a/main"); err != nil {
+		t.Fatal(err)
+	}
+	if got, cheap := h.Settings.Str("models.chat"), h.Settings.Str("models.cheap"); got != "a/main" || cheap != "a/cheap" {
+		t.Fatalf("a named slot wrote another: chat %q, cheap %q", got, cheap)
 	}
 }
 

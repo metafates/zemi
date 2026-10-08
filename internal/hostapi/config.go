@@ -233,8 +233,10 @@ func (h *Host) loadPicks() {
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &v)
 		}
-		if _, known := h.Settings.Get(path); err == nil && !known && settingPlugin(path) != "" {
-			h.picked[path] = v // zemi.config.add checks and applies it
+		// a key the schema does not hold yet may still be registered later in
+		// this boot, by a plugin or by a model target, which applies its pick
+		if _, known := h.Settings.Get(path); err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(path, "models.")) {
+			h.picked[path] = v
 			continue
 		}
 		if err == nil {
@@ -308,33 +310,45 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 		L.RaiseError("zemi.config.add: desc is what /config shows for the key")
 	}
 	def.Default, _ = lua.ToGo(spec.RawGetString("default"))
+	if err := h.addKey(def); err != nil {
+		L.RaiseError("zemi.config.add: default: %v", err)
+	}
+}
+
+// addKey registers a key the schema does not own — a plugin's setting or a
+// model target's models.<name> — and applies the pick kept for it: loadPicks
+// stored that before any Lua ran, so the registration is what applies it.
+func (h *Host) addKey(def config.Setting) error {
 	changed, err := h.Settings.Add(def)
 	if err != nil {
-		L.RaiseError("zemi.config.add: default: %v", err)
+		return err
 	}
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.pluginKeys[def.Path] = h.currentGen()
 	pick, picked := h.picked[def.Path]
 	if !changed {
-		return
+		return nil
 	}
 	h.cfgRotate()
 	delete(h.cfgPrev, def.Path) // it starts at its default, so init.lua's write is no replay
 	if !picked {
-		return
+		return nil
 	}
-	v, err := h.Settings.Check(def.Path, pick)
-	if err == nil {
-		_, err = h.Settings.SetQuiet(def.Path, v)
+	v, cerr := h.Settings.Check(def.Path, pick)
+	if cerr == nil {
+		_, cerr = h.Settings.SetQuiet(def.Path, v)
 	}
-	if err != nil {
-		h.Log.Warn("kept pick dropped", "origin", "config", "path", def.Path, "error", err)
+	if cerr != nil {
+		h.Log.Warn("kept pick dropped", "origin", "config", "path", def.Path, "error", cerr)
 		delete(h.picked, def.Path)
-		_, _ = h.GlobalDB.DelKV("config:" + def.Path)
-		return
+		if h.GlobalDB != nil {
+			_, _ = h.GlobalDB.DelKV("config:" + def.Path)
+		}
+		return nil
 	}
 	h.picked[def.Path] = v
+	return nil
 }
 
 // settingOff reports a plugins.<name>.<key> path the schema lacks whose
@@ -353,17 +367,23 @@ func (h *Host) settingOff(path string) bool {
 }
 
 // dropPluginKeys forgets, after a replay, the settings it did not register
-// again: their plugin is off, gone or stopped registering them.
+// again: their plugin is off, gone or stopped registering them. A key the
+// schema owns stays: a registration may have taken its value over, and
+// dropping it would take a builtin key out of the schema.
 func (h *Host) dropPluginKeys() {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.cfgRotate()
 	for path, gen := range h.pluginKeys {
-		if gen != h.currentGen() {
-			h.Settings.Del(path)
-			delete(h.pluginKeys, path)
-			delete(h.cfgNow, path)
+		if gen == h.currentGen() {
+			continue
 		}
+		delete(h.pluginKeys, path)
+		if h.Settings.Builtin(path) {
+			continue
+		}
+		h.Settings.Del(path)
+		delete(h.cfgNow, path)
 	}
 }
 

@@ -92,7 +92,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
 	pad := h.ScratchDir()
-	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
+	h.agents.targets["lean"] = &modelTarget{Prof: &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}}
 	h.SetUIHooks(&fakeUI{})
 	lean, err := h.resolveProfile("lean")
 	if err != nil {

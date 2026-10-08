@@ -981,16 +981,23 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
                                          -- (user origin only)
 
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
-zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
-zemi.model.pick(zemi.model.role.TITLES)  -- open a role's picker (returns at once; none opens /model)
+zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's slot:
+                                                 -- the active profile's, else models.chat
+zemi.model.pick(zemi.model.role.TITLES)  -- open a target's picker (returns at once; none opens /model)
+zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })
+zemi.model.del("classifier")         -- a slot of its own, for a job rather than a conversation
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
                            max_output = 1024, on_done = function(text, err) end })
 h:wait()                             -- text, or nil, err; suspends the task (§4)
 h:cancel()
--- Models are roles: models.chat runs the conversation, and models.agents,
+-- Models are targets: models.chat runs the conversation, and models.agents,
 -- models.titles, models.compact and models.memory (the reflector) follow it
--- while empty; zemi.config.set sets them. Anywhere a model can be named (a
--- profile, an agent definition, a workflow) a role name works too.
+-- while empty; zemi.config.set sets them. A profile is a target too, its
+-- definition's model the slot's default that models.<name> overrides, and
+-- planner is one before anyone defines it. zemi.model.add registers a slot
+-- with a model of its own, for code that runs a model on a job. Anywhere a
+-- model can be named (a profile, an agent definition, a workflow) a target
+-- name works too.
 
 zemi.provider.add({
 	id = "myllm",
