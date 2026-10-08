@@ -32,8 +32,13 @@ const jobStartPrefix = "started "
 // each tool writes, then the id it wrote. A command's own output cannot name
 // one, since only a tool that started a job is asked.
 func JobID(tool, out string) string {
-	at, ok := map[string]string{ToolShell: JobHandoff, ToolJobStart: jobStartPrefix}[tool]
-	if !ok {
+	var at string
+	switch tool {
+	case ToolShell:
+		at = JobHandoff
+	case ToolJobStart:
+		at = jobStartPrefix
+	default:
 		return ""
 	}
 	_, rest, ok := strings.Cut(out, at)

@@ -147,7 +147,7 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 // saves the whole text to pad, the scratchpad of the pipeline that made the
 // call, so the rest is one read away instead of gone.
 func (h *Host) truncOutput(pad, name, s string) string {
-	return tools.Cut(pad, name, s, 30000)
+	return tools.Cut(pad, name, s, 30000, false)
 }
 
 // upperFirst capitalizes a sentence's first rune, leaving the rest as it is:
