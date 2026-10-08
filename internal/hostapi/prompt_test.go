@@ -102,6 +102,9 @@ func TestUnsafePrompt(t *testing.T) {
 	}
 	toolset, _ := h.profileTools(nil)
 	rules, _ := h.environmentFor(toolset, h.ScratchDir(), false)
+	if !strings.Contains(rules, "free the same way.\nSandbox: none: this run has --unsafe") {
+		t.Errorf("the scratchpad paragraph and the sandbox clause run together:\n%s", rules)
+	}
 	for _, want := range []string{
 		"Sandbox: none: this run has --unsafe",
 		"a command you run is unconfined",

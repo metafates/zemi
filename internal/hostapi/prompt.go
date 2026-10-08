@@ -498,7 +498,8 @@ const (
 	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent."
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	// scratchSecret is what the two above say of the names that still ask
-	// there; a --unsafe run hides nothing and leaves it out
+	// there, and the newline that ends their paragraph: a --unsafe run hides
+	// nothing, so it leaves the sentence out and keeps the newline.
 	scratchSecret = " Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
 	scratchOwn    = "Other agents share the scratchpad: keep your own files in %s."
 	// forkTask opens the only message a fork receives, after the conversation
@@ -517,7 +518,9 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 	scratch := ""
 	if pad != "" {
 		scratch = "Scratchpad: " + pad + "\n"
-		secret := ""
+		// scratchSecret is what ends the paragraph; a --unsafe run leaves it out
+		// and needs the newline on its own
+		secret := "\n"
 		if !h.Unsafe {
 			secret = scratchSecret
 		}
