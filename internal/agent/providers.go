@@ -332,18 +332,40 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	return c, changed, nil
 }
 
-// KindsWithBody are the kinds that send Spec.Body: the ExtraBody CallOptions
-// sets for every kind but openai, whose Resolve case sets it as SDK JSON. A
-// kind wired there belongs here.
-var KindsWithBody = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindOpenRouter, KindVercel}
+// KindsWithBody are the kinds whose requests carry Spec.Body: the ExtraBody
+// CallOptions sets, plus openai, whose Resolve case sets it as SDK JSON.
+var KindsWithBody = slices.DeleteFunc(slices.Clone(Kinds), func(k Kind) bool { return !k.sendsBody() })
 
 // ObjectModes are what object_mode takes, in fantasy's words.
 var ObjectModes = []fantasy.ObjectMode{fantasy.ObjectModeAuto, fantasy.ObjectModeJSON, fantasy.ObjectModeTool, fantasy.ObjectModeText}
 
-// KindsWithObjectMode are the kinds that take Spec.ObjectMode: exactly the
-// Resolve cases that pass their provider's WithObjectMode. A kind wired there
-// belongs here.
-var KindsWithObjectMode = []Kind{KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
+// KindsWithObjectMode are the kinds that take Spec.ObjectMode.
+var KindsWithObjectMode = slices.DeleteFunc(slices.Clone(Kinds), func(k Kind) bool { return !k.takesObjectMode() })
+
+// sendsBody says whether this kind's requests carry Spec.Body. The switch has
+// no default on purpose: the exhaustive linter makes a new kind state its side,
+// since the wiring (CallOptions, Resolve's openai case) cannot be asked.
+func (k Kind) sendsBody() bool {
+	switch k {
+	case KindAnthropic, KindOpenAI, KindOpenAICompat, KindOpenRouter, KindVercel:
+		return true
+	case KindGoogle, KindSystemOne:
+		return false
+	}
+	return false
+}
+
+// takesObjectMode says whether this kind's provider has a WithObjectMode
+// option, which is how Resolve passes Spec.ObjectMode on.
+func (k Kind) takesObjectMode() bool {
+	switch k {
+	case KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel:
+		return true
+	case KindAnthropic, KindSystemOne:
+		return false
+	}
+	return false
+}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
