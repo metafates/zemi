@@ -532,11 +532,11 @@ func modeRow(L *glua.LState, d PermModeDef) *glua.LTable {
 
 // autoLocal is everything auto mode settles: reading and editing files
 // inside the jail that are not secret-shaped (editing a local plugin whose
-// creation was allowed too), commands (unsettled), running
-// workflows (their agents' tools are checked one by one), a tool a plugin
-// registered, and MCP tools their
-// server marks read-only. Anything else goes to the user with a reason
-// (askHook); a network request always does, since the URL is the model's.
+// creation was allowed too), commands (unsettled), running workflows (their
+// agents' tools are checked one by one), a tool a plugin registered, and MCP
+// tools their server marks read-only. Anything else goes to the user with a
+// reason (askHook); a network request always does, since the URL is the
+// model's.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case perm.SubjectRead:

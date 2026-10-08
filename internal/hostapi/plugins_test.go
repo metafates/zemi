@@ -582,16 +582,19 @@ func TestPluginTrust(t *testing.T) {
 
 // TestPluginToolCall: the model's call of a tool a plugin registered needs no
 // rule, since switching the plugin on is what registered it; a tool the
-// user's or a project's config registered still asks.
+// user's or a project's config registered still asks, and so does a plugin's
+// tool a rule asked for.
 func TestPluginToolCall(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		origin lua.Origin
+		rule   perm.Decision // a rule on tool.ping, "" for none
 		asked  bool
 	}{
-		{"a plugin's tool", lua.OriginPlugin, false},
-		{"a user's tool", lua.OriginUser, true},
-		{"a project's tool", lua.OriginProject, true},
+		{name: "a plugin's tool", origin: lua.OriginPlugin},
+		{name: "a plugin's tool a rule asks for", origin: lua.OriginPlugin, rule: perm.Ask, asked: true},
+		{name: "a user's tool", origin: lua.OriginUser, asked: true},
+		{name: "a project's tool", origin: lua.OriginProject, asked: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHost(t)
@@ -599,6 +602,9 @@ func TestPluginToolCall(t *testing.T) {
 			h.SetUIHooks(ui)
 			if err := chunkAs(t.Context(), h, r, c.origin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
 				t.Fatal(err)
+			}
+			if c.rule != "" {
+				h.Perm.Add(perm.Rule{Subject: "tool.ping", Pattern: "*", Decision: c.rule})
 			}
 			resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 			if err != nil || resp.Content != "pong" {
