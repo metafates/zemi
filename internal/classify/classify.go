@@ -104,10 +104,10 @@ func (u *Usage) add(v Usage) {
 // knows about its provider.
 type Chat struct {
 	Model fantasy.LanguageModel
-	// Logprobs are the provider options that ask for the top k token
-	// probabilities of the next token, nil when this provider returns none:
-	// the ladder then skips that strategy rather than guessing.
-	Logprobs func(k int64) fantasy.ProviderOptions
+	// Logprobs amends a call's own provider options with a request for the top
+	// k token probabilities of the next token, and is nil when this provider
+	// returns none: the ladder then skips that strategy rather than guessing.
+	Logprobs func(base fantasy.ProviderOptions, k int64) fantasy.ProviderOptions
 	// Options ride every call (a gateway's routing, the session's affinity).
 	Options fantasy.ProviderOptions
 	// Headers ride every call too (x-session-affinity, so a router sends the

@@ -105,61 +105,62 @@ const classifyAskSrc = `
 func TestClassifyAsk(t *testing.T) {
 	const systemOne = `{"answers": {"safe": {"type": "noul", "noul": 0.97}}, "usage": {"input_tokens": 120, "output_tokens": 6}}`
 	for _, c := range []struct {
-		name          string
-		providers     string // zemi.provider.add lines, with %s the endpoint
-		reply         string
-		wantStrategy  string
-		wantValue     string
-		wantProb      string
-		wantRequests  int
-		wantInput     int64 // prompt tokens the endpoint reports per request
-		requestMarker string
+		name         string
+		providers    string // zemi.provider.add lines, with %s the endpoint
+		reply        string
+		wantStrategy string
+		wantValue    string
+		wantProb     string
+		wantRequests int
+		wantInput    int64 // prompt tokens the endpoint reports per request
+		markers      []string
 	}{
 		{
-			name:          "a decisions model over its own protocol",
-			providers:     `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "%s", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "jev/m" })`,
-			reply:         systemOne,
-			wantStrategy:  "protocol",
-			wantValue:     "true",
-			wantProb:      "0.97",
-			wantRequests:  1,
-			wantInput:     120,
-			requestMarker: `"model":"m"`,
+			name:         "a decisions model over its own protocol",
+			providers:    `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "%s", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "jev/m" })`,
+			reply:        systemOne,
+			wantStrategy: "protocol",
+			wantValue:    "true",
+			wantProb:     "0.97",
+			wantRequests: 1,
+			wantInput:    120,
+			markers:      []string{`"model":"m"`},
 		},
 		{
-			name:          "a chat model whose provider returns token probabilities",
-			providers:     `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
-			reply:         chatCompletion("Yes", map[string]float64{"Yes": -0.1, "No": -2.0}),
-			wantStrategy:  "logprobs",
-			wantValue:     "true",
-			wantProb:      "0.869",
-			wantRequests:  1,
-			wantInput:     10,
-			requestMarker: `"top_logprobs"`,
+			name:         "a chat model whose provider returns token probabilities",
+			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", body = { routing = "cheap" }, models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:        chatCompletion("Yes", map[string]float64{"Yes": -0.1, "No": -2.0}),
+			wantStrategy: "logprobs",
+			wantValue:    "true",
+			wantProb:     "0.869",
+			wantRequests: 1,
+			wantInput:    10,
+			// the readout rides the provider's own body fields
+			markers: []string{`"top_logprobs"`, `"routing":"cheap"`},
 		},
 		{
-			name:          "a chat model that returns none falls through to a schema",
-			providers:     `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
-			reply:         chatCompletion(`{"safe":true}`, nil),
-			wantStrategy:  "schema",
-			wantValue:     "true",
-			wantProb:      "-1",
-			wantRequests:  4, // the readout at each depth, then the object call
-			wantInput:     10,
-			requestMarker: "safe",
+			name:         "a chat model that returns none falls through to a schema",
+			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:        chatCompletion(`{"safe":true}`, nil),
+			wantStrategy: "schema",
+			wantValue:    "true",
+			wantProb:     "-1",
+			wantRequests: 4, // the readout at each depth, then the object call
+			wantInput:    10,
+			markers:      []string{"safe"},
 		},
 		{
 			// vercel surfaces no token probabilities, so the readout is not
 			// worth asking for: one call answers it
-			name:          "a kind that surfaces none goes straight to a schema",
-			providers:     `zemi.provider.add({ id = "a", kind = "vercel", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
-			reply:         chatCompletion(`{"safe":true}`, nil),
-			wantStrategy:  "schema",
-			wantValue:     "true",
-			wantProb:      "-1",
-			wantRequests:  1,
-			wantInput:     10,
-			requestMarker: "You must respond with valid JSON",
+			name:         "a kind that surfaces none goes straight to a schema",
+			providers:    `zemi.provider.add({ id = "a", kind = "vercel", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			reply:        chatCompletion(`{"safe":true}`, nil),
+			wantStrategy: "schema",
+			wantValue:    "true",
+			wantProb:     "-1",
+			wantRequests: 1,
+			wantInput:    10,
+			markers:      []string{"You must respond with valid JSON"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -188,8 +189,10 @@ func TestClassifyAsk(t *testing.T) {
 				t.Errorf("the endpoint saw %d requests, want %d", n, c.wantRequests)
 			}
 			for _, body := range f.bodies() {
-				if !strings.Contains(body, c.requestMarker) {
-					t.Errorf("a request does not carry %s: %s", c.requestMarker, body)
+				for _, marker := range c.markers {
+					if !strings.Contains(body, marker) {
+						t.Errorf("a request does not carry %s: %s", marker, body)
+					}
 				}
 			}
 			// every request of the call carries the session's affinity, so a

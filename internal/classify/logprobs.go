@@ -87,7 +87,7 @@ func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q 
 	for _, k := range readoutDepth {
 		res, err := chat.Model.Generate(ctx, fantasy.Call{
 			Prompt:          []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(logprobsPrompt(req, name, q, labels))},
-			ProviderOptions: mergeOptions(chat.Options, chat.Logprobs(k)),
+			ProviderOptions: chat.Logprobs(chat.Options, k),
 			Headers:         chat.Headers,
 		})
 		if err != nil {
@@ -284,17 +284,4 @@ func candidates(md fantasy.ProviderMetadata) []TokenLogprob {
 		return out
 	}
 	return nil
-}
-
-// mergeOptions is a and b's provider options together, b's own provider winning
-// where both carry one.
-func mergeOptions(a, b fantasy.ProviderOptions) fantasy.ProviderOptions {
-	out := fantasy.ProviderOptions{}
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		out[k] = v
-	}
-	return out
 }

@@ -132,12 +132,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 		Headers: agent.SessionHeaders(sid),
 		// a decoded answer is the model's own words, so it is asked greedily
 		Temperature: new(0.0),
-	}
-	if _, ok := h.Providers.LogprobOptions(id, 1); ok {
-		req.Chat.Logprobs = func(k int64) fantasy.ProviderOptions {
-			opts, _ := h.Providers.LogprobOptions(id, k)
-			return opts
-		}
+		Logprobs:    h.Providers.LogprobOptions(id),
 	}
 	return req, nil
 }

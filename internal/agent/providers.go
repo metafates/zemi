@@ -483,27 +483,67 @@ func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
 	return spec, spec.Models[i], true
 }
 
-// LogprobOptions are the provider options that ask for the next token's
-// probabilities, its top k of them, in the kind's own shape; false when this
-// kind surfaces none. Only openai and openai_compat do: openrouter and vercel
-// override fantasy's usage function with their own metadata type, which carries
-// no logprobs, and anthropic and google return none at all. A gateway in front
-// of a kind that does answers with the same options, since it is the same
-// provider.
-func (r *Registry) LogprobOptions(modelID string, k int64) (fantasy.ProviderOptions, bool) {
-	providerID, _, _ := strings.Cut(modelID, "/")
+// LogprobOptions is the function that adds a request for the next token's
+// probabilities, its top k of them, to a call's own provider options; nil when
+// this kind surfaces none. Only openai and openai_compat do: openrouter and
+// vercel override fantasy's usage function with their own metadata type, which
+// carries no logprobs, and anthropic, google and the openai responses models
+// return none at all. A gateway in front of a kind that does answers the same
+// way, since it is the same provider.
+//
+// It amends the kind's own options struct rather than replacing it, so a
+// gateway's body fields (routing, a cache setting) ride the request as they do
+// on every other call.
+func (r *Registry) LogprobOptions(modelID string) func(fantasy.ProviderOptions, int64) fantasy.ProviderOptions {
+	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
-		return nil, false
+		return nil
 	}
 	switch spec.Kind {
 	case KindOpenAI:
-		return openai.NewProviderOptions(&openai.ProviderOptions{LogProbs: new(true), TopLogProbs: new(k)}), true
+		if openai.IsResponsesModel(model) { // it drops logprobs itself, with a warning
+			return nil
+		}
+		return func(base fantasy.ProviderOptions, k int64) fantasy.ProviderOptions {
+			o, _ := base[openai.Name].(*openai.ProviderOptions)
+			o = amend(o)
+			o.LogProbs, o.TopLogProbs = new(true), new(k)
+			return mergeOptions(base, openai.NewProviderOptions(o))
+		}
 	case KindOpenAICompat:
 		// its own options carry no top-k field, so both go in the body
-		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ExtraBody: map[string]any{"logprobs": true, "top_logprobs": k}}), true
+		return func(base fantasy.ProviderOptions, k int64) fantasy.ProviderOptions {
+			o, _ := base[openaicompat.Name].(*openaicompat.ProviderOptions)
+			o = amend(o)
+			o.ExtraBody = maps.Clone(o.ExtraBody)
+			if o.ExtraBody == nil {
+				o.ExtraBody = map[string]any{}
+			}
+			o.ExtraBody["logprobs"], o.ExtraBody["top_logprobs"] = true, k
+			return mergeOptions(base, openaicompat.NewProviderOptions(o))
+		}
 	}
-	return nil, false
+	return nil
+}
+
+// amend is o as a copy nothing shares with the call's own options; a fresh one
+// when the call carried none of that kind.
+func amend[T any](o *T) *T {
+	if o == nil {
+		return new(T)
+	}
+	clone := *o
+	return &clone
+}
+
+// mergeOptions is a and b's provider options together, b's own provider winning
+// where both carry one.
+func mergeOptions(a, b fantasy.ProviderOptions) fantasy.ProviderOptions {
+	out := fantasy.ProviderOptions{}
+	maps.Copy(out, a)
+	maps.Copy(out, b)
+	return out
 }
 
 // Key is a provider's API key, for the code that speaks a provider's own

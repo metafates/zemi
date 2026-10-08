@@ -3,22 +3,12 @@ package classify
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"strings"
 	"testing"
 
 	"charm.land/fantasy"
 )
-
-// fakeOpts is a provider options value, so a call's options are its own.
-type fakeOpts struct{ depth int64 }
-
-func (*fakeOpts) Options()                   {}
-func (*fakeOpts) UnmarshalJSON([]byte) error { return nil }
-func (o *fakeOpts) MarshalJSON() ([]byte, error) {
-	return fmt.Appendf(nil, `{"depth":%d}`, o.depth), nil
-}
 
 // chatOf is a chat request on m, whose provider reports token probabilities:
 // every readout depth the ladder asks for is recorded.
@@ -28,9 +18,9 @@ func chatOf(m *fakeModel, lps ...TokenLogprob) Chat {
 	}
 	return Chat{
 		Model: m,
-		Logprobs: func(k int64) fantasy.ProviderOptions {
+		Logprobs: func(base fantasy.ProviderOptions, k int64) fantasy.ProviderOptions {
 			m.depth = append(m.depth, k)
-			return fantasy.ProviderOptions{"fake": &fakeOpts{k}}
+			return base
 		},
 	}
 }
