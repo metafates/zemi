@@ -114,7 +114,7 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 	case err == nil:
 		return 0
 	case !parsed:
-		fmt.Fprintf(stderr, "zemi: %v\nRun '%s --help' for usage.\n", err, c.CommandPath())
+		usageHint(stderr, c.CommandPath(), err.Error())
 		return 2
 	case c.HasParent():
 		fmt.Fprintf(stderr, "zemi: %s: %v\n", strings.TrimPrefix(c.CommandPath(), "zemi "), err)
@@ -122,6 +122,12 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		fmt.Fprintln(stderr, "zemi:", err)
 	}
 	return 1
+}
+
+// usageHint reports a usage error, which exits 2, and names the command whose
+// --help covers it.
+func usageHint(w io.Writer, cmd, msg string) {
+	fmt.Fprintf(w, "zemi: %s\nRun '%s --help' for usage.\n", msg, cmd)
 }
 
 // enterDir is -C: run as if started in dir. PWD follows, since children get
@@ -648,7 +654,7 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 				Local   bool   `json:"local"`
 				Enabled bool   `json:"enabled"`
 				Source  string `json:"source"`
-			}{pl.Name, pl.Version, pl.Local, pl.Enabled, source})
+			}{pl.Name, version, pl.Local, pl.Enabled, source})
 			continue
 		}
 		rows = append(rows, [4]string{pl.Name, version, on, source})
@@ -809,14 +815,20 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 }
 
 // signalContext ends on an interrupt, a kill or the terminal closing, which
-// a command reports as exit status 130. A hangup ignored at start (nohup)
-// stays ignored, since Notify would install a handler for it.
+// a command reports as exit status 130.
 func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), stopSignals()...)
+}
+
+// stopSignals are the signals that stop a command: an interrupt, a kill and,
+// unless a hangup was ignored at start (nohup), the terminal closing, since
+// Notify would install a handler for an ignored one.
+func stopSignals() []os.Signal {
 	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
 	if !signal.Ignored(syscall.SIGHUP) {
 		sigs = append(sigs, syscall.SIGHUP)
 	}
-	return signal.NotifyContext(context.Background(), sigs...)
+	return sigs
 }
 
 // sendPrompt sends a command-line prompt (Host.SendPrompt, or as text to

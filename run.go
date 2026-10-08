@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -207,7 +206,7 @@ func writeJSON(w io.Writer, v any) {
 func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer) int {
 	// the first signal stops the turn, the second or 5s later leaves
 	sig := make(chan os.Signal, 2)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sig, stopSignals()...)
 	defer signal.Stop(sig)
 	view.Start(h, o.reasoning)
 	defer view.Close()

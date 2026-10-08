@@ -47,7 +47,7 @@ func TestCLI(t *testing.T) {
 	base, dir := t.TempDir(), t.TempDir()
 	t.Chdir(base)
 	t.Setenv("PWD", base)
-	const sid = "3f9c1ad2e8b04c7f9a51d0e6b2c4a8f1"
+	sid := store.ShortID() // a real id, so the listing's column widths are exercised
 	dirs, err := config.ResolveDirs()
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestCLI(t *testing.T) {
 		{name: "completion help in zemi's words", args: []string{"completion", "--help"}, stdout: "print the bash completion script", notStdout: "Generate"},
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub  local  on  "},
-		{name: "plugins as JSON", args: []string{"plugins", "--json"}, stdout: `{"name":"rub","version":"","local":true,"enabled":true,"source":"`},
+		{name: "plugins as JSON", args: []string{"plugins", "--json"}, stdout: `{"name":"rub","version":"local","local":true,"enabled":true,"source":"`},
 		{name: "a local plugin's manifest is the version it lists", args: []string{"plugins"}, stdout: "ver  1.2.0  on  "},
 		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},
@@ -368,6 +368,37 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
 	return &trustGate{h: h, dirs: dirs}, h, r
+}
+
+// TestTrustGateInertWritesNothing: zemi models, zemi health and a completion
+// boot the project trust step too, and an inert boot may not leave a
+// .agents/worktrees/.gitignore in the user's repository.
+func TestTrustGateInertWritesNothing(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		inert      bool
+		wantIgnore bool
+	}{
+		{"an inert boot", true, false},
+		{"a TUI boot", false, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tg, h, r := newTrustGate(t)
+			h.Inert = c.inert
+			wt := h.Dirs.WorktreesDir()
+			if err := os.MkdirAll(wt, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			tg.session.Store(new(true))
+			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), tg.step()}); err != nil {
+				t.Fatal(err)
+			}
+			_, err := os.Stat(filepath.Join(wt, ".gitignore"))
+			if wrote := err == nil; wrote != c.wantIgnore {
+				t.Errorf("wrote .gitignore = %v, want %v", wrote, c.wantIgnore)
+			}
+		})
+	}
 }
 
 // TestSendPromptRunsCommands: a prompt on the command line that names a

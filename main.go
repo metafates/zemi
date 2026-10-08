@@ -48,8 +48,12 @@ func main() {
 
 // launch opens the TUI, or with o.run answers one prompt on stdout.
 func launch(o options) int {
+	cmd := "zemi"
+	if o.run {
+		cmd = "zemi run"
+	}
 	usage := func(msg string) int {
-		fmt.Fprintf(os.Stderr, "zemi: %s\nRun '%s --help' for usage.\n", msg, map[bool]string{true: "zemi run", false: "zemi"}[o.run])
+		usageHint(os.Stderr, cmd, msg)
 		return 2
 	}
 	if err := o.readStdin(os.Stdin); err != nil {
@@ -640,7 +644,9 @@ func (tg *trustGate) step() lua.BootStep {
 			tg.h.CheckSandboxed()
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
-			if trusted { // so git status never lists the checkouts, sandbox or not
+			// .agents/worktrees/.gitignore, so git status never lists the
+			// checkouts. An inert boot (zemi models, completion) writes nothing.
+			if trusted && !tg.h.Inert {
 				if _, werr := tg.dirs.WorktreesIgnore(); werr != nil {
 					tg.h.Log.Warn("cannot write .agents/worktrees/.gitignore", "origin", "trust", "error", werr)
 				}

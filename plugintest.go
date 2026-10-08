@@ -203,10 +203,11 @@ func printFail(w io.Writer, where, what string, lines []string) {
 	for _, l := range lines {
 		first, rest, _ := strings.Cut(l, "\n")
 		fmt.Fprintln(w, "  "+first)
+		if rest == "" {
+			continue
+		}
 		for r := range strings.SplitSeq(rest, "\n") {
-			if rest != "" {
-				fmt.Fprintln(w, "    "+r)
-			}
+			fmt.Fprintln(w, "    "+r)
 		}
 	}
 }
