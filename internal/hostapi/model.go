@@ -286,13 +286,12 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
 		// the idle timer already ends a stalled stream; this bounds a slow one
 		return waitHandle(L, "model:wait", done, 10*time.Minute, cancel, func(L *glua.LState, err error) []glua.LValue {
-			if err == nil { // askErr is set only once done has closed
-				err = askErr
+			if err != nil { // a timeout or a cancel: the call still runs, nothing it holds is settled
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
-			// a Suspending wrapper raises a third value, so a failure is the
-			// usual nil, error and the reply it did not fit rides the text
-			switch {
-			case err != nil && raw != "":
+			// askErr and the reply are set only once done has closed
+			switch err = askErr; {
+			case err != nil && raw != "": // the reply it did not fit is the caller's to see
 				return []glua.LValue{glua.LNil, glua.LString(err.Error() + "; the reply was: " + clipLine(raw, 200))}
 			case err != nil:
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
