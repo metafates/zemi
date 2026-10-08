@@ -553,12 +553,29 @@ func TestPluginTrust(t *testing.T) {
 			t.Fatalf("%s: %v", p, err)
 		}
 	}
+	// a read is not one of the calls the switch covers, so a secret-shaped
+	// path still asks for one
+	if err := chunk(fmt.Sprintf(`
+		local ok, err = pcall(zemi.fs.read, %q)
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`, filepath.Join(dir, ".env"))); err != nil {
+		t.Fatal(err)
+	}
 
+	// a rule the user wrote decides first: here a deny, and an ask raises as
+	// it did before there was a switch at all
 	h.Perm.Add(perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Deny})
 	if err := chunk(fmt.Sprintf(`
 		local ok, err = pcall(zemi.http.get, %q)
 		assert(not ok and tostring(err):find("permission denied", 1, true) ~= nil, tostring(err))
 	`, srv.URL+"/x")); err != nil {
+		t.Fatal(err)
+	}
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Ask})
+	if err := chunk(`
+		local ok, err = pcall(zemi.job.start, { cmd = "true" })
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`); err != nil {
 		t.Fatal(err)
 	}
 }
