@@ -475,7 +475,14 @@ func (p *Pipeline) Check(req Request) Verdict {
 		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
 	default:
 		req.Explicit = o.Ruled()
-		return p.resolveAsk(req, o.Reason)
+		v := p.resolveAsk(req, o.Reason)
+		// no asker answered (the Lua gate sets none): an ask a rule forced -
+		// an ask rule, a not_match exclusion - is the rule's, and a caller
+		// that settles what no rule decided has to tell the two apart
+		if o.Ruled() && v.Decision == perm.Ask {
+			v.DecidedBy = ByRule
+		}
+		return v
 	}
 }
 
@@ -662,8 +669,10 @@ func sandboxProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "false runs the command with no sandbox (Sandbox in the system prompt). Needs approval; only when network: true was not enough."}
 }
 
+// decidedBy is who decided an outcome; Ruled covers a not_match exclusion,
+// whose forced ask is the rule's as much as an ask rule's is.
 func decidedBy(o perm.Outcome) string {
-	if o.Rule != nil {
+	if o.Ruled() {
 		return ByRule
 	}
 	return ByDefault
