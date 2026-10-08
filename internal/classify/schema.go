@@ -59,19 +59,22 @@ func (q Question) schema() (fantasy.Schema, error) {
 	if err := q.Check(); err != nil {
 		return fantasy.Schema{}, err
 	}
+	var s fantasy.Schema
 	switch q.Type {
 	case TypeBool:
-		return fantasy.Schema{Type: "boolean", Description: q.Instructions}, nil
+		s = fantasy.Schema{Type: "boolean", Description: q.Instructions}
+	case TypeChoice:
+		labels := q.labels()
+		enum := make([]any, len(labels))
+		for i, l := range labels {
+			enum[i] = l
+		}
+		s = fantasy.Schema{Type: "string", Enum: enum, Description: q.Instructions}
 	case TypeScore:
 		high := q.max()
-		return fantasy.Schema{Type: "integer", Minimum: new(0.0), Maximum: &high, Description: q.Instructions}, nil
+		s = fantasy.Schema{Type: "integer", Minimum: new(0.0), Maximum: &high, Description: q.Instructions}
 	}
-	labels := q.labels() // the only type left: Check ran
-	enum := make([]any, len(labels))
-	for i, l := range labels {
-		enum[i] = l
-	}
-	return fantasy.Schema{Type: "string", Enum: enum, Description: q.Instructions}, nil
+	return s, nil
 }
 
 // schemaAnswers checks one decoded value per question. A missing one, one of

@@ -66,18 +66,20 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 	}
 	switch q.Type {
 	case TypeBool:
-		return boolLabels, []string{"true", "false"}, nil
+		labels, keys = boolLabels, []string{"true", "false"}
+	case TypeChoice:
+		keys = q.labels()
+		if len(keys) > len(choiceLabels) {
+			return nil, nil, fmt.Errorf("a choice question takes at most %d labels, got %d", len(choiceLabels), len(keys))
+		}
+		labels = choiceLabels[:len(keys)]
 	case TypeScore:
 		if len(q.Levels) > len(scoreLabels) {
 			return nil, nil, fmt.Errorf("a score question takes at most %d levels, got %d", len(scoreLabels), len(q.Levels))
 		}
-		return scoreLabels[:len(q.Levels)], scoreLabels[:len(q.Levels)], nil
+		labels, keys = scoreLabels[:len(q.Levels)], scoreLabels[:len(q.Levels)]
 	}
-	keys = q.labels() // the only type left: Check ran
-	if len(keys) > len(choiceLabels) {
-		return nil, nil, fmt.Errorf("a choice question takes at most %d labels, got %d", len(choiceLabels), len(keys))
-	}
-	return choiceLabels[:len(keys)], keys, nil
+	return labels, keys, nil
 }
 
 // logprobsAnswer is one question's call: the prompt asks for the label, and the
