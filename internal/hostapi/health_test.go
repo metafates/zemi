@@ -123,6 +123,13 @@ func TestHealthChecks(t *testing.T) {
 			t.Fatalf("a fine short row opens a detail view: %v", m)
 		}
 	}
+	// a --unsafe run has no backend whoever the probe found
+	h.Unsafe = true
+	for _, c := range h.HealthRows() {
+		if c.Name == "sandbox" && !strings.Contains(c.Detail, "off (--unsafe)") {
+			t.Errorf("sandbox row under --unsafe: %+v", c)
+		}
+	}
 }
 
 // TestHealthBrainRow: a malformed memories.md line makes the brain row warn,

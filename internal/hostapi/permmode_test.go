@@ -25,6 +25,23 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+// TestUnsafeModeBox: the mode box names what a --unsafe run changed under the
+// modes and what it left alone, so the picker does not read as an escape from
+// the sandbox the run has none of.
+func TestUnsafeModeBox(t *testing.T) {
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.Unsafe = true
+	if err := h.OpenModePicker(); err != nil {
+		t.Fatal(err)
+	}
+	o := ui.overlays()
+	if len(o) != 1 || !strings.Contains(o[0].Body, "--unsafe: no sandbox") || !strings.Contains(o[0].Body, "still answers every ask") {
+		t.Fatalf("the mode box under --unsafe: %+v", o)
+	}
+}
+
 // TestAutoModeLocalApprovals: auto mode settles reads and writes inside the
 // jail on its own. A path outside it, a secret behind an innocent name, and
 // anything leaving the machine go to the user instead.
