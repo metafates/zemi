@@ -1467,7 +1467,7 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 }
 
 // forgetMemory drops a memory for the model: one the user saved asks
-// (Unsandboxed so no mode settles it), a learned one goes at once under
+// (Unsandboxed, so no mode's rules settle it), a learned one goes at once under
 // auto autonomy and is proposed for review otherwise. The ask goes through
 // p, so it names the agent that asked.
 func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {

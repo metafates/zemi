@@ -255,7 +255,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	rel := fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
 	// the script can do anything user config can, so it asks where the
 	// model's text is less trusted or the user wants nothing changed, and
-	// before any call that is not a read: no mode may settle that, since
+	// before any call that is not a read: no mode's rules settle that, since
 	// what it changes or starts runs unconfined
 	unlisted := luaUnlisted(src)
 	if len(unlisted) > 0 || h.luaAsksAll() {

@@ -73,13 +73,13 @@ type Request struct {
 	Description string
 	// Unsandboxed is the model's sandbox: false, a Lua tool script that
 	// widens what zemi allows, or a model memory edit zemi does not apply on
-	// its own: no mode settles the request, the user answers it
+	// its own: no mode's rules settle the request, the user or a decide answers it
 	Unsandboxed bool
 	// Script is the lua tool call this one came from (Pipeline.Script), "" for
 	// a call the model made itself: it labels the ask and keeps the output whole
 	Script string
 	// Network is the model's network: true, which keeps the sandbox and adds
-	// outbound sockets. The URL is the model's, so no mode settles it either.
+	// outbound sockets. The URL is the model's, so no mode's rules settle it either.
 	Network bool
 	// Explicit marks an ask a rule asked for (an ask rule, a not_match
 	// exclusion): auto settles nothing here, the user answers; set by the
@@ -438,8 +438,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// line names the program alone. The user's init.lua rule stays.
 		case req.Subject == perm.SubjectShell && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && req.cmd.ReadsSecret(p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
-		// the user allowed the command confined; an Unsandboxed ask is never
-		// mode-settled, so dropping the sandbox reaches them
+		// the user allowed the command confined; no mode's rules settle an
+		// Unsandboxed ask, so dropping the sandbox reaches them
 		case req.Unsandboxed && rule != nil && rule.Network:
 			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
 		// the rule was written for an agent that may change things; a reader
@@ -485,8 +485,8 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 		return nil
 	}
 	// network: true keeps the sandbox, which is what the model and the user
-	// were told, so it stays confined whoever allowed it; no mode settles it,
-	// so the verdict is always the user's. Read-only is absolute: the policy
+	// were told, so it stays confined whoever allowed it; no mode's rules
+	// settle it, a decide may. Read-only is absolute: the policy
 	// is what keeps the project unwritable, and Check denies the escape
 	plan := p.Plan != nil && p.Plan()
 	network := req.Network || v.Rule != nil && v.Rule.Network

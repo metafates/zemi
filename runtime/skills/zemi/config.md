@@ -75,9 +75,13 @@ Modes: `permissions.mode`, `/mode` (a picker without a name), ctrl+y (yolo until
 
 Planning is the `planner` profile (`/profile planner`, ctrl+t): file writes are refused, commands run with the project read-only, and the turn ends in a plan the user approves (implemented in the next turn), asks changes to, or saves to start later, whatever the mode.
 
-## Custom permission modes (user config only)
+## Custom permission modes (user, builtin and plugin config)
 
-`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name (a lowercase letter, then lowercase letters, digits and `-`, 16 at most), `zemi.permission.mode.del(name)` takes one out, `zemi.permission.mode.get()` returns the active one (`{ name, base, description }`), and `permissions.mode` is the start mode. A mode acts like its base; `rules` (`{ "tool.shell", "go test*", "allow" }`) answer what would otherwise need the user's approval, `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open (`req.agent` names the subagent asking, "" for the main agent). `decide` returns `"allow"` or `"deny"`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it. A `wait` in it frees the interpreter. Neither `rules` nor `decide` can allow `sandbox: false`, `network: true`, a request an `ask` rule covers, or a write to `.git`, the Lua in `.agents` or zemi's own files.
+`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name (a lowercase letter, then lowercase letters, digits and `-`, 16 at most), `zemi.permission.mode.del(name)` takes one out, `zemi.permission.mode.get()` returns the active one (`{ name, base, description }`), and `permissions.mode` is the start mode. User config, shipped code and a plugin add and remove modes; project code may not, `auto` and `yolo` are reserved, and a name another plugin holds is refused (the user may take it back). Only user config switches the active mode, through `permissions.mode` or `zemi.permission.mode.set`.
+
+A mode acts like its base; `rules` (`{ "tool.shell", "go test*", "allow" }`) answer what would otherwise need the user's approval (an allow rule needs user config: a mode's rules match every caller), `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open. `req` carries `subject`, `arg`, `tool`, `reason`, `preview`, `description`, `agent` (the subagent asking, "" for the main agent), `options` (the scopes an allow may take here), `read_only`, `trusted`, `sandbox`, `unsandboxed`, `network`, `explicit`, `protected_write` and `protected_why`.
+
+`decide` returns `"allow"`, `"deny"`, or `{ decision = "allow", scope = "session", reason = "..." }`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it, and a `wait` in it frees the interpreter. `scope` is how far an allow reaches: `"once"`, `"session"` (the rules an always answer writes), `"wider"` (a file read's whole repository) or `"project"` (the project's permissions file); a scope the request does not offer narrows to the closest one below it, never wider, and a mode from a plugin narrows `"project"` to `"session"`, since that file is the user's own grant. The mode's `rules` may not settle a fenced request - a `sandbox: false` or `network: true` command, a call an `ask` rule asked for, a write to `.git`, the Lua in `.agents` or zemi's own files - while `decide` may, since a human could; each such allow leaves a row in the transcript saying so. A `deny` rule still wins.
 
 ```lua
 -- every request reaches the user
@@ -98,7 +102,11 @@ zemi.permission.mode.add("judged", {
 		local body = zemi.json.encode({ model = "llama3", stream = false, prompt = "Reply allow or deny. Command: " .. req.arg })
 		local res = zemi.http.request({ method = "POST", url = "http://localhost:11434/api/generate", body = body }):wait()
 		local out = res and zemi.json.decode(res.body)
-		if out and (out.response or ""):match("^allow") then return zemi.permission.decision.ALLOW end
+		if out and (out.response or ""):match("^allow") then
+			-- go test is routine here: allow it for the session, not just this once
+			local scope = req.arg:match("^go test") and "session" or "once"
+			return { decision = "allow", scope = scope, reason = "the local model said allow" }
+		end
 	end,
 })
 ```

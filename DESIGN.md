@@ -1661,7 +1661,7 @@ those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.permission.mode` (`add`, `del`, `set` user config only, §9; `get`, `list`).
+and `zemi.permission.mode` (`add` and `del` from user, builtin and plugin config, `set` user config only, §9; `get`, `list`).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
 registration origin: the model can propose, but a
@@ -2583,8 +2583,9 @@ rides the `memories.md` line and its ledger entries.
   and `checkout -- .` run, since the shell row's snapshot lets rewind
   restore the files and the reflog keeps the commits; and on a backend that cannot hide files
   a command naming an existing secret-shaped file. Anything a
-  mode cannot settle goes to the user's ask carrying the reason it did
-  not: no model screens permission requests.
+  mode's rules and base cannot settle goes to the user's ask carrying the reason
+  it did not: no model screens permission requests, unless the user wrote a mode
+  whose `decide` is one (below).
   A file request is judged and shown by its resolved path (relative to
   the project when inside it), so a symlink a sandboxed command planted
   cannot dress a write to zemi's config as a project file, and a write
@@ -2612,11 +2613,18 @@ rides the `memories.md` line and its ledger entries.
   `ReadCommand` commands, which run unconfined, and
   auto mode sends every other command to the user ("no
   sandbox"), since an approved one would run unconfined.
-  A mode added from config may carry a `decide` function that answers one
-  ask from Lua ("allow", "deny", anything else leaves it to the user); it
-  runs as a task (§4) for at most 60s, long enough for a model call of its
-  own, and like the mode's rules may not allow an unsandboxed or
-  network request, an ask a rule asked for or a protected write.
+  A mode added from config, a plugin's included, may carry a `decide`
+  function that answers one ask from Lua: "allow", "deny", or a table naming
+  the decision and how far an allow reaches (`once`, `session`, `wider`,
+  `project`: the rules the user's own answer of that scope writes, a scope the
+  request does not offer narrowing to the closest one below it, and a mode
+  below user origin narrowing `project` to `session`, since the durable
+  project file is the user's own grant, as an allow rule is). It runs as a
+  task (§4) for at most 60s, long enough for a model call of its own, and,
+  unlike the mode's rules, it may settle what only yolo or the user could - an
+  unsandboxed or network request, an ask a rule asked for, a protected write -
+  since a human could; each such allow appends a notice row saying so.
+  Anything else, a timeout and an error included, leaves the ask to the user.
   A script the model's Lua tool gets by `path` must be a `.lua` file and is
   read through the `fs.read` gate the read tool uses, since a Lua error
   echoes tokens of what it ran.
@@ -2632,11 +2640,15 @@ rides the `memories.md` line and its ledger entries.
   the tool tokenizes the script (`luaUnlisted`): a zemi path off the list,
   a method call other than string and read-only handle methods, or `_G`,
   `load`, `require` and the like ask the user once for the whole script
-  with no mode settling it (`Request.Unsandboxed`; headless it is denied),
-  since what it changes or starts runs unconfined. An approved run gets a
+  with no mode's rules settling it (`Request.Unsandboxed`; headless it is
+  denied), since what it changes or starts runs unconfined. An approved run gets a
   chunk name of its own, which the guard passes until the run ends, so a
   callback it registered keeps only the read-only calls afterwards. A new
-  member is guarded until it is added to the list. Only user config may add modes (`zemi.permission.mode.add`) or set the
+  member is guarded until it is added to the list. User, builtin and plugin config may add or
+  drop a mode (`zemi.permission.mode.add`), the project may not, `auto` and `yolo` are
+  reserved by name (a value no mode has still lands on the builtin `auto`), a name another
+  plugin holds is refused, and a mode whose base turns yolo drops the kept `permissions.mode`
+  pick naming it, though a value init.lua itself sets stands. Only user config sets the
   current one, and an unknown value reads as `auto`, the default. A mode's `decide` that answers neither `allow` nor
   `deny` sends the ask to the user whatever its base settles, so a mode
   whose `decide` answers nothing is how a user gets every ask.
@@ -2844,7 +2856,7 @@ rides the `memories.md` line and its ledger entries.
   clone's remote URL may carry a token; not a `zemi.fs`
   root, so no plugin reads another's source). The plugins and the rest of the data and state dirs are
   never write roots: a write to a local plugin asks every time with no
-  always answer, and no mode settles it (yolo aside), since the code loads
+  always answer, and no mode's rules settle it (a decide may), since the code loads
   in every project, trusted or not; an installed plugin changes only
   through git. The one exception is the plugin being created: the user's
   yes (or yolo) to the write that creates `local/<name>/` lets auto edit

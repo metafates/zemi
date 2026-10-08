@@ -12,7 +12,10 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -69,19 +72,19 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	if res.Denied {
 		return resolved(false, "event")
 	}
-	// what a mode's rules and decide may never allow, only yolo or the user:
-	// a command leaving the sandbox or reaching the network, an ask a rule
-	// asked for, and a protected write, which Pipeline.Check re-asks
-	// whatever rule allowed it
-	settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
-		!(req.Subject == perm.SubjectWrite && !req.InPad() && h.protectedWrite(req.Arg))
+	// what a mode's rules may never settle, yolo or the user alone: a command
+	// leaving the sandbox or reaching the network, an ask a rule asked for, and
+	// a protected write, which Pipeline.Check re-asks whatever rule allowed it.
+	// A decide may settle one, since a model call is what writing the mode
+	// asked for, and the row it adds says which (fencedWhy).
+	fenced := h.fencedWhy(req)
 	if def.Rules != nil {
 		o := def.Rules.Evaluate(req.Subject, req.Arg, "")
 		if req.Subject == perm.SubjectShell {
 			o = def.Rules.CheckCommandFor(perm.SubjectShell, req.Command(), "")
 		}
 		switch {
-		case o.Decision == perm.Allow && settleable:
+		case o.Decision == perm.Allow && fenced == "":
 			return resolved(true, tools.ByMode(def.Name))
 		case o.Decision == perm.Deny:
 			return resolved(false, tools.ByMode(def.Name))
@@ -94,14 +97,38 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	base := def.Base
 	// a reason joins what the asker said
 	note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
-	// what decide sent to the user stays with the user
+	// what the request may be answered with beyond "once": the decide's payload
+	// says which scopes are on offer, and the prompt offers them; an ask the
+	// mode's rules or base settles needs neither
+	var ch askChoices
+	haveChoices := false
 	if def.Decide != nil && !held {
-		switch h.modeDecide(def, req) {
+		ch, haveChoices = h.choices(req), true
+		ans := h.modeDecide(def, h.decidePayload(req, ch.scopes()))
+		switch ans.Decision {
 		case "allow":
-			if settleable {
-				return resolved(true, tools.ByMode(def.Name))
+			// nothing else in the transcript says a mode allowed what only yolo
+			// or the user could before, and this one left the sandbox or asked
+			// for the network
+			if fenced != "" {
+				text := def.Name + " allowed " + fenced + ": " + req.Subject + " " + h.shownArg(req)
+				if ans.Reason != "" {
+					text += " (" + sanitize.Line(ans.Reason) + ")"
+				}
+				h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: sanitize.String(text)})
 			}
+			// a mode below user origin may settle the ask and write session
+			// rules, but the durable project file is the user's own grant, as an
+			// allow rule is (rule.add): its "project" answer narrows to session
+			if def.Origin != lua.OriginUser && ans.Scope == "project" {
+				ans.Scope = "session"
+			}
+			h.grant(req, ch, ans.Scope)
+			return resolved(true, tools.ByMode(def.Name))
 		case "deny":
+			if ans.Reason != "" {
+				req.Reason = sanitize.Line(ans.Reason)
+			}
 			return resolved(false, tools.ByMode(def.Name))
 		}
 	}
@@ -129,7 +156,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			req.Reason = "the model asked to leave the sandbox"
 		}
 	case req.Network:
-		// the host is the model's, like a fetch URL, so no mode settles it
+		// the host is the model's, like a fetch URL, so no mode's rules settle it
 		req.Reason = "the model asked for the network"
 	case req.Explicit:
 		// whoever wrote the rule wanted to see this; only yolo overrides it
@@ -228,11 +255,11 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		entry.Explicit, entry.ReadOnly = fresh.Explicit, fresh.ReadOnly
 		return h.ask(entry, true)
 	}
-	label, rules := h.alwaysChoice(req)
-	wider, wideRules := h.repoChoice(req)
-	project, fileRules := h.projectChoice(req, label, rules)
+	if !haveChoices {
+		ch = h.choices(req)
+	}
 	pr := PermRequest{
-		Tool: req.Tool, Always: label, Wider: wider, Project: project != "", Subject: req.Subject, Arg: h.shownArg(req),
+		Tool: req.Tool, Always: ch.always, Wider: ch.wider, Project: ch.project != "", Subject: req.Subject, Arg: h.shownArg(req),
 		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
 	}
 	// a call a lua tool's script drove: the user read the script, so name it
@@ -243,18 +270,86 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		pr.Runs = req.Command().Programs(req.Pad)
 	}
 	allowed, by := ui.AskPermission(pr)
-	if by == "user:wider" {
-		rules = wideRules
+	if allowed {
+		switch by {
+		case "user:always":
+			h.grant(req, ch, "session")
+		case "user:wider":
+			h.grant(req, ch, "wider")
+		case "user:project":
+			h.grant(req, ch, "project")
+		}
 	}
-	if allowed && (by == "user:always" || by == "user:wider") {
-		for _, r := range rules {
+	return resolved(allowed, by)
+}
+
+// askChoices is what a permission request may be answered with beyond "once":
+// the session rules an "always" answer writes, the wider read rule, and the
+// project permissions file's lines. The prompt offers them, and a mode's decide
+// may take one (askHook).
+type askChoices struct {
+	always, wider, project string
+	rules, wide, file      []perm.Rule
+}
+
+func (h *Host) choices(req tools.Request) askChoices {
+	c := askChoices{}
+	c.always, c.rules = h.alwaysChoice(req)
+	c.wider, c.wide = h.repoChoice(req)
+	c.project, c.file = h.projectChoice(req, c.always, c.rules)
+	return c
+}
+
+// scopes lists what an answer to this request may take, "once" first; a scope
+// left out is not on offer here.
+func (c askChoices) scopes() []string {
+	out := []string{"once"}
+	if len(c.rules) > 0 {
+		out = append(out, "session")
+	}
+	if c.wider != "" {
+		out = append(out, "wider")
+	}
+	if c.project != "" {
+		out = append(out, "project")
+	}
+	return out
+}
+
+// grant adds what an answer of that scope writes: the project permissions file,
+// the wider read rule or the session rules an "always" answer writes. A scope
+// this request does not offer narrows to the closest one below it, never wider.
+func (h *Host) grant(req tools.Request, c askChoices, scope string) {
+	switch {
+	case scope == "project" && c.project != "":
+		h.projectAllow(req.Arg, c.file)
+	case scope == "wider" && c.wider != "":
+		for _, r := range c.wide {
+			h.Perm.Add(r)
+		}
+	case scope == "session" || scope == "wider" || scope == "project":
+		for _, r := range c.rules {
 			h.Perm.Add(r)
 		}
 	}
-	if allowed && by == "user:project" {
-		h.projectAllow(req.Arg, fileRules)
+}
+
+// fencedWhy says why a request is one no mode rule may settle, "" when one may:
+// a command leaving the sandbox or reaching the network, an ask a rule asked
+// for, and a protected write, which Pipeline.Check re-asks whatever a rule
+// allowed. Only yolo or the user answers one, and a decide that does says so.
+func (h *Host) fencedWhy(req tools.Request) string {
+	switch {
+	case req.Unsandboxed:
+		return "a call outside the sandbox"
+	case req.Network:
+		return "a call asking for the network"
+	case req.Explicit:
+		return "a call a rule asked about"
+	case req.Subject == perm.SubjectWrite && !req.InPad() && h.protectedWrite(req.Arg):
+		return "a protected write (" + h.protectedWhy(req.Arg) + ")"
 	}
-	return resolved(allowed, by)
+	return ""
 }
 
 // runsIn is where a yes runs the command, as Pipeline.SandboxFor decides:
