@@ -1579,11 +1579,20 @@ function zemi.log.list() end
 ---| "compact"  # summaries
 ---| "memory"   # the reflector
 
+---@alias zemi.ModelTarget
+---| "chat"     # the conversation
+---| "agents"   # subagents
+---| "titles"   # session titles
+---| "compact"  # summaries
+---| "memory"   # the reflector
+---| "planner"  # the shipped read-only planning profile
+---| string     # a name zemi.model.add or zemi.agent.profile.add registered
+
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
 ---@field display string
 ---@field has_key boolean
----@field roles zemi.ModelRole[] The roles that run on this model. "chat" is models.chat, also while the active profile runs the conversation on its own model.
+---@field roles zemi.ModelTarget[] The model targets that run on this model. "chat" is models.chat, also while the active profile runs the conversation on its own model.
 
 ---@class zemi.provider
 zemi.provider = {}
@@ -1644,11 +1653,35 @@ zemi.model.effort = {}
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
 
---- Switch the model the main conversation runs on: it writes models.chat.
---- Raises for a provider nobody registered, and while the active profile
---- sets its own model; an id the provider does not list is taken and warned
---- about. User or builtin origin only. A call made after boot is kept for
---- later starts, like `zemi.config.set`. Another role is plain config:
+---@class zemi.ModelTargetSpec
+---@field desc string What `/model roles` shows for the slot.
+---@field model? zemi.ModelRole|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows chat.
+
+--- Register a model slot of its own, for code that runs a model on a job and
+--- not a conversation: `/model roles` lists it among the roles and
+--- `models.<name>` picks its model. User, builtin or plugin origin; a builtin
+--- role name, `planner` and `default` are reserved, and so is a name another
+--- origin holds. The name is the key, so it is a lowercase word.
+---
+--- ```lua
+--- zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })
+--- local verdict = zemi.model.ask({ model = "classifier", prompt = cmd }):wait()
+--- ```
+---@param name string
+---@param spec zemi.ModelTargetSpec
+function zemi.model.add(name, spec) end
+
+--- Drop a slot `zemi.model.add` registered, with `models.<name>` and the pick
+--- kept for it. A profile is not one: nothing removes a definition. User,
+--- builtin or plugin origin.
+---@param name string
+function zemi.model.del(name) end
+
+--- Switch the model the conversation runs on: the active profile's slot when
+--- it has one, else models.chat. Raises for a provider nobody registered; an
+--- id the provider does not list is taken and warned about. User or builtin
+--- origin only. A call made after boot is kept for later starts, like
+--- `zemi.config.set`. An explicitly named target is plain config:
 --- `zemi.config.set("models.titles", id)`.
 ---@param id string
 function zemi.model.set(id) end
@@ -1656,7 +1689,7 @@ function zemi.model.set(id) end
 ---@class zemi.ModelAsk
 ---@field prompt string
 ---@field system? string
----@field model? string A role name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
+---@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
 ---@field max_output? integer The reply's token cap, 1024 by default.
 ---@field on_done? fun(text: string?, err: string?) Runs as a task when the reply is in.
 
@@ -1675,16 +1708,16 @@ function zemi.model.set(id) end
 ---@return zemi.ModelHandle
 function zemi.model.ask(spec) end
 
---- Open a model picker and return at once: with no role `/model`, else that
---- role's list from `/model roles`. Choosing a model runs `/model <id>`, or
---- `/model <role> <id>` for another role. Raises for an unknown role.
----@param role? zemi.ModelRole
+--- Open a model picker and return at once: with no target `/model`, else that
+--- target's list from `/model roles`. Choosing a model runs `/model <id>`, or
+--- `/model <target> <id>` for another target. Raises for an unknown target.
+---@param role? zemi.ModelTarget
 function zemi.model.pick(role) end
 
 -- zemi.agent
 
 ---@class zemi.ProfileSpec
----@field model? string A role name (the model that role runs on) or a "provider/model" id.
+---@field model? zemi.ModelRole|string The model the profile's slot runs until someone picks `models.<name>`: a builtin role name (resolved on every read) or a "provider/model" id.
 ---@field system? string Replaces the system prompt.
 ---@field temperature? number
 ---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest, and fails the send when no tool has that name.
@@ -1705,7 +1738,7 @@ function zemi.model.pick(role) end
 ---@field name string
 ---@field description string
 ---@field source zemi.Origin
----@field model string The file's `model:` (a role such as "agents" or a "provider/model"); "" when it omits one, which runs the "agents" role.
+---@field model string The file's `model:` (a target such as "agents", or a "provider/model"); "" when it omits one, which runs the "agents" role.
 
 ---@class zemi.AgentRunSpec
 ---@field prompt string
