@@ -30,11 +30,12 @@ func TestCLI(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
 		zemi.agent.profile.add("cheap", {})`)
-	for _, name := range []string{"rub", "zzq"} {
+	for _, name := range []string{"rub", "ver", "zzq"} {
 		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
+	writeFile(t, filepath.Join(home, "data", "plugins", "local", "ver", ".zemi", "plugin.json"), `{"version": "1.2.0"}`)
 	// stdin is no terminal, as for an agent's command
 	stdin, w, err := os.Pipe()
 	if err != nil {
@@ -117,6 +118,7 @@ func TestCLI(t *testing.T) {
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub  local  on  "},
 		{name: "plugins as JSON", args: []string{"plugins", "--json"}, stdout: `{"name":"rub","version":"","local":true,"enabled":true,"source":"`},
+		{name: "a local plugin's manifest is the version it lists", args: []string{"plugins"}, stdout: "ver  1.2.0  on  "},
 		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
