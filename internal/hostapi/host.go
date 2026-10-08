@@ -422,8 +422,10 @@ type Host struct {
 	// picked mirrors the picks kept in the global store as config:<path>,
 	// unchecked for a plugin key not registered yet
 	picked map[string]any
-	// pluginKeys is the generation that last registered each key the schema
-	// does not own (a plugin setting, a model target's models.<name>)
+	// pluginKeys is the generation that last registered each key a
+	// registration owns (a plugin setting, a model target's models.<name>);
+	// dropPluginKeys drops the ones a replay did not register again, never one
+	// the schema owns
 	pluginKeys map[string]Gen
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
 	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.

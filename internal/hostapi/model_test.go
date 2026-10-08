@@ -187,6 +187,50 @@ func TestModelTargetPick(t *testing.T) {
 	}
 }
 
+// TestModelTargetBuiltinKey: a registration that took a key the schema owns
+// over (a profile named planner registers models.planner) must not cost the
+// process that key when a later boot does not register it again: a builtin key
+// stays, settable and in /config.
+func TestModelTargetBuiltinKey(t *testing.T) {
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
+	h.SetUIHooks(&fakeUI{})
+	initLua := filepath.Join(dir, "init.lua")
+	steps := func() []lua.BootStep {
+		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+	}
+	reload := func(src string) {
+		t.Helper()
+		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.ForceReload(t.Context(), steps()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reload(rolesProvider + `zemi.agent.profile.add("planner", { model = "a/small" })`)
+	if id := h.roleModel(planner); id != "a/small" {
+		t.Fatalf("the planner runs on %q, want the profile's model", id)
+	}
+	reload(rolesProvider) // the profile is gone; the key is not
+	if !h.Settings.Builtin("models." + planner) {
+		t.Fatal("the replay took models.planner out of the schema")
+	}
+	if err := h.setWatched("models."+planner, "a/big"); err != nil {
+		t.Fatalf("models.planner is not settable: %v", err)
+	}
+	if id := h.roleModel(planner); id != "a/big" {
+		t.Errorf("the shipped planner runs on %q, want the pick", id)
+	}
+	if err := h.SetModel(planner + " a/small"); err != nil {
+		t.Errorf("/model under the shipped planner: %v", err)
+	}
+	if !slices.ContainsFunc(h.Settings.Schema(), func(s config.Setting) bool { return s.Path == "models."+planner }) {
+		t.Error("/config lost the row")
+	}
+}
+
 // TestModelTargetHealth: /health checks every target, so an id the provider
 // does not list is named there rather than failing the slot's first run.
 func TestModelTargetHealth(t *testing.T) {

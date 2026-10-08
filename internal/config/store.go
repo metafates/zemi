@@ -28,6 +28,9 @@ type Setting struct {
 	Default any
 	Desc    string
 	Choices []string // the only values a string key takes; nil takes any
+	// builtin marks a key defineDefaults owns: a key registered later (a
+	// plugin's, a model target's) may take its value over, never the key.
+	builtin bool
 }
 
 // Store holds the merged config values and user watches. The schema is
@@ -115,6 +118,7 @@ func (s *Store) defineDefaults() {
 		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto also queues in an untrusted project or after fetch, web_search, lua or a non-builtin tool"},
 	}
 	for _, def := range defaults {
+		def.builtin = true
 		s.schema[def.Path] = def
 		s.values[def.Path] = def.Default
 	}
@@ -129,10 +133,13 @@ func (s *Store) Add(def Setting) (changed bool, err error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if old, ok := s.schema[def.Path]; ok && old.Kind == def.Kind && old.Default == def.Default && slices.Equal(old.Choices, def.Choices) {
-		old.Desc = def.Desc
-		s.schema[def.Path] = old
-		return false, nil
+	if old, ok := s.schema[def.Path]; ok {
+		def.builtin = old.builtin // a key the schema owns stays the schema's
+		if old.Kind == def.Kind && old.Default == def.Default && slices.Equal(old.Choices, def.Choices) {
+			old.Desc = def.Desc
+			s.schema[def.Path] = old
+			return false, nil
+		}
 	}
 	s.schema[def.Path] = def
 	s.values[def.Path] = def.Default
@@ -159,6 +166,16 @@ func (s *Store) Default(path string) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.schema[path].Default
+}
+
+// Builtin reports whether the schema owns path: a key registered later is not
+// one, and neither is a path outside the schema. A registered key may take a
+// builtin one over (a profile named planner registers models.planner), so
+// whatever drops registrations must leave these alone.
+func (s *Store) Builtin(path string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.schema[path].builtin
 }
 
 // Get looks up a dotted path over the merged values.

@@ -367,17 +367,23 @@ func (h *Host) settingOff(path string) bool {
 }
 
 // dropPluginKeys forgets, after a replay, the settings it did not register
-// again: their plugin is off, gone or stopped registering them.
+// again: their plugin is off, gone or stopped registering them. A key the
+// schema owns stays: a registration may have taken its value over, and
+// dropping it would take a builtin key out of the schema.
 func (h *Host) dropPluginKeys() {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.cfgRotate()
 	for path, gen := range h.pluginKeys {
-		if gen != h.currentGen() {
-			h.Settings.Del(path)
-			delete(h.pluginKeys, path)
-			delete(h.cfgNow, path)
+		if gen == h.currentGen() {
+			continue
 		}
+		delete(h.pluginKeys, path)
+		if h.Settings.Builtin(path) {
+			continue
+		}
+		h.Settings.Del(path)
+		delete(h.cfgNow, path)
 	}
 }
 
