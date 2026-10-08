@@ -52,6 +52,23 @@ func TestSecretShapesMatchPerm(t *testing.T) {
 		{".env.example", true},
 		{".ENV.EXAMPLE", true},
 		{".env.local", true},
+		// one name per profile rule: the loop above walks perm's list, so a name
+		// either side drops would otherwise stay green
+		{".envrc", true},
+		{".netrc", true},
+		{".npmrc", true},
+		{".yarnrc.yml", true},
+		{".pgpass", true},
+		{".pypirc", true},
+		{".htpasswd", true},
+		{".my.cnf", true},
+		{"app.env", true},
+		{"cert.pem", true},
+		{"server.key", true},
+		{"bundle.p12", true},
+		{"cert.pfx", true},
+		{"store.jks", true},
+		{"app.keystore", true},
 		{"main.go", false},
 		{"MAIN.GO", false},
 	} {
