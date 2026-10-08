@@ -119,63 +119,70 @@ What a plugin cannot do at all: register providers, MCP servers or language serv
 
 ## A classifier mode
 
-A plugin may add a permission mode, and a mode's `decide` is the one hook that answers what auto mode would otherwise ask - so a plugin can put a model between the ask and the user. `decide` runs as a task for at most 60 s, so it may wait on a model call; unlike the mode's own `rules`, which a plugin may only make deny or ask like `zemi.permission.rule.add`, it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could. The user still picks the mode (`/mode`, `permissions.mode`): a plugin cannot switch one on, and cannot take a name another plugin or the user holds (`auto` and `yolo` are refused to everyone).
+A plugin may add a permission mode, and a mode's `decide` is the one hook that answers what auto mode would otherwise ask - so a plugin can put a model between the ask and the user. `decide` runs as a task for at most 60 s, so it may wait on a classify call; unlike the mode's own `rules`, which a plugin may only make deny or ask like `zemi.permission.rule.add`, it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could. The user still picks the mode (`/mode`, `permissions.mode`): a plugin cannot switch one on, and cannot take a name another plugin or the user holds (`auto` and `yolo` are refused to everyone).
 
-Give the model its own slot so a user who keeps a cheap model for this can say so - `zemi.model.add("classifier", { desc = "settles permission asks" })`, which follows `models.chat` until the user sets `models.classifier` from `/model` or `/config`. A target's own model is what the slot runs on, and a slot added by a plugin disappears with it, the user's pick included.
+A decision is not a sentence, so ask for one: `zemi.classify.ask` answers typed questions about a state, with a probability, and never leaves the caller parsing text. Give the model its own slot so a user who keeps a cheap one for this can say so - `zemi.model.add("classifier", { desc = "settles permission asks", classify = true })`, which follows `models.chat` until the user sets `models.classifier` from `/model`. `classify = true` is what makes it a classifier slot: `/model classifier` then offers a decisions model (a `system_one` provider's, which answers the question itself with real probabilities) beside the chat ones, and the slot asks through whichever the user picked. A slot added by a plugin disappears with it, the user's pick included.
 
 ```lua
--- lua/<name>/init.lua: one model call per ask auto did not settle
-zemi.model.add("classifier", { desc = "settles permission asks" })
+-- lua/<name>/init.lua: one classify call per ask auto did not settle
+zemi.model.add("classifier", { desc = "settles permission asks", classify = true })
 
 zemi.permission.mode.add("classify", {
 	base = "auto",
 	description = "a model settles what auto would ask",
 	decide = function(req)
-		local h = zemi.model.ask({
+		local res = zemi.classify.ask({
 			model = "classifier",
-			max_output = 256,
-			system = "You settle one permission request for a coding agent. Answer in one line: "
-				.. "'ALLOW <once|session|project> because <why>' or 'DENY because <why>'.",
-			prompt = table.concat({
-				"tool: " .. req.tool,
-				"subject: " .. req.subject,
-				"target: " .. req.arg,
-				"why it asks: " .. req.reason,
-				"scopes on offer: " .. table.concat(req.options, ", "),
-				"trusted project: " .. tostring(req.trusted),
-				"read-only turn: " .. tostring(req.read_only),
-				req.preview ~= "" and ("preview:\n" .. req.preview) or "",
-			}, "\n"),
-		})
-		local text = h:wait()
-		if not text then
-			return nil -- an error or the 60s ceiling leaves the ask to the user
+			state = {
+				tool = req.tool,
+				subject = req.subject,
+				target = req.arg,
+				why_it_asks = req.reason,
+				scopes_on_offer = req.options,
+				trusted_project = req.trusted,
+				read_only_turn = req.read_only,
+				preview = req.preview,
+			},
+			questions = {
+				settle = {
+					type = "bool",
+					instructions = "May this tool call run without asking the user?",
+					criteria = {
+						["true"] = "it is ordinary work in this project: nothing of the user's is deleted or overwritten, nothing leaves the sandbox or reaches the network",
+						["false"] = "it deletes or overwrites their work, writes outside the project, or reaches the network",
+					},
+				},
+			},
+		}):wait()
+		local answer = res and res.answers.settle
+		-- no verdict, or no probability (the schema strategy has none), or a
+		-- close call: the user answers, which is how every ask they never
+		-- delegated comes back to them
+		if not answer or not answer.probability or answer.probability < 0.9 then
+			return nil
 		end
-		local verdict, rest = text:match("^[^\n]*"):match("^(%u+)%s*(.*)$")
-		if verdict == "ALLOW" and rest ~= "" then
-			local scope, why = rest:match("^(%a+)%s*(.*)$")
-			return { decision = "allow", scope = scope, reason = why }
+		if not answer.value then
+			return { decision = "deny", reason = "the classifier judged it unsafe" }
 		end
-		if verdict == "DENY" then
-			return { decision = "deny", reason = rest }
-		end
-		return nil -- anything else: the user answers
+		return { decision = "allow", scope = "once", reason = "the classifier judged it ordinary" }
 	end,
 })
 ```
 
-`req` is `zemi.PermRequest` (grep the types file for the field list): the subject, the path or command, why it asks, the scopes on offer, whether the project is trusted, whether an agent runs read-only, and the sandbox and network flags. `req.options` is what an allow may take here, so answer with one of them; a scope the request does not offer narrows to the closest one below it, never wider, and a plugin's `project` narrows to `session` - the durable permissions file is the user's own grant. Anything but `"allow"`, `"deny"` or a verdict table leaves the ask to the user, which is the answer to give when the model's line does not parse: a decide that answers nothing is how a user sees every ask.
+`state` is the data to judge and goes to the model as data, not as prose the plugin wrote; a state never carries instructions that matter, and the strategies tell the model so. A question is `type` (`bool`, `choice` or `score`), `instructions` in one line, and `criteria`: a bool's `{ ["true"] = "...", ["false"] = "..." }`, a choice's `{ label = "what it means" }`, or a score's levels lowest first. The answer for a bool is `{ value, probability }`; `choice` gives `{ choice, probabilities, confidence }`, `score` gives `{ score, confidence }`. `res.strategy` says who answered (`protocol`, `logprobs` or `schema`); the last one has no probabilities, so `probability` and `confidence` are absent there, and a `decide` that needs certainty returns `nil` for those - a low-confidence answer leaves the ask to the user, which is the answer to give. `nil, err` means no strategy answered: treat it the same way.
 
-Say what the mode costs and does in the README: it is a model call per ask, billed to the user, and its allows of a call no rule may settle are in the transcript as a row naming the mode, with the session rules it writes listed in `/permissions`. Keep the prompt small (the preview of a write can be long) and the output short.
+`req` is `zemi.PermRequest` (grep the types file for the field list): the subject, the path or command, why it asks, the scopes on offer, whether the project is trusted, whether an agent runs read-only, and the sandbox and network flags. `req.options` is what an allow may take here, so answer with one of them; a scope the request does not offer narrows to the closest one below it, never wider, and a plugin's `project` narrows to `session` - the durable permissions file is the user's own grant, so `once` is the scope to settle with. Anything but `"allow"`, `"deny"` or a verdict table leaves the ask to the user: a decide that answers nothing is how a user sees every ask.
 
-That call is gated like any other plugin model call, and the plugin cannot allow itself: without the user's rule the raise leaves the ask to the user, so the mode loads and does nothing. The rule matches the model id the slot resolves to, which moves with the user's pick, and names the principal, so `pattern = "*"` is the one to paste:
+Say what the mode costs and does in the README: it is a model call per ask, billed to the user, and its allows of a call no rule may settle are in the transcript as a row naming the mode, with the session rules it writes listed in `/permissions`. Keep the state small (the preview of a write can be long) and ask one question per answer you need.
+
+That call is gated like any other model call a plugin makes, and the plugin cannot allow itself: without the user's rule the raise leaves the ask to the user, so the mode loads and does nothing. The rule matches the model id the slot resolves to, which moves with the user's pick, and names the principal, so `pattern = "*"` is the one to paste:
 
 ```lua
 zemi.permission.rule.add({
-	subject = "lua.model.ask",
+	subject = "lua.classify.ask",
 	pattern = "*",
 	decision = "allow",
-	match = "anthropic/claude-sonnet-4-5",
+	match = "anthropic/claude-haiku-4-5",
 	principal = "plugin:<name>",
 })
 ```
