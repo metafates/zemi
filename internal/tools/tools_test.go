@@ -169,7 +169,7 @@ func TestShellGate(t *testing.T) {
 				p.Ask = nil
 			}
 			p.Pre = c.pre
-			resp := call(t, All(p)[0], `{"command":"`+c.command+`"}`)
+			resp := call(t, toolNamed(t, "shell", p), `{"command":"`+c.command+`"}`)
 			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) || c.lead && !strings.HasPrefix(resp.Content, c.want) {
 				t.Fatalf("got %+v", resp)
 			}
@@ -332,7 +332,7 @@ func TestAskDenialText(t *testing.T) {
 	} {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
-		resp := call(t, All(p)[0], `{"command":"echo j > out.txt"}`)
+		resp := call(t, toolNamed(t, "shell", p), `{"command":"echo j > out.txt"}`)
 		if !resp.IsError || resp.Content != "permission denied ("+c.by+"): tool.shell: "+c.want {
 			t.Errorf("%s: %q", c.by, resp.Content)
 		}
@@ -362,7 +362,7 @@ func TestPreHookDenyRewriteReentry(t *testing.T) {
 		}
 		return "", "", nil, false
 	}
-	ag := All(p)[0]
+	ag := toolNamed(t, "shell", p)
 	resp := call(t, ag, `{"command":"danger --x"}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "no danger") {
 		t.Fatalf("deny hook: %+v", resp)
@@ -384,11 +384,9 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
 		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow},
 	)
-	all := All(p)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "a.txt")
-
-	write, read, edit := all[2], all[1], all[3]
+	write, read, edit := toolNamed(t, "write", p), toolNamed(t, "read", p), toolNamed(t, "edit", p)
 	// results name the path relative to the (symlinked, on macOS) cwd
 	t.Chdir(dir)
 	resp := call(t, write, `{"path":"a.txt","content":"one\ntwo\nthree\n"}`)
@@ -581,8 +579,7 @@ func TestEditSafety(t *testing.T) {
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
 		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	p.Seen = &sync.Map{}
-	all := All(p)
-	read, edit := all[1], all[3]
+	read, write, edit := toolNamed(t, "read", p), toolNamed(t, "write", p), toolNamed(t, "edit", p)
 	dir := outsideTemp(t)
 	js := func(m map[string]any) string { b, _ := json.Marshal(m, json.Deterministic(true)); return string(b) }
 	for _, c := range []struct {
@@ -630,7 +627,7 @@ func TestEditSafety(t *testing.T) {
 		{"path": sub, "content": "x"},
 		{"path": sub, "old_string": "a", "new_string": "b"},
 	} {
-		tl := all[2]
+		tl := write
 		if in["old_string"] != nil {
 			tl = edit
 		}
@@ -654,7 +651,7 @@ func TestEditSafety(t *testing.T) {
 	}{
 		{edit, map[string]any{"old_string": "y", "new_string": "z", "replace_all": true}, "not read its current version"},
 		{edit, map[string]any{"old_string": "u", "new_string": "v"}, "edited"},
-		{all[2], map[string]any{"content": "x\n"}, "changed since you read it"},
+		{write, map[string]any{"content": "x\n"}, "changed since you read it"},
 	} {
 		c.in["path"] = path
 		if resp := call(t, c.tool, js(c.in)); !strings.Contains(resp.Content, c.want) {
@@ -669,7 +666,7 @@ func TestEditSafety(t *testing.T) {
 	bin := filepath.Join(dir, "b.bin")
 	os.WriteFile(bin, []byte("a\x00b"), 0o644)
 	call(t, read, js(map[string]any{"path": bin, "limit": 0}))
-	if resp := call(t, all[2], js(map[string]any{"path": bin, "content": "text\n"})); resp.IsError {
+	if resp := call(t, write, js(map[string]any{"path": bin, "content": "text\n"})); resp.IsError {
 		t.Fatalf("write over a read binary: %q", resp.Content)
 	}
 
@@ -679,7 +676,7 @@ func TestEditSafety(t *testing.T) {
 	ask.Seen = &sync.Map{}
 	unread := filepath.Join(dir, "unasked")
 	os.WriteFile(unread, []byte("x\n"), 0o644)
-	resp := call(t, All(ask)[2], js(map[string]any{"path": unread, "content": "y\n"}))
+	resp := call(t, toolNamed(t, "write", ask), js(map[string]any{"path": unread, "content": "y\n"}))
 	if !strings.Contains(resp.Content, "read ") || len(*asked) != 0 {
 		t.Fatalf("unread write: %q, asked %+v", resp.Content, *asked)
 	}
@@ -832,7 +829,7 @@ func TestReadAndShellShapes(t *testing.T) {
 
 func TestValidationErrors(t *testing.T) {
 	p, _ := testPipeline(t, false)
-	ag := All(p)[0]
+	ag := toolNamed(t, "shell", p)
 	resp := call(t, ag, `{"wrong":1}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "missing required field") {
 		t.Fatalf("validation: %+v", resp)
@@ -898,7 +895,7 @@ func TestPostHookRuns(t *testing.T) {
 	p.Changes = func(string) func() (string, string, []string) {
 		return func() (string, string, []string) { return "", "", []string{"/by/shell"} }
 	}
-	ag := All(p)[0]
+	ag := toolNamed(t, "shell", p)
 	if res := call(t, ag, `{"command":"echo posted"}`); res.Content != "rewritten" {
 		t.Errorf("the model gets %q, not what post returned", res.Content)
 	}
@@ -1107,7 +1104,7 @@ func TestChangeDiff(t *testing.T) {
 
 func TestFileToolsRefuseSymlink(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	all := All(p)
+	write, edit := toolNamed(t, "write", p), toolNamed(t, "edit", p)
 	dir := perm.RealPath(t.TempDir())
 	target, link := filepath.Join(dir, "real.txt"), filepath.Join(dir, "link.txt")
 	os.WriteFile(target, []byte("one\n"), 0o644)
@@ -1117,8 +1114,8 @@ func TestFileToolsRefuseSymlink(t *testing.T) {
 		tool  fantasy.AgentTool
 		input string
 	}{
-		{all[2], `{"path":"` + link + `","content":"x"}`},
-		{all[3], `{"path":"` + link + `","old_string":"one","new_string":"x"}`},
+		{write, `{"path":"` + link + `","content":"x"}`},
+		{edit, `{"path":"` + link + `","old_string":"one","new_string":"x"}`},
 	} {
 		if resp := call(t, c.tool, c.input); !resp.IsError || resp.Content != want {
 			t.Errorf("%s: %+v", c.tool.Info().Name, resp)
