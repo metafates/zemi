@@ -1720,8 +1720,9 @@ function zemi.model.set(id) end
 ---@field cancel fun(self: zemi.ModelHandle)
 
 --- One tool-less model call, run off the interpreter and billed to the live
---- session; a reload cancels it. A plugin's own call settles while it is
---- enabled; project code raises.
+--- session; a reload cancels it. A plugin's own call settles where its
+--- manifest declares `model` (one it does not declare is refused, not asked);
+--- project code raises.
 ---
 --- ```lua
 --- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
@@ -1872,9 +1873,9 @@ function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
---- a turn it joins at the next step. A plugin's own send settles while it is
---- enabled, and raises in `zemi run`; its text reaches the model as the
---- plugin's, never the user's words. Project code raises.
+--- a turn it joins at the next step. A plugin's own send settles where its
+--- manifest declares `agent`, and raises in `zemi run`; its text reaches the
+--- model as the plugin's, never the user's words. Project code raises.
 ---@param text string
 ---@return true?, string?
 function zemi.agent.send(text) end
@@ -2541,7 +2542,7 @@ function zemi.http.get(url, opts) end
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads. A missing dir is the returned error.
----@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined. A plugin's own job settles only with it: without one it asks.
+---@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined. A plugin's own job settles where its manifest declares `job` with it and `job.unsandboxed` without one, since that job runs with the whole environment.
 ---@field stdin? boolean Needed before `write`.
 ---@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
 ---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.

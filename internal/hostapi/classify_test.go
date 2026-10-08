@@ -309,9 +309,9 @@ func TestClassifyGate(t *testing.T) {
 		t.Errorf("models.titles = %q after a refused pick", got)
 	}
 
-	// the gate: a plugin's own call settles with no rule while it is enabled
-	// (the /plugins switch is the consent), an explicit user rule still
-	// decides first, and project code may not call it at all
+	// the gate: a plugin's declared call settles with no rule (its manifest's
+	// `model` is the consent), an explicit user rule still decides first, and
+	// project code may not call it at all
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
 	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin with no rule: %v", err)
