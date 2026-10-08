@@ -365,7 +365,7 @@ func TestClassifyStub(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(file, []byte(`local test = zemi.test
-test("a stubbed classify answers", function()
+test("a stubbed classify stands in for the call", function()
 	test.stub("lua.classify.ask", "*", {
 		strategy = "logprobs",
 		answers = { safe = { value = true, probability = 0.93 } },
@@ -378,6 +378,13 @@ test("a stubbed classify answers", function()
 	assert(res.strategy == "logprobs", res.strategy)
 	assert(res.answers.safe.value == true, tostring(res.answers.safe.value))
 	assert(res.answers.safe.probability == 0.93, tostring(res.answers.safe.probability))
+	test.stub("lua.classify.ask", "*", { error = "the classifier is down" })
+	local failed, failErr = zemi.classify.ask({
+		state = { cmd = "rm -rf build" },
+		questions = { safe = { type = "bool", instructions = "is it safe", criteria = { ["true"] = "y", ["false"] = "n" } } },
+	}):wait()
+	assert(failed == nil, "a failed classify answers no result")
+	assert(tostring(failErr):match("the classifier is down"), tostring(failErr))
 end)`), 0o600); err != nil {
 		t.Fatal(err)
 	}

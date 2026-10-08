@@ -47,7 +47,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 		timeout = time.Duration(float64(n) * float64(time.Second))
 	}
 	// a stub stands in for the whole call, a model and all
-	req := classify.Request{State: state, Questions: questions}
+	var req classify.Request
 	sid := h.AgentSessionID()
 	if stub == nil {
 		if id == "" {
@@ -70,8 +70,9 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 		defer h.stops.remove(stopID)
 		defer cancel()
 		if stub != nil {
-			// a test zemi's stub stands in for the whole call
-			stubbed = stub.fields
+			// a test zemi's stub stands in for the whole call, its error included:
+			// a plugin's test must see the same failure a provider would give
+			stubbed, askErr = stub.fields, stub.err
 		} else {
 			// every attempt the ladder made was billed, so what it used is
 			// reported whether or not one answered
