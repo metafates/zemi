@@ -1,6 +1,6 @@
 ---
 name: zemi-host-flow
-description: "Load before changing main.go, cli.go, run.go, internal/config, internal/store, or hostapi agent, session, compact, memory or prompt code: boot order and trust, the CLI and headless runs, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
+description: "Load before changing main.go, cli.go, run.go, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI and headless runs, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
 ---
 
 # Host flow: CLI, boot, config, turns
@@ -199,6 +199,21 @@ is refused with its path, to delete (the owner is the only user).
   `PurgeGeneration`). Anything that takes a model — a profile, an agent definition, a workflow —
   takes a target name or a `provider/model` id (`modelRef`). `/health` checks each distinct
   target model.
+- **Classifying a state** (`zemi.classify.ask`, classify.go, `internal/classify`): one call
+  judges every question of a `state` table and answers a typed value per question, so nothing
+  parses a sentence (DESIGN §6.3). The ladder is fixed: `protocol` when the target is a
+  `decisions` model of a `system_one` provider (`Providers.Decisions`; the state and questions
+  go to `{base_url}/systemone` with the key as a bearer token and the answers carry real
+  probabilities), else `logprobs` (one prompt per question, its answer the softmax over the
+  label tokens), else `schema` (the structured ask per question type, which has no confidence
+  to report). A strategy the model cannot answer through is skipped and one that fails does not
+  stop the next; the call is an error when the last one fails. Every answer is validated
+  against its question - an unknown label, a probability outside 0..1, a question the reply
+  left out, a score outside its levels, a body that is not JSON are errors, never a nearest
+  match - and `classifyQuestions` raises on a state or a question no model could be asked. The
+  call is gated as `lua.classify.ask` (project code may not call a model at all), billed to the
+  live session, and waits `classifyTimeout`, a minute. A `decisions` model is never resolved as
+  a chat model: only the slots `zemi.model.add(name, { classify = true })` made take one.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. A runner's call counts as its stream
   finishes (`StreamHooks.StreamDone`), before its tools run, so the tally and a subagent's
