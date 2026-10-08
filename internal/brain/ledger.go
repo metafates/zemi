@@ -129,7 +129,7 @@ func (l *Ledger) ByID(id string) ([]*Op, error) {
 		return nil, nil
 	}
 	rows, err := l.db.Query(`SELECT `+opCols+` FROM memory_ops WHERE id = ? ORDER BY rowid`, id)
-	return collectOps(rows, err)
+	return collectOps(rows, err, true)
 }
 
 // Latest is the newest op per id, the state /memory and the reflector
@@ -141,7 +141,7 @@ func (l *Ledger) Latest() ([]*Op, error) {
 	rows, err := l.db.Query(`SELECT ` + opCols + ` FROM memory_ops
 		WHERE rowid IN (SELECT MAX(rowid) FROM memory_ops GROUP BY id)
 		ORDER BY ts DESC, rowid DESC`)
-	return collectOps(rows, err)
+	return collectOps(rows, err, true)
 }
 
 // Session is the ops session sid wrote between from and until (millis),
@@ -155,16 +155,17 @@ func (l *Ledger) Session(sid string, from, until int64) ([]*Op, error) {
 	rows, err := l.db.Query(`SELECT `+opCols+` FROM memory_ops
 		WHERE session_id = ? AND (ts BETWEEN ? AND ? OR op = ? AND created_at BETWEEN ? AND ?)
 		ORDER BY rowid`, sid, from, until, OpImport, from, until)
-	return collectOps(rows, err)
+	return collectOps(rows, err, true)
 }
 
-// ops is every entry, oldest first; lint replays it (DESIGN §10.7).
+// ops is every entry, oldest first; lint replays it (DESIGN §10.7). The write
+// ops' prior bytes stay unread: only rewind's Session read restores them.
 func (l *Ledger) ops() ([]*Op, error) {
 	if l.db == nil {
 		return nil, nil
 	}
-	rows, err := l.db.Query(`SELECT ` + opCols + ` FROM memory_ops ORDER BY rowid`)
-	return collectOps(rows, err)
+	rows, err := l.db.Query(`SELECT ` + opColsNoPrior + ` FROM memory_ops ORDER BY rowid`)
+	return collectOps(rows, err, false)
 }
 
 // Stamp is what display needs about one id (DESIGN §7): First is the first writing
@@ -200,7 +201,15 @@ func (l *Ledger) Stamps() (map[string]Stamp, error) {
 const opCols = `op, id, ts, text, prior_text, quote, session_id, hash, superseded_by, scope, origin,
 	prior_bytes, prior_truncated, prior_existed, created_at, updated_at`
 
-func collectOps(rows *sql.Rows, err error) ([]*Op, error) {
+// opColsNoPrior is opCols without the write ops' prior bytes: lint, Stamps and
+// Reconcile read every entry and none of them restores a file, while the table
+// is append-only and a write op carries up to ContentCap of them.
+const opColsNoPrior = `op, id, ts, text, prior_text, quote, session_id, hash, superseded_by, scope, origin,
+	created_at, updated_at`
+
+// collectOps scans a query's rows; prior says whether its projection carried
+// the write ops' prior bytes.
+func collectOps(rows *sql.Rows, err error, prior bool) ([]*Op, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -209,9 +218,13 @@ func collectOps(rows *sql.Rows, err error) ([]*Op, error) {
 	for rows.Next() {
 		op := &Op{}
 		var scope, origin string
-		if err := rows.Scan(&op.Op, &op.ID, &op.TS, &op.Text, &op.PriorText, &op.Quote,
-			&op.SessionID, &op.Hash, &op.SupersededBy, &scope, &origin,
-			&op.Prior, &op.Truncated, &op.Existed, &op.CreatedAt, &op.UpdatedAt); err != nil {
+		dest := []any{&op.Op, &op.ID, &op.TS, &op.Text, &op.PriorText, &op.Quote,
+			&op.SessionID, &op.Hash, &op.SupersededBy, &scope, &origin}
+		if prior {
+			dest = append(dest, &op.Prior, &op.Truncated, &op.Existed)
+		}
+		dest = append(dest, &op.CreatedAt, &op.UpdatedAt)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
 		op.Scope, op.Origin = store.Scope(scope), store.Origin(origin)
