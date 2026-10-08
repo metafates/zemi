@@ -206,6 +206,7 @@ func TestPolicy(t *testing.T) {
 	for _, f := range []string{
 		filepath.Join(root, "plain.txt"), filepath.Join(root, ".git", "config"), filepath.Join(root, ".env"), filepath.Join(root, "backend", ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
 		filepath.Join(root, "id_rsa_old"), filepath.Join(root, "id_rsa.pub"),
+		filepath.Join(root, "ID_RSA_OLD"), filepath.Join(root, "ID_RSA.PUB"), filepath.Join(root, "PLAIN.TXT"),
 		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
 		filepath.Join(plugin, "lua", "p", ".git", "config"),
 	} {
@@ -339,7 +340,10 @@ func TestPolicy(t *testing.T) {
 		{"write what Read opens", "write", filepath.Join(plugin, "init.lua"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"read an old private key", "read", filepath.Join(root, "id_rsa_old"), false, !b.HidesSecretFiles},
+		{"read it in upper case", "read", filepath.Join(root, "ID_RSA_OLD"), false, !b.HidesSecretFiles},
 		{"read a public key", "read", filepath.Join(root, "id_rsa.pub"), true, false},
+		{"read the public key in upper case", "read", filepath.Join(root, "ID_RSA.PUB"), true, false},
+		{"read a plain file in upper case", "read", filepath.Join(root, "PLAIN.TXT"), true, false},
 		// the shapes match names, so no write root may be exempt from them
 		{"read a .env moved into the scratchpad", "moveread", filepath.Join(root, "backend") + "|" + filepath.Join(scratch, "b"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},

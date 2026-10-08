@@ -68,12 +68,18 @@ func foldCase(re string) string {
 //go:embed profile.sb
 var baseProfile string
 
-// secretShapes are the shapes of perm.PathIsHiddenSecret. The broad *secret*
-// and *credential* stay in the ask layer: Go's own stdlib has
-// runtime/secret.go, so a kernel rule for them breaks go build. A key name
-// takes what follows it, perm's id_* globs; POSIX regex has no lookahead, so
-// the tail spells out "not ending in .pub", which perm leaves shareable.
-const secretShapes = `(regex #"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"/\.npmrc$" #"/\.yarnrc\.yml$" #"/\.pgpass$" #"/\.pypirc$" #"/\.htpasswd$" #"/\.my\.cnf$" #"\.(env|pem|key|p12|pfx|jks|keystore)$" #"/id_(rsa|dsa|ecdsa|ed25519)([^/]{0,3}|[^/]*([^b]|[^u]b|[^p]ub|[^.]pub))$")`
+// secretShapes are the shapes of perm.PathIsHiddenSecret, every letter in both
+// cases: perm folds the name it is given, and on a case-sensitive volume a
+// .ENV is a file of its own that is no less a secret. The broad *secret* and
+// *credential* stay in the ask layer: Go's own stdlib has runtime/secret.go, so
+// a kernel rule for them breaks go build.
+var secretShapes = "(regex " + foldCase(`#"/\.env(\.[^/]*)?$" #"/\.envrc$" #"/\.netrc$" #"/\.npmrc$" #"/\.yarnrc\.yml$" #"/\.pgpass$" #"/\.pypirc$" #"/\.htpasswd$" #"/\.my\.cnf$" #"\.(env|pem|key|p12|pfx|jks|keystore)$"`) + " " + idShapes + ")"
+
+// idShapes hides a key name with anything after it, perm's id_* globs, but not
+// one ending in .pub, which perm leaves shareable. POSIX regex has no
+// lookahead, so the tail lists where the last bytes can differ from "pub";
+// foldCase cannot fold a negated class, so those letters carry both cases here.
+var idShapes = `#"/` + foldCase(`id_(rsa|dsa|ecdsa|ed25519)`) + `([^/]{0,3}|[^/]*([^bB]|[^uU][bB]|[^pP][uU][bB]|[^.][pP][uU][bB]))$"`
 
 func probe() (Backend, error) {
 	if _, err := os.Stat(sandboxExec); err != nil {
