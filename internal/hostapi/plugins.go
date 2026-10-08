@@ -158,9 +158,13 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		// its kept settings config:plugins.<name>.<key>
 		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, "plugin:"), "config:plugins."), ":")
 		name, _, _ = strings.Cut(name, ".")
-		if _, ok := ids[name]; !ok || fresh[name] {
+		if _, ok := ids[name]; ok && !fresh[name] {
+			continue
+		}
+		if path, ok := strings.CutPrefix(k, "config:"); ok {
+			h.forgetPick(path)
+		} else {
 			_, _ = h.GlobalDB.DelKV(k)
-			delete(h.picked, strings.TrimPrefix(k, "config:"))
 		}
 	}
 	for name, id := range ids {

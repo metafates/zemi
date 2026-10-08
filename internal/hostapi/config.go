@@ -205,17 +205,30 @@ func (h *Host) keepPick(path string) {
 	base, _ := h.cfgBase(path)
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
-	var err error
 	if reflect.DeepEqual(live, base) {
-		delete(h.picked, path)
-		_, err = h.GlobalDB.DelKV("config:" + path)
-	} else if b, jerr := json.Marshal(live, json.Deterministic(true)); jerr != nil {
-		err = jerr
-	} else if err = h.GlobalDB.SetKV("config:"+path, string(b)); err == nil {
-		h.picked[path] = live
+		h.forgetPick(path)
+		return
+	}
+	b, err := json.Marshal(live, json.Deterministic(true))
+	if err == nil {
+		err = h.GlobalDB.SetKV("config:"+path, string(b))
 	}
 	if err != nil {
 		h.Log.Warn("could not keep a pick", "origin", "config", "path", path, "error", err)
+		return
+	}
+	h.picked[path] = live
+}
+
+// forgetPick drops a kept pick everywhere it lives: the live copy and the
+// config: row a later boot would read. Callers hold cfgMu.
+func (h *Host) forgetPick(path string) {
+	delete(h.picked, path)
+	if h.GlobalDB == nil {
+		return
+	}
+	if _, err := h.GlobalDB.DelKV("config:" + path); err != nil {
+		h.Log.Warn("could not forget a kept pick", "origin", "config", "path", path, "error", err)
 	}
 }
 
@@ -342,10 +355,7 @@ func (h *Host) addKey(def config.Setting) error {
 	}
 	if cerr != nil {
 		h.Log.Warn("kept pick dropped", "origin", "config", "path", def.Path, "error", cerr)
-		delete(h.picked, def.Path)
-		if h.GlobalDB != nil {
-			_, _ = h.GlobalDB.DelKV("config:" + def.Path)
-		}
+		h.forgetPick(def.Path)
 		return nil
 	}
 	h.picked[def.Path] = v

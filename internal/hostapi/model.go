@@ -538,11 +538,8 @@ func (h *Host) delTarget(L *glua.LState, name string) error {
 	h.cfgMu.Lock()
 	delete(h.pluginKeys, "models."+name)
 	delete(h.cfgNow, "models."+name)
-	delete(h.picked, "models."+name)
+	h.forgetPick("models." + name)
 	h.cfgMu.Unlock()
-	if h.GlobalDB != nil {
-		_, _ = h.GlobalDB.DelKV("config:models." + name)
-	}
 	return nil
 }
 

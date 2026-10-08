@@ -298,16 +298,11 @@ func (h *Host) dropModePick(def PermModeDef) {
 	h.cfgMu.Lock()
 	pick, _ := h.picked["permissions.mode"].(string)
 	if pick == def.Name {
-		delete(h.picked, "permissions.mode")
+		h.forgetPick("permissions.mode")
 	}
 	h.cfgMu.Unlock()
 	if pick != def.Name {
 		return
-	}
-	if h.GlobalDB != nil {
-		if _, err := h.GlobalDB.DelKV("config:permissions.mode"); err != nil {
-			h.Log.Warn("could not drop a kept pick", "origin", "config", "path", "permissions.mode", "error", err)
-		}
 	}
 	// the setting goes back to its default only when the pick is what set it:
 	// config's own value is a choice of its own, and a reload keeps the pick's
