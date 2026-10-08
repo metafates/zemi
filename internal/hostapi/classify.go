@@ -12,7 +12,6 @@ import (
 	"slices"
 	"time"
 
-	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
@@ -78,7 +77,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			// every attempt the ladder made was billed, so what it used is
 			// reported whether or not one answered
 			res, askErr = classify.Ask(ctx, req)
-			h.bill(sid, id, fantasy.Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens})
+			h.bill(sid, id, res.Usage.Fantasy())
 		}
 		close(done)
 	})
@@ -295,14 +294,15 @@ func classifyResult(L *glua.LState, h *Host, id string, res classify.Result) *gl
 		answers.RawSetString(name, row)
 	}
 	tb.RawSetString("answers", answers)
-	// the same shape agent.finish carries
+	// the same shape agent.finish carries, and the same numbers the bill used
+	u := res.Usage.Fantasy()
+	in := billedInput(u)
 	usage := L.NewTable()
-	in := billedInput(fantasy.Usage{InputTokens: res.Usage.InputTokens})
 	tb.RawSetString("usage", usage)
 	usage.RawSetString("in", glua.LNumber(in))
-	usage.RawSetString("out", glua.LNumber(res.Usage.OutputTokens))
-	usage.RawSetString("total", glua.LNumber(in+res.Usage.OutputTokens))
-	usage.RawSetString("cost", glua.LNumber(h.turnCost(id, fantasy.Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens})))
+	usage.RawSetString("out", glua.LNumber(u.OutputTokens))
+	usage.RawSetString("total", glua.LNumber(in+u.OutputTokens))
+	usage.RawSetString("cost", glua.LNumber(h.turnCost(id, u)))
 	return tb
 }
 

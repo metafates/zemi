@@ -89,15 +89,41 @@ type Result struct {
 	Usage    Usage
 }
 
-// Usage is what a call used.
+// Usage is what a call used, in the providers' own counts: the cache ones
+// matter here, since a ladder re-sends the same state and questions and the
+// later calls are the ones a provider reads from its prompt cache.
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
 }
 
 func (u *Usage) add(v Usage) {
 	u.InputTokens += v.InputTokens
 	u.OutputTokens += v.OutputTokens
+	u.CacheReadTokens += v.CacheReadTokens
+	u.CacheCreationTokens += v.CacheCreationTokens
+}
+
+// Fantasy is the same usage in the shape billing and pricing read.
+func (u Usage) Fantasy() fantasy.Usage {
+	return fantasy.Usage{
+		InputTokens:         u.InputTokens,
+		OutputTokens:        u.OutputTokens,
+		CacheReadTokens:     u.CacheReadTokens,
+		CacheCreationTokens: u.CacheCreationTokens,
+	}
+}
+
+// usageOf is a fantasy call's counts in the classify package's shape.
+func usageOf(u fantasy.Usage) Usage {
+	return Usage{
+		InputTokens:         u.InputTokens,
+		OutputTokens:        u.OutputTokens,
+		CacheReadTokens:     u.CacheReadTokens,
+		CacheCreationTokens: u.CacheCreationTokens,
+	}
 }
 
 // Chat is the chat model the last two strategies run on, and what the caller

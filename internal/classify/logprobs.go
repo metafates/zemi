@@ -93,7 +93,7 @@ func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q 
 		if err != nil {
 			return Answer{}, usage, err
 		}
-		usage.add(Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens})
+		usage.add(usageOf(res.Usage))
 		probs, missing, err := labelProbabilities(candidates(res.ProviderMetadata), labels)
 		if err != nil {
 			return Answer{}, usage, err

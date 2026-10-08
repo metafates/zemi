@@ -38,26 +38,21 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		if !ok {
 			return Result{Strategy: StrategySchema}, err
 		}
-		return Result{Strategy: StrategySchema, Usage: Usage{InputTokens: none.Usage.InputTokens, OutputTokens: none.Usage.OutputTokens}}, err
+		return Result{Strategy: StrategySchema, Usage: usageOf(none.Usage)}, err
 	}
 	obj, ok := res.Object.(map[string]any)
 	if !ok {
-		return Result{Strategy: StrategySchema, Usage: usageOf(res)}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
+		return Result{Strategy: StrategySchema, Usage: usageOf(res.Usage)}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
 	}
 	answers, err := schemaAnswers(req.Questions, obj)
 	if err != nil {
-		return Result{Strategy: StrategySchema, Usage: usageOf(res)}, err
+		return Result{Strategy: StrategySchema, Usage: usageOf(res.Usage)}, err
 	}
 	return Result{
 		Strategy: StrategySchema,
 		Answers:  answers,
-		Usage:    usageOf(res),
+		Usage:    usageOf(res.Usage),
 	}, nil
-}
-
-// usageOf is a call's token counts.
-func usageOf(res *fantasy.ObjectResponse) Usage {
-	return Usage{InputTokens: res.Usage.InputTokens, OutputTokens: res.Usage.OutputTokens}
 }
 
 // schema is the value a question's type asks for.

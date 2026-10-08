@@ -157,7 +157,7 @@ func (m *fakeModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, 
 	return &fantasy.Response{
 		Content:          fantasy.ResponseContent{fantasy.TextContent{Text: "Yes"}},
 		FinishReason:     fantasy.FinishReasonStop,
-		Usage:            fantasy.Usage{InputTokens: 10, OutputTokens: 1},
+		Usage:            fantasy.Usage{InputTokens: 10, OutputTokens: 1, CacheReadTokens: 4, CacheCreationTokens: 2},
 		ProviderMetadata: m.replies[i].metadata,
 	}, nil
 }
@@ -168,7 +168,7 @@ func (m *fakeModel) GenerateObject(_ context.Context, call fantasy.ObjectCall) (
 	if m.objectErr != nil {
 		return nil, m.objectErr
 	}
-	return &fantasy.ObjectResponse{Object: m.object, RawText: "{}", Usage: fantasy.Usage{InputTokens: 20, OutputTokens: 4}}, nil
+	return &fantasy.ObjectResponse{Object: m.object, RawText: "{}", Usage: fantasy.Usage{InputTokens: 20, OutputTokens: 4, CacheReadTokens: 8}}, nil
 }
 
 func (m *fakeModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
