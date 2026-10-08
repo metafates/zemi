@@ -332,13 +332,17 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	return c, changed, nil
 }
 
-// KindsWithBody are the kinds that send Spec.Body.
+// KindsWithBody are the kinds that send Spec.Body: the ExtraBody CallOptions
+// sets for every kind but openai, whose Resolve case sets it as SDK JSON. A
+// kind wired there belongs here.
 var KindsWithBody = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindOpenRouter, KindVercel}
 
 // ObjectModes are what object_mode takes, in fantasy's words.
 var ObjectModes = []fantasy.ObjectMode{fantasy.ObjectModeAuto, fantasy.ObjectModeJSON, fantasy.ObjectModeTool, fantasy.ObjectModeText}
 
-// KindsWithObjectMode are the kinds that take Spec.ObjectMode.
+// KindsWithObjectMode are the kinds that take Spec.ObjectMode: exactly the
+// Resolve cases that pass their provider's WithObjectMode. A kind wired there
+// belongs here.
 var KindsWithObjectMode = []Kind{KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
