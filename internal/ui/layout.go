@@ -482,7 +482,7 @@ func barText(width int) int {
 // window is the rows of lines the view shows, each padded to width cells
 // and followed by its bar cell while the content overflows, which a box
 // draws in its border. fade sinks the rows at an edge content lies past; see
-// edgeFade.
+// edgeRamp.
 func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
