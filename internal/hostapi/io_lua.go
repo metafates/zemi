@@ -237,7 +237,7 @@ func (h *Host) pluginTrusted(L *glua.LState, subject, arg string) bool {
 		return false
 	}
 	switch subject {
-	case "lua.model.ask", "lua.model.classify", "lua.agent.send", "lua.job.start":
+	case "lua.model.ask", "lua.classify.ask", "lua.agent.send", "lua.job.start":
 		return true
 	case "lua.fs.write":
 		return !h.secretPath(arg) && !h.protectedWrite(arg)

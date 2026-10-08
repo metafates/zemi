@@ -1166,10 +1166,9 @@ variables for user and builtin origin only) and is never exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
-It costs money, so a plugin needs a user allow rule for `lua.model.ask`
-with its principal (§9), project code may not call it, and a reload
-cancels it. `zemi.agent.send` from a plugin asks `lua.agent.send` the same
-way; project code may not send at all. A plugin's text reaches the model
+It costs money, and enabling the plugin is what consents to it (§9); project
+code may not call it, and a reload cancels it. `zemi.agent.send` from a plugin
+settles the same way; project code may not send at all. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
 named after the plugin, so it is never the user's words (§10.4), and the
 send marks the session not local-only. `zemi run` refuses a
@@ -2534,7 +2533,15 @@ rides the `memories.md` line and its ledger entries.
   (§10.4); the side-effectful set (`fs.write`,
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
   `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
-  `lua.agent.send` and `lua.model.ask`) is `ask`; user and builtin code
+  `lua.agent.send` and `lua.model.ask`) is `ask`. The one exception is an
+  enabled plugin's own calls: switching a plugin on in `/plugins` is the
+  user's trust decision, so its `lua.model.ask`, `lua.classify.ask`,
+  `lua.agent.send`, `lua.http.*`, `lua.job.start` and `lua.fs.write` settle
+  while it is on (a disabled plugin never loads), and so does a `tool.<name>`
+  whose tool a plugin registered, when the model calls it, since registering
+  the tool was itself part of what the switch allowed; a protected write
+  (above) or a secret-shaped path still asks, and a rule of the user's still
+  decides first. User and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is
   refused for project code (§5); a Lua-originated call to one of these
