@@ -53,9 +53,9 @@ func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, sr
 }
 
 // TestModelAsk: zemi.model.ask answers off the interpreter and bills the
-// live session; a plugin's own call settles because the plugin is enabled, a
-// deny rule still refuses it, project code may not call it, and a reload
-// cancels the call.
+// live session; a plugin's own call settles where its manifest declares
+// "model", a deny rule still refuses it, project code may not call it, and a
+// reload cancels the call.
 func TestModelAsk(t *testing.T) {
 	const ask = `zemi.state.set("ask", zemi.model.ask({ prompt = "ping" }):wait())`
 	for _, c := range []struct {
@@ -72,7 +72,7 @@ func TestModelAsk(t *testing.T) {
 		{name: "a reload cancels it", origin: lua.OriginUser, reload: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, r := newTestHostDB(t)
+			h, r := newTestHostPlugin(t, `["model"]`)
 			sid := seedSession(t, h)
 			m := &askModel{reflectStubModel: &reflectStubModel{}, asked: make(chan struct{}), release: make(chan struct{}), gone: make(chan struct{})}
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }

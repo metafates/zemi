@@ -265,11 +265,12 @@ func TestClassifyAskErrors(t *testing.T) {
 	}
 }
 
-// TestClassifyGate: an enabled plugin's own call settles with no rule, a rule
-// of the user's still decides first, project code may not call a model, and the
-// picker offers decisions models to the slots that classify alone.
+// TestClassifyGate: a plugin's own call settles where its manifest declares
+// "model", a rule of the user's still decides first, project code may not call
+// a model, and the picker offers decisions models to the slots that classify
+// alone.
 func TestClassifyGate(t *testing.T) {
-	h, r := newTestHost(t)
+	h, r := newTestHostPlugin(t, `["model"]`)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })

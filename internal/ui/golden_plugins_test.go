@@ -37,6 +37,7 @@ func TestGoldenPlugins(t *testing.T) {
 	todo := filepath.Join(host.Dirs.PluginsRoot(), "local", "todo-panel", "init.lua")
 	write(todo, "-- a todo list in the statusline\nerror('no todos table')")
 	write(filepath.Join(src, "init.lua"), "-- branch and changes in the statusline\nzemi.command.add('gs', function() end, {})\nzemi.keymap.set('ctrl+x g', 'gs')")
+	write(filepath.Join(src, ".zemi", "plugin.json"), `{"uses": ["job"]}`)
 	gitIn := func(dir string, args ...string) {
 		if out, err := (proc.Git{Dir: dir, Foreign: true}).Run(t.Context(), args...); err != nil {
 			t.Fatal(err, out)

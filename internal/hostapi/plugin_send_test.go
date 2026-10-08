@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -37,12 +36,11 @@ func TestPluginText(t *testing.T) {
 		{name: "a plugin's rewrite in a run", origin: lua.OriginPlugin, src: rewrite, rewrite: true, inRun: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, r := newTestHostDB(t)
+			h, r := newTestHostPlugin(t, `["agent"]`)
 			reflectStub(t, h, "ok")
 			if !c.headless {
 				h.SetUIHooks(&fakeUI{})
 			}
-			h.Perm.Add(perm.Rule{Subject: "lua.agent.send", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
 			sid := seedSession(t, h)
 			err := chunkAs(t.Context(), h, r, c.origin, c.src)
 			if c.err != "" {
