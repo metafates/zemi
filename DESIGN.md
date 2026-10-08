@@ -1162,7 +1162,8 @@ while a builtin's key may be exported for other tools.
 from a plugin or a project cannot call them (the
 mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
 gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
-variables for user and builtin origin only) and is never exposed back to Lua.
+variables for user and builtin origin only, and for any origin under `--unsafe`) and is never
+exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
@@ -1834,7 +1835,10 @@ rides the `memories.md` line and its ledger entries.
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`); only the stuck and errors pills are Go-drawn. A boot that
+  (`rows_below`), and (`statusline.unsafe`, `ctx.unsafe`) a `--unsafe` run its
+  own `unsafe` pill beside the mode, in the `Danger` group, at the mode's own
+  priority so a short row drops both together; only the stuck and errors pills
+  are Go-drawn. A boot that
   failed leaves the runtime hot, so no widget, theme, config text or composer
   exists at all: the whole screen left is Go's, and the boot box states the
   error, the log that holds the whole traceback, and the two keys that work
@@ -2587,7 +2591,8 @@ rides the `memories.md` line and its ledger entries.
   while it is on (a disabled plugin never loads), and so does a `tool.<name>`
   whose tool a plugin registered, when the model calls it, since registering
   the tool was itself part of what the switch allowed; a protected write
-  (above) or a secret-shaped path still asks, and a rule of the user's still
+  (above) or a secret-shaped path still asks - except under `--unsafe`, where
+  a secret-shaped path stops being special (below) - and a rule of the user's still
   decides first. User and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is
@@ -2667,6 +2672,20 @@ rides the `memories.md` line and its ledger entries.
   `ReadCommand` commands, which run unconfined, and
   auto mode sends every other command to the user ("no
   sandbox"), since an approved one would run unconfined.
+  `--unsafe` is that boot by choice: the project is trusted, the pipeline
+  carries no policy at all, the private-address set is off, and nothing is
+  hidden - not from a listing, a grep, the prompt's file list, an attachment or
+  a child's environment. A secret-shaped path stops being special: it is read,
+  written, listed and grepped like any other file, and it stops asking - the
+  built-in `fs.read` default above, an `always` answer's secret re-ask, the
+  write tool's link check and the free zone all read that one predicate
+  (`Host.secretPath`) - and the prompt says what the run is. Every other ask of
+  the modes stands under `auto`: a destructive or non-reader command, the
+  network, a protected write, a rule's own ask. `--unsafe --mode yolo` settles
+  those too, but not a read-only agent's: it keeps its denials and its ask for
+  anything but a `ReadCommand`, since nothing confines a command now - a
+  `ReadCommand` it settles runs unconfined, and one the user approves has the
+  project writable, the sandbox being what made it read-only.
   A mode added from config, a plugin's included, may carry a `decide`
   function that answers one ask from Lua: "allow", "deny", or a table naming
   the decision and how far an allow reaches (`once`, `session`, `wider`,
@@ -2750,7 +2769,8 @@ rides the `memories.md` line and its ledger entries.
   allows unprivileged user namespaces, else Landlock plus seccomp) is
   probed once in `NewHost`, before
   boot (the probe is fast), so `zemi health` and the first turn's tool schema
-  see the result; `/health` has a `sandbox` row. `sandboxPolicy`: everything
+  see the result; `/health` has a `sandbox` row, which reads `off (--unsafe)`
+  when the run asked for none. `sandboxPolicy`: everything
   readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
   `~/.npmrc`, `~/.git-credentials`, shell histories, ..., under `$HOME` and
   the account's home when `HOME` was moved), zemi's config,

@@ -141,7 +141,11 @@ func (h *Host) OpenModePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
+	body := ""
+	if h.Unsafe {
+		body = "--unsafe: no sandbox, so a command the mode settles runs unconfined with the whole environment, and no file is hidden: a secret-shaped path stops asking. Every other ask the mode would make stands."
+	}
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Body: body, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
 	return nil
 }
 
@@ -210,7 +214,11 @@ func (h *Host) permItems() []any {
 			item["detail"] = "an always answer this session; deleting it makes the next call ask again"
 			if !r.Network {
 				item["copy"] = line
-				item["detail"] = item["detail"].(string) + ". y copies it as init.lua lines, which also allow the secret-shaped files this answer still asks about"
+				// the lines are wider than the answer where a secret-shaped path
+				// still asks; under --unsafe none does
+				if !h.Unsafe {
+					item["detail"] = item["detail"].(string) + ". y copies it as init.lua lines, which also allow the secret-shaped files this answer still asks about"
+				}
 			}
 		} else {
 			if _, ok := perm.CutPluginPrincipal(r.Principal); ok {
@@ -797,7 +805,7 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 		switch {
 		case err != nil:
 			return err
-		case n > 10000 || perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
+		case n > 10000 || !h.Unsafe && perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
 			return unsafe
 		case d.Type()&fs.ModeSymlink != 0:
 			if st, err := os.Stat(path); err != nil || st.IsDir() || !h.inJail(path, roots...) || h.secretPath(path) {

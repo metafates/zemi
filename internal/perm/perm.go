@@ -94,6 +94,10 @@ type Store struct {
 	// despite their secret shape; the host reads permissions.env_keep from
 	// user config, so a build that needs its own NPM_TOKEN has a way back.
 	EnvKeep func() string
+
+	// FullEnv is a --unsafe run: a child process keeps its whole environment,
+	// the secret-shaped names included.
+	FullEnv bool
 }
 
 // Add appends a rule unless an equal one is stored (config replays on every

@@ -1160,6 +1160,10 @@ func EnvIsSecret(name string) bool {
 		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
+// fullEnv reports a --unsafe run, whose children keep every name; a nil
+// store (a tools test's pipeline) is no such run.
+func (s *Store) fullEnv() bool { return s != nil && s.FullEnv }
+
 func (s *Store) envKept(name string) bool {
 	if s == nil || s.EnvKeep == nil {
 		return false
@@ -1174,17 +1178,17 @@ func (s *Store) envKept(name string) bool {
 
 // ChildEnv is a child process environment: zemi's own minus secret-shaped
 // names the user did not keep, plus extras that pass the secret and
-// assignment gates.
+// assignment gates. A --unsafe run (FullEnv) keeps them all.
 func (s *Store) ChildEnv(extras map[string]any) ([]string, error) {
 	var out []string
 	for _, kv := range os.Environ() {
-		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || s.envKept(name)) {
+		if name, _, ok := strings.Cut(kv, "="); ok && (s.fullEnv() || !EnvIsSecret(name) || s.envKept(name)) {
 			out = append(out, kv)
 		}
 	}
 	for k, v := range extras {
 		// a key carrying = would set the name before it (PATH=/tmp/x:)
-		if !isName(k) || EnvIsSecret(k) || envAssignmentGate(k) {
+		if !isName(k) || !s.fullEnv() && EnvIsSecret(k) || envAssignmentGate(k) {
 			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
 		}
 		out = append(out, k+"="+fmt.Sprint(v))

@@ -120,7 +120,11 @@ func privateRefused(addr, host string) error {
 // checkFetchHost refuses a host that is private as written before the gate
 // asks: only a user config rule permits one (runFetch's allowPrivate), so no
 // answer to the ask could. A name that resolves private is refused at dial.
+// A --unsafe run denies no address at all.
 func checkFetchHost(p *Pipeline, u *url.URL) error {
+	if p.Unsafe {
+		return nil
+	}
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	ip := net.ParseIP(host)
 	if (ip == nil || !ipDenied(ip)) && host != "localhost" && !strings.HasSuffix(host, ".localhost") {
@@ -175,8 +179,9 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	// §9 localhost development opt-in: only a rule the user's own config wrote
-	allowPrivate := UserRule(p.verdict.Rule)
+	// §9 localhost development opt-in: only a rule the user's own config wrote;
+	// --unsafe dials the address whoever asked.
+	allowPrivate := p.Unsafe || UserRule(p.verdict.Rule)
 	client := SafeClient(func(hop *url.URL) error { return netGate(p, hop, "fetch redirect") }, allowPrivate)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {

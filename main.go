@@ -219,7 +219,14 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 		host.ResumeDir = dirs.ProjectDir // absolute: -C ran first
 	}
 	trust := &trustGate{h: host, dirs: dirs}
-	if o.trust != nil {
+	switch {
+	case o.unsafe:
+		// --unsafe trusts for this run; the flag is never persisted and is no
+		// config key. Its facts are bound here, before any boot step reads them.
+		host.Unsafe = true
+		host.Perm.FullEnv = true
+		trust.session.Store(new(true))
+	case o.trust != nil:
 		trust.session.Store(o.trust)
 	}
 	return host, trust
@@ -275,6 +282,10 @@ func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Hos
 		return nil, nil, err
 	}
 	h.Inert, h.Stderr = inert, stderr
+	if o.unsafe && !inert {
+		// a TUI run shows the pill; a headless one has nowhere but stderr
+		fmt.Fprintln(stderr, "zemi: --unsafe: no sandbox, no secret hiding, a trusted project; shell commands that are not pure reads still ask")
+	}
 	// a project with no saved decision runs untrusted instead of asking; say
 	// so, or the run looks like it applied the project's setup
 	trust.ask = headlessTrust(notice)

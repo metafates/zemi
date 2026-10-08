@@ -869,6 +869,7 @@ function zemi.event.stats() end
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field permission_mode string
 ---@field permission_mode_base string
+---@field unsafe boolean The run started with --unsafe: no sandbox, no secret hiding.
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
 ---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running, and `agent` is that run's name, the model's description or the definition's when it wrote none.

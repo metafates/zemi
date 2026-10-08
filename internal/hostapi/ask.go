@@ -654,7 +654,8 @@ func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules 
 // repository instead of the directory it sits in, which in a deep tree
 // (internal/app/api/launchapi/) is the same ask again one package over.
 // Secret-shaped files still go back to the ask (Pipeline.Check loosens a
-// model rule for them), so one rule can cover the tree.
+// model rule for them while the run hides secrets), so one rule can cover
+// the tree.
 func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
 	if req.Subject != perm.SubjectRead {
 		return "", nil

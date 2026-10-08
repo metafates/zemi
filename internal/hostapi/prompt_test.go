@@ -85,6 +85,50 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 }
 
+// TestUnsafePrompt: a --unsafe run's prompt says what the run is - no
+// sandbox, nothing hidden - and its listing names the secret-shaped file the
+// read tool would.
+func TestUnsafePrompt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	h.SetUIHooks(&fakeUI{})
+	fakeSandbox(h, true)
+	h.SetProjectTrusted(true)
+	h.Unsafe = true
+	for name, body := range map[string]string{"main.go": "package main\n", "id_rsa": "key\n"} {
+		if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	toolset, _ := h.profileTools(nil)
+	rules, _ := h.environmentFor(toolset, h.ScratchDir(), false)
+	if !strings.Contains(rules, "free the same way.\nSandbox: none: this run has --unsafe") {
+		t.Errorf("the scratchpad paragraph and the sandbox clause run together:\n%s", rules)
+	}
+	for _, want := range []string{
+		"Sandbox: none: this run has --unsafe",
+		"a command you run is unconfined",
+		"with the whole environment",
+		"no .env-shaped file",
+		"a fetch reaches a private address",
+		"ask the user first",
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("the --unsafe block misses %q:\n%s", want, rules)
+		}
+	}
+	if strings.Contains(rules, "are confined") || strings.Contains(rules, "Secret-shaped names (.env, *.pem, *.key) ask") {
+		t.Errorf("the --unsafe block claims a secret still asks:\n%s", rules)
+	}
+	if top := h.topLevel(); !strings.Contains(top, "id_rsa") {
+		t.Errorf("a --unsafe listing hides a secret-shaped file: %q", top)
+	}
+	h.Unsafe = false
+	if top := h.topLevel(); strings.Contains(top, "id_rsa") {
+		t.Errorf("a listing hides nothing without --unsafe: %q", top)
+	}
+}
+
 // TestPromptFollowsToolSet: the prompt and the kept tools' descriptions name
 // no tool the profile dropped, the shipped lean one included, which must
 // keep the file tools and what shell hands a timed out command to.

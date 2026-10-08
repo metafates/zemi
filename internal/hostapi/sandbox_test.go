@@ -149,6 +149,142 @@ func TestUnsettled(t *testing.T) {
 	}
 }
 
+// TestUnsafe: --unsafe is no sandbox, no secret hiding and a trusted project;
+// the modes stay, so auto settles a project read and write, asks about every
+// command that is not a pure read with the reason "no sandbox", and hands no
+// verdict a policy.
+func TestUnsafe(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{askAllowed: true}
+	h.SetUIHooks(ui)
+	h.Unsafe = true
+	h.SetProjectTrusted(true)
+	h.agents.sessionID = "s1"
+	fakeSandbox(h, true) // whatever the machine has, this run has none
+	if h.sandboxLive() || h.sandboxBroken() {
+		t.Fatal("--unsafe must report no live sandbox and no broken probe")
+	}
+	p := h.PipelineFor()
+	if !p.Unsafe || p.SandboxParam {
+		t.Errorf("pipeline unsafe=%v sandbox param=%v", p.Unsafe, p.SandboxParam)
+	}
+	// the escapes are gone from the schema, and no verdict gets a policy
+	for _, tl := range tools.All(p) {
+		if tl.Info().Name != tools.ToolShell && tl.Info().Name != tools.ToolJobStart {
+			continue
+		}
+		for _, prop := range []string{"sandbox", "network"} {
+			if _, ok := tl.Info().Parameters[prop]; ok {
+				t.Errorf("%s keeps its %s parameter under --unsafe", tl.Info().Name, prop)
+			}
+		}
+	}
+	for _, c := range []struct {
+		name string
+		req  tools.Request
+		v    tools.Verdict
+	}{
+		{name: "a mode's allow", req: tools.Request{Subject: perm.SubjectShell, Arg: "go build ./..."}, v: tools.Verdict{Decision: perm.Allow, DecidedBy: "mode:auto"}},
+		{name: "a network ask", req: tools.Request{Subject: perm.SubjectShell, Arg: "go build ./...", Network: true}, v: tools.Verdict{Decision: perm.Allow, DecidedBy: "user"}},
+		{name: "a read-only agent", req: tools.Request{Subject: perm.SubjectShell, Arg: "go build ./...", ReadOnly: true}, v: tools.Verdict{Decision: perm.Allow, DecidedBy: "user"}},
+	} {
+		if pol := p.SandboxFor(c.req, c.v); pol != nil {
+			t.Errorf("%s: a --unsafe run confines a command: %+v", c.name, pol)
+		}
+	}
+	// secret hiding off through the one predicate, and through the listings
+	// that test the shape themselves
+	project := h.Dirs.ProjectDir
+	files := map[string]string{"main.go": "package main\n", ".env": "K=v\n", "id_rsa": "key\n"}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(project, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "x.go")
+	if err := os.WriteFile(outside, []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, subject, arg string
+		settled            bool
+	}{
+		{"a project read", perm.SubjectRead, filepath.Join(project, "main.go"), true},
+		{"a project write", perm.SubjectWrite, filepath.Join(project, "main.go"), true},
+		{"a secret-shaped read", perm.SubjectRead, filepath.Join(project, ".env"), true},
+		{"a secret-shaped write", perm.SubjectWrite, filepath.Join(project, ".env"), true},
+		{"a read outside the project", perm.SubjectRead, outside, false},
+	} {
+		if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != c.settled {
+			t.Errorf("%s: settled = %v, want %v", c.name, got, c.settled)
+		}
+	}
+	// auto settles what only reads, secrets included, and leaves the rest to
+	// the user with the reason "no sandbox"
+	for _, c := range []struct {
+		name, cmd string
+		settled   bool
+	}{
+		{"a reading command", "wc -l main.go", true},
+		{"a secret read", "cat .env", true},
+		{"a secret in a search", "grep -rn K .", true},
+		{"a build", "go build ./...", false},
+		{"a bulk delete", "rm -rf build", false},
+	} {
+		req := tools.Request{Subject: perm.SubjectShell, Arg: c.cmd, Reason: "why not", Pad: h.ScratchDir()}
+		settled := h.unsettled(req) == ""
+		if settled != c.settled {
+			t.Errorf("%s: unsettled %q, want settled=%v", c.name, h.unsettled(req), c.settled)
+		}
+		if c.settled {
+			continue
+		}
+		before := len(ui.asked)
+		if ok, _, _ := h.askHook()(req); !ok {
+			t.Fatalf("%s: the ask was not allowed", c.name)
+		}
+		if len(ui.asked) != before+1 || !strings.Contains(ui.asked[before].Reason, "no sandbox") {
+			t.Errorf("%s: asked %+v, want the reason to name no sandbox", c.name, ui.asked[before:])
+		}
+	}
+}
+
+// TestUnsafeReadOnly: a read-only agent under --unsafe keeps its denials and
+// the ask its commands get, but nothing confines what runs.
+func TestUnsafeReadOnly(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{askAllowed: true})
+	h.Unsafe = true
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.readOnly() {
+		t.Fatal("planner must read as read-only")
+	}
+	// a write stays denied, and what the agent does settle runs unconfined:
+	// no policy means the project is writable once a command is paid for
+	if v := h.PipelineFor().Check(tools.Request{Subject: perm.SubjectWrite, Arg: "/zemi-unsafe-plan/x.go"}); v.Decision != perm.Deny {
+		t.Errorf("a read-only write under --unsafe: %+v", v)
+	}
+	if pol := h.PipelineFor().SandboxFor(tools.Request{Subject: perm.SubjectShell, Arg: "go build ./...", ReadOnly: true}, tools.Verdict{Decision: perm.Allow, DecidedBy: "user"}); pol != nil {
+		t.Errorf("a read-only command under --unsafe keeps a policy: %+v", pol)
+	}
+	for _, c := range []struct {
+		name, cmd string
+		settled   bool
+	}{
+		{"a reading command settles", "wc -l main.go", true},
+		{"a build asks", "go build ./...", false},
+	} {
+		req := tools.Request{Subject: perm.SubjectShell, Arg: c.cmd, ReadOnly: true, Pad: h.ScratchDir()}
+		if got := h.unsettled(req) == ""; got != c.settled {
+			t.Errorf("%s: %q", c.name, h.unsettled(req))
+		}
+	}
+}
+
 // sandboxedShell is a trusted host on the live seatbelt backend and its shell
 // tool.
 func sandboxedShell(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]any) fantasy.ToolResponse) {

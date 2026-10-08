@@ -521,6 +521,11 @@ func TestChildEnvKeeps(t *testing.T) {
 	if slices.Contains(env, "ZEMI_TEST_API_KEY=k") {
 		t.Error("an unlisted secret-shaped name must not")
 	}
+	// a --unsafe run (FullEnv) keeps every name
+	env, err = (&Store{FullEnv: true}).ChildEnv(nil)
+	if err != nil || !slices.Contains(env, "ZEMI_TEST_API_KEY=k") {
+		t.Errorf("--unsafe must keep the whole environment: %v, %v", err, env)
+	}
 }
 
 func TestChildEnvRefusesGatedExtras(t *testing.T) {
@@ -536,6 +541,15 @@ func TestChildEnvRefusesGatedExtras(t *testing.T) {
 		if _, err := (*Store)(nil).ChildEnv(map[string]any{c.key: "1"}); (err == nil) != c.ok {
 			t.Errorf("%q: err %v, want ok=%v", c.key, err, c.ok)
 		}
+	}
+	// a --unsafe run refuses no name, and still refuses what the assignment
+	// gate covers: that is not the sandbox
+	unsafe := &Store{FullEnv: true}
+	if _, err := unsafe.ChildEnv(map[string]any{"API_TOKEN": "1"}); err != nil {
+		t.Errorf("--unsafe refused a secret-shaped extra: %v", err)
+	}
+	if _, err := unsafe.ChildEnv(map[string]any{"PATH": "1"}); err == nil {
+		t.Error("--unsafe must still refuse an environment-affecting name")
 	}
 }
 

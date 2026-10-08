@@ -321,6 +321,10 @@ type Pipeline struct {
 	// SandboxParam gives shell and job_start the sandbox: false escape; set
 	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
+	// Unsafe is a --unsafe run's pipeline: no listing or grep hides a
+	// secret-shaped name, no child environment is filtered, and SafeClient
+	// denies no address.
+	Unsafe bool
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
@@ -396,7 +400,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 	// Path is resolved already and named that way: a second resolve could land
 	// elsewhere than the tool opens. NOTE: so the gated file tools are judged
 	// by the target alone; a secret-named link to a plain file opens with no
-	// ask, while a plain-named link to a secret still asks.
+	// ask, while a plain-named link to a secret still asks (a run that hides
+	// nothing, `--unsafe`, asks about neither).
 	written := req.Arg
 	if PathSubject(req.Subject) && (p.Path == perm.Path{} || req.Arg != p.Path.String()) {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
@@ -1156,6 +1161,10 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	if p != nil && p.Images != nil && !p.Images() {
 		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source and with the project's build or tests, or ask the user to look."
 	}
+	addresses := " Local and private addresses are refused."
+	if p != nil && p.Unsafe {
+		addresses = " Local and private addresses are fetched like any other."
+	}
 
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a command with sh -c. Every call starts in the working directory: never cd to it. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays. A bash -c body is POSIX sh too: write a bash script to a file and run bash file. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
@@ -1222,7 +1231,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot, ""),
 			runGrep),
 
-		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
+		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation."+addresses,
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},

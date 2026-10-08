@@ -261,6 +261,19 @@ func TestLSPBuiltins(t *testing.T) {
 			t.Fatalf("%s: tsserver = %q, want %q", c.name, got, want)
 		}
 	}
+	// --unsafe is the user's own "no sandbox": the backend is there, so a
+	// server that runs project code starts, unconfined (lspOpen wraps none)
+	t.Setenv("PATH", servers)
+	h.Unsafe = true
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	rust := false
+	for _, d := range h.lspDefs("") {
+		rust = rust || d.Name == "rust-analyzer"
+	}
+	if !rust {
+		t.Error("--unsafe leaves a code-running server out")
+	}
 }
 
 // TestLSPZemiLua: a .lua file of the user's config or a local plugin gets

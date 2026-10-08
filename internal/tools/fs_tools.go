@@ -540,7 +540,7 @@ func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
 		}
 		switch name := e.Name(); {
 		case ruledOut(filepath.Join(path.String(), name)):
-		case perm.PathIsStrictSecret(name):
+		case !p.Unsafe && perm.PathIsStrictSecret(name):
 			secret = append(secret, name)
 		default:
 			if e.IsDir() {
@@ -881,7 +881,7 @@ func (p *Pipeline) notFound(path string, err error) string {
 	for _, e := range entries {
 		name := strings.ToLower(e.Name())
 		s := stemOf(name)
-		if e.IsDir() || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
+		if e.IsDir() || !p.Unsafe && perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
 			continue
 		}
 		if d := editDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
@@ -1183,7 +1183,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	capped := len(files) == ListLimit
-	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) || perm.PathIsStrictSecret(rel) })
+	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) || !p.Unsafe && perm.PathIsStrictSecret(rel) })
 	ruledOut := p.RuledOut()
 	hits, err := Grep(ctx, root, files, re, grepMaxMatches, func(rel string) bool { return !ruledOut(filepath.Join(root, rel)) })
 	if err != nil {
@@ -1206,7 +1206,11 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		out = append(out, fmt.Sprintf("... (searched the first %d files; narrow the path)", ListLimit))
 	}
 	if len(hits) == 0 {
-		out = append(out, "(no matches; secret-shaped files like .env are not searched, read one to ask)")
+		hidden := "; secret-shaped files like .env are not searched, read one to ask"
+		if p.Unsafe {
+			hidden = ""
+		}
+		out = append(out, "(no matches"+hidden+")")
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }

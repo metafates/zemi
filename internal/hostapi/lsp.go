@@ -270,8 +270,9 @@ func (h *Host) lspKnown() []lspDef {
 			}
 			// NOTE: without a backend every server runs unconfined; a user-added
 			// one is the user's call, and of the builtins only rust-analyzer is
-			// left out (typescript plugins and clangd drivers are not)
-			if d.RunsCode && !h.sandboxLive() {
+			// left out (typescript plugins and clangd drivers are not). --unsafe
+			// is no backend of the user's asking, so its servers start too.
+			if d.RunsCode && h.sandboxBroken() {
 				continue
 			}
 			if d.Name == "typescript" {

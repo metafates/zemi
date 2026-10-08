@@ -409,6 +409,31 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	}
 }
 
+// TestUnsafeHidesNoSecret: a --unsafe pipeline lists and greps a
+// secret-shaped name like any other file, where the same call without the
+// flag keeps it out and says how many it left.
+func TestUnsafeHidesNoSecret(t *testing.T) {
+	dir := perm.RealPath(t.TempDir())
+	for name, body := range map[string]string{"main.go": "package main\n", ".env": "K=secret\n", "cert.pem": "key\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	read, grep := toolNamed(t, "read", p), toolNamed(t, "grep", p)
+	list := func() string { return call(t, read, fmt.Sprintf(`{"path":%q,"limit":0}`, dir)).Content }
+	if got := list(); !strings.Contains(got, "2 secret-shaped entries hidden") || !strings.Contains(got, "main.go") {
+		t.Fatalf("a listing must hide the secret shapes: %q", got)
+	}
+	p.Unsafe = true
+	if got := list(); !strings.Contains(got, ".env") || !strings.Contains(got, "cert.pem") || strings.Contains(got, "hidden") {
+		t.Errorf("a --unsafe listing: %q", got)
+	}
+	if got := call(t, grep, fmt.Sprintf(`{"pattern":"K=secret","path":%q}`, dir)).Content; !strings.Contains(got, ".env:1") {
+		t.Errorf("a --unsafe grep: %q", got)
+	}
+}
+
 // TestGlobAndGrep runs over a real git repository, outside one and with no
 // git binary.
 func TestGlobAndGrep(t *testing.T) {
