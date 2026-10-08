@@ -632,12 +632,7 @@ func (h *Host) modelSpec(id string) (agent.Model, bool) {
 	if !ok {
 		return agent.Model{}, false
 	}
-	for _, m := range spec.Models {
-		if m.ID == model {
-			return m, true
-		}
-	}
-	return agent.Model{}, false
+	return spec.Model(model)
 }
 
 // turnCost prices one turn's tokens from the model spec; 0 when the spec
