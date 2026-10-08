@@ -318,7 +318,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			if back := a.host.LeaveAgentView(); back != "" {
 				a.runCommand(hostapi.SplitCommand(back))
 			}
-		} else if _, _, busy := a.host.BusyNow(); (a.host.AgentActive() || busy) && a.arm(key) {
+		} else if _, busy := a.host.BusyNow(); (a.host.AgentActive() || busy) && a.arm(key) {
 			a.host.CancelBusy()
 			a.interrupt()
 		}

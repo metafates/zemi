@@ -131,9 +131,9 @@ func (h *Host) pluginDirs() []string {
 // sweepPluginState drops the zemi.state keys and kept setting picks of a
 // plugin whose directory is gone or holds another install than the one that
 // wrote them, so a deleted plugin's saved tokens never reach a new one of
-// the same name, even one installed before this boot. The key "plugin:<name>", which no plugin can
-// write, holds the install's id as a JSON string, since kv holds JSON that
-// a user zemi.state read decodes.
+// the same name, even one installed before this boot. The "plugin:<name>" key
+// holds the install's id as a JSON string, since kv holds JSON that a user
+// zemi.state read decodes; no plugin can write that key.
 func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	if h.GlobalDB == nil {
 		return

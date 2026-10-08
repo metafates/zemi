@@ -581,7 +581,7 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 // Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if busy, _, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
+	if busy, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
 		return frameInterval
 	}
 	return idleInterval
@@ -598,7 +598,7 @@ func (a *App) onFrame() tea.Cmd {
 	// While a turn or a busy job runs every tick re-renders, so the eyes and
 	// the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if busy, _, _ := a.host.BusyNow(); active || busy != "" {
+	if busy, _ := a.host.BusyNow(); active || busy != "" {
 		a.frameGen++
 	}
 	a.turnActive = active

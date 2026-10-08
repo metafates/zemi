@@ -724,7 +724,7 @@ func TestReflectTrigger(t *testing.T) {
 			addTool(t, h, sid, true)
 			h.reflectIfDue(sid)
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -737,7 +737,7 @@ func TestReflectTrigger(t *testing.T) {
 			h.reflectSweep(time.Now().Add(-time.Minute))
 			h.reflectIfDue(addSession(t, h))
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -747,7 +747,7 @@ func TestReflectTrigger(t *testing.T) {
 			h.ReflectLive()
 			waitFor(t, func() error {
 				due, _ := h.reflectDue(sid)
-				if label, _, _ := h.BusyNow(); due != 0 || label != "" {
+				if label, _ := h.BusyNow(); due != 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -793,7 +793,7 @@ func TestReflectTrigger(t *testing.T) {
 			}
 			close(release)
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -814,7 +814,7 @@ func TestReflectTrigger(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil

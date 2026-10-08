@@ -801,7 +801,7 @@ type busyJob struct {
 // user waits on that is not a turn; a non-nil cancel lets a double esc
 // (CancelBusy) stop it.
 func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
-	j := &busyJob{label, time.Now(), cancel}
+	j := &busyJob{label, h.now(), cancel}
 	h.busyMu.Lock()
 	h.busy = append(h.busy, j)
 	h.busyMu.Unlock()
@@ -826,18 +826,17 @@ func (h *Host) CancelBusy() {
 	}
 }
 
-// BusyNow is the newest busy job's label ("" when none runs) and how long
-// it has run, and whether esc can stop any busy job; the UI re-renders
-// every frame while one runs.
+// BusyNow is the newest busy job's label ("" when none runs) and whether esc
+// can stop any busy job; the UI re-renders every frame while one runs.
 // NOTE: only the newest label shows; a "+N" part would name the others.
-func (h *Host) BusyNow() (label string, elapsed time.Duration, cancellable bool) {
+func (h *Host) BusyNow() (label string, cancellable bool) {
 	h.busyMu.Lock()
 	defer h.busyMu.Unlock()
 	if len(h.busy) == 0 {
-		return "", 0, false
+		return "", false
 	}
 	j := h.busy[len(h.busy)-1]
-	return j.label, time.Since(j.start), slices.ContainsFunc(h.busy, func(b *busyJob) bool { return b.cancel != nil })
+	return j.label, slices.ContainsFunc(h.busy, func(b *busyJob) bool { return b.cancel != nil })
 }
 
 // BusyEntry is one busy job as ctx.busy carries it: what the job is, how long
@@ -855,7 +854,7 @@ func (h *Host) BusyList() []BusyEntry {
 	defer h.busyMu.Unlock()
 	out := make([]BusyEntry, 0, len(h.busy))
 	for _, j := range slices.Backward(h.busy) {
-		out = append(out, BusyEntry{j.label, time.Since(j.start), j.cancel != nil})
+		out = append(out, BusyEntry{j.label, h.now().Sub(j.start), j.cancel != nil})
 	}
 	return out
 }

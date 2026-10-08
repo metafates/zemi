@@ -68,8 +68,7 @@ var homeSecrets = sync.OnceValue(func() []string {
 	return roots
 })
 
-// inJail reports whether path is inside one of the jail roots.
-// inJail: path, resolved, is under one of the roots.
+// inJail reports whether path, resolved, is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).

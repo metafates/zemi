@@ -944,7 +944,7 @@ func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, boo
 		return nil, false, err
 	}
 	defer func() { _ = lg.Close() }()
-	line, _, err := brain.Locate(p, lg, id)
+	line, err := brain.Locate(p, lg, id)
 	if err != nil {
 		if errors.Is(err, brain.ErrNoMemory) {
 			return nil, false, nil

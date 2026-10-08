@@ -40,11 +40,11 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 }
 
 // newTestHostUI is newTestHost with the shipped theme, widgets and keymaps
-// loaded, and a state dir.
-func newTestHostUI(t *testing.T) *Host {
+// loaded, and a state dir; a clock given moves only when the test moves it.
+func newTestHostUI(t *testing.T, clock ...lua.Clock) *Host {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS, Clock: cmp.Or(clock...)})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
@@ -958,12 +958,11 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 // user waits on, and a narrow one drops that name before the key that stops it
 // and the clock that shows it alive.
 func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
-	h := newTestHostUI(t)
+	clock := &fakeClock{now: testEpoch}
+	h := newTestHostUI(t, clock)
 	defer h.Busy("Reflecting", func() {})()
 	// the rule keeps its block away for the first 300ms of a job
-	h.busyMu.Lock()
-	h.busy[0].start = h.busy[0].start.Add(-4 * time.Second)
-	h.busyMu.Unlock()
+	clock.set(clock.Now().Add(4 * time.Second))
 	row := func(w int) string {
 		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), w, 3, UIState{})
 		if err != nil {

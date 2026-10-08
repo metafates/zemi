@@ -133,17 +133,13 @@ func TextHash(text string) string { return FileHash([]byte(text)) }
 // ErrNoMemory marks an id neither memories.md nor the ledger holds.
 var ErrNoMemory = errors.New("brain: no such memory")
 
-// ErrUserCut marks a budget overflow whose cut set would include an
-// origin=user line: nothing was written, the caller queues the write
-// instead (DESIGN §10.4 forbids silently dropping a user-attested memory).
-var ErrUserCut = errors.New("brain: the cut would take a user memory")
-
-// UserCutError is ErrUserCut with the id of the oldest line the cut would
-// have taken, which the refusal and the queue reason name.
+// UserCutError says a budget cut would reach an origin=user line: nothing
+// was written, the caller queues the write instead (DESIGN §10.4 forbids
+// silently dropping a user-attested memory). ID names the oldest line the
+// cut would have taken, which the refusal and the queue reason carry.
 type UserCutError struct{ ID string }
 
 func (e UserCutError) Error() string { return "the cut would take user memory " + e.ID }
-func (e UserCutError) Unwrap() error { return ErrUserCut }
 
 // Apply stores m as a memories.md line under the partition lock, the
 // ledger entries before the file replace (DESIGN §7): the id kept when m.ID is
@@ -186,9 +182,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 			if err != nil {
 				return nil, nil, err
 			}
-			if op != nil {
-				ops = append(ops, op)
-			}
+			ops = append(ops, op)
 			lines = next
 		}
 		ops = append(ops, &Op{
@@ -529,26 +523,26 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 
 // Locate resolves an id over memories.md and the ledger (DESIGN §7): the live
 // line when the file holds it, else the id's latest trail.
-func Locate(p Partition, l *Ledger, id string) (line Line, live bool, err error) {
+func Locate(p Partition, l *Ledger, id string) (Line, error) {
 	lines, _, err := readMemories(p)
 	if err != nil {
-		return Line{}, false, err
+		return Line{}, err
 	}
 	if i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id }); i >= 0 {
-		return lines[i], true, nil
+		return lines[i], nil
 	}
 	if l == nil {
-		return Line{}, false, fmt.Errorf("%w: %s", ErrNoMemory, id)
+		return Line{}, fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	ops, err := l.ByID(id)
 	if err != nil {
-		return Line{}, false, err
+		return Line{}, err
 	}
 	if len(ops) == 0 {
-		return Line{}, false, fmt.Errorf("%w: %s", ErrNoMemory, id)
+		return Line{}, fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	last := ops[len(ops)-1]
-	return Line{ID: id, Origin: last.Origin, Date: day(time.UnixMilli(last.TS)), Text: last.Text}, false, nil
+	return Line{ID: id, Origin: last.Origin, Date: day(time.UnixMilli(last.TS)), Text: last.Text}, nil
 }
 
 // mutateLocked runs change under a lock the caller holds (brain.Move's

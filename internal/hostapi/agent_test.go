@@ -2256,14 +2256,14 @@ func TestBtw(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		if label, _, cancellable := h.BusyNow(); label != "Answering the side question" || !cancellable {
+		if label, cancellable := h.BusyNow(); label != "Answering the side question" || !cancellable {
 			return fmt.Errorf("busy %q %v", label, cancellable)
 		}
 		return nil
 	})
 	h.CancelBusy()
 	waitFor(t, func() error {
-		if label, _, _ := h.BusyNow(); label != "" {
+		if label, _ := h.BusyNow(); label != "" {
 			return fmt.Errorf("still busy: %q", label)
 		}
 		return nil

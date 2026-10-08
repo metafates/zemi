@@ -108,11 +108,11 @@ func TestMemoriesWritePath(t *testing.T) {
 		if lines, _, _ := readMemories(p); len(lines) != 0 {
 			t.Fatalf("lines = %+v", lines)
 		}
-		// the removed ids resolve through the ledger trail, quote included
+		// the file holds none of them, so these resolve through the ledger trail
 		for _, id := range []string{a.ID, b.ID, c.ID} {
-			line, live, err := Locate(p, lg, id)
-			if err != nil || live || line.Text == "" {
-				t.Fatalf("locate %s = (%+v, %t, %v)", id, line, live, err)
+			line, err := Locate(p, lg, id)
+			if err != nil || line.Text == "" {
+				t.Fatalf("locate %s = (%+v, %v)", id, line, err)
 			}
 		}
 		// a forget of an id nothing holds is refused
@@ -227,14 +227,15 @@ func TestMemoriesWritePath(t *testing.T) {
 		}
 	})
 
-	t.Run("locate prefers the live line", func(t *testing.T) {
+	t.Run("locate returns the line the file holds", func(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
 		lg := openLedger(t, p)
 		m, _, _ := Apply(p, store.Memory{Text: "live one", Quote: "quote", ProvenanceSessionID: "s1", Origin: store.OriginLearned}, "", at)
-		line, live, err := Locate(p, lg, m.ID)
-		if err != nil || !live || line.Text != "live one" {
-			t.Fatalf("locate = (%+v, %t, %v)", line, live, err)
+		lines, _, _ := readMemories(p)
+		line, err := Locate(p, lg, m.ID)
+		if err != nil || len(lines) != 1 || line != lines[0] {
+			t.Fatalf("locate = (%+v, %v), the file holds %+v", line, err, lines)
 		}
 	})
 }
