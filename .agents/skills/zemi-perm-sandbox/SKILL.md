@@ -111,7 +111,8 @@ decision, fewest wildcards then longest literal prefix wins. A `not_match` hit f
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
 `fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except
 secret-shaped paths, writes ask) and finally ask - there
-is no fail-open path. A file request in the free zone (`perm.FreeZone`: the pipeline's
+is no fail-open path. Past all of that, an enabled plugin's own gated calls are the one allow added
+(`Host.pluginTrusted`, below). A file request in the free zone (`perm.FreeZone`: the pipeline's
 scratchpad, or a native temp dir) allows before any rule, a secret-shaped name and a
 `protectedWrite` (`.git`, the Lua in `.agents`, zemi's own dirs, a local plugin) aside, and the
 file tools need no prior read there (`perm.InPad` is the narrower pad-only check the protected
@@ -124,7 +125,8 @@ into by writing the mode. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
 `Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), shell commands
-(`unsettled`), and MCP tools a server annotates
+(`unsettled`), a `tool.<name>` a plugin registered (`Host.pluginTrusted` settles a plugin's own gated calls the same
+way), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
 recipes it asks every time, with no always answer, except one whose creating write the user or
@@ -225,14 +227,18 @@ it is read as a Go boot step, so it never goes through the Lua origin gate below
 permission overlay's `p` answer appends the command to it, offered only when
 the file would load exactly the rules the label names (`projectChoice`). Only `user`
 origin may add allow rules (project may tighten only), scope a rule to one plugin
-(`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;
-a plugin's `zemi.agent.send`, `zemi.model.ask` and `zemi.classify.ask` ask `lua.agent.send`,
-`lua.model.ask` and `lua.classify.ask`)
+(`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names)
 or switch the mode
 (`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); user, builtin and
 plugin code may add or drop a mode, the project refused, the builtin names (`auto`, `yolo`)
 are refused by name to everyone, and `mayReplace` refuses another plugin's name to a plugin;
 the gate lives at the namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
+Enabling a plugin is its own trust decision (`Host.pluginTrusted`): an ask no rule decided settles for its own
+`lua.model.ask`, `lua.classify.ask`, `lua.agent.send`, `lua.http.*`, `lua.fs.write` and its `lua.job.start` only
+when the job asked for the sandbox (`sandbox = true`: an unconfined one runs with the whole environment),
+a protected write (`protectedWhy`) and a secret shape aside, and `autoLocal` settles a `tool.<name>` whose tool
+a plugin registered. A rule of the user's still decides first - an ask rule or a `not_match` exclusion is the
+rule's ask, which `decidedBy` reports as `rule` - and a test zemi answers only its stubs.
 
 The overlay's "always" answer writes session allow rules scoped to the `model` principal
 (`Rule.Network` when the ask was a `network: true` command, so `SandboxFor` keeps the policy and

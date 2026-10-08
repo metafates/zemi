@@ -53,20 +53,21 @@ func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, sr
 }
 
 // TestModelAsk: zemi.model.ask answers off the interpreter and bills the
-// live session; a plugin needs a lua.model.ask rule for its principal,
-// project code may not call it, and a reload cancels the call.
+// live session; a plugin's own call settles because the plugin is enabled, a
+// deny rule still refuses it, project code may not call it, and a reload
+// cancels the call.
 func TestModelAsk(t *testing.T) {
 	const ask = `zemi.state.set("ask", zemi.model.ask({ prompt = "ping" }):wait())`
 	for _, c := range []struct {
 		name   string
 		origin lua.Origin
-		rule   bool   // a user allow rule for plugin a
+		deny   bool   // a user deny rule for plugin a
 		err    string // what the chunk raises
 		reload bool
 	}{
 		{name: "a wait suspends, the reply is billed", origin: lua.OriginUser},
-		{name: "a plugin with a rule", origin: lua.OriginPlugin, rule: true},
-		{name: "a plugin without one", origin: lua.OriginPlugin, err: `principal = "plugin:a"`},
+		{name: "a plugin's call, no rule needed", origin: lua.OriginPlugin},
+		{name: "a plugin's call a deny rule refuses", origin: lua.OriginPlugin, deny: true, err: "permission denied (rule)"},
 		{name: "project code", origin: lua.OriginProject, err: "project code may not call a model"},
 		{name: "a reload cancels it", origin: lua.OriginUser, reload: true},
 	} {
@@ -75,8 +76,8 @@ func TestModelAsk(t *testing.T) {
 			sid := seedSession(t, h)
 			m := &askModel{reflectStubModel: &reflectStubModel{}, asked: make(chan struct{}), release: make(chan struct{}), gone: make(chan struct{})}
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-			if c.rule {
-				h.Perm.Add(perm.Rule{Subject: "lua.model.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"})
+			if c.deny {
+				h.Perm.Add(perm.Rule{Subject: "lua.model.ask", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
 			}
 			done := make(chan error, 1)
 			go func() { done <- chunkAs(t.Context(), h, r, c.origin, ask) }()

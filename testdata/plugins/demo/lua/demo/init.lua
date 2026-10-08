@@ -1,5 +1,5 @@
 local M = {}
-local missing -- the rule line while zemi.job is not allowed
+local missing -- why the last read failed: a refused job, or its error
 
 local function poll()
 	local ok, err = pcall(zemi.job.start, {

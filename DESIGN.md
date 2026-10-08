@@ -1166,10 +1166,9 @@ variables for user and builtin origin only) and is never exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
-It costs money, so a plugin needs a user allow rule for `lua.model.ask`
-with its principal (§9), project code may not call it, and a reload
-cancels it. `zemi.agent.send` from a plugin asks `lua.agent.send` the same
-way; project code may not send at all. A plugin's text reaches the model
+It costs money, and enabling the plugin is what consents to it (§9); project
+code may not call it, and a reload cancels it. `zemi.agent.send` from a plugin
+settles the same way; project code may not send at all. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
 named after the plugin, so it is never the user's words (§10.4), and the
 send marks the session not local-only. `zemi run` refuses a
@@ -1440,8 +1439,8 @@ is `ask`, the call raises `permission ask required` (a
 `permission.request` event is emitted, post-hoc and informational: the
 outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
 the agent worker (§4). Keymap- and command-bound use of an ask-default
-API therefore needs a pre-existing allow rule from the user's own config,
-or it fails closed every time. URLs go through the permission gate like tools do
+API therefore needs a pre-existing allow rule from the user's own config
+(a plugin's own gated calls settle while it is enabled, §9), or it fails closed every time. URLs go through the permission gate like tools do
 (§9 covers redirects and IP rules). Subprocess environments are filtered:
 a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
@@ -2578,9 +2577,18 @@ rides the `memories.md` line and its ledger entries.
   scrubbed at the memory store boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
-  `lua.http.<method>`, a plugin's `zemi.agent.send`, `zemi.model.ask` and
-  `zemi.classify.ask` as
-  `lua.agent.send`, `lua.model.ask` and `lua.classify.ask`) is `ask`; user and builtin code
+  `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
+  `lua.agent.send` and `lua.model.ask`) is `ask`. The one exception is an
+  enabled plugin's own calls: switching a plugin on in `/plugins` is the
+  user's trust decision, so its `lua.model.ask`, `lua.classify.ask`,
+  `lua.agent.send`, `lua.http.*`, `lua.fs.write` and a `lua.job.start` that
+  asked for the sandbox (`sandbox = true`: one without it still asks, since
+  it would run with the whole environment) settle
+  while it is on (a disabled plugin never loads), and so does a `tool.<name>`
+  whose tool a plugin registered, when the model calls it, since registering
+  the tool was itself part of what the switch allowed; a protected write
+  (above) or a secret-shaped path still asks, and a rule of the user's still
+  decides first. User and builtin code
   send and ask ungated, `zemi.model.set` is refused below builtin origin,
   project code may neither send nor ask, and `zemi.memory.add` is
   refused for project code (§5); a Lua-originated call to one of these

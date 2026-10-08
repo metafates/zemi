@@ -165,8 +165,10 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // of the calls that do IO: its reply is returned and stands in for the
 // transport, a call none answers raises naming the stub to add, and a false
 // reply is refused whatever rules exist; req is a func so no other zemi
-// builds it.
-func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, *stubReply) {
+// builds it. sandboxed is what a subject that runs a command passes: a
+// plugin's job settles only confined; one that passes no flag does not
+// settle (Host.pluginTrusted).
+func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any, sandboxed ...bool) (tools.Verdict, *stubReply) {
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
 	// through its callback would keep the rest.
@@ -196,7 +198,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 		// and a second command cannot ride an allow
 		o := pipe.Store.CheckCommandFor(subject, perm.Normalize(arg), pipe.Principal)
 		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: tools.ByDefault}
-		if o.Rule != nil {
+		if o.Ruled() {
 			v.DecidedBy = tools.ByRule
 		}
 	default:
@@ -206,6 +208,8 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	case v.Decision == perm.Allow:
 	case v.Decision == perm.Ask && approved:
 		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByUser}
+	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginTrusted(L, subject, arg, len(sandboxed) > 0 && sandboxed[0]):
+		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByPlugin}
 	case v.Decision == perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
@@ -222,6 +226,29 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
 	return v, nil
+}
+
+// pluginTrusted reports whether switching a plugin on is what answers this
+// call: its own model, agent, HTTP and file-write calls settle, since a
+// disabled plugin never loads and the /plugins switch is the user's consent.
+// A job settles only when it runs confined (sandboxed): one that does not
+// reads with the whole environment and answers nobody. It answers only an ask
+// no rule decided (the caller checks that), a protected write still asks (it
+// changes what a later boot runs), and a test zemi answers IO through its
+// stubs alone.
+func (h *Host) pluginTrusted(L *glua.LState, subject, arg string, sandboxed bool) bool {
+	if h.test != nil || h.RT.CurrentOrigin(L) != lua.OriginPlugin {
+		return false
+	}
+	switch subject {
+	case "lua.model.ask", "lua.classify.ask", "lua.agent.send":
+		return true
+	case "lua.job.start":
+		return sandboxed
+	case "lua.fs.write":
+		return !h.secretPath(arg) && !h.protectedWrite(arg)
+	}
+	return strings.HasPrefix(subject, "lua.http.")
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.
@@ -1065,9 +1092,12 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(L, spec, "args")
+		// read before the gate: a plugin's job settles only confined, and this
+		// is what wraps it below
+		sandboxed := rawBool(L, spec, "sandbox")
 		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
 			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(L, spec, "cwd")}
-		})
+		}, sandboxed)
 		extras := map[string]any{}
 		if envT, ok := opt[*glua.LTable](L, spec, "env"); ok {
 			if v, err := lua.ToGo(envT); err == nil {
@@ -1099,7 +1129,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		guard := func() string { return "" }
 		// a program that was not found is proc.Start's returned error, not a
 		// sandbox failure
-		if rawBool(L, spec, "sandbox") && cmd.Err == nil && stub == nil {
+		if sandboxed && cmd.Err == nil && stub == nil {
 			pol := h.sandboxPolicy(h.readOnly(), h.ScratchDir())
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {

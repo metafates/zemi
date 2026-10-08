@@ -6,15 +6,20 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestPluginsStep boots plugins laid out under installed/ and local/, then
@@ -91,12 +96,12 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
-				"local/a/init.lua": `zemi.state.set("k", "a") print(select(2, pcall(zemi.job.start, { cmd = "true" })))`,
-				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k")) print(select(2, pcall(zemi.job.start, { cmd = "true" })))`,
+				"local/a/init.lua": `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("a job", ok)`,
+				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("b job", ok)`,
 			},
 			seed: []string{"plugin:gone:k", "plugin:a:old"},
-			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", "true: permission denied", "true: permission ask required"},
-			not:  []string{"plugin:gone:k"},
+			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", "plugin|a job false", "plugin|b job true"},
+			not:  []string{"plugin:gone:k", "permission ask required"},
 		},
 		{
 			name:    "a plugin installed again under the name does not get the old one's state",
@@ -498,6 +503,136 @@ func TestPluginSettings(t *testing.T) {
 				if strings.Contains(got, n) {
 					t.Errorf("unexpected %q in:\n%s", n, got)
 				}
+			}
+		})
+	}
+}
+
+// TestPluginTrust: switching a plugin on is the trust decision, so its own
+// gated calls settle with no rule, and the model calls the tool it
+// registered; a rule of the user's still denies, and a write that changes
+// what a later boot runs still asks.
+func TestPluginTrust(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) }))
+	defer srv.Close()
+	// the plugin root sits inside the project, as it does for `zemi run` in
+	// $HOME, so a write to its own code reaches the write jail and it is the
+	// gate that refuses it
+	dir := t.TempDir()
+	dirs := config.Dirs{ProjectDir: dir, DataHome: filepath.Join(dir, "data"), StateHome: filepath.Join(dir, "state")}
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(h.pluginsRoot(), "local", "a")
+	if err := os.MkdirAll(own, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeSandbox(h, true)
+	chunk := func(src string) error {
+		return r.ExecuteChunk(t.Context(), src, filepath.Join(own, "init.lua"), lua.OriginPlugin)
+	}
+
+	if err := chunk(fmt.Sprintf(`
+		local res, err = zemi.http.get(%q):wait()
+		-- the gate settles it; the §9 address check still refuses loopback,
+		-- which only a user allow rule for the host earns
+		assert(res == nil and tostring(err):find("is private", 1, true) ~= nil, tostring(err))
+		assert(zemi.fs.write(%q, "x") == true, "project write")
+	`, srv.URL+"/x", filepath.Join(dir, "notes.txt"))); err != nil {
+		t.Fatal(err)
+	}
+
+	// a job settles only when it asks to be confined: one without reads with
+	// the whole environment, so it asks like before the switch
+	if err := chunk(`
+		assert(zemi.job.start({ cmd = "true", sandbox = true }):wait(5000).code == 0, "confined")
+		local ok, err = pcall(zemi.job.start, { cmd = "true" })
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range []string{filepath.Join(own, "init.lua"), filepath.Join(dir, ".git", "config"), filepath.Join(dir, ".env")} {
+		if err := chunk(fmt.Sprintf(`
+			local ok, err = pcall(zemi.fs.write, %q, "x")
+			assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+		`, p)); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+	}
+	// a read is not one of the calls the switch covers, so a secret-shaped
+	// path still asks for one
+	if err := chunk(fmt.Sprintf(`
+		local ok, err = pcall(zemi.fs.read, %q)
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`, filepath.Join(dir, ".env"))); err != nil {
+		t.Fatal(err)
+	}
+
+	// a rule decides first even when it lets the call through in general: the
+	// write its not_match excludes is the rule's ask, not the floor's
+	excluded := filepath.Join(dir, "notes.txt")
+	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow, NotMatch: excluded})
+	if err := chunk(fmt.Sprintf(`
+		assert(zemi.fs.write(%q, "x") == true, "the rule allows this one")
+		local ok, err = pcall(zemi.fs.write, %q, "x")
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`, filepath.Join(dir, "other.txt"), excluded)); err != nil {
+		t.Fatal(err)
+	}
+
+	// here a deny, and an ask raises as it did before there was a switch at all
+	h.Perm.Add(perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Deny})
+	if err := chunk(fmt.Sprintf(`
+		local ok, err = pcall(zemi.http.get, %q)
+		assert(not ok and tostring(err):find("permission denied", 1, true) ~= nil, tostring(err))
+	`, srv.URL+"/x")); err != nil {
+		t.Fatal(err)
+	}
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Ask})
+	if err := chunk(`
+		local ok, err = pcall(zemi.job.start, { cmd = "true", sandbox = true })
+		assert(not ok and tostring(err):find("permission ask required", 1, true) ~= nil, tostring(err))
+	`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPluginToolCall: the model's call of a tool a plugin registered needs no
+// rule, since switching the plugin on is what registered it; a tool the
+// user's or a project's config registered still asks, and so does a plugin's
+// tool a rule asked for.
+func TestPluginToolCall(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		origin lua.Origin
+		rule   perm.Decision // a rule on tool.ping, "" for none
+		asked  bool
+	}{
+		{name: "a plugin's tool", origin: lua.OriginPlugin},
+		{name: "a plugin's tool a rule asks for", origin: lua.OriginPlugin, rule: perm.Ask, asked: true},
+		{name: "a user's tool", origin: lua.OriginUser, asked: true},
+		{name: "a project's tool", origin: lua.OriginProject, asked: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			ui := &fakeUI{askAllowed: true, askBy: tools.ByUser}
+			h.SetUIHooks(ui)
+			if err := chunkAs(t.Context(), h, r, c.origin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
+				t.Fatal(err)
+			}
+			if c.rule != "" {
+				h.Perm.Add(perm.Rule{Subject: "tool.ping", Pattern: "*", Decision: c.rule})
+			}
+			resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+			if err != nil || resp.Content != "pong" {
+				t.Fatalf("resp = %+v, %v; want pong", resp, err)
+			}
+			if got := len(ui.asked) > 0; got != c.asked {
+				t.Errorf("asked = %v, want %v: %+v", got, c.asked, ui.asked)
 			}
 		})
 	}
