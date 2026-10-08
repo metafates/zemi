@@ -57,12 +57,8 @@ func Lint(p Partition) []Finding {
 	for _, b := range bad {
 		add(MemFile, "%s: line %d is not a memory line", MemFile, b.N)
 	}
-	used := 0
-	for _, ln := range lines {
-		used += LineSize(ln.Text)
-	}
-	if used > ScopeBudget {
-		add(MemFile, "%s: memory lines render past the %d-byte budget", p.memPath(), ScopeBudget)
+	if Used(lines) > ScopeBudget {
+		add(MemFile, "%s: memory lines render past the %d-byte budget", MemFile, ScopeBudget)
 	}
 	for _, ln := range lines {
 		if learn.InstructionShaped(ln.Text) {

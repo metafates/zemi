@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -252,11 +253,13 @@ func (h *Host) pluginItems() []any {
 		if p.Latest != "" {
 			desc = append(desc, "update "+p.Latest)
 		}
-		desc = append(desc, p.Version, p.Desc)
 		source, section, version, errText := p.URL, "Installed", p.Version, ""
 		if p.Local {
 			source, section = "local", "Local"
+			// the user's own code: no manifest and no clone to read a version from
+			version = cmp.Or(version, "local")
 		}
+		desc = append(desc, version, p.Desc)
 		if loadErr != nil {
 			errText = loadErr.Error()
 		}

@@ -843,8 +843,7 @@ func (h *Host) lspCommands() []*Command {
 func (h *Host) lspOverlay(refresh bool) Overlay {
 	empty := "The project's language servers are off: it is not trusted (/trust)."
 	if h.ProjectTrusted() {
-		why := h.noLSP("").Error()
-		empty = strings.ToUpper(why[:1]) + why[1:] + ". A server also starts on the first file below its marker in a subdirectory."
+		empty = upperFirst(h.noLSP("").Error()) + ". A server also starts on the first file below its marker in a subdirectory."
 	}
 	empty += " zemi's own Lua, in your config and local plugins, gets lua-language-server."
 	return Overlay{

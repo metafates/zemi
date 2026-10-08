@@ -26,7 +26,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,6 +39,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -86,12 +86,7 @@ func (h *Host) workflows() []Workflow {
 		return true
 	})
 	sortBySource(out, func(w Workflow) lua.Origin { return w.Source })
-	seen := map[string]bool{}
-	return slices.DeleteFunc(out, func(w Workflow) bool {
-		dup := seen[w.Name]
-		seen[w.Name] = true
-		return dup
-	})
+	return dedupeByName(out, func(w Workflow) string { return w.Name }, nil)
 }
 
 func leadingComment(src string) string {
@@ -126,7 +121,7 @@ func (h *Host) workflowSource(name string) (string, error) {
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", Usagef("workflow %q is in %s, and this project is not trusted: the user runs %s to load it (or it can be saved under %s)", name, pdir, h.trustHint(), filepath.Join(h.Dirs.ConfigHome, "workflows"))
+			return "", Usagef("%s (or it can be saved under %s)", h.untrustedNote("workflow", name, pdir), filepath.Join(h.Dirs.ConfigHome, "workflows"))
 		}
 	}
 	if len(names) == 0 {
@@ -1230,8 +1225,6 @@ func (h *Host) flowAgentIDs(sid string) map[string]bool {
 	return ids
 }
 
-var savedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
 // saveFlow copies run id's script as it ran to workflows/<name>.lua in the
 // config dir, headed by the run's description when it has no leading
 // comment; no name names it after the description. Only a run this process
@@ -1249,8 +1242,9 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 			return "", Usagef("a workflow %s exists: /workflows save %s <name> saves it under another", name, id)
 		}
 	}
-	if !savedName.MatchString(name) {
-		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
+	// the loader's own rule, so a saved name is one workflows() takes back
+	if !skill.ValidName(name) {
+		return "", Usagef("a workflow name is %s, not %q", skill.NameRule, name)
 	}
 	src := []byte(f.src)
 	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {

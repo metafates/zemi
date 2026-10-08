@@ -101,9 +101,8 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	// says which scopes are on offer, and the prompt offers them; an ask the
 	// mode's rules or base settles needs neither
 	var ch askChoices
-	haveChoices := false
 	if def.Decide != nil && !held {
-		ch, haveChoices = h.choices(req), true
+		ch = h.choices(req)
 		ans := h.modeDecide(def, h.decidePayload(req, ch.scopes()))
 		switch ans.Decision {
 		case "allow":
@@ -255,9 +254,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		entry.Explicit, entry.ReadOnly = fresh.Explicit, fresh.ReadOnly
 		return h.ask(entry, true)
 	}
-	if !haveChoices {
-		ch = h.choices(req)
-	}
+	ch = h.choices(req)
 	pr := PermRequest{
 		Tool: req.Tool, Always: ch.always, Wider: ch.wider, Project: ch.project != "", Subject: req.Subject, Arg: h.shownArg(req),
 		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),

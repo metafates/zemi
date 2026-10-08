@@ -89,7 +89,7 @@ func TestReconcile(t *testing.T) {
 		if m, err := db.GetMemory("superseded1"); err != nil || m.SupersededBy != "newerid1" || m.Text != "old truth" {
 			t.Fatalf("the frozen table lost the superseded row: %+v, %v", m, err)
 		}
-		if _, _, err := Locate(p, lg, "superseded1"); !errors.Is(err, ErrNoMemory) {
+		if _, err := Locate(p, lg, "superseded1"); !errors.Is(err, ErrNoMemory) {
 			t.Fatalf("a superseded row composed after all: %v", err)
 		}
 	})

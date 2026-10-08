@@ -11,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"syscall"
-	"unicode"
-	"unicode/utf8"
 
 	"charm.land/fantasy"
 
@@ -93,9 +91,7 @@ func (h *Host) errorRowText(err error) string {
 	pe, _ := errors.AsType[*fantasy.ProviderError](err)
 	detail := !strings.Contains(head, raw) && !errors.Is(err, context.Canceled) &&
 		(pe == nil || pe.Message == "" || !strings.Contains(head, pe.Message))
-	if r, n := utf8.DecodeRuneInString(head); n > 0 {
-		head = string(unicode.ToUpper(r)) + head[n:]
-	}
+	head = upperFirst(head)
 	if detail {
 		head += "\n" + raw
 	}

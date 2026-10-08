@@ -311,6 +311,14 @@ func TestBrainPointers(t *testing.T) {
 	if got = h.mainInstructions(filepath.Join(h.Dirs.ProjectDir, "cap", "z.go")); strings.Count(got, "in the brain maps this path") != 2 || strings.Contains(got, "more brain files") {
 		t.Fatalf("the collapsed pointers did not wait for their own result: %q", got)
 	}
+
+	// ** crosses directories, as the file tools' own glob does: filepath.Match
+	// took it for one level only, so this path armed nothing
+	writeBrainFile(t, private.Dir, "deep.md", "deep map", "before touching a deep package", []string{"deep/**/*.go"})
+	pinBrain(t, h)
+	if got := h.mainInstructions(filepath.Join(h.Dirs.ProjectDir, "deep", "pkg", "sub", "x.go")); !strings.Contains(got, "deep.md in the brain maps this path") {
+		t.Fatalf("a ** glob did not cross a directory: %q", got)
+	}
 }
 
 // TestBrainAfterWrite: an approved file-tool write of a brain path scrubs in

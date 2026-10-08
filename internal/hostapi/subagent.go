@@ -56,6 +56,10 @@ var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow
 // name and description below are read.
 const forkAgent = "fork"
 
+// readOnlyTools is the set every read-only builtin agent gets: it reads,
+// searches and loads skills, and changes nothing.
+var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolWebSearch, tools.ToolSkill}
+
 var builtinAgents = []AgentDef{
 	{
 		Name:        forkAgent,
@@ -65,7 +69,7 @@ var builtinAgents = []AgentDef{
 	{
 		Name:        "explore",
 		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
-		Tools:       []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolWebSearch, tools.ToolSkill},
+		Tools:       readOnlyTools,
 		ReadOnly:    true,
 		System:      "Search broadly, read what matters, never guess. Lead with the answer, quote code only when the exact text matters, and when you did not find it, say where you looked.",
 		Source:      lua.OriginBuiltin,
@@ -92,7 +96,7 @@ var builtinAgents = []AgentDef{
 		// sending agent turns into a plan tool call.
 		Name:        "plan",
 		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
-		Tools:       []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolSkill, tools.ToolFetch, tools.ToolWebSearch},
+		Tools:       readOnlyTools,
 		ReadOnly:    true,
 		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
 		Source:      lua.OriginBuiltin,
@@ -120,12 +124,7 @@ func (h *Host) agentDefs() []AgentDef {
 		return true
 	})
 	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
-	seen := map[string]bool{}
-	return slices.DeleteFunc(defs, func(d AgentDef) bool {
-		dup := seen[d.Name]
-		seen[d.Name] = true
-		return dup
-	})
+	return dedupeByName(defs, func(d AgentDef) string { return d.Name }, nil)
 }
 
 func (h *Host) projectAgentDir() string {
@@ -148,7 +147,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 	}
 	if dir := h.projectAgentDir(); dir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(dir, name+".md")); err == nil {
-			return AgentDef{}, fmt.Errorf("agent %q is in %s, and this project is not trusted: the user runs %s to load it", name, dir, h.trustHint())
+			return AgentDef{}, fmt.Errorf("%s", h.untrustedNote("agent", name, dir))
 		}
 	}
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))

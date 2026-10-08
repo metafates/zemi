@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -146,6 +148,16 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 // call, so the rest is one read away instead of gone.
 func (h *Host) truncOutput(pad, name, s string) string {
 	return tools.Cut(pad, name, s, 30000)
+}
+
+// upperFirst capitalizes a sentence's first rune, leaving the rest as it is:
+// a transcript headline and an overlay's empty-state prose read as sentences.
+func upperFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if n == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[n:]
 }
 
 // readRegularFile reads a config file, refusing symlinks and oversized files.

@@ -377,6 +377,19 @@ func must[T any](v T, err error) T {
 	return v
 }
 
+// TestReflectorSystemCaps: the prompt tells the model the caps intake applies,
+// so a cap change cannot leave it lying about the length it accepts.
+func TestReflectorSystemCaps(t *testing.T) {
+	for _, want := range []string{
+		fmt.Sprintf("at most %d characters", learn.MaxTextLen),
+		fmt.Sprintf("at most %d characters", learn.MaxQuoteLen),
+	} {
+		if !strings.Contains(reflectorSystem, want) {
+			t.Errorf("the reflector prompt does not say %q", want)
+		}
+	}
+}
+
 // TestReflectPrompt pins what the reflector reads: the delta's tail with a
 // compaction summary labeled as one and secrets redacted, the failed tool
 // results, this session's pending proposals, the whole index with budget
@@ -724,7 +737,7 @@ func TestReflectTrigger(t *testing.T) {
 			addTool(t, h, sid, true)
 			h.reflectIfDue(sid)
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -737,7 +750,7 @@ func TestReflectTrigger(t *testing.T) {
 			h.reflectSweep(time.Now().Add(-time.Minute))
 			h.reflectIfDue(addSession(t, h))
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -747,7 +760,7 @@ func TestReflectTrigger(t *testing.T) {
 			h.ReflectLive()
 			waitFor(t, func() error {
 				due, _ := h.reflectDue(sid)
-				if label, _, _ := h.BusyNow(); due != 0 || label != "" {
+				if label, _ := h.BusyNow(); due != 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -793,7 +806,7 @@ func TestReflectTrigger(t *testing.T) {
 			}
 			close(release)
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
@@ -814,7 +827,7 @@ func TestReflectTrigger(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
-				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
+				if label, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil

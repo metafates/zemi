@@ -30,6 +30,16 @@ const lineOverhead = len("- [12345678 learned 365d] \n")
 // is charged in.
 func LineSize(text string) int { return len(text) + lineOverhead }
 
+// Used is the bytes lines take in the render: the budget every writer, the
+// lint and the render itself check.
+func Used(lines []Line) int {
+	used := 0
+	for _, l := range lines {
+		used += LineSize(l.Text)
+	}
+	return used
+}
+
 // Line is one memories.md line: `- [id origin YYYY-MM-DD] text`. The date
 // is the line's last write - created for a new line, refreshed and
 // re-prepended by an edit - so the rendered age tracks the line (DESIGN §7).
@@ -121,8 +131,8 @@ func serialize(lines []Line) []byte {
 	return b.Bytes()
 }
 
-// day is at's date, the granularity the line format stores.
-func day(at time.Time) time.Time {
+// Day is at's date, the granularity the line format stores.
+func Day(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
 }
 
@@ -133,17 +143,20 @@ func TextHash(text string) string { return FileHash([]byte(text)) }
 // ErrNoMemory marks an id neither memories.md nor the ledger holds.
 var ErrNoMemory = errors.New("brain: no such memory")
 
-// ErrUserCut marks a budget overflow whose cut set would include an
-// origin=user line: nothing was written, the caller queues the write
-// instead (DESIGN §10.4 forbids silently dropping a user-attested memory).
-var ErrUserCut = errors.New("brain: the cut would take a user memory")
+// ScopeFull is the refusal of a write that would push a scope past
+// ScopeBudget, and of a move into one: the scope names itself and the way
+// out is /memory (DESIGN §10.4).
+func ScopeFull(scope store.Scope) error {
+	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
+}
 
-// UserCutError is ErrUserCut with the id of the oldest line the cut would
-// have taken, which the refusal and the queue reason name.
+// UserCutError says a budget cut would reach an origin=user line: nothing
+// was written, the caller queues the write instead (DESIGN §10.4 forbids
+// silently dropping a user-attested memory). ID names the oldest line the
+// cut would have taken, which the refusal and the queue reason carry.
 type UserCutError struct{ ID string }
 
 func (e UserCutError) Error() string { return "the cut would take user memory " + e.ID }
-func (e UserCutError) Unwrap() error { return ErrUserCut }
 
 // Apply stores m as a memories.md line under the partition lock, the
 // ledger entries before the file replace (DESIGN §7): the id kept when m.ID is
@@ -157,7 +170,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 	if m.Text == "" || m.Origin == "" {
 		return Line{}, nil, errors.New("brain: memory needs text and origin")
 	}
-	l := Line{ID: m.ID, Origin: m.Origin, Date: day(at), Text: m.Text}
+	l := Line{ID: m.ID, Origin: m.Origin, Date: Day(at), Text: m.Text}
 	if l.ID == "" {
 		l.ID = store.ShortID()
 	}
@@ -186,9 +199,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 			if err != nil {
 				return nil, nil, err
 			}
-			if op != nil {
-				ops = append(ops, op)
-			}
+			ops = append(ops, op)
 			lines = next
 		}
 		ops = append(ops, &Op{
@@ -199,10 +210,7 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 		// ledger, never a user line; the line just written is its own index
 		// zero and never its own cut
 		next := append([]Line{l}, lines...)
-		used := 0
-		for _, x := range next {
-			used += LineSize(x.Text)
-		}
+		used := Used(next)
 		i := len(next)
 		for used > ScopeBudget && i > 1 {
 			i--
@@ -280,7 +288,7 @@ func editChange(sid, id, text string, origin store.Origin, scope store.Scope, at
 		return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	prior := lines[i]
-	*out = Line{ID: id, Origin: origin, Date: day(at), Text: text}
+	*out = Line{ID: id, Origin: origin, Date: Day(at), Text: text}
 	op := &Op{
 		Op: OpEdit, ID: id, Text: text, PriorText: prior.Text, SessionID: sid,
 		Hash: TextHash(text), Scope: scope, Origin: origin, TS: at.UnixMilli(),
@@ -405,13 +413,10 @@ func Move(src, dst Partition, sid, id string, at time.Time) (mergedInto string, 
 		}
 		return twin.ID, nil
 	}
-	used := 0
-	for _, l := range dstLines {
-		used += LineSize(l.Text)
-	}
+	used := Used(dstLines)
 	// a move into a full scope is refused: the mover is there to make room
 	if used+LineSize(m.Text) > ScopeBudget {
-		return "", fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", dst.Kind.Scope())
+		return "", ScopeFull(dst.Kind.Scope())
 	}
 	lg, err := src.OpenLedger()
 	if err != nil {
@@ -529,26 +534,26 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 
 // Locate resolves an id over memories.md and the ledger (DESIGN §7): the live
 // line when the file holds it, else the id's latest trail.
-func Locate(p Partition, l *Ledger, id string) (line Line, live bool, err error) {
+func Locate(p Partition, l *Ledger, id string) (Line, error) {
 	lines, _, err := readMemories(p)
 	if err != nil {
-		return Line{}, false, err
+		return Line{}, err
 	}
 	if i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id }); i >= 0 {
-		return lines[i], true, nil
+		return lines[i], nil
 	}
 	if l == nil {
-		return Line{}, false, fmt.Errorf("%w: %s", ErrNoMemory, id)
+		return Line{}, fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	ops, err := l.ByID(id)
 	if err != nil {
-		return Line{}, false, err
+		return Line{}, err
 	}
 	if len(ops) == 0 {
-		return Line{}, false, fmt.Errorf("%w: %s", ErrNoMemory, id)
+		return Line{}, fmt.Errorf("%w: %s", ErrNoMemory, id)
 	}
 	last := ops[len(ops)-1]
-	return Line{ID: id, Origin: last.Origin, Date: day(time.UnixMilli(last.TS)), Text: last.Text}, false, nil
+	return Line{ID: id, Origin: last.Origin, Date: Day(time.UnixMilli(last.TS)), Text: last.Text}, nil
 }
 
 // mutateLocked runs change under a lock the caller holds (brain.Move's

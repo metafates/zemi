@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -121,9 +122,9 @@ func (h *Host) brainLoopText(user, private brain.Partition) string {
 // brainGlob is one armed paths: glob (DESIGN §10.7) with the brain file its pointer
 // names and the Read If it quotes.
 type brainGlob struct {
-	pattern string
-	name    string
-	readIf  string
+	match  func(rel string) bool
+	name   string
+	readIf string
 }
 
 // brainGlobs arms a loaded partition's globs. A file that cannot serve -
@@ -131,16 +132,16 @@ type brainGlob struct {
 func brainGlobs(l brain.Loaded) []brainGlob {
 	var out []brainGlob
 	for _, e := range l.Entries {
-		if e.Err != nil || e.FM.Description == "" || e.FM.ReadIf == "" || e.FM.BadGlob() != nil {
+		if e.Err != nil || e.FM.Description == "" || e.FM.ReadIf == "" {
+			continue
+		}
+		matchers, err := e.FM.Matchers()
+		if err != nil {
 			continue
 		}
 		read := brain.Normalize(e.FM.ReadIf)
-		for _, pattern := range e.FM.Paths {
-			out = append(out, brainGlob{
-				pattern: pattern,
-				name:    brain.Normalize(e.Name),
-				readIf:  read,
-			})
+		for _, match := range matchers {
+			out = append(out, brainGlob{match: match, name: brain.Normalize(e.Name), readIf: read})
 		}
 	}
 	return out
@@ -177,7 +178,7 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 	var lines []string
 	more := map[string]bool{}
 	for _, g := range globs {
-		if !matchAny(g.pattern, forms) {
+		if !slices.ContainsFunc(forms, g.match) {
 			continue
 		}
 		line := fmt.Sprintf("zemi: you edited a file mapped by %s (Read If: %s); check the map still holds.", g.name, g.readIf)
@@ -201,13 +202,4 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 		lines = append(lines, fmt.Sprintf("zemi: %d more brain files map this path; the catalog names them.", len(more)))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func matchAny(pattern string, forms []string) bool {
-	for _, form := range forms {
-		if ok, err := filepath.Match(pattern, form); err == nil && ok {
-			return true
-		}
-	}
-	return false
 }

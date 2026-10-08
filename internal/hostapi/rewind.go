@@ -327,7 +327,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 					if !slices.Contains(drop[p.Kind], m.SupersededBy) || slices.Contains(drop[p.Kind], m.ID) {
 						continue
 					}
-					add = append(add, brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text})
+					add = append(add, lineOf(m))
 					// the frozen table has no op to replay, so the revival
 					// journals its own add-shaped entry: the replayed trail
 					// explains the line and lint's hand-edit finding stays quiet

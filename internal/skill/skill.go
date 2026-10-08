@@ -61,10 +61,18 @@ type Skill struct {
 	ArgumentHint           string
 }
 
-var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+// maxNameLen caps a name: a skill's directory, a workflow file, a
+// plugin-provided layer file.
+const maxNameLen = 64
+
+// NameRule is what ValidName accepts, in the words every failure naming the
+// rule uses, the cap included: a name a save takes is one a loader keeps.
+var NameRule = fmt.Sprintf("a lowercase letter or digit, then up to %d lowercase letters, digits or dashes", maxNameLen-1)
+
+var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // ValidName reports whether name is usable as a skill directory name.
-func ValidName(name string) bool { return nameRe.MatchString(name) }
+func ValidName(name string) bool { return len(name) <= maxNameLen && nameRe.MatchString(name) }
 
 // Parse validates one skill directory: SKILL.md must exist (not a
 // symlink), carry `---`-fenced yaml frontmatter with a name matching the
@@ -73,8 +81,8 @@ func ValidName(name string) bool { return nameRe.MatchString(name) }
 // reported.
 func Parse(dir string, source Source) (Skill, error) {
 	sk := Skill{Name: filepath.Base(dir), Dir: dir, Source: source}
-	if !nameRe.MatchString(sk.Name) {
-		return sk, fmt.Errorf("skills: %q: directory name must match [a-z0-9][a-z0-9-]{0,63}", sk.Name)
+	if !ValidName(sk.Name) {
+		return sk, fmt.Errorf("skills: %q: directory name must be %s", sk.Name, NameRule)
 	}
 	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {

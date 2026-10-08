@@ -93,7 +93,7 @@ func TestLintFindings(t *testing.T) {
 	for _, want := range []string{
 		"no-desc.md: no description",
 		"no-read.md: no read_if",
-		`bad-glob.md: bad paths glob "bad.[": syntax error in pattern`,
+		`bad-glob.md: bad glob "bad.[": [ without a closing ]`,
 		"long.md: description is 201 characters, over the 200 the render caps",
 		"broken.md: [1:14] sequence end token ']' not found",
 		"memories.md: line 7 is not a memory line",
@@ -102,7 +102,7 @@ func TestLintFindings(t *testing.T) {
 		"memory vwxy2345 was rewritten outside the ledger (a hand edit)",
 		"memory efgh6789 reads like an instruction (detection only; the line still injects)",
 		"memory mnop5678 is in the ledger, gone from memories.md (a crash between the ledger and the file, a lost update, or a hand edit)",
-		p.memPath() + ": memory lines render past the 3072-byte budget",
+		MemFile + ": memory lines render past the 3072-byte budget",
 	} {
 		if !slices.Contains(texts, want) {
 			t.Fatalf("missing finding %q in:\n%s", want, strings.Join(texts, "\n"))

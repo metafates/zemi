@@ -437,13 +437,17 @@ func (h *Host) undoKeep(id string) func() error {
 	}
 }
 
+// lineOf is m as the memories.md line it stands for, its age included: a
+// removed line comes back whole, the same hash the trail recorded.
+func lineOf(m *store.Memory) brain.Line {
+	return brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text}
+}
+
 // restoreMemory puts m's line back whole, its age included: the reverse of
 // a removal. No ledger entry - the trail's forget explains the absence it
 // had, and the restored hash matches the entry that wrote the line (DESIGN §10.4).
 func (h *Host) restoreMemory(p brain.Partition, m *store.Memory) error {
-	return brain.Restore(p, "", []brain.Line{{
-		ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text,
-	}}, nil, h.now())
+	return brain.Restore(p, "", []brain.Line{lineOf(m)}, nil, h.now())
 }
 
 // moveRow moves suggestion or memory id to the other scope. A suggestion
@@ -577,7 +581,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
 		if h.scopeOver(res) && len(res.Memory.Text) > len(p.Text) {
-			return false, errScopeFull(p.Scope)
+			return false, brain.ScopeFull(p.Scope)
 		}
 		undo := h.undoKeep(id)
 		if h.takeProposal(id) == nil {
@@ -603,7 +607,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	res.Memory.ID = m.ID
 	// a shorter edit is always taken, so a scope already over can shrink
 	if h.scopeOver(res) && len(res.Memory.Text) > len(m.Text) {
-		return false, errScopeFull(m.Scope)
+		return false, brain.ScopeFull(m.Scope)
 	}
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
 		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
@@ -612,9 +616,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		return false, err
 	}
 	h.pushUndo(func() error { // the old line back whole, its age included
-		return brain.Restore(db, "", []brain.Line{{
-			ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text,
-		}}, []string{m.ID}, h.now())
+		return brain.Restore(db, "", []brain.Line{lineOf(m)}, []string{m.ID}, h.now())
 	})
 	return res.Scrubbed, nil
 }
@@ -854,23 +856,18 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 			if op.Text == "" {
 				continue
 			}
-			out = append(out, brain.Line{ID: op.ID, Origin: op.Origin, Date: dayOf(op.TS), Text: op.Text})
+			out = append(out, brain.Line{ID: op.ID, Origin: op.Origin, Date: brain.Day(time.UnixMilli(op.TS).UTC()), Text: op.Text})
 		}
 	}
 	frozen, _ := h.memoryList(true)
 	for _, m := range frozen {
 		if m.SupersededBy != "" && !liveIDs[m.ID] && !seen[m.ID] {
 			seen[m.ID] = true
-			out = append(out, brain.Line{ID: m.ID, Origin: m.Origin, Date: dayOf(m.UpdatedAt), Text: m.Text})
+			out = append(out, brain.Line{ID: m.ID, Origin: m.Origin, Date: brain.Day(time.UnixMilli(m.UpdatedAt).UTC()), Text: m.Text})
 		}
 	}
 	slices.SortFunc(out, func(a, b brain.Line) int { return b.Date.Compare(a.Date) })
 	return out
-}
-
-// dayOf is the date a ts carries in a line, the line format's granularity.
-func dayOf(ts int64) time.Time {
-	return time.UnixMilli(ts).UTC().Truncate(24 * time.Hour)
 }
 
 // memoryItem is m's row under section: label cut to one line, its whole
@@ -944,7 +941,7 @@ func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, boo
 		return nil, false, err
 	}
 	defer func() { _ = lg.Close() }()
-	line, _, err := brain.Locate(p, lg, id)
+	line, err := brain.Locate(p, lg, id)
 	if err != nil {
 		if errors.Is(err, brain.ErrNoMemory) {
 			return nil, false, nil
@@ -1386,6 +1383,12 @@ func redactedLines(clean string) []int {
 	return lines
 }
 
+// redactedNote says what a scrub of clean changed, for the file it could not
+// journal line by line.
+func redactedNote(clean string) string {
+	return fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(clean))
+}
+
 // scrubBrainWrite runs the recipe treatment on the file under the partition
 // flock and lints it, the note appending what was redacted and the file's
 // open findings. Redacts, never drops; a failure costs the note only, the
@@ -1413,7 +1416,7 @@ func (h *Host) scrubBrainWrite(p brain.Partition, path string) string {
 			clean = string(prior)
 			note = "could not be cleaned: " + err.Error()
 		} else {
-			note = fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(clean))
+			note = redactedNote(clean)
 		}
 	}
 	h.markBrainWrite(path, []byte(clean))
@@ -1463,7 +1466,7 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 	if len(ids) > 0 {
 		return fmt.Sprintf("secret-shaped text was redacted from memory lines %v; their prior text is in the memory ledger", ids), true
 	}
-	return fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(string(clean))), true
+	return redactedNote(string(clean)), true
 }
 
 // forgetMemory drops a memory for the model: one the user saved asks
@@ -1546,11 +1549,7 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 // userCutFull refuses what would cut a line the user saved (DESIGN §10.4):
 // the cut never takes one, so the user makes room, the id naming the line.
 func userCutFull(scope store.Scope, uc brain.UserCutError) error {
-	return fmt.Errorf("%w (its oldest line %s is yours)", errScopeFull(scope), uc.ID)
-}
-
-func errScopeFull(scope store.Scope) error {
-	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
+	return fmt.Errorf("%w (its oldest line %s is yours)", brain.ScopeFull(scope), uc.ID)
 }
 
 // scopeOver reports whether storing res would push its scope past
@@ -1560,13 +1559,9 @@ func (h *Host) scopeOver(res *learn.Result) bool {
 	if err != nil {
 		return false
 	}
-	used := brain.LineSize(res.Memory.Text)
-	for _, l := range lines {
-		if l.ID != res.Supersedes && l.ID != res.Memory.ID {
-			used += brain.LineSize(l.Text)
-		}
-	}
-	return used > brain.ScopeBudget
+	// the line this write replaces or rewrites is not part of the count
+	lines = slices.DeleteFunc(lines, func(l brain.Line) bool { return l.ID == res.Supersedes || l.ID == res.Memory.ID })
+	return brain.LineSize(res.Memory.Text)+brain.Used(lines) > brain.ScopeBudget
 }
 
 // quoteInSession reports whether the user wrote quote in session sid:
