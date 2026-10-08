@@ -231,5 +231,8 @@ func Ask(ctx context.Context, req Request) (Result, error) {
 		}
 		errs = append(errs, err)
 	}
-	return Result{Usage: used}, fmt.Errorf("no strategy answered: %w", errors.Join(errs...))
+	if joined := errors.Join(errs...); joined != nil {
+		return Result{Usage: used}, fmt.Errorf("no strategy answered: %w", joined)
+	}
+	return Result{Usage: used}, errors.New("no strategy to answer with: neither a protocol nor a chat was given")
 }

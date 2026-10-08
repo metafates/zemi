@@ -104,7 +104,7 @@ func (r *Result) Text() string {
 		case c.Resource != nil:
 			parts = append(parts, "["+c.Type+" "+c.Resource.URI+"]")
 		default:
-			parts = append(parts, strings.TrimSpace("["+c.Type+" "+c.MimeType+"]"))
+			parts = append(parts, "["+c.Type+" "+c.MimeType+"]")
 		}
 	}
 	if len(parts) == 0 && r.Structured != nil {
@@ -205,7 +205,9 @@ func (c *Client) initialize(ctx context.Context) error {
 	return c.send(ctx, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 }
 
-// Tools lists every tool, following pagination.
+// Tools lists every tool, following pagination. NOTE: a server still paging
+// after 100 pages is cut short, and the tools left on its later pages never
+// appear.
 func (c *Client) Tools(ctx context.Context) ([]Tool, error) {
 	var all []Tool
 	cursor := ""

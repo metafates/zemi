@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/proc"
@@ -521,10 +522,7 @@ func Offset(text string, pos Position) int {
 		if units >= pos.Character || r == '\n' {
 			return off + i
 		}
-		units++
-		if r > 0xFFFF {
-			units++
-		}
+		units += utf16.RuneLen(r)
 	}
 	return len(text)
 }
@@ -536,10 +534,7 @@ func Pos(text string, off int) Position {
 	start := strings.LastIndexByte(text[:off], '\n') + 1
 	units := 0
 	for _, r := range text[start:off] {
-		units++
-		if r > 0xFFFF {
-			units++
-		}
+		units += utf16.RuneLen(r)
 	}
 	return Position{Line: line, Character: units}
 }

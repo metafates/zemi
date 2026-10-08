@@ -64,6 +64,7 @@ func TestParseErrors(t *testing.T) {
 		{"missing description", "x", "---\nname: x\n---\n", "description is required"},
 		{"name mismatch", "x", "---\nname: y\ndescription: d\n---\n", "must match the directory"},
 		{"bad dir name", "Bad_Name", "---\nname: Bad_Name\ndescription: d\n---\n", "directory name"},
+		{"a SKILL.md over the cap", "x", strings.Repeat("a", MaxFileBytes+1), "SKILL.md exceeds"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

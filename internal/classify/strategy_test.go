@@ -1,7 +1,6 @@
 package classify
 
 import (
-	"context"
 	"errors"
 	"math"
 	"strings"
@@ -210,7 +209,7 @@ func TestAskLadder(t *testing.T) {
 	}
 
 	// nothing to answer with at all
-	if _, err := Ask(context.Background(), Request{State: map[string]any{}, Questions: one("danger")}); err == nil {
+	if _, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger")}); err == nil {
 		t.Error("a call with no model answered")
 	}
 }

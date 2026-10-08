@@ -80,9 +80,6 @@ func Parse(dir string, source Source) (Skill, error) {
 	if err != nil {
 		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
 	}
-	if len(data) > MaxFileBytes {
-		return sk, fmt.Errorf("skills: %s: SKILL.md exceeds %d bytes", sk.Name, MaxFileBytes)
-	}
 	fm, err := frontmatter(data)
 	if err != nil {
 		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
@@ -177,7 +174,8 @@ func frontmatter(data []byte) (front, error) {
 
 // readSkillFile reads a skill's SKILL.md, which must be a regular file: a
 // symlink reads outside the trees skills come from, and reading a FIFO blocks
-// the boot step or the turn that got here.
+// the boot step or the turn that got here. Its size is bounded here, before
+// the read.
 func readSkillFile(path string) ([]byte, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
@@ -191,6 +189,9 @@ func readSkillFile(path string) ([]byte, error) {
 	}
 	if !fi.Mode().IsRegular() {
 		return nil, errors.New("SKILL.md is not a regular file")
+	}
+	if fi.Size() > MaxFileBytes {
+		return nil, fmt.Errorf("SKILL.md exceeds %d bytes", MaxFileBytes)
 	}
 	return os.ReadFile(path)
 }
