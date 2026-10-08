@@ -3,13 +3,18 @@ package hostapi
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )
@@ -256,4 +261,40 @@ func pickerHas(items []any, id string) bool {
 		s, _ := row["copy"].(string)
 		return s == id
 	})
+}
+
+// TestClassifyStub: a plugin's own test answers lua.classify.ask, so a
+// classifier mode is testable without a provider, the way lua.model.ask is.
+func TestClassifyStub(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "local", "a", "tests", "clf.lua")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(`local test = zemi.test
+test("a stubbed classify answers", function()
+	test.stub("lua.classify.ask", "*", {
+		strategy = "logprobs",
+		answers = { safe = { value = true, probability = 0.93 } },
+	})
+	local res, err = zemi.classify.ask({
+		state = { cmd = "rm -rf build" },
+		questions = { safe = { type = "bool", instructions = "is it safe", criteria = { ["true"] = "y", ["false"] = "n" } } },
+	}):wait()
+	assert(err == nil, tostring(err))
+	assert(res.strategy == "logprobs", res.strategy)
+	assert(res.answers.safe.value == true, tostring(res.answers.safe.value))
+	assert(res.answers.safe.probability == 0.93, tostring(res.answers.safe.probability))
+end)`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.DiscardHandler)
+	h, pt := NewPluginTest(log, lua.PathClasses{{Prefix: root, Origin: lua.OriginPlugin}}, config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}, file, 0)
+	defer h.Close()
+	if err := h.RT.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), pt.Step()}); err != nil {
+		t.Fatal(err)
+	}
+	if lines := pt.Run(t.Context(), 10*time.Second); lines != nil {
+		t.Fatalf("the plugin test failed: %v", lines)
+	}
 }

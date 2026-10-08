@@ -34,9 +34,6 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	questions := classifyQuestions(L, spec)
 	ref := cmp.Or(rawString(L, spec, "model"), h.ConversationTarget())
 	id := h.modelRef(ref)
-	if id == "" {
-		L.RaiseError("zemi.classify.ask: %v", h.modelErr(id))
-	}
 	var stub *stubReply
 	switch o := h.RT.CurrentOrigin(L); {
 	case o.Rank() <= lua.OriginProject.Rank():
@@ -50,9 +47,16 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	if n, ok := opt[glua.LNumber](L, spec, "timeout"); ok && n > 0 {
 		timeout = time.Duration(float64(n) * float64(time.Second))
 	}
-	req, err := h.classifyRequest(id, state, questions)
-	if err != nil {
-		L.RaiseError("zemi.classify.ask: %v", err)
+	// a stub stands in for the whole call, a model and all
+	req := classify.Request{State: state, Questions: questions}
+	if stub == nil {
+		if id == "" {
+			L.RaiseError("zemi.classify.ask: %v", h.modelErr(id))
+		}
+		var err error
+		if req, err = h.classifyRequest(id, state, questions); err != nil {
+			L.RaiseError("zemi.classify.ask: %v", err)
+		}
 	}
 	sid := h.AgentSessionID()
 	var (
