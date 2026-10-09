@@ -217,6 +217,10 @@ const planAssuming = `
 2. What only the user can decide (goal, scope, behavior, tradeoffs) goes in the plan as a stated assumption.
 3. Then call the plan tool, and end every turn with it, never plain text.`
 
+// contextOpener opens every context message; the bytes after it vary by
+// project and session.
+const contextOpener = "<context>\nzemi's notes for this session, not the user's words."
+
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
 // files, the environment with the run's scratchpad pad and sandbox
@@ -280,8 +284,8 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// The system prompt is the same for every session of the user, so the
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
-	system = sys + rules + index + user + luaSections
-	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + projectIndex + env + brainText + last + "\n</context>"
+	system = sys + rules + user + index + luaSections
+	ctxMsg = contextOpener + project + projectIndex + env + brainText + last + "\n</context>"
 	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index) + len(projectIndex), brain: len(brainText), files: mtimes}
 	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.brain
 	return system, ctxMsg, parts
