@@ -198,7 +198,7 @@ func TestPolicy(t *testing.T) {
 		}
 	}
 	plugin := filepath.Join(hide, "plugins", "local", "p")
-	for _, d := range []string{filepath.Join(plugin, ".git"), filepath.Join(plugin, "lua", "p", ".git")} {
+	for _, d := range []string{filepath.Join(plugin, ".git"), filepath.Join(plugin, ".zemi", "lua", "p", ".git")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -207,8 +207,8 @@ func TestPolicy(t *testing.T) {
 		filepath.Join(root, "plain.txt"), filepath.Join(root, ".git", "config"), filepath.Join(root, ".env"), filepath.Join(root, "backend", ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
 		filepath.Join(root, "id_rsa"), filepath.Join(root, "id_rsa_old"), filepath.Join(root, "id_rsa.pub"),
 		filepath.Join(root, "ID_RSA_OLD"), filepath.Join(root, "ID_RSA.PUB"), filepath.Join(root, "PLAIN.TXT"),
-		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
-		filepath.Join(plugin, "lua", "p", ".git", "config"),
+		filepath.Join(plugin, ".zemi", "init.lua"), filepath.Join(plugin, ".zemi", "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
+		filepath.Join(plugin, ".zemi", "lua", "p", ".git", "config"),
 	} {
 		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
@@ -221,8 +221,8 @@ func TestPolicy(t *testing.T) {
 		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
 		Git:      filepath.Join(root, ".git"),
-		Hide:     []string{hide, state, filepath.Join(plugin, "lua", "p", ".git")},
-		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
+		Hide:     []string{hide, state, filepath.Join(plugin, ".zemi", "lua", "p", ".git")},
+		Read:     []string{filepath.Join(plugin, ".zemi", "init.lua"), filepath.Join(plugin, ".zemi", "lua")},
 		List:     []string{plugin},
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on", "TMPDIR": scratch},
@@ -331,13 +331,13 @@ func TestPolicy(t *testing.T) {
 		// NOTE: see setupNamespaces
 		{"rename a protected symlink", "rename", filepath.Join(root, ".agents"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},
 		{"read a hidden dir", "read", filepath.Join(hide, "id"), false, false},
-		{"read a file Read opens in a hidden dir", "read", filepath.Join(plugin, "init.lua"), true, false},
-		{"read in a tree Read opens", "read", filepath.Join(plugin, "lua", "p", "init.lua"), true, false},
-		{"realpath what Read opens", "realpath", filepath.Join(plugin, "lua", "p", "init.lua"), true, false},
+		{"read a file Read opens in a hidden dir", "read", filepath.Join(plugin, ".zemi", "init.lua"), true, false},
+		{"read in a tree Read opens", "read", filepath.Join(plugin, ".zemi", "lua", "p", "init.lua"), true, false},
+		{"realpath what Read opens", "realpath", filepath.Join(plugin, ".zemi", "lua", "p", "init.lua"), true, false},
 		{"list a dir List opens", "ls", plugin, true, false},
 		{"read what a List dir holds", "read", filepath.Join(plugin, ".git", "config"), false, false},
-		{"read a Hide inside a Read tree", "read", filepath.Join(plugin, "lua", "p", ".git", "config"), false, false},
-		{"write what Read opens", "write", filepath.Join(plugin, "init.lua"), false, false},
+		{"read a Hide inside a Read tree", "read", filepath.Join(plugin, ".zemi", "lua", "p", ".git", "config"), false, false},
+		{"write what Read opens", "write", filepath.Join(plugin, ".zemi", "init.lua"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"read a private key", "read", filepath.Join(root, "id_rsa"), false, !b.HidesSecretFiles},
 		{"read an old private key", "read", filepath.Join(root, "id_rsa_old"), false, !b.HidesSecretFiles},

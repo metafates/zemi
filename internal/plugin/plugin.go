@@ -45,14 +45,22 @@ type Plugin struct {
 	revision string
 }
 
-// ManifestFile is the plugin's manifest, relative to its root: what marks the
+// CodeDir is where a plugin keeps everything zemi runs or reads as code: its
+// Lua, its tests, its workflows and its manifest. The resource dirs a plugin
+// layers over the user's (skills, agents, commands) stay at its root.
+const CodeDir = ".zemi"
+
+// ManifestFile is the plugin's manifest, inside CodeDir: what marks the
 // directory as a plugin and answers its version and description. A plugin
 // without one reports its git tag and init.lua's first line, as before.
-const ManifestFile = ".zemi/plugin.json"
+const ManifestFile = CodeDir + "/plugin.json"
 
-// Manifest is the raw manifest of the plugin in dir, nil for the plugins that
-// have none: the reader and the copier take the same 4 KB of a regular file.
-func Manifest(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile)) }
+// InitFile is the chunk loaded as the plugin origin, inside CodeDir.
+const InitFile = CodeDir + "/init.lua"
+
+// manifestBytes is the raw manifest of the plugin in dir, nil for the plugins
+// that have none: the reader takes the first 4 KB of a regular file.
+func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile)) }
 
 // manifest is ManifestFile parsed; every field is optional.
 type manifest struct {
@@ -80,7 +88,7 @@ func CheckUses(u []string) error {
 // one is the zero manifest, which declares nothing.
 func manifestOf(dir string) manifest {
 	var m manifest
-	_ = json.Unmarshal(Manifest(dir), &m)
+	_ = json.Unmarshal(manifestBytes(dir), &m)
 	return m
 }
 
@@ -129,14 +137,23 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 	return ps, nil
 }
 
-// Code reports whether an entry of a plugin's root is what zemi loads or its
-// tests read: the .lua files, lua/, tests/ and the layered dirs. The copier
-// and the read jail take these plus ManifestFile, which is no Code entry.
-func Code(name string, dir bool) bool {
-	if dir {
-		return slices.Contains([]string{"lua", "tests", "skills", "agents", "commands", "workflows"}, name)
+// Code reports whether an entry of a plugin's root holds what zemi loads or
+// its tests read: CodeDir, and the dirs a plugin layers over the user's. The
+// copier and the read jail take these entries whole.
+func Code(name string) bool {
+	return slices.Contains([]string{CodeDir, "skills", "agents", "commands"}, name)
+}
+
+// OldLayout is why a plugin in the layout before CodeDir cannot load, nil for
+// one that keeps its Lua where zemi reads it: that root entry is what the
+// loader no longer reaches.
+func OldLayout(dir string) error {
+	for _, name := range []string{"init.lua", "lua", "tests", "workflows"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return fmt.Errorf("%s is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under %s/", name, CodeDir)
+		}
 	}
-	return strings.HasSuffix(name, ".lua")
+	return nil
 }
 
 // Kept reports whether an entry below a plugin's code is code too: not a dot
@@ -375,7 +392,7 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	// what it leaves out
 	m := manifestOf(dir)
 	p.Version, p.Desc, p.Uses = m.Version, m.Description, m.Uses
-	if line := firstLine(filepath.Join(dir, "init.lua")); p.Desc == "" && strings.HasPrefix(line, "--") {
+	if line := firstLine(filepath.Join(dir, InitFile)); p.Desc == "" && strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}
 	// git would read the config of whatever repository a symlink names

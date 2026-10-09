@@ -24,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -1949,7 +1950,7 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 	h.agents.sessionID = "s1"
 	h.Dirs.DataHome = t.TempDir()
 	proj := perm.RealPath(h.Dirs.ProjectDir)
-	plugin := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local", "p", "init.lua")
+	plugin := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local", "p", plugin.InitFile)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.StateHome), "*"), Decision: perm.Allow, Principal: "model"})
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.DataHome), "*"), Decision: perm.Allow, Principal: "model"})

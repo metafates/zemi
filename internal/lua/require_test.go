@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	pluginpkg "github.com/metafates/zemi/internal/plugin"
 )
 
 // newRequireRuntime builds a runtime whose runtimepath covers a user config
@@ -206,7 +208,7 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 func TestOriginFollowsCode(t *testing.T) {
 	r, cfg, plugin := newRequireRuntime(t)
 	dir := filepath.Join(plugin, "local", "omod")
-	writeFile(t, filepath.Join(dir, "lua", "omod.lua"), `print("body")
+	writeFile(t, filepath.Join(dir, pluginpkg.CodeDir, "lua", "omod.lua"), `print("body")
 		return { setup = function(f) print("setup") f() coroutine.wrap(print)("wrapped")
 			local _, forged = pcall(loadstring, "print('forged')", "@user:/x") coroutine.wrap(forged)() end }`)
 	r.rfs = fstest.MapFS{"lua/zemi/util.lua": {Data: []byte(`return { call = function(f) f() end }`)}}

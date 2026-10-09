@@ -29,6 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -199,7 +200,8 @@ func (t *PluginTest) Run(ctx context.Context, timeout time.Duration) []string {
 // Rel writes the paths of the plugin copy relative to the plugin and the
 // test zemi's project as <project>, so a report names no temp dir.
 func (t *PluginTest) Rel(s string) string {
-	root := filepath.Dir(filepath.Dir(t.file))
+	// the plugin dir: a test file sits under <plugin>/.zemi/tests/
+	root, _, _ := strings.Cut(t.file, string(filepath.Separator)+plugin.CodeDir+string(filepath.Separator))
 	s = strings.ReplaceAll(s, "@plugin:"+root+"/", "")
 	s = strings.ReplaceAll(s, root+"/", "")
 	return strings.ReplaceAll(s, t.h.Dirs.ProjectDir, "<project>")

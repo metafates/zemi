@@ -14,6 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -46,10 +47,10 @@ func TestPluginsCommand(t *testing.T) {
 	dirs := config.Dirs{ProjectDir: tmp, DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
 	src := filepath.Join(tmp, "src", "x")
 	for p, text := range map[string]string{
-		filepath.Join(dirs.PluginsRoot(), "local", "a", "init.lua"):             "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
-		filepath.Join(dirs.PluginsRoot(), "local", "a", ".zemi", "plugin.json"): `{"version": "0.1.0", "description": "a todo list in the statusline"}`,
-		filepath.Join(dirs.PluginsRoot(), "local", "b", "init.lua"):             "error('broken')",
-		filepath.Join(src, "init.lua"):                                          "-- the x plugin\n",
+		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.InitFile):     "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
+		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.ManifestFile): `{"version": "0.1.0", "description": "a todo list in the statusline"}`,
+		filepath.Join(dirs.PluginsRoot(), "local", "b", plugin.InitFile):     "error('broken')",
+		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\n",
 	} {
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte(text), 0o644)
@@ -137,14 +138,13 @@ func TestPluginsCommand(t *testing.T) {
 	}
 }
 
-// TestPluginsOpen: Open in the editor opens init.lua, or the directory of a
-// plugin that has none.
+// TestPluginsOpen: Open in the editor opens .zemi/init.lua, or the directory
+// of a plugin that has none.
 func TestPluginsOpen(t *testing.T) {
 	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()}
-	for _, name := range []string{"lua", "skills"} {
-		os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", name), 0o755)
-	}
-	os.WriteFile(filepath.Join(dirs.PluginsRoot(), "local", "lua", "init.lua"), nil, 0o644)
+	os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", "skills"), 0o755)
+	os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", "lua", plugin.CodeDir), 0o755)
+	os.WriteFile(filepath.Join(dirs.PluginsRoot(), "local", "lua", plugin.InitFile), nil, 0o644)
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), dirs)
@@ -153,7 +153,7 @@ func TestPluginsOpen(t *testing.T) {
 	}
 	edited := make(chan string, 1)
 	h.SetUIHooks(&fakeUI{edit: func(path string) { edited <- path }})
-	for name, want := range map[string]string{"lua": "lua/init.lua", "skills": "skills"} {
+	for name, want := range map[string]string{"lua": "lua/" + plugin.InitFile, "skills": "skills"} {
 		if err := h.RunCommand(t.Context(), "plugins", "open "+name); err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +223,7 @@ func TestPluginsSend(t *testing.T) {
 			if got := h.madePlugin(perm.RealPath(filepath.Join(h.Dirs.ConfigHome, "init.lua"))); got {
 				t.Error("auto mode edits init.lua")
 			}
-			if got := h.madePlugin(perm.RealPath(filepath.Join(data, "plugins", "local", "mine", "init.lua"))); got != c.grant {
+			if got := h.madePlugin(perm.RealPath(filepath.Join(data, "plugins", "local", "mine", ".zemi", "init.lua"))); got != c.grant {
 				t.Errorf("auto mode edits the plugin: %v, want %v", got, c.grant)
 			}
 			if c.sent == nil {

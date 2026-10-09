@@ -315,9 +315,10 @@ Directories (XDG):
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
-                          skills|agents|commands|workflows/ as in the config dir, and .zemi/plugin.json
-                          the manifest: its optional version, description and uses (§9)
+  plugins/installed/<name>/  plugins zemi cloned (git); their code under .zemi/: init.lua loaded,
+                          lua/<name>/ require()-able, tests/, workflows/, and plugin.json, the
+                          manifest with its optional version, description and uses (§9);
+                          skills|agents|commands/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
   plugins/disabled        names turned off, one per line
@@ -403,7 +404,7 @@ Load order is a list of boot steps: host `zemi.*` namespaces
 file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
 shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
-server) -> plugins (each enabled plugin's `init.lua`, sorted by name) ->
+server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> a trusted project's
 `.agents/init.lua` -> markdown commands (user, then each plugin's, then a
 trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
@@ -437,15 +438,18 @@ does not stick) under the same denylist.
 Runtimepath, in order: a trusted project's `.agents` (for project code
 only), `~/.config/zemi`, then the one enabled plugin named like the
 module's first segment: `require("x.y")` searches only plugin `x`'s
-`lua/`, so no plugin shadows another's modules, and plugin `x`'s own code
-searches its root before the config dir. The plugin roots are the ones the
-plugins step loaded, fixed for the generation, so a disabled plugin's
+`.zemi/lua/`, so no plugin shadows another's modules, and plugin `x`'s own
+code searches its root before the config dir. The plugin roots are the ones
+the plugins step loaded, fixed for the generation, so a disabled plugin's
 files never resolve.
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
-the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
+the names in `disabled`, and runs each `.zemi/init.lua` as plugin origin; it runs
 no git and reads each manifest only for its declared `uses`, which a name
-outside §9's vocabulary refuses at load. A plugin's skills, agents, commands and
+outside §9's vocabulary refuses at load. A plugin whose `init.lua`, `lua/`,
+`tests/` or `workflows/` still sits at its root is refused too, with where
+its Lua goes: that layout is what zemi no longer reads, and loading nothing
+in its place would be silent. A plugin's skills, agents, commands and
 workflows come from the same list, sorted by name, whether or not its
 `init.lua` ran; the user's
 and the builtin ones win a name, a name two plugins ship goes to the first
@@ -457,7 +461,8 @@ files would resolve outside the plugin class). The step also drops the
 `zemi.state` keys of a plugin whose directory is gone or holds another
 install: `install` writes a random id into the clone's `.git`, and the key
 `plugin:<name>` keeps the one that wrote them. The one-second config
-watcher reads `local/` whole, the `disabled` file and each clone's git
+watcher reads `local/` whole, `.zemi` included, the `disabled` file and each
+clone's git
 index, so an edit, a toggle, an install, an update and a delete each
 reload.
 
@@ -472,10 +477,11 @@ the list names each update from local refs; `enable`, `disable` and
 link only; `zemi plugins delete` asks first, and needs `--yes` off a
 terminal). `zemi plugins` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
-after `--`. A plugin may carry a manifest, `.zemi/plugin.json` at its root:
+after `--`. A plugin may carry a manifest, `.zemi/plugin.json` in its code
+dir:
 `{ "version": "1.2.0", "description": "...", "uses": ["model", "http"] }`,
 every field optional, which is what a list shows in place of the
-checked-out tag (else the short commit) and `init.lua`'s first line; `uses`
+checked-out tag (else the short commit) and `.zemi/init.lua`'s first line; `uses`
 is the set of host capabilities the plugin's code calls, and what §9 makes
 the switch grant. It never names the plugin: the directory does,
 in the settings keys, the principals and every verb.
@@ -485,7 +491,7 @@ description; its detail names the source, the load status, the manifest's
 `uses` and what the plugin registered, and the git verbs run on a goroutine that
 refreshes the list when they end, unless the user closed it meanwhile. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
-`open <name>` (its `init.lua` in the editor, or its directory without one),
+`open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
 `new [what it should do]`, the list's first row, and `modify <name> [what
 to change]`, which a local plugin's detail fills; the last two send the
 agent a short prompt pointing at the zemi skill's plugins.md, where the
@@ -494,13 +500,14 @@ exits, as an approved creating write does (§9); an installed clone is
 refused, since the agent never writes there.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
-`tests/*.lua` so an agent writing one tests it without a user's session.
+`.zemi/tests/*.lua` so an agent writing one tests it without a user's session.
 Each top-level file there is a test file, and one that declares no case
-fails: code the files share goes in a subdirectory (`tests/lib/`, loaded
+fails: code the files share goes in a subdirectory (`.zemi/tests/lib/`, loaded
 with `require("./lib/<name>")`), which the runner does not glob. Each case
 whose "file: name" holds the pattern runs in a zemi of
 its own, booted in the process from temp dirs holding a filtered copy of
-the plugin (its code and its manifest, no other dot entry, `node_modules`
+the plugin (its code and its manifest, `.zemi` whole, nothing of the root
+but the layer dirs, no `node_modules`
 or link leading out) and nothing else: no user or project config, no trust
 step, no other plugin, no `~/.agents`. The file's top level runs where
 `init.lua` would, so it is
@@ -2940,7 +2947,7 @@ rides the `memories.md` line and its ledger entries.
   always answer, and no mode's rules settle it (a decide may), since the code loads
   in every project, trusted or not; an installed plugin changes only
   through git. The one exception is the plugin being created: the user's
-  yes (or yolo) to the write that creates `local/<name>/` lets auto edit
+  yes (or yolo) to the write that creates `local/<name>/.zemi/init.lua` lets auto edit
   that directory, its `.git` aside, in any project until zemi exits,
   and a directory that already existed is never granted. So an approved
   `fs.write` in one project cannot silently plant code in a plugin the user

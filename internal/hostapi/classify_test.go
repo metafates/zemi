@@ -313,15 +313,15 @@ func TestClassifyGate(t *testing.T) {
 	// `model` is the consent), an explicit user rule still decides first, and
 	// project code may not call it at all
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
-	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err != nil {
+	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin with no rule: %v", err)
 	}
 	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
-	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err == nil {
+	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err == nil {
 		t.Error("a user's deny rule did not refuse a plugin's classify call")
 	}
 	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:b"})
-	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/init.lua", lua.OriginPlugin); err == nil {
+	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err == nil {
 		t.Error("another plugin's allow rule settled plugin a's call")
 	}
 	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code may not call a model") {
@@ -361,7 +361,7 @@ func pickerHas(items []any, id string) bool {
 // classifier mode is testable without a provider, the way lua.model.ask is.
 func TestClassifyStub(t *testing.T) {
 	root := t.TempDir()
-	file := filepath.Join(root, "local", "a", "tests", "clf.lua")
+	file := filepath.Join(root, "local", "a", ".zemi", "tests", "clf.lua")
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
 	}

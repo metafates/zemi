@@ -17,6 +17,8 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
+
+	"github.com/metafates/zemi/internal/plugin"
 )
 
 // Runtime owns the interpreter lifecycle: one live generation at a time, a
@@ -659,14 +661,16 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 	return nil, "", fmt.Errorf("module %q not found in embedded runtime", name)
 }
 
+// cand is one place a module may sit: its base path, and the plugin dir the
+// file must be in ("" for any other origin).
+type cand struct{ base, root string }
+
 // findModule resolves a module name to a symlink-resolved file. Relative
 // names ("./util", "../lib/x") resolve against the requiring file and must
-// stay inside its origin's tree; dotted names search <root>/lua over the
-// runtimepath. A plugin's file resolves only from its own enabled plugin,
-// so neither ".." nor a symlink reaches another plugin's code or a
-// disabled one's.
+// stay inside its origin's tree; dotted names search the runtimepath's code
+// dirs. A plugin's file resolves only from its own enabled plugin, so neither
+// ".." nor a symlink reaches another plugin's code or a disabled one's.
 func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (string, Origin, error) {
-	type cand struct{ base, root string } // root: the plugin dir the file must be in, or ""
 	var cands []cand
 	var from string
 	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
@@ -678,8 +682,8 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 		cands = []cand{{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua"))), gen.pluginRoot(from)}}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
-		for _, root := range r.runtimepath(gen, L, rel) {
-			cands = append(cands, cand{filepath.Join(root, "lua", rel), gen.pluginRoot(root)})
+		for _, c := range r.runtimepath(gen, L, rel) {
+			cands = append(cands, cand{filepath.Join(c.base, rel), c.root})
 		}
 	}
 	for _, c := range cands {
@@ -750,15 +754,16 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	return out, nil
 }
 
-// runtimepath lists the roots a dotted require of rel searches, in order:
-// the project's .agents for project code only (user and plugin requires
-// never resolve into a repository's untrusted files), config home, then the
-// enabled plugin named like rel's first segment, first for that plugin's own
-// code. A plugin answers only its own names, so none shadows another's
-// modules. The embedded runtime is consulted separately (DESIGN §5).
-func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []string {
+// runtimepath lists the code directories a dotted require of rel searches, in
+// order: the project's .agents for project code only (user and plugin requires
+// never resolve into a repository's untrusted files), the config home, then
+// the enabled plugin named like rel's first segment, first for that plugin's
+// own code. A plugin keeps its modules with the rest of its Lua under CodeDir.
+// No plugin shadows another's modules. The embedded runtime is consulted
+// separately (DESIGN §5).
+func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []cand {
 	head, _, _ := strings.Cut(rel, string(filepath.Separator))
-	var out []string
+	var out []cand
 	own := ""
 	for _, root := range gen.Plugins {
 		if filepath.Base(root) == head {
@@ -766,7 +771,7 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []str
 		}
 	}
 	if own != "" && own == r.requirerRoot(gen, L) {
-		out, own = append(out, own), ""
+		out, own = append(out, cand{pluginCode(own), own}), ""
 	}
 	for _, want := range []Origin{OriginProject, OriginUser} {
 		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
@@ -774,15 +779,19 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []str
 		}
 		for _, c := range r.paths {
 			if c.Origin == want && c.Prefix != "" {
-				out = append(out, c.Prefix)
+				out = append(out, cand{filepath.Join(c.Prefix, "lua"), ""})
 			}
 		}
 	}
 	if own != "" {
-		out = append(out, own)
+		out = append(out, cand{pluginCode(own), own})
 	}
 	return out
 }
+
+// pluginCode is where a plugin's modules live: with its manifest, under the
+// code dir zemi loads it from.
+func pluginCode(root string) string { return filepath.Join(root, plugin.CodeDir, "lua") }
 
 // requirerRoot is the enabled plugin dir of the code calling require: the
 // calling file's, else that of the plugin the call runs as.

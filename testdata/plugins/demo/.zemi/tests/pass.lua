@@ -148,7 +148,7 @@ test("gated calls fail closed, the mode unchanged", function()
 	test.raises(function() zemi.permission.mode.set("yolo") end)
 	test.eq(
 		test.raises(function() zemi.http.get("https://example.com/") end),
-		'tests/pass.lua:150: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
+		'.zemi/tests/pass.lua:150: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
 	)
 end)
 

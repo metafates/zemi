@@ -61,7 +61,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 			g.Plugins = grant.roots
 			h.pluginGrant.Store(&grant)
 			for _, p := range run {
-				init := filepath.Join(p.Dir, "init.lua")
+				init := filepath.Join(p.Dir, plugin.InitFile)
 				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
 			}
 			slices.SortStableFunc(loads, func(a, b pluginLoad) int { return cmp.Compare(a.name, b.name) })
@@ -90,6 +90,11 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 	for _, p := range ps {
 		fi, err := os.Lstat(p.Dir)
 		uses := plugin.CheckUses(p.Uses)
+		// a link reads as its target, so its layout is not this plugin's to check
+		var old error
+		if err == nil && fi.IsDir() {
+			old = plugin.OldLayout(p.Dir)
+		}
 		switch {
 		case !p.Enabled:
 		case uses != nil:
@@ -100,6 +105,8 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 			// origin is classified on resolved paths, so its files would be
 			// nobody's
 			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
+		case old != nil:
+			refused = append(refused, pluginLoad{p.Name, p.Dir, old})
 		default:
 			run = append(run, p)
 		}
@@ -263,6 +270,15 @@ type layerFile struct {
 	origin     lua.Origin
 }
 
+// pluginLayerDir is where a plugin keeps one layered resource dir: the Lua
+// one (workflows) under CodeDir, the markdown ones at its root.
+func pluginLayerDir(root, sub string) string {
+	if sub == "workflows" {
+		return filepath.Join(root, plugin.CodeDir, sub)
+	}
+	return filepath.Join(root, sub)
+}
+
 // layerFiles hands load the <name><ext> files in sub of the user config,
 // each enabled plugin, then a trusted project's .agents. The first file of a
 // name load accepts wins, so a broken one hides nothing; /errors records a
@@ -274,7 +290,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 		dirs = append(dirs, layerFile{path: filepath.Join(h.Dirs.ConfigHome, sub), origin: lua.OriginUser})
 	}
 	for _, p := range h.pluginDirs() {
-		dirs = append(dirs, layerFile{path: filepath.Join(p, sub), origin: lua.OriginPlugin})
+		dirs = append(dirs, layerFile{path: pluginLayerDir(p, sub), origin: lua.OriginPlugin})
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 		dirs = append(dirs, layerFile{path: filepath.Join(pdir, sub), origin: lua.OriginProject})

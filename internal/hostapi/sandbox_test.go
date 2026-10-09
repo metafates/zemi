@@ -396,7 +396,7 @@ func TestSandboxedShell(t *testing.T) {
 		defer func() { h.Dirs.DataHome = data }()
 		h.Dirs.DataHome = t.TempDir()
 		plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "p")
-		files := map[string]bool{"init.lua": true, "lua/p/init.lua": true, ".zemi/plugin.json": true, "README.md": false, ".git/config": false, "lua/p/.git/config": false}
+		files := map[string]bool{".zemi/init.lua": true, ".zemi/lua/p/init.lua": true, ".zemi/plugin.json": true, "README.md": false, ".git/config": false, ".zemi/lua/p/.git/config": false}
 		for path := range files {
 			file := filepath.Join(plugin, path)
 			if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {

@@ -57,13 +57,14 @@
 | "connection refused" to a local server from a command auto mode ran, on Linux | `landlock + namespaces` gives the sandbox a localhost of its own, so servers already running on the machine are unreachable; retry with `network: true`, which shares zemi's own network |
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.agents` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume`, after ten minutes with no turn in an open zemi and at start for one session idle that long, once one has two new user messages and a tool call or a failed call; `/reflect` runs it now |
-| `module "x" not found on runtimepath` from a plugin | the module is not at `<plugin x>/lua/x.lua` or `lua/x/init.lua` (a plugin answers only requires under its own name, so plugin `zemi-branch` cannot answer `require("branch")`), or plugin x is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
+| `module "x" not found on runtimepath` from a plugin | the module is not at `<plugin x>/.zemi/lua/x.lua` or `.zemi/lua/x/init.lua` (a plugin answers only requires under its own name, so plugin `zemi-branch` cannot answer `require("branch")`), or plugin x is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
 | `module "..." at ... is outside plugin <name>` | a relative require or a symlink left the plugin's own directory, or reached a disabled plugin |
 | `plugin code running with no file of its plugin on the stack has no principal` | user code called a function a plugin handed out that is not the plugin's own file (a user module it required, a `load` chunk); call it through the plugin's own code |
 | `zemi run "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
 | a script's `zemi run` log is full of chat rows | stderr shows the run as the chat draws it; `-q` keeps it to what went wrong, and stdout has only the answer |
 | one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
-| a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/` or `local/<name>/` (a library-only plugin has just `lua/`), or its name is in `<data>/plugins/disabled` |
+| a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/.zemi/` or `local/<name>/.zemi/` (a library-only plugin has just `.zemi/lua/`), or its name is in `<data>/plugins/disabled` |
+| a plugin is refused in `/errors` with "its Lua is at the plugin root" | the plugin predates the `.zemi/` layout: move its `init.lua`, `lua/`, `tests/` and `workflows/` under `.zemi/` |
 | `... is registered by plugin x, not y` | two plugins want one command, key, widget, theme, event handler id, tool, completion source or health row, or y tried to remove x's; the first by name keeps it |
 
 ## Stores

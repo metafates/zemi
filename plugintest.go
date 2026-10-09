@@ -75,9 +75,9 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	if _, err := hostapi.PluginDir(dirs, name); err != nil {
 		return fail(fmt.Errorf("%s: zemi would not load it: %w", src, err))
 	}
-	files, _ := filepath.Glob(filepath.Join(copied, "tests", "*.lua"))
+	files, _ := filepath.Glob(filepath.Join(copied, plugin.CodeDir, "tests", "*.lua"))
 	if len(files) == 0 {
-		fmt.Fprintf(stdout, "no tests/*.lua in %s\n", src)
+		fmt.Fprintf(stdout, "no %s/tests/*.lua in %s\n", plugin.CodeDir, src)
 		return 1
 	}
 
@@ -110,7 +110,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	start := time.Now()
 	passed, failed, cases, ran := 0, 0, 0, 0
 	for _, file := range files {
-		rel := "tests/" + filepath.Base(file)
+		rel := plugin.CodeDir + "/tests/" + filepath.Base(file)
 		pt, end, err := boot(file, -1)
 		declared := pt.Cases
 		end()
@@ -121,7 +121,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			failed++
 			if step, ok := errors.AsType[*lua.StepError](err); ok && step.Step == "plugins" {
 				// every file would fail the same way
-				printFail(stdout, "init.lua", strings.TrimPrefix(bootError(pt, err), "plugin "+name+": "), nil)
+				printFail(stdout, plugin.InitFile, strings.TrimPrefix(bootError(pt, err), "plugin "+name+": "), nil)
 				break
 			}
 			printFail(stdout, rel, bootError(pt, err), nil)
@@ -129,7 +129,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		}
 		if len(declared) == 0 {
 			failed++
-			printFail(stdout, rel, `declares no case; code the tests share goes in a subdirectory (tests/lib/) and loads with require("./lib/<name>")`, nil)
+			printFail(stdout, rel, `declares no case; code the tests share goes in a subdirectory (`+plugin.CodeDir+`/tests/lib/) and loads with require("./lib/<name>")`, nil)
 			continue
 		}
 		cases += len(declared)
@@ -232,39 +232,36 @@ func pluginSource(arg string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(filepath.Join(dir, "init.lua")); err != nil {
+	if old := plugin.OldLayout(dir); old != nil {
+		return "", fmt.Errorf("%s: %w", dir, old)
+	}
+	if _, err := os.Stat(filepath.Join(dir, plugin.CodeDir)); err != nil {
 		return "", fmt.Errorf("%s is no plugin: %w", dir, err)
 	}
 	return dir, nil
 }
 
 // copyPlugin copies the plugin at src to dst the way a test zemi should
-// load it: its code (plugin.Code, plugin.Kept), its manifest, a
-// symbolic link only when it is relative and stays inside the plugin, at
-// most copyFiles files and copyBytes bytes.
+// load it: its code (plugin.Code, plugin.Kept), a symbolic link only when it
+// is relative and stays inside the plugin, at most copyFiles files and
+// copyBytes bytes.
 func copyPlugin(src, dst string) error {
 	files, size := 0, int64(0)
 	inside := func(p string) bool { _, ok := perm.Under(src, p); return ok }
-	// the manifest sits under a dot dir, which the walk skips; plugin.Manifest
-	// bounds it the way load reads it
-	if data := plugin.Manifest(src); data != nil {
-		to := filepath.Join(dst, plugin.ManifestFile)
-		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(to, data, 0o644); err != nil {
-			return err
-		}
-	}
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if p != src && (!plugin.Kept(d.Name()) || filepath.Dir(p) == src && !plugin.Code(d.Name(), d.IsDir())) {
-			if d.IsDir() {
-				return filepath.SkipDir
+		// the root's entries are the plugin's layout (plugin.Code); below them
+		// the code is whole, minus what zemi hides anywhere (plugin.Kept)
+		if p != src {
+			atRoot := filepath.Dir(p) == src
+			if atRoot && !plugin.Code(d.Name()) || !atRoot && !plugin.Kept(d.Name()) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			return nil
 		}
 		rel, _ := filepath.Rel(src, p)
 		to := filepath.Join(dst, rel)

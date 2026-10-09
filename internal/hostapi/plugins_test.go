@@ -34,11 +34,17 @@ func TestPluginsStep(t *testing.T) {
 	}
 	// res adds a skill, an agent, a command and a workflow named name under root
 	res := func(files map[string]string, root, name string) map[string]string {
+		// the config dir keeps its workflows beside init.lua; a plugin's Lua,
+		// workflows included, lives under .zemi
+		wf := root + "workflows/"
+		if root != "" {
+			wf = root + plugin.CodeDir + "/workflows/"
+		}
 		maps.Copy(files, map[string]string{
 			root + "skills/" + name + "/SKILL.md": "---\nname: " + name + "\ndescription: d\n---\nbody",
 			root + "agents/" + name + ".md":       "---\ndescription: d\n---\nbe brief",
 			root + "commands/" + name + ".md":     "do it",
-			root + "workflows/" + name + ".lua":   "-- d\nreturn 1",
+			wf + name + ".lua":                    "-- d\nreturn 1",
 		})
 		return files
 	}
@@ -54,27 +60,27 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "sorted by name, disabled skipped",
 			plugins: map[string]string{
-				"installed/a/init.lua": `print("a")`, "local/b/init.lua": `print("b")`,
-				"installed/c/init.lua": `print("c")`, "disabled": "c\n",
+				"installed/a/.zemi/init.lua": `print("a")`, "local/b/.zemi/init.lua": `print("b")`,
+				"installed/c/.zemi/init.lua": `print("c")`, "disabled": "c\n",
 			},
 			want: []string{"plugin|a\nplugin|b\n", "health: 2 plugins ready\n"},
 			not:  []string{"plugin|c"},
 		},
 		{
 			name:    "a local plugin named like an installed one",
-			plugins: map[string]string{"installed/x/init.lua": `print("installed")`, "local/x/init.lua": `print("local")`},
+			plugins: map[string]string{"installed/x/.zemi/init.lua": `print("installed")`, "local/x/.zemi/init.lua": `print("local")`},
 			want:    []string{"plugin|installed", "plugin x: an installed plugin has this name"},
 			not:     []string{"plugin|local"},
 		},
 		{
 			name:    "a failing plugin does not stop the rest",
-			plugins: map[string]string{"local/a/init.lua": `error("broken")`, "local/b/init.lua": `print("b")`},
+			plugins: map[string]string{"local/a/.zemi/init.lua": `error("broken")`, "local/b/.zemi/init.lua": `print("b")`},
 			want:    []string{"plugin a: ", "broken", "plugin|b", "health: 2 plugins: 1 failed, 1 ready"},
 		},
 		{
 			name: "a uses name outside the vocabulary refuses the plugin",
 			plugins: map[string]string{
-				"local/a/init.lua":          `print("a ran")`,
+				"local/a/.zemi/init.lua":    `print("a ran")`,
 				"local/a/.zemi/plugin.json": `{"uses": ["http", "fs.read"]}`,
 			},
 			want: []string{
@@ -85,14 +91,26 @@ func TestPluginsStep(t *testing.T) {
 		},
 		{name: "none, and the row still shows", want: []string{"health: none on"}},
 		{
+			name: "a plugin in the layout before .zemi is refused, a library-only one loads",
+			plugins: map[string]string{
+				"local/a/init.lua":             `print("a ran")`,
+				"local/b/.zemi/lua/b/init.lua": `return {}`,
+			},
+			want: []string{
+				"plugin a: init.lua is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under .zemi/",
+				"health: 2 plugins: 1 failed, 1 ready",
+			},
+			not: []string{"plugin|a ran", "plugin b: "},
+		},
+		{
 			name: "two plugins collide on a command, a tool, a health row and a completion source",
 			plugins: map[string]string{
-				"local/a/init.lua": `zemi.command.add("dup", function() end, {}) zemi.command.add("dup", function() end, {}) ` + tool("dup_tool") +
+				"local/a/.zemi/init.lua": `zemi.command.add("dup", function() end, {}) zemi.command.add("dup", function() end, {}) ` + tool("dup_tool") +
 					` zemi.health.add("dup", function() return "" end) zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
-				"local/b/init.lua": `zemi.command.add("dup", function() end, {})`,
-				"local/c/init.lua": tool("dup_tool"),
-				"local/d/init.lua": `zemi.health.add("dup", function() return "" end)`,
-				"local/e/init.lua": `zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
+				"local/b/.zemi/init.lua": `zemi.command.add("dup", function() end, {})`,
+				"local/c/.zemi/init.lua": tool("dup_tool"),
+				"local/d/.zemi/init.lua": `zemi.health.add("dup", function() return "" end)`,
+				"local/e/.zemi/init.lua": `zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
 			},
 			want: []string{
 				"plugin b: ", "command /dup is registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is registered by plugin a, not c`,
@@ -111,8 +129,8 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
-				"local/a/init.lua":          `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("a job", ok)`,
-				"local/b/init.lua":          `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("b job", ok)`,
+				"local/a/.zemi/init.lua":    `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("a job", ok)`,
+				"local/b/.zemi/init.lua":    `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("b job", ok)`,
 				"local/b/.zemi/plugin.json": `{"uses": ["job"]}`,
 			},
 			seed: []string{"plugin:gone:k", "plugin:a:old"},
@@ -121,21 +139,21 @@ func TestPluginsStep(t *testing.T) {
 		},
 		{
 			name:    "a plugin installed again under the name does not get the old one's state",
-			plugins: map[string]string{"installed/a/init.lua": `print(zemi.state.get("k"))`, "installed/a/.git/zemi-install": "new\n"},
+			plugins: map[string]string{"installed/a/.zemi/init.lua": `print(zemi.state.get("k"))`, "installed/a/.git/zemi-install": "new\n"},
 			seed:    []string{"plugin:a", "plugin:a:k"},
 			want:    []string{"plugin|nil\n", "plugin:a\n"},
 			not:     []string{"plugin:a:k"},
 		},
 		{
 			name:    "a failed scan keeps every plugin's state",
-			plugins: map[string]string{"local/a/init.lua": "", "disabled/x": ""},
+			plugins: map[string]string{"local/a/.zemi/init.lua": "", "disabled/x": ""},
 			seed:    []string{"plugin:a:saved"},
 			want:    []string{"is a directory", "plugin:a:saved\n"},
 		},
 		{
 			name: "a setup() that init.lua calls runs as the plugin, through a tail call and into another plugin",
 			plugins: map[string]string{
-				"local/p/lua/p/init.lua": `return {
+				"local/p/.zemi/lua/p/init.lua": `return {
 					setup = function()
 						print(tostring(pcall(zemi.config.set, "permissions.mode", "yolo")))
 						require("b").put("via-setup")
@@ -143,8 +161,8 @@ func TestPluginsStep(t *testing.T) {
 					end,
 					tail = function(f) return f("yolo") end,
 				}`,
-				"local/b/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
-				"local/p/lua/p/meta.lua": `return setmetatable({ subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x" },
+				"local/b/.zemi/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
+				"local/p/.zemi/lua/p/meta.lua": `return setmetatable({ subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x" },
 					{ __index = zemi.permission.rule.add })`,
 			},
 			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.permission.mode.set(m) end))
@@ -155,17 +173,17 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "a plugin answers only its own module names, first for its own code, and others get it read-only",
 			plugins: map[string]string{
-				"installed/a/init.lua": `require("shared").x = "a"
+				"installed/a/.zemi/init.lua": `require("shared").x = "a"
 					print(pcall(function() require("b").setup = function() end end))
-					print(pcall(require, "../../local/off/lua/off/init"))`,
-				"installed/a/lua/b/init.lua": `return { setup = function() print("stolen " .. tostring(zemi.state.get("token"))) end }`,
-				"local/b/init.lua":           `zemi.state.set("token", "secret")`,
-				"local/b/lua/b/init.lua": `return { setup = function()
+					print(pcall(require, "../../../local/off/.zemi/lua/off/init"))`,
+				"installed/a/.zemi/lua/b/init.lua": `return { setup = function() print("stolen " .. tostring(zemi.state.get("token"))) end }`,
+				"local/b/.zemi/init.lua":           `zemi.state.set("token", "secret")`,
+				"local/b/.zemi/lua/b/init.lua": `return { setup = function()
 					print("setup " .. zemi.state.get("token") .. " " .. require("b.util").who .. " " .. tostring(require("shared").x))
 				end }`,
-				"local/b/lua/b/util.lua":     `return { who = "plugin" }`,
-				"local/off/lua/off/init.lua": `print("off ran")`,
-				"disabled":                   "off\n",
+				"local/b/.zemi/lua/b/util.lua":     `return { who = "plugin" }`,
+				"local/off/.zemi/lua/off/init.lua": `print("off ran")`,
+				"disabled":                         "off\n",
 			},
 			cfg:  map[string]string{"lua/b/util.lua": `return { who = "user" }`, "lua/shared.lua": `return {}`},
 			user: `require("b").setup()`,
@@ -175,10 +193,10 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "plugin code user code reaches with no frame of its plugin runs as no other plugin and as no one",
 			plugins: map[string]string{
-				"local/b/init.lua":        `zemi.state.set("token", "secret")`,
-				"local/b/lua/b/init.lua":  `local M = {} function M:get(k) return zemi.state.get(k) end return M`,
-				"local/a/lua/a/init.lua":  `return setmetatable({}, { __index = require("b").get })`,
-				"local/a/lua/a/plain.lua": `return { get = require("shared").get }`,
+				"local/b/.zemi/init.lua":        `zemi.state.set("token", "secret")`,
+				"local/b/.zemi/lua/b/init.lua":  `local M = {} function M:get(k) return zemi.state.get(k) end return M`,
+				"local/a/.zemi/lua/a/init.lua":  `return setmetatable({}, { __index = require("b").get })`,
+				"local/a/.zemi/lua/a/plain.lua": `return { get = require("shared").get }`,
 			},
 			cfg:  map[string]string{"lua/shared.lua": `return { get = function() zemi.state.set("via", 1) end }`},
 			user: `print("A1", pcall(function() return require("a").token end)) print("A2", pcall(require("a.plain").get))`,
@@ -188,7 +206,7 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "a plugin module that exports a Go function does not load",
 			plugins: map[string]string{
-				"local/p/lua/p/init.lua": `return { subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x", setup = zemi.permission.rule.add }`,
+				"local/p/.zemi/lua/p/init.lua": `return { subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x", setup = zemi.permission.rule.add }`,
 			},
 			user: `print("P", pcall(function() return require("p"):setup() end))`,
 			want: []string{"user|P false", "exports the Go function .setup"},
@@ -463,7 +481,7 @@ func TestPluginSettings(t *testing.T) {
 					write(disabled, "br\n")
 				default:
 					_ = os.Remove(disabled)
-					write(filepath.Join(dirs.PluginsRoot(), "local", "br", "init.lua"), p.plugin)
+					write(filepath.Join(dirs.PluginsRoot(), "local", "br", plugin.InitFile), p.plugin)
 				}
 				write(filepath.Join(dirs.ConfigHome, "init.lua"), p.user)
 				if h == nil || p.restart {
@@ -566,9 +584,9 @@ func TestPluginCapVocabulary(t *testing.T) {
 	}
 }
 
-// pluginFixture writes the local plugin a of the plugins root: its init.lua
-// and, when uses is not empty, the manifest declaring that uses array. It
-// returns the plugin's root.
+// pluginFixture writes the local plugin a of the plugins root: its
+// .zemi/init.lua and, when uses is not empty, the manifest declaring that
+// uses array. It returns the plugin's root.
 func pluginFixture(t *testing.T, h *Host, uses string) string {
 	t.Helper()
 	root := filepath.Join(h.pluginsRoot(), "local", "a")
@@ -581,7 +599,7 @@ func pluginFixture(t *testing.T, h *Host, uses string) string {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(root, "init.lua"), "-- the test plugin\n")
+	write(filepath.Join(root, plugin.InitFile), "-- the test plugin\n")
 	if uses != "" {
 		write(filepath.Join(root, plugin.ManifestFile), `{"uses": `+uses+`}`)
 	}
@@ -709,7 +727,7 @@ func TestPluginUses(t *testing.T) {
 		},
 		{
 			name: "the plugin's own code still asks with fs.write declared", uses: `["fs.write"]`,
-			call: `zemi.fs.write("%plugin%/init.lua", "x")`,
+			call: `zemi.fs.write("%plugin%/.zemi/init.lua", "x")`,
 			err:  "permission ask required",
 		},
 		{
@@ -719,7 +737,7 @@ func TestPluginUses(t *testing.T) {
 		},
 		{
 			name: "a subject no capability covers keeps its default",
-			call: `assert(zemi.fs.read("%plugin%/init.lua"):find("the test plugin"), "the project read")`,
+			call: `assert(zemi.fs.read("%plugin%/.zemi/init.lua"):find("the test plugin"), "the project read")`,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -751,7 +769,7 @@ func TestPluginUses(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err := r.ExecuteChunk(t.Context(), strings.NewReplacer("%project%", dir, "%plugin%", own).Replace(c.call), filepath.Join(own, "init.lua"), lua.OriginPlugin)
+			err := r.ExecuteChunk(t.Context(), strings.NewReplacer("%project%", dir, "%plugin%", own).Replace(c.call), filepath.Join(own, ".zemi", "init.lua"), lua.OriginPlugin)
 			switch {
 			case c.err == "" && err != nil:
 				t.Fatalf("the call did not settle: %v", err)

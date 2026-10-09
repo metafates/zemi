@@ -67,7 +67,7 @@ local d = require("zemi.tui")
 assert(type(d.splash) == "function", "splash missing")
 assert(not pcall(function() d.splash = print end), "plugin wrote into the builtin module")
 assert(require("zemi.tui") == d, "view not cached")`
-	plugin := filepath.Join(host.Dirs.PluginsRoot(), "local", "p", "init.lua")
+	plugin := filepath.Join(host.Dirs.PluginsRoot(), "local", "p", ".zemi", "init.lua")
 	if err := host.RT.ExecuteChunk(t.Context(), src, plugin, lua.OriginPlugin); err != nil {
 		t.Fatal(err)
 	}

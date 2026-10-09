@@ -56,7 +56,8 @@ Modules are cached per generation by resolved file and requirer: a requirer belo
 origin gets its own instance run under its own origin, one per plugin, so project or plugin code
 cannot plant functions into a table that higher-origin callbacks or another plugin call; a
 builtin module for lower code and one plugin's module for another plugin are the owner's
-instance behind a deep read-only view. Dotted names search `<root>/lua` over the runtimepath:
+instance behind a deep read-only view. Dotted names search each candidate root's code dir
+(`<root>/lua`, `<plugin>/.zemi/lua`) over the runtimepath:
 the project's `.agents` first but only when the requirer is project code, user, then the one
 plugin the plugins step loaded (`lua.Generation.Plugins`, resolved, fixed per generation) named
 like the first segment, which that plugin's own code searches first: a plugin answers only its
@@ -82,7 +83,10 @@ that exports a Go function fails to require (`exportsGo`: `obj:method()` would r
 with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`, DESIGN §5):
 `plugin.Scan` lists `installed/` and `local/` minus `disabled`, sorted by name, and the same
 pick, fixed for the generation (`Host.pluginDirs`), gives the plugins' skills, agents, markdown
-commands and workflows; a gone or reinstalled plugin's `zemi.state` keys are dropped
+commands and workflows; a plugin's own Lua sits under `.zemi` (`plugin.CodeDir`: init.lua, lua/,
+tests/, workflows/, plugin.json), and one still keeping it at its root is refused
+(`plugin.OldLayout`) rather than loading nothing. A gone or reinstalled plugin's `zemi.state`
+keys are dropped
 (`sweepPluginState`). `Host.PluginOf` names a plugin by its directory: its state keys are
 `plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`
 (`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin

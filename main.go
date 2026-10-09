@@ -34,6 +34,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
@@ -411,7 +412,8 @@ func configFingerprint(skip string, roots ...string) string {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)):
+			// .zemi is a plugin's code, where an edit must reload zemi
+			case d.IsDir() && p != root && (d.Name()[0] == '.' && d.Name() != plugin.CodeDir || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)):
 				return filepath.SkipDir // a root is walked once
 			case d.IsDir() || d.Name() == ".luarc.json" || d.Name() == ".emmyrc.json":
 				return nil

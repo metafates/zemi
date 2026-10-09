@@ -34,10 +34,10 @@ func TestGoldenPlugins(t *testing.T) {
 	src, gitconfig := t.TempDir(), filepath.Join(t.TempDir(), "gitconfig")
 	write(gitconfig, "[user]\nname = t\nemail = t@t\n")
 	t.Setenv("GIT_CONFIG_GLOBAL", gitconfig)
-	todo := filepath.Join(host.Dirs.PluginsRoot(), "local", "todo-panel", "init.lua")
+	todo := filepath.Join(host.Dirs.PluginsRoot(), "local", "todo-panel", plugin.InitFile)
 	write(todo, "-- a todo list in the statusline\nerror('no todos table')")
-	write(filepath.Join(src, "init.lua"), "-- branch and changes in the statusline\nzemi.command.add('gs', function() end, {})\nzemi.keymap.set('ctrl+x g', 'gs')\nzemi.keymap.set('ctrl+x j', function() zemi.job.start({ cmd = 'git', args = { 'status' }, sandbox = true }) end)")
-	write(filepath.Join(src, ".zemi", "plugin.json"), `{"uses": ["job"]}`)
+	write(filepath.Join(src, plugin.InitFile), "-- branch and changes in the statusline\nzemi.command.add('gs', function() end, {})\nzemi.keymap.set('ctrl+x g', 'gs')\nzemi.keymap.set('ctrl+x j', function() zemi.job.start({ cmd = 'git', args = { 'status' }, sandbox = true }) end)")
+	write(filepath.Join(src, plugin.ManifestFile), `{"uses": ["job"]}`)
 	gitIn := func(dir string, args ...string) {
 		if out, err := (proc.Git{Dir: dir, Foreign: true}).Run(t.Context(), args...); err != nil {
 			t.Fatal(err, out)

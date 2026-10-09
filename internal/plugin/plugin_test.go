@@ -24,17 +24,17 @@ func TestHighest(t *testing.T) {
 }
 
 // TestManifest pins what a plugin's manifest answers: its version and
-// description when it has one, and init.lua's line when it has none.
+// description when it has one, and .zemi/init.lua's line when it has none.
 func TestManifest(t *testing.T) {
 	d := config.Dirs{DataHome: t.TempDir()}
 	local := filepath.Join(d.PluginsRoot(), "local")
 	if err := os.CopyFS(filepath.Join(local, "demo"), os.DirFS("../../testdata/plugins/demo")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(local, "bare"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(local, "bare", CodeDir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(local, "bare", "init.lua"), []byte("-- the bare plugin\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(local, "bare", InitFile), []byte("-- the bare plugin\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ps, err := List(t.Context(), d)
@@ -105,8 +105,8 @@ func TestPlugins(t *testing.T) {
 	}
 	repo := func(name string, tags ...string) string {
 		dir := filepath.Join(tmp, "src", name)
-		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "init.lua"), []byte("-- the "+name+" plugin\n"), 0o644)
+		os.MkdirAll(filepath.Join(dir, CodeDir), 0o755)
+		os.WriteFile(filepath.Join(dir, InitFile), []byte("-- the "+name+" plugin\n"), 0o644)
 		os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("* filter=x\n"), 0o644)
 		gitIn(dir, "init", "-q")
 		gitIn(dir, "add", ".")
@@ -125,7 +125,7 @@ func TestPlugins(t *testing.T) {
 	f.WriteString("[filter \"x\"]\nsmudge = touch " + marker + "; cat\nclean = touch " + marker + "; cat\nrequired = true\n")
 	f.Close()
 	local := filepath.Join(d.PluginsRoot(), "local", "loc")
-	os.MkdirAll(local, 0o755)
+	os.MkdirAll(filepath.Join(local, CodeDir), 0o755)
 	installed := filepath.Join(d.PluginsRoot(), "installed")
 
 	for _, c := range []struct {
@@ -259,10 +259,10 @@ func TestPlugins(t *testing.T) {
 	if InstallID(filepath.Join(installed, "x")) == "" {
 		t.Error("the reinstall has no install id, so it would get the deleted one's state")
 	}
-	// a clone's init.lua may be a symlink to /dev/zero: only a regular one is read
+	// a clone's .zemi/init.lua may be a symlink to /dev/zero: only a regular one is read
 	leak := filepath.Join(tmp, "leak.lua")
 	os.WriteFile(leak, []byte("-- leaked\n"), 0o644)
-	os.Symlink(leak, filepath.Join(local, "init.lua"))
+	os.Symlink(leak, filepath.Join(local, InitFile))
 	if ps, _ := List(t.Context(), d); ps[0].Desc != "" {
 		t.Errorf("%s: description %q read through a symlink", ps[0].Name, ps[0].Desc)
 	}

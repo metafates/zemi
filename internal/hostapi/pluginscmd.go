@@ -111,7 +111,7 @@ func (h *Host) pluginsCommand(line string) error {
 			return err
 		}
 		// one that ships only skills or commands has no init.lua to create
-		path := filepath.Join(p.Dir, "init.lua")
+		path := filepath.Join(p.Dir, plugin.InitFile)
 		if _, err := os.Stat(path); err != nil {
 			path = p.Dir
 		}

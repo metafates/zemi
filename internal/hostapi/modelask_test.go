@@ -46,7 +46,7 @@ func (m *askModel) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamRe
 func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, src string) error {
 	path := map[lua.Origin]string{
 		lua.OriginUser:    filepath.Join(h.Dirs.ConfigHome, "init.lua"),
-		lua.OriginPlugin:  filepath.Join(h.pluginsRoot(), "local", "a", "init.lua"),
+		lua.OriginPlugin:  filepath.Join(h.pluginsRoot(), "local", "a", ".zemi", "init.lua"),
 		lua.OriginProject: filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua"),
 	}[origin]
 	return r.ExecuteChunk(ctx, src, path, origin)

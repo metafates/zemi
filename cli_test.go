@@ -527,7 +527,7 @@ func BenchmarkConfigFingerprint(b *testing.B) {
 		_ = os.MkdirAll(filepath.Dir(p), 0o755)
 		_ = os.WriteFile(p, []byte("x"), 0o644)
 	}
-	_ = os.WriteFile(filepath.Join(dir, "local", "y", "init.lua"), []byte("-- one"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "local", "y", ".zemi", "init.lua"), []byte("-- one"), 0o644)
 	for b.Loop() {
 		configFingerprint("", pluginRoots(dir)...)
 	}

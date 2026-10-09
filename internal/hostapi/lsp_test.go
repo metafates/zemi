@@ -294,7 +294,7 @@ func TestLSPZemiLua(t *testing.T) {
 	}
 	cfg, proj, outside := h.Dirs.ConfigHome, h.Dirs.ProjectDir, t.TempDir()
 	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "stars")
-	os.MkdirAll(filepath.Join(plugin, "lua", "stars"), 0o755) // made by the write the check follows
+	os.MkdirAll(filepath.Join(plugin, ".zemi", "lua", "stars"), 0o755) // made by the write the check follows
 	os.WriteFile(filepath.Join(proj, ".luarc.json"), nil, 0o644)
 	for _, c := range []struct {
 		name, path, lua string // lua runs as user config first
@@ -302,15 +302,15 @@ func TestLSPZemiLua(t *testing.T) {
 		want, root      string // the server's name and root, "" for none
 	}{
 		{name: "config, untrusted", path: filepath.Join(cfg, "init.lua"), want: "luals (config)", root: cfg},
-		{name: "a local plugin", path: filepath.Join(plugin, "lua", "stars", "init.lua"), want: "luals (plugin stars)", root: plugin},
-		{name: "an installed clone", path: filepath.Join(h.Dirs.PluginsRoot(), "installed", "x", "init.lua"), trusted: true},
+		{name: "a local plugin", path: filepath.Join(plugin, ".zemi", "lua", "stars", "init.lua"), want: "luals (plugin stars)", root: plugin},
+		{name: "an installed clone", path: filepath.Join(h.Dirs.PluginsRoot(), "installed", "x", ".zemi", "init.lua"), trusted: true},
 		{name: "a plugin's non-Lua file", path: filepath.Join(plugin, "README.md"), trusted: true},
 		{name: "the project, untrusted", path: filepath.Join(proj, "a.lua")},
 		{name: "the project, trusted", path: filepath.Join(proj, "a.lua"), trusted: true, want: "luals"},
 		{name: "outside the repository", path: filepath.Join(outside, "a.lua"), trusted: true},
 		{name: "lsp.auto off", path: filepath.Join(cfg, "init.lua"), lua: `zemi.config.set("lsp.auto", false)`},
 		{name: "deleted", path: filepath.Join(cfg, "init.lua"), lua: `zemi.lsp.del("luals")`},
-		{name: "a user's own", path: filepath.Join(plugin, "init.lua"), lua: `zemi.lsp.add("luals", { command = "my-luals", filetypes = { "lua" } })`, want: "luals (plugin stars)", root: plugin},
+		{name: "a user's own", path: filepath.Join(plugin, ".zemi", "init.lua"), lua: `zemi.lsp.add("luals", { command = "my-luals", filetypes = { "lua" } })`, want: "luals (plugin stars)", root: plugin},
 		{name: "a user's own without lua", path: filepath.Join(cfg, "init.lua"), lua: `zemi.lsp.add("luals", { command = "my-luals", filetypes = { "luau" } })`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -416,7 +416,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 	if err := os.CopyFS(plugin, os.DirFS("../../testdata/plugins/demo")); err != nil {
 		t.Fatal(err)
 	}
-	bad := filepath.Join(plugin, "lua", "bad.lua")
+	bad := filepath.Join(plugin, ".zemi", "lua", "bad.lua")
 	os.WriteFile(bad, []byte("zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"), 0o644)
 	// the first check, which starts the server, finds it
 	got, _ := h.lspDiagnostics(bad)

@@ -21,6 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -50,7 +51,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	fakeSandbox(h, true)
 	h.Dirs.ConfigHome = filepath.Join(h.Dirs.ProjectDir, ".config", "zemi") // zemi run in $HOME
 	h.Dirs.StateHome, h.Dirs.DataHome = t.TempDir(), t.TempDir()
-	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "p", "init.lua")
+	code := filepath.Join(h.Dirs.PluginsRoot(), "local", "p", plugin.InitFile)
 	inside := filepath.Join(h.Dirs.ProjectDir, "main.go")
 	secret := filepath.Join(h.Dirs.ProjectDir, ".env")
 	link := filepath.Join(h.Dirs.ProjectDir, "notes.md")
@@ -101,10 +102,10 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"tool.shell", "cat main.go", true, true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
 		// a local plugin reads like the project, and a write loads it everywhere
-		{"fs.read", plugin, true, true},
-		{"tool.shell", "cat " + plugin, true, true},
-		{"fs.write", plugin, false, false},
-		{"fs.write", filepath.Join(h.Dirs.PluginsRoot(), "installed", "p", "init.lua"), false, false},
+		{"fs.read", code, true, true},
+		{"tool.shell", "cat " + code, true, true},
+		{"fs.write", code, false, false},
+		{"fs.write", filepath.Join(h.Dirs.PluginsRoot(), "installed", "p", plugin.InitFile), false, false},
 		{"net.evil.tld", "https://evil.tld/?d=leak", false, false},
 	} {
 		for _, trusted := range []bool{true, false} {
@@ -140,13 +141,13 @@ func TestPluginCreationGrant(t *testing.T) {
 		allowed    bool
 		why        string
 	}{
-		{"x/init.lua", true, true, true, "this creates the local plugin x" + creates},
-		{"x/lua/x/init.lua", false, false, true, ""},
+		{"x/.zemi/init.lua", true, true, true, "this creates the local plugin x" + creates},
+		{"x/.zemi/lua/x/init.lua", false, false, true, ""},
 		{"x/.git/config", false, true, false, "this changes .git, which decides what git runs"},
-		{"y/init.lua", true, true, true, "this changes a local plugin, which zemi runs in every project"},
-		{"y/lua/y/init.lua", false, true, false, "this changes a local plugin, which zemi runs in every project"},
-		{"z/init.lua", false, true, false, "this creates the local plugin z" + creates},
-		{"z/lua/z/init.lua", false, true, false, "this creates the local plugin z" + creates},
+		{"y/.zemi/init.lua", true, true, true, "this changes a local plugin, which zemi runs in every project"},
+		{"y/.zemi/lua/y/init.lua", false, true, false, "this changes a local plugin, which zemi runs in every project"},
+		{"z/.zemi/init.lua", false, true, false, "this creates the local plugin z" + creates},
+		{"z/.zemi/lua/z/init.lua", false, true, false, "this creates the local plugin z" + creates},
 	} {
 		ui.asked, ui.askAllowed = nil, c.yes
 		ok, _, why := ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(local, c.path)})
@@ -154,7 +155,7 @@ func TestPluginCreationGrant(t *testing.T) {
 			t.Errorf("%s: allowed %v, asked %v, reason %q", c.path, ok, len(ui.asked) > 0, why)
 		}
 	}
-	runExpectErr(t, h.RT, fmt.Sprintf("zemi.fs.write(%q, 'x')", filepath.Join(local, "x", "init.lua")), "outside the jail")
+	runExpectErr(t, h.RT, fmt.Sprintf("zemi.fs.write(%q, 'x')", filepath.Join(local, "x", ".zemi", "init.lua")), "outside the jail")
 }
 
 // TestUntrustedModes: in an untrusted project, for a command with no
@@ -842,7 +843,7 @@ func TestBrainAskNotes(t *testing.T) {
 // take a plugin's name back.
 func TestModeOwnership(t *testing.T) {
 	h, _ := newTestHost(t)
-	plugin := func(name string) string { return filepath.Join(h.pluginsRoot(), "local", name, "init.lua") }
+	plugin := func(name string) string { return filepath.Join(h.pluginsRoot(), "local", name, plugin.InitFile) }
 	add := func(name, base string) string {
 		return fmt.Sprintf(`zemi.permission.mode.add(%q, { base = %q })`, name, base)
 	}
@@ -1130,7 +1131,7 @@ func TestModeDecidePluginScopes(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
 	h.SetProjectTrusted(true)
-	path := filepath.Join(h.pluginsRoot(), "local", "judge", "init.lua")
+	path := filepath.Join(h.pluginsRoot(), "local", "judge", plugin.InitFile)
 	if err := h.RT.ExecuteChunk(t.Context(), `zemi.permission.mode.add("judge", { base = "auto", decide = function(req)
 		if req.arg == "cargo build" then return { decision = "allow", scope = "project", reason = "routine" } end
 		return { decision = "allow", scope = "session", reason = "routine" }

@@ -33,10 +33,10 @@ func TestPluginsTest(t *testing.T) {
 		t.Setenv(env, filepath.Join(home, dir))
 	}
 	for path, body := range map[string]string{
-		"config/init.lua":                   `zemi.command.add("from-init", function() end)`,
-		".agents/skills/from-home/SKILL.md": "---\nname: from-home\ndescription: x\n---\nx\n",
-		"data/plugins/local/named/init.lua": "zemi.command.add('named', function() end)\n",
-		"data/plugins/local/named/tests/n.lua": `local test = zemi.test
+		"config/init.lua":                         `zemi.command.add("from-init", function() end)`,
+		".agents/skills/from-home/SKILL.md":       "---\nname: from-home\ndescription: x\n---\nx\n",
+		"data/plugins/local/named/.zemi/init.lua": "zemi.command.add('named', function() end)\n",
+		"data/plugins/local/named/.zemi/tests/n.lua": `local test = zemi.test
 test("found by name", function() assert(test.run("named")) end)`,
 	} {
 		writeFile(t, filepath.Join(home, path), body)
@@ -52,10 +52,10 @@ for i = 1, 300 do test("case " .. i, function() end) end
 	}
 	example := map[string]string{}
 	for path, c := range map[string]struct{ at, lang string }{
-		"init.lua":            {"`init.lua`:\n", "lua"},
-		".zemi/plugin.json":   {"`.zemi/plugin.json`: the manifest", "json"},
-		"lua/branch/init.lua": {"`lua/branch/init.lua`:\n", "lua"},
-		"tests/branch.lua":    {"`tests/branch.lua` for the plugin above:\n", "lua"},
+		".zemi/init.lua":            {"`.zemi/init.lua`:\n", "lua"},
+		".zemi/plugin.json":         {"`.zemi/plugin.json`: the manifest", "json"},
+		".zemi/lua/branch/init.lua": {"`.zemi/lua/branch/init.lua`:\n", "lua"},
+		".zemi/tests/branch.lua":    {"`.zemi/tests/branch.lua` for the plugin above:\n", "lua"},
 	} {
 		_, after, _ := strings.Cut(string(skill), c.at)
 		_, block, _ := strings.Cut(after, "```"+c.lang+"\n")
@@ -74,121 +74,121 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		want   string // (T) stands for the time a run took
 	}{
 		{
-			name: "the passing cases pass", args: []string{"<plugin>", "tests/pass.lua"}, code: 0,
+			name: "the passing cases pass", args: []string{"<plugin>", ".zemi/tests/pass.lua"}, code: 0,
 			want: "24 passed (2 files, (T))\n",
 		},
-		{name: "eq on a string", args: []string{"<plugin>", "fail.lua: eq on a string"}, code: 1, want: `FAIL tests/fail.lua:5: eq on a string
-  tests/fail.lua:9: got "Oslo: 21C, Sunny", want "Oslo: 21C, sunny"
+		{name: "eq on a string", args: []string{"<plugin>", "fail.lua: eq on a string"}, code: 1, want: `FAIL .zemi/tests/fail.lua:5: eq on a string
+  .zemi/tests/fail.lua:9: got "Oslo: 21C, Sunny", want "Oslo: 21C, sunny"
   print: asking wttr.in
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "eq on a table", args: []string{"<plugin>", "eq on a table"}, code: 1, want: `FAIL tests/fail.lua:12: eq on a table
-  tests/fail.lua:12: [1]: got "main", want "fix-login"
+		{name: "eq on a table", args: []string{"<plugin>", "eq on a table"}, code: 1, want: `FAIL .zemi/tests/fail.lua:12: eq on a table
+  .zemi/tests/fail.lua:12: [1]: got "main", want "fix-login"
     got  { "main" }
     want { "fix-login" }
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "an unstubbed call", args: []string{"<plugin>", "no stub"}, code: 1, want: `FAIL tests/fail.lua:14: a call no stub answers
-  tests/fail.lua:14: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail.lua:14 returned: weather_now: lua/demo/init.lua:91: lua.http.get https://wttr.in/Oslo?format=j1: no test.stub answers it; add test.stub("lua.http.get", "https://wttr.in/*", { status = 200, body = "..." })
+		{name: "an unstubbed call", args: []string{"<plugin>", "no stub"}, code: 1, want: `FAIL .zemi/tests/fail.lua:14: a call no stub answers
+  .zemi/tests/fail.lua:14: got nil, want "Oslo: 21C, Sunny"
+  test.tool at .zemi/tests/fail.lua:14 returned: weather_now: .zemi/lua/demo/init.lua:91: lua.http.get https://wttr.in/Oslo?format=j1: no test.stub answers it; add test.stub("lua.http.get", "https://wttr.in/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a callback fails", args: []string{"<plugin>", "callback"}, code: 1, want: `FAIL tests/fail.lua:16: a callback that fails
-  error in zemi.job on_exit during test.advance at tests/fail.lua:18:
-    lua/demo/init.lua:10: attempt to index a non-table object(nil) with key 'sub'
+		{name: "a callback fails", args: []string{"<plugin>", "callback"}, code: 1, want: `FAIL .zemi/tests/fail.lua:16: a callback that fails
+  error in zemi.job on_exit during test.advance at .zemi/tests/fail.lua:18:
+    .zemi/lua/demo/init.lua:10: attempt to index a non-table object(nil) with key 'sub'
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a render fails", args: []string{"<plugin>", "a render that fails"}, code: 1, want: `FAIL tests/fail.lua:21: a render that fails
-  tests/fail.lua:23: render demo.cost: lua/demo/init.lua:29: cannot perform mul operation between nil and number
+		{name: "a render fails", args: []string{"<plugin>", "a render that fails"}, code: 1, want: `FAIL .zemi/tests/fail.lua:21: a render that fails
+  .zemi/tests/fail.lua:23: render demo.cost: .zemi/lua/demo/init.lua:29: cannot perform mul operation between nil and number
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL tests/fail.lua:32: a reply function with a misspelled field
-  tests/fail.lua:34: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail.lua:34 returned: weather_now: lua/demo/init.lua:91: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
+		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL .zemi/tests/fail.lua:32: a reply function with a misspelled field
+  .zemi/tests/fail.lua:34: got nil, want "Oslo: 21C, Sunny"
+  test.tool at .zemi/tests/fail.lua:34 returned: weather_now: .zemi/lua/demo/init.lua:91: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail.lua:37: eq on an error naming a file
-  tests/fail.lua:40: got "tests/fail.lua:38: lua.http.get https://...", want "lua.http.get https://example.com/: no te..." (first difference at char 1)
+		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL .zemi/tests/fail.lua:37: eq on an error naming a file
+  .zemi/tests/fail.lua:40: got ".zemi/tests/fail.lua:38: lua.http.get ht...", want "lua.http.get https://example.com/: no te..." (first difference at char 1)
   lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "eq on lines", args: []string{"<plugin>", "eq on lines"}, code: 1, want: `FAIL tests/fail.lua:43: eq on lines
-  tests/fail.lua:43: line 3: got "three", want "three!"
+		{name: "eq on lines", args: []string{"<plugin>", "eq on lines"}, code: 1, want: `FAIL .zemi/tests/fail.lua:43: eq on lines
+  .zemi/tests/fail.lua:43: line 3: got "three", want "three!"
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "contains", args: []string{"<plugin>", "fail.lua: contains"}, code: 1, want: `FAIL tests/fail.lua:45: contains
-  tests/fail.lua:45: got "50 cents", want it to contain "dollars"
+		{name: "contains", args: []string{"<plugin>", "fail.lua: contains"}, code: 1, want: `FAIL .zemi/tests/fail.lua:45: contains
+  .zemi/tests/fail.lua:45: got "50 cents", want it to contain "dollars"
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "raises that did not raise", args: []string{"<plugin>", "did not raise"}, code: 1, want: `FAIL tests/fail.lua:47: raises that did not raise
-  tests/fail.lua:48: did not raise, want an error containing "city"
+		{name: "raises that did not raise", args: []string{"<plugin>", "did not raise"}, code: 1, want: `FAIL .zemi/tests/fail.lua:47: raises that did not raise
+  .zemi/tests/fail.lua:48: did not raise, want an error containing "city"
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a driver under pcall", args: []string{"<plugin>", "under pcall"}, code: 1, want: `FAIL tests/fail.lua:51: a driver under pcall
-  tests/fail.lua:53: tests/fail.lua:52: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err
+		{name: "a driver under pcall", args: []string{"<plugin>", "under pcall"}, code: 1, want: `FAIL .zemi/tests/fail.lua:51: a driver under pcall
+  .zemi/tests/fail.lua:53: .zemi/tests/fail.lua:52: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a driver inside raises", args: []string{"<plugin>", "inside raises"}, code: 1, want: `FAIL tests/fail.lua:56: a driver inside raises
-  tests/fail.lua:57: a driver cannot run inside test.raises; drivers return nil, err instead of raising
+		{name: "a driver inside raises", args: []string{"<plugin>", "inside raises"}, code: 1, want: `FAIL .zemi/tests/fail.lua:56: a driver inside raises
+  .zemi/tests/fail.lua:57: a driver cannot run inside test.raises; drivers return nil, err instead of raising
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, hangs: true, want: `FAIL tests/fail.lua:26: a case that never settles
-  timed out after 2s in test.advance(1) at tests/fail.lua:29
+		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, hangs: true, want: `FAIL .zemi/tests/fail.lua:26: a case that never settles
+  timed out after 2s in test.advance(1) at .zemi/tests/fail.lua:29
 0 passed, 1 failed (2 files, (T))
 `},
 		// waits, so no one slice meets the 1s ceiling that stops a Lua spin first
 		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, hangs: true, plugin: map[string]string{
-			"init.lua":          `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
+			".zemi/init.lua":    `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
 			".zemi/plugin.json": `{"uses": ["http"]}`,
-			"tests/a.lua":       `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
-		}, want: "FAIL tests/a.lua:1: spins\n  timed out after 2s in test.run(\"spin\") at tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/tests/a.lua": `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
+		}, want: "FAIL .zemi/tests/a.lua:1: spins\n  timed out after 2s in test.run(\"spin\") at .zemi/tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a handler past its deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua":    `zemi.event.on("tool.pre", function() while true do end end)`,
-			"tests/a.lua": `zemi.test("spins", function() zemi.test.emit("tool.pre", { tool = "shell", input = {} }) end)`,
-		}, want: "FAIL tests/a.lua:1: spins\n  error in event tool.pre during test.emit at tests/a.lua:1:\n    init.lua:1: context deadline exceeded\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/init.lua":    `zemi.event.on("tool.pre", function() while true do end end)`,
+			".zemi/tests/a.lua": `zemi.test("spins", function() zemi.test.emit("tool.pre", { tool = "shell", input = {} }) end)`,
+		}, want: "FAIL .zemi/tests/a.lua:1: spins\n  error in event tool.pre during test.emit at .zemi/tests/a.lua:1:\n    .zemi/init.lua:1: context deadline exceeded\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
 			want: "no case matches \"wether\" (37 cases in 2 files)\n",
 		},
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": `require("cp")`, "lua/cp/init.lua": `require("cp.util")`, "tests/a.lua": `zemi.test("a", function() end)`,
-		}, want: "FAIL init.lua:1: require: lua/cp/init.lua:1: require: module \"cp.util\" not found on runtimepath\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/init.lua": `require("cp")`, ".zemi/lua/cp/init.lua": `require("cp.util")`, ".zemi/tests/a.lua": `zemi.test("a", function() end)`,
+		}, want: "FAIL .zemi/init.lua:1: require: .zemi/lua/cp/init.lua:1: require: module \"cp.util\" not found on runtimepath\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a plugin whose load never ends", args: []string{"<plugin>"}, code: 1, hangs: true, plugin: map[string]string{
-			"init.lua": "while true do end", "tests/a.lua": `zemi.test("a", function() end)`,
-		}, want: "FAIL init.lua:1: timed out after 2s\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/init.lua": "while true do end", ".zemi/tests/a.lua": `zemi.test("a", function() end)`,
+		}, want: "FAIL .zemi/init.lua:1: timed out after 2s\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a test file that does not parse", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": "", "tests/a.lua": "zemi.test(\"a\", function()\n  local x =\nend)\n",
-		}, want: "FAIL tests/a.lua:3: syntax error near 'end'\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/init.lua": "", ".zemi/tests/a.lua": "zemi.test(\"a\", function()\n  local x =\nend)\n",
+		}, want: "FAIL .zemi/tests/a.lua:3: syntax error near 'end'\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a case name twice", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": "", "tests/a.lua": "zemi.test(\"a\", function() end)\nzemi.test(\"a\", function() end)\n",
-		}, want: "FAIL tests/a.lua:2: duplicate case name \"a\", first at line 1\n0 passed, 1 failed (1 file, (T))\n"},
-		{name: "a helper at the top of tests/", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": "", "tests/a.lua": "zemi.test(\"a\", function() end)\n", "tests/helpers.lua": "return {}\n",
-		}, want: "FAIL tests/helpers.lua: declares no case; code the tests share goes in a subdirectory (tests/lib/) and loads with require(\"./lib/<name>\")\n1 passed, 1 failed (2 files, (T))\n"},
+			".zemi/init.lua": "", ".zemi/tests/a.lua": "zemi.test(\"a\", function() end)\nzemi.test(\"a\", function() end)\n",
+		}, want: "FAIL .zemi/tests/a.lua:2: duplicate case name \"a\", first at line 1\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "a helper at the top of .zemi/tests/", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+			".zemi/init.lua": "", ".zemi/tests/a.lua": "zemi.test(\"a\", function() end)\n", ".zemi/tests/helpers.lua": "return {}\n",
+		}, want: "FAIL .zemi/tests/helpers.lua: declares no case; code the tests share goes in a subdirectory (.zemi/tests/lib/) and loads with require(\"./lib/<name>\")\n1 passed, 1 failed (2 files, (T))\n"},
 		{name: "a driver at a file's top level", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": `zemi.command.add("x", function() end)`, "tests/a.lua": "zemi.test.run(\"x\")\n",
-		}, want: "FAIL tests/a.lua:1: test.run: drivers run inside a case: test(\"name\", function() ... end)\n0 passed, 1 failed (1 file, (T))\n"},
+			".zemi/init.lua": `zemi.command.add("x", function() end)`, ".zemi/tests/a.lua": "zemi.test.run(\"x\")\n",
+		}, want: "FAIL .zemi/tests/a.lua:1: test.run: drivers run inside a case: test(\"name\", function() ... end)\n0 passed, 1 failed (1 file, (T))\n"},
 		{
-			name: "no test files", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{"init.lua": ""},
-			want: "no tests/*.lua in <plugin>\n",
+			name: "no test files", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{".zemi/init.lua": ""},
+			want: "no .zemi/tests/*.lua in <plugin>\n",
 		},
-		{name: "the copy leaves out dot entries, node_modules and links out", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
-			"init.lua": "", "lua/cp/real.lua": "return 1", "lua/cp/alias.lua": "-> real.lua", "lua/cp/out.lua": "-> ../../../outside.lua",
+		{name: "the copy takes .zemi and leaves the root's other dot entries, node_modules and links out", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
+			".zemi/init.lua": "", ".zemi/lua/cp/real.lua": "return 1", ".zemi/lua/cp/alias.lua": "-> real.lua", ".zemi/lua/cp/out.lua": "-> ../../../../../outside.lua",
 			".hidden/x.lua": "return 1", "node_modules/x.lua": "return 1",
-			"tests/a.lua": `local test = zemi.test
+			".zemi/tests/a.lua": `local test = zemi.test
 test("copied", function()
   test.eq(require("cp.alias"), 1)
-  for _, m in ipairs({ "cp.out", "./../.hidden/x", "./../node_modules/x" }) do
+  for _, m in ipairs({ "cp.out", "./../../.hidden/x", "./../../node_modules/x" }) do
     assert(not pcall(require, m), m)
   end
 end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{name: "an answer runs a row's run when no callback takes it", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
-			"init.lua": `zemi.command.add("menu", function()
+			".zemi/init.lua": `zemi.command.add("menu", function()
   zemi.state.set("n", (zemi.state.get("n") or 0) + 1)
   zemi.ui.overlay.open({ id = "menu", items = { { text = "again", run = "menu" }, { text = "help", run = "help" }, "none" } })
 end)`,
-			"tests/a.lua": `local test = zemi.test
+			".zemi/tests/a.lua": `local test = zemi.test
 test("rows", function()
   assert(test.run("menu"))
   assert(test.answer("again"))
@@ -200,24 +200,27 @@ test("rows", function()
 end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{name: "a job's output arrives when it ends, the clock unmoved", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
-			"init.lua": `zemi.command.add("log", function()
+			".zemi/init.lua": `zemi.command.add("log", function()
   zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })
 end)`,
 			".zemi/plugin.json": `{"uses": ["job.unsandboxed"]}`,
-			"tests/a.lua": `local test = zemi.test
+			".zemi/tests/a.lua": `local test = zemi.test
 test.stub("lua.job.start", "git log", { stdout = "a\nb" })
 test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { "a", "b" }) end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{name: "advance past what a duration holds", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
-			"init.lua": "", "tests/a.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
+			".zemi/init.lua": "", ".zemi/tests/a.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{name: "the plugins.md example passes", args: []string{"<plugin>"}, code: 0, plugin: example, named: "branch", want: "3 passed (1 file, (T))\n"},
 		{name: "a name the plugins step would load", args: []string{"named"}, code: 0, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "300 boots in 256 spare file descriptors", args: []string{"<plugin>"}, spare: 256, code: 0,
-			plugin: map[string]string{"init.lua": "", "tests/a.lua": many}, want: "300 passed (1 file, (T))\n",
+			plugin: map[string]string{".zemi/init.lua": "", ".zemi/tests/a.lua": many}, want: "300 passed (1 file, (T))\n",
 		},
-		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", "tests/pass.lua"}, cancel: true, code: 130, want: ""},
+		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", ".zemi/tests/pass.lua"}, cancel: true, code: 130, want: ""},
+		{name: "Lua left at the plugin root is refused", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+			".zemi/init.lua": "", ".zemi/tests/a.lua": `zemi.test("a", function() end)`, "workflows/w.lua": "-- d\nreturn 1",
+		}, want: "zemi: plugins test: <plugin>: workflows is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under .zemi/\n"},
 		{
 			name: "no such plugin", args: []string{"<plugin>/missing"}, code: 1,
 			want: "zemi: plugins test: lstat <plugin>/missing: no such file or directory\n",
@@ -296,8 +299,8 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 	}
 }
 
-// TestCopyPluginManifest: the manifest sits under a dot dir, which the walk
-// skips, so zemi plugins test copies it on its own.
+// TestCopyPluginManifest: the manifest is inside .zemi, which the copy takes
+// whole, so a test zemi reads the same manifest the plugin ships.
 func TestCopyPluginManifest(t *testing.T) {
 	src := filepath.Join("testdata", "plugins", "demo")
 	want, err := os.ReadFile(filepath.Join(src, ".zemi", "plugin.json"))
