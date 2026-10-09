@@ -606,7 +606,10 @@ func TestPromptBudget(t *testing.T) {
 	// bullet and the lua tool's description say a script drives the run's tools,
 	// the MCP ones its own list defers included: 29 chars less than the text
 	// they replaced (24752 today).
-	const ceiling = 25000
+	// 26000: the lua tool's description states the zemi.fs signatures, the
+	// missing io and os libraries and the script-write gate: live runs spent
+	// 3-6 turns probing exactly these before a script worked (25699 today).
+	const ceiling = 26000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

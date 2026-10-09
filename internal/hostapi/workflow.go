@@ -1374,6 +1374,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 			desc.WriteString("\n- " + w.Name + ": " + truncRunes(w.Description, 160))
 		}
 	}
+	desc.WriteString("\n\nA saved workflow is <name>.lua under the workflows/ folder of the config directory or of the repository's .agents/: the same script shape, `zemi.workflow.args` its args string. Run it by name, list it with action list.")
 	return fantasy.ToolInfo{
 		Name:        tools.ToolWorkflow,
 		Description: desc.String(),

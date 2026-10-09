@@ -446,11 +446,31 @@ func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTo
 }
 
 // wireLua gives each lua tool the builder its script's calls come from, so a
-// script reaches exactly the set the model has.
+// script reaches exactly the set the model has, and the fs.write note naming
+// the file tools this run actually has.
 func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)) {
+	hasW, hasE := false, false
+	for _, t := range out {
+		switch t.Info().Name {
+		case tools.ToolWrite:
+			hasW = true
+		case tools.ToolEdit:
+			hasE = true
+		}
+	}
+	note := ""
+	switch {
+	case hasW && hasE:
+		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the write and edit tools."
+	case hasW:
+		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the write tool."
+	case hasE:
+		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the edit tool."
+	}
 	for _, t := range out {
 		if lt, ok := t.(*luaEvalTool); ok {
 			lt.build = build
+			lt.writesNote = note
 		}
 	}
 }
