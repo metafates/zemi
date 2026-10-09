@@ -257,6 +257,14 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			Description: str(m["description"]),
 			Header:      str(m["header"]),
 		}
+		// the omitted type reads from the shape: options to pick, no options to type
+		if q.Type == "" {
+			if _, has := m["options"].([]any); has {
+				q.Type = TypeSingle
+			} else {
+				q.Type = TypeFreeText
+			}
+		}
 		if !slices.Contains(questionTypes, q.Type) {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be single_choice, multi_choice or free_text", i+1)), nil
 		}

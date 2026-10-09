@@ -359,8 +359,9 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
-// can only refuse, so a zemi run does not pay for their schemas every step.
-var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
+// can only refuse or serve nobody, so a zemi run does not pay for their
+// schemas every step.
+var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolTodos: true}
 
 // toolSkip adds to base the tools that could only answer with why they
 // cannot, whose schemas would ride every step: the language server tools

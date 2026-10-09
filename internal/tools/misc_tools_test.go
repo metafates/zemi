@@ -128,7 +128,6 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
 		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
 		{"option without label", "question", `{"questions":[{"type":"single_choice","question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
-		{"missing type", "question", `{"questions":[{"question":"x"}]}`, answer(nil, true), nil, "missing required field", true, false},
 		{
 			"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Path: "/p.md"}, true),
 			"you are back as the default agent. Implementation runs in the next turn", false, true,
@@ -148,6 +147,13 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	}
 	if o := asked[0].Options; len(asked) != 2 || asked[1].Type != TypeMulti || o[0] != (QuestionOption{"A", "first", true}) || o[1].Recommended {
 		t.Fatalf("question plumbing: %+v", asked)
+	}
+	p, _ := testPipeline(t, false)
+	var defaulted []Question
+	p.Question = func(qs []Question) ([]Answer, bool) { defaulted = qs; return []Answer{{Picked: []string{"A"}}}, true }
+	call(t, toolNamed(t, "question", p), `{"questions":[{"question":"x","options":[{"label":"A"}]},{"question":"y"}]}`)
+	if defaulted[0].Type != TypeSingle || defaulted[1].Type != TypeFreeText {
+		t.Fatalf("an omitted type reads from the shape: %+v", defaulted)
 	}
 }
 

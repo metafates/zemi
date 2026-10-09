@@ -971,7 +971,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	params := map[string]any{
 		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
 		"prompt":      map[string]any{"type": "string", "description": "the full task"},
-		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "explore for reading and searching, general only when it must run commands or edit, fork to continue this conversation in parallel" + required},
+		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "one of the Agents above" + required},
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
