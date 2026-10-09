@@ -215,7 +215,7 @@ func TestLuaToolCeiling(t *testing.T) {
 }
 
 // TestLuaToolPath: a script file is read the way the read tool reads it, so
-// a Lua error cannot echo a secret or a file outside the jail unasked.
+// a Lua error cannot echo a secret unasked.
 func TestLuaToolPath(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
@@ -237,7 +237,7 @@ func TestLuaToolPath(t *testing.T) {
 		{"nope.lua", "nope.lua: no such file or directory", 0},
 		{"notes.txt", "notes.txt: not a .lua file", 0},
 		{".env.lua", "permission denied", 1},
-		{outside, "permission denied", 1},
+		{outside, "return: 1", 0},
 	} {
 		ui := &fakeUI{askBy: "user"}
 		h.SetUIHooks(ui)

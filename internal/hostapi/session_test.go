@@ -60,7 +60,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 assistant/notice  ok "Background agent a1 (look around) finished"
 assistant/reasoning   "look first"
 assistant/   "I will look first."
-assistant/tool glob err "*.go"
+assistant/tool glob ok "*.go"
 assistant/reasoning   "now answer"
 assistant/   "done"
 `

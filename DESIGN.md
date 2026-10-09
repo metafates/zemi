@@ -2629,7 +2629,9 @@ rides the `memories.md` line and its ledger entries.
   `fs.write` is denied even under an allow rule, shell and `mcp.*` allows flip to `ask` unless
   the shell command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
-  locally first, without a model: reads and writes inside the jail that
+  locally first, without a model: reads anywhere that are not secret-shaped
+  (a `grep` rooted where one of the hidden home dirs sits asks, since the
+  search would print what it holds), writes inside the jail that
   are not secret-shaped (writes under any `.git`, to the Lua in any `.agents`
   (`init.lua`, `lua/`), to a `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
   names, or zemi's own config, data and state dirs excepted: those ask
@@ -2669,15 +2671,18 @@ rides the `memories.md` line and its ledger entries.
   confine the write tool; the scratchpad and the temp dirs make up the free zone, and
   a protected path asks there too), goes to the user.
   Network is never settled locally, because the URL is the model's.
-  Known ceiling: in-jail writes and commands both settle, so the model
-  can write code and run it unattended, rewrite any project file and read
-  what the sandbox does not hide, outside the project too; that is the
+  Known ceiling: reads settle wherever the secret shapes and the hidden home
+  dirs do not reach, and in-jail writes and commands both settle, so the
+  model can write code and run it unattended, rewrite any project file and
+  read what neither the shapes nor the sandbox policy hide, outside the
+  project too; that is the
   auto-mode tradeoff, and the sandbox policy (below) is its only limit.
   In a project the user has not trusted (§5) both modes settle less:
   writes and every command but `perm.Normalized.ReadCommand` (an allowlist of
   programs that only read, named without a path, with per-program flag
-  and script checks, arguments inside the project and not secret-shaped,
-  recursive searches only over trees with no secret-shaped file and, unless
+  and script checks, arguments anywhere that are not secret-shaped and not
+  under a `.git`, recursive searches only over trees with no secret-shaped
+  file, no hidden home dir and, unless
   the searcher skips hidden entries, no `.git` directory; no build
   tool and no git, which runs programs `.git/config` names) go to the user,
   but for `zemi plugins test <name>` alone, which with a sandbox settles
@@ -2695,10 +2700,10 @@ rides the `memories.md` line and its ledger entries.
   written, listed and grepped like any other file, and it stops asking - the
   built-in `fs.read` default above, an `always` answer's secret re-ask, the
   write tool's link check and the free zone all read that one predicate
-  (`Host.secretPath`) - and the prompt says what the run is. Every other ask of
-  the modes stands under `auto`: a destructive or non-reader command, the
-  network, a protected write, a rule's own ask. `--unsafe --mode yolo` settles
-  those too, but not a read-only agent's: it keeps its denials and its ask for
+  (`Host.secretPath`) - and the prompt says what the run is. It starts in
+  yolo, so the destructive and non-reader command, the network, the protected
+  write and a rule's own ask all settle (`--mode` names another mode, whose
+  asks stand); a read-only agent keeps its denials and its ask for
   anything but a `ReadCommand`, since nothing confines a command now - a
   `ReadCommand` it settles runs unconfined, and one the user approves has the
   project writable, the sandbox being what made it read-only.
@@ -2926,8 +2931,11 @@ rides the `memories.md` line and its ledger entries.
   a variable, or runs code that opens it.
 - Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
   path resolved one component at a time, so `..` after a symlink lands
-  where the kernel lands, case-folded on darwin and windows. Paths
-  outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the launch
+  where the kernel lands, case-folded on darwin and windows. Writes outside
+  the write jail ask (model tools) and reads outside the read jail are
+  refused (`zemi.fs`); a model read is settled by the secret shapes and the
+  hidden home dirs instead of the jail (above), so the read jail is what the
+  `fs.read` default and `zemi.fs` resolve in. The write root is the launch
   directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
   whole trusted repository: the user does that writing); the per-session scratchpad
   (`<state>/scratch/<session id>`, §5, every model command's `$TMPDIR`) is outside it but

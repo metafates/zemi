@@ -12,11 +12,12 @@ git worktree add -b feat/retry .agents/worktrees/retry
 
 `.agents/worktrees/<short name>` at the repository root is the right place:
 
-- it is inside the project, so reads need no permission prompt. The rest of `.agents` is
+- it is inside the project, so writes there need no permission prompt and sandboxed commands may
+  write it. The rest of `.agents` is
   project config that sandboxed commands cannot write, but a checkout under `.agents/worktrees` is treated like
   the project: auto mode edits it with no approval and sandboxed commands may write it (its own
-  `.git` and `.agents` stay protected). A worktree outside the project is outside the jail:
-  every read and write there needs approval, one prompt at a time.
+  `.git` and `.agents` stay protected). A worktree outside the project is outside the write
+  jail: every write there needs approval, one prompt at a time.
 - zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
   or reload of a trusted project and before a sandboxed command that may write it, so
   `git status` stays clean, and `grep`, `glob` and a command's `rg` skip it, so a search does not

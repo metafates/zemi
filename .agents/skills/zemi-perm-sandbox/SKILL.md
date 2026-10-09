@@ -127,8 +127,9 @@ the `permission.request` veto, and its own rules are deterministic: no model scr
 The one exception is a mode's own `decide` (below): a model call there is what the user opted
 into by writing the mode. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
-`Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
-not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), shell commands
+`Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads **anywhere** that are
+not secret-shaped (a `grep` rooted where one of the hidden home dirs sits asks), edits **inside the jail** that are
+not secret-shaped (editing a local plugin whose creation was allowed too), `tool.workflow` scripts (each agent they start is gated), shell commands
 (`unsettled`), a `tool.<name>` a plugin registered and declared `tool` (a plugin's own gated calls settle the same
 way, §9 of its manifest), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
@@ -159,8 +160,8 @@ network or can drop commits for good (`perm.Normalized.GitWrites`, whose `gitDir
 policy opens `.git`, `Policy.Git`: a confined run could only fail, so the ask comes before a
 wasted run) and, on a backend that
 cannot hide files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
-can write code and run it unattended, rewrite any project file and read what the policy does
-not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
+can write code and run it unattended, rewrite any project file and read what neither the secret shapes nor the policy
+hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
 commands (every program only reads, named without a path; no builds, no git) and, with a sandbox,
 `zemi plugins test <name>`, confined (`perm.Normalized.PluginTest`: a name, since the runner copies
 a directory it is given where the model reads), and auto settles
@@ -193,7 +194,7 @@ because zemi runs git, the shell and servers unconfined by name (on seatbelt a r
 `.git` opens but for what git runs or follows, `Policy.Git`, whose rules and the whys are in
 DESIGN §9 and `seatbelt_darwin.go`'s `gitCode`), home credential paths hidden (`homes`),
 the secret shapes hidden in the pad too (a command can move a directory there), zemi's types and builtin skills readable
-back (`shippedDirs`, which the read jail and `safeCommandPath` share: the embedded runtime rewrites them every start), and a
+back (`shippedDirs`, which the read jail shares: the embedded runtime rewrites them every start), and a
 local plugin's code (`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
 repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`
 in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), with each
@@ -212,15 +213,20 @@ unconfined: no shell expansion outside quotes (`$` and backticks inside double q
 no write redirects (`2>/dev/null` and `2>&1` are none), no program named by a path, no chain of
 `cd`s leaving the shell in more than 64 directories (each cd doubles the set every argument is
 judged from, and past the cap the command asks), and every
-argument must pass `safeCommandPath` (inside the project and not secret-shaped - `h.secretPath`
-matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
-hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so
-one list drives the sandbox, the re-ask and auto's read check; a plain read may also reach the
-request's scratchpad, zemi's config tree, the local plugins and `shippedDirs`, but `cd` may not enter them). Readers keep their
+argument must pass `safeCommandPath` (anywhere that is not secret-shaped - `h.secretPath`
+matches the resolved path too, so a symlink cannot hide one - and not under a `.git`, whose
+config may hold a token; every home path the sandbox
+hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories) is refused by the same
+predicate, so
+one list drives the sandbox, the re-ask and auto's read check; a recursive search asks unless
+its tree holds no hidden home dir (`holdsHiddenDirs`) and no secret-shaped file
+(`noSecretsUnder`), and `cd` stays in the project, since
+an unconfined command from elsewhere could run what the model wrote to the
+pad without asking). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file
 in it and, unless it skips hidden entries like a plain `rg`, no `.git` directory (`grep -r`
-reads one). Nothing may point into `.git`, since `.git/config` may hold tokens.
+reads one).
 
 Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot,
 and an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git

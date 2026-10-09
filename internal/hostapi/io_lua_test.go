@@ -186,8 +186,9 @@ func TestEditRepoRoot(t *testing.T) {
 	}
 }
 
-// TestBrainReadJails: the user brain's reads settle in every project, the
-// private brain's only in a trusted one (DESIGN §9); no brain root enters the write
+// TestBrainReadJails: the user brain's reads settle in every project, and
+// under auto the private brain's do too, where the fs.read default still
+// asks (DESIGN §9); no brain root enters the write
 // jail, so a brain write never auto-settles.
 func TestBrainReadJails(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -203,7 +204,7 @@ func TestBrainReadJails(t *testing.T) {
 	}{
 		{"user brain read, untrusted", false, "fs.read", userPath, perm.Allow, true},
 		{"user brain read, trusted", true, "fs.read", userPath, perm.Allow, true},
-		{"private brain read, untrusted", false, "fs.read", privatePath, perm.Ask, false},
+		{"private brain read, untrusted", false, "fs.read", privatePath, perm.Ask, true},
 		{"private brain read, trusted", true, "fs.read", privatePath, perm.Allow, true},
 		{"user brain write", true, "fs.write", userPath, perm.Ask, false},
 		{"private brain write", true, "fs.write", privatePath, perm.Ask, false},

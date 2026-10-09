@@ -277,7 +277,7 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 			if s := h.gitStatusSection(dir); !strings.Contains(s, recentCommits) {
 				t.Fatal(s)
 			}
-			h.noSecretsUnder(dir, []string{h.Dirs.ProjectDir}, true)
+			h.noSecretsUnder(dir, true)
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatal("git ran a program from the repository config")
 			}

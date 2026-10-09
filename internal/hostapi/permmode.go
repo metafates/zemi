@@ -144,7 +144,7 @@ func (h *Host) OpenModePicker() error {
 	}
 	body := ""
 	if h.Unsafe {
-		body = "--unsafe: no sandbox, so a command the mode settles runs unconfined with the whole environment, and no file is hidden: a secret-shaped path stops asking. Every other ask the mode would make stands."
+		body = "--unsafe: no sandbox, so a command the mode settles runs unconfined with the whole environment, and no file is hidden: a secret-shaped path stops asking. The run starts in yolo; --mode picks another."
 	}
 	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Body: body, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
 	return nil
@@ -534,8 +534,10 @@ func modeRow(L *glua.LState, d PermModeDef) *glua.LTable {
 	return row
 }
 
-// autoLocal is everything auto mode settles: reading and editing files
-// inside the jail that are not secret-shaped (editing a local plugin whose
+// autoLocal is everything auto mode settles: reading files anywhere that are
+// not secret-shaped (a grep rooted where a hidden home dir sits asks, since
+// the search would print what it holds), writing files inside the jail that
+// are not secret-shaped (editing a local plugin whose
 // creation was allowed too), commands (unsettled), running workflows (their
 // agents' tools are checked one by one), a tool a plugin registered and
 // declared, and MCP tools their server marks read-only. Anything else goes to
@@ -544,7 +546,10 @@ func modeRow(L *glua.LState, d PermModeDef) *glua.LTable {
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case perm.SubjectRead:
-		return h.inJail(req.Arg, append(h.readJails(), h.localPlugins())...) && !h.secretPath(req.Arg)
+		if req.Tool == tools.ToolGrep && h.holdsHiddenDirs(req.Arg) {
+			return false
+		}
+		return !h.secretPath(req.Arg)
 	case perm.SubjectWrite:
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
 		// write there (init.lua) changes what zemi allows.
@@ -670,7 +675,7 @@ func (h *Host) unsettled(req tools.Request) string {
 		return ""
 	}
 	if !h.ProjectTrusted() || !h.sandboxLive() {
-		if n.ReadCommand(h.safeCommandPath(req.Pad)) {
+		if n.ReadCommand(h.safeCommandPath) {
 			return ""
 		}
 		return "only commands that just read run without a trusted project and a sandbox"
@@ -733,42 +738,51 @@ func inDirNamed(p string, names ...string) bool {
 	return false
 }
 
-// safeCommandPath passes a settled command's argument when, read as a path
-// from the project root, it stays in the project and is not secret-shaped.
-// Plain reads may also use pad, zemi's config, the local plugins and the
-// shipped dirs, which the read tool reads without asking either; cd may not enter them, since
-// an unconfined command from there could run what the model wrote to the
-// pad without asking.
-func (h *Host) safeCommandPath(pad string) func(arg string, use perm.ArgUse) bool {
-	return func(arg string, use perm.ArgUse) bool {
-		if strings.HasPrefix(arg, "~") {
-			return false
-		}
-		p := arg
-		if !filepath.IsAbs(p) {
-			// not Join: it cleans .. before RealPath sees a symlink before it
-			p = h.Dirs.ProjectDir + string(filepath.Separator) + p
-		}
-		roots := []string{h.Dirs.ProjectDir}
-		if use != perm.ArgRun {
-			roots = slices.Concat(roots, []string{pad, h.Dirs.ConfigHome, h.localPlugins()}, h.shippedDirs(), h.Dirs.UserTrees())
-		}
-		walk := use == perm.ArgWalk || use == perm.ArgSearch
-		// .git/config may hold tokens
-		return h.inJail(p, roots...) && !h.secretPath(p) && !inDirNamed(p, ".git") &&
-			(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
+// safeCommandPath passes a settled command's argument: not a secret-shaped
+// path, not one a hidden home dir holds, not .git (its config may hold
+// tokens), and, for a recursive search, a tree holding none of those. Reads
+// reach anywhere; cd stays in the project, since an unconfined command from
+// elsewhere could run what the model wrote to the pad without asking.
+func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
+	p := perm.ExpandHome(arg)
+	if strings.HasPrefix(p, "~") {
+		return false // ~user: a home this machine's checks cannot name
 	}
+	if !filepath.IsAbs(p) {
+		// not Join: it cleans .. before RealPath sees a symlink before it
+		p = h.Dirs.ProjectDir + string(filepath.Separator) + p
+	}
+	if use == perm.ArgRun {
+		return h.inJail(p, h.Dirs.ProjectDir)
+	}
+	walk := use == perm.ArgWalk || use == perm.ArgSearch
+	return !h.secretPath(p) && !inDirNamed(p, ".git") &&
+		(!walk || !h.holdsHiddenDirs(p) && h.noSecretsUnder(p, use == perm.ArgSearch))
+}
+
+// holdsHiddenDirs reports whether one of the home dirs the sandbox hides
+// (homeSecrets) sits under p: a search rooted there would print what it
+// holds, so it asks instead. An unresolvable path cannot be vouched for.
+func (h *Host) holdsHiddenDirs(p string) bool {
+	if h.Unsafe {
+		return false
+	}
+	real := perm.CanonPath(p)
+	return real == "" || slices.ContainsFunc(homeSecrets(), func(root string) bool {
+		_, ok := perm.Under(real, root)
+		return ok
+	})
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
 // secret-shaped file: p exists, and if it is a directory, nothing under it
 // is secret-shaped, a .git directory (grep -r and rg --hidden read its
-// config, which may hold tokens) or a symlink to a directory, a secret or
-// out of roots. With skipIgnored, hidden entries and those git ignores are
+// config, which may hold tokens) or a symlink to a directory or a secret.
+// With skipIgnored, hidden entries and those git ignores are
 // left out, as rg leaves them out.
 // NOTE: gives up past 10000 entries, so a search over a big tree asks;
 // an index of secret-shaped names kept per project would lift that.
-func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
+func (h *Host) noSecretsUnder(p string, skipIgnored bool) bool {
 	p = perm.RealPath(p)
 	st, err := os.Stat(p)
 	if err != nil {
@@ -810,7 +824,7 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 		case n > 10000 || !h.Unsafe && perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
 			return unsafe
 		case d.Type()&fs.ModeSymlink != 0:
-			if st, err := os.Stat(path); err != nil || st.IsDir() || !h.inJail(path, roots...) || h.secretPath(path) {
+			if st, err := os.Stat(path); err != nil || st.IsDir() || h.secretPath(path) {
 				return unsafe
 			}
 		}

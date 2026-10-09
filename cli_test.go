@@ -358,6 +358,19 @@ func TestUnsafeFlag(t *testing.T) {
 	if got := dirs.ReadTrust()[dirs.TrustRoot()]; got != "" {
 		t.Errorf("--unsafe saved a trust decision: %q", got)
 	}
+	// the run starts in yolo, never kept for the next start; --mode wins
+	if err := applyOptions(h, options{unsafe: true}); err != nil {
+		t.Fatal(err)
+	}
+	if h.PermMode() != "yolo" {
+		t.Errorf("--unsafe mode = %q, want yolo", h.PermMode())
+	}
+	if err := applyOptions(h, options{unsafe: true, mode: "auto"}); err != nil {
+		t.Fatal(err)
+	}
+	if h.PermMode() != "auto" {
+		t.Errorf("--unsafe --mode auto = %q, want auto", h.PermMode())
+	}
 }
 
 func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {

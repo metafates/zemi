@@ -38,14 +38,15 @@ func TestUnsafeModeBox(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := ui.overlays()
-	if len(o) != 1 || !strings.Contains(o[0].Body, "--unsafe: no sandbox") || !strings.Contains(o[0].Body, "a secret-shaped path stops asking") || !strings.Contains(o[0].Body, "Every other ask the mode would make stands") {
+	if len(o) != 1 || !strings.Contains(o[0].Body, "--unsafe: no sandbox") || !strings.Contains(o[0].Body, "a secret-shaped path stops asking") || !strings.Contains(o[0].Body, "The run starts in yolo") {
 		t.Fatalf("the mode box under --unsafe: %+v", o)
 	}
 }
 
-// TestAutoModeLocalApprovals: auto mode settles reads and writes inside the
-// jail on its own. A path outside it, a secret behind an innocent name, and
-// anything leaving the machine go to the user instead.
+// TestAutoModeLocalApprovals: auto mode settles reads anywhere that are not
+// secret-shaped (a grep rooted where a hidden home dir sits asks) and writes
+// inside the jail. A secret behind an innocent name, and anything leaving
+// the machine go to the user instead.
 func TestAutoModeLocalApprovals(t *testing.T) {
 	h, _ := newTestHost(t)
 	fakeSandbox(h, true)
@@ -93,11 +94,12 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "cfg", "init.lua"), false, false},
 		{"fs.read", secret, false, false},
 		{"fs.read", link, false, false},
-		{"fs.read", "/etc/passwd", false, false},
-		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false, false}, // server stderr may hold tokens
-		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false, false},
+		{"fs.read", "/etc/passwd", true, true},
+		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), true, true},
+		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", true, true},
 		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false, false},
-		{"tool.shell", "cat out/../loot.txt", true, false}, // the sandbox holds it
+		{"tool.shell", "cat out/../loot.txt", true, true},
+		{"tool.shell", "cat /etc/hosts", true, true},
 		{"tool.shell", "rm -rf out", false, false},
 		{"tool.shell", "cat main.go", true, true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
@@ -115,6 +117,10 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 				t.Errorf("trusted=%v %s %s: got %v, want %v", trusted, c.subject, c.arg, got, want)
 			}
 		}
+	}
+	// a grep rooted where a hidden home dir sits would print what it holds
+	if h.autoLocal(tools.Request{Subject: perm.SubjectRead, Tool: "grep", Arg: os.Getenv("HOME")}) {
+		t.Error("a grep over the home tree settles")
 	}
 }
 
@@ -331,7 +337,7 @@ func TestAutoModeReadCommands(t *testing.T) {
 		{"cd " + pad + " && cat out.txt", false},
 		{"grep -n -B15 'function zemi.ui' " + filepath.Join(h.TypesDir(), "zemi.lua"), true},
 		{"cd " + h.TypesDir() + " && cat zemi.lua", false},
-		{"cat " + filepath.Join(h.Dirs.DataHome, "catwalk.json"), false},
+		{"cat " + filepath.Join(h.Dirs.DataHome, "catwalk.json"), true},
 		{"grep -rn foo internal/", true},
 		{"rg -n foo internal", true},
 		{"diff -r internal internal", true},
@@ -635,7 +641,9 @@ func TestExplicitAskReachesUser(t *testing.T) {
 // TestAskWaiterJudgedAgain: asks reach the user one at a time, and one
 // that waited behind a prompt is judged again (rules, mode) once the prompt
 // is answered, so an answer that covers it settles it without a second
-// prompt, with the rule's verdict whole.
+// prompt, with the rule's verdict whole. The mode is one whose decide never
+// answers, the way a user asks to see every request: auto settles these
+// reads on its own.
 func TestAskWaiterJudgedAgain(t *testing.T) {
 	root := outsideTemp(t)
 	for _, d := range []string{".git", "a", "b"} {
@@ -667,8 +675,10 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 		{"network always-rule keeps the sandbox", netCurl, curl, "user:always", nil, 1, [2]bool{true, true}, tools.ByRule, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, _ := newTestHost(t)
+			h, r := newTestHost(t)
 			fakeSandbox(h, true)
+			runUser(t, r, `zemi.permission.mode.add("seen", { base = "auto", decide = function() return "" end })`)
+			h.SetPermMode("seen")
 			opened := make(chan struct{})
 			ui := &fakeUI{}
 			ui.onAsk = func(PermRequest) (bool, string) {

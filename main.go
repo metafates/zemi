@@ -289,7 +289,7 @@ func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Hos
 	h.Inert, h.Stderr = inert, stderr
 	if o.unsafe && !inert {
 		// a TUI run shows the pill; a headless one has nowhere but stderr
-		fmt.Fprintln(stderr, "zemi: --unsafe: no sandbox, no secret hiding, a trusted project; shell commands that are not pure reads still ask")
+		fmt.Fprintln(stderr, "zemi: --unsafe: no sandbox, no secret hiding, a trusted project; yolo unless --mode says otherwise")
 	}
 	// a project with no saved decision runs untrusted instead of asking; say
 	// so, or the run looks like it applied the project's setup

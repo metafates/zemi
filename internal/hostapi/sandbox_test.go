@@ -213,7 +213,7 @@ func TestUnsafe(t *testing.T) {
 		{"a project write", perm.SubjectWrite, filepath.Join(project, "main.go"), true},
 		{"a secret-shaped read", perm.SubjectRead, filepath.Join(project, ".env"), true},
 		{"a secret-shaped write", perm.SubjectWrite, filepath.Join(project, ".env"), true},
-		{"a read outside the project", perm.SubjectRead, outside, false},
+		{"a read outside the project", perm.SubjectRead, outside, true},
 	} {
 		if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != c.settled {
 			t.Errorf("%s: settled = %v, want %v", c.name, got, c.settled)
@@ -226,6 +226,7 @@ func TestUnsafe(t *testing.T) {
 		settled   bool
 	}{
 		{"a reading command", "wc -l main.go", true},
+		{"a reading command outside the project", "wc -l " + outside, true},
 		{"a secret read", "cat .env", true},
 		{"a secret in a search", "grep -rn K .", true},
 		{"a build", "go build ./...", false},
