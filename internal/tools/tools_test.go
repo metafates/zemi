@@ -834,9 +834,6 @@ func TestValidationErrors(t *testing.T) {
 	if !resp.IsError || !strings.Contains(resp.Content, "missing required field") {
 		t.Fatalf("validation: %+v", resp)
 	}
-	if resp := call(t, toolNamed(t, "read", p), `{"path":"a.txt"}`); !strings.Contains(resp.Content, `missing required field "limit"`) {
-		t.Fatalf("read without limit: %+v", resp)
-	}
 	resp = call(t, ag, `not json`)
 	if !resp.IsError || !strings.Contains(resp.Content, "invalid tool input") {
 		t.Fatalf("bad json: %+v", resp)

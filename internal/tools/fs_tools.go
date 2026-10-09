@@ -460,6 +460,9 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	var b strings.Builder
 	n, kept := 0, 0
+	var rows []string
+	size := 0
+	more := 0
 	for ; ; n++ {
 		line, err := readLine(br, readMaxLineLen)
 		if err != nil {
@@ -468,12 +471,13 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		if n < start {
 			continue
 		}
-		row := fmt.Sprintf("%6d\t%s\n", n+1, line)
-		if kept == limit || kept > 0 && b.Len()+len(row) > readMaxBytes {
-			fmt.Fprintf(&b, "... (more lines; continue with offset %d)\n", n+1)
+		// the number prefix is at most 4 wide, so +6 bounds the row overhead
+		if kept == limit || kept > 0 && size+len(line)+6 > readMaxBytes {
+			more = n + 1
 			break
 		}
-		b.WriteString(row)
+		rows = append(rows, line)
+		size += len(line)
 		kept++
 	}
 	if kept == 0 {
@@ -481,6 +485,14 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("offset %d is past the end of %s (%d lines)", start+1, rel, n)), nil
 		}
 		return fantasy.NewTextResponse("(empty file)"), nil
+	}
+	// the gutter is as wide as the last line number, not a fixed field
+	width := len(strconv.Itoa(start + kept))
+	for i, line := range rows {
+		fmt.Fprintf(&b, "%*d\t%s\n", width, start+i+1, line)
+	}
+	if more != 0 {
+		fmt.Fprintf(&b, "... (more lines; continue with offset %d)\n", more)
 	}
 	if p.Instructions != nil {
 		b.WriteString(p.Instructions(path))

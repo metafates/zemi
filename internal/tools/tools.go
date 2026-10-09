@@ -1179,9 +1179,9 @@ Chain dependent steps with &&.`,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the working directory"},
 				"offset": map[string]any{"type": "integer", "description": "1-based line to start at"},
-				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 bytes"},
+				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"},
 			},
-			[]string{"path", "limit"},
+			[]string{"path"},
 			pathReq(perm.SubjectRead, pathIn, ""),
 			runRead)),
 
