@@ -954,7 +954,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; with wait it blocks until that run ends instead of queueing the prompt, so a result the next step needs is there when it returns.")
+		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; wait blocks until it ends instead of queueing the prompt, and stop kills it, its report never arriving.")
 	}
 	b.WriteString(" Set agent to \"fork\" to continue this conversation in parallel instead of starting fresh.")
 	b.WriteString("\n\nAgents:")
@@ -978,12 +978,13 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
 		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
 		params["wait"] = map[string]any{"type": "boolean", "description": "with send_to: block until that run ends instead of queueing the prompt, so its report is in the conversation when this call returns; its report arrives as a message either way"}
+		params["stop"] = map[string]any{"type": "boolean", "description": "with send_to: kill the run; its report never arrives"}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
 		Description: b.String(),
 		Parameters:  params,
-		Required:    []string{"prompt"},
+		Required:    []string{},
 		Parallel:    true,
 	}
 }
@@ -1000,15 +1001,19 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		Background  bool   `json:"background"`
 		SendTo      string `json:"send_to"`
 		Wait        bool   `json:"wait"`
+		Stop        bool   `json:"stop"`
 	}
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if strings.TrimSpace(in.Prompt) == "" {
+	if strings.TrimSpace(in.Prompt) == "" && !in.Stop {
 		return fantasy.NewTextErrorResponse("prompt is required"), nil
 	}
-	if in.Wait && in.SendTo == "" {
-		return fantasy.NewTextErrorResponse("wait waits on a run: pass its id as send_to"), nil
+	if (in.Wait || in.Stop) && in.SendTo == "" {
+		return fantasy.NewTextErrorResponse("pass the run's id as send_to"), nil
+	}
+	if in.Wait && in.Stop {
+		return fantasy.NewTextErrorResponse("set one of wait or stop, not both"), nil
 	}
 	if resp, stop := t.h.preCheck("agent", call.Input); stop {
 		return resp, nil
@@ -1025,6 +1030,17 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		// its child session and bill belong to the conversation that started it
 		if run.parent != t.h.AgentSessionID() {
 			return fantasy.NewTextErrorResponse("agent " + run.id + " belongs to another session: start a fresh run"), nil
+		}
+		if in.Wait && in.Stop {
+			return fantasy.NewTextErrorResponse("set one of wait or stop, not both"), nil
+		}
+		if in.Stop {
+			if !run.isRunning() {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("no running agent %q", run.id)), nil
+			}
+			run.cancel()
+			t.h.setToolDetail(call.ID, "stopped "+run.id)
+			return fantasy.NewTextResponse("Stopped agent " + run.id + " (" + run.description + "); its report will not arrive."), nil
 		}
 		if in.Wait {
 			return t.wait(ctx, call.ID, run), nil
@@ -1175,8 +1191,8 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 		// the chat draws a failure's output, so the id rides its first line rather than a [run] head
 		msg := "agent " + run.id + " failed: " + t.h.friendlyError(a.err)
 		if errors.Is(a.err, context.Canceled) {
-			// only the user cancels a run: /agents stop, or esc
-			msg = "agent " + run.id + ": the user stopped this agent; do not start it again unless they ask"
+			// the user or the caller's own stop call cancelled it
+			msg = "agent " + run.id + ": this agent was stopped; do not start it again unless asked"
 		}
 		if a.text != "" {
 			msg += "\n\nIts last message before that:\n" + a.text

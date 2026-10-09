@@ -637,14 +637,14 @@ func TestSendTo(t *testing.T) {
 	}
 }
 
-// TestStopWording: a stop the user asked for reads as theirs to the model,
+// TestStopWording: a stopped run reads as stopped, whoever stopped it,
 // and /agents stop with nothing to stop says how to name one.
 func TestStopWording(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(func(string)) (string, error) {
 		return "", context.Canceled
 	})
-	if !strings.Contains(resp.Content, "the user stopped this agent") {
+	if !strings.Contains(resp.Content, "this agent was stopped") {
 		t.Errorf("foreground stop: %q", resp.Content)
 	}
 	if err := h.stopRun(""); err == nil || !strings.Contains(err.Error(), "name the run to stop") {

@@ -1376,13 +1376,70 @@ func TestForegroundEscStopsTheRun(t *testing.T) {
 	}()
 	esc()
 	resp := waitCall(t, answered)
-	if !strings.Contains(resp.Content, "the user stopped this agent") {
+	if !strings.Contains(resp.Content, "this agent was stopped") {
 		t.Fatalf("esc answered %q, want the run stopped", resp.Content)
 	}
 }
 
 // TestForegroundRunPanicAnswersTheCall: a panic inside a foreground run must not
 // leave the call waiting for an answer that never comes.
+// TestAgentToolStopsARun: the caller kills a running run with send_to and
+// stop; a stopped run reports nothing, and stopping it again names no run.
+func TestAgentToolStopsARun(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
+			if strings.Contains(system, "a subagent of zemi") {
+				return nil // a provider that never answers: the run ends when it is stopped
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	calls := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "c1", Input: `{"description":"look around","agent":"explore","prompt":"look"}`})
+		calls <- resp
+	}()
+	var run *agentRun
+	waitFor(t, func() error {
+		runs := h.tasks.runsOf(h.AgentSessionID())
+		if len(runs) != 1 {
+			return fmt.Errorf("%d runs started, want one", len(runs))
+		}
+		if run = runs[0]; !run.isRunning() {
+			return errors.New("the run ended before the call was answered")
+		}
+		return nil
+	})
+	stop, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+		fantasy.ToolCall{ID: "c2", Input: fmt.Sprintf(`{"send_to":%q,"stop":true}`, run.id)})
+	if stop.IsError || !strings.Contains(stop.Content, "Stopped agent") {
+		t.Fatalf("stop = %q (error %v), want the stopped text", stop.Content, stop.IsError)
+	}
+	resp := waitCall(t, calls)
+	if !resp.IsError || !strings.Contains(resp.Content, "this agent was stopped") {
+		t.Fatalf("the run's call answered %q (error %v), want the stopped notice", resp.Content, resp.IsError)
+	}
+	waitFor(t, func() error {
+		if status, _, _, _ := run.state(); status != RunCancelled {
+			return fmt.Errorf("run status %q, want cancelled", status)
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	if n := reportRows(h, run.id); n != 0 {
+		t.Fatalf("%d report rows for a stopped run, want 0", n)
+	}
+	again, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+		fantasy.ToolCall{ID: "c3", Input: fmt.Sprintf(`{"send_to":%q,"stop":true}`, run.id)})
+	if !again.IsError || !strings.Contains(again.Content, "no running agent") {
+		t.Fatalf("stopping it again = %q (error %v), want no running agent", again.Content, again.IsError)
+	}
+}
+
 func TestForegroundRunPanicAnswersTheCall(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})

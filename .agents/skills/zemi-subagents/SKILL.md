@@ -61,7 +61,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   the call or the reply that ends it lands (`flush`). A fork is an
   `agentRun` too (`profile` `fork`), and its `forkBase` is where its own messages start in the
   history: the conversation it opened with is not its report, and `send_to` refuses a fork this
-  process forgot, whose rows hold its own work alone. A run's queue is
+  process forgot, whose rows hold its own work alone. `send_to` with `stop` kills a running run
+  (the model's one stop, as `/agents stop` is the user's; a stopped run reports nothing), `wait`
+  beside it blocks for its end instead, and the two refuse each other. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. A foreground `agent` or `workflow` call waits for

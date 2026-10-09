@@ -1087,7 +1087,9 @@ read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,
 or its child session's rows), so a follow-up question costs no fresh
 exploration. It keeps the run's model, and a run another session started
-refuses it.
+refuses it. `send_to` with `stop` cancels a running run, the model's one
+stop where `/agents stop` is the user's: the run ends cancelled and
+reports nothing, and `wait` and `stop` refuse each other.
 
 A workflow is a Lua script that starts subagents: `zemi.workflow.agent`,
 `parallel`, `pipeline` (Lua over `parallel`), `phase`, `log` and `args`,
