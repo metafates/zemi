@@ -523,6 +523,21 @@ func TestWorkflowRowCountsAnAgentAsItIsCalled(t *testing.T) {
 	waitFor(t, busy(2))
 	m.release <- struct{}{}
 	m.release <- struct{}{}
+	// the first two rows read done only after their streams returned, so
+	// busy(1) is then the third call alone: a decrement races its row's done,
+	// and a read before the drain has caught the last tick still predating it
+	waitFor(t, func() error {
+		v := f.view()
+		if len(v.agents) < 2 {
+			return fmt.Errorf("%d agents", len(v.agents))
+		}
+		for _, a := range v.agents[:2] {
+			if a.status == RunRunning {
+				return fmt.Errorf("agent %s still running", a.id)
+			}
+		}
+		return nil
+	})
 	waitFor(t, busy(1)) // the third call, waiting on the model
 	mu.Lock()
 	last, all := reports[len(reports)-1], slices.Clone(reports)
