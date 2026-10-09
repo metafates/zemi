@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -335,5 +336,91 @@ func TestTransportErrorRedactsURL(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "SECRET123") || strings.Contains(err.Error(), "pw123") {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// TestHTTPRateLimit: a rate-limited POST waits out Retry-After and re-posts,
+// sendTries posts before the status error names the wait; a 503 is retried
+// only when the server names one. Requests 2 and 3 of a started session are
+// the initialize retry and the initialized notification.
+func TestHTTPRateLimit(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		status  func(n int) (int, string) // request number (1-based) -> status and Retry-After; 0 passes through
+		wantReq int
+		wantErr string
+	}{
+		{"429 then ok", func(n int) (int, string) {
+			if n == 1 {
+				return http.StatusTooManyRequests, "0"
+			}
+			return 0, ""
+		}, 3, ""},
+		{"429 always", func(int) (int, string) {
+			return http.StatusTooManyRequests, "0"
+		}, sendTries, "retry after 0s"},
+		{"503 with retry-after then ok", func(n int) (int, string) {
+			if n == 1 {
+				return http.StatusServiceUnavailable, "0"
+			}
+			return 0, ""
+		}, 3, ""},
+		{"503 without retry-after", func(n int) (int, string) {
+			if n == 1 {
+				return http.StatusServiceUnavailable, ""
+			}
+			return 0, ""
+		}, 1, "mcp: http 503"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var reqs atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if status, after := c.status(int(reqs.Add(1))); status != 0 {
+					if after != "" {
+						w.Header().Set("Retry-After", after)
+					}
+					w.WriteHeader(status)
+					return
+				}
+				mcptest.Handler().ServeHTTP(w, r)
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			_, err := Start(ctx, Config{URL: srv.URL})
+			if got := reqs.Load(); got != int32(c.wantReq) {
+				t.Fatalf("%d requests, want %d", got, c.wantReq)
+			}
+			if (err == nil) != (c.wantErr == "") || (c.wantErr != "" && !strings.Contains(err.Error(), c.wantErr)) {
+				t.Fatalf("err = %v, want %q", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestRetryWait(t *testing.T) {
+	for _, c := range []struct {
+		name             string
+		after            string
+		attempt          int
+		wantMin, wantMax time.Duration
+	}{
+		{"seconds", "5", 0, 5 * time.Second, 5 * time.Second},
+		{"clamped up", "0", 0, time.Second, time.Second},
+		{"clamped down", "120", 1, 30 * time.Second, 30 * time.Second},
+		{"http date", time.Now().Add(30 * time.Second).UTC().Format(http.TimeFormat), 0, 28 * time.Second, 30 * time.Second},
+		{"unparsable", "soon", 0, time.Second, time.Second},
+		{"absent", "", 0, time.Second, time.Second},
+		{"absent backs off", "", 2, 4 * time.Second, 4 * time.Second},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if c.after != "" {
+				resp.Header.Set("Retry-After", c.after)
+			}
+			if d := retryWait(resp, c.attempt); d < c.wantMin || d > c.wantMax {
+				t.Fatalf("retryWait(%q, %d) = %s, want [%s, %s]", c.after, c.attempt, d, c.wantMin, c.wantMax)
+			}
+		})
 	}
 }

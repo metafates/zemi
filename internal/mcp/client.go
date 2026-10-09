@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,7 @@ const ProtocolVersion = "2025-06-18"
 const (
 	maxMessage    = 32 << 20
 	sessionHeader = "Mcp-Session-Id"
+	sendTries     = 3 // attempts per send before a rate limit fails the call
 )
 
 // Config picks the transport: Command starts a child process, URL talks
@@ -471,69 +473,108 @@ var httpClient = &http.Client{}
 // send POSTs one message. The reply is JSON or an SSE stream whose events
 // are messages; both are routed through handle before send returns.
 func (t *httpTransport) send(ctx context.Context, msg []byte) error {
-	resp, bearer, err := t.post(ctx, msg)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode == http.StatusUnauthorized && t.cfg.Auth != nil {
-		resp.Body.Close()
-		if bearer == "" || !t.cfg.Auth.reject(bearer) {
-			return ErrAuthRequired
-		}
-		if resp, _, err = t.post(ctx, msg); err != nil {
+	for attempts := 0; ; attempts++ {
+		resp, bearer, err := t.post(ctx, msg)
+		if err != nil {
 			return err
 		}
-		if resp.StatusCode == http.StatusUnauthorized {
+		if resp.StatusCode == http.StatusUnauthorized && t.cfg.Auth != nil {
 			resp.Body.Close()
-			return ErrAuthRequired
+			if bearer == "" || !t.cfg.Auth.reject(bearer) {
+				return ErrAuthRequired
+			}
+			if resp, _, err = t.post(ctx, msg); err != nil {
+				return err
+			}
+			if resp.StatusCode == http.StatusUnauthorized {
+				resp.Body.Close()
+				return ErrAuthRequired
+			}
 		}
-	}
-	// the server forgot the session (a redeploy): the spec says start another
-	if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
-		resp.Body.Close()
-		if err := t.renew(ctx, old); err != nil {
-			return err
+		// the server forgot the session (a redeploy): the spec says start another
+		if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
+			resp.Body.Close()
+			if err := t.renew(ctx, old); err != nil {
+				return err
+			}
+			if resp, _, err = t.post(ctx, msg); err != nil {
+				return err
+			}
 		}
-		if resp, _, err = t.post(ctx, msg); err != nil {
-			return err
+		if id := resp.Header.Get(sessionHeader); id != "" {
+			t.mu.Lock()
+			t.session = id
+			t.mu.Unlock()
 		}
-	}
-	if id := resp.Header.Get(sessionHeader); id != "" {
-		t.mu.Lock()
-		t.session = id
-		t.mu.Unlock()
-	}
-	switch {
-	case resp.StatusCode == http.StatusAccepted:
-		resp.Body.Close()
-		return nil
-	case resp.StatusCode/100 != 2:
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		resp.Body.Close()
-		return fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	case strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"):
-		// A server may hold its POST stream open after answering. Reading
-		// it here would cost the caller the whole request timeout, so the
-		// stream is drained off the request path and the reply reaches the
-		// waiting call through handle.
-		go func() {
-			defer resp.Body.Close()
-			defer func() {
-				if r := recover(); r != nil {
-					t.c.end(fmt.Errorf("mcp: sse reader panic: %v", r))
+		switch {
+		case resp.StatusCode == http.StatusAccepted:
+			resp.Body.Close()
+			return nil
+		case resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode == http.StatusServiceUnavailable && resp.Header.Get("Retry-After") != ""):
+			// A rate limit waits out Retry-After and re-posts; a 503 is the
+			// same signal only when the server names a wait.
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			resp.Body.Close()
+			err = fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+			if after := resp.Header.Get("Retry-After"); after != "" {
+				if secs, perr := strconv.Atoi(after); perr == nil {
+					err = fmt.Errorf("%w (retry after %ds)", err, secs)
+				} else {
+					err = fmt.Errorf("%w (retry after %s)", err, after)
 				}
+			}
+			if attempts+1 >= sendTries {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(retryWait(resp, attempts)):
+			}
+			continue
+		case resp.StatusCode/100 != 2:
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			resp.Body.Close()
+			return fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		case strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"):
+			// A server may hold its POST stream open after answering. Reading
+			// it here would cost the caller the whole request timeout, so the
+			// stream is drained off the request path and the reply reaches the
+			// waiting call through handle.
+			go func() {
+				defer resp.Body.Close()
+				defer func() {
+					if r := recover(); r != nil {
+						t.c.end(fmt.Errorf("mcp: sse reader panic: %v", r))
+					}
+				}()
+				_ = readSSE(resp.Body, t.c.handle)
 			}()
-			_ = readSSE(resp.Body, t.c.handle)
-		}()
+			return nil
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxMessage))
+		resp.Body.Close()
+		if err != nil {
+			return err
+		}
+		t.c.handle(body)
 		return nil
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMessage))
-	resp.Body.Close()
-	if err != nil {
-		return err
+}
+
+// retryWait reads Retry-After (seconds or an HTTP-date), clamped to
+// [1s, 30s]; without a parsable one it backs off exponentially.
+func retryWait(resp *http.Response, attempt int) time.Duration {
+	if s := strings.TrimSpace(resp.Header.Get("Retry-After")); s != "" {
+		var d time.Duration
+		if secs, err := strconv.Atoi(s); err == nil {
+			d = time.Duration(secs) * time.Second
+		} else if t, err := http.ParseTime(s); err == nil {
+			d = time.Until(t)
+		}
+		return min(max(d, time.Second), 30*time.Second)
 	}
-	t.c.handle(body)
-	return nil
+	return time.Duration(1<<attempt) * time.Second
 }
 
 // renew replaces the session old unless another call already did. A handshake
