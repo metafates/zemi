@@ -475,6 +475,55 @@ func TestWorkflowControl(t *testing.T) {
 	}
 }
 
+// TestWorkflowRowCountsAnAgentAsItIsCalled: the foreground row counts an
+// agent the moment the script calls it, so a call registered right after
+// parallel() returns shows up while it waits, not only when it reports.
+func TestWorkflowRowCountsAnAgentAsItIsCalled(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	m := newGate()
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	var mu sync.Mutex
+	var reports []string
+	f, err := h.startFlow(t.Context(), flowSpec{
+		src: "local wf = zemi.workflow\n" +
+			`table.concat(wf.parallel({function() return wf.agent("a") end, function() return wf.agent("b") end})) wf.agent("c") return "done"`,
+		background: true,
+		progress: func(f *flowRun) {
+			mu.Lock()
+			defer mu.Unlock()
+			reports = append(reports, f.summary())
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := func(n int32) func() error {
+		return func() error {
+			if got := m.running.Load(); got != n {
+				return fmt.Errorf("%d agents running, want %d", got, n)
+			}
+			return nil
+		}
+	}
+	waitFor(t, busy(2))
+	m.release <- struct{}{}
+	m.release <- struct{}{}
+	waitFor(t, busy(1)) // the third call, waiting on the model
+	mu.Lock()
+	last, all := reports[len(reports)-1], slices.Clone(reports)
+	mu.Unlock()
+	if !strings.Contains(last, "2/3 agents") {
+		t.Fatalf("the row of a run that called 3 agents reads %q (reports: %q)", last, all)
+	}
+	m.release <- struct{}{}
+	<-f.done
+	if f.result != "done" {
+		t.Fatalf("result %q", f.result)
+	}
+}
+
 // TestWorkflowRerun runs a script, then reruns it from its journal and
 // reruns that rerun, counting the model calls each makes. The model answers
 // "<prompt>!<n>", n counting that prompt's calls, so an answer says which

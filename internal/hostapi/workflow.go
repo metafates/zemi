@@ -462,6 +462,15 @@ func answer(L *glua.LState, result jsontext.Value) glua.LValue {
 	return lua.FromGo(L, v)
 }
 
+// addAgent records a call in the run and tells its row: the count moves now,
+// since the scheduler's next report waits on an event that may be far off.
+func (f *flowRun) addAgent(a *flowAgent) {
+	f.mu.Lock()
+	f.agents = append(f.agents, a)
+	f.mu.Unlock()
+	f.changed()
+}
+
 // changed tells the foreground row what moved.
 func (f *flowRun) changed() {
 	if f.progress != nil {
@@ -628,9 +637,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		hit := q[0]
 		r.cache[key] = q[1:]
 		a.id, a.status, a.reused, a.calls, a.tokens, a.cost, a.took = hit.Agent, RunDone, true, hit.Calls, hit.Tokens, hit.Cost, time.Duration(hit.MS)*time.Millisecond
-		r.f.mu.Lock()
-		r.f.agents = append(r.f.agents, a)
-		r.f.mu.Unlock()
+		r.f.addAgent(a)
 		hit.Description, hit.Phase, hit.Reused = a.description, a.phase, true
 		r.f.note(hit)
 		L.Push(answer(L, hit.Result))
@@ -640,9 +647,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
 	}
 	r.started++
-	r.f.mu.Lock()
-	r.f.agents = append(r.f.agents, a)
-	r.f.mu.Unlock()
+	r.f.addAgent(a)
 	if schema != nil { // in the task, never the system prompt, which runs share
 		b, _ := json.Marshal(schema, json.Deterministic(true))
 		prompt += "\n\nEnd with only a JSON object matching this JSON Schema, no prose and no code fences:\n" + string(b)
