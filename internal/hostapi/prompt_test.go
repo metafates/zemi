@@ -117,7 +117,7 @@ func TestUnsafePrompt(t *testing.T) {
 			t.Errorf("the --unsafe block misses %q:\n%s", want, rules)
 		}
 	}
-	if strings.Contains(rules, "are confined") || strings.Contains(rules, "Secret-shaped names (.env, *.pem, *.key) ask") {
+	if strings.Contains(rules, "are confined") || strings.Contains(rules, "Secret-shaped names ask") {
 		t.Errorf("the --unsafe block claims a secret still asks:\n%s", rules)
 	}
 	if top := h.topLevel(); !strings.Contains(top, "id_rsa") {

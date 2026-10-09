@@ -504,7 +504,7 @@ const (
 	// scratchSecret is what the two above say of the names that still ask
 	// there, and the newline that ends their paragraph: a --unsafe run hides
 	// nothing, so it leaves the sentence out and keeps the newline.
-	scratchSecret = " Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchSecret = " Secret-shaped names ask even there: use another name.\n"
 	scratchOwn    = "Other agents share the scratchpad: keep your own files in %s."
 	// forkTask opens the only message a fork receives, after the conversation
 	// it continues: the caller's own prompt says it may ask and delegate, and
