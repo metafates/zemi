@@ -68,18 +68,16 @@ func (h *Host) reconcileBrain(p brain.Partition) {
 }
 
 // brainFor builds the # Brain section and the glob table its pointers match
-// (DESIGN §10.7). The user partition loads and lints in every project; the private
-// one's catalog and findings reach a trusted render only, while its memory
-// lines inject in every project like the digest they replaced (DESIGN §10.7).
+// (DESIGN §10.7). The user partition loads in every project; the private one's
+// catalog reaches a trusted render only, while its memory lines inject in
+// every project like the digest they replaced (DESIGN §10.7).
 func (h *Host) brainFor() (string, []brainGlob) {
 	user, private := h.brainParts()
 	parts := make([]brain.Loaded, 0, 2)
-	var findings []brain.Finding
 	var globs []brainGlob
 	if !user.Zero() {
 		l := brain.Load(user)
 		parts = append(parts, l)
-		findings = append(findings, brain.Lint(user)...)
 		globs = brainGlobs(l)
 	}
 	if !private.Zero() {
@@ -89,12 +87,11 @@ func (h *Host) brainFor() (string, []brainGlob) {
 			// the dir's error name private paths a pull must not see (DESIGN §10.7)
 			l.Entries, l.Over, l.DirErr = nil, false, nil
 		} else {
-			findings = append(findings, brain.Lint(private)...)
 			globs = append(globs, brainGlobs(l)...)
 		}
 		parts = append(parts, l)
 	}
-	return brain.Render(h.brainLoopText(user, private), parts, findings, time.Now()), globs
+	return brain.Render(h.brainLoopText(user, private), parts, time.Now()), globs
 }
 
 // brainLoopText is the loop text headed by the partition roots that exist on

@@ -3330,10 +3330,6 @@ injected verbatim) + the project's skills and recipes + the environment +
 **# Brain** (§7), one section in the slot the memory digest held:
 
 - the loop text, static, naming the partition roots that exist;
-- `<brain-warning>` lines, zemi-generated findings (a malformed line, a
-  hash mismatch, an over-budget partition), cut at 1 KiB; in an untrusted
-  project they name no repository path and carry user-partition findings
-  only;
 - the derived catalogs, one line per freeform brain file from its
   frontmatter, `### user` in every project (user-owned state a pull cannot
   write), `### private` in trusted projects only, each cut at 4 KiB;

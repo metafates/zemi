@@ -9,7 +9,6 @@ import (
 // Caps of the injected # Brain section (DESIGN §10.7).
 const (
 	CatalogCap = 4 << 10
-	WarnCap    = 1 << 10
 	Backstop   = 32 << 10
 )
 
@@ -116,52 +115,27 @@ func memoryText(l Loaded, at time.Time) string {
 	return strings.Join(out, "\n")
 }
 
-// warningsText renders the findings as <brain-warning> lines (DESIGN §10.7): over
-// WarnCap the last finding is dropped, then the remaining line is cut to
-// fit. Findings are zemi-generated text; the strip is defense in depth.
-func warningsText(findings []Finding) string {
-	lines := make([]string, 0, len(findings))
-	for _, f := range findings {
-		lines = append(lines, "<brain-warning>"+strip(f.Text)+"</brain-warning>")
-	}
-	for len(lines) > 1 && size(lines) > WarnCap {
-		lines = lines[:len(lines)-1]
-	}
-	const wrap = len("<brain-warning></brain-warning>")
-	if len(lines) == 1 && wrap+size(lines) > WarnCap {
-		text := []rune(lines[0][len("<brain-warning>") : len(lines[0])-len("</brain-warning>")])
-		for len(text) > 0 && wrap+len(string(text)) > WarnCap {
-			text = text[:len(text)-1]
-		}
-		lines[0] = "<brain-warning>" + string(text) + "</brain-warning>"
-	}
-	return strings.Join(lines, "\n")
-}
-
-// Render assembles the # Brain section (DESIGN §10.7): the loop text, the findings,
-// the partitions' catalogs, user first, and the memory lines, private
-// scope first. Every piece is cut to its own cap and the whole section to
+// Render assembles the # Brain section (DESIGN §10.7): the loop text, the
+// partitions' catalogs, user first, and the memory lines, private scope
+// first. Every piece is cut to its own cap and the whole section to
 // Backstop with the catalogs cut to zero first, so the cut order
-// terminates: the loop, the warnings and the memory lines always fit.
-func Render(loop string, parts []Loaded, findings []Finding, at time.Time) string {
-	full := render(loop, parts, findings, at, 0)
+// terminates: the loop and the memory lines always fit.
+func Render(loop string, parts []Loaded, at time.Time) string {
+	full := render(loop, parts, at, 0)
 	if len(full) <= Backstop {
 		return full
 	}
-	if one := render(loop, parts, findings, at, 1); len(one) <= Backstop {
+	if one := render(loop, parts, at, 1); len(one) <= Backstop {
 		return one
 	}
-	return render(loop, parts, findings, at, 2)
+	return render(loop, parts, at, 2)
 }
 
-func render(loop string, parts []Loaded, findings []Finding, at time.Time, drop int) string {
+func render(loop string, parts []Loaded, at time.Time, drop int) string {
 	var b strings.Builder
 	b.WriteString("# Brain\n")
 	if loop != "" {
 		b.WriteString("\n" + strings.TrimRight(loop, "\n") + "\n")
-	}
-	if w := warningsText(findings); w != "" {
-		b.WriteString("\n" + w + "\n")
 	}
 	catalog := catalogSections(parts, drop)
 	if catalog != "" {

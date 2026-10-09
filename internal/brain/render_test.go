@@ -34,15 +34,11 @@ func TestRenderPinsTheSection(t *testing.T) {
 	pl := Loaded{Partition: private, Entries: []Entry{
 		entry("repo-map.md", "Map of this repository's packages", "before any code change"),
 	}, Mem: memFile("abcd2345", "the dploy gate lives in ci/pipeline")}
-	findings := []Finding{{Text: "style.md: no description"}}
-
 	loop := "Consult the brain before you build, update it after."
-	got := Render(loop, []Loaded{ul, pl}, findings, at)
+	got := Render(loop, []Loaded{ul, pl}, at)
 	want := `# Brain
 
 Consult the brain before you build, update it after.
-
-<brain-warning>style.md: no description</brain-warning>
 
 ## Catalog
 
@@ -65,7 +61,7 @@ Lines earlier sessions kept, as [id who age]. Follow a preference the user state
 	}
 
 	// nothing at all renders nothing
-	if got := Render("", []Loaded{{Partition: user}}, nil, at); got != "" {
+	if got := Render("", []Loaded{{Partition: user}}, at); got != "" {
 		t.Fatalf("empty render = %q", got)
 	}
 }
@@ -134,16 +130,15 @@ func TestRenderCuts(t *testing.T) {
 		}
 	})
 
-	t.Run("a catalog at its cap leaves loop, warnings and memory intact", func(t *testing.T) {
+	t.Run("a catalog at its cap leaves loop and memory intact", func(t *testing.T) {
 		l := Loaded{Partition: private}
 		for range MaxCatalogFiles {
 			l.Entries = append(l.Entries, entry(strings.Repeat("f", 90)+".md", strings.Repeat("d", 900), strings.Repeat("r", 900)))
 		}
 		l.Mem = memFile("abcd2345", "the memory the model must still see")
-		findings := []Finding{{Text: "the warning the model must still see"}}
 		loop := "the loop text"
-		got := Render(loop, []Loaded{l}, findings, at)
-		for _, want := range []string{loop, "the warning the model must still see", "the memory the model must still see"} {
+		got := Render(loop, []Loaded{l}, at)
+		for _, want := range []string{loop, "the memory the model must still see"} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("backstop dropped %q:\n%s", want, got)
 			}
@@ -166,7 +161,7 @@ func TestRenderCuts(t *testing.T) {
 		// the loop is the one uncapped piece: a fat one is what drives the
 		// backstop to its zero-catalogs cut
 		loop := strings.Repeat("x", 30000)
-		got := Render(loop, []Loaded{ul, pl}, nil, at)
+		got := Render(loop, []Loaded{ul, pl}, at)
 		if len(got) > Backstop {
 			t.Fatalf("render is %d bytes, over the %d backstop", len(got), Backstop)
 		}
@@ -177,28 +172,6 @@ func TestRenderCuts(t *testing.T) {
 			t.Fatalf("the private catalog or memory was cut early:\n%s", got)
 		}
 	})
-}
-
-func TestWarningsCap(t *testing.T) {
-	many := make([]Finding, 40)
-	for i := range many {
-		many[i] = Finding{Text: strings.Repeat("w", 100)}
-	}
-	got := warningsText(many)
-	if size(strings.Split(got, "\n")) > WarnCap {
-		t.Fatalf("warnings block is %d bytes", size(strings.Split(got, "\n")))
-	}
-	if n := strings.Count(got, "<brain-warning>"); n >= 40 {
-		t.Fatalf("no finding was dropped: %d", n)
-	}
-	// a single over-cap finding is cut to one line, tags intact
-	one := warningsText([]Finding{{Text: strings.Repeat("w", WarnCap)}})
-	if size([]string{one}) > WarnCap || strings.Count(one, "<brain-warning>") != 1 {
-		t.Fatalf("single finding not truncated: %d bytes", len(one))
-	}
-	if !strings.HasSuffix(one, "</brain-warning>") {
-		t.Fatalf("closing tag lost: %q", one[len(one)-30:])
-	}
 }
 
 func TestCatalogSelfRepairNote(t *testing.T) {

@@ -84,7 +84,7 @@ func Normalize(s string) string {
 }
 
 // errLine is an error's first line, stripped: a yaml error's caret
-// diagram is noise in an injected warning or note.
+// diagram is noise in a one-line finding or note.
 func errLine(err error) string {
 	s, _, _ := strings.Cut(err.Error(), "\n")
 	return strip(s)

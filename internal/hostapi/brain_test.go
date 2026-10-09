@@ -123,11 +123,6 @@ func TestBrainRenderTrust(t *testing.T) {
 	}
 	writeBrainFile(t, user.Dir, "style.md", "writing style", "writing any reply", nil)
 	writeBrainFile(t, private.Dir, "repo-map.md", "map of "+h.Dirs.ProjectDir, "before code changes", nil)
-	// a broken private file lints: its finding is a trusted-project warning,
-	// never an untrusted one (DESIGN §10.7)
-	if err := os.WriteFile(filepath.Join(private.Dir, "broken.md"), []byte("no frontmatter"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	day := time.Now().Add(-48 * time.Hour).UnixMilli()
 	seedMemory(t, h, &store.Memory{ID: "pmem1234", Scope: store.ScopeProject, Origin: store.OriginUser, Text: "project fact", UpdatedAt: day})
 	seedMemory(t, h, &store.Memory{ID: "kmem1234", Scope: store.ScopeUser, Origin: store.OriginLearned, Text: "user fact"})
@@ -146,7 +141,7 @@ func TestBrainRenderTrust(t *testing.T) {
 			t.Errorf("untrusted render lacks %q:\n%s", want, text)
 		}
 	}
-	for _, gone := range []string{"repo-map.md", "### private", h.Dirs.ProjectDir, "<brain-warning>broken.md"} {
+	for _, gone := range []string{"repo-map.md", "### private", h.Dirs.ProjectDir} {
 		if strings.Contains(text, gone) {
 			t.Errorf("untrusted render leaks %q:\n%s", gone, text)
 		}
@@ -156,9 +151,6 @@ func TestBrainRenderTrust(t *testing.T) {
 	text, _ = h.brainFor()
 	if !strings.Contains(text, "### private") || !strings.Contains(text, "- repo-map.md - map of "+h.Dirs.ProjectDir+". (Read If: before code changes.)") {
 		t.Fatalf("the trusted render does not carry the private catalog:\n%s", text)
-	}
-	if !strings.Contains(text, "<brain-warning>broken.md: no description</brain-warning>") {
-		t.Fatalf("the trusted render does not lint the private partition:\n%s", text)
 	}
 }
 
@@ -204,9 +196,9 @@ func TestBrainRebuildsOnTrustFlip(t *testing.T) {
 	}
 }
 
-// TestBrainCatalogCaps: a pathological catalog cannot push out the loop, the
-// warnings or the memory lines; the cut markers name paths; the instruction
-// sections' budget is untouched by the render.
+// TestBrainCatalogCaps: a pathological catalog cannot push out the loop or the
+// memory lines; the cut markers name paths; the instruction sections' budget
+// is untouched by the render.
 func TestBrainCatalogCaps(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -233,7 +225,6 @@ func TestBrainCatalogCaps(t *testing.T) {
 	text, _ := h.brainFor()
 	for _, want := range []string{
 		"- [pmem1234 user] the one memory",
-		"<brain-warning>broken.md: no description</brain-warning>",
 		"more in " + user.Dir,
 	} {
 		if !strings.Contains(text, want) {
