@@ -586,7 +586,7 @@ func TestPromptBudget(t *testing.T) {
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason.
-	// 22500: the lua tool's description and the code-mode guideline (447 chars)
+	// 22500: the lua tool's description and the codemode guideline (447 chars)
 	// say a script drives the run's tools, which is what makes one script
 	// cheaper than a step per call.
 	// 23000: the agent tool's description says a child sends its caller lines
@@ -602,7 +602,10 @@ func TestPromptBudget(t *testing.T) {
 	// 25000: the workflow and agent tools' wait action and the clauses naming
 	// it, and the file tools' descriptions matching the code again (the free
 	// zone write's exemption, the tolerant edit match); 24577 then.
-	// The workflow tool's list action names the user's own runs (24663 today).
+	// The workflow tool's list action names the user's own runs, and the lua
+	// bullet and the lua tool's description say a script drives the run's tools,
+	// the MCP ones its own list defers included: 29 chars less than the text
+	// they replaced (24752 today).
 	const ceiling = 25000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)

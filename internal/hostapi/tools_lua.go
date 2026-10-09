@@ -241,6 +241,11 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		for _, t := range h.luaTools.list() {
 			rows = append(rows, map[string]any{"name": t.Name, "builtin": false, "origin": string(t.Origin)})
 		}
+		// the MCP tools too: their schemas may be deferred from the model's own
+		// list, so this is where a script learns the name to call
+		for _, o := range h.mcpOffered() {
+			rows = append(rows, map[string]any{"name": o.name, "builtin": false, "mcp": o.srv.name})
+		}
 		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))

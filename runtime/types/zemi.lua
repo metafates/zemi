@@ -2296,6 +2296,7 @@ function zemi.permission.mode.list() end
 ---@field name string
 ---@field builtin boolean
 ---@field origin? zemi.Origin Lua tools only.
+---@field mcp? string The MCP server, for one of its tools.
 
 ---@class zemi.tool
 zemi.tool = {}
@@ -2341,6 +2342,8 @@ function zemi.tool.add(spec) end
 ---@param spec zemi.ToolOverride
 function zemi.tool.override(name, spec) end
 
+--- The tools a script of this run may call: zemi's own, the Lua ones
+--- registered, and each ready MCP server's.
 ---@return zemi.ToolInfo[]
 function zemi.tool.list() end
 

@@ -32,7 +32,9 @@ A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `
 
 Its description covers what comes back, the 10 s ceiling between waits and which calls need the user's approval. Keep a script you reuse in the scratchpad and pass `path` instead of `script`. A script runs as `user` origin, so an approved one can do what init.lua can, secret-shaped `zemi.env` names included. A call reached through a name built from strings, `_G` or `load` needs approval too, and one the scan misses raises; in an untrusted project or a read-only agent every script needs approval. After the run, callbacks the script registered keep only the read-only calls and its globals are gone, so lasting behavior belongs in init.lua. SKILL.md's Check a change has the loop for checking config you wrote.
 
-A script also drives the tools the model has: `zemi.tool.call(name, args)` starts one through the same gate, `tool.pre` and `tool.post` a direct call goes through, and returns a handle whose `wait()` gives its output, or `nil, err` like every other zemi call (a tool that failed reports its output as the error). Independent calls run beside each other (8 at once, the rest waiting for a slot), so start them, then wait on each; `zemi.tool.describe(name)` gives a tool's parameters. Only the script's own print and return values reach the model, so filter big output there instead of spending context on it. A script that only drives tools needs no approval of its own, since every call is judged as if the model had made it; only the lua tool's running script reaches `call`, so a callback the script registered cannot drive tools later. A script that calls zemi itself still asks once, and a nested call's ask is labeled `lua script` as who asked.
+A script also drives this run's tools: `zemi.tool.call(name, args)` starts one through the same gate, `tool.pre` and `tool.post` a direct call goes through, and returns a handle whose `wait()` gives its output, or `nil, err` like every other zemi call (a tool that failed reports its output as the error). Independent calls run beside each other (8 at once, the rest waiting for a slot), so start them, then wait on each. `zemi.tool.list()` names every tool a script may call: zemi's own, the Lua ones registered, and each ready MCP server's, whose schemas the model's own list may be holding back, which is how a script reaches a server's tool with no search step first; `zemi.tool.describe(name)` gives one's parameters. Only the script's own print lines and return values reach the model, a return as JSON, so filter big output there instead of spending context on it; a call the script drove gets the tool's output whole where a direct call is cut, an MCP tool's aside, cut at 30k like any other and spilled to the pad. A script that only drives tools needs no approval of its own, since every call is judged as if the model had made it; only the lua tool's running script reaches `call`, so a callback the script registered cannot drive tools later. A script that calls zemi itself still asks once, and a nested call's ask is labeled `lua script` as who asked.
+
+One script for a whole step is called codemode: when calls chain, a shape of call repeats, or the output is far larger than the model needs, the sequence goes in one script that returns the digest the next decision needs, so no middle output enters the conversation.
 
 ## The API
 
@@ -45,6 +47,21 @@ which drops a config it cannot parse whole, zemi's library included) pointing at
 config dir and in each local plugin, so an editor checks config as it is written. Each event's payload is a `zemi.ev.*` class that `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`, `dofile`, ...) are marked deprecated. Do not edit it: the next start overwrites it. `types/zemi/util.lua` beside it is the `zemi.util` source.
 
 ## Examples
+
+```lua
+-- Codemode: a step's calls in one script; only what it prints or returns
+-- reaches the model, so the raw output never costs context.
+for _, t in ipairs(zemi.tool.list()) do print(t.name) end -- what this run can call
+
+local hits, err = zemi.tool.call("grep", { pattern = "WithoutCancel", path = "." }):wait()
+if not hits then return "grep failed: " .. err end
+local files = {}
+for line in hits:gmatch("[^\n]+") do files[line:match("^([^:]+)")] = true end
+local names = {}
+for f in pairs(files) do names[#names + 1] = f end
+table.sort(names)
+return { callers = names, count = #names }
+```
 
 ```lua
 -- Command with argument completion; handler gets { args = "raw", list = { ... } }

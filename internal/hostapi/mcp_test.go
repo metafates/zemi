@@ -3,6 +3,7 @@ package hostapi
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"image"
@@ -24,6 +25,82 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
+
+// TestLuaToolDrivesDeferredMCP: an MCP tool whose schema a step is holding
+// back is one script call away, zemi.tool.list() names it, and the script
+// gets its whole output where a direct call is cut.
+func TestLuaToolDrivesDeferredMCP(t *testing.T) {
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	h.SetProjectTrusted(true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{askAllowed: true, askBy: "user"}
+	h.SetUIHooks(ui)
+	h.Perm.Add(perm.Rule{Subject: "mcp.a", Pattern: "*", Decision: perm.Allow})
+	srv := httptest.NewServer(mcptest.Handler())
+	defer srv.Close()
+	for _, name := range []string{"a", "b", "c", "d"} {
+		runUser(t, r, fmt.Sprintf(`zemi.mcp.add(%q, { url = %q })`, name, srv.URL))
+	}
+	waitFor(t, func() error {
+		if n := len(h.mcpFantasyTools(h.PipelineFor())); n != 12 {
+			return fmt.Errorf("%d of 12 MCP tools are up: %+v", n, h.mcp.list())
+		}
+		return nil
+	})
+	// past ten MCP tools a step offers only tool_search and what a search
+	// loaded, so a script's own list is where these names come from
+	_, active := h.deferMCP(h.allTools(h.PipelineFor()), new(sync.Map))
+	if active == nil || slices.Contains(active(), "mcp_a_echo") {
+		t.Fatalf("the step offers the MCP tools anyway: %v", active())
+	}
+	var tool fantasy.AgentTool
+	set, err := h.profileTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range set {
+		if c.Info().Name == tools.ToolLua {
+			tool = c
+		}
+	}
+	if tool == nil {
+		t.Fatal("the set has no lua tool")
+	}
+	run := func(script string) string {
+		t.Helper()
+		input, _ := json.Marshal(map[string]string{"about": "x", "script": script}, json.Deterministic(true))
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tools.ToolLua, Input: string(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Content
+	}
+	out := run(`
+local names = {}
+for _, t in ipairs(zemi.tool.list()) do
+	if t.mcp then names[#names + 1] = t.name end
+end
+table.sort(names)
+local text, err = zemi.tool.call("mcp_a_echo", { text = "hi" }):wait()
+print(err or text)
+print(#names, names[1], names[#names])
+`)
+	if !strings.Contains(out, "hi\n") || !strings.Contains(out, "12\tmcp_a_echo\tmcp_d_shot") {
+		t.Fatalf("the script reached %q", out)
+	}
+	// the whole output, not the cut a direct call gets
+	big := strings.Repeat("x", 40000)
+	if out := run(`local o = zemi.tool.call("mcp_a_echo", { text = "` + big + `" }):wait() print(#o)`); strings.TrimSpace(out) != "40000" {
+		t.Fatalf("a script's MCP call came back %q", strings.TrimSpace(out))
+	}
+	if len(ui.asked) != 0 {
+		t.Fatalf("a call the rule allows asked: %+v", ui.asked)
+	}
+}
 
 // TestMCPBridge registers a fake server from Lua and drives its tool the
 // way the model does: filtered by enabled_tools and disabled_tools, asking

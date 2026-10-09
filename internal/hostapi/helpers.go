@@ -147,8 +147,18 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 // saves the whole text to pad, the scratchpad of the pipeline that made the
 // call, so the rest is one read away instead of gone.
 func (h *Host) truncOutput(pad, name, s string) string {
-	return tools.Cut(pad, name, s, 30000, false)
+	return tools.Cut(pad, name, s, hostResultMax, false)
 }
+
+// truncScriptOutput is truncOutput for a call a lua script drove: the script
+// reads the whole output and says what of it the model gets, which is how a
+// script's own shell, read and fetch calls are already treated.
+func (h *Host) truncScriptOutput(p *tools.Pipeline, name, s string) string {
+	return tools.Cut(p.Pad, name, s, hostResultMax, p.Script != "")
+}
+
+// hostResultMax is what a host tool's result carries of its output.
+const hostResultMax = 30000
 
 // upperFirst capitalizes a sentence's first rune, leaving the rest as it is:
 // a transcript headline and an overlay's empty-state prose read as sentences.

@@ -40,7 +40,7 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 		read = ""
 	}
 	if hasTool(toolset, tools.ToolLua) {
-		code = codePrompt
+		code = codemodePrompt
 	}
 	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
 }
@@ -66,10 +66,10 @@ const toolRules = `- When a tool refuses, do exactly what its message says; neve
 const readPrompt = `
 - Every tool result stays in context until compaction: locate with grep, then read that region with offset and limit; one large window beats many small ones.`
 
-// codePrompt fills basePrompt's {Code} for a run that has the lua tool: one
+// codemodePrompt fills basePrompt's {Code} for a run that has the lua tool: one
 // script drives the calls a step would, and only what it prints costs context.
-const codePrompt = `
-- When one shape of call repeats, or its output is far larger than what you need of it, drive the calls from one lua script and filter there, instead of a call per step.`
+const codemodePrompt = `
+- Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need; it calls any tool in this run.`
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no user and
 // no question, plan or ! tool (headlessExcluded), so telling it to ask

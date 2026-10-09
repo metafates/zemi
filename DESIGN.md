@@ -1387,7 +1387,10 @@ batches, parallelizes and filters what would otherwise be a step per call
 direct call gets). Only the running script reaches it, the set is the run's own
 (profile filter included), and a script that only drives tools needs no
 approval of its own: `zemi.tool.call` is the one member `luaDelegated` lets an
-unapproved run call, since what it reaches is gated anyway.
+unapproved run call, since what it reaches is gated anyway. `zemi.tool.list()`
+names that set - an MCP tool a step is holding back included - and
+`zemi.tool.describe(name)` gives any tool's parameters, so one script composes
+calls the model itself would have to load first.
 
 A `rewrite` re-enters the pipeline at schema validation and the permission
 gate; it never skips them. On re-entry the `tool.pre` handlers run again
@@ -3440,7 +3443,9 @@ commands as the backstop.
   with a logged warning. Past ten MCP tools in a run's set, every one stays
   registered but a step offers only the `tool_search` tool (its
   description a catalog of names by server) and the tools a search loaded,
-  at most five per search, kept per session and per subagent run.
+  at most five per search, kept per session and per subagent run. A lua
+  script reaches any of them by name, deferred or not, through the same gate,
+  and `zemi.tool.list()` names the run's MCP tools beside its own.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
   its decision's source: rule, hook, user, overlay, or default), decisions
   and memory writes are all logged with IDs, so the reflector and the user

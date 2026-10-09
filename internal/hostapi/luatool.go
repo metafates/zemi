@@ -180,15 +180,15 @@ func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
 func (h *Host) luaAsksAll() bool { return !h.ProjectTrusted() || h.readOnly() }
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
-	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything needs the user's approval once, so write every call out by name."
+	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
 	if t.h.luaAsksAll() {
 		approval = " Every script needs the user's approval here, so write every call out by name."
 	}
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
-			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
-			" A script also drives this run's tools: `zemi.tool.call(name, args)` starts one and returns a handle whose `:wait()` gives its output or why it failed; independent calls run beside each other, so start them, then wait on each. Their output stays in the script, so filter it there; `zemi.tool.describe(name)` gives a tool's parameters." +
+			" It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
+			" A script drives this run's tools too: `zemi.tool.call(name, args)` returns a handle whose `:wait()` gives its output; start independent calls together and wait on each; only the script's prints and returns reach you. `zemi.tool.list()` names this run's tools, deferred MCP ones too; `zemi.tool.describe(name)` gives its parameters." +
 			approval +
 			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
 		Parameters: map[string]any{

@@ -334,9 +334,19 @@ func (h *Host) mcpReadOnly(server, tool string) bool {
 	return i >= 0 && s.tools[i].ReadOnly()
 }
 
-// mcpFantasyTools exposes the ready servers' tools, checked through pipe.
-func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
-	var out []fantasy.AgentTool
+// mcpOfferedTool is one MCP tool a run gets, under the name a call uses.
+type mcpOfferedTool struct {
+	srv   *mcpServer
+	tool  mcp.Tool
+	name  string
+	props map[string]any // input schema properties, local $refs resolved
+}
+
+// mcpOffered is what the ready servers offer a run, in one order: two tools
+// mapping to one name leave the first, and a schema that cannot be flattened
+// drops its tool, so every name here is one a call reaches.
+func (h *Host) mcpOffered() []mcpOfferedTool {
+	var out []mcpOfferedTool
 	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
@@ -362,8 +372,18 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 				)
 				continue
 			}
-			out = append(out, &mcpTool{h: h, srv: s, tool: t, pipe: pipe, props: props})
+			out = append(out, mcpOfferedTool{srv: s, tool: t, name: name, props: props})
 		}
+	}
+	return out
+}
+
+// mcpFantasyTools exposes the ready servers' tools, checked through pipe.
+func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
+	offered := h.mcpOffered()
+	out := make([]fantasy.AgentTool, 0, len(offered))
+	for _, o := range offered {
+		out = append(out, &mcpTool{h: h, srv: o.srv, tool: o.tool, pipe: pipe, props: o.props})
 	}
 	return out
 }
@@ -589,7 +609,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse("mcp " + name + ": " + err.Error()), nil
 	}
-	text := h.truncOutput(t.pipe.Pad, "mcp", res.Text())
+	text := h.truncScriptOutput(t.pipe, "mcp", res.Text())
 	if res.IsError {
 		return fantasy.NewTextErrorResponse(text), nil
 	}
