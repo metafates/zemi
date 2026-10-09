@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -73,8 +74,12 @@ func TestProjectsCommand(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
-	// a verb completes only the roots it acts on
-	for verb, want := range map[string][]string{"switch": {held, other}, "forget": {gone, other}, "delete": {gone, held, other}} {
+	// a verb completes only the roots it acts on, in the tilde form the composer shows
+	for verb, roots := range map[string][]string{"switch": {held, other}, "forget": {gone, other}, "delete": {gone, held, other}} {
+		want := make([]string, len(roots))
+		for i, root := range roots {
+			want[i] = perm.TildePath(root)
+		}
 		if got := h.Commands.Lookup("projects").GoComplete(h, "", "/projects "+verb+" "); !slices.Equal(got, want) {
 			t.Errorf("/projects %s completes %q, want %q", verb, got, want)
 		}
