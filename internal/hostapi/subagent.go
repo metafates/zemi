@@ -954,7 +954,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; wait blocks until it ends instead of queueing the prompt, and stop kills it, its report never arriving.")
+		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; wait and stop act on it as their parameter descriptions say.")
 	}
 	b.WriteString(" Set agent to \"fork\" to continue this conversation in parallel instead of starting fresh.")
 	b.WriteString("\n\nAgents:")
