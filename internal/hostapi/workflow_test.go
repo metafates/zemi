@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -176,8 +177,8 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return wf.parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return wf.agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "a wrong-typed option raises naming it", script: `return wf.agent("x", {phase = 1})`, wantErr: true, want: "phase must be a string"},
-		{name: "bare agent points at zemi.workflow", script: `return agent("x")`, wantErr: true, want: "agent is zemi.workflow.agent"},
-		{name: "print is gone", script: `print("x")`, wantErr: true, want: "print is zemi.workflow.log"},
+		{name: "bare agent points at zemi.workflow", script: `return agent("x")`, wantErr: true, want: "has no agent, write zemi.workflow.agent"},
+		{name: "print is gone", script: `print("x")`, wantErr: true, want: "has no print, write zemi.workflow.log"},
 		{name: "no other zemi namespace", script: `return zemi.fs.read("x")`, wantErr: true, want: "attempt to index"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
 		{name: "a script error after an agent", script: `local x = wf.agent("quick") local t = nil return t.field`, wantErr: true, want: "attempt to index"},
@@ -203,6 +204,18 @@ func TestWorkflowRun(t *testing.T) {
 	}
 	if peak.Load() < 2 {
 		t.Fatalf("parallel agents never overlapped (peak %d)", peak.Load())
+	}
+}
+
+// TestWorkflowDescNamesNoBareCall: the tool description is the API a model
+// writes the script against, so every call in it carries the wf. prefix the
+// guard's names demand; a bare one is what a model copies verbatim.
+func TestWorkflowDescNamesNoBareCall(t *testing.T) {
+	t.Parallel()
+	for name := range misnamed {
+		if bare := regexp.MustCompile(`(^|[^.\w])` + name + `\(`); bare.MatchString(workflowToolDesc) {
+			t.Errorf("workflowToolDesc calls %s() bare, not wf.%s()", name, name)
+		}
 	}
 }
 

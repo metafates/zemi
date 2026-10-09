@@ -559,7 +559,7 @@ func (r *wfRun) open(args any) *glua.LState {
 	mt := L.NewTable()
 	mt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
 		if to, ok := misnamed[L.CheckString(2)]; ok {
-			L.RaiseError("%s is %s in a workflow script", L.CheckString(2), to)
+			L.RaiseError("a workflow script has no %s, write %s", L.CheckString(2), to)
 		}
 		return 0
 	}))
@@ -1291,11 +1291,11 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 // skill first writes a file instead of passing the script.
 const workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
 
-The script gets Lua's string, table and math, zemi.json and zemi.workflow:
-agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; agent defaults to general; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
-parallel({fn, ...}) -> results, errs: runs the functions at once
-pipeline(items, stage, ...) -> results, errs: each item through the stages, stage(prev, item, i), items independent
-phase(name) groups the agents after it; log(...) tells the user; args is the input's args
+The script gets Lua's string, table and math, zemi.json and zemi.workflow, and no bare copy of them: write local wf = zemi.workflow first, and every call as wf.<name>.
+wf.agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; agent defaults to general; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
+wf.parallel({fn, ...}) -> results, errs: runs the functions at once
+wf.pipeline(items, stage, ...) -> results, errs: each item through the stages, stage(prev, item, i), items independent
+wf.phase(name) groups the agents after it; wf.log(...) tells the user; wf.args is the input's args
 The script's return value is the result.
 
 local wf = zemi.workflow
