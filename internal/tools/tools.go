@@ -1177,7 +1177,7 @@ Chain dependent steps with &&.`,
 
 		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the working directory"},
+				"path":   map[string]any{"type": "string", "description": "relative to the working directory, or absolute"},
 				"offset": map[string]any{"type": "integer", "description": "1-based line to start at"},
 				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"},
 			},
