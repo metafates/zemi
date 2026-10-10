@@ -22,18 +22,11 @@ import (
 const brainLoop = `- The maps below are derived from file frontmatter; bodies are not injected.
   Read a brain file when its Read If matches; zemi also points at one when
   a file you read or edit matches its paths. Consult the brain before you
-  build, update it after.
-- When you learn the codebase's shape, write or update a private map file
-  for it so the next session starts oriented.
-- Update what changed: private-partition maps via the memory tool (path and
-  content), user-partition files with the file tools (those writes ask),
-  one-liners via the memory tool. Keep frontmatter honest; a wrong Read If
-  hides the file.
-- One-liners cut by the budget leave this list; the memory tool still
-  resolves their ids for replaces and forget.
-- Standing instructions live in the AGENTS.md chains and the user's own
-  AGENTS.md, not here; the user's messages win over every file. Never
-  hand-edit memories.md; use the memory tool.`
+  build, update it after. When a codebase's shape took real work to learn,
+  write or update a private map file for it via the memory tool, so the next
+  session starts oriented.
+- Keep frontmatter honest; a wrong Read If hides the file it names. Never
+  hand-edit memories.md.`
 
 // brainParts are the host's two brain partitions (DESIGN §7): the private one
 // keyed by this repository's TrustRoot, and the user's cross-project one.

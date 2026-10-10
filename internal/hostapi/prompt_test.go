@@ -609,7 +609,10 @@ func TestPromptBudget(t *testing.T) {
 	// 26000: the lua tool's description states the zemi.fs signatures, the
 	// missing io and os libraries and the script-write gate: live runs spent
 	// 3-6 turns probing exactly these before a script worked (25699 today).
-	const ceiling = 26000
+	// 26100: the verify bullet sends the model to the repo's own check first
+	// (2026-10-10): datemix and vatdrift runs invented verifications that
+	// passed while the documented contract still failed (26026 today).
+	const ceiling = 26100
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
