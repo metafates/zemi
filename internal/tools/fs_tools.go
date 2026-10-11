@@ -892,7 +892,7 @@ func (p *Pipeline) notFound(path string, err error) string {
 			continue
 		}
 		if d := editDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
-			near = append(near, sibling{e.Name(), d, editDistance(name, base)})
+			near = append(near, sibling{name: e.Name(), stem: d, full: editDistance(name, base)})
 		}
 	}
 	slices.SortStableFunc(near, func(a, b sibling) int { return cmp.Or(a.stem-b.stem, a.full-b.full) })
@@ -1370,7 +1370,7 @@ func grepFile(root, rel string, re, whole *regexp.Regexp, limit int, buf *[]byte
 	for line := range bytes.Lines(data) {
 		n++
 		if line = bytes.TrimSuffix(line, []byte("\n")); re.Match(line) {
-			if hits = append(hits, Hit{rel, n, string(line)}); len(hits) == limit {
+			if hits = append(hits, Hit{Rel: rel, Line: n, Text: string(line)}); len(hits) == limit {
 				break
 			}
 		}

@@ -475,9 +475,9 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	switch o.Decision {
 	case perm.Allow:
-		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o), o.Rule}, o.Rule)
+		return loosen(Verdict{Decision: perm.Allow, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}, o.Rule)
 	case perm.Deny:
-		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
+		return Verdict{Decision: perm.Deny, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}
 	default:
 		req.Explicit = o.Ruled()
 		v := p.resolveAsk(req, o.Reason)
