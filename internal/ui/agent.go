@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -758,7 +759,7 @@ func (a *App) shimmer(seg hostapi.Segment) []hostapi.Segment {
 			k = math.Round((1+math.Cos(math.Pi*d/band))/2*8) / 8
 		}
 		cr, cg, cb, _ := hostapi.Mix(dim, fg, k).RGBA()
-		hl := fmt.Sprintf("%s38;2;%d;%d;%d", hostapi.SGRPrefix, cr>>8, cg>>8, cb>>8)
+		hl := hostapi.SGRPrefix + "38;2;" + strconv.Itoa(int(cr>>8)) + ";" + strconv.Itoa(int(cg>>8)) + ";" + strconv.Itoa(int(cb>>8))
 		out = append(out, hostapi.Segment{Text: string(r), HL: hl})
 	}
 	return out

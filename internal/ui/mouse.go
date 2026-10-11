@@ -357,12 +357,12 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 func (a *App) hover(x, y int) tea.Cmd {
 	a.hovering, a.hoverX, a.hoverY = true, x, y
 	spans, _, ok := a.target(x, y)
-	key := ""
+	var cur []cellSpan
 	if ok {
-		key = fmt.Sprint(spans)
+		cur = spans
 	}
-	if key != a.hoverKey {
-		a.hoverKey = key
+	if !slices.Equal(cur, a.hoverSpans) {
+		a.hoverSpans = cur
 		a.bump()
 	}
 	shape := ""

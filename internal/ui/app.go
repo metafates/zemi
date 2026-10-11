@@ -92,7 +92,7 @@ type App struct {
 	press          mousePress
 	hovering       bool
 	hoverX, hoverY int
-	hoverKey       string              // what the pointer is over, to redraw only on change
+	hoverSpans     []cellSpan          // what the pointer is over, to redraw only on change
 	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	panes          []uv.Rectangle      // the last frame's screenLayout.panes
@@ -422,7 +422,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case tea.MouseWheelMsg:
 		defer a.disarmIfMoved(true)()
 		a.mouse = mouseSel{}
-		a.hoverKey = "" // the content under the pointer moves
+		a.hoverSpans = nil // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
 		if step != 0 {
 			a.wheel(msg.X, msg.Y, step)
