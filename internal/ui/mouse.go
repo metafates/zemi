@@ -563,7 +563,7 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (string, int, cellSpan) {
 			continue
 		}
 		text := strings.TrimRight(hostapi.SegsText(pin), " ")
-		if sp := (cellSpan{y, st.rect.Min.X, st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
+		if sp := (cellSpan{y: y, lo: st.rect.Min.X, hi: st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
 			return id, k, sp
 		}
 	}
@@ -609,7 +609,7 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 				if from < to {
 					// a gap wider than a word space (label to key column) is not the item
 					if lo >= 0 && from > hi+1 {
-						spans = append(spans, cellSpan{y, lo, hi})
+						spans = append(spans, cellSpan{y: y, lo: lo, hi: hi})
 						lo = -1
 					}
 					if lo < 0 {
@@ -621,7 +621,7 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 			col += w
 		}
 		if lo >= 0 {
-			spans = append(spans, cellSpan{y, lo, hi})
+			spans = append(spans, cellSpan{y: y, lo: lo, hi: hi})
 		}
 	}
 	return spans

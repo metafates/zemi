@@ -329,7 +329,7 @@ func (a *App) shownWidgets() []shownWidget {
 			regions[region] = true
 		}
 		for _, wg := range a.host.Widgets.InRegion(region) {
-			out = append(out, shownWidget{wg, w, h})
+			out = append(out, shownWidget{Widget: wg, width: w, height: h})
 		}
 	}
 	var walk func(l laid)
@@ -737,7 +737,7 @@ func (st *scrollState) pinRows(lines [][]hostapi.Segment, width int) {
 	n := min(len(st.pinned), len(st.pin))
 	st.pins, st.pinned = st.pins[:n], st.pinned[:n]
 	for k, i := range st.pin {
-		key := pinKey{&lines[i][0], i+1 < len(lines) && pinOf(lines[i+1]) == pinOf(lines[i]), width}
+		key := pinKey{row: &lines[i][0], more: i+1 < len(lines) && pinOf(lines[i+1]) == pinOf(lines[i]), width: width}
 		switch {
 		case k == len(st.pinned):
 			st.pins, st.pinned = append(st.pins, pinCopy(lines[i], key.more, width)), append(st.pinned, key)

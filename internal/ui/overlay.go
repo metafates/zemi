@@ -847,7 +847,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, pickHint)
 			}
 		case len(st.visible) > 0:
-			if key := (listKey{st.query, st.selected, st.view.top, limit, st.size.w, inner}); st.rows == nil || key != st.rowsKey {
+			if key := (listKey{query: st.query, sel: st.selected, top: st.view.top, room: limit, minW: st.size.w, maxW: inner}); st.rows == nil || key != st.rowsKey {
 				items := make([]listItem, 0, len(st.visible))
 				for n, i := range st.visible {
 					it := st.items[i]

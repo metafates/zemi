@@ -441,7 +441,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if !a.multiline() {
 			text = strings.ReplaceAll(text, "\n", " ")
 		}
-		prev := composerSnap{a.composer.text, a.composer.cursor}
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.text = text
 		a.composer.moveEnd()
 		a.composer.snapshot(prev, false)
@@ -469,7 +469,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
-		prev := composerSnap{a.composer.text, a.composer.cursor}
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.paste(s)
 		a.composer.snapshot(prev, false)
 		a.publishComposer()
@@ -743,7 +743,7 @@ func (a *App) frame() int {
 }
 
 func (a *App) onWidgetRendered(msg widgetRender) {
-	if a.pending[msg.id] == (renderKey{msg.gen, msg.width, msg.height}) {
+	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
 		delete(a.pending, msg.id)
 	}
 	// renders of one generation at two sizes run concurrently: one dispatched
@@ -801,7 +801,7 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 		}
 		// One render per widget in flight: at 20 fps a slow widget would
 		// otherwise pile up a queue of renders of the same generation.
-		key := renderKey{gen, w.width, w.height}
+		key := renderKey{gen: gen, width: w.width, height: w.height}
 		if a.pending[w.ID] == key {
 			continue
 		}
