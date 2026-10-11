@@ -24,39 +24,56 @@ import (
 	"github.com/metafates/zemi/internal/ui"
 )
 
+// eventType is one zemi run --json wire type (DESIGN §8 has the tables).
+type eventType string
+
+const (
+	evStart     eventType = "start"
+	evToolStart eventType = "tool_start"
+	evToolEnd   eventType = "tool_end"
+	evAsk       eventType = "ask"
+	evRetry     eventType = "retry"
+	evMessage   eventType = "message"
+	evReasoning eventType = "reasoning"
+	evNotice    eventType = "notice"
+	evCompact   eventType = "compact"
+	evError     eventType = "error"
+	evDone      eventType = "done"
+)
+
 // event is one line of zemi run --json but the last (DESIGN §8 has the
 // tables); a field its type does not carry is left out.
 type event struct {
-	Type    string `json:"type"`
-	Session string `json:"session,omitempty"`
-	Model   string `json:"model,omitempty"`
-	Profile string `json:"profile,omitempty"`
-	Mode    string `json:"mode,omitempty"`
-	Trusted *bool  `json:"trusted,omitzero"`
-	CWD     string `json:"cwd,omitempty"`
-	Text    string `json:"text,omitempty"`
-	MS      int64  `json:"ms,omitzero"`
-	ID      string `json:"id,omitempty"`
-	Tool    string `json:"tool,omitempty"`
-	Input   string `json:"input,omitempty"`
-	Label   string `json:"label,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Output  string `json:"output,omitempty"`
-	Error   string `json:"error,omitempty"`
-	Diff    string `json:"diff,omitempty"`
-	Detail  string `json:"detail,omitempty"`
-	Subject string `json:"subject,omitempty"`
-	Arg     string `json:"arg,omitempty"`
-	Reason  string `json:"reason,omitempty"`
-	Why     string `json:"why,omitempty"`
-	Attempt int    `json:"attempt,omitzero"`
-	InMS    int64  `json:"in_ms,omitzero"`
+	Type    eventType `json:"type"`
+	Session string    `json:"session,omitempty"`
+	Model   string    `json:"model,omitempty"`
+	Profile string    `json:"profile,omitempty"`
+	Mode    string    `json:"mode,omitempty"`
+	Trusted *bool     `json:"trusted,omitzero"`
+	CWD     string    `json:"cwd,omitempty"`
+	Text    string    `json:"text,omitempty"`
+	MS      int64     `json:"ms,omitzero"`
+	ID      string    `json:"id,omitempty"`
+	Tool    string    `json:"tool,omitempty"`
+	Input   string    `json:"input,omitempty"`
+	Label   string    `json:"label,omitempty"`
+	Status  string    `json:"status,omitempty"`
+	Output  string    `json:"output,omitempty"`
+	Error   string    `json:"error,omitempty"`
+	Diff    string    `json:"diff,omitempty"`
+	Detail  string    `json:"detail,omitempty"`
+	Subject string    `json:"subject,omitempty"`
+	Arg     string    `json:"arg,omitempty"`
+	Reason  string    `json:"reason,omitempty"`
+	Why     string    `json:"why,omitempty"`
+	Attempt int       `json:"attempt,omitzero"`
+	InMS    int64     `json:"in_ms,omitzero"`
 }
 
 // doneEvent is the last line, a failed boot or send's too: what a script
 // that reads one line (tail -n1) needs.
 type doneEvent struct {
-	Type        string           `json:"type"`
+	Type        eventType        `json:"type"`
 	Result      string           `json:"result"` // the last message
 	IsError     bool             `json:"is_error"`
 	Error       string           `json:"error,omitempty"`
@@ -92,7 +109,7 @@ type follower struct {
 }
 
 func newFollower() *follower {
-	return &follower{started: map[string]bool{}, ended: map[string]bool{}, done: doneEvent{Type: "done"}}
+	return &follower{started: map[string]bool{}, ended: map[string]bool{}, done: doneEvent{Type: evDone}}
 }
 
 // step reads one frame and the run's denials so far. A call's status and
@@ -104,10 +121,10 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 	var evs []event
 	for _, d := range denials[len(f.done.Denied):] {
 		f.done.Denied = append(f.done.Denied, d)
-		evs = append(evs, event{Type: "ask", Tool: d.Tool, Subject: d.Subject, Arg: d.Arg, Reason: d.Reason, Why: string(d.Why)})
+		evs = append(evs, event{Type: evAsk, Tool: d.Tool, Subject: d.Subject, Arg: d.Arg, Reason: d.Reason, Why: string(d.Why)})
 	}
 	if s := fr.Stream; s.Retries > f.retries {
-		evs = append(evs, event{Type: "retry", Attempt: s.Retries + 1, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
+		evs = append(evs, event{Type: evRetry, Attempt: s.Retries + 1, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
 	}
 	f.retries = fr.Stream.Retries
 	asCall := func(m hostapi.ChatMessage) hostapi.StreamTool {
@@ -120,21 +137,21 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		case m.Role != fantasy.MessageRoleAssistant:
 		case m.Kind == hostapi.RowMessage:
 			f.done.Result = m.Text
-			evs = append(evs, event{Type: "message", Text: m.Text})
+			evs = append(evs, event{Type: evMessage, Text: m.Text})
 		case m.Kind == hostapi.RowReasoning:
-			ev := event{Type: "reasoning", Text: m.Text}
+			ev := event{Type: evReasoning, Text: m.Text}
 			if m.Stat != nil {
 				ev.MS = m.Stat.ThoughtMS
 			}
 			evs = append(evs, ev)
 		case m.Kind == hostapi.RowNotice:
-			evs = append(evs, event{Type: "notice", Text: m.Text})
+			evs = append(evs, event{Type: evNotice, Text: m.Text})
 		case m.Kind == hostapi.RowCompact:
 			f.done.Compactions++
-			evs = append(evs, event{Type: "compact", Text: m.Text})
+			evs = append(evs, event{Type: evCompact, Text: m.Text})
 		case m.Kind == hostapi.RowError:
 			f.done.IsError, f.done.Error = true, m.Text
-			evs = append(evs, event{Type: "error", Text: m.Text})
+			evs = append(evs, event{Type: evError, Text: m.Text})
 		}
 	}
 	for _, m := range fr.Pending {
@@ -154,7 +171,7 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 	if t.Status == hostapi.CallWait || t.ID != "" && f.ended[t.ID] {
 		return evs
 	}
-	ev := event{Type: "tool_start", ID: t.ID, Tool: t.Name, Input: t.Input, Label: sanitize.String(t.Label)}
+	ev := event{Type: evToolStart, ID: t.ID, Tool: t.Name, Input: t.Input, Label: sanitize.String(t.Label)}
 	if !f.started[t.ID] || t.ID == "" {
 		f.started[t.ID] = true
 		evs = append(evs, ev)
@@ -163,7 +180,7 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 		return evs
 	}
 	f.ended[t.ID] = true
-	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = "tool_end", string(t.Status), t.Output, sanitize.String(t.Diff), t.Detail
+	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = evToolEnd, string(t.Status), t.Output, sanitize.String(t.Diff), t.Detail
 	if t.Status == hostapi.CallErr || t.Status == hostapi.CallStopped {
 		ev.Error = failureLine(t.Name, t.Output)
 	}
@@ -185,7 +202,7 @@ func failureLine(tool, output string) string {
 // reading --json gets the done line it parses.
 func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	if jsonOut {
-		writeJSON(stdout, doneEvent{Type: "done", IsError: true, Error: err.Error()})
+		writeJSON(stdout, doneEvent{Type: evDone, IsError: true, Error: err.Error()})
 		return 1
 	}
 	fmt.Fprintln(stderr, "zemi:", hostapi.Headline(err.Error()))
@@ -266,7 +283,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		}
 		if id := h.AgentSessionID(); !started && id != "" && !sending {
 			started = true
-			emit(event{Type: "start", Session: id, Model: fr.Stream.Model, Profile: fr.Stream.Profile, Mode: h.PermMode(), Trusted: new(h.ProjectTrusted()), CWD: h.Session().CWD})
+			emit(event{Type: evStart, Session: id, Model: fr.Stream.Model, Profile: fr.Stream.Profile, Mode: h.PermMode(), Trusted: new(h.ProjectTrusted()), CWD: h.Session().CWD})
 		}
 		retries := f.retries
 		evs := f.step(fr, h.HeadlessDenials()[asked:])

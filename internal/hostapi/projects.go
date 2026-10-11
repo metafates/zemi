@@ -108,7 +108,7 @@ func (p Project) TrustWord() string {
 	case p.Missing:
 		return "missing"
 	case TrustUnsaved(p.Root):
-		return "untrusted"
+		return config.Untrusted
 	case p.Trust == "":
 		return "undecided"
 	}
@@ -386,7 +386,7 @@ func (h *Host) trustWord(p Project) string {
 	if p.Root != h.trustRoot() {
 		return word
 	}
-	if run := map[bool]string{true: "trusted", false: "untrusted"}[h.ProjectTrusted()]; run != word {
+	if run := map[bool]string{true: config.Trusted, false: config.Untrusted}[h.ProjectTrusted()]; run != word {
 		return run + " this run"
 	}
 	return word

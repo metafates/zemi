@@ -10,10 +10,16 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
+// The boot events Go code emits by name, outside hostapi too.
+const (
+	EventAppReady       = "app.ready"
+	EventConfigReloaded = "config.reloaded"
+)
+
 // eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
 var eventCatalogue = map[string]bool{
-	"app.ready": true, "app.quit": true, "config.reloaded": true,
+	EventAppReady: true, "app.quit": true, EventConfigReloaded: true,
 	"session.new": true, "session.open": true, "session.close": true,
 	"agent.start": true, "agent.finish": true, "agent.error": true,
 	"agent.assemble": true, "agent.subagent.start": true, "agent.subagent.finish": true,

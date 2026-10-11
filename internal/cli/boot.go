@@ -361,7 +361,7 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 		}
 		h.Notify(slog.LevelInfo, "Config reloaded", "")
 		h.WarnModel()
-		h.EmitAsync("config.reloaded", nil)
+		h.EmitAsync(hostapi.EventConfigReloaded, nil)
 		return nil
 	}, func() bool {
 		prev := last.Load()
@@ -675,7 +675,7 @@ func (tg *trustGate) decide() (bool, error) {
 	}
 	root := tg.dirs.TrustRoot()
 	if v, ok := tg.dirs.ReadTrust()[root]; ok {
-		return v == "trusted", nil
+		return v == config.Trusted, nil
 	}
 	if hostapi.TrustUnsaved(root) {
 		return false, nil
@@ -694,7 +694,7 @@ func (tg *trustGate) record(root, answer string) (bool, error) {
 	ok := answer == "trust"
 	if answer != "later" && !hostapi.TrustUnsaved(root) {
 		saved := tg.dirs.ReadTrust()
-		saved[root] = map[bool]string{true: "trusted", false: "untrusted"}[ok]
+		saved[root] = map[bool]string{true: config.Trusted, false: config.Untrusted}[ok]
 		err := tg.dirs.WriteTrust(saved)
 		if err == nil {
 			tg.session.Store(nil)
@@ -714,7 +714,7 @@ func (tg *trustGate) command() func() {
 		// the prompt blocks until answered: off the UI goroutine
 		tg.h.GoSafe("trust", func() {
 			root, was := tg.dirs.TrustRoot(), tg.h.ProjectTrusted()
-			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: "trusted", false: "not trusted"}[was])
+			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: config.Trusted, false: "not trusted"}[was])
 			if answer == "later" {
 				return
 			}
@@ -736,14 +736,14 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
 	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })
 	return lua.BootStep{
-		Name: "app.ready",
+		Name: hostapi.EventAppReady,
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			if !h.Settings.Bool("providers.builtin") {
 				h.Providers.DropBuiltin()
 			}
 			h.CheckToolNames()
 			h.CheckTheme()
-			h.EmitOnState(g.L, "app.ready", nil)
+			h.EmitOnState(g.L, hostapi.EventAppReady, nil)
 			// idle sessions are reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3)
 			if reflect {

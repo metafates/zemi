@@ -292,6 +292,12 @@ func (d Dirs) LogDir() string {
 	return filepath.Join(d.StateHome, "logs")
 }
 
+// The saved trust decision values.
+const (
+	Trusted   = "trusted"
+	Untrusted = "untrusted"
+)
+
 // ReadTrust is the saved trust decisions: trust roots to "trusted" or
 // "untrusted".
 func (d Dirs) ReadTrust() map[string]string {

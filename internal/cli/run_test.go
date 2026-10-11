@@ -71,7 +71,7 @@ func TestFollower(t *testing.T) {
 				ds = c.denials[i]
 			}
 			for _, ev := range f.step(fr, ds) {
-				s := ev.Type
+				s := string(ev.Type)
 				if ev.ID != "" {
 					s += ":" + ev.ID
 				}
