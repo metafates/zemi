@@ -795,7 +795,7 @@ type busyJob struct {
 // user waits on that is not a turn; a non-nil cancel lets a double esc
 // (CancelBusy) stop it.
 func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
-	j := &busyJob{label, h.now(), cancel}
+	j := &busyJob{label: label, start: h.now(), cancel: cancel}
 	h.busyMu.Lock()
 	h.busy = append(h.busy, j)
 	h.busyMu.Unlock()
@@ -848,7 +848,7 @@ func (h *Host) BusyList() []BusyEntry {
 	defer h.busyMu.Unlock()
 	out := make([]BusyEntry, 0, len(h.busy))
 	for _, j := range slices.Backward(h.busy) {
-		out = append(out, BusyEntry{j.label, h.now().Sub(j.start), j.cancel != nil})
+		out = append(out, BusyEntry{Label: j.label, Elapsed: h.now().Sub(j.start), Cancellable: j.cancel != nil})
 	}
 	return out
 }

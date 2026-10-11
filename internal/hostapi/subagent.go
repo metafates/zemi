@@ -547,7 +547,7 @@ func pickTools(all []fantasy.AgentTool, infos []fantasy.ToolInfo) ([]fantasy.Age
 		if !ok {
 			return nil, fmt.Errorf("no tool is named %s any more: the tool set changed while this turn ran, so a fork cannot send the caller's own request", info.Name)
 		}
-		out[i] = pinnedTool{t, info}
+		out[i] = pinnedTool{AgentTool: t, info: info}
 	}
 	return out, nil
 }
