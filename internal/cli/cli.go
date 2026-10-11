@@ -1,4 +1,6 @@
-package main
+// Package cli is zemi's front end: the command line, the headless run and
+// the TUI launch.
+package cli
 
 import (
 	"bufio"
@@ -76,6 +78,14 @@ func status(code int) error {
 		return nil
 	}
 	return exitError(code)
+}
+
+// Main runs the command line for the root main.go's single structured
+// os.Exit; the process guards in launch (SIGHUP, the cleanup watchdog) exit
+// directly, since a signal must bypass defers and a cleanup hang must not
+// hold the exit.
+func Main(args []string, stdout, stderr io.Writer) int {
+	return execute(args, stdout, stderr, launch)
 }
 
 // execute runs the command line and returns the exit status. launch opens

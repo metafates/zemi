@@ -1,11 +1,11 @@
 ---
 name: zemi-host-flow
-description: "Load before changing main.go, cli.go, run.go, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI and headless runs, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
+description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI and headless runs, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
 ---
 
 # Host flow: CLI, boot, config, turns
 
-## CLI (cli.go, run.go)
+## CLI (internal/cli/cli.go, internal/cli/run.go)
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
 prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
@@ -47,7 +47,7 @@ changes the prompt and the tool set, so it busts the provider's prompt cache onc
 
 `zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
 `stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
-above the tail). `zemi run` (`runHeadless`, run.go; DESIGN §8 Printed runs) runs one turn, or a
+above the tail). `zemi run` (`runHeadless`, internal/cli/run.go; DESIGN §8 Printed runs) runs one turn, or a
 goal's chain of them. It sends on `GoSafe` and polls `Host.RunFrame` every 100 ms: `ui.RunView`
 renders the chat and working widgets over the frame with `UIState.Printed` (`ctx.headless`),
 and the `follower` turns the same frames into `--json` events, each once (a call by
@@ -72,7 +72,7 @@ so an agent's command cannot delete a plugin. `test` is the one verb that boots 
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it).
 
-`zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
+`zemi plugins test <name|dir> [pattern]` (internal/cli/plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
 plugin's `.zemi/tests/*.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
 copies the plugin into temp dirs (`copyPlugin`: `.zemi` whole with the layer dirs, nothing else
 of the root, no `node_modules`, a link only when relative and inside, capped), and boots one zemi per case in this
@@ -139,7 +139,7 @@ init.lua. Under `zemi run` only `config set` runs.
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `bootSteps` in main.go),
+`main.go` is the entry alone; the front end lives in `internal/cli`. Boot order (each step is a `lua.BootStep`, see `bootSteps` in internal/cli/boot.go),
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
@@ -147,7 +147,7 @@ trust (`trustGate.step`, before any config that can start an MCP server) -> plug
 (`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`, then skill commands) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
-**Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
+**Project trust** (internal/cli/boot.go `trustGate`, DESIGN §5): one decision per repository, keyed by
 `Dirs.TrustRoot()` (the symlink-resolved repo root, searched no higher than below `$HOME` so a
 dotfiles repo is nobody's root; a linked worktree maps to its main checkout by reading the
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held

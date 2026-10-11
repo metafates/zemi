@@ -2341,7 +2341,7 @@ rides the `memories.md` line and its ledger entries.
   sanitized the same way, and the log's slog text handler quotes every key
   and value holding a control byte, a newline or another unprintable rune,
   so a `tail -f` of the log cannot execute escape sequences or forge entries.
-- **Printed runs** (`zemi run`; run.go, ui/run.go): one observer, two
+- **Printed runs** (`zemi run`; internal/cli/run.go, ui/run.go): one observer, two
   outputs. stdout is the answer and nothing else: the run's last message
   (the headless prompt tells the model to put the whole answer there, after
   its last call), or with `--json` one event per line, `done` last (the
@@ -2364,7 +2364,7 @@ rides the `memories.md` line and its ledger entries.
   Since the model picks every URL, which only yolo settles, a run with no
   `net.*` allow rule, yolo base or `decide` in its mode ships neither
   `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
-- **JSON lines** (run.go, cli.go): `zemi run --json` prints one object per line
+- **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, and a run that failed before its turn prints that
   `done` line alone, no events before it.
@@ -3464,9 +3464,12 @@ commands as the backstop.
 ## 12. Repository layout
 
 ```
-main.go, cli.go             wiring, boot steps, and the command line (cobra)
-run.go                      zemi run: the loop, the answer or the JSON events
-plugintest.go               zemi plugins test: the copy, a boot per case, the report
+main.go                     the entry: the sandbox helper dispatch and one os.Exit
+internal/cli/               the front end: wiring, boot steps and the TUI launch
+                            (boot.go), the command line (cli.go, cobra), zemi run:
+                            the loop, the answer or the JSON events (run.go), zemi
+                            plugins test: the copy, a boot per case, the report
+                            (plugintest.go)
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,

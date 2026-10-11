@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"cmp"
@@ -22,7 +22,7 @@ import (
 // on plugins a row writes; it reads the output and the exit status, and
 // checks that nothing outside the run's temp dir changed.
 func TestPluginsTest(t *testing.T) {
-	demo, err := filepath.Abs("testdata/plugins/demo")
+	demo, err := filepath.Abs("../../testdata/plugins/demo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 // TestCopyPluginManifest: the manifest is inside .zemi, which the copy takes
 // whole, so a test zemi reads the same manifest the plugin ships.
 func TestCopyPluginManifest(t *testing.T) {
-	src := filepath.Join("testdata", "plugins", "demo")
+	src := filepath.Join("..", "..", "testdata", "plugins", "demo")
 	want, err := os.ReadFile(filepath.Join(src, ".zemi", "plugin.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -324,7 +324,7 @@ func TestPluginStylua(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("stylua.toml")
+	want, err := os.ReadFile("../../stylua.toml")
 	if err != nil {
 		t.Fatal(err)
 	}
