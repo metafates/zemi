@@ -183,7 +183,7 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
 	r := &Runner{last: &LastErr{LanguageModel: model}, system: system}
-	opts := []fantasy.AgentOption{}
+	var opts []fantasy.AgentOption
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
 	}
