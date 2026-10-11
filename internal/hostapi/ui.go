@@ -62,7 +62,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	widget.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, w := range h.Widgets.List() {
 			rows = append(rows, map[string]any{"id": w.ID, "region": w.Region, "priority": w.Priority, "origin": string(w.Origin)})
 		}
@@ -96,7 +96,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	theme.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, t := range h.Themes.List() {
 			rows = append(rows, map[string]any{"name": t.Name, "origin": string(t.Origin)})
 		}

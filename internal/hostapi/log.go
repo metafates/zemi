@@ -28,7 +28,7 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	// list() is the /messages ring: the log file is per launch and outside
 	// the read jails, so a widget reads the recent lines from here.
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, e := range slices.Backward(h.messages()) {
 			rows = append(rows, map[string]any{
 				"at": e.at.Format(time.TimeOnly), "ts": float64(e.at.Unix()),

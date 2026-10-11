@@ -102,7 +102,7 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 	// inline: list is already on the interpreter goroutine, where the queue
 	// luaHealthRows uses would deadlock.
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, c := range append(h.goHealthRows(), h.inlineHealthRows(L)...) {
 			rows = append(rows, map[string]any{"level": c.Level, "name": c.Name, "detail": c.Detail})
 		}

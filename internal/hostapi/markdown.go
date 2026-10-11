@@ -49,18 +49,27 @@ const (
 type markdownCache struct {
 	mu        sync.Mutex
 	renderers map[string]*glamour.TermRenderer
-	lines     map[string][][]Segment
-	prev      map[string][][]Segment
+	lines     map[mdKey][][]Segment
+	prev      map[mdKey][][]Segment
 	bytes     int // roughly what lines holds: a streaming reply keyed by its
 	// whole text would otherwise retain every version of it
 }
 
-func (c *markdownCache) put(k string, v [][]Segment) {
+// mdKey keys the line caches by value: a concatenated string key copied the
+// whole text per call on the path re-rendered every frame.
+type mdKey struct {
+	hl    bool // Highlight's key, style holding a lang
+	style string
+	width int
+	text  string
+}
+
+func (c *markdownCache) put(k mdKey, v [][]Segment) {
 	if c.lines == nil || len(c.lines) >= mdLinesMax || c.bytes >= mdBytesMax {
-		c.prev, c.lines, c.bytes = c.lines, map[string][][]Segment{}, 0
+		c.prev, c.lines, c.bytes = c.lines, map[mdKey][][]Segment{}, 0
 	}
 	c.lines[k] = v
-	c.bytes += len(k)
+	c.bytes += len(k.text) + len(k.style)
 	for _, line := range v {
 		for _, s := range line {
 			c.bytes += len(s.Text) + len(s.HL) + 32
@@ -68,7 +77,7 @@ func (c *markdownCache) put(k string, v [][]Segment) {
 	}
 }
 
-func (c *markdownCache) get(k string) ([][]Segment, bool) {
+func (c *markdownCache) get(k mdKey) ([][]Segment, bool) {
 	if v, ok := c.lines[k]; ok {
 		return v, true
 	}
@@ -129,8 +138,8 @@ func settledPrefix(s string) int {
 // render returns the lines of one chunk wrapped to width, from the cache
 // when it holds them. The cache mutex must be held.
 func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, width int) [][]Segment {
-	lk := fmt.Sprintf("%s|%d|%s", styleKey, width, text)
-	if lines, ok := c.get(lk); ok {
+	k := mdKey{style: styleKey, width: width, text: text}
+	if lines, ok := c.get(k); ok {
 		return lines
 	}
 	// a tab occupies no cell once drawn into the buffer, so code would lose
@@ -180,7 +189,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 		}
 		out = append(out, l)
 	}
-	c.put(lk, out)
+	c.put(k, out)
 	return out
 }
 
@@ -426,7 +435,7 @@ func (h *Host) Highlight(text, lang string, width int) [][]Segment {
 	c := &h.md
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	k := fmt.Sprintf("\x00%s|%d|%s", lang, width, text)
+	k := mdKey{hl: true, style: lang, width: width, text: text}
 	if rows, ok := c.get(k); ok {
 		return rows
 	}

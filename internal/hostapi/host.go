@@ -433,7 +433,7 @@ type Host struct {
 	// memUndo reverses the /memory list's actions, newest last; opening the
 	// list empties it, so an undo reaches no further than the list shows.
 	memUndo struct {
-		sync.Mutex
+		mu    sync.Mutex
 		steps []func() error
 	}
 
@@ -680,7 +680,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
-		Perm:      new(perm.Store),
+		Perm:      &perm.Store{},
 		agents:    newAgentHost(rt.Clock()),
 		luaTools:  newToolReg(),
 		stops:     newStopReg(),
@@ -795,7 +795,7 @@ type busyJob struct {
 // user waits on that is not a turn; a non-nil cancel lets a double esc
 // (CancelBusy) stop it.
 func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
-	j := &busyJob{label, h.now(), cancel}
+	j := &busyJob{label: label, start: h.now(), cancel: cancel}
 	h.busyMu.Lock()
 	h.busy = append(h.busy, j)
 	h.busyMu.Unlock()
@@ -848,7 +848,7 @@ func (h *Host) BusyList() []BusyEntry {
 	defer h.busyMu.Unlock()
 	out := make([]BusyEntry, 0, len(h.busy))
 	for _, j := range slices.Backward(h.busy) {
-		out = append(out, BusyEntry{j.label, h.now().Sub(j.start), j.cancel != nil})
+		out = append(out, BusyEntry{Label: j.label, Elapsed: h.now().Sub(j.start), Cancellable: j.cancel != nil})
 	}
 	return out
 }

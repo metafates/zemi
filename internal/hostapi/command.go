@@ -147,7 +147,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, c := range h.Commands.List() {
 			rows = append(rows, map[string]any{"name": c.Name, "desc": c.Desc, "nargs": c.NArgs, "origin": string(c.Origin)})
 		}

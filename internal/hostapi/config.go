@@ -409,7 +409,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 
 	// schema() lists every known setting: path, kind, default, desc and choices.
 	tb.RawSetString("schema", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, s := range h.Settings.Schema() {
 			row := map[string]any{"path": s.Path, "kind": s.Kind, "default": s.Default, "desc": s.Desc}
 			if s.Choices != nil {

@@ -350,9 +350,9 @@ func (h *Host) openMemory(confirm string) error {
 	if err != nil {
 		return err
 	}
-	h.memUndo.Lock()
+	h.memUndo.mu.Lock()
 	h.memUndo.steps = nil
-	h.memUndo.Unlock()
+	h.memUndo.mu.Unlock()
 	o := h.memoryOverlay()
 	o.Confirm = confirm
 	ui.OpenOverlay(o)
@@ -367,35 +367,35 @@ func (h *Host) memoryOverlay() Overlay {
 		Reload: func() ([]any, [][]Segment) { return h.memoryItems(), nil },
 		Empty:  "Nothing remembered yet. Type /memory <note> to save one.",
 	}
-	h.memUndo.Lock()
+	h.memUndo.mu.Lock()
 	if len(h.memUndo.steps) > 0 {
 		o.Keys = []OverlayKey{{Key: "u", Desc: "undo", Run: "memory undo --yes"}}
 	}
-	h.memUndo.Unlock()
+	h.memUndo.mu.Unlock()
 	return o
 }
 
 // pushUndo records the reverse of a /memory action and rebuilds the whole
 // list, since Reload leaves its keys as they were.
 func (h *Host) pushUndo(step func() error) {
-	h.memUndo.Lock()
+	h.memUndo.mu.Lock()
 	h.memUndo.steps = append(h.memUndo.steps, step)
-	h.memUndo.Unlock()
+	h.memUndo.mu.Unlock()
 	h.refreshMemory()
 }
 
 // undoMemory reverses the newest /memory action not undone yet.
 func (h *Host) undoMemory() error {
 	u := &h.memUndo
-	u.Lock()
+	u.mu.Lock()
 	n := len(u.steps)
 	if n == 0 {
-		u.Unlock()
+		u.mu.Unlock()
 		return Usagef("nothing to undo")
 	}
 	step := u.steps[n-1]
 	u.steps = u.steps[:n-1]
-	u.Unlock()
+	u.mu.Unlock()
 	defer h.refreshMemory()
 	return step()
 }

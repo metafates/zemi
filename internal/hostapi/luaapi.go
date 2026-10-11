@@ -112,7 +112,7 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 				limit = min(int(n), 200)
 			}
 		}
-		rows := []any{}
+		var rows []any
 		if h.DB != nil {
 			current := h.AgentSessionID()
 			list, _ := h.DB.ListSessions(limit)
@@ -145,7 +145,7 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		return 1
 	}))
 	tb.RawSetString("todos", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
 			todos, _ := h.DB.Todos(sid)
 			for _, td := range todos {

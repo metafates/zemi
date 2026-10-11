@@ -685,7 +685,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		var rows []any
 		for _, s := range h.mcp.list() {
 			s.mu.Lock()
-			names := []string{}
+			var names []string
 			for _, t := range s.tools {
 				if s.offered(t.Name) {
 					names = append(names, t.Name)

@@ -425,7 +425,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.mode.add: %q is a builtin mode", name)
 		}
 		if rules, ok := opt[*glua.LTable](L, spec, "rules"); ok {
-			def.Rules = new(perm.Store)
+			def.Rules = &perm.Store{}
 			var bad string
 			rules.ForEach(func(_, v glua.LValue) {
 				rt, ok := v.(*glua.LTable)

@@ -384,7 +384,7 @@ func writesFiles(kept []fantasy.AgentTool) bool {
 // copyMap is a snapshot of m, for what a run inherits from the conversation and
 // must keep its own.
 func copyMap(m *sync.Map) *sync.Map {
-	out := new(sync.Map)
+	out := &sync.Map{}
 	m.Range(func(k, v any) bool { out.Store(k, v); return true })
 	return out
 }
@@ -436,7 +436,7 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
-	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
+	loaded := &sync.Map{} // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
 	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
 	runner := agent.NewRunner(model, kept, sys)
@@ -547,7 +547,7 @@ func pickTools(all []fantasy.AgentTool, infos []fantasy.ToolInfo) ([]fantasy.Age
 		if !ok {
 			return nil, fmt.Errorf("no tool is named %s any more: the tool set changed while this turn ran, so a fork cannot send the caller's own request", info.Name)
 		}
-		out[i] = pinnedTool{t, info}
+		out[i] = pinnedTool{AgentTool: t, info: info}
 	}
 	return out, nil
 }
@@ -639,7 +639,7 @@ func schemaReport(schema map[string]any, reply string) (string, error) {
 	if err := json.Unmarshal([]byte(reply[i:j+1]), &m); err != nil {
 		return "", err
 	}
-	req := []string{}
+	var req []string
 	list, _ := schema["required"].([]any)
 	for _, r := range list {
 		name, _ := r.(string)
