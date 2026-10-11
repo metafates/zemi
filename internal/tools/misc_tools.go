@@ -157,7 +157,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	implement := " " + ImplementPlan + saved
 	switch {
 	case !ok:
-		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
+		return stopTurn(userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Hold:
 		return endTurn(planApproved + "; the user has not asked for it yet, so do not start implementing: stop here and wait for them to say when." + saved), nil
 	case v.Approved && v.Profile != "":
@@ -288,7 +288,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	}
 	answers, ok := p.Question(qs)
 	if !ok || len(answers) != len(qs) {
-		return stopTurn("The user dismissed the questions. Stop and wait for them to say how to proceed."), nil
+		return stopTurn(userDismissed + " the questions. Stop and wait for them to say how to proceed."), nil
 	}
 	res := questionResult{Answers: make([]questionAnswer, len(qs))}
 	for i, q := range qs {
