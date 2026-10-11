@@ -529,7 +529,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 				if name != "reload" {
 					a.runCommand(name, args)
 				} else {
-					go a.host.Reload() // off the UI goroutine, as the typed /reload
+					a.host.GoSafe("reload", a.host.Reload) // off the UI goroutine, as the typed /reload
 				}
 			}
 		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {

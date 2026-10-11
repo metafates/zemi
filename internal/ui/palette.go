@@ -207,7 +207,7 @@ func (a *App) runSlashCommand(text string) {
 	if raw == "reload" {
 		a.clearComposer()
 		// off the UI goroutine: replaying project config may ask for trust
-		go a.host.Reload()
+		a.host.GoSafe("reload", a.host.Reload)
 		return
 	}
 	name, args := hostapi.SplitCommand(raw)

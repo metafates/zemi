@@ -252,7 +252,7 @@ func (a *App) quitTo(dir string) {
 		a.leave()
 	}
 	if a.program != nil {
-		go quit()
+		a.host.GoSafe("quit", quit)
 		return
 	}
 	quit()
