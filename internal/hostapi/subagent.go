@@ -384,7 +384,7 @@ func writesFiles(kept []fantasy.AgentTool) bool {
 // copyMap is a snapshot of m, for what a run inherits from the conversation and
 // must keep its own.
 func copyMap(m *sync.Map) *sync.Map {
-	out := new(sync.Map)
+	out := &sync.Map{}
 	m.Range(func(k, v any) bool { out.Store(k, v); return true })
 	return out
 }
@@ -436,7 +436,7 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
-	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
+	loaded := &sync.Map{} // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
 	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
 	runner := agent.NewRunner(model, kept, sys)

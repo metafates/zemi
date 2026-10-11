@@ -680,7 +680,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
-		Perm:      new(perm.Store),
+		Perm:      &perm.Store{},
 		agents:    newAgentHost(rt.Clock()),
 		luaTools:  newToolReg(),
 		stops:     newStopReg(),
