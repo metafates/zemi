@@ -2685,7 +2685,7 @@ func (h *Host) sessionLogs() (reads, loaded *sync.Map) {
 	ag.readMu.Lock()
 	defer ag.readMu.Unlock()
 	if ag.reads[sid] == nil {
-		ag.reads = map[string]*sync.Map{sid: &sync.Map{}}
+		ag.reads = map[string]*sync.Map{sid: {}}
 		ag.instr = map[string]bool{}
 		ag.loaded = &sync.Map{}
 	}
