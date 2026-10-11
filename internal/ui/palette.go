@@ -223,7 +223,7 @@ func (a *App) runSlashCommand(text string) {
 // sendMessage runs the composer.submit vetoable event, then appends the
 // message to the transcript and drives the agent.
 func (a *App) sendMessage(text string) {
-	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text})
+	res := a.host.EmitVetoable(context.Background(), hostapi.EventComposerSubmit, map[string]any{"text": text})
 	if res.Denied {
 		a.pushToast(slog.LevelWarn, "Message blocked", res.Reason)
 		return

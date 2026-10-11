@@ -10,23 +10,29 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// The boot events Go code emits by name, outside hostapi too.
+// Host events Go code emits or checks by name, outside hostapi too.
 const (
-	EventAppReady       = "app.ready"
-	EventConfigReloaded = "config.reloaded"
+	EventAppReady          = "app.ready"
+	EventConfigReloaded    = "config.reloaded"
+	EventAppQuit           = "app.quit"
+	EventSessionNew        = "session.new"
+	EventComposerSubmit    = "composer.submit"
+	EventToolPre           = "tool.pre"
+	EventToolPost          = "tool.post"
+	EventPermissionRequest = "permission.request"
 )
 
 // eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
 var eventCatalogue = map[string]bool{
-	EventAppReady: true, "app.quit": true, EventConfigReloaded: true,
-	"session.new": true, "session.open": true, "session.close": true,
+	EventAppReady: true, EventAppQuit: true, EventConfigReloaded: true,
+	EventSessionNew: true, "session.open": true, "session.close": true,
 	"agent.start": true, "agent.finish": true, "agent.error": true,
 	"agent.assemble": true, "agent.subagent.start": true, "agent.subagent.finish": true,
 	"agent.text_delta": true, "agent.reasoning_delta": true, "agent.step": true,
-	"tool.pre": true, "tool.post": true, "tool.denied": true,
-	"permission.request": true, "permission.resolved": true,
-	"ui.resize": true, "composer.change": true, "composer.submit": true,
+	EventToolPre: true, EventToolPost: true, "tool.denied": true,
+	EventPermissionRequest: true, "permission.resolved": true,
+	"ui.resize": true, "composer.change": true, EventComposerSubmit: true,
 	"memory.written":  true,
 	"reflector.start": true, "reflector.done": true,
 	"job.exit":    true,

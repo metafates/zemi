@@ -225,7 +225,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginSettles(name, subject, arg, confined):
 		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByPlugin}
 	case v.Decision == perm.Ask:
-		h.EmitAsync("permission.request", map[string]any{
+		h.EmitAsync(EventPermissionRequest, map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
 		})
 		// name the rule that settles it: a host-API call has no overlay, so

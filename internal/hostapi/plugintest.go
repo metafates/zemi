@@ -603,7 +603,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 	tool, _ := ev["tool"].(string)
 	handlers := func(event string) []*EventHandler {
 		hs := t.h.Events.Handlers(event)
-		if event == "tool.pre" || event == "tool.post" {
+		if event == EventToolPre || event == EventToolPost {
 			hs = t.h.hookHandlers(event, tool)
 		}
 		return slices.DeleteFunc(hs, func(hd *EventHandler) bool { return !t.mine(hd.Path) })
@@ -621,7 +621,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			}
 		}
 		switch name {
-		case "tool.post":
+		case EventToolPost:
 			var changed []string
 			if list, ok := ev["changed"].([]any); ok {
 				for _, c := range list {
@@ -632,10 +632,10 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			ms, _ := ev["ms"].(float64)
 			out := t.h.postChain(ctx, hs, "", tool, input, ev["ok"] != false, output, changed, time.Duration(ms)*time.Millisecond)
 			return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LString(out)} }, nil
-		case "tool.pre":
+		case EventToolPre:
 			d, reason, rewritten, _ := t.h.toolPre(tool, input, hs)
 			return veto(string(d), reason, rewritten), nil
-		case "permission.request", "app.quit", "composer.submit":
+		case EventPermissionRequest, EventAppQuit, EventComposerSubmit:
 			if res := t.h.emitVetoable(ctx, name, hs, ev); res.Denied {
 				return veto("deny", res.Reason, nil), nil
 			}

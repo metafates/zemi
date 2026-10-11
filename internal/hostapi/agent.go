@@ -1774,7 +1774,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	// message's line from here on, not after the model's title lands
 	h.setLiveTitle(sid, title)
 	h.refreshPending()
-	h.EmitAsync("session.new", map[string]any{"id": sid, "title": title})
+	h.EmitAsync(EventSessionNew, map[string]any{"id": sid, "title": title})
 	if title != "" {
 		h.autoTitle(sid, title)
 	}

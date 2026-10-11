@@ -64,7 +64,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		// a rule answer changes no handler's verdict, and audit handlers
 		// would see the ask twice
 		if !held {
-			res = h.EmitVetoable(context.Background(), "permission.request",
+			res = h.EmitVetoable(context.Background(), EventPermissionRequest,
 				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason, "agent": req.Agent})
 		}
 		def = h.permModeDef()

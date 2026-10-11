@@ -244,7 +244,7 @@ func (a *App) RelaunchDir() string {
 // on a goroutine.
 func (a *App) quitTo(dir string) {
 	quit := func() {
-		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
+		if res := a.host.EmitVetoable(context.Background(), hostapi.EventAppQuit, map[string]any{}); res.Denied {
 			a.Notify(slog.LevelWarn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
 			return
 		}

@@ -1083,7 +1083,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 					h.logHandlerError(hd, err)
 				default:
 					// a repo may not keep the user from quitting
-					if name == "app.quit" && hd.Origin.Rank() <= lua.OriginProject.Rank() {
+					if name == EventAppQuit && hd.Origin.Rank() <= lua.OriginProject.Rank() {
 						break
 					}
 					tb, decision, bad := vetoDecision(ret, "deny")
@@ -1092,7 +1092,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 						h.logHandlerError(hd, errors.New(bad))
 						// a handler that meant to deny and misspelled it must
 						// not read as consent where there is a closed side
-						outcomes[i] = outcome{denied: name == "permission.request", reason: bad}
+						outcomes[i] = outcome{denied: name == EventPermissionRequest, reason: bad}
 					case decision == "deny":
 						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					}
@@ -1103,7 +1103,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	if errors.Is(err, lua.ErrAbandoned) {
 		return VetoResult{TimedOut: true}
 	}
-	if err != nil && name == "permission.request" {
+	if err != nil && name == EventPermissionRequest {
 		// a hot runtime cannot run the deny hooks: fail closed
 		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}

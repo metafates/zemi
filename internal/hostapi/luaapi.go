@@ -127,7 +127,7 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		return 1
 	}))
 	tb.RawSetString("new", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "session.new")
+		h.refuseBelowUser(L, EventSessionNew)
 		return luaResult(L, h.NewSession())
 	}))
 	tb.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {

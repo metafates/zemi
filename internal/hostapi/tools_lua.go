@@ -391,7 +391,7 @@ func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
 func (h *Host) toolPreHook() tools.PreHook {
 	return func(name string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any, loosened bool) {
 		h.outsideReload(func() {
-			decision, reason, rewritten, loosened = h.toolPre(name, input, h.hookHandlers("tool.pre", name))
+			decision, reason, rewritten, loosened = h.toolPre(name, input, h.hookHandlers(EventToolPre, name))
 		})
 		return decision, reason, rewritten, loosened
 	}
@@ -403,7 +403,7 @@ func (h *Host) hookHandlers(event, tool string) []*EventHandler {
 	handlers := h.Events.Handlers(event)
 	for _, o := range h.luaTools.overridesFor(tool) {
 		fn := o.Post
-		if event == "tool.pre" {
+		if event == EventToolPre {
 			fn = o.Pre
 		}
 		if fn != nil {
@@ -415,7 +415,7 @@ func (h *Host) hookHandlers(event, tool string) []*EventHandler {
 
 // toolPre runs handlers as tool.pre for one call of name.
 func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandler) (tools.PreVerdict, string, map[string]any, bool) {
-	h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
+	h.recordEvent(EventToolPre, "host", map[string]any{"tool": name, "input": input})
 	if len(handlers) == 0 {
 		return "", "", nil, false
 	}
@@ -470,7 +470,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 
 // callToolPre runs one pre handler and parses the decision table.
 func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any) {
-	ev := map[string]any{"name": "tool.pre", "from": "host", "tool": tool, "input": input}
+	ev := map[string]any{"name": EventToolPre, "from": "host", "tool": tool, "input": input}
 	ret, _, err := h.callEvent(L, hd, ev)
 	if err != nil {
 		h.logHandlerError(hd, err) // proceed is the tool.pre default (DESIGN §4)
@@ -506,7 +506,7 @@ const toolPostWait = 30 * time.Second
 // { output = "..." } rewrites it, except from project code; a handler that
 // fails or runs late leaves it as it was.
 func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
-	return h.postChain(ctx, h.hookHandlers("tool.post", name), pad, name, input, ok, output, changed, took)
+	return h.postChain(ctx, h.hookHandlers(EventToolPost, name), pad, name, input, ok, output, changed, took)
 }
 
 // postChain runs handlers as tool.post for one call of name.
@@ -517,7 +517,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": output, "changed": changed, "ms": took.Milliseconds()}
 	logged := maps.Clone(payload) // the log keeps its map, which the chain below would change
 	logged["output"] = truncRunes(output, 4096)
-	h.recordEvent("tool.post", "host", logged)
+	h.recordEvent(EventToolPost, "host", logged)
 	if len(handlers) == 0 {
 		return output
 	}
@@ -531,7 +531,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 		}
 		payload["output"] = out
 		var rewrite *string
-		t := h.luaTask(lua.ClassAgent, luaCaller{gen: hd.Gen, origin: hd.Origin, path: hd.Path}, hd.Fn, eventTable("tool.post", "host", payload))
+		t := h.luaTask(lua.ClassAgent, luaCaller{gen: hd.Gen, origin: hd.Origin, path: hd.Path}, hd.Fn, eventTable(EventToolPost, "host", payload))
 		t.Ceiling = lua.VetoDeadline
 		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
 			if len(rets) > 0 {
