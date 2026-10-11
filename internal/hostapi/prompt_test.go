@@ -612,7 +612,11 @@ func TestPromptBudget(t *testing.T) {
 	// 26100: the verify bullet sends the model to the repo's own check first
 	// (2026-10-10): datemix and vatdrift runs invented verifications that
 	// passed while the documented contract still failed (26026 today).
-	const ceiling = 26100
+	// 26200: edits and writes run sequentially now, so a same-response batch
+	// applies in order; the wording spent 164B teaching the batched edit and
+	// its check and the model kept them apart in 27 of 27 responses, so the
+	// teaching is gone and the ceiling keeps the headroom (2026-10-10).
+	const ceiling = 26200
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
