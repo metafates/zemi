@@ -174,10 +174,17 @@ func ByMode(name string) string { return modePrefix + name }
 // never counts.
 func UserRule(r *perm.Rule) bool { return r != nil && r.Principal != perm.PrincipalModel }
 
+// DeniedText and stopTurn build their user-stop wordings from these, and
+// UserStopped matches them, so a producer reword cannot desync the matcher.
+const (
+	deniedPrefix  = "permission denied ("
+	userDismissed = "The user dismissed"
+)
+
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
 func DeniedText(v Verdict, what string) string {
-	s := "permission denied (" + v.DecidedBy + "): " + what
+	s := deniedPrefix + v.DecidedBy + "): " + what
 	if v.Reason == "" {
 		return s
 	}
@@ -187,7 +194,7 @@ func DeniedText(v Verdict, what string) string {
 // UserStopped reports a failed call's output as the user's own answer (a
 // denied ask, a dismissed question or plan), which is no failure.
 func UserStopped(output string) bool {
-	return strings.HasPrefix(output, "permission denied (user)") || strings.HasPrefix(output, "The user dismissed")
+	return strings.HasPrefix(output, deniedPrefix+ByUser+")") || strings.HasPrefix(output, userDismissed)
 }
 
 // PreVerdict is a tool.pre answer; "" passes the call on.
@@ -475,9 +482,9 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	switch o.Decision {
 	case perm.Allow:
-		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o), o.Rule}, o.Rule)
+		return loosen(Verdict{Decision: perm.Allow, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}, o.Rule)
 	case perm.Deny:
-		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
+		return Verdict{Decision: perm.Deny, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}
 	default:
 		req.Explicit = o.Ruled()
 		v := p.resolveAsk(req, o.Reason)
