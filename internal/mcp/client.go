@@ -175,7 +175,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			return nil, err
 		}
 	case cfg.URL != "":
-		c.t = &httpTransport{cfg: cfg, c: c}
+		c.t = &httpTransport{cfg: cfg, c: c, streams: map[io.Closer]struct{}{}}
 	default:
 		return nil, errors.New("mcp: command or url is required")
 	}
@@ -462,7 +462,8 @@ type httpTransport struct {
 	mu      sync.Mutex
 	session string
 	version string
-	renewMu sync.Mutex // one new session at a time
+	streams map[io.Closer]struct{} // SSE bodies draining off the request path
+	renewMu sync.Mutex             // one new session at a time
 }
 
 // renewing marks the handshake renew runs, whose sends must not renew again.
@@ -541,8 +542,16 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			// it here would cost the caller the whole request timeout, so the
 			// stream is drained off the request path and the reply reaches the
 			// waiting call through handle.
+			t.mu.Lock()
+			t.streams[resp.Body] = struct{}{}
+			t.mu.Unlock()
 			go func() {
-				defer resp.Body.Close()
+				defer func() {
+					resp.Body.Close()
+					t.mu.Lock()
+					delete(t.streams, resp.Body)
+					t.mu.Unlock()
+				}()
 				defer func() {
 					if r := recover(); r != nil {
 						t.c.end(fmt.Errorf("mcp: sse reader panic: %v", r))
@@ -652,7 +661,18 @@ func redactURL(err error) error {
 	return err
 }
 
-func (t *httpTransport) close() error { return nil }
+// close ends the SSE streams still draining in the background, so Close
+// leaks neither their drain goroutines nor their connections.
+func (t *httpTransport) close() error {
+	t.mu.Lock()
+	streams := t.streams
+	t.streams = map[io.Closer]struct{}{}
+	t.mu.Unlock()
+	for b := range streams {
+		_ = b.Close()
+	}
+	return nil
+}
 
 // readSSE feeds each event's data to handle until the stream ends.
 func readSSE(r io.Reader, handle func([]byte)) error {

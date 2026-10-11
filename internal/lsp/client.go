@@ -576,17 +576,13 @@ func (c *Client) Published(path string) bool {
 // Done is closed when the server exits.
 func (c *Client) Done() <-chan struct{} { return c.done }
 
-// Close asks the server to shut down, waits up to 2s for it to exit, then
-// kills its process group, so a build it started (rust-analyzer's cargo)
-// writes nothing once Close returns.
+// Close closes stdin, which ends a well-behaved server, waits up to 2s for
+// it to exit, then kills its process group, so a build it started
+// (rust-analyzer's cargo) writes nothing once Close returns. It skips the
+// send lock: a write blocked on a server that stopped reading returns once
+// the pipe closes, instead of holding the lock past the kill.
 func (c *Client) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = c.Call(ctx, "shutdown", nil, nil)
-	_ = c.notify("exit", nil)
-	c.wmu.Lock()
 	err := c.stdin.Close()
-	c.wmu.Unlock()
 	select {
 	case <-c.done:
 	case <-time.After(2 * time.Second):

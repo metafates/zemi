@@ -73,6 +73,7 @@ func TestClient(t *testing.T) {
 // off the request path and the reply reaches the call as soon as it lands.
 func TestHTTPStreamHeldOpen(t *testing.T) {
 	release := make(chan struct{})
+	gone := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		resp := mcptest.Respond(body)
@@ -93,7 +94,11 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Write([]byte("event: message\ndata: " + string(resp) + "\n\n"))
 		w.(http.Flusher).Flush()
-		<-release
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			close(gone)
+		}
 	}))
 	defer srv.Close()
 	// close(release) must run first, or srv.Close() waits forever on the
@@ -113,6 +118,12 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 	}
 	if ctx.Err() != nil {
 		t.Fatal("the call waited out its deadline on a stream the server held open")
+	}
+	c.Close()
+	select {
+	case <-gone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close left the held-open stream open")
 	}
 }
 

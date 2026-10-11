@@ -33,7 +33,8 @@ func TestMain(m *testing.M) {
 
 // serveBlocking is a single-threaded server: as the message after
 // initialized starts arriving, it asks for configuration and writes more
-// than a pipe holds before it reads on.
+// than a pipe holds, then never reads again, so the document the client is
+// writing wedges its sender for good.
 func serveBlocking(in io.Reader, out io.Writer) {
 	r := bufio.NewReader(in)
 	write := func(s string) { _ = lsp.WriteMessage(out, []byte(s)) }
@@ -46,19 +47,21 @@ func serveBlocking(in io.Reader, out io.Writer) {
 		case bytes.Contains(body, []byte(`"initialize"`)):
 			write(`{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}`)
 		case bytes.Contains(body, []byte(`"initialized"`)):
-			header, _ := r.ReadString('\n')
+			_, _ = r.ReadString('\n')
 			write(`{"jsonrpc":"2.0","id":"cfg","method":"workspace/configuration","params":{"items":[{}]}}`)
 			for range 300 {
 				write(`{"jsonrpc":"2.0","method":"window/logMessage","params":{"type":4,"message":"` + strings.Repeat("x", 1000) + `"}}`)
 			}
-			r = bufio.NewReader(io.MultiReader(strings.NewReader(header), r))
+			time.Sleep(time.Hour)
 		}
 	}
 }
 
-// TestServerRequestWhileWriting: a server that stops reading until its
-// output drains, and asks for configuration while the client is sending it
-// a large document, must not deadlock the client's reader and writer.
+// TestServerRequestWhileWriting: a server that stops reading while its
+// output drains, asks for configuration while the client is sending it a
+// large document, and then never reads again wedges the client's writer.
+// Close must not wait on the wedged send's lock: its kill frees the writer
+// and ends the server.
 func TestServerRequestWhileWriting(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -68,21 +71,31 @@ func TestServerRequestWhileWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = c.Close() })
 	path := filepath.Join(root, "big.txt")
 	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), 1<<20), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
 	go func() { done <- c.Open(path, "plaintext") }()
+	closed := make(chan error, 1)
+	go func() { closed <- c.Close() }()
 	select {
-	case err := <-done:
+	case err := <-closed:
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-ctx.Done():
-		t.Fatal("client and server deadlocked") // no Close: it would wait on the same lock
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not kill the server the writer was wedged on")
 	}
-	c.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Open outlived the server it was writing to")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the kill did not free the wedged send")
+	}
 }
 
 // start launches the fake server against root.

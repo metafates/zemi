@@ -72,7 +72,7 @@ type protocolAnswer struct {
 // protocolAsk sends the state and the questions and validates every answer
 // against its question.
 func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
-	body := protocolRequest{Model: p.Model, State: req.State, Questions: map[string]protocolQuestion{}}
+	body := protocolRequest{Model: p.Model, State: req.State, Questions: make(map[string]protocolQuestion, len(req.Questions))}
 	for name, q := range req.Questions {
 		wire := protocolQuestion{Type: string(q.Type), Instructions: q.Instructions}
 		switch q.Type {
