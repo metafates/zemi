@@ -195,7 +195,7 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		c.Info.Models += len(p.Models)
 		name, key := env(p.APIKey)
 		if key == "" {
-			c.Missing = append(c.Missing, MissingKey{string(p.ID), name})
+			c.Missing = append(c.Missing, MissingKey{ID: string(p.ID), Env: name})
 			continue
 		}
 		_, base := env(p.APIEndpoint)
@@ -322,7 +322,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 		return Catalog{}, false, errors.New("the fetched catalog has no provider zemi supports")
 	}
 	c.Info.Version, c.Info.Fetched = info.Version, time.Now().UTC().Truncate(time.Second)
-	data, err := json.Marshal(savedCatalog{c.Info.Version, c.Info.Fetched, fresh}, json.Deterministic(true))
+	data, err := json.Marshal(savedCatalog{Catwalk: c.Info.Version, Fetched: c.Info.Fetched, Providers: fresh}, json.Deterministic(true))
 	if err != nil {
 		return Catalog{}, false, err
 	}
@@ -885,7 +885,7 @@ func (m idleModel) wrap(err error) error {
 	if err == nil {
 		return nil
 	}
-	return ModelError{m.provider, err}
+	return ModelError{Provider: m.provider, Err: err}
 }
 
 func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
