@@ -565,7 +565,7 @@ func (a *App) openEditor() tea.Cmd {
 		_ = os.Remove(path)
 		return fail(err)
 	}
-	go func() {
+	a.host.GoSafe("edit draft", func() {
 		defer os.Remove(path)
 		var msg editorMsg
 		if msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"}); msg.err == nil {
@@ -574,6 +574,6 @@ func (a *App) openEditor() tea.Cmd {
 		}
 		// await, not dispatch: a full queue must not drop the saved draft
 		a.await(func() tea.Cmd { _, cmd := a.Update(msg); return cmd })
-	}()
+	})
 	return nil
 }

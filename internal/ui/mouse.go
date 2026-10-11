@@ -357,12 +357,12 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 func (a *App) hover(x, y int) tea.Cmd {
 	a.hovering, a.hoverX, a.hoverY = true, x, y
 	spans, _, ok := a.target(x, y)
-	key := ""
+	var cur []cellSpan
 	if ok {
-		key = fmt.Sprint(spans)
+		cur = spans
 	}
-	if key != a.hoverKey {
-		a.hoverKey = key
+	if !slices.Equal(cur, a.hoverSpans) {
+		a.hoverSpans = cur
 		a.bump()
 	}
 	shape := ""
@@ -529,7 +529,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 				if name != "reload" {
 					a.runCommand(name, args)
 				} else {
-					go a.host.Reload() // off the UI goroutine, as the typed /reload
+					a.host.GoSafe("reload", a.host.Reload) // off the UI goroutine, as the typed /reload
 				}
 			}
 		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {
@@ -563,7 +563,7 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (string, int, cellSpan) {
 			continue
 		}
 		text := strings.TrimRight(hostapi.SegsText(pin), " ")
-		if sp := (cellSpan{y, st.rect.Min.X, st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
+		if sp := (cellSpan{y: y, lo: st.rect.Min.X, hi: st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
 			return id, k, sp
 		}
 	}
@@ -609,7 +609,7 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 				if from < to {
 					// a gap wider than a word space (label to key column) is not the item
 					if lo >= 0 && from > hi+1 {
-						spans = append(spans, cellSpan{y, lo, hi})
+						spans = append(spans, cellSpan{y: y, lo: lo, hi: hi})
 						lo = -1
 					}
 					if lo < 0 {
@@ -621,7 +621,7 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 			col += w
 		}
 		if lo >= 0 {
-			spans = append(spans, cellSpan{y, lo, hi})
+			spans = append(spans, cellSpan{y: y, lo: lo, hi: hi})
 		}
 	}
 	return spans

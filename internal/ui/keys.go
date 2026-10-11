@@ -131,7 +131,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			// the draft stays one up away, and one ctrl+z
 			a.seedHistory()
 			a.composer.pushHistory(a.composer.text, a.historySize())
-			prev := composerSnap{a.composer.text, a.composer.cursor}
+			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 			a.clearComposer()
 			a.composer.snapshot(prev, false)
 		case a.arm(key):
@@ -215,7 +215,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		return a.updateCompletion()
 	}
 	t := keyText(msg)
-	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
+	defer c.snapshot(composerSnap{text: c.text, cursor: c.cursor}, t != "" && t != " ")
 
 	// Popups take the list moves but for the ones that edit the draft.
 	popupMove := key != "k" && key != "j" && !lineKey(key)
@@ -434,7 +434,7 @@ func (a *App) arm(key string) bool {
 		a.armed = armed{}
 		return true
 	}
-	a.armed = armed{key, a.now().Add(2 * time.Second)}
+	a.armed = armed{key: key, until: a.now().Add(2 * time.Second)}
 	return false
 }
 

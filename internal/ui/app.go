@@ -92,7 +92,7 @@ type App struct {
 	press          mousePress
 	hovering       bool
 	hoverX, hoverY int
-	hoverKey       string              // what the pointer is over, to redraw only on change
+	hoverSpans     []cellSpan          // what the pointer is over, to redraw only on change
 	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
 	panes          []uv.Rectangle      // the last frame's screenLayout.panes
@@ -252,7 +252,7 @@ func (a *App) quitTo(dir string) {
 		a.leave()
 	}
 	if a.program != nil {
-		go quit()
+		a.host.GoSafe("quit", quit)
 		return
 	}
 	quit()
@@ -422,7 +422,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case tea.MouseWheelMsg:
 		defer a.disarmIfMoved(true)()
 		a.mouse = mouseSel{}
-		a.hoverKey = "" // the content under the pointer moves
+		a.hoverSpans = nil // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
 		if step != 0 {
 			a.wheel(msg.X, msg.Y, step)
@@ -441,7 +441,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if !a.multiline() {
 			text = strings.ReplaceAll(text, "\n", " ")
 		}
-		prev := composerSnap{a.composer.text, a.composer.cursor}
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.text = text
 		a.composer.moveEnd()
 		a.composer.snapshot(prev, false)
@@ -469,7 +469,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
 		}
-		prev := composerSnap{a.composer.text, a.composer.cursor}
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.paste(s)
 		a.composer.snapshot(prev, false)
 		a.publishComposer()
@@ -743,7 +743,7 @@ func (a *App) frame() int {
 }
 
 func (a *App) onWidgetRendered(msg widgetRender) {
-	if a.pending[msg.id] == (renderKey{msg.gen, msg.width, msg.height}) {
+	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
 		delete(a.pending, msg.id)
 	}
 	// renders of one generation at two sizes run concurrently: one dispatched
@@ -801,7 +801,7 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 		}
 		// One render per widget in flight: at 20 fps a slow widget would
 		// otherwise pile up a queue of renders of the same generation.
-		key := renderKey{gen, w.width, w.height}
+		key := renderKey{gen: gen, width: w.width, height: w.height}
 		if a.pending[w.ID] == key {
 			continue
 		}
