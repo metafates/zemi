@@ -1177,6 +1177,11 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	if private.Zero() {
 		return "", errors.New("this project has no brain; trusted sessions get one")
 	}
+	// a bare file name lands in the private brain dir: the model knows the
+	// file it wants, not where this run's brain lives
+	if !strings.Contains(path, string(filepath.Separator)) {
+		path = filepath.Join(private.Dir, path)
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
