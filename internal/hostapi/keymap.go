@@ -239,7 +239,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, b := range h.Keymaps.List() {
 			rows = append(rows, keymapRow(b))
 		}

@@ -639,7 +639,7 @@ func schemaReport(schema map[string]any, reply string) (string, error) {
 	if err := json.Unmarshal([]byte(reply[i:j+1]), &m); err != nil {
 		return "", err
 	}
-	req := []string{}
+	var req []string
 	list, _ := schema["required"].([]any)
 	for _, r := range list {
 		name, _ := r.(string)

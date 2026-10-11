@@ -773,7 +773,7 @@ func (t *PluginTest) complete(L *glua.LState) int {
 			items = t.h.CompleteCommand(ctx, command, lead, line)
 		}
 		items = append(items, t.h.Complete(ctx, trigger, command, lead, line)...)
-		texts := []string{}
+		var texts []string
 		for _, it := range items {
 			texts = append(texts, it.Text)
 		}

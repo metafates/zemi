@@ -666,7 +666,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 			rows = append(rows, map[string]any{
 				"name": s.Name, "description": s.Description, "source": string(s.Source),
