@@ -539,7 +539,8 @@ func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut, shown, secret := p.RuledOut(), []string{}, []string{}
+	ruledOut := p.RuledOut()
+	var shown, secret []string
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
