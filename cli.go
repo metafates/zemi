@@ -466,7 +466,7 @@ func sessionsCommand(o *options) *cobra.Command {
 						Title   string    `json:"title"`
 						Updated time.Time `json:"updated"`
 						CostUSD float64   `json:"cost_usd"`
-					}{s.ID, sanitize.Line(s.Title), updated, s.Cost})
+					}{ID: s.ID, Title: sanitize.Line(s.Title), Updated: updated, CostUSD: s.Cost})
 					continue
 				}
 				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
@@ -526,7 +526,7 @@ func projectsCommand(o *options) *cobra.Command {
 						Used     time.Time `json:"used,omitzero"`
 						Sessions int       `json:"sessions"`
 						Memories int       `json:"memories"`
-					}{p.Root, p.TrustWord(), p.Used, p.Sessions, p.Memories})
+					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories})
 					continue
 				}
 				used := "-"
@@ -655,7 +655,7 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 				Enabled bool     `json:"enabled"`
 				Source  string   `json:"source"`
 				Uses    []string `json:"uses"`
-			}{pl.Name, version, pl.Local, pl.Enabled, source, pl.Uses})
+			}{Name: pl.Name, Version: version, Local: pl.Local, Enabled: pl.Enabled, Source: source, Uses: pl.Uses})
 			continue
 		}
 		rows = append(rows, [5]string{pl.Name, version, on, source, strings.Join(pl.Uses, ",")})
@@ -813,7 +813,7 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 				Level  hostapi.HealthLevel `json:"level"`
 				Name   string              `json:"name"`
 				Detail string              `json:"detail"`
-			}{r.Level, r.Name, r.Detail})
+			}{Level: r.Level, Name: r.Name, Detail: r.Detail})
 			continue
 		}
 		fmt.Fprintf(stdout, "%s %s %s\n", pad(p, statusRole[string(r.Level)], string(r.Level), 5), pad(p, "", r.Name, 12), r.Detail)
