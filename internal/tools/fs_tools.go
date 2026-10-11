@@ -639,12 +639,13 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	if p.Seen == nil {
 		return ""
 	}
-	t, ok := p.Seen.Load(perm.CanonPath(path))
+	v, _ := p.Seen.Load(perm.CanonPath(path))
+	t, ok := v.(time.Time) // Seen is written from two packages; a non-time reads as unseen
 	switch {
 	case edit, !ok && perm.FreeZone(p.Pad, path):
 	case !ok:
 		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
-	case !t.(time.Time).Equal(fi.ModTime()):
+	case !t.Equal(fi.ModTime()):
 		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent), and writing it whole would drop that change: read it again first."
 	}
 	return ""
@@ -656,11 +657,12 @@ func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
 	if p.Seen == nil {
 		return false
 	}
-	t, ok := p.Seen.Load(perm.CanonPath(path))
+	v, _ := p.Seen.Load(perm.CanonPath(path))
+	t, ok := v.(time.Time)
 	if !ok {
 		return !perm.FreeZone(p.Pad, path)
 	}
-	return !t.(time.Time).Equal(fi.ModTime())
+	return !t.Equal(fi.ModTime())
 }
 
 var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
