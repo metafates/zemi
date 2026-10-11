@@ -205,14 +205,13 @@ func (s *Store) value[T any](path string) T {
 // so a Lua watch callback never re-enters the request queue.
 func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	def, ok := s.schema[path]
 	if !ok {
-		s.mu.Unlock()
 		return nil, fmt.Errorf("unknown config key: %s", path)
 	}
 	val, err := checkKind(def, val)
 	if err != nil {
-		s.mu.Unlock()
 		return nil, err
 	}
 	old := s.values[path]
@@ -223,7 +222,6 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 			fired = append(fired, WatchFired{ID: w.id, Old: old, New: val})
 		}
 	}
-	s.mu.Unlock()
 	return fired, nil
 }
 
