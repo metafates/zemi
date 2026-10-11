@@ -433,7 +433,7 @@ type Host struct {
 	// memUndo reverses the /memory list's actions, newest last; opening the
 	// list empties it, so an undo reaches no further than the list shows.
 	memUndo struct {
-		sync.Mutex
+		mu    sync.Mutex
 		steps []func() error
 	}
 
