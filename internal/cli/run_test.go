@@ -369,11 +369,21 @@ func TestRunScreenCommands(t *testing.T) {
 	}
 }
 
+// wireProbe is not a wire type: it pins the walk's pointer, slice and map
+// cases, and that a value leaves writeJSON as it entered.
+type wireProbe struct {
+	Ptr   *string
+	Slice []string
+	Map   map[string]string
+}
+
 // TestWriteJSONSanitizes: every string the wire carries, a nested row's
 // included, passes the same sanitize pass at writeJSON - plant a control
 // byte in each field class and none may reach a reader of the line.
 func TestWriteJSONSanitizes(t *testing.T) {
 	const esc = "\x1b]0;pwned\a\x7f"
+	probe := wireProbe{Ptr: new(string), Slice: []string{esc}, Map: map[string]string{"k\x07\x7f": esc}}
+	*probe.Ptr = esc
 	for _, doc := range []any{
 		event{
 			Type: evToolEnd, Text: esc, ID: esc, Tool: esc, Input: esc, Label: esc, Status: esc, Output: esc,
@@ -384,6 +394,7 @@ func TestWriteJSONSanitizes(t *testing.T) {
 			Denied: []hostapi.Denial{{Tool: esc, Subject: esc, Arg: esc, Reason: esc, Why: esc}},
 			Tools:  []doneTool{{ID: esc, Tool: esc, Input: esc, Status: esc, Error: esc}},
 		},
+		probe,
 	} {
 		var out strings.Builder
 		writeJSON(&out, doc)
@@ -410,6 +421,9 @@ func TestWriteJSONSanitizes(t *testing.T) {
 				}
 			case map[string]any:
 				for k, e := range x {
+					if strings.ContainsAny(k, "\x1b\x07\x7f") {
+						t.Errorf("%T: %s key carries a control byte: %q", doc, path, k)
+					}
 					walk(path+"."+k, e)
 				}
 			}
@@ -417,6 +431,9 @@ func TestWriteJSONSanitizes(t *testing.T) {
 		for k, e := range row {
 			walk("."+k, e)
 		}
+	}
+	if *probe.Ptr != esc || probe.Map["k\x07\x7f"] != esc {
+		t.Error("writeJSON rewrote the caller's value")
 	}
 }
 

@@ -221,41 +221,71 @@ func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 // writeJSON writes v as one JSON Lines line, what every --json prints. A
 // byte that is not UTF-8 becomes U+FFFD, so no line is dropped; the fixed
 // struct types leave Marshal nothing else to refuse. Every string the line
-// carries, a nested row's included, passes sanitize here, so no field
-// needs a per-call list.
+// carries, a map key or a nested row's included, passes sanitize here, and
+// the caller's value is left alone, so no field needs a per-call list.
 func writeJSON(w io.Writer, v any) {
-	p := reflect.New(reflect.TypeOf(v))
-	p.Elem().Set(reflect.ValueOf(v))
-	sanitizeWire(p.Elem())
-	b, _ := json.Marshal(p.Elem().Interface(), jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
+	b, _ := json.Marshal(sanitizeWire(reflect.ValueOf(v)).Interface(), jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
 	_, _ = w.Write(append(b, '\n'))
 }
 
-// sanitizeWire sanitizes v's strings, descending into its structs, slices,
-// maps and pointers; unexported fields are skipped, reflect cannot write them.
-func sanitizeWire(v reflect.Value) {
+// sanitizeWire returns a copy of v whose strings pass sanitize.String,
+// descending into its structs, slices, arrays, maps and pointers; unexported
+// fields ride along whole, reflect cannot write them one by one.
+func sanitizeWire(v reflect.Value) reflect.Value {
 	switch v.Kind() {
-	case reflect.Pointer, reflect.Interface:
-		if !v.IsNil() {
-			sanitizeWire(v.Elem())
+	case reflect.Pointer:
+		if v.IsNil() {
+			return v
 		}
+		nv := reflect.New(v.Type().Elem())
+		nv.Elem().Set(sanitizeWire(v.Elem()))
+		return nv
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		nv := reflect.New(v.Type()).Elem()
+		nv.Set(sanitizeWire(v.Elem()))
+		return nv
 	case reflect.Struct:
+		nv := reflect.New(v.Type()).Elem()
+		nv.Set(v)
 		for i := range v.NumField() {
 			if v.Type().Field(i).IsExported() {
-				sanitizeWire(v.Field(i))
+				nv.Field(i).Set(sanitizeWire(v.Field(i)))
 			}
 		}
-	case reflect.Slice, reflect.Array:
+		return nv
+	case reflect.Slice:
+		if v.IsNil() {
+			return v
+		}
+		nv := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
 		for i := range v.Len() {
-			sanitizeWire(v.Index(i))
+			nv.Index(i).Set(sanitizeWire(v.Index(i)))
 		}
+		return nv
+	case reflect.Array:
+		nv := reflect.New(v.Type()).Elem()
+		for i := range v.Len() {
+			nv.Index(i).Set(sanitizeWire(v.Index(i)))
+		}
+		return nv
 	case reflect.Map:
-		for _, k := range v.MapKeys() {
-			sanitizeWire(v.MapIndex(k))
+		if v.IsNil() {
+			return v
 		}
+		nv := reflect.MakeMapWithSize(v.Type(), v.Len())
+		for iter := v.MapRange(); iter.Next(); {
+			nv.SetMapIndex(sanitizeWire(iter.Key()), sanitizeWire(iter.Value()))
+		}
+		return nv
 	case reflect.String:
-		v.SetString(sanitize.String(v.String()))
+		nv := reflect.New(v.Type()).Elem()
+		nv.SetString(sanitize.String(v.String()))
+		return nv
 	default: // a number, a bool or a flag: nothing on the line to sanitize
+		return v
 	}
 }
 
@@ -369,7 +399,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	case o.json:
 		emit(*d)
 	case d.IsError && (!on || sendErr != nil): // no row shows it
-		headline(view, d.Error)
+		headline(view, "zemi: ", d.Error)
 	}
 	// where both streams are terminals the view drew the reply already
 	if out, ok := stdout.(*os.File); !o.json && d.Result != "" && !(onTerminal && ok && term.IsTerminal(out.Fd())) {

@@ -127,13 +127,9 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		usageHint(stderr, c.CommandPath(), err.Error())
 		return 2
 	case c.HasParent():
-		head, detail, _ := strings.Cut(err.Error(), "\n")
-		fmt.Fprintf(stderr, "zemi: %s: %s\n", strings.TrimPrefix(c.CommandPath(), "zemi "), hostapi.Headline(head))
-		if detail != "" {
-			fmt.Fprintln(stderr, "  "+detail)
-		}
+		headline(stderr, "zemi: "+strings.TrimPrefix(c.CommandPath(), "zemi ")+": ", err.Error())
 	default:
-		headline(stderr, err.Error())
+		headline(stderr, "zemi: ", err.Error())
 	}
 	return 1
 }
@@ -145,10 +141,10 @@ func usageHint(w io.Writer, cmd, msg string) {
 }
 
 // headline reports a failure the way the run does: its headline, then the
-// detail indented two spaces.
-func headline(w io.Writer, msg string) {
+// detail indented two spaces, under the prefix given.
+func headline(w io.Writer, prefix, msg string) {
 	head, detail, _ := strings.Cut(msg, "\n")
-	fmt.Fprintf(w, "zemi: %s\n", hostapi.Headline(head))
+	fmt.Fprintf(w, "%s%s\n", prefix, hostapi.Headline(head))
 	if detail != "" {
 		fmt.Fprintln(w, "  "+detail)
 	}
