@@ -2372,8 +2372,10 @@ rides the `memories.md` line and its ledger entries.
   `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
-  not carry is left out, and a run that failed before its turn prints that
-  `done` line alone, no events before it.
+  not carry is left out, every string on a line passes the same sanitize
+  pass at the wire's chokepoint (`writeJSON`), the nested rows included, and
+  a run that failed before its turn prints that `done` line alone, no
+  events before it.
 
   | `type` | its fields |
   |---|---|

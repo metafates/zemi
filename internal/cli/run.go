@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -74,7 +76,7 @@ type event struct {
 // that reads one line (tail -n1) needs.
 type doneEvent struct {
 	Type        eventType        `json:"type"`
-	Result      string           `json:"result"` // the last message
+	Result      string           `json:"result"`
 	IsError     bool             `json:"is_error"`
 	Error       string           `json:"error,omitempty"`
 	Session     string           `json:"session"`
@@ -104,6 +106,7 @@ type doneTool struct {
 type follower struct {
 	started map[string]bool // call ids a tool_start went out for
 	ended   map[string]bool // call ids a tool_end went out for
+	turn    int             // the frame's turn: a turn chains into the next, so retries restart with it
 	retries int
 	done    doneEvent
 }
@@ -123,8 +126,13 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		f.done.Denied = append(f.done.Denied, d)
 		evs = append(evs, event{Type: evAsk, Tool: d.Tool, Subject: d.Subject, Arg: d.Arg, Reason: d.Reason, Why: string(d.Why)})
 	}
+	// beginTurn resets retries at every turn, and the turns of one run chain
+	// under one active stretch, so the watermark resets with the turn.
+	if fr.Stream.Turn != f.turn {
+		f.turn, f.retries = fr.Stream.Turn, 0
+	}
 	if s := fr.Stream; s.Retries > f.retries {
-		evs = append(evs, event{Type: evRetry, Attempt: s.Retries + 1, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
+		evs = append(evs, event{Type: evRetry, Attempt: s.Retries + 1, InMS: s.RetryIn.Milliseconds(), Error: s.RetryWhy})
 	}
 	f.retries = fr.Stream.Retries
 	asCall := func(m hostapi.ChatMessage) hostapi.StreamTool {
@@ -155,7 +163,7 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		}
 	}
 	for _, m := range fr.Pending {
-		if m.Kind == hostapi.RowTool && m.ID != "" {
+		if m.Kind == hostapi.RowTool {
 			evs = f.call(evs, asCall(m))
 		}
 	}
@@ -166,13 +174,14 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 }
 
 // call sends a call's tool_start once it runs and its tool_end once it
-// finished, the start first when no read saw it run.
+// finished, the start first when no read saw it run. An id-less call is
+// one key: a second one gets nothing after the first ended.
 func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
-	if t.Status == hostapi.CallWait || t.ID != "" && f.ended[t.ID] {
+	if t.Status == hostapi.CallWait || f.ended[t.ID] {
 		return evs
 	}
-	ev := event{Type: evToolStart, ID: t.ID, Tool: t.Name, Input: t.Input, Label: sanitize.String(t.Label)}
-	if !f.started[t.ID] || t.ID == "" {
+	ev := event{Type: evToolStart, ID: t.ID, Tool: t.Name, Input: t.Input, Label: t.Label}
+	if !f.started[t.ID] {
 		f.started[t.ID] = true
 		evs = append(evs, ev)
 	}
@@ -180,7 +189,7 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 		return evs
 	}
 	f.ended[t.ID] = true
-	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = evToolEnd, string(t.Status), t.Output, sanitize.String(t.Diff), t.Detail
+	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = evToolEnd, string(t.Status), t.Output, t.Diff, t.Detail
 	if t.Status == hostapi.CallErr || t.Status == hostapi.CallStopped {
 		ev.Error = failureLine(t.Name, t.Output)
 	}
@@ -211,15 +220,48 @@ func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 
 // writeJSON writes v as one JSON Lines line, what every --json prints. A
 // byte that is not UTF-8 becomes U+FFFD, so no line is dropped; the fixed
-// struct types leave Marshal nothing else to refuse.
+// struct types leave Marshal nothing else to refuse. Every string the line
+// carries, a nested row's included, passes sanitize here, so no field
+// needs a per-call list.
 func writeJSON(w io.Writer, v any) {
-	b, _ := json.Marshal(v, jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
+	p := reflect.New(reflect.TypeOf(v))
+	p.Elem().Set(reflect.ValueOf(v))
+	sanitizeWire(p.Elem())
+	b, _ := json.Marshal(p.Elem().Interface(), jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
 	_, _ = w.Write(append(b, '\n'))
+}
+
+// sanitizeWire sanitizes v's strings, descending into its structs, slices,
+// maps and pointers; unexported fields are skipped, reflect cannot write them.
+func sanitizeWire(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if !v.IsNil() {
+			sanitizeWire(v.Elem())
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() {
+				sanitizeWire(v.Field(i))
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			sanitizeWire(v.Index(i))
+		}
+	case reflect.Map:
+		for _, k := range v.MapKeys() {
+			sanitizeWire(v.MapIndex(k))
+		}
+	case reflect.String:
+		v.SetString(sanitize.String(v.String()))
+	default: // a number, a bool or a flag: nothing on the line to sanitize
+	}
 }
 
 // runHeadless runs o.prompt with no TUI: the run view on stderr, and on
 // stdout the last message or, with --json, the events. It returns the exit
-// status: 1 when the send or the turn failed, 130 on a signal.
+// status: 1 when the send or the turn failed, 128+n on a signal.
 func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer) int {
 	// the first signal stops the turn, the second or 5s later leaves
 	sig := make(chan os.Signal, 2)
@@ -228,7 +270,8 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	view.Start(h, o.reasoning)
 	defer view.Close()
 
-	sid, next := h.AgentSessionID(), len(h.Session().Transcript)
+	h.TakeSwap() // a swap before this line is the boot's (-c, -r), not the run's
+	next := len(h.Session().Transcript)
 	began, before, asked := time.Now(), h.AgentStream(), len(h.HeadlessDenials())
 	f, emit := newFollower(), func(ev any) {}
 	if o.json {
@@ -246,17 +289,21 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	sending, interrupted, started := true, false, false
 	gone := false // left without waiting for the turn to stop
 	var sendErr error
+	var stopped syscall.Signal
 	var leave <-chan time.Time
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for over := false; !over; {
 		select {
-		case <-sig:
+		case s := <-sig:
 			if interrupted {
 				gone = true
 				break
 			}
 			interrupted = true
+			if n, ok := s.(syscall.Signal); ok {
+				stopped = n
+			}
 			cancelSend()
 			h.AgentCancel()
 			h.CancelBusy()
@@ -267,11 +314,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 			sending = false
 			// a command that swapped the session (/new, /resume) ran no turn,
 			// and none of the rows or usage it brought are this run's.
-			// NOTE: a command whose turn starts a session and ends before this
-			// check (a markdown command's quick reply) reads as a swap and
-			// prints nothing; a swap the command reported itself would tell
-			// them apart.
-			if !o.text && strings.HasPrefix(o.prompt, "/") && h.AgentSessionID() != sid && !h.AgentActive() {
+			if h.TakeSwap() {
 				next, before = len(h.Session().Transcript), h.AgentStream()
 			}
 		case <-tick.C:
@@ -285,11 +328,14 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 			started = true
 			emit(event{Type: evStart, Session: id, Model: fr.Stream.Model, Profile: fr.Stream.Profile, Mode: h.PermMode(), Trusted: new(h.ProjectTrusted()), CWD: h.Session().CWD})
 		}
-		retries := f.retries
 		evs := f.step(fr, h.HeadlessDenials()[asked:])
 		// the tail's working rule shows a retry itself
-		if s := fr.Stream; s.Retries > retries && !view.Tails() {
-			fmt.Fprintf(view, "zemi: retrying in %s: %s\n", s.RetryIn.Round(time.Second), sanitize.String(s.RetryWhy))
+		if !view.Tails() && slices.ContainsFunc(evs, func(ev event) bool { return ev.Type == evRetry }) {
+			when := "retrying now"
+			if in := fr.Stream.RetryIn.Round(time.Second); in > 0 {
+				when = "next try in " + in.String()
+			}
+			fmt.Fprintf(view, "zemi: %s: %s\n", when, sanitize.String(fr.Stream.RetryWhy))
 		}
 		next = fr.Next
 		view.Show(fr, interrupted)
@@ -323,11 +369,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	case o.json:
 		emit(*d)
 	case d.IsError && (!on || sendErr != nil): // no row shows it
-		head, detail, _ := strings.Cut(d.Error, "\n")
-		fmt.Fprintln(view, "zemi:", hostapi.Headline(head))
-		if detail != "" {
-			fmt.Fprintln(view, "  "+detail)
-		}
+		headline(view, d.Error)
 	}
 	// where both streams are terminals the view drew the reply already
 	if out, ok := stdout.(*os.File); !o.json && d.Result != "" && !(onTerminal && ok && term.IsTerminal(out.Fd())) {
@@ -336,7 +378,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	printDenied(view, view.Width(), d.Denied, h.ProjectTrusted())
 	if d.IsError {
 		if interrupted {
-			return 130
+			return 128 + int(stopped) // 130 INT, 143 TERM, 129 HUP
 		}
 		return 1
 	}
@@ -353,13 +395,19 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 	fmt.Fprintf(w, "zemi: %d %s nobody could answer in a headless run:\n", len(denied), hostapi.Plural(len(denied), "ask", "asks"))
 	shown := denied[:min(len(denied), 5)]
 	clip := func(s string, n int) string { return ansi.Truncate(strings.Join(strings.Fields(s), " "), n, "…") }
-	toolW, argW := 0, 0
+	toolW := 0
 	for _, d := range shown {
-		toolW, argW = max(toolW, len(d.Tool)), max(argW, ansi.StringWidth(clip(d.Arg, 40)))
+		toolW = max(toolW, ansi.StringWidth(d.Tool))
 	}
-	for _, d := range shown {
-		arg := clip(d.Arg, 40)
-		fmt.Fprintf(w, "  %-*s  %s%s  %s\n", toolW, d.Tool, arg, strings.Repeat(" ", argW-ansi.StringWidth(arg)), clip(d.Reason, max(10, width-toolW-argW-6)))
+	// the reason's 10-cell floor has to fit: the arg column gives way first
+	argCap := min(40, max(0, width-toolW-16))
+	args, argW := make([]string, len(shown)), 0
+	for i, d := range shown {
+		args[i] = clip(d.Arg, argCap)
+		argW = max(argW, ansi.StringWidth(args[i]))
+	}
+	for i, d := range shown {
+		fmt.Fprintf(w, "  %-*s  %s%s  %s\n", toolW, d.Tool, args[i], strings.Repeat(" ", argW-ansi.StringWidth(args[i])), clip(d.Reason, max(10, width-toolW-argW-6)))
 	}
 	if n := len(denied) - len(shown); n > 0 {
 		fmt.Fprintf(w, "  … %d more\n", n)

@@ -191,11 +191,14 @@ type agentHost struct {
 
 	// retryAt is when the next provider retry fires, zero again once the
 	// retried call streams; retries counts them this turn (the working row
-	// counts down instead of looking stuck).
+	// counts down instead of looking stuck). turns counts the turns begun
+	// (beginTurn), which resets retries, so a reader tells one turn's count
+	// from the last one's by it.
 	retryAt    time.Time
 	retries    int
 	retryWhy   string // friendlyError of the failure being retried
-	compacting bool   // summarizing history before the next turn
+	turns      int
+	compacting bool // summarizing history before the next turn
 
 	// compactFails counts auto compactions in a row that failed or left the
 	// context full; at compactMaxFails auto compaction stops for the session.
@@ -1254,6 +1257,7 @@ func joinQueue(msgs []string) string {
 
 // beginTurn resets the per-turn stream state (ag.mu held).
 func (ag *agentHost) beginTurn() {
+	ag.turns++
 	ag.textBuf, ag.reasonBuf = "", ""
 	ag.tools = nil
 	// no step has started, so a retry before one (compact's) takes nothing
