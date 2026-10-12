@@ -3,7 +3,6 @@
 │
 │ ✻ thought 2.4s
 │
-
 │
 │ ✗ run the flush tests
 │   ⎿ go test ./internal/hostapi

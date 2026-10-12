@@ -228,6 +228,25 @@ func TestPrintedRender(t *testing.T) {
 	if got := chat(UIState{Printed: &Printed{}}); strings.TrimSpace(got) != "" {
 		t.Errorf("a printed frame with no rows draws:\n%s", got)
 	}
+	// the pending row draws once: the rows printed above a tail leave it to
+	// the tail, a plain log keeps it
+	done := h.Busy("Checking health", nil)
+	defer done()
+	if got := chat(UIState{Printed: &Printed{Rows: rows}}); !strings.Contains(got, "checking health") {
+		t.Errorf("the rows printed above a tail draw no pending row:\n%s", got)
+	}
+	if got := chat(UIState{Printed: &Printed{Rows: rows, Tail: true}}); strings.Contains(got, "checking health") {
+		t.Errorf("the tail redraws the pending row the rows above it drew:\n%s", got)
+	}
+	// the last row printed above seeds the first unit's block gap
+	prev := &Printed{Rows: rows, Prev: &ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "ls", Status: CallOK}}
+	if got := chat(UIState{Printed: prev}); strings.HasPrefix(got, "\n") {
+		t.Errorf("an activity unit after an activity row starts with a blank:\n%s", got)
+	}
+	prev.Prev = &ChatMessage{Role: "user", Text: "go"}
+	if got := chat(UIState{Printed: prev}); !strings.HasPrefix(got, "\n") {
+		t.Errorf("an activity unit after a user row lost its blank:\n%s", got)
+	}
 }
 
 // TestWidgetCtxLazy: the built-on-read fields work inside render, and a

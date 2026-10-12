@@ -1584,11 +1584,15 @@ type UIState struct {
 
 // Printed is set when zemi run prints the frame to a shell: Rows stand in
 // for the transcript, never cached, and Live for the live turn (nil: none,
-// and no todos).
+// and no todos). Prev is the last row printed above them, which the chat
+// seeds its first block gap from; Tail marks the live tail's own render,
+// which leaves the pending row to the rows it draws under.
 type Printed struct {
 	Rows      []ChatMessage
 	Live      *StreamSnapshot
 	Reasoning bool // zemi run --reasoning: every thought and call drawn whole
+	Prev      *ChatMessage
+	Tail      bool
 }
 
 // widgetCtxTable builds a render's ctx. The fields that copy the transcript,
@@ -1629,6 +1633,9 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	}
 	tb = L.CreateTable(0, 33)
 	tb.RawSetString("headless", glua.LBool(printed != nil))
+	if printed != nil && printed.Prev != nil {
+		tb.RawSetString("printed_prev", chatRow(L, *printed.Prev))
+	}
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("frame", glua.LNumber(state.Frame))
@@ -1661,7 +1668,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
 	tb.RawSetString("unsafe", glua.LBool(h.Unsafe))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
-	if jobs := h.BusyList(); len(jobs) > 0 {
+	// the tail's render leaves the pending row's inputs out: the rows printed
+	// above it drew it once, and the tail draws it under them
+	tail := printed != nil && printed.Tail
+	if jobs := h.BusyList(); len(jobs) > 0 && !tail {
 		b := L.CreateTable(len(jobs), 0)
 		for _, j := range jobs {
 			e := L.CreateTable(0, 3)
@@ -1673,11 +1683,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		tb.RawSetString("busy", b)
 	}
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
-	sid := h.AgentSessionID()
-	agents, flows := h.tasks.live(func(p string) bool { return p == sid })
-	tb.RawSetString("agents_running", glua.LNumber(agents))
-	tb.RawSetString("workflows_running", glua.LNumber(flows))
-	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
+	if !tail {
+		sid := h.AgentSessionID()
+		agents, flows := h.tasks.live(func(p string) bool { return p == sid })
+		tb.RawSetString("agents_running", glua.LNumber(agents))
+		tb.RawSetString("workflows_running", glua.LNumber(flows))
+		tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
+	}
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
 		gt.RawSetString("condition", glua.LString(sanitize.String(g.Condition)))
@@ -1880,30 +1892,36 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 	return at
 }
 
+// chatRow is one transcript row as ctx.transcript and ctx.printed_prev
+// carry it.
+func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
+	row := L.CreateTable(0, 16)
+	row.RawSetString("role", glua.LString(m.Role))
+	row.RawSetString("kind", glua.LString(m.Kind))
+	row.RawSetString("text", glua.LString(m.Text))
+	row.RawSetString("tool", glua.LString(m.Tool))
+	row.RawSetString("status", glua.LString(m.Status))
+	row.RawSetString("detail", glua.LString(m.Detail))
+	row.RawSetString("run", glua.LString(m.Run))
+	row.RawSetString("job", glua.LString(jobOf(m.Tool, m.Status, m.Output)))
+	row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
+	row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
+	row.RawSetString("output", glua.LString(m.Output))
+	if m.Stat != nil {
+		row.RawSetString("in", glua.LNumber(m.Stat.In))
+		row.RawSetString("out", glua.LNumber(m.Stat.Out))
+		row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
+		row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
+		row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
+	}
+	return row
+}
+
 // transcriptTable is ctx.transcript.
 func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 	tr := L.CreateTable(len(transcript), 0)
 	for _, m := range transcript {
-		row := L.CreateTable(0, 16)
-		row.RawSetString("role", glua.LString(m.Role))
-		row.RawSetString("kind", glua.LString(m.Kind))
-		row.RawSetString("text", glua.LString(m.Text))
-		row.RawSetString("tool", glua.LString(m.Tool))
-		row.RawSetString("status", glua.LString(m.Status))
-		row.RawSetString("detail", glua.LString(m.Detail))
-		row.RawSetString("run", glua.LString(m.Run))
-		row.RawSetString("job", glua.LString(jobOf(m.Tool, m.Status, m.Output)))
-		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
-		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
-		row.RawSetString("output", glua.LString(m.Output))
-		if m.Stat != nil {
-			row.RawSetString("in", glua.LNumber(m.Stat.In))
-			row.RawSetString("out", glua.LNumber(m.Stat.Out))
-			row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
-			row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
-			row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
-		}
-		tr.Append(row)
+		tr.Append(chatRow(L, m))
 	}
 	return tr
 }
@@ -2081,7 +2099,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.122.0"))
+	api.RawSetString("version", glua.LString("0.123.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

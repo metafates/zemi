@@ -662,6 +662,12 @@ local function builder(ctx, width)
 	return B
 end
 
+-- The block the rows printed above ended in: a printed batch's first unit
+-- seeds its block gap from it, where a printed run draws one blindly.
+---@param ctx zemi.WidgetCtx
+---@return "user"|"activity"|"text"|"note"|nil
+local function prev_block(ctx) return ctx.printed_prev and block_of(ctx.printed_prev) or nil end
+
 --- A click on the chat's rows: on a digest it opens the run under it or folds
 --- it back, closing what was opened in it, on a step row opens its calls
 --- nested under it or closes them, on a thought row unrolls its text in
@@ -759,7 +765,7 @@ zemi.ui.widget.add({
 		---@return zemi.tui.ChatUnit
 		local function unit(tr, first, last, mode)
 			local m = tr[first]
-			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
+			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or prev_block(ctx)
 			if mode == "fold" or mode == "unfold" then
 				B.gap("activity")
 				B.fold(tr, first, last, mode == "unfold")
@@ -977,7 +983,7 @@ zemi.ui.widget.add({
 			settled = not more and done or nil
 		end
 		-- the live turn's lines go after the settled ones in the same list
-		B.lines, B.prev = done.lines, done.block
+		B.lines, B.prev = done.lines, done.block or prev_block(ctx)
 		for n = #B.lines, done.n + 1, -1 do
 			B.lines[n] = nil
 		end

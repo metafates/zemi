@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -744,14 +745,14 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 // text every 2s, each rune blending the segment's color toward Normal by
 // its distance to the band center. Blends are quantized to 8 steps so the
 // sgr style cache stays small.
-func (a *App) shimmer(seg hostapi.Segment) []hostapi.Segment {
-	dim, fg := a.thm.style(seg.HL).Fg, a.thm.style("Normal").Fg
-	if !a.host.Settings.Bool("ui.animations") || dim == nil || fg == nil {
+func shimmer(thm themeResolver, anim bool, frame int, seg hostapi.Segment) []hostapi.Segment {
+	dim, fg := thm.style(seg.HL).Fg, thm.style("Normal").Fg
+	if !anim || dim == nil || fg == nil {
 		return []hostapi.Segment{{Text: seg.Text, HL: seg.HL}}
 	}
 	const band = 3.0
 	runes := []rune(seg.Text)
-	pos := float64(a.frame()*frameMS%2000)/2000*(float64(len(runes))+2*band) - band
+	pos := float64(frame*frameMS%2000)/2000*(float64(len(runes))+2*band) - band
 	out := make([]hostapi.Segment, 0, len(runes))
 	for i, r := range runes {
 		k := 0.0
@@ -763,6 +764,37 @@ func (a *App) shimmer(seg hostapi.Segment) []hostapi.Segment {
 		out = append(out, hostapi.Segment{Text: string(r), HL: hl})
 	}
 	return out
+}
+
+// segEffects expands a row's segment effects where a draw applies them: a
+// shimmer segment becomes one per rune carrying the band's blend, a spin one
+// steps its spinner glyph to frame. It reports whether a spin mark was
+// drawn, so the frame clock keeps stepping while one is on screen.
+func segEffects(thm themeResolver, anim bool, frame int, segs []hostapi.Segment) ([]hostapi.Segment, bool) {
+	i := slices.IndexFunc(segs, func(s hostapi.Segment) bool { return s.Effect != "" })
+	if i < 0 {
+		return segs, false
+	}
+	out := append([]hostapi.Segment(nil), segs[:i]...)
+	spun := false
+	for _, s := range segs[i:] {
+		switch s.Effect {
+		case "shimmer":
+			for _, r := range shimmer(thm, anim, frame, s) {
+				r.Over, r.Fill, r.Fade, r.OnPanel = s.Over, s.Fill, s.Fade, s.OnPanel
+				out = append(out, r)
+			}
+		case "spin":
+			if _, n := utf8.DecodeRuneInString(s.Text); n > 0 {
+				s.Text = hostapi.Spinner[frame%len(hostapi.Spinner)] + s.Text[n:]
+			}
+			out = append(out, s)
+			spun = spun || frame != 0
+		default:
+			out = append(out, s)
+		}
+	}
+	return out, spun
 }
 
 // permBox draws the permission prompt: the question, the facts table

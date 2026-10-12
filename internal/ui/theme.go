@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
@@ -280,6 +281,29 @@ func surface16(c color.Color) color.Color {
 	}
 	l, _, _ := col.OkLch()
 	return grey16(l)
+}
+
+// toProfile is what a terminal of p shows for a style: the 256- and 16-color
+// downgrades, the 16-color one keeping a foreground apart from the background
+// it would vanish on.
+func toProfile(st uv.Style, p colorprofile.Profile) uv.Style {
+	switch p {
+	case colorprofile.ANSI256:
+		st.Fg, st.Bg = ansi256(st.Fg), ansi256(st.Bg)
+	case colorprofile.ANSI:
+		fg, bg := ansi16(st.Fg), surface16(st.Bg)
+		// a fg on its own color would vanish: dim on a band both bright
+		// black, or red on a group's red fill, since a hue and its bright
+		// twin read as one
+		f, ok1 := fg.(ansi.BasicColor)
+		b, ok2 := bg.(ansi.BasicColor)
+		if ok1 && ok2 && (f == b || f%8 == b%8 && f%8 != ansi.Black && f%8 != ansi.White) {
+			fg = apart(st.Fg, st.Bg, b)
+		}
+		st.Fg, st.Bg = fg, bg
+	default: // truecolor draws as given, and bubbletea drops color where none shows
+	}
+	return st
 }
 
 // apart is the grey next to bg16 on the side fg sits of bg, for a

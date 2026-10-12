@@ -19,7 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
@@ -286,7 +285,7 @@ func (a *App) Farewell() string {
 			a.log.Warn("exit widget failed", "origin", "ui", "widget", w.ID, "error", err)
 			continue
 		}
-		printLines(&b, a.thm, a.colors, widgetRows(lines, w.Wrap, width))
+		printLines(&b, a.thm, a.colors, a.frame(), widgetRows(lines, w.Wrap, width))
 	}
 	return b.String()
 }
@@ -1588,23 +1587,7 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 			}
 		}
 	}
-	switch a.colors {
-	case colorprofile.ANSI256:
-		st.Fg, st.Bg = ansi256(st.Fg), ansi256(st.Bg)
-	case colorprofile.ANSI:
-		fg, bg := ansi16(st.Fg), surface16(st.Bg)
-		// a fg on its own color would vanish: dim on a band both bright
-		// black, or red on a group's red fill, since a hue and its bright
-		// twin read as one
-		f, ok1 := fg.(ansi.BasicColor)
-		b, ok2 := bg.(ansi.BasicColor)
-		if ok1 && ok2 && (f == b || f%8 == b%8 && f%8 != ansi.Black && f%8 != ansi.White) {
-			fg = apart(st.Fg, st.Bg, b)
-		}
-		st.Fg, st.Bg = fg, bg
-	default: // truecolor draws as given, and bubbletea drops color where none shows
-	}
-	return st
+	return toProfile(st, a.colors)
 }
 
 // sgrPrefix is the ANSI sequence a segment's style opens with, "" for the
@@ -1639,33 +1622,21 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
+	segs, spun := segEffects(a.thm, a.host.Settings.Bool("ui.animations"), a.frame(), segs)
+	a.spun = a.spun || spun
 	var b strings.Builder
-	write := func(text, hl, over string, fill hostapi.Fill, fade float64, panel bool) {
-		p := a.sgrPrefix(hl, over, fill, fade, panel)
-		if p == "" {
-			b.WriteString(text)
-			return
-		}
-		b.WriteString(p)
-		b.WriteString(text)
-		b.WriteString(ansi.ResetStyle)
-	}
 	for _, s := range segs {
 		if s.Text == "" {
 			continue
 		}
-		switch s.Effect {
-		case "shimmer":
-			for _, r := range a.shimmer(s) {
-				write(r.Text, r.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
-			}
+		p := a.sgrPrefix(s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
+		if p == "" {
+			b.WriteString(s.Text)
 			continue
-		case "spin":
-			_, n := utf8.DecodeRuneInString(s.Text)
-			s.Text = hostapi.Spinner[a.frame()%len(hostapi.Spinner)] + s.Text[n:]
-			a.spun = a.spun || a.frame() != 0
 		}
-		write(s.Text, s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
+		b.WriteString(p)
+		b.WriteString(s.Text)
+		b.WriteString(ansi.ResetStyle)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {

@@ -2352,7 +2352,13 @@ rides the `memories.md` line and its ledger entries.
   terminal the pending rows, the live turn and the working rule are a tail
   redrawn in place under them (`Host.RunFrame`: while a turn runs, a row
   settles only below the running step's start, which a provider retry cuts
-  back to). Off a terminal it is plain lines; `-q` and `--json` leave only
+  back to). The chat regions render at the stage node's max, the width the
+  TUI centers the chat inside (the terminal's width when the layout has no
+  stage or it sets none); the working rule draws at the terminal's width.
+  The gap between two printed batches is the chat's own block rule, seeded
+  with the last row printed above (`Printed.Prev`), and the live tail's
+  render (`Printed.Tail`) leaves the pending row to the tail alone. Off a
+  terminal it is plain lines; `-q` and `--json` leave only
   diagnostics, which print above the tail since the view is `Host.Stderr`;
   the view renders with no lock held, so a diagnostic the Lua actor writes
   never waits on a render queued behind it.

@@ -16,28 +16,31 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// printLines writes lines as SGR text for a shell: foreground only, since
-// the shell's ground is not the theme's canvas, and a foreground equal to
-// Normal's is left to the terminal, so a dark theme's text reads on a light
-// one. The profile drops what the terminal cannot show (NO_COLOR keeps bold).
-func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, lines [][]hostapi.Segment) {
+// printLines writes lines as SGR text for a shell: a style that paints a
+// surface of its own (a diff's tint) keeps its pair, the rest print
+// foreground only, since the shell's ground is not the theme's canvas, and a
+// foreground equal to Normal's is left to the terminal, so a dark theme's
+// text reads on a light one. The profile drops what the terminal cannot
+// show (NO_COLOR keeps bold).
+func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, frame int, lines [][]hostapi.Segment) {
 	var b strings.Builder
 	normal := t.style("Normal").Fg
+	canvas := t.canvas()
+	anim := t.host != nil && t.host.Settings.Bool("ui.animations")
 	for _, line := range lines {
+		line, _ = segEffects(t, anim, frame, line)
 		for _, s := range line {
+			if s.Text == "" {
+				continue
+			}
 			st := t.style(s.HL)
-			st.Bg = nil
-			if sameColor(st.Fg, normal) {
-				st.Fg = nil
+			if st.Bg == nil || sameColor(st.Bg, canvas) {
+				st.Bg = nil
+				if sameColor(st.Fg, normal) {
+					st.Fg = nil
+				}
 			}
-			switch p {
-			case colorprofile.ANSI256:
-				st.Fg = ansi256(st.Fg)
-			case colorprofile.ANSI:
-				st.Fg = ansi16(st.Fg)
-			default: // ConvertStyle below drops what the terminal cannot show
-			}
-			st = uv.ConvertStyle(st, p)
+			st = uv.ConvertStyle(toProfile(st, p), p)
 			b.WriteString(st.Styled(s.Text))
 		}
 		b.WriteString("\n")
@@ -64,9 +67,10 @@ type RunView struct {
 	// writing a diagnostic, so none runs under mu
 	h         *hostapi.Host
 	thm       themeResolver
-	printed   bool // settled rows went out, so the next batch starts with a gap
-	reasoning bool // --reasoning
-	dead      bool // a render failed or Close ran: the view draws nothing more
+	prev      *hostapi.ChatMessage // the last settled row printed above, seeding the chat's block gap
+	reasoning bool                 // --reasoning
+	dead      bool                 // a render failed or Close ran: the view draws nothing more
+	closed    bool                 // Close ran: the run loop calls it again through its defer
 
 	mu   sync.Mutex // held over each write to w
 	tail string     // the tail on screen, "" for none
@@ -105,6 +109,36 @@ func (v *RunView) Tails() bool { return v.on() && v.size != nil }
 
 func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
 
+// frame is the frame clock's tick, frameMS each: what the tail's spinner,
+// the snail's eyes and a shimmer step on. Always 0 with animations off.
+func (v *RunView) frame() int {
+	if !v.h.Settings.Bool("ui.animations") {
+		return 0
+	}
+	return int(v.now().UnixMilli() / frameMS)
+}
+
+// stageWidth is the width the chat regions draw at: the stage node's max in
+// the layout in force, the width the TUI centers the chat inside, else the
+// terminal's width. The working rule keeps the terminal's width.
+func (v *RunView) stageWidth(term int) int {
+	var walk func(n *hostapi.LayoutNode)
+	found, stageMax := false, 0
+	walk = func(n *hostapi.LayoutNode) {
+		if n.Stage && !found {
+			found, stageMax = true, n.Max
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(v.h.Layout().Root)
+	if stageMax > 0 {
+		return min(stageMax, term)
+	}
+	return term
+}
+
 // Show prints fr's settled rows above the tail and redraws the tail.
 func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 	if !v.on() {
@@ -113,16 +147,18 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 	width, height := v.dims()
 	var b strings.Builder
 	if len(fr.Settled) > 0 {
-		lines, err := v.region("chat", width, height, hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Settled, Reasoning: v.reasoning}})
+		lines, err := v.region("chat", v.stageWidth(width), height, hostapi.UIState{
+			Printed: &hostapi.Printed{Rows: fr.Settled, Prev: v.prev, Tail: v.size != nil, Reasoning: v.reasoning},
+		})
 		if err != nil {
 			v.fail(err)
 			return
 		}
-		if v.printed && len(lines) > 0 {
-			lines = append([][]hostapi.Segment{{}}, lines...)
+		if len(lines) > 0 {
+			last := fr.Settled[len(fr.Settled)-1]
+			v.prev = &last
 		}
-		v.printed = v.printed || len(lines) > 0
-		printLines(&b, v.thm, v.profile, lines)
+		printLines(&b, v.thm, v.profile, v.frame(), lines)
 	}
 	var tail string
 	if v.size != nil {
@@ -146,28 +182,21 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 // and two cells short of the edge, so the ^C a terminal echoes after it does
 // not wrap to a row the next erase would miss.
 func (v *RunView) drawTail(fr hostapi.RunFrame, cancelling bool, width, height int) (string, error) {
-	width -= 2
-	state := hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Pending, Live: &fr.Stream, Reasoning: v.reasoning}, Cancelling: cancelling}
-	if v.h.Settings.Bool("ui.animations") {
-		state.Frame = int(v.now().UnixMilli() / frameMS)
-	}
-	chat, err := v.region("chat", width, height, state)
+	state := hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Pending, Live: &fr.Stream, Prev: v.prev, Reasoning: v.reasoning}, Cancelling: cancelling, Frame: v.frame()}
+	chat, err := v.region("chat", v.stageWidth(width)-2, height, state)
 	if err != nil {
 		return "", err
 	}
 	chat = chat[max(0, len(chat)-max(4, height/2-2)):]
-	rule, err := v.region("working", width, height, state)
+	rule, err := v.region("working", width-2, height, state)
 	if err != nil {
 		return "", err
 	}
 	if len(chat) > 0 {
-		if v.printed { // the gap the chat puts between blocks
-			chat = append([][]hostapi.Segment{{}}, chat...)
-		}
 		chat = append(chat, nil)
 	}
 	var b strings.Builder
-	printLines(&b, v.thm, v.profile, append(chat, rule...))
+	printLines(&b, v.thm, v.profile, state.Frame, append(chat, rule...))
 	return strings.TrimSuffix(b.String(), "\n"), nil
 }
 
@@ -216,16 +245,21 @@ func (v *RunView) Write(p []byte) (int, error) {
 }
 
 // Close erases the tail, shows the cursor and prints the exit region: how
-// to come back to the session.
+// to come back to the session. A view whose render failed still prints it,
+// so a dead view keeps its resume hint.
 func (v *RunView) Close() {
+	if v.closed {
+		return
+	}
+	v.closed = true
 	var exit strings.Builder
-	if v.on() {
+	if !v.quiet && v.h != nil {
 		width, height := v.dims()
 		lines, err := v.region(hostapi.RegionExit, width, height, hostapi.UIState{Printed: &hostapi.Printed{}})
 		if err != nil {
 			v.h.Log.Warn("exit widget failed", "origin", "run", "error", err)
 		}
-		printLines(&exit, v.thm, v.profile, lines)
+		printLines(&exit, v.thm, v.profile, v.frame(), lines)
 	}
 	v.dead = true
 	v.mu.Lock()
