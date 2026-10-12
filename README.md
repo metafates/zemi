@@ -4,8 +4,6 @@
 
 Zemi is a (coding) agent harness that...
 
-Site: https://metafates.one/zemi
-
 - learns like [hermes](https://github.com/nousresearch/hermes-agent)
 - fast and native like [crush](https://github.com/charmbracelet/crush)
 - extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
