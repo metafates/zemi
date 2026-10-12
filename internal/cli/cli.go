@@ -127,9 +127,13 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		usageHint(stderr, c.CommandPath(), err.Error())
 		return 2
 	case c.HasParent():
-		fmt.Fprintf(stderr, "zemi: %s: %v\n", strings.TrimPrefix(c.CommandPath(), "zemi "), err)
+		head, detail, _ := strings.Cut(err.Error(), "\n")
+		fmt.Fprintf(stderr, "zemi: %s: %s\n", strings.TrimPrefix(c.CommandPath(), "zemi "), hostapi.Headline(head))
+		if detail != "" {
+			fmt.Fprintln(stderr, "  "+detail)
+		}
 	default:
-		fmt.Fprintln(stderr, "zemi:", err)
+		headline(stderr, err.Error())
 	}
 	return 1
 }
@@ -138,6 +142,16 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 // --help covers it.
 func usageHint(w io.Writer, cmd, msg string) {
 	fmt.Fprintf(w, "zemi: %s\nRun '%s --help' for usage.\n", msg, cmd)
+}
+
+// headline reports a failure the way the run does: its headline, then the
+// detail indented two spaces.
+func headline(w io.Writer, msg string) {
+	head, detail, _ := strings.Cut(msg, "\n")
+	fmt.Fprintf(w, "zemi: %s\n", hostapi.Headline(head))
+	if detail != "" {
+		fmt.Fprintln(w, "  "+detail)
+	}
 }
 
 // enterDir is -C: run as if started in dir. PWD follows, since children get
@@ -769,7 +783,7 @@ func (o *options) readStdin(stdin *os.File) error {
 // line saying what that turns off.
 func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust\n", perm.TildePath(root))
+		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust trusts this project for the run\n", perm.TildePath(root))
 		return "later"
 	}
 }

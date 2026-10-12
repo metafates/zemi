@@ -424,9 +424,13 @@ type Host struct {
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
 	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
 	KeepPicks atomic.Bool
-	agents    *agentHost
-	luaTools  *toolReg
-	stops     *stopReg
+	// swap records that closeSession swapped the session (/new, /resume):
+	// a headless run reads and clears it, so only a swap made during the
+	// run counts.
+	swap     atomic.Bool
+	agents   *agentHost
+	luaTools *toolReg
+	stops    *stopReg
 	// test is set, before boot, only in a zemi plugins test zemi
 	test *PluginTest
 
@@ -641,6 +645,9 @@ func TrustUnsaved(root string) bool {
 
 // ProjectTrusted reports whether the user trusts this project.
 func (h *Host) ProjectTrusted() bool { return h.projectTrusted.Load() }
+
+// TakeSwap reports and clears the session-swap fact (closeSession).
+func (h *Host) TakeSwap() bool { return h.swap.Swap(false) }
 
 // projectNamespace is zemi.project: what a job-starting plugin checks first.
 func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {

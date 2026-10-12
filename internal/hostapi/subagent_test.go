@@ -186,7 +186,7 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 		Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
 		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
 		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
-		Retries: 9, Compacting: true, CheckingGoal: true,
+		Retries: 9, Turn: 10, Compacting: true, CheckingGoal: true,
 		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
 	}
 	h.SeedStream(s)

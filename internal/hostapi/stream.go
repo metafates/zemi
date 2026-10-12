@@ -305,6 +305,7 @@ type StreamSnapshot struct {
 	RetryIn    time.Duration // time until the next provider retry, 0 once it is under way
 	Retries    int           // provider retries this turn
 	RetryWhy   string        // what failed, for the retry countdown
+	Turn       int           // the turn these counts belong to (agentHost.turns)
 	Compacting bool          // history is being summarized before the turn
 	// the goal is being checked after a turn (/goal); the agent stays active
 	CheckingGoal bool
@@ -402,6 +403,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	out.Steering = queuedRows(ag.steering)
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
+	out.Turn = ag.turns
 	if !ag.retryAt.IsZero() {
 		out.Retrying, out.RetryIn, out.RetryWhy = true, max(ag.retryAt.Sub(now), 0), ag.retryWhy
 	}
@@ -443,6 +445,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 		ag.turnStart = time.Time{}
 	}
 	ag.retries, ag.retryAt, ag.retryWhy, ag.compacting = s.Retries, time.Time{}, "", s.Compacting
+	ag.turns = s.Turn
 	if s.Retrying {
 		ag.retryAt, ag.retryWhy = h.now().Add(s.RetryIn), s.RetryWhy
 	}

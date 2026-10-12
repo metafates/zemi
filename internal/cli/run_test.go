@@ -62,6 +62,26 @@ func TestFollower(t *testing.T) {
 			frames: []hostapi.RunFrame{{Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 2}}},
 			want:   "retry:2 retry:3",
 		},
+		{
+			name: "an id-less call collapses into one start and one end",
+			frames: []hostapi.RunFrame{
+				{Pending: []hostapi.ChatMessage{row(hostapi.StreamTool{Name: "shell", Input: "ls", Status: hostapi.CallErr, Output: "x\nexit status 1"})}},
+				{Pending: []hostapi.ChatMessage{row(hostapi.StreamTool{Name: "shell", Input: "ls", Status: hostapi.CallErr, Output: "x\nexit status 1"}), row(hostapi.StreamTool{Name: "edit", Input: "a", Status: hostapi.CallOK})}},
+			},
+			want: "tool_start tool_end:err:exit status 1",
+		},
+		{
+			// the turns of one run chain under one active stretch, so the
+			// second turn's first retry is a new attempt, not the first turn's
+			name: "a chained turn's retry refires once, an unchanged turn never",
+			frames: []hostapi.RunFrame{
+				{Stream: hostapi.StreamSnapshot{Active: true, Retries: 2, Turn: 1}},
+				{Stream: hostapi.StreamSnapshot{Active: true, Retries: 2, Turn: 1}},
+				{Stream: hostapi.StreamSnapshot{Active: true, Retries: 1, Turn: 2}},
+				{Stream: hostapi.StreamSnapshot{Active: true, Retries: 1, Turn: 2}},
+			},
+			want: "retry:3 retry:2",
+		},
 	} {
 		f := newFollower()
 		var got []string
@@ -225,12 +245,21 @@ func TestRunHeadless(t *testing.T) {
 	for _, c := range []struct {
 		name, prompt      string
 		first             []string // turns run before, -c style
+		cont              bool     // the boot resumed a session, -c style
 		setup             func(h *hostapi.Host)
 		stdout, stderr    string // wanted substrings
 		notStdout, notErr string
 		denied            int
+		jsonDone          func(t *testing.T, d doneEvent, out string)
 	}{
-		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", stderr: "resume   zemi -r ", notStdout: "\x1b", notErr: "\x1b"},
+		{
+			name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", stderr: "resume   zemi -r ", notStdout: "\x1b", notErr: "\x1b",
+			jsonDone: func(t *testing.T, d doneEvent, out string) {
+				if strings.ContainsRune(out, '\x1b') || d.Result != "hi" {
+					t.Errorf("--json: raw escape on stdout or result %q", d.Result)
+				}
+			},
+		},
 		{name: "a deny rule's call is a failed row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
 			h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "ls*", Decision: perm.Deny})
 		}, stderr: "✗ run ls -la", notErr: "nobody could answer"},
@@ -244,6 +273,16 @@ func TestRunHeadless(t *testing.T) {
 			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1,
 		},
 		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
+		{
+			// the resume is the boot's: its swap must read as spent before the
+			// run's send, or the turn's rows and usage would drop off the done
+			name: "a boot resume's swap is not this run's", first: []string{"say hi", "/new"}, cont: true, prompt: "say done", stdout: "done",
+			jsonDone: func(t *testing.T, d doneEvent, _ string) {
+				if d.Result != "done" || d.Usage.Input != 10 || d.Usage.Output != 2 {
+					t.Errorf("--json done: result %q, usage %+v", d.Result, d.Usage)
+				}
+			},
+		},
 		{name: "/btw prints only its answer", first: []string{"say hello"}, prompt: "/btw why", stdout: "why", notErr: "hello"},
 	} {
 		h := printHost(t)
@@ -253,6 +292,11 @@ func TestRunHeadless(t *testing.T) {
 		for _, p := range c.first {
 			if code, _, _ := runPrompt(t, h, options{prompt: p, quiet: true}); code != 0 {
 				t.Fatalf("%s: %q failed", c.name, p)
+			}
+		}
+		if c.cont {
+			if err := h.ResumeSession(""); err != nil {
+				t.Fatal(err)
 			}
 		}
 		code, out, errOut := runPrompt(t, h, options{prompt: c.prompt})
@@ -265,6 +309,10 @@ func TestRunHeadless(t *testing.T) {
 			if d := lastDone(t, out); len(d.Denied) != c.denied || !strings.Contains(out, `{"type":"ask","tool":"write"`) {
 				t.Errorf("%s: --json denied %+v in %s", c.name, d.Denied, out)
 			}
+		}
+		if c.jsonDone != nil {
+			_, out, _ := runPrompt(t, h, options{prompt: c.prompt, json: true})
+			c.jsonDone(t, lastDone(t, out), out)
 		}
 	}
 }
@@ -321,10 +369,70 @@ func TestRunScreenCommands(t *testing.T) {
 	}
 }
 
+// TestWriteJSONSanitizes: every string the wire carries, a nested row's
+// included, passes the same sanitize pass at writeJSON - plant a control
+// byte in each field class and none may reach a reader of the line.
+func TestWriteJSONSanitizes(t *testing.T) {
+	const esc = "\x1b]0;pwned\a\x7f"
+	for _, doc := range []any{
+		event{
+			Type: evToolEnd, Text: esc, ID: esc, Tool: esc, Input: esc, Label: esc, Status: esc, Output: esc,
+			Error: esc, Diff: esc, Detail: esc, Arg: esc, Reason: esc, Why: esc, Session: esc,
+		},
+		doneEvent{
+			Type: evDone, Result: esc, Error: esc, Session: esc,
+			Denied: []hostapi.Denial{{Tool: esc, Subject: esc, Arg: esc, Reason: esc, Why: esc}},
+			Tools:  []doneTool{{ID: esc, Tool: esc, Input: esc, Status: esc, Error: esc}},
+		},
+	} {
+		var out strings.Builder
+		writeJSON(&out, doc)
+		line := out.String()
+		for _, b := range []byte{0x1b, 0x07, 0x7f} {
+			if strings.IndexByte(line, b) >= 0 {
+				t.Errorf("%T: raw byte %#x on the line: %q", doc, b, line)
+			}
+		}
+		var row map[string]any
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatalf("%T: %v", doc, err)
+		}
+		var walk func(path string, v any)
+		walk = func(path string, v any) {
+			switch x := v.(type) {
+			case string:
+				if strings.ContainsAny(x, "\x1b\x07\x7f") {
+					t.Errorf("%T: %s carries a control byte: %q", doc, path, x)
+				}
+			case []any:
+				for _, e := range x {
+					walk(path, e)
+				}
+			case map[string]any:
+				for k, e := range x {
+					walk(path+"."+k, e)
+				}
+			}
+		}
+		for k, e := range row {
+			walk("."+k, e)
+		}
+	}
+}
+
 // TestRunInterruptJSON: an interrupted run, /btw included, still ends in its
-// done line, so a script keeps the session id it resumes.
+// done line, so a script keeps the session id it resumes; the signal sets
+// the exit status, 128+n.
 func TestRunInterruptJSON(t *testing.T) {
-	for _, prompt := range []string{"hang", "/btw hang"} {
+	for _, c := range []struct {
+		prompt string
+		sig    syscall.Signal
+		code   int
+	}{
+		{"hang", syscall.SIGINT, 130},
+		{"/btw hang", syscall.SIGINT, 130},
+		{"hang", syscall.SIGTERM, 143},
+	} {
 		h := printHost(t)
 		if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
 			t.Fatal("first turn failed")
@@ -335,23 +443,23 @@ func TestRunInterruptJSON(t *testing.T) {
 		}
 		done := make(chan result, 1)
 		go func() {
-			code, out, _ := runPrompt(t, h, options{prompt: prompt, json: true})
+			code, out, _ := runPrompt(t, h, options{prompt: c.prompt, json: true})
 			done <- result{code, out}
 		}()
 		for !h.AgentActive() {
 			select {
 			case r := <-done:
-				t.Fatalf("%s: ended with %d before the interrupt", prompt, r.code)
+				t.Fatalf("%s: ended with %d before the interrupt", c.prompt, r.code)
 			default:
 				runtime.Gosched()
 			}
 		}
-		if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		if err := syscall.Kill(os.Getpid(), c.sig); err != nil {
 			t.Fatal(err)
 		}
 		r := <-done
-		if d := lastDone(t, r.out); r.code != 130 || !d.IsError || d.Error != "interrupted" || d.Session == "" || h.AgentActive() {
-			t.Errorf("%s: code %d, stdout %q, still active %v", prompt, r.code, r.out, h.AgentActive())
+		if d := lastDone(t, r.out); r.code != c.code || !d.IsError || d.Error != "interrupted" || d.Session == "" || h.AgentActive() {
+			t.Errorf("%s: code %d, stdout %q, still active %v", c.prompt, r.code, r.out, h.AgentActive())
 		}
 	}
 }

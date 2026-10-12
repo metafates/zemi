@@ -283,6 +283,7 @@ func (h *Host) closeSession(open func()) error {
 		return errTurnRunning
 	}
 	prev, reports := ag.sessionID, ag.steering
+	h.swap.Store(true)
 	h.recentStale.Store(true)
 	h.instrStale.Store(true) // the session may have written instructions
 	// turnMsgID too: a write arriving late would checkpoint against a
