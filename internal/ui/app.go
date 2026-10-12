@@ -732,14 +732,17 @@ func (a *App) windowTitle() string {
 	return t
 }
 
-// frame is the frame clock's tick, frameMS each: what the spinner, the eyes
-// and the shimmer step on. Always 0 with animations off.
-func (a *App) frame() int {
-	if !a.host.Settings.Bool("ui.animations") {
+// frameClock is the frame clock's tick, frameMS each: what the spinner, the
+// eyes and the shimmer step on. Always 0 with animations off.
+func frameClock(h *hostapi.Host, now func() time.Time) int {
+	if !h.Settings.Bool("ui.animations") {
 		return 0
 	}
-	return int(a.now().UnixMilli() / frameMS)
+	return int(now().UnixMilli() / frameMS)
 }
+
+// frame is the app's tick of the frame clock.
+func (a *App) frame() int { return frameClock(a.host, a.now) }
 
 func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {

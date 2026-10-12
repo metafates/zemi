@@ -109,14 +109,8 @@ func (v *RunView) Tails() bool { return v.on() && v.size != nil }
 
 func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
 
-// frame is the frame clock's tick, frameMS each: what the tail's spinner,
-// the snail's eyes and a shimmer step on. Always 0 with animations off.
-func (v *RunView) frame() int {
-	if !v.h.Settings.Bool("ui.animations") {
-		return 0
-	}
-	return int(v.now().UnixMilli() / frameMS)
-}
+// frame is the run view's tick of the frame clock (frameClock).
+func (v *RunView) frame() int { return frameClock(v.h, v.now) }
 
 // stageWidth is the width the chat regions draw at: the stage node's max in
 // the layout in force, the width the TUI centers the chat inside, else the
