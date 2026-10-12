@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>not found - zemi</title>
+<meta name="theme-color" content="#17181e">
+<style>
+/* self-contained layout: pages serves this file at the missing URL's path, so
+   relative asset links would not resolve; the /zemi/ prefix is the project
+   pages base this site deploys to */
+@font-face {
+  font-family: "Paper Mono";
+  src: url("/zemi/fonts/paper-mono.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+:root { color-scheme: dark; }
+body {
+  margin: 0;
+  background: #17181e;
+  color: #e7e7ec;
+  font: 400 0.9375rem/1.6 "Paper Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 0.9rem;
+}
+.dim { color: #898b98; }
+a { color: #e7e7ec; text-decoration: none; }
+a:hover, a:focus-visible { background: #e7e7ec; color: #17181e; }
+a:focus-visible { outline: 1px dotted #e7e7ec; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="dim">404</p>
+  <p>no such page. <a href="/zemi/">[zemi]</a></p>
+</main>
+</body>
+</html>

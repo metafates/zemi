@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run first-run test race vet lint fmt golden luals stylua check install clean reset-db
+.PHONY: all build run site first-run test race vet lint fmt golden luals stylua check install clean reset-db
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -13,6 +13,19 @@ build:
 
 run:
 	go run .
+
+# the site (docs/): plain files, served; opening docs/index.html as a file
+# blocks its module scripts and shows a still frame instead
+site:
+	python3 -m http.server 1314 --directory docs
+
+# regenerate docs/og.png: a 1200x630 shot of the page itself
+CHROME ?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+og:
+	python3 -m http.server 1315 --directory docs & pid=$$!; sleep 0.5; \
+	"$(CHROME)" --headless=new --disable-gpu --hide-scrollbars --window-size=1200,630 \
+		--virtual-time-budget=3600 --screenshot=docs/og.png http://localhost:1315/; \
+	kill $$pid
 
 # zemi as a newcomer sees it: a fresh HOME (no ~/.agents/skills, no zemi
 # dirs) and a new git repo, or DIR. Provider keys pass through unless

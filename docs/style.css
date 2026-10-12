@@ -1,0 +1,146 @@
+@font-face {
+  font-family: "Paper Mono";
+  src: url("./fonts/paper-mono.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+/* whorl, zemi's theme */
+:root {
+  color-scheme: dark;
+  --bg: #17181e;
+  --fg: #e7e7ec;
+  --dim: #898b98;
+  --panel: #202128;
+  --danger: #f17070;
+  --mono: "Paper Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --art: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 0.9375rem/1.6 var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--fg); color: var(--bg); }
+
+.split {
+  height: 100dvh;
+  max-width: 96rem;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: clamp(2rem, 5vw, 5rem);
+  padding-inline: clamp(1.25rem, 4vw, 4rem);
+}
+
+.intro { max-width: 60ch; }
+h1 {
+  font-size: clamp(3.5rem, 8vh, 6rem);
+  font-weight: 600;
+  line-height: 1;
+  margin: 0 0 0.75rem;
+}
+blockquote { color: var(--dim); margin: 0 0 1.25rem; }
+blockquote::before { content: "> "; }
+.pitch { max-width: 56ch; margin: 0 0 2rem; }
+.actions { display: grid; gap: 0.9rem; justify-items: start; }
+.pair { display: flex; gap: 2ch; align-items: baseline; margin: 0; flex-wrap: wrap; }
+/* the command sits on the panel; the panel's left edge is the column's edge */
+.well {
+  background: var(--panel);
+  padding: 0.7rem 1ch;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.well .dim { color: var(--dim); user-select: none; }
+
+a, .copy {
+  color: var(--fg);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+/* a failed copy is the page's one alarm, in whorl's danger */
+.copy.failed { color: var(--danger); }
+.copy.failed:hover, .copy.failed:focus-visible { background: var(--fg); color: var(--bg); }
+/* without js the copy buttons bind nothing and say nothing: hide them */
+html:not(.js) .copy { display: none; }
+a:hover, a:focus-visible, .copy:hover, .copy:focus-visible {
+  background: var(--fg);
+  color: var(--bg);
+}
+a:focus-visible, .copy:focus-visible {
+  outline: 1px dotted var(--fg);
+  outline-offset: 2px;
+}
+
+/* the pre and the canvas share one cell: the pre is the no-JS and
+   reduced-motion view, the canvas blooms in over it when the player mounts */
+.knot {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
+}
+.knot pre, .knot canvas { grid-area: 1 / 1; }
+.knot pre {
+  margin: 0;
+  /* dim ink: the bloom brightens into the ramp; fg would outshine every stop */
+  color: var(--dim);
+  /* one canvas cell: 60 columns of art at font-size f span 36f, so the pre
+     tracks the canvas box exactly; the letter-spacing holds any mono face to
+     the 0.6em advance the atlas draws with */
+  font-family: var(--art);
+  font-size: calc(min(100cqw, 100cqh * 60 / 56) / 36);
+  line-height: 1.2;
+  letter-spacing: calc(0.6em - 1ch);
+  white-space: pre;
+}
+@keyframes bloom { from { opacity: 0 } }
+@media (prefers-reduced-motion: no-preference) {
+  .knot canvas { animation: bloom 0.6s ease-out; }
+}
+
+@media (max-width: 860px) {
+  .split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    align-content: center;
+    gap: 2rem;
+    padding-block: 2rem;
+  }
+  .intro { max-width: none; }
+}
+
+@media (max-width: 860px) and (max-height: 42rem) {
+  /* too narrow and too short for the knot to be anything but noise */
+  .knot { display: none; }
+  .split { grid-template-rows: auto; align-content: center; justify-items: center; }
+  html, body { overflow: auto; }
+}
+
+/* too short to hold the split: the knot yields, the page may scroll */
+@media (max-height: 35rem) {
+  html, body { overflow: auto; }
+  .split { height: auto; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: none; align-content: center; justify-items: center; }
+  .knot { display: none; }
+  h1 { font-size: 3rem; }
+}
+@media (max-height: 35rem) {
+  html, body { overflow: auto; }
+  .split { height: auto; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: none; align-content: center; }
+  .knot { display: none; }
+  h1 { font-size: 3rem; }
+}

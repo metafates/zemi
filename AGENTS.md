@@ -95,6 +95,7 @@ make luals              # lua-language-server over runtime/; prints a skip line 
 make stylua             # stylua --check over runtime/ and testdata/ (stylua.toml: tabs); a skip line without the binary
 make lint               # golangci-lint run (.golangci.yml: curated linters and the gofumpt, goimports, gci formatters); a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
+make site               # serve the one-page site in docs/ at localhost:1314
 make first-run          # zemi as a newcomer sees it: fresh HOME and repo, deleted on exit; KEYS=0 without keys, DIR=<abs path>, ARGS=<flags>
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./...

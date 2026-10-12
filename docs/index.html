@@ -3,146 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>zemi</title>
-<meta name="description" content="A coding agent for the terminal. It learns how you work between sessions, keeps the prompt cheap, and its UI is Lua.">
-<style>
-:root {
-  color-scheme: light dark;
-  --bg: #fafafc; --fg: #202127; --dim: #696b78; --rule: #bcbdc6; --panel: #eff0f3; --accent: #5458c8; --literal: #ab5819;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; }
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; padding: 3.5rem 16px 4rem;
-  background: var(--bg); color: var(--fg);
-  font: 15px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  -webkit-font-smoothing: antialiased;
-}
-main { max-width: 72ch; margin: 0 auto; }
-p { margin: 0 0 1.2em; max-width: 60ch; }
-a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: .2em; }
-a:hover, a:focus-visible { color: var(--accent); }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-code, kbd, pre { font: inherit; }
-pre { margin: 0; white-space: pre; overflow-x: auto; }
-code, kbd { color: var(--literal); }
-.dim { color: var(--dim); }
-.accent { color: var(--accent); }
-.literal { color: var(--literal); }
-
-/* the snail at rest, the splash's four rows drawn as strokes */
-.snail { display: block; width: 210px; height: auto; margin: 0 0 1.6rem -6px; }
-.snail .shell { stroke: var(--accent); }
-.snail .head { stroke: var(--fg); }
-h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
-.tag { margin-bottom: .6em; }
-.repo { margin-bottom: 2.4rem; }
-.repo a { color: var(--accent); }
-
-/* its eyes: one pair per state, the only thing that changes while it works */
-.eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.4rem; list-style: none; padding: 0; }
-.eyes li { display: flex; flex-direction: column; }
-.eyes .m { font-weight: 600; }
-.eyes .l { color: var(--dim); }
-
-.sec { margin: 2.4rem 0 0; }
-h2 { font-size: inherit; font-weight: 400; margin: 0 0 1rem; display: flex; align-items: center; }
-h2::before { content: ""; width: 2ch; border-top: 1px solid var(--rule); margin-right: 1ch; }
-h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left: 1ch; }
-
-.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel); margin: 0 0 1.1rem; }
-.cmd .dim { user-select: none; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: .2em 3ch; margin: 0 0 1.2em; }
-.two ul { list-style: none; margin: 0; padding: 0; }
-.two li { display: grid; grid-template-columns: 2ch 1fr; gap: 1ch; }
-.two li::before { content: "\2713"; color: var(--accent); }
-.two .asks li::before { content: "??"; color: var(--dim); }
-@media (max-width: 520px) { .two { grid-template-columns: 1fr; gap: .8em; } }
-footer { margin-top: 3rem; color: var(--dim); }
-</style>
+<meta name="color-scheme" content="dark">
+<title>zemi - coding agent harness</title>
+<meta name="description" content="It learns. Stays cheap. Spawns subagents. Talks less. Asks first.">
+<meta property="og:title" content="zemi - coding agent harness">
+<meta property="og:description" content="It learns. Stays cheap. Spawns subagents. Talks less. Asks first.">
+<!-- og.png is a 1200x630 headless-chrome shot of this page itself: make og -->
+<meta property="og:image" content="https://metafates.github.io/zemi/og.png">
+<meta property="og:image:alt" content="the zemi page: a whorl-colored ascii trefoil knot turning beside the wordmark">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#17181e">
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="preload" href="./fonts/paper-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<main>
-
-<svg class="snail" viewBox="0 0 118 64" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <g class="head">
-    <path d="M85 22v18M95 22v18"/>
-    <path d="M45 56h14q6 0 6-6v-4q0-6 6-6h28q6 0 6 6v10"/>
-  </g>
-
-  <g class="shell">
-    <rect x="5" y="8" width="50" height="48" rx="8"/>
-    <rect x="15" y="24" width="30" height="16" rx="6"/>
-  </g>
-</svg>
-
-<h1>zemi</h1>
-<p class="tag">A coding agent for the terminal. It learns how you work between sessions, keeps the prompt cheap, and its UI is Lua.</p>
-<p class="repo"><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a></p>
-
-<ul class="eyes" aria-label="the snail's eyes, one pair per state">
-  <li><span class="m"><span class="accent">@</span>··</span><span class="l">idle</span></li>
-  <li><span class="m"><span class="accent">@</span>.?</span><span class="l">thinking</span></li>
-  <li><span class="m"><span class="accent">@</span>.·</span><span class="l">working</span></li>
-  <li><span class="m"><span class="accent">@</span>..</span><span class="l">reading</span></li>
-  <li><span class="m"><span class="accent">@</span>??</span><span class="l">asking</span></li>
-  <li><span class="m"><span class="accent">@</span>&gt;&lt;</span><span class="l">error</span></li>
-  <li><span class="m"><span class="accent">@</span>^^</span><span class="l">done</span></li>
-</ul>
-
-<section class="sec" style="margin-top:0">
-<h2>install</h2>
-<div class="cmd"><pre><span class="dim">$ </span>go install github.com/metafates/zemi@latest
-<span class="dim">$ </span>export ANTHROPIC_API_KEY=...   <span class="dim"># or OPENAI_API_KEY, ...</span>
-<span class="dim">$ </span>zemi</pre></div>
-</section>
-
-<section class="sec">
-<h2>it learns</h2>
-<p>After a session, zemi keeps what would have cost a question next time: how you test, how you commit. A memory about you must quote you. A procedure it worked out for a repo becomes a recipe there.</p>
-<p><code>/memory</code> shows what it kept. <code>/rewind</code> takes a turn back, lessons included.</p>
-</section>
-
-<section class="sec">
-<h2>few tokens</h2>
-<p>The prompt is pinned per session, so the provider cache hits every turn. Skills are an index until one is used. Past ten MCP tools, they load by search. Titles, summaries and the learning pass can each run on a cheaper model.</p>
-</section>
-
-<section class="sec">
-<h2>on its own, or with a question</h2>
-<div class="two">
-<ul>
-<li>reads and edits the project</li>
-<li>builds, tests, scripts</li>
-<li>read-only MCP tools</li>
-</ul>
-<ul class="asks">
-<li>rm -rf and friends</li>
-<li>git push, a rebase, .git/config</li>
-<li>the network, leaving the sandbox</li>
-</ul>
-</div>
-<p>Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden. On macOS a commit, a branch or a stash runs confined; on Linux every git write asks. <kbd>ctrl+y</kbd> is yolo. <kbd>ctrl+t</kbd> is the planner: it reads and proposes, you approve.</p>
-</section>
-
-<section class="sec">
-<h2>the UI is Lua</h2>
-<div class="cmd"><pre>zemi.keymap.set(<span class="literal">"ctrl+t"</span>, <span class="literal">"zemi.agent.profile.next"</span>)</pre></div>
-<p>Keys, commands, widgets, layout, permission rules: one file, reloaded on save, like Neovim. Or ask zemi to edit it.</p>
-</section>
-
-<section class="sec">
-<h2>scripts and hooks</h2>
-<div class="cmd"><pre><span class="dim">$ </span>zemi run "explain main.go"
-<span class="dim">$ </span>git diff | zemi run "review this"</pre></div>
-</section>
-
-<footer>
-<p><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a> · <a href="https://github.com/metafates/zemi/blob/main/LICENSE">MIT</a></p>
-</footer>
-
+<main class="split">
+  <section class="intro">
+    <h1>zemi</h1>
+    <blockquote>There are many agent harnesses, but this one takes the best from them</blockquote>
+    <p class="pitch">It learns. Stays cheap. Spawns subagents. Talks less. Asks first.</p>
+    <div class="actions">
+      <p class="well"><span class="dim" aria-hidden="true">$&nbsp;</span>go install github.com/metafates/zemi@latest <button class="copy" type="button" data-copy="go install github.com/metafates/zemi@latest" data-label="[copy]" aria-live="polite">[copy]</button></p>
+      <p class="pair"><button class="copy" type="button" data-copy="Set up zemi for me from github.com/metafates/zemi:&#10;install the binary (go install github.com/metafates/zemi@latest, or build from source),&#10;ask me which model provider I use, and put its API key in my shell config.&#10;README: https://github.com/metafates/zemi. Print the one command I should run next." data-label="[copy setup prompt]" aria-live="polite">[copy setup prompt]</button>
+      <a href="https://github.com/metafates/zemi">[open github]</a></p>
+    </div>
+  </section>
+  <section class="knot">
+    <pre role="img" aria-label="a trefoil knot drawn in ascii">                                                            
+                    #%%%%%%%#*                              
+                #%%%##%%%%##@@@@%*=                         
+              #######***++###%%%%@%#+                       
+            *###*+=-::::::::-=+*#%%%##+                     
+           *##*+-::            :+*#%%##*                    
+           #*++-:                :=*###*+ %%#*              
+          ***+-:            +%%%#  =*###*= @@@@%*           
+          **+=::          *###**++= +****= *#%@@@%#         
+          **+=::        ****++==:    ****+: :+*#%@@%=       
+           *++-:   *####*++--=:      +**+=:    =##@@#+      
+           +*   %%%##*+====::       ++*++-      -*#@%#-     
+             #%@%#**#++-:::         ++++-:       =#%@%*     
+           #%@%%##*=::             =++=-:         *%@@*     
+          #%@%%*=::   #=           ==--:          +%@%*     
+         #%%#*+-:  %#%%%##+        -::::          #%@%*     
+         ##**=:    =*#*##%##+      ----:         +#@@**     
+        *#*+=:        -**#%%%*-    ++++-        +%%%#*-     
+        ***=-:          :##%@%#+:  ##*+-      +#%@%#*=      
+        +*+=-::           *%#%@%##+         ##%%@##*=       
+         +++=--:           -*#%@@@@%######%%%%####+:        
+          +++=-==--          :+#%#@%%%#####*#*#+-:          
+           ==+===+++++***####   :=+**###***+=-              
+             -==++++++++******+=                            
+                 ---=======-                                
+                                                            
+                                                            
+                                                            </pre>
+  </section>
 </main>
+<script type="module" src="./site.js"></script>
 </body>
 </html>
