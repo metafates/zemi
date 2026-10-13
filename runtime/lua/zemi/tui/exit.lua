@@ -2,7 +2,7 @@
 -- and the command that resumes it. A session with no messages prints nothing.
 -- A printed run (zemi run) opens with its prompt row, so it gets no banner.
 local fmt = require("zemi.tui.text")
-local snail = require("zemi.tui.snail")
+local knot = require("zemi.tui.knot")
 
 zemi.ui.widget.add({
 	id = "exit",
@@ -27,7 +27,7 @@ zemi.ui.widget.add({
 					end
 				end
 			end
-			for _, r in ipairs(snail.logo(ctx.width - 4)) do
+			for _, r in ipairs(knot.logo(ctx.width - 4)) do
 				rows[#rows + 1] = r
 			end
 			if title ~= "" then rows[#rows + 1] = { { text = fmt.clip(title, ctx.width - 4) } } end

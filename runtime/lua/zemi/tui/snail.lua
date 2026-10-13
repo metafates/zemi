@@ -1,4 +1,5 @@
--- zemi's mascot: a snail whose shell is the "@". Text only, and only the
+-- zemi's mascot: a snail whose shell is the "@", one cell off the rule's left
+-- end. Text only, and only the
 -- shell takes a color, the Snail group's. It stays at the left end of the rule: the state shows in
 -- its eyes, stepped by the 50ms frame clock (still with ui.animations off).
 ---@class zemi.tui.snail
@@ -40,27 +41,6 @@ function M.rule(state, frame, room)
 		{ text = " ", hl = "Rule", copy = false },
 		{ text = string.rep("─", math.max(room - 2 - zemi.ui.width(head), 0)), hl = "Rule", copy = false },
 	}
-end
-
---- The snail at rest and "zemi" in heavy line glyphs, the shell making the
---- "@": four rows of 25 cells. Below 29 cells of room, one "@zemi" row.
----@param room integer
----@return zemi.Line[]
-function M.logo(room)
-	if room < 29 then return { { { text = "@zemi", hl = "Title" } } } end
-	local shell = { "╭────╮", "│╭──╮│", "│╰──╯│", "╰────╯" }
-	local rest = {
-		"                  ·",
-		"  ╷╷  ━━┓ ┏━┓ ┏┳┓ ╻",
-		"╭─┴┴╮ ┏━┛ ┣━┛ ┃┃┃ ┃",
-		"╯   ╵ ┗━━ ┗━━ ╹╹╹ ╹",
-	}
-	---@type zemi.Line[]
-	local rows = {}
-	for i = 1, #shell do
-		rows[i] = { { text = shell[i], hl = "Snail" }, { text = rest[i], hl = "Normal" } }
-	end
-	return rows
 end
 
 return M

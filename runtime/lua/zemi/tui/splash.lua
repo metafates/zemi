@@ -1,6 +1,6 @@
 -- The splash that fills the empty chat until the first message.
 local fmt = require("zemi.tui.text")
-local snail = require("zemi.tui.snail")
+local knot = require("zemi.tui.knot")
 ---@class zemi.tui.splash
 local M = {}
 
@@ -83,7 +83,7 @@ local function tip(ctx, listed)
 		-- zemi is configured by asking it, which no other screen says
 		return {
 			dim("try "),
-			key('"make the snail green"', "fill make the snail green"),
+			key('"make the knot green"', "fill make the knot green"),
 			dim(": zemi configures itself"),
 		}
 	elseif ctx.projects then
@@ -131,18 +131,22 @@ function M.render(ctx)
 	local version = ctx.version or ""
 
 	-- a short chat drops the recent rows, then the version, then the logo's art
-	local logo = snail.logo(room)
+	local logo = knot.logo(room)
 	local function count()
 		return #logo + (version ~= "" and 1 or 0) + (#recent > 0 and #recent + 1 or 0) + 1 + #tips + 1
 	end
 	if count() > fit then recent = {} end
 	if count() > fit then version = "" end
-	if count() > fit then logo = snail.logo(0) end
+	if count() > fit then logo = knot.logo(0) end
 	local n = count()
 
 	if version ~= "" then
+		local w = 0
+		for _, r in ipairs(logo) do
+			w = math.max(w, fmt.cells(r))
+		end
 		logo[#logo + 1] = {
-			{ text = string.rep(" ", math.max(fmt.cells(logo[1]) - zemi.ui.width(version), 0)), copy = false },
+			{ text = string.rep(" ", math.max(w - zemi.ui.width(version), 0)), copy = false },
 			{ text = version, hl = "Dim" },
 		}
 	end

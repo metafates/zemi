@@ -53,7 +53,7 @@ zemi.ui.widget.add({
     return rows
   end,
 })`)
-	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "╰────╯") {
+	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "┗━━ ┗━━ ╹╹╹ ╹") {
 		t.Fatalf("splash not extended, or the default tip's rest %q left:\n%s", next, app.Frame())
 	}
 }
@@ -82,10 +82,10 @@ func TestSplashFitsShortChat(t *testing.T) {
 		h         int
 		want, not []string
 	}{
-		{16, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
-		{15, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
-		{11, []string{"╭────╮", "● Tip"}, []string{"v1"}},
-		{10, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
+		{24, []string{"3m ago", "v1", "+#%#@%@%%#%#:", "● Tip"}, nil},
+		{23, []string{"v1", "+#%#@%@%%#%#:", "● Tip"}, []string{"3m ago"}},
+		{19, []string{"+#%#@%@%%#%#:", "● Tip"}, []string{"v1"}},
+		{17, []string{"zemi", "● Tip"}, []string{"+#%#@%@%%#%#:"}},
 	} {
 		app, _ := bootAgentApp(t, 80, c.h)
 		runLua(t, app, `
@@ -131,9 +131,9 @@ func TestSplashTip(t *testing.T) {
 		{"at home", `trusted = false, trustable = false`, "● Tip  /resume picks up the latest session", "", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
-		{"a first session", `recent = {}`, `● Tip  try "make the snail green": zemi configures itself`, "make the snail green", true},
+		{"a first session", `recent = {}`, `● Tip  try "make the knot green": zemi configures itself`, "make the knot green", true},
 	}
-	for _, h := range []int{30, 17} {
+	for _, h := range []int{30, 22} {
 		app, _ := bootAgentApp(t, 100, h)
 		logo := [2]int{-1, -1}
 		for _, c := range cases {
@@ -159,7 +159,7 @@ zemi.ui.widget.add({
 			if frame := strings.Join(rows, "\n"); !strings.Contains(frame, c.want) {
 				t.Errorf("%d rows, %s: want %q\n%s", h, c.name, c.want, frame)
 			}
-			if x, y := findCell(t, app, "╭────╮"); logo[0] == -1 {
+			if x, y := findCell(t, app, "+#%#@%@%%#%#:"); logo[0] == -1 {
 				logo = [2]int{x, y}
 			} else if logo != [2]int{x, y} != c.moved {
 				t.Errorf("%d rows, %s: the logo moved from %v to %d,%d", h, c.name, logo, x, y)
@@ -195,7 +195,7 @@ func TestSplashTakesBootWork(t *testing.T) {
 			app.screen(t)
 			x, y := -1, -1
 			if c.logo {
-				x, y = findCell(t, app, "╭────╮")
+				x, y = findCell(t, app, "+#%#@%@%%#%#:")
 			}
 			stop := host.Busy("Starting mcp_filesystem", nil)
 			stop2 := host.Busy("Starting mcp_github", nil)
@@ -216,14 +216,14 @@ func TestSplashTakesBootWork(t *testing.T) {
 			if !strings.Contains(frame, "starting mcp_github") {
 				t.Fatalf("the boot work is not drawn in the chat:\n%s", frame)
 			}
-			if nx, ny := findCell(t, app, "╭────╮"); nx != x || ny != y {
+			if nx, ny := findCell(t, app, "+#%#@%@%%#%#:"); nx != x || ny != y {
 				t.Fatalf("the logo moved from %d,%d to %d,%d", x, y, nx, ny)
 			}
 			stop()
 			stop2()
 			app.frameGen++
 			app.renderSync(t)
-			if nx, ny := findCell(t, app, "╭────╮"); nx != x || ny != y {
+			if nx, ny := findCell(t, app, "+#%#@%@%%#%#:"); nx != x || ny != y {
 				t.Fatalf("the logo moved back to %d,%d from %d,%d", nx, ny, x, y)
 			}
 		})
@@ -305,9 +305,9 @@ func TestFarewell(t *testing.T) {
 		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, nil, []string{"zemi"}},
 		// a quit during the trust prompt: that boot step never returns
 		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"┗━━ ┗━━ ╹╹╹ ╹\n  Fix the flaky test\n", "╭────╮", "cost     $0.42"}, []string{"\x1b", "@zemi"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"┗━━ ┗━━ ╹╹╹ ╹", "+#%#@%@%%#%#:", "--==-\n  Fix the flaky test\n", "cost     $0.42"}, []string{"\x1b"}},
 		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  @zemi\n  t\n"}, []string{"╭────╮"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  ┗━━ ┗━━ ╹╹╹ ╹\n  t\n"}, []string{"+#%#@%@%%#%#:"}},
 		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, []string{"fix the build"}, []string{"more", "cost"}},
 		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, []string{"  ab\n"}, []string{"\x1b]52"}},
 	} {
