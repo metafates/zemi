@@ -30,7 +30,10 @@ zemi.ui.widget.add({
 			for _, r in ipairs(knot.logo(ctx.width - 4)) do
 				rows[#rows + 1] = r
 			end
-			if title ~= "" then rows[#rows + 1] = { { text = fmt.clip(title, ctx.width - 4) } } end
+			if title ~= "" then
+				rows[#rows + 1] = blank
+				rows[#rows + 1] = { { text = fmt.clip(title, ctx.width - 4), hl = "ExitTitle" } }
+			end
 			rows[#rows + 1] = blank
 		end
 		rows[#rows + 1] = { fmt.label("resume"), { text = ctx.resume, hl = "SplashKey" } }
