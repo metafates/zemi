@@ -4,13 +4,6 @@
 -- redraws nothing, so the knot does not turn here as it does on the site.
 local M = {}
 
--- the wordmark, three rows of 19 cells
-local WORD = {
-	"━━┓ ┏━┓ ┏┳┓ ╻",
-	"┏━┛ ┣━┛ ┃┃┃ ┃",
-	"┗━━ ┗━━ ╹╹╹ ╹",
-}
-
 local KNOT = {
 	"    #%@@%#+",
 	"  #%##%#@@@%#+ @%#",
@@ -26,29 +19,19 @@ local KNOT = {
 	"      --==-",
 }
 
---- The knot and the wordmark, the knot left and the word beside its middle.
---- Below room for both, the wordmark alone; below the word, one "zemi" row.
+local W = 0
+for _, r in ipairs(KNOT) do
+	W = math.max(W, #r)
+end
+
+--- The knot, or one "zemi" row where the knot does not fit.
 ---@param room integer
 ---@return zemi.Line[]
 function M.logo(room)
-	local w = 0
-	for _, r in ipairs(KNOT) do
-		w = math.max(w, #r)
-	end
-	if room < w + 2 + zemi.ui.width(WORD[1]) then
-		if room < zemi.ui.width(WORD[1]) then return { { { text = "zemi", hl = "Title" } } } end
-		local rows = {}
-		for i, r in ipairs(WORD) do
-			rows[i] = { { text = r, hl = "Normal" } }
-		end
-		return rows
-	end
-	local top = math.floor((#KNOT - #WORD) / 2)
+	if room < W then return { { { text = "zemi", hl = "Title" } } } end
 	local rows = {}
-	for i = 1, #KNOT do
-		local line = { { text = KNOT[i], hl = "Accent" } }
-		if WORD[i - top] then line[2] = { text = string.rep(" ", w - #KNOT[i] + 2) .. WORD[i - top], hl = "Normal" } end
-		rows[i] = line
+	for i, r in ipairs(KNOT) do
+		rows[i] = { { text = r, hl = "Accent" } }
 	end
 	return rows
 end

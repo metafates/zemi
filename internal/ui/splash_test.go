@@ -53,7 +53,7 @@ zemi.ui.widget.add({
     return rows
   end,
 })`)
-	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "┗━━ ┗━━ ╹╹╹ ╹") {
+	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "+#%#@%@%%#%#:") {
 		t.Fatalf("splash not extended, or the default tip's rest %q left:\n%s", next, app.Frame())
 	}
 }
@@ -305,9 +305,9 @@ func TestFarewell(t *testing.T) {
 		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, nil, []string{"zemi"}},
 		// a quit during the trust prompt: that boot step never returns
 		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"┗━━ ┗━━ ╹╹╹ ╹", "+#%#@%@%%#%#:", "--==-\n  Fix the flaky test\n", "cost     $0.42"}, []string{"\x1b"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"+#%#@%@%%#%#:", "--==-\n  Fix the flaky test\n", "cost     $0.42"}, []string{"\x1b"}},
 		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  ┗━━ ┗━━ ╹╹╹ ╹\n  t\n"}, []string{"+#%#@%@%%#%#:"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"+#%#@%@%%#%#:", "--==-\n  t\n"}, []string{"┗━━ ┗━━ ╹╹╹ ╹"}},
 		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, []string{"fix the build"}, []string{"more", "cost"}},
 		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, []string{"  ab\n"}, []string{"\x1b]52"}},
 	} {
