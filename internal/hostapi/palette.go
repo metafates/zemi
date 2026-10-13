@@ -283,6 +283,36 @@ func inGamut(l, c, h float64) color.Color {
 	return rgb(colorful.OkLch(l, lo, h).Clamped())
 }
 
+// KnotRamp is the 32-stop ramp of the knot piece (docs/whorl-knot.js's
+// audited curve) in the palette's colors: lightness linear from rule to
+// literal, chroma rising to a plateau at the accent's with a dip between the
+// two hues, hue swinging from the accent's to the literal's the long way.
+func KnotRamp(p *Palette) (out [32]color.Color) {
+	lR, cR, _ := col(p.Rule).OkLch()
+	_, cA, hA := col(p.Accent).OkLch()
+	lL, cL, hL := col(p.Literal).OkLch()
+	cs := []rampKnot{{0, cR}, {0.10, 1.03 * cR}, {0.22, 1.31 * cR}, {0.46, cA}, {0.66, cA}, {0.865, 0.60 * cR}, {0.895, 0.60 * cR}, {1, cL}}
+	hs := []rampKnot{{0, hA}, {0.855, hA}, {0.872, hL + 260}, {0.895, hL + 360}, {1, hL + 360}}
+	out[0], out[31] = p.Rule, p.Literal // the anchors are the roles themselves
+	for i := 1; i < 31; i++ {
+		t := float64(i) / 31
+		out[i] = inGamut(lR+t*(lL-lR), mixKnots(cs, t), mixKnots(hs, t))
+	}
+	return out
+}
+
+type rampKnot struct{ at, v float64 }
+
+func mixKnots(knots []rampKnot, t float64) float64 {
+	for i := 1; i < len(knots); i++ {
+		if t <= knots[i].at {
+			a, b := knots[i-1], knots[i]
+			return a.v + (b.v-a.v)*(t-a.at)/(b.at-a.at)
+		}
+	}
+	return knots[len(knots)-1].v
+}
+
 func col(c color.Color) colorful.Color {
 	v, _ := colorful.MakeColor(c)
 	return v

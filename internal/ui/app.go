@@ -188,7 +188,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	return &App{
 		host:     host,
 		log:      log,
-		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}},
+		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}, ramps: map[*hostapi.Theme][32]color.Color{}},
 		caches:   map[string]*widgetCache{},
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},

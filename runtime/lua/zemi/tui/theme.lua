@@ -79,6 +79,11 @@ local groups = {
 	Hover = { link = "Accent" },
 	HoverItem = { underline = true },
 }
+-- the knot's ramp: a shade draws the audited whorl-knot curve through the
+-- theme's rule, accent and literal, the splash's knot (tui/knot.lua)
+for i = 0, 31 do
+	groups["Knot" .. i] = { shade = i / 31 }
+end
 for name, spec in pairs(groups) do
 	zemi.ui.hl.set(name, spec)
 end

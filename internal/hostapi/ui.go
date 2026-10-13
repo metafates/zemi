@@ -393,6 +393,9 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if spec.Brighten != 0 {
 			out["brighten"] = spec.Brighten
 		}
+		if spec.Shade != nil {
+			out["shade"] = *spec.Shade
+		}
 		if spec.Replace {
 			out["replace"] = true
 		}
@@ -541,6 +544,13 @@ func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
 	}
 	if b, ok := m["brighten"].(float64); ok {
 		spec.Brighten = max(-1, min(b, 1))
+	}
+	if b, ok := m["shade"].(float64); ok {
+		if strField(m, "fg") != "" {
+			L.RaiseError("%s: shade and fg cannot combine", where)
+		}
+		s := max(0, min(b, 1))
+		spec.Shade = &s
 	}
 	return spec
 }

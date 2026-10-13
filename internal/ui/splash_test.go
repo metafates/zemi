@@ -53,7 +53,7 @@ zemi.ui.widget.add({
     return rows
   end,
 })`)
-	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "+#%#@%@%%#%#:") {
+	if next := after(); next != "" || !strings.Contains(ansi.Strip(app.Frame()), "hack the planet") || !strings.Contains(ansi.Strip(app.Frame()), "+#%#@%@%%#%#:") {
 		t.Fatalf("splash not extended, or the default tip's rest %q left:\n%s", next, app.Frame())
 	}
 }

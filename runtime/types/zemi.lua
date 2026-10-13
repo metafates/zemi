@@ -955,6 +955,7 @@ function zemi.event.stats() end
 ---@field italic? boolean
 ---@field underline? boolean|zemi.Underline true is "single", false "none".
 ---@field reverse? boolean
+---@field shade? number A stop of the knot's ramp, 0 to 1: the audited whorl-knot curve through the theme's rule, accent and literal. Takes the place of fg.
 ---@field brighten? number Hover groups: mix the fg this far (-1..1) toward white, or toward black on a lighter background.
 ---@field replace? boolean Hover groups: draw as this group alone instead of over the text's style.
 

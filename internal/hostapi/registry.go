@@ -472,8 +472,9 @@ type HLSpec struct {
 	Bold, Italic *bool
 	Reverse      *bool
 	Underline    Underline
-	Brighten     float64 // hover groups: mix the drawn fg this far toward white, negative toward black
-	Replace      bool    // hover groups: draw as this group alone, not over the text's style
+	Shade        *float64 // a stop of the theme's knot ramp (KnotRamp), 0 to 1; takes the place of fg
+	Brighten     float64  // hover groups: mix the drawn fg this far toward white, negative toward black
+	Replace      bool     // hover groups: draw as this group alone, not over the text's style
 }
 
 // Underline is a highlight group's underline style; "" keeps what is under

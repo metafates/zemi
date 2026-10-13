@@ -24,6 +24,9 @@ type themeResolver struct {
 	// active theme changes
 	chromeOf *hostapi.Theme
 	chrome   map[string]uv.Style
+	// the knot ramp in the palette of the theme it was built from, the same
+	// lifetime as chrome
+	ramps map[*hostapi.Theme][32]color.Color
 }
 
 // style resolves hl; what sets no fill, an unstyled span (a draft's typed
@@ -33,7 +36,7 @@ func (t themeResolver) style(hl string) uv.Style {
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
 		st = t.sgrStyle(params)
 	} else if spec, theme, ok := t.group(hl); ok {
-		st = drawOver(st, spec, theme)
+		st = t.drawOver(st, spec, theme)
 	}
 	if st.Bg == nil {
 		st.Bg = t.canvas()
@@ -123,7 +126,7 @@ func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 	if spec.Replace {
 		base = uv.Style{}
 	}
-	st := drawOver(base, spec, theme)
+	st := t.drawOver(base, spec, theme)
 	if spec.Brighten != 0 {
 		fg := st.Fg
 		if fg == nil { // the terminal's own fg: brighten Normal instead
@@ -144,7 +147,7 @@ func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 }
 
 // drawOver sets the keys spec sets on base and keeps the rest.
-func drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
+func (t themeResolver) drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
 	set := func(dst *color.Color, ref string) {
 		switch {
 		case ref == "NONE":
@@ -173,7 +176,24 @@ func drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
 	if u, ok := underlines[spec.Underline]; ok {
 		st.Underline = u
 	}
+	if spec.Shade != nil {
+		st.Fg = t.rampColor(theme, *spec.Shade)
+	}
 	return st
+}
+
+// rampColor is the shade's stop of the active theme's knot ramp, built once
+// per theme like the chrome styles.
+func (t themeResolver) rampColor(theme *hostapi.Theme, at float64) color.Color {
+	r, ok := t.ramps[theme]
+	if !ok {
+		r = hostapi.KnotRamp(&theme.Palette)
+		if len(t.ramps) >= 4 {
+			clear(t.ramps)
+		}
+		t.ramps[theme] = r
+	}
+	return r[min(31, max(0, int(math.Round(at*31))))]
 }
 
 //exhaustive:enforce

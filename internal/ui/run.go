@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"strings"
@@ -95,7 +96,7 @@ func NewRunView(f *os.File, quiet bool) *RunView {
 // reasoning; before it the view only forwards writes. Start, On, Show and
 // Close run on the run loop only.
 func (v *RunView) Start(h *hostapi.Host, reasoning bool) {
-	v.h, v.thm, v.reasoning = h, themeResolver{host: h, sgr: map[string]uv.Style{}}, reasoning
+	v.h, v.thm, v.reasoning = h, themeResolver{host: h, sgr: map[string]uv.Style{}, ramps: map[*hostapi.Theme][32]color.Color{}}, reasoning
 }
 
 // On reports whether the view draws (not quiet, started, no render failed
