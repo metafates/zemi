@@ -611,7 +611,8 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 
 // manifestJSON renders the plugin.json for a dir whose entry acts as the
 // manifest: the entry's scalars and its component fields as written.
-func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {	var author *ClaudeAuthor
+func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
+	var author *ClaudeAuthor
 	if e.Author != (ClaudeAuthor{}) {
 		author = &e.Author
 	}
@@ -695,7 +696,8 @@ func countClaude(roots []string, keep func(string) bool) int {
 			}
 			continue
 		}
-		fs.WalkDir(os.DirFS(root), ".", func(p string, e fs.DirEntry, err error) error {
+		// a missing root counts nothing, which is the answer wanted here
+		_ = fs.WalkDir(os.DirFS(root), ".", func(p string, e fs.DirEntry, err error) error {
 			if err == nil && !e.IsDir() && keep(e.Name()) {
 				n++
 			}
