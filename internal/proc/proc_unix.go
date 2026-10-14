@@ -3,6 +3,7 @@
 package proc
 
 import (
+	"context"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -33,3 +34,8 @@ var Shell = sync.OnceValue(func() string {
 
 // ShellCommand is Command running line with Shell.
 func ShellCommand(line string) *exec.Cmd { return Command(Shell(), "-c", line) }
+
+// ShellCommandContext is ShellCommand cancelled as a group when ctx is.
+func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
+	return CommandContext(ctx, Shell(), "-c", line)
+}

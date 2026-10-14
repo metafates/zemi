@@ -68,6 +68,36 @@ func TestStoppable(t *testing.T) {
 	}
 }
 
+// ShellCommandContext runs a line through the platform shell and stops it as
+// a group when its context ends.
+func TestShellCommandContext(t *testing.T) {
+	cmd := ShellCommandContext(t.Context(), "echo ok")
+	out := &Buffer{Max: 1 << 10}
+	cmd.Stdout = out
+	if err := Run(cmd); err != nil {
+		t.Fatal(err)
+	}
+	if s := strings.TrimSpace(out.String()); s != "ok" {
+		t.Fatalf("out: %q", s)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmd = ShellCommandContext(ctx, "sleep 30")
+	cmd.WaitDelay = 100 * time.Millisecond
+	if err := Start(cmd); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	start := time.Now()
+	if err := Wait(cmd); err == nil {
+		t.Fatal("a cancelled shell command was not stopped")
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("returned after %s", took)
+	}
+}
+
 func TestBuffer(t *testing.T) {
 	b := &Buffer{Max: 10}
 	b.Write([]byte("abc"))
