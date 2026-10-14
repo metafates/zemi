@@ -641,7 +641,7 @@ func TestPipelineForCheck(t *testing.T) {
 
 	// An asker (the UI overlay) resolves the leftover ask.
 	pipe2 := h.PipelineFor()
-	pipe2.Ask = func(req tools.Request) (bool, string, string) { return true, "user:once", "" }
+	pipe2.Ask = func(req tools.Request) (bool, string) { return true, "user:once" }
 	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != "user:once" {
 		t.Fatalf("asked shell: %+v by %q", v, v.DecidedBy)
 	}

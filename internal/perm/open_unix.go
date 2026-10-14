@@ -81,9 +81,8 @@ func (p Path) parts() ([]string, error) {
 }
 
 // walk opens the directories parts names below /, one at a time, search
-// only, so a parent zemi may not list (hidden by the sandbox it runs in)
-// still leads to what it may open; with create a missing one is made. The
-// caller closes the fd.
+// only, so a parent zemi may not list still leads to what it may open; with
+// create a missing one is made. The caller closes the fd.
 func (p Path) walk(parts []string, create bool) (int, error) {
 	dir, err := unix.Open("/", searchDir|unix.O_CLOEXEC, 0)
 	if err != nil {

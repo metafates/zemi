@@ -562,7 +562,7 @@ func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
 	if f := h.tasks.flow(run.workflow); f != nil {
 		who = "workflow " + f.id + " · " + who // its descriptions are the model's words
 	}
-	pipe.Ask = func(req tools.Request) (bool, string, string) {
+	pipe.Ask = func(req tools.Request) (bool, string) {
 		req.Agent = who
 		return ask(req)
 	}

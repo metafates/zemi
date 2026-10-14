@@ -828,7 +828,7 @@ func numbered(lines []string, at, n int) string {
 
 // notFound words a path error; for a missing file it names the three
 // siblings nearest what a typo could have meant (app.go for apps.go or
-// ap.go), leaving out secret-shaped and ruled-out names as listDir does.
+// ap.go).
 func (p *Pipeline) notFound(path string, err error) string {
 	msg := relErr(err).Error()
 	if !errors.Is(err, os.ErrNotExist) {
@@ -1120,9 +1120,8 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Strict secret-shaped files are left out whole:
-// a count or a name of the ones that matched leaks a key one bit per call. A
-// pattern that is no regexp (an unbalanced paren) is searched as text.
+// matching the include glob. A pattern that is no regexp (an unbalanced
+// paren) is searched as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
 	re, err := regexp.Compile(pattern)
@@ -1183,7 +1182,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // .gitignore files read), else what walk finds, with note the line saying
 // why. Neither lists a symbolic link, .git or a nested repository.
 // git and not a Go matcher: only the index knows a tracked file an ignore
-// rule covers, and snapshots, lsp sync and auto mode read git's rules too.
+// rule covers, and snapshots and lsp sync read git's rules too.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
 	gitCtx, cancel := context.WithTimeout(ctx, listWait)
 	defer cancel()

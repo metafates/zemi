@@ -442,18 +442,12 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 	if n := len(denied) - len(shown); n > 0 {
 		fmt.Fprintf(w, "  … %d more\n", n)
 	}
-	fmt.Fprintf(w, "  %s;\n  run with permissions.mode = \"allow\" (the default) to settle it here\n", deniedHint(denied, trusted))
+	fmt.Fprintf(w, "  %s;\n  run with permissions.mode = \"allow\" (the default) to settle it here\n", deniedHint(trusted))
 }
 
 // deniedHint says what would let zemi run's denied calls through.
-func deniedHint(denied []hostapi.Denial, trusted bool) string {
-	has := func(why hostapi.DenialWhy) bool {
-		return slices.ContainsFunc(denied, func(d hostapi.Denial) bool { return d.Why == why })
-	}
-	switch {
-	case has(hostapi.DenyNeedsTUI):
-		return "only the TUI approves a Lua script or a memory edit"
-	case !trusted:
+func deniedHint(trusted bool) string {
+	if !trusted {
 		return "--trust trusts this project for the run"
 	}
 	return "ask mode left it to the user"

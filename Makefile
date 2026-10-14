@@ -30,8 +30,8 @@ og:
 # zemi as a newcomer sees it: a fresh HOME (no ~/.agents/skills, no zemi
 # dirs) and a new git repo, or DIR. Provider keys pass through unless
 # KEYS=0; ARGS are zemi's flags. The tree is deleted on exit.
-# NOTE: your real zemi dirs sit outside this HOME, so a sandboxed command
-# can read them during the run.
+# NOTE: your real zemi dirs sit outside this HOME; the run's own commands
+# can read whatever HOME holds during the run.
 first-run: build
 	@t=$$(mktemp -d); trap 'chmod -R u+w "$$t"; rm -rf "$$t"' EXIT; \
 	mkdir "$$t/project" && git -C "$$t/project" init -q; \

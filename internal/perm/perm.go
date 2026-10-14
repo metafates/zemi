@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/text/cases"
@@ -224,25 +223,9 @@ func fold(s string) string {
 }
 
 // Match reports whether the glob pattern matches the whole of s: `*` spans
-// any characters (separators included), `?` matches one.
-func Match(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
-
-// globCache is shared by every goroutine that matches (turns, subagents,
-// Lua gates), so it is locked.
-var (
-	globMu    sync.Mutex
-	globCache = map[string]*regexp.Regexp{}
-)
-
-// globRegexp compiles a glob (`*`, `?`) into an anchored regexp. Patterns
-// are bounded in number, so the cache cannot grow unboundedly.
-func globRegexp(pattern string) *regexp.Regexp {
-	globMu.Lock()
-	re, ok := globCache[pattern]
-	globMu.Unlock()
-	if ok {
-		return re
-	}
+// any characters (separators included), `?` matches one. The one caller is
+// a cold path (a plugin test's stub matcher), so no cache.
+func Match(pattern, s string) bool {
 	var b strings.Builder
 	b.WriteString(`(?s)^`)
 	for _, r := range pattern {
@@ -255,26 +238,16 @@ func globRegexp(pattern string) *regexp.Regexp {
 			b.WriteString(regexp.QuoteMeta(string(r)))
 		}
 	}
-	b.WriteString(`$`)
-	re = regexp.MustCompile(b.String())
-	globMu.Lock()
-	if len(globCache) < 1024 {
-		globCache[pattern] = re
-	}
-	globMu.Unlock()
-	return re
+	return regexp.MustCompile(b.String()).MatchString(s)
 }
 
 // SecretPathShape matches secret-shaped filesystem names. The attach step
 // refuses one, and a diff or a listing may name it rather than print it.
-var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*secret*")
-
-// strictSecretShape is SecretPathShape without the broad names, which also
-// match source files (credential.ts, secret_prompt.py).
-var strictSecretShape = []string{
+var SecretPathShape = []string{
 	".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
 	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
 	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf",
+	"*credential*", "*secret*",
 }
 
 // PathIsSecret folds on every OS: a shape that flags one file too many is

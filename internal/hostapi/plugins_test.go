@@ -154,11 +154,11 @@ func TestPluginsStep(t *testing.T) {
 			plugins: map[string]string{
 				"local/p/.zemi/lua/p/init.lua": `return {
 					setup = function()
-						print(tostring(pcall(zemi.config.set, "permissions.mode", "yolo")))
+						print(tostring(pcall(zemi.config.set, "permissions.mode", "allow")))
 						require("b").put("via-setup")
 						zemi.keymap.set("ctrl+g", function() require("b").put("via-keymap") end)
 					end,
-					tail = function(f) return f("yolo") end,
+					tail = function(f) return f("allow") end,
 				}`,
 				"local/b/.zemi/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
 				"local/p/.zemi/lua/p/meta.lua": `return setmetatable({},

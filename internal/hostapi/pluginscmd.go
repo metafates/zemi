@@ -129,9 +129,8 @@ func (h *Host) pluginsCommand(line string) error {
 		if fi, err := os.Lstat(p.Dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 			return Usagef("%s is a symlink, which zemi does not load: move the plugin into %s, then modify it", p.Name, perm.TildePath(filepath.Dir(p.Dir)))
 		}
-		// the user asked for the change, as for a plugin whose creation they
-		// allowed: auto mode settles the agent's edits there until zemi exits
-		h.madePlugins.Store(h.localPluginDir(perm.RealPath(p.Dir)), true)
+		// the user asked for the change: in ask mode the gate still shows
+		// each edit, and that ask is the consent
 		return send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
 	case ask:
 		p, err := h.pluginNamed(args[1])

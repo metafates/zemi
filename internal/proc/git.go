@@ -14,7 +14,7 @@ const gitTimeout = 15 * time.Second
 // program: fsmonitor, hooks (an index refresh runs post-index-change),
 // submodules, filter drivers, LFS smudging, signature checks in log, the
 // system gitconfig and every transport but https, ssh and file are off.
-// zemi's own checks need this in a trusted project too, since a sandboxed
+// zemi's own checks need this in a trusted project too, since a shell
 // command can plant a nested repository there, and a plugin clone is
 // someone else's repository.
 // NOTE: with a filter off, status compares a stat-dirty filtered file's raw

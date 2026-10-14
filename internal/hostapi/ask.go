@@ -15,7 +15,7 @@ import (
 // askHook is the tools.Pipeline asker: the permission.request veto event,
 // then the Go-owned overlay.
 func (h *Host) askHook() tools.Asker {
-	return func(req tools.Request) (bool, string, string) { return h.ask(req, false) }
+	return func(req tools.Request) (bool, string) { return h.ask(req, false) }
 }
 
 // ask answers one request. Asks reach the user one at a time under askMu,
@@ -26,19 +26,15 @@ func (h *Host) askHook() tools.Asker {
 // NOTE: sync.Mutex hands off in arrival order only once a waiter has
 // waited over 1ms (starvation mode), so prompt order is FIFO in practice,
 // not by guarantee.
-func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
+func (h *Host) ask(req tools.Request, held bool) (bool, string) {
 	entry := req
-	askedFor := req.Reason
-	resolved := func(allowed bool, by string) (bool, string, string) {
+	resolved := func(allowed bool, by string) (bool, string) {
 		h.EmitAsync("permission.resolved", map[string]any{
 			"subject": req.Subject, "arg": req.Arg,
 			"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
 			"by":       by,
 		})
-		if req.Reason == askedFor {
-			return allowed, by, ""
-		}
-		return allowed, by, req.Reason
+		return allowed, by
 	}
 	if !held {
 		var res VetoResult
@@ -73,7 +69,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			return resolved(false, tools.ByUser) // told zemi what to do instead
 		}
 		if v, _ := entry.Recheck(); v.Allowed {
-			return false, tools.ByRecheck, ""
+			return false, tools.ByRecheck
 		}
 		return h.ask(entry, true)
 	}

@@ -374,14 +374,14 @@ func TestShellNotes(t *testing.T) {
 func TestPlanApprovalFromConfigPlanner(t *testing.T) {
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
-	runUser(t, r, `zemi.config.set("permissions.mode", "yolo") zemi.config.set("agent.profile", "planner")`)
+	runUser(t, r, `zemi.config.set("permissions.mode", "allow") zemi.config.set("agent.profile", "planner")`)
 	if !h.readOnly() {
 		t.Fatal("planner must be read-only")
 	}
 	if v, ok := h.approvePlan("# The plan"); !ok || !v.Approved || v.Profile != "default" {
 		t.Fatalf("approve: %+v ok=%v", v, ok)
 	}
-	if p, m := h.Settings.Str("agent.profile"), h.Settings.Str("permissions.mode"); p != "default" || m != "yolo" {
-		t.Fatalf("profile %q mode %q, want default and yolo", p, m)
+	if p, m := h.Settings.Str("agent.profile"), h.Settings.Str("permissions.mode"); p != "default" || m != "allow" {
+		t.Fatalf("profile %q mode %q, want default and allow", p, m)
 	}
 }

@@ -56,8 +56,7 @@ type Denial struct {
 type DenialWhy string
 
 const (
-	DenyApproval DenialWhy = "approval"  // the mode left it to the user
-	DenyNeedsTUI DenialWhy = "needs_tui" // a Lua script or a memory edit
+	DenyApproval DenialWhy = "approval" // the mode left it to the user
 )
 
 func (r *modeReg) noteHeadless(d Denial) {

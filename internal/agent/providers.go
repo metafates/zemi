@@ -241,8 +241,8 @@ func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || bundle
 // CatalogURL is where UpdateCatalog fetches the catwalk catalog.
 const CatalogURL = "https://catwalk.charm.land"
 
-// catalogFile is the fetched catalog, kept in zemi's data dir: it decides
-// where each builtin key is sent, and no sandbox can write there.
+// catalogFile is the fetched catalog, kept in zemi's data dir, not the
+// project: it decides where each builtin key is sent.
 const catalogFile = "catwalk.json"
 
 type savedCatalog struct {

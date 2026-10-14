@@ -766,12 +766,15 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 }
 
 // httpFetch performs the request with size and time caps: http/https only,
-// no userinfo, redirects re-validated (SafeClient).
+// no userinfo, no redirects - the gate approved one url, and a hop elsewhere
+// would ride its approval; request the location header to follow one.
 func (h *Host) httpFetch(ctx context.Context, r httpReq) (map[string]any, error) {
 	if _, err := tools.ParseNetURL(r.url); err != nil {
 		return nil, err
 	}
-	client := tools.SafeClient(func(*url.URL) error { return nil })
+	client := tools.SafeClient(func(*url.URL) error {
+		return errors.New("zemi.http does not follow redirects; request the location header yourself")
+	})
 	client.Timeout = cmp.Or(r.timeout, 30*time.Second)
 	var body io.Reader
 	if r.body != "" {

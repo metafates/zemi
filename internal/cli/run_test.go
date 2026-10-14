@@ -114,16 +114,14 @@ func TestFollower(t *testing.T) {
 
 func TestDeniedHint(t *testing.T) {
 	for _, c := range []struct {
-		why     hostapi.DenialWhy
 		trusted bool
 		want    string
 	}{
-		{hostapi.DenyApproval, false, "--trust trusts this project"},
-		{hostapi.DenyApproval, true, "ask mode left it to the user"},
-		{hostapi.DenyNeedsTUI, true, "only the TUI approves a Lua script"},
+		{false, "--trust trusts this project"},
+		{true, "ask mode left it to the user"},
 	} {
-		if got := deniedHint([]hostapi.Denial{{Why: c.why}}, c.trusted); !strings.Contains(got, c.want) {
-			t.Errorf("%s, trusted %v: %q", c.why, c.trusted, got)
+		if got := deniedHint(c.trusted); !strings.Contains(got, c.want) {
+			t.Errorf("trusted %v: %q", c.trusted, got)
 		}
 	}
 }

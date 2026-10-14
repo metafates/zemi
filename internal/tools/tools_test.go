@@ -106,9 +106,9 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 		return config.PermModeAsk
 	}}
 	if !allow {
-		p.Ask = func(req Request) (bool, string, string) {
+		p.Ask = func(req Request) (bool, string) {
 			asked = append(asked, req)
-			return false, "overlay", ""
+			return false, "overlay"
 		}
 	}
 	return p, &asked
@@ -318,13 +318,12 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 // TestAskDenialText: a denied ask tells the model who decided and why it
 // asked, not how the rules failed to match, and does not echo the command.
 func TestAskDenialText(t *testing.T) {
-	for _, c := range []struct{ by, why, want string }{
-		{"user", "", "permission denied (user): tool.shell"},
-		{"nobody", "", "permission denied (nobody): tool.shell"},
-		{"nobody", "this project is not trusted", "permission denied (nobody): tool.shell: this project is not trusted"},
+	for _, c := range []struct{ by, want string }{
+		{"user", "permission denied (user): tool.shell"},
+		{"nobody", "permission denied (nobody): tool.shell"},
 	} {
 		p, _ := testPipeline(t, false)
-		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
+		p.Ask = func(Request) (bool, string) { return false, c.by }
 		resp := call(t, toolNamed(t, "shell", p), `{"command":"echo j > out.txt"}`)
 		if !resp.IsError || resp.Content != c.want {
 			t.Errorf("%s: %q, want %q", c.by, resp.Content, c.want)

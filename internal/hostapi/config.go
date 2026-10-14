@@ -229,8 +229,7 @@ func (h *Host) forgetPick(path string) {
 }
 
 // loadPicks applies the kept picks before any Lua runs, so init.lua still
-// wins over them; a row the schema no longer takes is left out, and so is a
-// yolo row, which user Lua can write to kv without keepPick.
+// wins over them; a row the schema no longer takes is left out.
 func (h *Host) loadPicks() {
 	keys, err := h.GlobalDB.KeysKV("config:")
 	if err != nil {

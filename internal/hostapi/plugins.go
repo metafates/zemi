@@ -199,9 +199,8 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	}
 }
 
-// localPlugins holds the plugins the user develops in place: auto mode and
-// plain commands read it, and writes to it ask unless its creation was
-// allowed (madePlugin). It is no read jail, which would let every plugin's
+// localPlugins holds the plugins the user develops in place: the prompt
+// names it. It is no read jail, which would let every plugin's
 // and a trusted project's zemi.fs.read reach them all.
 func (h *Host) localPlugins() string {
 	return filepath.Join(h.Dirs.PluginsRoot(), "local")
@@ -246,13 +245,6 @@ func (h *Host) localPluginDir(path string) string {
 
 // newPlugin is the local plugin directory a write to path would create, or
 // "" when path is in none or it exists.
-// madePlugin says whether path is in a local plugin whose creation was
-// allowed in this process.
-func (h *Host) madePlugin(path string) bool {
-	dir := h.localPluginDir(path)
-	_, ok := h.madePlugins.Load(dir)
-	return ok && dir != ""
-}
 
 // layerFile is one <name><ext> file of a layered resource directory.
 type layerFile struct {

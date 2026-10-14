@@ -636,7 +636,7 @@ func TestGoldenPermission(t *testing.T) {
 	}{
 		{"shell-80x40", 80, 40, hostapi.PermRequest{
 			Tool: "shell", Subject: "tool.shell", Arg: script,
-			Reason:      "the model asked to leave the sandbox",
+			Reason:      "this runs the whole suite and takes a few minutes",
 			Description: "Run the golden tests one package at a time, then clear the cache",
 		}},
 		{"edit-diff-120x30", 120, 30, hostapi.PermRequest{

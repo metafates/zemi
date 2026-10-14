@@ -178,7 +178,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 
 // TestGitRunsNoRepoPrograms: a repository's config cannot make zemi's own
 // git calls run a program, trusted or not, and neither can a nested one a
-// sandboxed command planted inside a trusted project.
+// shell command planted inside a trusted project.
 func TestGitRunsNoRepoPrograms(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -500,7 +500,7 @@ func TestPromptBudget(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
-	// a repository, as most projects are: the Sandbox block says what of .git opens
+	// a repository, as most projects are
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}

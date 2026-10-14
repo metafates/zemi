@@ -205,7 +205,7 @@ func (h *Host) recipesDir() string {
 }
 
 // projectState is the repository's own state dir, next to its database: out
-// of every repository and of every sandbox's write roots.
+// of every repository and of every job's working directory.
 func projectState(stateHome, root string) string {
 	return filepath.Dir(store.ProjectDBPath(stateHome, root))
 }

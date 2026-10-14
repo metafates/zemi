@@ -468,9 +468,6 @@ type Host struct {
 
 	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
 	pluginGrant atomic.Pointer[pluginGrant]  // the plugins the last boot loaded: their roots and what each manifest declared
-	// madePlugins holds the local plugin dirs whose creation the user or yolo
-	// allowed: auto settles the model's edits there until zemi exits
-	madePlugins sync.Map
 	// askMu holds the prompt stage of an ask (ask); asksWaiting counts the
 	// asks in it, and askCut moves when the user denies every waiting one
 	askMu       sync.Mutex
@@ -560,7 +557,7 @@ type Host struct {
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
 	// config, instructions and language servers load only when it is set,
-	// and auto mode settles less without it.
+	// and reads reach less without it.
 	projectTrusted atomic.Bool
 	trustDropped   atomic.Bool // trust went off: the next reload must run to drop project config
 	// trustRoot is the repository the session belongs to (a worktree maps to

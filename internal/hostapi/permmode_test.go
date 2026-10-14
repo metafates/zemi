@@ -10,16 +10,15 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestModeToggle: the mode cycle action flips between ask and allow, and an
-// unknown permissions.mode setting reads as allow.
+// TestModeToggle: the mode cycle action flips between ask and allow, and a
+// permissions.mode outside the schema is refused at the write.
 func TestModeToggle(t *testing.T) {
 	for _, c := range []struct {
 		name, setup string
 		want        []string // get().name first, then after each press
 	}{
 		{"allow flips to ask and back", ``, []string{"allow", "ask", "allow"}},
-		{"an unknown permissions.mode reads as allow", `zemi.config.set("permissions.mode", "gone")
-			assert(zemi.config.get("permissions.mode") == "gone")`, []string{"allow"}},
+		{"an unknown permissions.mode is refused", `assert(not pcall(zemi.config.set, "permissions.mode", "gone"))`, []string{"allow"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newTestHostUI(t)
@@ -48,7 +47,7 @@ func TestHeadlessDenialNotes(t *testing.T) {
 	if err := h.SetPermMode("ask"); err != nil {
 		t.Fatal(err)
 	}
-	ok, by, _ := h.askHook()(tools.Request{Subject: "tool.shell", Arg: "make out"})
+	ok, by := h.askHook()(tools.Request{Subject: "tool.shell", Arg: "make out"})
 	if ok || by != tools.ByNobody {
 		t.Fatalf("an ask with no UI = %v by %q", ok, by)
 	}

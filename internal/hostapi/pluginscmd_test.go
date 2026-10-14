@@ -13,7 +13,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -173,16 +172,15 @@ func TestPluginsSend(t *testing.T) {
 		args     string
 		err      string   // a usage error, which sends nothing
 		sent     []string // in the message the agent gets
-		grant    bool     // auto mode edits the local plugin
 		link     bool     // the data dir is reached through a symlink
 		headless bool     // no UI, as under zemi run
 	}{
-		{args: "modify mine add a flag\nand a test", grant: true, sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
-		{args: "modify mine", grant: true, link: true, sent: []string{"Change my zemi plugin mine in "}},
+		{args: "modify mine add a flag\nand a test", sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
+		{args: "modify mine", link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
 		{args: "modify linked", err: "linked is a symlink"},
 		{args: "modify", err: "usage: /plugins modify <name> [what to change]"},
-		{args: "modify mine in zemi run", headless: true, grant: true, sent: []string{"Change my zemi plugin mine in "}},
+		{args: "modify mine in zemi run", headless: true, sent: []string{"Change my zemi plugin mine in "}},
 	} {
 		t.Run(c.args, func(t *testing.T) {
 			data := t.TempDir()
@@ -219,12 +217,6 @@ func TestPluginsSend(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatal(err)
-			}
-			if got := h.madePlugin(perm.RealPath(filepath.Join(h.Dirs.ConfigHome, "init.lua"))); got {
-				t.Error("auto mode edits init.lua")
-			}
-			if got := h.madePlugin(perm.RealPath(filepath.Join(data, "plugins", "local", "mine", ".zemi", "init.lua"))); got != c.grant {
-				t.Errorf("auto mode edits the plugin: %v, want %v", got, c.grant)
 			}
 			if c.sent == nil {
 				return

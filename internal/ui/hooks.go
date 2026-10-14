@@ -91,11 +91,11 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 			".agents: Lua, skills, agents, commands and workflows",
 			"AGENTS.md and CLAUDE.md instructions",
 			"language servers, which can build the project",
-			"auto mode edits, builds and tests without asking",
+			"the project's own settings, which can change the mode",
 		} {
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: hostapi.ChromeValue}}, width)...)
 		}
-		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
+		return append(append(rows, nil), wrapText("Without trust, that stays off and reads stay inside the start dir. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
 	}
 	laterDesc := "ask again next start"
 	if tp.state != "" {

@@ -430,11 +430,11 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 	note := ""
 	switch {
 	case hasW && hasE:
-		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the write and edit tools."
+		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the write and edit tools."
 	case hasW:
-		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the write tool."
+		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the write tool."
 	case hasE:
-		note = " A script's own zemi.fs.write asks even in yolo and is refused headless: change project files with the edit tool."
+		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the edit tool."
 	}
 	for _, t := range out {
 		if lt, ok := t.(*luaEvalTool); ok {
@@ -544,7 +544,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 
 // pinPrompt gives the pinned prompt while its key holds and builds and pins a
 // new one otherwise. The key is what the user switches (profile, model,
-// trust, a mode's prompt), whether the model takes images (read's
+// trust, the permission mode), whether the model takes images (read's
 // description says) and each tool's name and input schema, since a stale
 // schema fails calls. Descriptions, instruction files, skills and
 // agent.assemble output wait for a drop point (closeSession, compactDone,
@@ -552,7 +552,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.currentModelID(p)
-	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
+	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id)), h.PermMode()}
 	if p != nil {
 		key[0] = p.Name
 	}

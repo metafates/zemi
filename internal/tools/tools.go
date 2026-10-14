@@ -114,10 +114,6 @@ func (r Request) Recheck() (Verdict, Request) {
 	return Verdict{DecidedBy: ByNobody, Reason: "still needs the user"}, r.gate.req
 }
 
-// InPad reports a file request inside the request's scratchpad: the one place
-// a write is no protected path, since the pad is where the model works.
-func (r Request) InPad() bool { return PathSubject(r.Subject) && perm.InPad(r.Pad, r.Arg) }
-
 // FreeZone reports a file request inside the scratchpad or a native temp dir,
 // where nothing of the user's is at stake.
 func (r Request) FreeZone() bool { return PathSubject(r.Subject) && perm.FreeZone(r.Pad, r.Arg) }
@@ -201,9 +197,7 @@ type PreHook func(tool string, input map[string]any) (decision PreVerdict, reaso
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side). ByRecheck as
 // decidedBy hands the answer to the request's Recheck.
-// reason is why it asked when that is not the request's own reason ("not
-// settled: this project is not trusted (/trust)"), "" otherwise.
-type Asker func(req Request) (allowed bool, decidedBy, reason string)
+type Asker func(req Request) (allowed bool, decidedBy string)
 
 // Pipeline wires tools to the permission mode and the host hooks.
 type Pipeline struct {
@@ -351,7 +345,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	if mode := p.mode(); mode != config.PermModeAsk {
 		return Verdict{Allowed: true, DecidedBy: ByMode(mode)}
 	}
-	return p.resolveAsk(req, "")
+	return p.resolveAsk(req)
 }
 
 // Action reports a request that changes something: ask mode prompts for
@@ -371,18 +365,11 @@ func (p *Pipeline) mode() string {
 
 // resolveAsk puts the request to the user through Ask; a nil Ask (no
 // overlay, a Lua gate without one) denies fail-closed.
-func (p *Pipeline) resolveAsk(req Request, note string) Verdict {
-	if note != "" {
-		req.Reason = strings.TrimPrefix(req.Reason+"; "+note, "; ")
-	}
+func (p *Pipeline) resolveAsk(req Request) Verdict {
 	if p.Ask == nil {
-		reason := req.Reason
-		if reason != "" {
-			note += " (asked because " + reason + ")"
-		}
-		return Verdict{Reason: cmp.Or(note, "it is an action") + "; no overlay available, failing closed", DecidedBy: ByNobody}
+		return Verdict{Reason: cmp.Or(req.Reason, "it is an action") + "; no overlay available, failing closed", DecidedBy: ByNobody}
 	}
-	allowed, by, why := p.Ask(req)
+	allowed, by := p.Ask(req)
 	if by == ByRecheck {
 		v, _ := req.Recheck()
 		return v
@@ -390,10 +377,7 @@ func (p *Pipeline) resolveAsk(req Request, note string) Verdict {
 	if allowed {
 		return Verdict{Allowed: true, DecidedBy: by}
 	}
-	switch {
-	case why != "":
-		return Verdict{DecidedBy: by, Reason: why}
-	case by == ByNobody:
+	if by == ByNobody {
 		return Verdict{DecidedBy: by, Reason: req.Reason}
 	}
 	return Verdict{DecidedBy: by}

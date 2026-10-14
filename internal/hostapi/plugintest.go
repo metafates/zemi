@@ -534,7 +534,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 	}
 	return t.drive(L, "tool", "tool "+name, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		pipe := t.h.PipelineFor()
-		pipe.Ask = func(tools.Request) (bool, string, string) { return true, tools.ByUser, "" }
+		pipe.Ask = func(tools.Request) (bool, string) { return true, tools.ByUser }
 		reply, _ := (&luaToolAdapter{h: t.h, t: lt, pipe: pipe}).Run(ctx, fantasy.ToolCall{ID: "test", Name: name, Input: string(raw)})
 		if reply.IsError {
 			return nil, errors.New(reply.Content)
