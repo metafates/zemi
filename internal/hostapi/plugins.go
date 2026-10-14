@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,11 +27,14 @@ type pluginLoad struct {
 }
 
 // pluginGrant is what the plugins step fixed for one generation: the roots it
-// loaded and the capabilities each manifest declared. One swap, so a reload, a
-// disable or a delete cannot leave a stale grant.
+// loaded, the capabilities each manifest declared, and which roots are
+// Claude-layout (their layered names are prefixed and their MCP servers and
+// hooks load). One swap, so a reload, a disable or a delete cannot leave a
+// stale grant.
 type pluginGrant struct {
-	roots []string
-	uses  map[string][]string // by plugin name
+	roots  []string
+	uses   map[string][]string // by plugin name
+	claude map[string]bool     // root -> it is a Claude-layout plugin
 }
 
 // PluginsStep loads every enabled plugin's init.lua as plugin origin, sorted
@@ -48,17 +52,37 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.sweepPluginState(ps)
 			}
 			run, loads := pickPlugins(ps)
-			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}}
+			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: map[string]bool{}}
+			hooks := map[string][]hookEntry{}
 			for i, p := range run {
 				kind := "installed"
 				if p.Local {
 					kind = "local"
 				}
-				grant.roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
+				root := filepath.Join(h.pluginsRoot(), kind, p.Name)
+				grant.roots[i] = root
 				grant.uses[p.Name] = p.Uses
+				if !plugin.IsClaude(root) {
+					continue
+				}
+				grant.claude[root] = true
+				data := h.pluginDataDir(p.Name)
+				if mkErr := os.MkdirAll(data, 0o755); mkErr != nil {
+					h.Log.Warn("plugin data dir not created", "origin", "plugins", "plugin", p.Name, "error", mkErr)
+				}
+				m, rerr := plugin.ReadClaude(root, data)
+				if rerr != nil {
+					h.Log.Warn("claude manifest unread, its servers and hooks skipped", "origin", "plugins", "plugin", p.Name, "error", rerr)
+					continue
+				}
+				h.addClaudeMCP(p.Name, root, data, m.MCP)
+				for event, list := range h.buildHooks(p.Name, root, data, m.Hooks) {
+					hooks[event] = append(hooks[event], list...)
+				}
 			}
 			g.Plugins = grant.roots
 			h.pluginGrant.Store(&grant)
+			h.hookReg.set(Gen(g.ID), hooks)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, plugin.InitFile)
 				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
@@ -144,6 +168,55 @@ func (h *Host) pluginDirs() []string {
 		return p.roots
 	}
 	return nil
+}
+
+// pluginDataDir is the data dir a Claude plugin's ${CLAUDE_PLUGIN_DATA}
+// stands for, where its hooks and servers may keep state.
+func (h *Host) pluginDataDir(name string) string {
+	return filepath.Join(h.Dirs.PluginsRoot(), "data", name)
+}
+
+// claudeRootOf is the Claude-layout plugin root path belongs to, or "".
+func (h *Host) claudeRootOf(path string) string {
+	sep := string(filepath.Separator)
+	if g := h.pluginGrant.Load(); g != nil {
+		for root := range g.claude {
+			if strings.HasPrefix(path, root+sep) {
+				return root
+			}
+		}
+	}
+	return ""
+}
+
+// addClaudeMCP registers a Claude plugin's MCP servers under its prefix.
+func (h *Host) addClaudeMCP(name, root, data string, servers []plugin.ClaudeMCPServer) {
+	prefix := plugin.SanitizeName(name) + "-"
+	for _, s := range servers {
+		if s.Type == "sse" || s.Type == "ws" {
+			h.Log.Warn("mcp server type not supported, skipped", "origin", "mcp", "plugin", name, "server", s.Name, "type", s.Type)
+			continue
+		}
+		server := prefix + plugin.SanitizeName(s.Name)
+		if !mcpServerName.MatchString(server) {
+			h.Log.Warn("mcp server name does not fit zemi's rule, skipped", "origin", "mcp", "plugin", name, "server", s.Name)
+			continue
+		}
+		spec := mcpSpec{Command: s.Command, Args: s.Args, URL: s.URL, Headers: s.Headers,
+			ClientID: s.ClientID, ClientSecret: s.ClientSecret, CallbackPort: s.CallbackPort}
+		if spec.Command != "" {
+			env := maps.Clone(s.Env)
+			if env == nil {
+				env = map[string]string{}
+			}
+			// Claude injects these into stdio children even unreferenced
+			env["CLAUDE_PLUGIN_ROOT"], env["CLAUDE_PLUGIN_DATA"] = root, data
+			spec.Env = env
+		}
+		if err := h.addMCP(server, spec); err != nil {
+			h.Log.Warn("mcp server not registered", "origin", "mcp", "plugin", name, "server", s.Name, "error", err)
+		}
+	}
 }
 
 // pluginDeclares reports whether the plugin named name declared the capability

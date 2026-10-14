@@ -191,9 +191,11 @@ type agentHost struct {
 	// brain is the # Brain section, pinned at session open (DESIGN §10.7) and rebuilt
 	// at compaction and a mid-session trust flip, brainGlobs the pointer
 	// table built with it; memAuto counts auto-applied memories against the
-	// session cap (memory proposals persist in the store).
+	// session cap (memory proposals persist in the store). hookCtx is what
+	// the plugins' SessionStart hooks captured for this session.
 	brain      string
 	brainGlobs []brainGlob
+	hookCtx    string
 	memAuto    int
 	// brainWrites are the brain files this session wrote, keyed by their
 	// resolved path with the hash each write saw: a later file-mode write
@@ -516,9 +518,10 @@ type contextRow struct {
 
 // contextKey is what a stored context message is valid for: the pin key,
 // the working directory and scratchpad it names (a fork has its own) and
-// the brain render, so a memory dropped since is not sent again.
-func (h *Host) contextKey(pinKey, brain string) string {
-	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + brain))
+// the brain and plugin-context renders, so a memory dropped or a capture
+// landed since is not sent again.
+func (h *Host) contextKey(pinKey, brain, hooks string) string {
+	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + brain + "\x00" + hooks))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -566,7 +569,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	k := strings.Join(key, "\x00")
 	ag := h.agents
 	ag.mu.Lock()
-	pin, drops, brainText := ag.pin, ag.pinDrops, ag.brain
+	pin, drops, brainText, hookText := ag.pin, ag.pinDrops, ag.brain, ag.hookCtx
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
@@ -574,7 +577,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
-		ctxKey, mine := h.contextKey(k, brainText), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+		ctxKey, mine := h.contextKey(k, brainText, hookText), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		var stored *contextRow
 		ag.mu.Lock()
 		// a drop during the build means it may have read what the drop replaced
@@ -1745,6 +1748,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	h.setLiveTitle(sid, title)
 	h.refreshPending()
 	h.EmitAsync(EventSessionNew, map[string]any{"id": sid, "title": title})
+	h.captureSessionContext(sid)
 	if title != "" {
 		h.autoTitle(sid, title)
 	}
@@ -2742,6 +2746,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return readOnly },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
+			h.consultHooks("tool.denied", map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
 		Post:   h.toolPost,

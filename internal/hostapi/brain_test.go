@@ -96,7 +96,7 @@ func TestBrainKeyAndReplay(t *testing.T) {
 	pinKey, brainText := h.agents.pin.key, h.agents.brain
 	h.agents.dropPin()
 	h.agents.mu.Unlock()
-	row := contextRow{Key: h.contextKey(pinKey, brainText), Text: "STORED"}
+	row := contextRow{Key: h.contextKey(pinKey, brainText, ""), Text: "STORED"}
 	h.agents.mu.Lock()
 	h.agents.ctx = row
 	h.agents.mu.Unlock()

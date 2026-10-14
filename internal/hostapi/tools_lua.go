@@ -515,6 +515,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 	logged := maps.Clone(payload) // the log keeps its map, which the chain below would change
 	logged["output"] = truncRunes(output, 4096)
 	h.recordEvent(EventToolPost, "host", logged)
+	h.consultHooks("tool.post", map[string]any{"tool_name": name, "tool_input": input})
 	if len(handlers) == 0 {
 		return output
 	}

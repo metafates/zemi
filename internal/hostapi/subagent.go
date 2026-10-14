@@ -297,6 +297,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if run.forkBase == len(runner.History) && pipe.Pad != "" && setup.writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
+	h.consultHooks("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description})
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
 	// a fork reports only what it said, not the conversation it opened with
@@ -321,6 +322,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
 	}
+	h.consultHooks("agent.subagent.finish", map[string]any{"agent": def.Name, "error": errString(err)})
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report

@@ -122,6 +122,7 @@ func (h *Host) ResumeSession(id string) error {
 	// a list left in progress settles here: nothing runs on a resumed session
 	h.settleTodos()
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
+	h.captureSessionContext(id)
 	return nil
 }
 
@@ -294,6 +295,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
 	ag.brain, ag.brainGlobs, ag.memAuto, ag.pin = "", nil, 0, promptPin{}
+	ag.hookCtx = "" // the new session captures its own
 	ag.brainWrites = nil // the new session inherits no file this one wrote
 	ag.dropPin()
 	ag.todoInProgress, ag.todoSteps, ag.todoPending, ag.todoNag = "", 0, false, ""
@@ -312,6 +314,7 @@ func (h *Host) closeSession(open func()) error {
 	h.notifyReports(reports)
 	h.refreshPending()
 	if prev != "" {
+		h.consultHooks("session.close", nil)
 		h.EmitAsync("session.close", map[string]any{"id": prev})
 		h.reflectIfDue(prev)
 		if h.DB != nil {

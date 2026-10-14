@@ -277,7 +277,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	brainText := ag.brain
+	brainText, hookText := ag.brain, ag.hookCtx
 	ag.mu.Unlock()
 	if brainText != "" {
 		brainText = "\n\n" + brainText
@@ -286,7 +286,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
 	system = sys + rules + user + index + luaSections
-	ctxMsg = contextOpener + project + projectIndex + env + brainText + last + "\n</context>"
+	ctxMsg = contextOpener + project + projectIndex + env + brainText + hookText + last + "\n</context>"
 	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index) + len(projectIndex), brain: len(brainText), files: mtimes}
 	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.brain
 	return system, ctxMsg, parts
