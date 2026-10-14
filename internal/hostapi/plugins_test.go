@@ -184,7 +184,7 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name:    "a failed scan keeps every plugin's state",
 			plugins: map[string]string{"local/a/.zemi/init.lua": "", "disabled/x": ""},
-			seed: map[string]string{"plugin:a:saved": "1"},
+			seed:    map[string]string{"plugin:a:saved": "1"},
 			want:    []string{"is a directory", "plugin:a:saved\n"},
 		},
 		{

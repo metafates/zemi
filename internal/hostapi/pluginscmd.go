@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
@@ -373,9 +374,9 @@ func (h *Host) marketplaceItems(items *[]any, listOK bool) {
 		}
 		*items = append(*items, map[string]any{
 			"text": m.Name, "section": "Marketplaces",
-			"desc": perm.TildePath(m.Source) + " · " + count,
+			"desc":   perm.TildePath(m.Source) + " · " + count,
 			"detail": marketplaceDetail(m),
-			"fields": fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format("2006-01-02")),
+			"fields": fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
 			"actions": []any{
 				map[string]any{"text": "Update", "hotkey": "u", "run": "plugins marketplace update " + m.Name},
 				map[string]any{"text": "Remove", "hotkey": "x", "danger": true, "run": "plugins marketplace remove " + m.Name},
