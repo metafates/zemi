@@ -38,6 +38,10 @@ func (s Source) Stored() bool { return s != Project && s != Recipe }
 type Dir struct {
 	Path   string
 	Source Source
+	// Prefix joins every discovered name, Root and Data ride the parsed
+	// skills' substitutions: a Claude-layout plugin's, "" for the rest.
+	Prefix      string
+	Root, Data  string
 }
 
 // Caps: SKILL.md is bounded so a huge file cannot stall boot or the
@@ -54,6 +58,12 @@ type Skill struct {
 	Source      Source
 	Description string
 	Hook        string // path to zemi-skill.lua, "" when absent
+	// File is the body file when it is not Dir/SKILL.md: a Claude plugin's
+	// command, which loads as a model-invocable skill row. Root and Data are
+	// what ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} stand for in the
+	// body, set for a Claude-layout plugin's entries, "" for everything else.
+	File        string
+	Root, Data  string
 	// UserInvocable: the skill is also /<name>. A skill the model may not
 	// load is the user's, so it is one unless its frontmatter says otherwise.
 	UserInvocable          bool
@@ -75,25 +85,29 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 func ValidName(name string) bool { return len(name) <= maxNameLen && nameRe.MatchString(name) }
 
 // Parse validates one skill directory: SKILL.md must exist (not a
-// symlink), carry `---`-fenced yaml frontmatter with a name matching the
-// directory and a non-empty description, which is cut to the cap with a
-// warning rather than refused. An optional zemi-skill.lua enable hook is
-// reported.
-func Parse(dir string, source Source) (Skill, error) {
-	sk := Skill{Name: filepath.Base(dir), Dir: dir, Source: source}
+// symlink), carry `---`-fenced yaml frontmatter whose name, when present,
+// matches the directory, with a description that falls back to the body's
+// first line. The description is cut to the cap with a warning rather than
+// refused. An optional zemi-skill.lua enable hook is reported.
+func Parse(dir string, source Source, prefix string) (Skill, error) {
+	base := filepath.Base(dir)
+	sk := Skill{Name: prefix + base, Dir: dir, Source: source}
+	if !ValidName(base) {
+		return sk, fmt.Errorf("skills: %q: directory name must be %s", base, NameRule)
+	}
 	if !ValidName(sk.Name) {
-		return sk, fmt.Errorf("skills: %q: directory name must be %s", sk.Name, NameRule)
+		return sk, fmt.Errorf("skills: %s: name must be %s", sk.Name, NameRule)
 	}
 	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
-		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
+		return sk, fmt.Errorf("skills: %s: %w", base, err)
 	}
 	fm, err := frontmatter(data)
 	if err != nil {
-		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
+		return sk, fmt.Errorf("skills: %s: %w", base, err)
 	}
-	if fm.Name != sk.Name {
-		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", sk.Name, fm.Name)
+	if fm.Name != "" && fm.Name != base {
+		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", base, fm.Name)
 	}
 	if source != Recipe { // a recipe is the model's own procedure
 		sk.DisableModelInvocation, sk.ArgumentHint = fm.DisableModelInvocation, string(fm.ArgumentHint)
@@ -103,16 +117,31 @@ func Parse(dir string, source Source) (Skill, error) {
 		}
 	}
 	desc := fm.Description
+	if strings.TrimSpace(desc) == "" { // Claude's fallback: the body speaks first
+		_, body, _ := SplitFrontmatter(string(data))
+		desc = FirstBodyLine(body)
+	}
 	var cut error
 	if short := learn.Truncate(desc, MaxDescriptionRunes); short != desc {
 		desc = short
-		cut = fmt.Errorf("skills: %s: %w to %d runes", sk.Name, ErrDescriptionCut, MaxDescriptionRunes)
+		cut = fmt.Errorf("skills: %s: %w to %d runes", base, ErrDescriptionCut, MaxDescriptionRunes)
 	}
 	sk.Description = desc
 	if hook := filepath.Join(dir, "zemi-skill.lua"); fileExists(hook) {
 		sk.Hook = hook
 	}
 	return sk, cut
+}
+
+// FirstBodyLine is the body's first non-empty line, Claude's description
+// fallback.
+func FirstBodyLine(body string) string {
+	for line := range strings.SplitSeq(body, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // ErrDescriptionCut rides along with a usable skill whose description was
@@ -171,12 +200,6 @@ func frontmatter(data []byte) (front, error) {
 	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 		return fm, fmt.Errorf("frontmatter: %w", err)
 	}
-	if fm.Name == "" {
-		return fm, errors.New("frontmatter: name is required")
-	}
-	if strings.TrimSpace(fm.Description) == "" {
-		return fm, errors.New("frontmatter: description is required")
-	}
 	return fm, nil
 }
 
@@ -221,13 +244,14 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 			if !e.IsDir() {
 				continue
 			}
-			if kept, ok := seen[e.Name()]; ok {
+			name := d.Prefix + e.Name()
+			if kept, ok := seen[name]; ok {
 				if kept.Source == Plugin && d.Source == Plugin {
-					warnings = append(warnings, fmt.Sprintf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), e.Name(), kept.Dir))
+					warnings = append(warnings, fmt.Sprintf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), name, kept.Dir))
 				}
 				continue
 			}
-			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source)
+			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source, d.Prefix)
 			if err != nil {
 				warnings = append(warnings, err.Error())
 				if !errors.Is(err, ErrDescriptionCut) {
@@ -237,6 +261,7 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 					continue
 				}
 			}
+			sk.Root, sk.Data = d.Root, d.Data
 			seen[sk.Name] = sk
 			skills = append(skills, sk)
 		}
@@ -249,10 +274,20 @@ func fileExists(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// Body reads a skill's SKILL.md without its frontmatter: the index already
-// showed name and description, the body is what the model follows.
-func Body(dir string) (string, error) {
-	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
+// Body reads a skill's body without its frontmatter: File when set, else
+// Dir/SKILL.md. The index already showed name and description; the body is
+// what the model follows.
+func (s Skill) Body() (string, error) {
+	path := filepath.Join(s.Dir, "SKILL.md")
+	if s.File != "" {
+		path = s.File
+	}
+	return BodyFile(path)
+}
+
+// BodyFile reads the body of the skill file at path, frontmatter split off.
+func BodyFile(path string) (string, error) {
+	data, err := readSkillFile(path)
 	if err != nil {
 		return "", err
 	}

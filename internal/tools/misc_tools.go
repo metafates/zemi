@@ -7,6 +7,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -353,6 +354,12 @@ type SkillInfo struct {
 	Name string
 	Path string
 	Note string // put after the body: what only the running process knows
+	// File is the body file when it is not Path/SKILL.md (a Claude plugin's
+	// command); Root and Data are what the body's ${CLAUDE_PLUGIN_ROOT} and
+	// ${CLAUDE_PLUGIN_DATA} stand for, "" for the rest.
+	File string
+	Root string
+	Data string
 }
 
 // SkillMaxOut caps a skill body; every shipped skill fits it whole
@@ -360,20 +367,27 @@ type SkillInfo struct {
 const SkillMaxOut = 64000
 
 // SkillText is a skill as the model loads it: its directory, then the body.
-func SkillText(dir string) (string, error) {
-	body, err := skill.Body(dir)
+func SkillText(s SkillInfo) (string, error) {
+	path := filepath.Join(s.Path, "SKILL.md")
+	if s.File != "" {
+		path = s.File
+	}
+	body, err := skill.BodyFile(path)
 	if err != nil {
 		return "", err
+	}
+	if s.Root != "" {
+		body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_ROOT}", s.Root)
+		body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_DATA}", s.Data)
 	}
 	// the body is the whole procedure, loaded once: a cut leaves the model
 	// acting on half of it, so say where the rest is, cutting the file whole
 	// so the marker's line numbers are read offsets
 	if len(body) > SkillMaxOut {
-		path := filepath.Join(dir, "SKILL.md")
 		raw, _ := os.ReadFile(path)
 		body = TruncOut(string(raw), SkillMaxOut) + "\nRead the cut lines with the read tool: " + path
 	}
-	return "Skill directory: " + dir + "\n\n" + body, nil
+	return "Skill directory: " + s.Path + "\n\n" + body, nil
 }
 
 func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
@@ -385,9 +399,9 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	for _, s := range p.Skills() {
 		known = append(known, s.Name)
 		if s.Name == name {
-			path := filepath.Join(s.Path, "SKILL.md")
+			path := cmp.Or(s.File, filepath.Join(s.Path, "SKILL.md"))
 			fi, _ := os.Stat(path)
-			text, err := SkillText(s.Path)
+			text, err := SkillText(s)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}

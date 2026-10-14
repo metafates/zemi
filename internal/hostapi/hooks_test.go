@@ -6,18 +6,24 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// claudeFixPlugin writes a Claude-layout plugin under local/fix, hooks.json
+// claudeFixHost writes a Claude-layout plugin under local/fix, hooks.json
 // and .mcp.json as given, and boots a host whose plugins step has run.
 func claudeFixHost(t *testing.T, hooksJSON, mcpJSON string) (*Host, string) {
+	return claudeFixHostFiles(t, hooksJSON, mcpJSON, nil)
+}
+
+func claudeFixHostFiles(t *testing.T, hooksJSON, mcpJSON string, extra map[string]string) (*Host, string) {
 	t.Helper()
 	tmp := t.TempDir()
 	dirs := config.Dirs{
@@ -30,6 +36,9 @@ func claudeFixHost(t *testing.T, hooksJSON, mcpJSON string) (*Host, string) {
 		filepath.Join(root, "hooks", "hooks.json"):           hooksJSON,
 		filepath.Join(root, ".mcp.json"):                     mcpJSON,
 		filepath.Join(dirs.ConfigHome, "init.lua"):           "",
+	}
+	for p, src := range extra {
+		files[filepath.Join(root, p)] = src
 	}
 	for p, src := range files {
 		if src == "" {
@@ -48,7 +57,9 @@ func claudeFixHost(t *testing.T, hooksJSON, mcpJSON string) (*Host, string) {
 		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
 	}})
 	h := NewHost(r, log, config.NewStore(), dirs)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{
+		h.NamespacesStep(), h.PluginsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
+	}); err != nil {
 		t.Fatalf("boot: %v", err)
 	}
 	// the grant roots read through symlinks, as h.pluginsRoot does
@@ -247,11 +258,55 @@ func TestSessionStartCapture(t *testing.T) {
 	}
 }
 
+// TestClaudePluginLayers: a Claude plugin's skills, commands and agents load
+// under the plugin prefix, the commands as model-invocable skill rows beside
+// their /command, the agent's Claude tool names aliased and its unknown
+// model dropped, and the bodies carry the plugin root.
+func TestClaudePluginLayers(t *testing.T) {
+	extra := map[string]string{
+		"skills/greet/SKILL.md": "---\nuser-invocable: false\n---\n\nGreet the user warmly.\n\nSay hi from ${CLAUDE_PLUGIN_ROOT}.\n",
+		"commands/pr.md":        "---\ndescription: Draft a PR description\n---\nDraft a PR for $ARGUMENTS.\n",
+		"agents/reviewer.md":    "---\ndescription: Reviews changes\ntools: bash, read\nmodel: sonnet\n---\nReview the diff at ${CLAUDE_PLUGIN_ROOT}.\n",
+	}
+	h, root := claudeFixHostFiles(t, "{}", "{}", extra)
+	skills := map[string]skill.Skill{}
+	for _, s := range h.skillsReg.list() {
+		skills[s.Name] = s
+	}
+	greet := skills["fix-greet"]
+	if greet.Name == "" || greet.Description != "Greet the user warmly." || greet.Root != root || greet.UserInvocable {
+		t.Fatalf("fix-greet: %+v", greet)
+	}
+	pr := skills["fix-pr"]
+	if pr.Name == "" || pr.UserInvocable || pr.DisableModelInvocation || pr.File == "" || pr.Description != "Draft a PR description" {
+		t.Fatalf("fix-pr: %+v", pr)
+	}
+	if c := h.Commands.Lookup("fix-pr"); c == nil || c.Path != skillFile(pr) {
+		t.Fatalf("the /fix-pr command: %+v", c)
+	}
+	var reviewer AgentDef
+	for _, d := range h.agentDefs() {
+		if d.Name == "fix-reviewer" {
+			reviewer = d
+		}
+	}
+	if reviewer.Name == "" || !slices.Equal(reviewer.Tools, []string{"shell", "read"}) || reviewer.Model != "" {
+		t.Fatalf("fix-reviewer: %+v", reviewer)
+	}
+	if !strings.Contains(reviewer.System, root) {
+		t.Fatal("the agent body did not get the plugin root")
+	}
+	text, err := tools.SkillText(tools.SkillInfo{Name: greet.Name, Path: greet.Dir, Root: greet.Root, Data: greet.Data})
+	if err != nil || !strings.Contains(text, "Say hi from "+root) {
+		t.Fatalf("skill text: %q %v", text, err)
+	}
+}
+
 func waitFile(t *testing.T, path string) {
 	t.Helper()
 	waitFor(t, func() error {
-		if _, err := os.Stat(path); err != nil {
-			return err
+		if fi, err := os.Stat(path); err != nil || fi.Size() == 0 {
+			return fmt.Errorf("%s not written yet", path)
 		}
 		return nil
 	})
