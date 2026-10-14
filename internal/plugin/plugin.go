@@ -679,13 +679,14 @@ func listMarketplaces(d config.Dirs, out io.Writer) error {
 	for _, m := range ms {
 		fmt.Fprintf(out, "%s %s (%d plugins)\n", m.Name, m.Source, len(m.Entries))
 		for _, e := range m.Entries {
-			line := e.Name
-			for _, s := range []string{e.Version, e.Description} {
-				if s != "" {
-					line += " " + s
-				}
+			line := []string{e.Name}
+			if e.Version != "" {
+				line = append(line, e.Version)
 			}
-			fmt.Fprintf(out, "  %s\n", line)
+			if e.Description != "" {
+				line = append(line, e.Description)
+			}
+			fmt.Fprintf(out, "  %s\n", strings.Join(line, " "))
 		}
 	}
 	return nil

@@ -653,9 +653,11 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
-			name:   "a no-op update re-copies nothing",
-			before: func() { os.WriteFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER"), []byte("x"), 0o644) },
-			args:   []string{"update", "rel-one"}, want: "\nPlugins up to date\n",
+			name: "a no-op update re-copies nothing",
+			before: func() {
+				os.WriteFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER"), []byte("x"), 0o644)
+			},
+			args: []string{"update", "rel-one"}, want: "\nPlugins up to date\n",
 			check: func(t *testing.T) {
 				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER")); err != nil {
 					t.Error("the no-op update re-copied the tree:", err)
