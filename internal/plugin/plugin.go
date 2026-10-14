@@ -265,6 +265,21 @@ func place(ctx context.Context, d config.Dirs, name, tmp string) (Plugin, string
 	return load(ctx, dest, false, true), id, nil
 }
 
+// dropSynth removes a synthesized manifest an install left untracked: a
+// checkout or merge bringing the same path in would refuse otherwise. A
+// tracked manifest is the plugin's own and stays.
+func dropSynth(ctx context.Context, dir string) {
+	for _, file := range []string{ManifestFile, ClaudeManifestFile} {
+		if _, err := os.Lstat(filepath.Join(dir, file)); err != nil {
+			continue
+		}
+		if tracked, _ := git(ctx, dir, "ls-files", file); tracked != "" {
+			continue
+		}
+		os.Remove(filepath.Join(dir, file))
+	}
+}
+
 // update fetches a plugin and checks out its highest semver tag of the same
 // major when it is on a tag already; a branch moves to the highest tag ahead
 // of it, or else fast-forward. A dirty checkout makes git refuse, and that
@@ -282,6 +297,7 @@ func update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	// a cancel stops the fetch only: a killed merge or checkout would leave
 	// .git/index.lock and a half-moved worktree the next boot loads
 	ctx = context.WithoutCancel(ctx)
+	dropSynth(ctx, dir)
 	to := ""
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
 	if cur := highest(here, ""); cur != "" {
@@ -1070,9 +1086,10 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 	return moved, errors.Join(errs...)
 }
 
-// refreshInstall points a git-kind row's recorded version at what its
-// marketplace clone currently lists, so the next check compares against the
-// marketplace's state as of this update. The clone is a cache: no pull.
+// refreshInstall re-supplies a git-kind install's synthesized manifest and
+// points its row's recorded version at what its marketplace clone currently
+// lists, so the next check compares against the marketplace's state as of
+// this update. The clone is a cache: no pull.
 func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", reg.Marketplace))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -1084,6 +1101,11 @@ func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	e, ok := m.find(reg.Entry)
 	if !ok {
 		return fmt.Errorf("marketplace %s no longer lists %s", reg.Marketplace, reg.Entry)
+	}
+	// update dropped the synthesized manifest to unblock its checkout; the
+	// entry re-supplies it unless the tree grew one of its own
+	if _, err := e.synthManifest(filepath.Join(d.PluginsRoot(), "installed", name)); err != nil {
+		return err
 	}
 	if e.Version == reg.Version {
 		return nil

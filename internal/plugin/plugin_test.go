@@ -743,9 +743,14 @@ func TestMarketplace(t *testing.T) {
 		{
 			name: "a marketplace update pulls once and names the installs behind it",
 			before: func() {
-				gitIn(zed, "commit", "-q", "--allow-empty", "-m", "v2")
+				// upstream grows the very path the install's synthesized
+				// manifest occupies, so the checkout would refuse without
+				// zemi dropping its own file first
+				write(t, zed, map[string]string{".claude-plugin/plugin.json": `{"version": "2.0.0", "description": "upstream's own"}`})
+				gitIn(zed, "add", ".")
+				gitIn(zed, "commit", "-qm", "v2")
 				gitIn(zed, "tag", "v0.2.0")
-				bump("1.2.0", "0.3.0", "0.2.0", "0.6.0")
+				bump("1.3.0", "0.3.0", "0.2.0", "0.6.0")
 			},
 			args: []string{"marketplace", "update", "demo-market"},
 			want: "behind it: entry-manifest, loose, own-manifest, rel-one, sub-one",
@@ -763,6 +768,11 @@ func TestMarketplace(t *testing.T) {
 				prov, ok := MarketplaceOf(d, "git-one")
 				if !ok || prov.Version != "0.6.0" || prov.Kind != kindGit {
 					t.Errorf("the row did not refresh to the marketplace's version: %+v, %v", prov, ok)
+				}
+				// upstream's own manifest replaced the synthesized one
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "git-one", ClaudeManifestFile))
+				if err != nil || !strings.Contains(string(b), "2.0.0") {
+					t.Errorf("the update did not take upstream's manifest: %q, %v", b, err)
 				}
 			},
 		},
