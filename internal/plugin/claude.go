@@ -575,10 +575,11 @@ type claudeMarketplaceEntryJSON struct {
 }
 
 // localIn guards a source path that must resolve inside the marketplace
-// clone: one that climbs out would copy an arbitrary disk dir in as plugin
-// code.
+// clone: one that climbs out - or is the clone root itself, whose .git a
+// copy must not carry - would put foreign code in the plugin tree.
 func localIn(name, dir string) error {
-	if !filepath.IsLocal(filepath.Clean(dir)) {
+	c := filepath.Clean(dir)
+	if c == "." || !filepath.IsLocal(c) {
 		return fmt.Errorf("plugin %s: source path %q must stay inside the marketplace", name, dir)
 	}
 	return nil

@@ -526,6 +526,15 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
+			name: "an update refuses an entry the marketplace renamed",
+			before: func() {
+				renamed := strings.Replace(manifest("1.1.0", "0.3.0", "0.2.0"), `"name": "Rel One"`, `"name": "Rel Two"`, 1)
+				write(t, mkt, map[string]string{".claude-plugin/marketplace.json": renamed})
+				gitIn(mkt, "commit", "-qam", "rename")
+			},
+			args: []string{"update", "rel-one"}, want: "no longer lists Rel One", err: true,
+		},
+		{
 			name: "a delete drops the provenance",
 			args: []string{"delete", "rel-one"},
 			check: func(t *testing.T) {
