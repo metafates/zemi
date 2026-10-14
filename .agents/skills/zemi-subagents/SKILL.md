@@ -143,7 +143,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
-  origin only); `PurgeGeneration` parks them, the replay keeps a live one (or one waiting for a
+  origin only) or from a Claude-layout plugin's `.mcp.json` and manifest, registered by the
+  plugins step under the plugin's name as a prefix; `PurgeGeneration` parks them, the replay
+  keeps a live one (or one waiting for a
   sign-in) it adds with the same spec and the rest stop. They run in `DataHome` with `ZEMI_PROJECT_DIR` set,
   trusted project or not: `npx` and `uv` read config from the working directory, and most
   servers need the network. Tools are

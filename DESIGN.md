@@ -320,6 +320,8 @@ Directories (XDG):
                           skills|agents|commands/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
+  plugins/data/<name>/    a Claude-layout plugin's ${CLAUDE_PLUGIN_DATA}, where its hooks and
+                          servers may keep state
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  copies of the files attached from outside the project
