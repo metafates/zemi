@@ -278,7 +278,10 @@ func (h *Host) captureSessionContext(sid, kind string) {
 		}
 		text := "\n\n# Plugin context\n" + strings.Join(texts, "\n\n")
 		if len(text) > hookContextMax {
-			text = text[:hookContextMax] + fmt.Sprintf("\n(plugin context cut here: %d bytes left out)", len(text)-hookContextMax)
+			// ToValidUTF8: the cut can land mid-rune, and this text joins
+			// the prompt and the store
+			text = strings.ToValidUTF8(text[:hookContextMax], "") +
+				fmt.Sprintf("\n(plugin context cut here: %d bytes left out)", len(text)-hookContextMax)
 		}
 		ag := h.agents
 		ag.mu.Lock()
