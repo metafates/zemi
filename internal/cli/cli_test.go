@@ -113,7 +113,7 @@ func TestCLI(t *testing.T) {
 		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
 		{name: "projects as JSON", args: []string{"projects", "--json"}, stdout: `"trust":"undecided",`},
 		{name: "plugins arity", args: []string{"plugins", "enable"}, code: 2, stderr: "zemi: plugins enable takes <name>\n"},
-		{name: "a range of args", args: []string{"plugins", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugins install takes <git url> [name]\n"},
+		{name: "a range of args", args: []string{"plugins", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugins install takes <git url|marketplace> [name]\n"},
 		{name: "completion help in zemi's words", args: []string{"completion", "--help"}, stdout: "print the bash completion script", notStdout: "Generate"},
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub  local  on  "},
