@@ -122,7 +122,7 @@ func (h *Host) ResumeSession(id string) error {
 	// a list left in progress settles here: nothing runs on a resumed session
 	h.settleTodos()
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
-	h.captureSessionContext(id)
+	h.captureSessionContext(id, "resume")
 	return nil
 }
 
@@ -314,7 +314,8 @@ func (h *Host) closeSession(open func()) error {
 	h.notifyReports(reports)
 	h.refreshPending()
 	if prev != "" {
-		h.consultHooks("session.close", nil)
+		// the payload names the session that ended: the live one is the next
+		h.consultHooks("session.close", map[string]any{"session_id": prev})
 		h.EmitAsync("session.close", map[string]any{"id": prev})
 		h.reflectIfDue(prev)
 		if h.DB != nil {

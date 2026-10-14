@@ -1748,7 +1748,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	h.setLiveTitle(sid, title)
 	h.refreshPending()
 	h.EmitAsync(EventSessionNew, map[string]any{"id": sid, "title": title})
-	h.captureSessionContext(sid)
+	h.captureSessionContext(sid, "startup")
 	if title != "" {
 		h.autoTitle(sid, title)
 	}

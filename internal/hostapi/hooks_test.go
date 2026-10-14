@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -75,14 +78,15 @@ const fixMCP = `{"mcpServers":{
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long":{"type":"http","url":"http://127.0.0.1:1/mcp"}
 }}`
 
-// A plugin with zemi's own manifest loads none of the Claude side, whatever
-// its .claude-plugin holds.
+// A plugin with zemi's own tree (.zemi, manifest or not) loads none of the
+// Claude side, whatever its .claude-plugin holds: its Lua runs, the rest of
+// the layout stays unread.
 func TestClaudeSideYieldsToZemiManifest(t *testing.T) {
 	tmp := t.TempDir()
 	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
 	root := filepath.Join(dirs.PluginsRoot(), "local", "both")
 	for p, src := range map[string]string{
-		filepath.Join(root, ".zemi", "plugin.json"):          `{"uses":[]}`,
+		filepath.Join(root, ".zemi", "init.lua"):             `print("zemi side ran")`,
 		filepath.Join(root, ".claude-plugin", "plugin.json"): `{"name":"both"}`,
 		filepath.Join(root, ".mcp.json"):                     `{"mcpServers":{"x":{"type":"http","url":"http://127.0.0.1:1/mcp"}}}`,
 	} {
@@ -255,7 +259,7 @@ func TestSessionStartCapture(t *testing.T) {
 			h.agents.sessionID = c.sessionID
 			h.agents.pin.key = "pin"
 			h.agents.mu.Unlock()
-			h.captureSessionContext("s1")
+			h.captureSessionContext("s1", "startup")
 			hookText := func() string { h.agents.mu.Lock(); defer h.agents.mu.Unlock(); return h.agents.hookCtx }
 			if c.want == "" {
 				waitQuiet(t, hookText)
@@ -331,6 +335,139 @@ func TestClaudePluginLayers(t *testing.T) {
 	text, err := tools.SkillText(tools.SkillInfo{Name: greet.Name, Path: greet.Dir, Root: greet.Root, Data: greet.Data})
 	if err != nil || !strings.Contains(text, "Say hi from "+root) {
 		t.Fatalf("skill text: %q %v", text, err)
+	}
+}
+
+// TestSessionEndHookSeesEndingSession: the close consult names the session
+// that ended, not the live one the swap already put in place.
+func TestSessionEndHookSeesEndingSession(t *testing.T) {
+	dst := t.TempDir()
+	inPath := filepath.Join(dst, "in")
+	hooks := fmt.Sprintf(`{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"cat > %s"}]}]}}`, inPath)
+	h, _ := claudeFixHost(t, hooks, "{}")
+	h.agents.mu.Lock()
+	h.agents.sessionID = "s-old"
+	h.agents.mu.Unlock()
+	if err := h.closeSession(func() {
+		h.agents.sessionID = "s-new" // open runs under ag.mu
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitFile(t, inPath)
+	var payload map[string]any
+	if err := json.Unmarshal(readFile(t, inPath), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["session_id"] != "s-old" || payload["hook_event_name"] != "SessionEnd" {
+		t.Fatalf("payload: %v", payload)
+	}
+}
+
+// A capture landing while a pin build is in flight (pin.key still empty)
+// invalidates that build, so the text reaches the session's next send.
+func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
+	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"sleep 0.4; echo late text"}]}]}}`
+	h, _ := claudeFixHost(t, hooks, "{}")
+	h.agents.mu.Lock()
+	h.agents.sessionID = "s1"
+	drops := h.agents.pinDrops
+	h.agents.mu.Unlock()
+	h.captureSessionContext("s1", "startup")
+	// a build running now reads hookText empty; it stores only if no drop
+	// counted against it by the time it finished
+	waitFor(t, func() error {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		if h.agents.hookCtx == "" {
+			return fmt.Errorf("capture not landed")
+		}
+		return nil
+	})
+	h.agents.mu.Lock()
+	if h.agents.pinDrops == drops {
+		h.agents.mu.Unlock()
+		t.Fatal("the in-flight build was not invalidated: it would pin a prompt without the text")
+	}
+	if h.agents.pin.key != "" {
+		h.agents.mu.Unlock()
+		t.Fatal("a stale pin survived the capture")
+	}
+	h.agents.mu.Unlock()
+	_, _, ctx, _ := h.pinPrompt(nil, nil)
+	if !strings.Contains(ctx, "late text") {
+		t.Fatalf("context: %q", ctx)
+	}
+}
+
+// The stored context is capped: a chatty hook cannot grow the prompt.
+func TestCaptureContextCapped(t *testing.T) {
+	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"awk 'BEGIN{for(i=0;i<40000;i++)printf \"x\"}'"}]}]}}`
+	h, _ := claudeFixHost(t, hooks, "{}")
+	h.agents.mu.Lock()
+	h.agents.sessionID = "s1"
+	h.agents.mu.Unlock()
+	h.captureSessionContext("s1", "startup")
+	waitFor(t, func() error {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		if h.agents.hookCtx == "" {
+			return fmt.Errorf("capture not landed")
+		}
+		return nil
+	})
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	if len(h.agents.hookCtx) > hookContextMax+200 || !strings.Contains(h.agents.hookCtx, "left out") {
+		t.Fatalf("context of %d bytes, uncapped: %q", len(h.agents.hookCtx), clipRunes(h.agents.hookCtx, 120))
+	}
+}
+
+// SessionStart matchers name the start's source, not a tool: a resume-only
+// hook stays quiet on a startup capture.
+func TestSessionStartMatcher(t *testing.T) {
+	hooks := `{"hooks":{"SessionStart":[
+		{"matcher":"resume","hooks":[{"type":"command","command":"echo resumed"}]},
+		{"matcher":"startup","hooks":[{"type":"command","command":"echo started"}]}]}}`
+	h, _ := claudeFixHost(t, hooks, "{}")
+	h.agents.mu.Lock()
+	h.agents.sessionID = "s1"
+	h.agents.mu.Unlock()
+	h.captureSessionContext("s1", "startup")
+	waitFor(t, func() error {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		if !strings.Contains(h.agents.hookCtx, "started") {
+			return fmt.Errorf("startup text missing: %q", h.agents.hookCtx)
+		}
+		return nil
+	})
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	if strings.Contains(h.agents.hookCtx, "resumed") {
+		t.Fatal("the resume matcher fired on a startup capture")
+	}
+}
+
+// The /command of a Claude plugin sends its body with the plugin variables
+// filled, like the skill row's does.
+func TestClaudeCommandBodySubstitution(t *testing.T) {
+	h, root := claudeFixHostFiles(t, "{}", "{}", map[string]string{
+		"commands/pr.md": "---\ndescription: Draft a PR\n---\nRoot ${CLAUDE_PLUGIN_ROOT}, data ${CLAUDE_PLUGIN_DATA}.\n",
+	})
+	var sent atomic.Value
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			sent.Store(last)
+			return textParts("ok")
+		}}, nil
+	}
+	if err := h.RunCommand(t.Context(), "fix-pr", ""); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	got, _ := sent.Load().(string)
+	if !strings.Contains(got, root) || !strings.Contains(got, h.pluginDataDir("fix")) || strings.Contains(got, "${CLAUDE_PLUGIN") {
+		t.Fatalf("sent %q", got)
 	}
 }
 

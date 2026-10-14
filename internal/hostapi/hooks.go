@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"fmt"
 	"maps"
 	"os"
 	"regexp"
@@ -25,10 +26,12 @@ import (
 
 // hookTimeout is the longest a hook runs: Claude's default, and the cap on
 // one that asked for more. A SessionStart capture holds its hooks to
-// hookCaptureWait, so no send path can wait on one.
+// hookCaptureWait, so no send path can wait on one, and keeps the text it
+// gathers to hookContextMax, the scale of a skill body worth of prompt.
 const (
 	hookTimeout     = 60 * time.Second
 	hookCaptureWait = 10 * time.Second
+	hookContextMax  = 16 << 10
 )
 
 // hookEventMap maps the Claude events zemi runs to the zemi events that
@@ -101,7 +104,8 @@ func (h *Host) buildHooks(name, root, data string, groups []plugin.ClaudeHookGro
 			continue
 		}
 		for _, m := range g.Matchers {
-			match := hookMatcher(m.Matcher)
+			// a SessionStart matcher names the start's source, not a tool
+			match := hookMatcherFor(m.Matcher, g.Event != "SessionStart")
 			for _, hk := range m.Hooks {
 				switch {
 				case hk.Type != "command":
@@ -136,20 +140,24 @@ func hookDeadline(secs int, cap time.Duration) time.Duration {
 // hookMatcherList is the exact-or-pipe matcher form, whose tokens name tools.
 var hookMatcherList = regexp.MustCompile(`^[a-zA-Z0-9_|]+$`)
 
-// hookMatcher builds one matcher's tool match: "" or "*" takes everything,
-// an exact-or-pipe list names Claude tools through the alias map, anything
-// else is a regular expression over the zemi tool name, an invalid one
-// matching nothing (as Claude's do).
-func hookMatcher(m string) func(string) bool {
+// hookMatcherFor builds one matcher's match: "" or "*" takes everything, an
+// exact-or-pipe list names the tokens as written (lowercased, tools through
+// the alias map when mapTool), anything else is a regular expression, an
+// invalid one matching nothing (as Claude's do).
+func hookMatcherFor(m string, mapTool bool) func(string) bool {
 	if m == "" || m == "*" {
 		return nil
 	}
 	if hookMatcherList.MatchString(m) {
 		want := map[string]bool{}
 		for tok := range strings.SplitSeq(m, "|") {
-			want[claudeTool(tok)] = true
+			tok = strings.ToLower(tok)
+			if mapTool {
+				tok = claudeTool(tok)
+			}
+			want[tok] = true
 		}
-		return func(tool string) bool { return want[tool] }
+		return func(name string) bool { return want[name] }
 	}
 	re, err := regexp.Compile(m)
 	if err != nil {
@@ -157,6 +165,9 @@ func hookMatcher(m string) func(string) bool {
 	}
 	return re.MatchString
 }
+
+// hookMatcher matches a tool event's matcher: the tokens name Claude tools.
+func hookMatcher(m string) func(string) bool { return hookMatcherFor(m, true) }
 
 // claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
 // else lowercases.
@@ -192,8 +203,11 @@ func (h *Host) consultHooks(event string, payload map[string]any) {
 			}
 			full := make(map[string]any, len(payload)+4)
 			maps.Copy(full, payload)
-			full["session_id"], full["cwd"] = sid, h.Dirs.ProjectDir
-			full["permission_mode"], full["hook_event_name"] = mode, e.event
+			full["cwd"], full["permission_mode"], full["hook_event_name"] = h.Dirs.ProjectDir, mode, e.event
+			// the payload may name the session it is about, not the live one
+			if _, ok := full["session_id"]; !ok {
+				full["session_id"] = sid
+			}
 			h.runHook(e, marshalHookPayload(full), e.timeout)
 		}
 	})
@@ -222,7 +236,7 @@ func marshalHookPayload(payload map[string]any) []byte {
 func (h *Host) runHook(e hookEntry, input []byte, timeout time.Duration) string {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := proc.CommandContext(ctx, proc.Shell(), "-c", e.command)
+	cmd := proc.ShellCommandContext(ctx, e.command)
 	cmd.Dir = e.root
 	cmd.Env = slices.Concat(os.Environ(), proc.NonInteractiveEnv,
 		[]string{"CLAUDE_PLUGIN_ROOT=" + e.root, "CLAUDE_PLUGIN_DATA=" + e.data})
@@ -238,11 +252,13 @@ func (h *Host) runHook(e hookEntry, input []byte, timeout time.Duration) string 
 
 // captureSessionContext runs the plugins' SessionStart hooks for sid and
 // keeps what they print for the session's next prompt, beside the project
-// skills index. It starts off the session-creation path, so no send waits on
-// it; a capture that lands after the prompt was pinned drops the pin, and
-// the next send rebuilds with the text. A reload never re-runs it: this is
-// session state, not registry state.
-func (h *Host) captureSessionContext(sid string) {
+// skills index. kind is the session start's source (startup, resume), what
+// the hooks' matchers name. It starts off the session-creation path, so no
+// send waits on it; a capture that lands drops the pin unconditionally, so
+// one in flight stores no prompt without the text, and the next send
+// rebuilds with it. A reload never re-runs it: this is session state, not
+// registry state.
+func (h *Host) captureSessionContext(sid, kind string) {
 	entries := h.hookReg.handlers("session.start")
 	if len(entries) == 0 || proc.Refused() != nil {
 		return
@@ -250,6 +266,9 @@ func (h *Host) captureSessionContext(sid string) {
 	h.GoSafe("plugin sessionstart hooks", func() {
 		var texts []string
 		for _, e := range entries {
+			if e.match != nil && !e.match(kind) {
+				continue
+			}
 			if out := hookContextOut(h.runHook(e, marshalHookPayload(h.hookBase(e)), min(e.timeout, hookCaptureWait))); out != "" {
 				texts = append(texts, out)
 			}
@@ -257,16 +276,20 @@ func (h *Host) captureSessionContext(sid string) {
 		if len(texts) == 0 {
 			return
 		}
+		text := "\n\n# Plugin context\n" + strings.Join(texts, "\n\n")
+		if len(text) > hookContextMax {
+			text = text[:hookContextMax] + fmt.Sprintf("\n(plugin context cut here: %d bytes left out)", len(text)-hookContextMax)
+		}
 		ag := h.agents
 		ag.mu.Lock()
 		defer ag.mu.Unlock()
 		if ag.sessionID != sid { // the session moved on while the hooks ran
 			return
 		}
-		ag.hookCtx = "\n\n# Plugin context\n" + strings.Join(texts, "\n\n")
-		if ag.pin.key != "" {
-			ag.dropPin()
-		}
+		ag.hookCtx = text
+		// a build in flight holds pin.key as empty too: only a drop counted
+		// by it makes that build throw its text-less prompt away
+		ag.dropPin()
 	})
 }
 
