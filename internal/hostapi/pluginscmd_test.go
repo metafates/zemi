@@ -13,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -105,7 +106,7 @@ func TestPluginsCommand(t *testing.T) {
 			name: "marketplace add", args: "marketplace add " + mkt,
 			want: []string{
 				"info: Marketplace added: marketplace test added (1 plugins)",
-				"section:Marketplaces text:test", "desc:" + mkt + " · 1 plugin",
+				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
 				"hotkey:u run:plugins marketplace update test", "danger:true hotkey:x run:plugins marketplace remove test",
 			},
 		},
