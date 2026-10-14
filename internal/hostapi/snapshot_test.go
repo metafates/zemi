@@ -77,8 +77,8 @@ func TestShellChanges(t *testing.T) {
 			t.Errorf("diff holds %q:\n%s", bad, diff)
 		}
 	}
-	// the sandbox hides .env, so no object store may hold it, and the rest of
-	// a snapshot stays out of the repository's own
+	// a snapshot stores a secret-shaped file's name only (its content would
+	// leak), and stays out of the repository's own state
 	_, env, _ := h.snapshot(dir)
 	for _, c := range []struct {
 		env []string

@@ -9,7 +9,7 @@ import (
 
 // The test binary doubles as a fake language server for the LSP tests.
 func TestMain(m *testing.M) {
-	// on Linux the sandbox probe and Wrap re-exec this binary as the helper
+	// the LSP tests start this binary with the env set, as a fake server
 	if os.Getenv("ZEMI_LSP_FAKE") == "1" {
 		lsptest.Serve(os.Stdin, os.Stdout)
 		os.Exit(0)

@@ -128,8 +128,8 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
-				"local/a/.zemi/init.lua":    `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("a job", ok)`,
-				"local/b/.zemi/init.lua":    `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true", sandbox = true }) print("b job", ok)`,
+				"local/a/.zemi/init.lua":    `zemi.state.set("k", "a") local ok = pcall(zemi.job.start, { cmd = "true" }) print("a job", ok)`,
+				"local/b/.zemi/init.lua":    `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true" }) print("b job", ok)`,
 				"local/b/.zemi/plugin.json": `{"uses": ["job"]}`,
 			},
 			seed: []string{"plugin:gone:k", "plugin:a:old"},
