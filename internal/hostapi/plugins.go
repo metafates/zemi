@@ -65,7 +65,12 @@ func (h *Host) PluginsStep() lua.BootStep {
 				root := filepath.Join(h.pluginsRoot(), kind, p.Name)
 				grant.roots[i] = root
 				grant.uses[p.Name] = p.Uses
+				// zemi's own manifest wins: a plugin that has one loads none
+				// of the Claude side (its servers, hooks and name prefixes)
 				if !plugin.IsClaude(root) {
+					continue
+				}
+				if _, err := os.Stat(filepath.Join(root, plugin.ManifestFile)); err == nil {
 					continue
 				}
 				grant.claude[root] = true

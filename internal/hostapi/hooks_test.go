@@ -75,6 +75,38 @@ const fixMCP = `{"mcpServers":{
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long":{"type":"http","url":"http://127.0.0.1:1/mcp"}
 }}`
 
+// A plugin with zemi's own manifest loads none of the Claude side, whatever
+// its .claude-plugin holds.
+func TestClaudeSideYieldsToZemiManifest(t *testing.T) {
+	tmp := t.TempDir()
+	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+	root := filepath.Join(dirs.PluginsRoot(), "local", "both")
+	for p, src := range map[string]string{
+		filepath.Join(root, ".zemi", "plugin.json"):          `{"uses":[]}`,
+		filepath.Join(root, ".claude-plugin", "plugin.json"): `{"name":"both"}`,
+		filepath.Join(root, ".mcp.json"):                     `{"mcpServers":{"x":{"type":"http","url":"http://127.0.0.1:1/mcp"}}}`,
+	} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
+		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
+		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
+	}})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	if g := h.pluginGrant.Load(); len(g.claude) != 0 || len(h.mcp.list()) != 0 {
+		t.Fatalf("the claude side loaded beside a zemi manifest: %+v %v", g.claude, h.mcp.list())
+	}
+}
+
 // TestClaudeHooksLoad: the mapped events register, the refused events and
 // unsupported hook entries do not, and the MCP servers register under the
 // plugin prefix.
