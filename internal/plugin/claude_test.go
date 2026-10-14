@@ -203,14 +203,14 @@ func TestReadClaudeMarketplace(t *testing.T) {
 			]
 		}`,
 	})
-	m, err := ReadClaudeMarketplace(dir)
+	m, err := ReadMarketplace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "Demo" || m.Owner.Name != "o" || m.Owner.URL != "https://o" {
+	if m.Kind != KindClaude || m.Name != "Demo" {
 		t.Errorf("scalars: %+v", m)
 	}
-	es := map[string]ClaudeMarketplaceEntry{}
+	es := map[string]MarketplacePlugin{}
 	for _, e := range m.Plugins {
 		es[e.Name] = e
 	}
@@ -253,12 +253,63 @@ func TestReadClaudeMarketplace(t *testing.T) {
 	} {
 		dir := t.TempDir()
 		write(t, dir, map[string]string{".claude-plugin/marketplace.json": c.json})
-		if _, err := ReadClaudeMarketplace(dir); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := ReadMarketplace(dir); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want it to hold %q", c.name, err, c.want)
 		}
 	}
-	if _, err := ReadClaudeMarketplace(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := ReadMarketplace(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a missing marketplace.json: %v", err)
+	}
+}
+
+// TestReadMarketplace pins the zemi reader: the zemi manifest wins when a
+// repo holds both, and its names and uses are validated at parse.
+func TestReadMarketplace(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		".zemi/marketplace.json": `{
+			"name": "zed", "owner": {"name": "o"},
+			"$schema": "https://example.com/schema.json",
+			"metadata": {"whatever": 1},
+			"plugins": [
+				{"name": "zed-one", "source": "./p/one", "version": "1.0.0", "description": "the one", "uses": ["http", "job"]}
+			]
+		}`,
+		".claude-plugin/marketplace.json": `{"name": "Other Name", "plugins": [{"name": "other-one", "source": "./p/one"}]}`,
+	})
+	m, err := ReadMarketplace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Kind != KindZemi || m.Name != "zed" || len(m.Plugins) != 1 {
+		t.Fatalf("the zemi manifest did not win: %+v, %v", m, err)
+	}
+	e := m.Plugins[0]
+	if e.Kind != KindZemi || e.Name != "zed-one" || e.Version != "1.0.0" || e.Description != "the one" ||
+		e.Source != (ClaudeSource{Kind: "relative", Dir: "./p/one"}) || !slices.Equal(e.Uses, []string{"http", "job"}) {
+		t.Errorf("entry: %+v", e)
+	}
+
+	dir = t.TempDir()
+	write(t, dir, map[string]string{".claude-plugin/marketplace.json": `{"name": "Only Claude", "plugins": []}`})
+	if m, err := ReadMarketplace(dir); err != nil || m.Kind != KindClaude || m.Name != "Only Claude" {
+		t.Errorf("claude only: %+v, %v", m, err)
+	}
+
+	for _, c := range []struct{ name, json, want string }{
+		{"a manifest name outside zemi's rule", `{"name": "Zed", "plugins": []}`, "not a marketplace name"},
+		{"an entry name outside zemi's rule", `{"name": "zed", "plugins": [{"name": "zed.one", "source": "./p"}]}`, "not a plugin name"},
+		{"uses outside the vocabulary", `{"name": "zed", "plugins": [{"name": "zed-one", "source": "./p", "uses": ["fs.read"]}]}`, "not a capability"},
+		{"malformed", `{"name": `, "unexpected EOF"},
+	} {
+		dir := t.TempDir()
+		write(t, dir, map[string]string{".zemi/marketplace.json": c.json})
+		if _, err := ReadMarketplace(dir); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to hold %q", c.name, err, c.want)
+		}
+	}
+	if _, err := ReadMarketplace(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("neither manifest: %v", err)
 	}
 }
 

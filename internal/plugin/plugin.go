@@ -531,7 +531,7 @@ func MarketplaceOf(d config.Dirs, name string) (Provenance, bool) {
 }
 
 // recordInstall writes the provenance of a marketplace copy.
-func recordInstall(d config.Dirs, name, mkt string, e ClaudeMarketplaceEntry) error {
+func recordInstall(d config.Dirs, name, mkt string, e MarketplacePlugin) error {
 	f, err := readMarketplaces(d)
 	if err != nil {
 		return err
@@ -592,13 +592,15 @@ func addOrInstall(ctx context.Context, d config.Dirs, url, name string, out io.W
 // addMarketplace moves a fresh marketplace clone at tmp into marketplaces/
 // and records it; it returns the name and how many plugins it lists.
 func addMarketplace(d config.Dirs, tmp, source string) (string, int, error) {
-	m, err := ReadClaudeMarketplace(tmp)
+	m, err := ReadMarketplace(tmp)
 	if err != nil {
 		return "", 0, fmt.Errorf("%s: %w", ClaudeMarketplaceFile, err)
 	}
-	name := SanitizeName(m.Name)
-	if name == "" {
-		return "", 0, fmt.Errorf("%s names no marketplace", ClaudeMarketplaceFile)
+	name := m.Name
+	if m.Kind == KindClaude {
+		if name = SanitizeName(m.Name); name == "" {
+			return "", 0, fmt.Errorf("%s names no marketplace", ClaudeMarketplaceFile)
+		}
 	}
 	dest := filepath.Join(d.PluginsRoot(), "marketplaces", name)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -633,16 +635,15 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 	if _, ok := f.Marketplaces[mkt]; !ok {
 		return Plugin{}, fmt.Errorf("no marketplace is named %s", mkt)
 	}
-	m, err := ReadClaudeMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", mkt))
+	m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", mkt))
 	if err != nil {
 		return Plugin{}, fmt.Errorf("marketplace %s: %w", mkt, err)
 	}
-	i := slices.IndexFunc(m.Plugins, func(e ClaudeMarketplaceEntry) bool { return SanitizeName(e.Name) == SanitizeName(entry) })
-	if i < 0 {
+	e, ok := m.find(entry)
+	if !ok {
 		return Plugin{}, fmt.Errorf("marketplace %s lists no plugin named %s", mkt, entry)
 	}
-	e := m.Plugins[i]
-	name := SanitizeName(e.Name)
+	name := e.installName()
 	if name == "" {
 		return Plugin{}, fmt.Errorf("plugin %q has no usable name", e.Name)
 	}
@@ -666,7 +667,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 
 // copySource resolves where an entry's copy comes from: its dir in the
 // marketplace clone, or a fresh clone of the repo a git-subdir entry names.
-func copySource(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketplaceEntry) (src string, cleanup func(), err error) {
+func copySource(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin) (src string, cleanup func(), err error) {
 	if e.Source.Kind != "git-subdir" {
 		return filepath.Join(d.PluginsRoot(), "marketplaces", mkt, e.Source.Dir), func() {}, nil
 	}
@@ -681,7 +682,7 @@ func copySource(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketpl
 // dir, no .git, so scan, sweep and uninstall treat it like any other
 // install. The entry is written as the manifest when the dir has none of
 // its own. A copy is staged and renamed, so a reload never reads half of it.
-func placeCopy(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketplaceEntry, name string, on bool) (Plugin, error) {
+func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin, name string, on bool) (Plugin, error) {
 	src, done, err := copySource(ctx, d, mkt, e)
 	if err != nil {
 		return Plugin{}, err
@@ -690,7 +691,6 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketpla
 	dest := filepath.Join(d.PluginsRoot(), "installed", name)
 	// .copy.tmp: copySource may be reading a clone staged at .<name>.tmp
 	staging := filepath.Join(d.PluginsRoot(), "installed", "."+name+".copy.tmp")
-	var synth bool
 	// NOTE: os.CopyFS refuses a symlink in the subtree; a plugin carrying
 	// one fails the copy until CopyFS learns to copy them
 	os.RemoveAll(staging)
@@ -698,18 +698,10 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketpla
 		os.RemoveAll(staging)
 		return Plugin{}, err
 	}
-	if readHead(filepath.Join(staging, ClaudeManifestFile)) == nil {
-		synth = true
-		b, err := e.manifestJSON()
-		if err == nil {
-			if err = os.MkdirAll(filepath.Join(staging, ClaudeDir), 0o755); err == nil {
-				err = os.WriteFile(filepath.Join(staging, ClaudeManifestFile), b, 0o644)
-			}
-		}
-		if err != nil {
-			os.RemoveAll(staging)
-			return Plugin{}, err
-		}
+	synth, err := e.synthManifest(staging)
+	if err != nil {
+		os.RemoveAll(staging)
+		return Plugin{}, err
 	}
 	if err := os.RemoveAll(dest); err != nil {
 		os.RemoveAll(staging)
@@ -755,16 +747,15 @@ func updateFromMarketplace(ctx context.Context, d config.Dirs, name string, reg 
 	if err != nil {
 		return "", false, err
 	}
-	m, err := ReadClaudeMarketplace(dir)
+	m, err := ReadMarketplace(dir)
 	if err != nil {
 		return "", false, err
 	}
-	i := slices.IndexFunc(m.Plugins, func(e ClaudeMarketplaceEntry) bool { return SanitizeName(e.Name) == SanitizeName(reg.Entry) })
-	if i < 0 {
+	e, ok := m.find(reg.Entry)
+	if !ok {
 		return "", false, fmt.Errorf("marketplace %s no longer lists %s", reg.Marketplace, reg.Entry)
 	}
-	e := m.Plugins[i]
-	if sname := SanitizeName(e.Name); sname != name {
+	if sname := e.installName(); sname != name {
 		return "", false, fmt.Errorf("%s is now named %s: delete and install it again", reg.Entry, sname)
 	}
 	_, err = placeCopy(ctx, d, reg.Marketplace, e, name, false)
