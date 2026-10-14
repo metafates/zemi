@@ -435,6 +435,9 @@ func SetEnabled(d config.Dirs, name string, on bool) error {
 // UpToDate is what check and update print when no plugin has news.
 const UpToDate = "Plugins up to date"
 
+// MarketplacesUpToDate is what marketplace update prints when no clone moved.
+const MarketplacesUpToDate = "marketplaces up to date"
+
 // Run runs one verb of the zemi plugins CLI, which /plugins shares; each
 // prints plain lines a toast can show.
 func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error {
@@ -556,10 +559,14 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 	return ErrUsage
 }
 
-// The install kinds of a registry row.
+// InstallKind says how a registry row updates: a copy re-copies from its
+// marketplace clone, a git one from its own repo. The zero value is a row
+// from before the field, which updates as a copy.
+type InstallKind string
+
 const (
-	kindCopy = "copy"
-	kindGit  = "git"
+	kindCopy InstallKind = "copy"
+	kindGit  InstallKind = "git"
 )
 
 // marketplaceFile is marketplaces.json under the plugins root: the
@@ -578,11 +585,11 @@ type marketplaceReg struct {
 // installReg is the provenance of a plugin installed from a marketplace: a
 // copy re-copies from the clone, a git one updates from its own repo.
 type installReg struct {
-	Marketplace string `json:"marketplace"`
-	Entry       string `json:"entry"`
-	Version     string `json:"version"`
-	Kind        string `json:"kind"` // copy or git; a row without one is an older copy
-	ID          string `json:"id"`   // the install's identity, shared with .git/zemi-install for a git install
+	Marketplace string      `json:"marketplace"`
+	Entry       string      `json:"entry"`
+	Version     string      `json:"version"`
+	Kind        InstallKind `json:"kind"`
+	ID          string      `json:"id"` // the install's identity, shared with .git/zemi-install for a git install
 }
 
 func readMarketplaces(d config.Dirs) (marketplaceFile, error) {
@@ -608,7 +615,8 @@ func (f marketplaceFile) save(d config.Dirs) error {
 // Provenance is the marketplace origin an installed plugin came from.
 type Provenance struct {
 	Marketplace, Entry, Version string
-	Kind, ID                    string
+	Kind                        InstallKind
+	ID                          string
 }
 
 // MarketplaceOf reads the provenance of the installed plugin name, false for
@@ -625,7 +633,7 @@ func MarketplaceOf(d config.Dirs, name string) (Provenance, bool) {
 // recordInstall writes the provenance of an installed entry. The caller owns
 // the install id: a fresh install supplies a new one, so a stale row cannot
 // hand its state to a reinstall, an update re-supplies the row's.
-func recordInstall(d config.Dirs, name, mkt string, e MarketplacePlugin, kind, id string) error {
+func recordInstall(d config.Dirs, name, mkt string, e MarketplacePlugin, kind InstallKind, id string) error {
 	f, err := readMarketplaces(d)
 	if err != nil {
 		return err
@@ -852,7 +860,7 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 		}
 	}
 	if !moved && len(errs) == 0 {
-		fmt.Fprintln(out, "marketplaces up to date")
+		fmt.Fprintln(out, MarketplacesUpToDate)
 	}
 	return errors.Join(errs...)
 }
@@ -932,7 +940,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 		return Plugin{}, err
 	}
 	switch e.Source.Kind {
-	case "git", "url", "github":
+	case SourceGit, SourceURL, SourceGithub:
 		tmp := filepath.Join(d.PluginsRoot(), "installed", "."+name+".tmp")
 		if err := cloneRepo(ctx, e.Source.URL, tmp); err != nil {
 			return Plugin{}, err
@@ -958,8 +966,8 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 			p.Desc = cmp.Or(p.Desc, e.Description)
 		}
 		return p, nil
-	case "relative", "git-subdir":
-		return placeCopy(ctx, d, mkt, e, name, true, rand.Text())
+	case SourceRelative, SourceGitSubdir:
+		return placeCopy(ctx, d, mkt, e, name, true /* on: a fresh install turns the name on */, rand.Text())
 	default:
 		return Plugin{}, fmt.Errorf("plugin %s: %s sources are not supported", e.Name, e.Source.Kind)
 	}
@@ -968,7 +976,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 // copySource resolves where an entry's copy comes from: its dir in the
 // marketplace clone, or a fresh clone of the repo a git-subdir entry names.
 func copySource(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin) (src string, cleanup func(), err error) {
-	if e.Source.Kind != "git-subdir" {
+	if e.Source.Kind != SourceGitSubdir {
 		return filepath.Join(d.PluginsRoot(), "marketplaces", mkt, e.Source.Dir), func() {}, nil
 	}
 	tmp := filepath.Join(d.PluginsRoot(), "installed", "."+e.installName()+".tmp")
@@ -1075,7 +1083,7 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 		// an update re-records under the row's id; a row from before ids
 		// backfills one now
 		id := cmp.Or(reg.ID, rand.Text())
-		if _, err := placeCopy(ctx, d, mkt, e, name, false, id); err != nil {
+		if _, err := placeCopy(ctx, d, mkt, e, name, false /* off: an update keeps the switch */, id); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			continue
 		}
@@ -1141,7 +1149,7 @@ func pullMarketplace(ctx context.Context, dir string) (bool, error) {
 func readMarketplaceRef(ctx context.Context, dir string) (Marketplace, error) {
 	for _, c := range []struct {
 		file string
-		kind string
+		kind MarketplaceKind
 	}{
 		{ZemiMarketplaceFile, KindZemi},
 		{ClaudeMarketplaceFile, KindClaude},

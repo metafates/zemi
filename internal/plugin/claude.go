@@ -489,18 +489,32 @@ const ClaudeMarketplaceFile = ClaudeDir + "/marketplace.json"
 // over Claude's when a repository holds both.
 const ZemiMarketplaceFile = CodeDir + "/marketplace.json"
 
-// The marketplace kinds: which manifest a Marketplace was read from. It
+// MarketplaceKind says which manifest a Marketplace was read from. It
 // decides how entry names match and what a synthesized manifest looks like.
+type MarketplaceKind string
+
 const (
-	KindZemi   = "zemi"
-	KindClaude = "claude"
+	KindZemi   MarketplaceKind = "zemi"
+	KindClaude MarketplaceKind = "claude"
+)
+
+// SourceKind is a marketplace entry's source kind; an unknown kind rides as
+// data, for the "not supported" error to name.
+type SourceKind string
+
+const (
+	SourceRelative  SourceKind = "relative"
+	SourceGithub    SourceKind = "github"
+	SourceGit       SourceKind = "git"
+	SourceURL       SourceKind = "url"
+	SourceGitSubdir SourceKind = "git-subdir"
 )
 
 // ClaudeSource is a marketplace entry's source.
 type ClaudeSource struct {
-	Kind string // relative, github, git, url, git-subdir; npm, pip and anything unknown are unsupported
-	URL  string // the git URL to clone; github's is built from the repo
-	Dir  string // relative: the "./path" in the marketplace; git-subdir: the path inside the clone
+	Kind SourceKind // an unknown kind rides as data, for the refusal to name
+	URL  string     // the git URL to clone; github's is built from the repo
+	Dir  string     // relative: the "./path" in the marketplace; git-subdir: the path inside the clone
 	Ref  string
 	SHA  string
 }
@@ -509,7 +523,7 @@ type ClaudeSource struct {
 // component fields ride as written: when the plugin dir has no plugin.json,
 // the entry acts as the manifest, and Kind says which file that is.
 type MarketplacePlugin struct {
-	Kind                                 string
+	Kind                                 MarketplaceKind
 	Name, Version, Description, Homepage string
 	Author                               ClaudeAuthor
 	Source                               ClaudeSource
@@ -523,7 +537,7 @@ type MarketplacePlugin struct {
 // Claude's own rule.
 type Marketplace struct {
 	Name    string
-	Kind    string
+	Kind    MarketplaceKind
 	Plugins []MarketplacePlugin
 }
 
@@ -567,7 +581,7 @@ func ReadMarketplace(dir string) (Marketplace, error) {
 
 // readMarketplace parses one manifest of either kind: one shape, the zemi
 // one stricter about names and validated on uses here, at the boundary.
-func readMarketplace(raw jsontext.Value, kind string) (Marketplace, error) {
+func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, error) {
 	var j struct {
 		Name  string `json:"name"`
 		Owner struct {
@@ -652,7 +666,7 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 		if err := localIn(name, rel); err != nil {
 			return ClaudeSource{}, err
 		}
-		return ClaudeSource{Kind: "relative", Dir: rel}, nil
+		return ClaudeSource{Kind: SourceRelative, Dir: rel}, nil
 	}
 	var o struct {
 		Source string `json:"source"`
@@ -665,20 +679,20 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 	if err := json.Unmarshal(raw, &o); err != nil {
 		return ClaudeSource{}, fmt.Errorf("plugin %s: %w", name, err)
 	}
-	switch o.Source {
-	case "github":
-		return ClaudeSource{Kind: o.Source, URL: "https://github.com/" + o.Repo, Ref: o.Ref, SHA: o.SHA}, nil
-	case "git", "url":
-		return ClaudeSource{Kind: o.Source, URL: o.URL, Ref: o.Ref, SHA: o.SHA}, nil
-	case "git-subdir":
+	switch SourceKind(o.Source) {
+	case SourceGithub:
+		return ClaudeSource{Kind: SourceGithub, URL: "https://github.com/" + o.Repo, Ref: o.Ref, SHA: o.SHA}, nil
+	case SourceGit, SourceURL:
+		return ClaudeSource{Kind: SourceKind(o.Source), URL: o.URL, Ref: o.Ref, SHA: o.SHA}, nil
+	case SourceGitSubdir:
 		if err := localIn(name, o.Path); err != nil {
 			return ClaudeSource{}, err
 		}
-		return ClaudeSource{Kind: o.Source, URL: o.URL, Dir: o.Path, Ref: o.Ref, SHA: o.SHA}, nil
+		return ClaudeSource{Kind: SourceGitSubdir, URL: o.URL, Dir: o.Path, Ref: o.Ref, SHA: o.SHA}, nil
 	case "":
 		return ClaudeSource{}, fmt.Errorf("plugin %s: source names no kind", name)
 	default:
-		return ClaudeSource{Kind: o.Source}, nil
+		return ClaudeSource{Kind: SourceKind(o.Source)}, nil
 	}
 }
 
