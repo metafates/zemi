@@ -325,7 +325,12 @@ func (h *Host) skillsIndexPrompt() (mine, project string) {
 		if !s.Source.Stored() {
 			i = 1
 		}
-		lines[i].WriteString("- " + s.Name + ": " + s.Description + "\n")
+		desc := s.Description
+		if s.Root != "" { // the fallback description is the first body line
+			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
+			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
+		}
+		lines[i].WriteString("- " + s.Name + ": " + desc + "\n")
 	}
 	rule := "A description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n"
 	if lines[0].Len() > 0 {
