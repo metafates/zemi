@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/metafates/zemi/internal/agent"
@@ -32,9 +33,22 @@ func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
 		GoFn: (*Host).pluginsCommand,
-		GoComplete: SubcommandCompleter([]string{"new", "modify", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
-			if sub == "new" || sub == "install" || sub == "check" {
+		GoComplete: SubcommandCompleter([]string{"new", "modify", "marketplace", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+			switch sub {
+			case "new", "check":
 				return nil
+			case "install":
+				// the entries a registered marketplace lists, as install types them
+				ms, _ := plugin.Marketplaces(h.Dirs)
+				var out []string
+				for _, m := range ms {
+					for _, e := range m.Entries {
+						out = append(out, e.Name+"@"+m.Name)
+					}
+				}
+				return out
+			case "marketplace":
+				return []string{"add", "list", "remove", "update"}
 			}
 			ps, _ := plugin.Scan(h.Dirs)
 			var names []string
@@ -75,6 +89,10 @@ func (h *Host) pluginsCommand(line string) error {
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again
+	usage := verb
+	if verb == "marketplace" && len(args) > 1 {
+		usage = "marketplace " + args[1] // the subverb's own grammar
+	}
 	background := func(label string, fn func(ctx context.Context) error) {
 		h.GoSafe("plugins "+verb, func() {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -88,7 +106,7 @@ func (h *Host) pluginsCommand(line string) error {
 				return fn(ctx)
 			}()
 			if err != nil && ctx.Err() == nil {
-				h.CommandFailed("plugins", pluginsErr(verb, err))
+				h.CommandFailed("plugins", pluginsErr(usage, err))
 				if errors.Is(err, plugin.ErrUsage) {
 					return
 				}
@@ -148,6 +166,35 @@ func (h *Host) pluginsCommand(line string) error {
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
 		return pluginsErr(verb, plugin.Run(context.Background(), h.Dirs, args, io.Discard))
+	case verb == "marketplace" && len(args) > 1 && args[1] == "list":
+		// file reads only, and the list it refreshes shows the same rows
+		if err := plugin.Run(context.Background(), h.Dirs, args, io.Discard); err != nil {
+			return pluginsErr(usage, err)
+		}
+		h.GoSafe("plugins", func() { h.openPlugins(ui, true, "") })
+		return nil
+	case verb == "marketplace" && len(args) > 1:
+		sub := args[1]
+		if sub != "add" && sub != "remove" && sub != "update" {
+			return pluginsErr(usage, plugin.ErrUsage)
+		}
+		label := map[string]string{"add": "Adding marketplace", "remove": "Removing marketplace", "update": "Updating marketplaces"}[sub]
+		if sub == "remove" && len(args) > 2 {
+			label += " " + args[2]
+		}
+		background(label, func(ctx context.Context) error {
+			var out strings.Builder
+			err := plugin.Run(ctx, h.Dirs, args, &out)
+			body := strings.TrimSpace(out.String())
+			title := map[string]string{"add": "Marketplace added", "remove": "Marketplace removed", "update": "Marketplace updated"}[sub]
+			if body == marketplaceUpToDate {
+				title, body = body, ""
+			}
+			if err == nil || body != "" {
+				h.Notify(slog.LevelInfo, title, body)
+			}
+			return err
+		})
 	case verb == "check" && len(args) == 1:
 		background("Checking plugins", func(ctx context.Context) error {
 			ps, err := plugin.Check(ctx, h.Dirs)
@@ -165,7 +212,7 @@ func (h *Host) pluginsCommand(line string) error {
 			return err
 		})
 	case verb == "install" || verb == "update" || verb == "delete":
-		// install takes a URL and an optional name, the last word either way
+		// the last word names the busy line either way
 		name := "plugins"
 		if len(args) > 1 {
 			name = plugin.Name(args[len(args)-1])
@@ -191,6 +238,10 @@ func (h *Host) pluginsCommand(line string) error {
 	}
 	return nil
 }
+
+// marketplaceUpToDate is what marketplace update prints when no clone moved;
+// the wording is plugin.Run's, matched here so the toast reads it plain.
+const marketplaceUpToDate = "marketplaces up to date"
 
 // pluginsErr turns a usage error into verb's own grammar, which fits a
 // toast, or the whole of it for a verb /plugins does not take.
@@ -259,6 +310,9 @@ func (h *Host) pluginItems() []any {
 			version = cmp.Or(version, "local")
 		}
 		desc = append(desc, version)
+		if p.Marketplace != "" {
+			desc = append(desc, "from "+p.Marketplace)
+		}
 		if len(p.Uses) > 0 {
 			desc = append(desc, "uses: "+strings.Join(p.Uses, ", "))
 		}
@@ -269,7 +323,7 @@ func (h *Host) pluginItems() []any {
 		var actions []any
 		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {
 			label := "Update to " + p.Latest
-			if strings.Contains(p.Latest, "new commit") {
+			if strings.Contains(p.Latest, "new commit") || strings.HasPrefix(p.Latest, "updated in the marketplace (") {
 				label = "Update"
 			}
 			actions = append(actions, map[string]any{"text": label, "hotkey": "u", "run": "plugins update " + p.Name})
@@ -289,10 +343,65 @@ func (h *Host) pluginItems() []any {
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
 			"detail": pluginDetail(p), "actions": actions,
 			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
-				"provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
+				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
 	}
+	h.marketplaceItems(&items, err == nil)
 	return items
+}
+
+// marketplaceItems appends the Marketplaces section: one row per registered
+// marketplace, or the filler row that adds one when none is.
+func (h *Host) marketplaceItems(items *[]any, listOK bool) {
+	ms, err := plugin.Marketplaces(h.Dirs)
+	if err != nil {
+		h.Notify(slog.LevelError, "Could not read the marketplaces", err.Error())
+	}
+	if len(ms) == 0 {
+		if err == nil && listOK {
+			*items = append(*items, map[string]any{
+				"text": "Add a marketplace", "verb": "fill", "fill": "/plugins marketplace add ",
+				"section": "Marketplaces", "desc": "none registered",
+			})
+		}
+		return
+	}
+	for _, m := range ms {
+		count := fmt.Sprintf("%d plugin", len(m.Entries))
+		if len(m.Entries) != 1 {
+			count += "s"
+		}
+		*items = append(*items, map[string]any{
+			"text": m.Name, "section": "Marketplaces",
+			"desc": perm.TildePath(m.Source) + " · " + count,
+			"detail": marketplaceDetail(m),
+			"fields": fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format("2006-01-02")),
+			"actions": []any{
+				map[string]any{"text": "Update", "hotkey": "u", "run": "plugins marketplace update " + m.Name},
+				map[string]any{"text": "Remove", "hotkey": "x", "danger": true, "run": "plugins marketplace remove " + m.Name},
+			},
+		})
+	}
+}
+
+// marketplaceDetail is a marketplace row's detail: the entries its clone's
+// manifest lists, what install <name>[@<marketplace>] picks from.
+func marketplaceDetail(m plugin.MarketplaceInfo) string {
+	lines := make([]string, 0, len(m.Entries))
+	for _, e := range m.Entries {
+		line := e.Name
+		if e.Version != "" {
+			line += " " + e.Version
+		}
+		if e.Description != "" {
+			line += " - " + e.Description
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return "Its manifest lists no plugins."
+	}
+	return "Installed with /plugins install <name>@" + m.Name + ":\n" + strings.Join(lines, "\n")
 }
 
 // pluginGloss is what each declared name grants, for the detail pane: the same

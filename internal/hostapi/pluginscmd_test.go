@@ -44,18 +44,26 @@ func TestPluginsCommand(t *testing.T) {
 	os.WriteFile(global, []byte("[user]\nname = t\nemail = t@t\n"), 0o600)
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	dirs := config.Dirs{ProjectDir: tmp, DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
-	src := filepath.Join(tmp, "src", "x")
+	src, mkt := filepath.Join(tmp, "src", "x"), filepath.Join(tmp, "src", "mkt")
 	for p, text := range map[string]string{
 		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.InitFile):     "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
 		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.ManifestFile): `{"version": "0.1.0", "description": "a todo list in the statusline"}`,
 		filepath.Join(dirs.PluginsRoot(), "local", "b", plugin.InitFile):     "error('broken')",
 		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\n",
+		filepath.Join(mkt, plugin.ZemiMarketplaceFile): fmt.Sprintf(`{"name": "test", "plugins": [
+			{"name": "x", "source": {"source": "git", "url": "file://%s"}, "description": "the x plugin"}]}`,
+			filepath.Join(tmp, "src", "x.git")),
 	} {
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte(text), 0o644)
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"commit", "-qm", "x"}, {"tag", "v1.0.0"}, {"clone", "-q", "--bare", ".", "../x.git"}} {
 		if out, err := (proc.Git{Dir: src, Foreign: true}).Run(t.Context(), args...); err != nil {
+			t.Fatal(err, out)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"commit", "-qm", "m"}} {
+		if out, err := (proc.Git{Dir: mkt, Foreign: true}).Run(t.Context(), args...); err != nil {
 			t.Fatal(err, out)
 		}
 	}
@@ -94,10 +102,19 @@ func TestPluginsCommand(t *testing.T) {
 		},
 		{name: "delete a local plugin", args: "delete b --yes", want: []string{"info: Plugin deleted: b"}, not: []string{"text:b"}},
 		{
-			name: "install from a bare repo", args: "install file://" + filepath.Join(tmp, "src", "x.git"),
+			name: "marketplace add", args: "marketplace add " + mkt,
 			want: []string{
-				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · the x plugin",
-				"[version v1.0.0]", "[status starting]", "danger:true hotkey:x run:plugins delete x --yes text:Delete",
+				"info: Marketplace added: marketplace test added (1 plugins)",
+				"section:Marketplaces text:test", "desc:" + mkt + " · 1 plugin",
+				"hotkey:u run:plugins marketplace update test", "danger:true hotkey:x run:plugins marketplace remove test",
+			},
+		},
+		{
+			name: "install from the marketplace", args: "install x@test",
+			want: []string{
+				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
+				"[version v1.0.0]", "[status starting]", "[marketplace test]",
+				"danger:true hotkey:x run:plugins delete x --yes text:Delete",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
@@ -134,6 +151,10 @@ func TestPluginsCommand(t *testing.T) {
 				t.Errorf("%s: %q in\n%s", c.name, n, got)
 			}
 		}
+	}
+	// the install completer offers the entries the registered marketplaces list
+	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins install ")); !strings.Contains(got, "x@test") {
+		t.Errorf("/plugins install completes %s, want x@test", got)
 	}
 }
 
