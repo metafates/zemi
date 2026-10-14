@@ -163,6 +163,7 @@ func TestPlugins(t *testing.T) {
 		{name: "a local plugin's name", args: []string{"install", "loc@demo-market"}, want: "already named loc", err: true},
 		{name: "a URL is no longer a door", args: []string{"install", "file://" + tagged}, want: "marketplace add", err: true},
 		{name: "a remote helper is never run", args: []string{"install", "ext::sh -c touch% " + marker}, want: "marketplace add", err: true},
+		{name: "a plaintext transport is refused", args: []string{"marketplace", "add", "git://127.0.0.1/x"}, want: "not allowed", err: true},
 		{name: "a clone that fails leaves nothing", args: []string{"marketplace", "add", "file://" + tmp + "/nope"}, want: "clone", err: true},
 		{
 			name:   "check sees the same major first",
