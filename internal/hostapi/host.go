@@ -403,6 +403,7 @@ type Host struct {
 	trEdit atomic.Int64
 
 	watches *watchReg
+	hookReg *hookReg
 	// cfgPrev and cfgNow hold, per key, the values zemi.config.set wrote
 	// during the previous boot and during this one, in order: a replay
 	// writing the same sequence keeps a runtime pick made since (config.go)
@@ -658,6 +659,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		Themes:    NewThemeRegistry(),
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:   newWatchReg(),
+		hookReg:   newHookReg(),
 		Providers: agent.NewRegistry(),
 		agents:    newAgentHost(rt.Clock()),
 		luaTools:  newToolReg(),
@@ -2271,6 +2273,7 @@ func (h *Host) PurgeGeneration() {
 	h.Events.Purge()
 	h.Themes.Purge()
 	h.purgeWatches()
+	h.hookReg.purge(h.currentGen())
 	h.healthReg.purge()
 	h.completions.purge()
 	h.luaTools.purge(h.currentGen())

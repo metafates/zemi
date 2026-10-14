@@ -5,13 +5,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
@@ -26,11 +30,14 @@ type pluginLoad struct {
 }
 
 // pluginGrant is what the plugins step fixed for one generation: the roots it
-// loaded and the capabilities each manifest declared. One swap, so a reload, a
-// disable or a delete cannot leave a stale grant.
+// loaded, the capabilities each manifest declared, and which roots are
+// Claude-layout (their layered names are prefixed and their MCP servers and
+// hooks load). One swap, so a reload, a disable or a delete cannot leave a
+// stale grant.
 type pluginGrant struct {
-	roots []string
-	uses  map[string][]string // by plugin name
+	roots  []string
+	uses   map[string][]string // by plugin name
+	claude map[string]bool     // root -> it is a Claude-layout plugin
 }
 
 // PluginsStep loads every enabled plugin's init.lua as plugin origin, sorted
@@ -48,17 +55,48 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.sweepPluginState(ps)
 			}
 			run, loads := pickPlugins(ps)
-			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}}
+			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: map[string]bool{}}
+			hooks := map[string][]hookEntry{}
 			for i, p := range run {
 				kind := "installed"
 				if p.Local {
 					kind = "local"
 				}
-				grant.roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
+				root := filepath.Join(h.pluginsRoot(), kind, p.Name)
+				grant.roots[i] = root
 				grant.uses[p.Name] = p.Uses
+				// zemi's own tree wins: a plugin carrying .zemi loads none of
+				// the Claude side (its servers, hooks and name prefixes)
+				if !plugin.IsClaude(root) {
+					continue
+				}
+				if _, err := os.Stat(filepath.Join(root, plugin.CodeDir)); err == nil {
+					continue
+				}
+				grant.claude[root] = true
+				// the parts of the layout zemi has no use for yet (§6 v1 cuts)
+				for _, part := range []string{"output-styles", ".lsp.json", "settings.json"} {
+					if _, err := os.Stat(filepath.Join(root, part)); err == nil {
+						h.Log.Warn("plugin part zemi does not load, skipped", "origin", "plugins", "plugin", p.Name, "part", part)
+					}
+				}
+				data := h.pluginDataDir(p.Name)
+				if mkErr := os.MkdirAll(data, 0o755); mkErr != nil {
+					h.Log.Warn("plugin data dir not created", "origin", "plugins", "plugin", p.Name, "error", mkErr)
+				}
+				m, rerr := plugin.ReadClaude(root, data)
+				if rerr != nil {
+					h.Log.Warn("claude manifest unread, its servers and hooks skipped", "origin", "plugins", "plugin", p.Name, "error", rerr)
+					continue
+				}
+				h.addClaudeMCP(p.Name, root, data, m.MCP)
+				for event, list := range h.buildHooks(p.Name, root, data, m.Hooks) {
+					hooks[event] = append(hooks[event], list...)
+				}
 			}
 			g.Plugins = grant.roots
 			h.pluginGrant.Store(&grant)
+			h.hookReg.set(Gen(g.ID), hooks)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, plugin.InitFile)
 				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
@@ -144,6 +182,119 @@ func (h *Host) pluginDirs() []string {
 		return p.roots
 	}
 	return nil
+}
+
+// pluginDataDir is the data dir a Claude plugin's ${CLAUDE_PLUGIN_DATA}
+// stands for, where its hooks and servers may keep state.
+func (h *Host) pluginDataDir(name string) string {
+	return filepath.Join(h.Dirs.PluginsRoot(), "data", name)
+}
+
+// isClaudePlugin reports whether root is a Claude-layout plugin's root.
+func (h *Host) isClaudePlugin(root string) bool {
+	g := h.pluginGrant.Load()
+	return g != nil && g.claude[root]
+}
+
+// claudeRootOf is the Claude-layout plugin root path belongs to, or "".
+func (h *Host) claudeRootOf(path string) string {
+	sep := string(filepath.Separator)
+	if g := h.pluginGrant.Load(); g != nil {
+		for root := range g.claude {
+			if strings.HasPrefix(path, root+sep) {
+				return root
+			}
+		}
+	}
+	return ""
+}
+
+// pluginPrefix is the layered-name prefix of a Claude-layout plugin: its
+// sanitized name and a dash, so two plugins cannot ship one name.
+func (h *Host) pluginPrefix(root string) string {
+	return plugin.SanitizeName(h.PluginOf(root)) + "-"
+}
+
+// layerPrefix is the name prefix a Claude-layout plugin's layered files
+// load under; workflows stay flat, their names no user types.
+func (h *Host) layerPrefix(root, sub string) string {
+	if sub == "workflows" || !h.isClaudePlugin(root) {
+		return ""
+	}
+	return h.pluginPrefix(root)
+}
+
+// claudeCommandSkills turns a Claude plugin's commands/*.md into
+// model-invocable, not-user-invocable skill rows named <prefix><stem>:
+// Claude loads commands and skills as one thing, zemi's /command stays
+// mdcommands'. A name that would break skill.ValidName is skipped, warned
+// by the command load.
+func (h *Host) claudeCommandSkills(root, prefix, data string) []skill.Skill {
+	entries, err := os.ReadDir(filepath.Join(root, "commands"))
+	if err != nil {
+		return nil
+	}
+	var rows []skill.Skill
+	for _, e := range entries {
+		stem, ok := strings.CutSuffix(e.Name(), ".md")
+		if !ok || e.IsDir() || !skill.ValidName(prefix+stem) {
+			continue
+		}
+		path := filepath.Join(root, "commands", e.Name())
+		block, body, err := readFrontmatterFile(path)
+		if err != nil {
+			continue
+		}
+		var fm struct {
+			Description string `yaml:"description"`
+		}
+		_ = yaml.Unmarshal([]byte(block), &fm)
+		desc := strings.TrimSpace(fm.Description)
+		if desc == "" {
+			desc = skill.FirstBodyLine(body)
+		}
+		rows = append(rows, skill.Skill{
+			Name: prefix + stem, Dir: filepath.Join(root, "commands"), Source: skill.Plugin,
+			Description: learn.Truncate(desc, skill.MaxDescriptionRunes),
+			File:        path, Root: root, Data: data,
+		})
+		if strings.Contains(body, "!`") {
+			h.Log.Warn("command body has !`cmd` shell blocks, they stay literal text", "origin", "skills", "command", e.Name())
+		}
+	}
+	return rows
+}
+
+// addClaudeMCP registers a Claude plugin's MCP servers under its prefix.
+func (h *Host) addClaudeMCP(name, root, data string, servers []plugin.ClaudeMCPServer) {
+	prefix := plugin.SanitizeName(name) + "-"
+	for _, s := range servers {
+		if s.Type == "sse" || s.Type == "ws" {
+			h.Log.Warn("mcp server type not supported, skipped", "origin", "mcp", "plugin", name, "server", s.Name, "type", s.Type)
+			continue
+		}
+		server := prefix + plugin.SanitizeName(s.Name)
+		if !mcpServerName.MatchString(server) {
+			h.Log.Warn("mcp server name does not fit zemi's rule, skipped", "origin", "mcp", "plugin", name, "server", s.Name)
+			continue
+		}
+		spec := mcpSpec{
+			Command: s.Command, Args: s.Args, URL: s.URL, Headers: s.Headers,
+			ClientID: s.ClientID, ClientSecret: s.ClientSecret, CallbackPort: s.CallbackPort,
+		}
+		if spec.Command != "" {
+			env := maps.Clone(s.Env)
+			if env == nil {
+				env = map[string]string{}
+			}
+			// Claude injects these into stdio children even unreferenced
+			env["CLAUDE_PLUGIN_ROOT"], env["CLAUDE_PLUGIN_DATA"] = root, data
+			spec.Env = env
+		}
+		if err := h.addMCP(server, spec); err != nil {
+			h.Log.Warn("mcp server not registered", "origin", "mcp", "plugin", name, "server", s.Name, "error", err)
+		}
+	}
 }
 
 // pluginDeclares reports whether the plugin named name declared the capability
@@ -250,6 +401,7 @@ func (h *Host) localPluginDir(path string) string {
 type layerFile struct {
 	name, path string
 	origin     lua.Origin
+	prefix     string // a Claude-layout plugin's layered-name prefix, "" for the rest
 }
 
 // pluginLayerDir is where a plugin keeps one layered resource dir: the Lua
@@ -272,7 +424,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 		dirs = append(dirs, layerFile{path: filepath.Join(h.Dirs.ConfigHome, sub), origin: lua.OriginUser})
 	}
 	for _, p := range h.pluginDirs() {
-		dirs = append(dirs, layerFile{path: pluginLayerDir(p, sub), origin: lua.OriginPlugin})
+		dirs = append(dirs, layerFile{path: pluginLayerDir(p, sub), origin: lua.OriginPlugin, prefix: h.layerPrefix(p, sub)})
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 		dirs = append(dirs, layerFile{path: filepath.Join(pdir, sub), origin: lua.OriginProject})
@@ -285,6 +437,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 			if !ok || e.IsDir() {
 				continue
 			}
+			name = d.prefix + name
 			path := filepath.Join(d.path, e.Name())
 			if kept, ok := seen[name]; ok {
 				if a, b := h.PluginOf(kept), h.PluginOf(path); a != "" && b != "" && a != b {
@@ -296,7 +449,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 				h.RecordErrorOnce(sub, path+": name must be "+skill.NameRule)
 				continue
 			}
-			if load(layerFile{name, path, d.origin}) {
+			if load(layerFile{name, path, d.origin, d.prefix}) {
 				seen[name] = path
 			}
 		}

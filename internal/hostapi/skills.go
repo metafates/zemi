@@ -94,10 +94,28 @@ func (h *Host) syncSkills() {
 		{Path: h.agentsSkillsDir(), Source: skill.User},
 		{Path: h.builtinSkillsDir(), Source: skill.Builtin},
 	}
+	var commands []skill.Skill
 	for _, p := range h.pluginDirs() {
 		dirs = append(dirs, skill.Dir{Path: filepath.Join(p, "skills"), Source: skill.Plugin})
+		if !h.isClaudePlugin(p) {
+			continue
+		}
+		// a Claude-layout plugin's names are prefixed and its bodies carry
+		// the plugin vars; its commands load as model-invocable rows too
+		d := &dirs[len(dirs)-1]
+		d.Prefix, d.Root, d.Data = h.pluginPrefix(p), p, h.pluginDataDir(h.PluginOf(p))
+		commands = append(commands, h.claudeCommandSkills(p, d.Prefix, d.Data)...)
 	}
 	found := h.discoverSkills(dirs...)
+	for _, s := range found {
+		if s.Root == "" {
+			continue
+		}
+		if body, err := s.Body(); err == nil && strings.Contains(body, "!`") {
+			h.Log.Warn("skill body has !`cmd` shell blocks, they stay literal text", "origin", "skills", "skill", s.Name)
+		}
+	}
+	found = append(found, commands...)
 	rows := make([]*store.Skill, 0, len(found))
 	for _, s := range found {
 		rows = append(rows, &store.Skill{Name: s.Name, Path: s.Dir, Source: string(s.Source)})
@@ -178,7 +196,7 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	// recipes are read live: one written this session loads at once, while
 	// the pinned prompt keeps the list it was built with
 	for _, s := range h.modelSkills() {
-		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir, Note: skillNote(s)})
+		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data, Note: skillNote(s)})
 	}
 	return out
 }
@@ -245,7 +263,7 @@ func (h *Host) recipeAfterWrite(path string) string {
 	if !strings.EqualFold(filepath.Base(path), "SKILL.md") {
 		return strings.TrimSuffix(note, "\n\nrecipe: ")
 	}
-	sk, err := skill.Parse(filepath.Dir(path), skill.Recipe)
+	sk, err := skill.Parse(filepath.Dir(path), skill.Recipe, "")
 	loads := func(s skill.Skill) bool { return s.Source == skill.Recipe && s.Name == sk.Name }
 	switch {
 	case err != nil && !errors.Is(err, skill.ErrDescriptionCut):
@@ -347,7 +365,9 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	return nil
 }
 
-func skillFile(s skill.Skill) string { return filepath.Join(s.Dir, "SKILL.md") }
+func skillFile(s skill.Skill) string {
+	return cmp.Or(s.File, filepath.Join(s.Dir, "SKILL.md"))
+}
 
 // hasSkillCommand reports whether /<name> is the skill's own command.
 func (h *Host) hasSkillCommand(s skill.Skill) bool {
@@ -504,7 +524,7 @@ func (h *Host) useSkill(name, request, stdin string) error {
 // sendSkill sends line with the skill attached, $ARGUMENTS in it filled
 // with the request; the model loading a skill on its own sees it as written.
 func (h *Host) sendSkill(s skill.Skill, line, request, stdin string) error {
-	text, err := tools.SkillText(s.Dir)
+	text, err := tools.SkillText(tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data})
 	if err != nil {
 		return err
 	}
@@ -603,7 +623,7 @@ func (h *Host) skillItems() []any {
 			state, item["on"], item["run"] = "off", false, toggle
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
-		body, err := skill.Body(s.Dir)
+		body, err := s.Body()
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}

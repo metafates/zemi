@@ -28,7 +28,7 @@ description: run the local integration suite
 Body instructions here.
 `)
 	writeFile(t, filepath.Join(dir, "zemi-skill.lua"), "-- hook\n")
-	sk, err := Parse(dir, User)
+	sk, err := Parse(dir, User, "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -44,7 +44,7 @@ Body instructions here.
 
 	crlf := filepath.Join(t.TempDir(), "crlf")
 	writeFile(t, filepath.Join(crlf, "SKILL.md"), "---\r\nname: crlf\r\ndescription: saved on windows\r\n---\r\n\r\nBody.\r\n")
-	if sk, err := Parse(crlf, User); err != nil || sk.Description != "saved on windows" {
+	if sk, err := Parse(crlf, User, ""); err != nil || sk.Description != "saved on windows" {
 		t.Fatalf("crlf: %+v %v", sk, err)
 	}
 }
@@ -59,8 +59,6 @@ func TestParseErrors(t *testing.T) {
 		{"no skill file", "x", "", "no SKILL.md"},
 		{"no frontmatter", "x", "just text", "frontmatter block"},
 		{"unterminated", "x", "---\nname: x\n", "unterminated"},
-		{"missing name", "x", "---\ndescription: d\n---\n", "name is required"},
-		{"missing description", "x", "---\nname: x\n---\n", "description is required"},
 		{"name mismatch", "x", "---\nname: y\ndescription: d\n---\n", "must match the directory"},
 		{"bad dir name", "Bad_Name", "---\nname: Bad_Name\ndescription: d\n---\n", "directory name"},
 		{"a SKILL.md over the cap", "x", strings.Repeat("a", MaxFileBytes+1), "SKILL.md exceeds"},
@@ -71,7 +69,7 @@ func TestParseErrors(t *testing.T) {
 			if c.content != "" {
 				writeFile(t, filepath.Join(dir, "SKILL.md"), c.content)
 			}
-			if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := Parse(dir, User, ""); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err=%v, want %q", err, c.want)
 			}
 		})
@@ -99,7 +97,7 @@ func TestParseInvocation(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "x")
 			writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+c.extra+"\n---\nBody $ARGUMENTS.\n")
-			sk, err := Parse(dir, c.source)
+			sk, err := Parse(dir, c.source, "")
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err=%v", err)
 			}
@@ -112,12 +110,35 @@ func TestParseInvocation(t *testing.T) {
 
 // A description over the cap is cut, not a reason to drop the skill:
 // published skills are written for longer limits than zemi's index.
+// The two relaxations: frontmatter name and description are optional, the
+// directory and the body's first line stand in; a present-but-mismatched
+// name stays an error, and a Dir prefix joins every discovered name.
+func TestParseRelaxationsAndPrefix(t *testing.T) {
+	loose := filepath.Join(t.TempDir(), "loose")
+	writeFile(t, filepath.Join(loose, "SKILL.md"), "---\nuser-invocable: false\n---\n\nFirst line is the trigger.\n\nBody.\n")
+	sk, err := Parse(loose, User, "")
+	if err != nil || sk.Name != "loose" || sk.Description != "First line is the trigger." || sk.UserInvocable {
+		t.Fatalf("relaxed: %+v %v", sk, err)
+	}
+	mismatch := filepath.Join(t.TempDir(), "other")
+	writeFile(t, filepath.Join(mismatch, "SKILL.md"), "---\nname: not-other\ndescription: d\n---\nbody")
+	if _, err := Parse(mismatch, User, ""); err == nil || !strings.Contains(err.Error(), "must match the directory") {
+		t.Fatalf("mismatch: %v", err)
+	}
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "greet", "SKILL.md"), "---\nname: greet\ndescription: say hi\n---\nbody")
+	got, warns := Discover(Dir{Path: base, Source: Plugin, Prefix: "fix-", Root: "/r", Data: "/d"})
+	if len(got) != 1 || got[0].Name != "fix-greet" || got[0].Root != "/r" || len(warns) != 0 {
+		t.Fatalf("prefixed: %+v %q", got, warns)
+	}
+}
+
 func TestParseDescriptionCap(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "x")
 	long := strings.Repeat("a", MaxDescriptionRunes+1)
 	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: "+long+"\n---\n\nBody.\n")
-	sk, err := Parse(dir, User)
+	sk, err := Parse(dir, User, "")
 	if !errors.Is(err, ErrDescriptionCut) {
 		t.Fatalf("err=%v", err)
 	}
@@ -139,7 +160,7 @@ func TestParseSymlinkedSkillFile(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(dir, "SKILL.md")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), "symlink") {
+	if _, err := Parse(dir, User, ""); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("err=%v", err)
 	}
 }
@@ -165,10 +186,10 @@ func TestParseNonRegularSkillFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.make(t, filepath.Join(dir, "SKILL.md"))
-			if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			if _, err := Parse(dir, User, ""); err == nil || !strings.Contains(err.Error(), "not a regular file") {
 				t.Fatalf("parse err=%v", err)
 			}
-			if _, err := Body(dir); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			if _, err := (Skill{Dir: dir}).Body(); err == nil || !strings.Contains(err.Error(), "not a regular file") {
 				t.Fatalf("body err=%v", err)
 			}
 		})
@@ -183,7 +204,7 @@ func TestDiscoverBrokenSkillHoldsItsName(t *testing.T) {
 	writeFile(t, filepath.Join(user, "x", "SKILL.md"), "not frontmatter")
 	writeFile(t, filepath.Join(project, "x", "SKILL.md"), "---\nname: x\ndescription: project x\n---\n")
 
-	got, warns := Discover(Dir{user, User}, Dir{project, Project})
+	got, warns := Discover(Dir{Path: user, Source: User}, Dir{Path: project, Source: Project})
 	if len(got) != 0 {
 		t.Fatalf("a lower-trust skill took the name: %+v", got)
 	}
@@ -200,7 +221,7 @@ func TestDiscoverMergesUserOverBuiltin(t *testing.T) {
 	writeFile(t, filepath.Join(builtin, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: builtin alpha\n---\n")
 	writeFile(t, filepath.Join(builtin, "beta", "SKILL.md"), "---\nname: beta\ndescription: builtin beta\n---\n")
 
-	got, warns := Discover(Dir{user, User}, Dir{builtin, Builtin})
+	got, warns := Discover(Dir{Path: user, Source: User}, Dir{Path: builtin, Source: Builtin})
 	if len(warns) != 1 || !strings.Contains(warns[0], "broken") {
 		t.Fatalf("warnings=%v", warns)
 	}

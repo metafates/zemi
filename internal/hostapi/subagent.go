@@ -115,7 +115,7 @@ func (h *Host) agentDefs() []AgentDef {
 			h.RecordErrorOnce("agents", f.path+" is ignored: fork continues the caller's conversation, so there is no definition to write")
 			return false
 		}
-		d, err := parseAgentFile(f.name, f.path, f.origin)
+		d, err := h.parseAgentFile(f.name, f.path, f.origin, f.prefix != "")
 		if err != nil {
 			h.RecordErrorOnce("agents", err.Error())
 			return false
@@ -153,28 +153,70 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))
 }
 
-func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
+// zemiToolNames is every tool name an agent definition may keep: the
+// builtins. A Claude agent naming anything else loses the entry, since it
+// would fail the invocation filter.
+var zemiToolNames = map[string]bool{
+	tools.ToolShell: true, tools.ToolRead: true, tools.ToolWrite: true,
+	tools.ToolEdit: true, tools.ToolGlob: true, tools.ToolGrep: true,
+	tools.ToolFetch: true, tools.ToolWebSearch: true, tools.ToolTodos: true,
+	tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolSkill: true,
+	tools.ToolJobStart: true, tools.ToolJobRead: true, tools.ToolJobList: true,
+	tools.ToolJobKill: true, tools.ToolMemory: true, tools.ToolDiagnostics: true,
+	tools.ToolLSP: true, tools.ToolAgent: true, tools.ToolWorkflow: true,
+	tools.ToolLua: true, tools.ToolUpdate: true, tools.ToolSearch: true,
+}
+
+// agentIgnoredKeys are the Claude agent frontmatter keys zemi has no use for.
+var agentIgnoredKeys = []string{"skills", "color", "background", "memory", "isolation", "effort", "maxTurns", "permissionMode", "hooks", "mcpServers"}
+
+// parseAgentFile parses one agent definition. For a Claude-layout plugin's
+// (claude), the tools are Claude names through the alias map and anything
+// zemi does not have is dropped with a word, the model must stay one zemi
+// can resolve, and the keys zemi has no use for are named once.
+func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool) (AgentDef, error) {
 	block, body, err := readFrontmatterFile(path)
 	if err != nil {
 		return AgentDef{}, err
 	}
 	var fm struct {
-		Description string `yaml:"description"`
-		Model       string `yaml:"model"`
-		Tools       any    `yaml:"tools"`
-		ReadOnly    bool   `yaml:"read_only"`
+		Description     string `yaml:"description"`
+		WhenToUse       string `yaml:"when-to-use"`
+		WhenToUseSnake  string `yaml:"when_to_use"`
+		Model           string `yaml:"model"`
+		Tools           any    `yaml:"tools"`
+		DisallowedTools any    `yaml:"disallowedTools"`
+		ReadOnly        bool   `yaml:"read_only"`
 	}
 	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 		return AgentDef{}, fmt.Errorf("%s: frontmatter: %w", path, err)
 	}
 	d := AgentDef{
-		Name:        name,
-		Description: strings.TrimSpace(fm.Description),
-		Model:       fm.Model,
-		System:      strings.TrimSpace(body),
-		Source:      source,
-		Path:        path,
+		Name:   name,
+		Model:  fm.Model,
+		System: strings.TrimSpace(body),
+		Source: source,
+		Path:   path,
+		// the trigger may be written under Claude's name for it
+		Description: cmp.Or(strings.TrimSpace(fm.Description), strings.TrimSpace(fm.WhenToUse), strings.TrimSpace(fm.WhenToUseSnake)),
 		ReadOnly:    fm.ReadOnly,
+	}
+	if claude {
+		if root := h.claudeRootOf(path); root != "" {
+			data := h.pluginDataDir(h.PluginOf(root))
+			d.System = strings.ReplaceAll(d.System, "${CLAUDE_PLUGIN_ROOT}", root)
+			d.System = strings.ReplaceAll(d.System, "${CLAUDE_PLUGIN_DATA}", data)
+		}
+		if strings.Contains(d.System, "!`") {
+			h.Log.Warn("agent body has !`cmd` shell blocks, they stay literal text", "origin", "agents", "path", path)
+		}
+		switch fm.Model {
+		case "", "inherit":
+		default:
+			// an id that would fail checkModelID at every run is dropped here
+			h.Log.Warn(path+": model is not one zemi knows, ignored", "origin", "agents", "model", fm.Model)
+			d.Model = ""
+		}
 	}
 	if d.Model == "inherit" {
 		d.Model = ""
@@ -182,18 +224,59 @@ func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
 	if d.Description == "" {
 		return AgentDef{}, fmt.Errorf("%s: description is required", path)
 	}
-	// tools: "read, grep" or a yaml list
-	switch t := fm.Tools.(type) {
-	case string:
-		for n := range strings.SplitSeq(t, ",") {
-			if n = strings.TrimSpace(n); n != "" {
-				d.Tools = append(d.Tools, n)
+	// tools: "read, grep" or a yaml list; disallowedTools joins as -name
+	var names []string
+	toolList := func(v any) {
+		switch t := v.(type) {
+		case string:
+			for n := range strings.SplitSeq(t, ",") {
+				if n = strings.TrimSpace(n); n != "" {
+					names = append(names, n)
+				}
+			}
+		case []any:
+			for _, n := range t {
+				if s, ok := n.(string); ok && s != "" {
+					names = append(names, s)
+				}
 			}
 		}
-	case []any:
-		for _, n := range t {
-			if s, ok := n.(string); ok && s != "" {
-				d.Tools = append(d.Tools, s)
+	}
+	toolList(fm.Tools)
+	toolList(fm.DisallowedTools)
+	var dropped []string
+	for _, n := range names {
+		deny := strings.HasPrefix(n, "-")
+		tool := strings.TrimPrefix(n, "-")
+		if claude {
+			if mapped := claudeTool(tool); zemiToolNames[mapped] {
+				tool = mapped
+			} else {
+				if !deny { // a negation of what zemi does not have is safe to drop
+					dropped = append(dropped, n)
+				}
+				continue
+			}
+		}
+		if deny {
+			tool = "-" + tool
+		}
+		d.Tools = append(d.Tools, tool)
+	}
+	if len(dropped) > 0 {
+		h.Log.Warn(path+": tools zemi does not have, dropped", "origin", "agents", "tools", strings.Join(dropped, ", "))
+	}
+	if claude {
+		var raw map[string]any
+		if yaml.Unmarshal([]byte(block), &raw) == nil {
+			var ignored []string
+			for _, k := range agentIgnoredKeys {
+				if _, ok := raw[k]; ok {
+					ignored = append(ignored, k)
+				}
+			}
+			if ignored != nil {
+				h.Log.Warn(path+": frontmatter zemi does not use, ignored", "origin", "agents", "keys", strings.Join(ignored, ", "))
 			}
 		}
 	}
@@ -297,6 +380,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if run.forkBase == len(runner.History) && pipe.Pad != "" && setup.writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
+	h.consultHooks("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description})
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
 	// a fork reports only what it said, not the conversation it opened with
@@ -321,6 +405,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
 	}
+	h.consultHooks("agent.subagent.finish", map[string]any{"agent": def.Name, "error": errString(err)})
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report

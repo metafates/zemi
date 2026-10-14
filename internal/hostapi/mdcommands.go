@@ -61,15 +61,25 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		var fm struct {
 			Description  string     `yaml:"description"`
 			ArgumentHint skill.Hint `yaml:"argument-hint"`
+			Arguments    any        `yaml:"arguments"`
 		}
 		if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 			warn("frontmatter: " + err.Error())
 			return false
 		}
+		if f.prefix != "" && fm.Arguments != nil {
+			// Claude's named arguments stay literal here, $ARGUMENTS and
+			// $1..$9 still fill
+			h.Log.Warn(path+": named arguments are not substituted", "origin", "commands")
+		}
 		body = strings.TrimSpace(body)
 		if body == "" {
 			warn("empty prompt")
 			return false
+		}
+		if root := h.claudeRootOf(path); root != "" {
+			body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_ROOT}", root)
+			body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_DATA}", h.pluginDataDir(h.PluginOf(root)))
 		}
 		desc := listDesc(cmp.Or(fm.Description, clipRunes(strings.SplitN(body, "\n", 2)[0], 60)))
 		desc = strings.TrimSpace(desc + " " + string(fm.ArgumentHint))

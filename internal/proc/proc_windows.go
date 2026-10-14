@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,4 +59,12 @@ func ShellCommand(line string) *exec.Cmd {
 		return Command("cmd", "/c", line)
 	}
 	return Command(Shell(), "-c", line)
+}
+
+// ShellCommandContext is ShellCommand cancelled as a group when ctx is.
+func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
+	if s := Shell(); s == "cmd" {
+		return CommandContext(ctx, "cmd", "/c", line)
+	}
+	return CommandContext(ctx, Shell(), "-c", line)
 }
