@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,9 +48,22 @@ func TestGoldenPlugins(t *testing.T) {
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"commit", "-qm", "x"}, {"tag", "v1.4.0"}, {"commit", "-qm", "y", "--allow-empty"}, {"tag", "v1.5.0"}} {
 		gitIn(src, args...)
 	}
-	if _, err := plugin.Install(t.Context(), host.Dirs, src, "git-status"); err != nil {
-		t.Fatal(err)
+	gitIn(src, "clone", "-q", "--bare", ".", "../x.git")
+	// under the fake HOME, so the row's source reads ~/mkt on every machine
+	mkt := filepath.Join(filepath.Dir(host.Dirs.DataHome), "mkt")
+	write(filepath.Join(mkt, plugin.ZemiMarketplaceFile), fmt.Sprintf(`{"name": "examples", "plugins": [
+		{"name": "git-status", "source": {"source": "git", "url": "file://%s"}, "description": "the git branch in the statusline"}]}`,
+		filepath.Join(filepath.Dir(src), "x.git")))
+	gitIn(mkt, "init", "-q")
+	gitIn(mkt, "add", ".")
+	gitIn(mkt, "commit", "-qm", "m")
+	runPlugin := func(args ...string) {
+		if err := plugin.Run(t.Context(), host.Dirs, args, io.Discard); err != nil {
+			t.Fatal(err)
+		}
 	}
+	runPlugin("marketplace", "add", mkt)
+	runPlugin("install", "git-status@examples")
 	clone := filepath.Join(host.Dirs.PluginsRoot(), "installed", "git-status")
 	gitIn(clone, "checkout", "-q", "refs/tags/v1.4.0")
 	gitIn(clone, "remote", "set-url", "origin", "https://github.com/someone/zemi-git-status")
