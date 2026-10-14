@@ -318,6 +318,21 @@ func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 	return out, directive
 }
 
+// completeMarketplaces offers the registered marketplace names, for
+// marketplace remove and update.
+func completeMarketplaces(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	dirs, err := completionDirs(c)
+	if err != nil || len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ms, _ := plugin.Marketplaces(dirs)
+	var out []cobra.Completion
+	for _, m := range ms {
+		out = append(out, m.Name)
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
 // finish checks a turn's arguments and joins them into the prompt. A lone
 // word that is a near miss of a command is refused: sent, it would open the
 // TUI and pay for a model call on a typo.
@@ -393,9 +408,11 @@ func pluginsCommand(o *options) *cobra.Command {
 		case c.Name() == "plugins":
 			var ps []plugin.Plugin
 			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
-				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins install <git url> adds one")
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins marketplace add <url> adds one")
 			}
 			printPlugins(c.OutOrStdout(), ps, *asJSON)
+		case c.Parent().Name() == "marketplace":
+			err = plugin.Run(ctx, dirs, append([]string{"marketplace", c.Name()}, args...), c.OutOrStdout())
 		default:
 			err = plugin.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
@@ -416,7 +433,7 @@ func pluginsCommand(o *options) *cobra.Command {
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
 	}{
-		{"install <git url|marketplace> [name]", "clone a plugin at its highest vX.Y.Z tag, or add a .claude-plugin marketplace and install its <name>@<marketplace> entries", nargs(2), nil},
+		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), nil},
 		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins},
 		{"check", "fetch, then list the updates", cobra.NoArgs, nil},
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins},
@@ -424,6 +441,26 @@ func pluginsCommand(o *options) *cobra.Command {
 	} {
 		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
 	}
+	// the only doors installs come through: a marketplace registered here,
+	// then its entries installed by name
+	mkt := &cobra.Command{
+		Use:   "marketplace",
+		Short: "add, list, update and remove the marketplaces plugins install from",
+		Args:  cobra.NoArgs,
+	}
+	for _, v := range []struct {
+		use, short string
+		args       cobra.PositionalArgs
+		names      cobra.CompletionFunc
+	}{
+		{"add <url>", "register a repo that holds a marketplace manifest", nargs(1), nil},
+		{"list", "show each marketplace and the entries it lists", cobra.NoArgs, nil},
+		{"remove <name>", "drop a marketplace and its clone", nargs(1), completeMarketplaces},
+		{"update [name]", "pull one or all marketplace clones", cobra.MaximumNArgs(1), completeMarketplaces},
+	} {
+		mkt.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
+	}
+	cmd.AddCommand(mkt)
 	// a local plugin is the user's own code with no copy anywhere, and off a
 	// terminal nobody answers, so an agent's command cannot delete one
 	del := &cobra.Command{
@@ -652,9 +689,9 @@ func pad(p colorprofile.Profile, role, text string, w int) string {
 // so cut and awk read the name, and a header only on a terminal.
 func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 	p := colorprofile.Detect(w, os.Environ())
-	var rows [][5]string
+	var rows [][6]string
 	if !asJSON && p != colorprofile.NoTTY && len(ps) > 0 {
-		rows = append(rows, [5]string{"name", "version", "on", "source", "uses"})
+		rows = append(rows, [6]string{"name", "version", "on", "source", "marketplace", "uses"})
 	}
 	for _, pl := range ps {
 		version, source, on := pl.Version, pl.URL, "on"
@@ -666,29 +703,30 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 		}
 		if asJSON {
 			writeJSON(w, struct {
-				Name    string   `json:"name"`
-				Version string   `json:"version"`
-				Local   bool     `json:"local"`
-				Enabled bool     `json:"enabled"`
-				Source  string   `json:"source"`
-				Uses    []string `json:"uses"`
-			}{Name: pl.Name, Version: version, Local: pl.Local, Enabled: pl.Enabled, Source: source, Uses: pl.Uses})
+				Name        string   `json:"name"`
+				Version     string   `json:"version"`
+				Local       bool     `json:"local"`
+				Enabled     bool     `json:"enabled"`
+				Source      string   `json:"source"`
+				Marketplace string   `json:"marketplace"`
+				Uses        []string `json:"uses"`
+			}{Name: pl.Name, Version: version, Local: pl.Local, Enabled: pl.Enabled, Source: source, Marketplace: pl.Marketplace, Uses: pl.Uses})
 			continue
 		}
-		rows = append(rows, [5]string{pl.Name, version, on, source, strings.Join(pl.Uses, ",")})
+		rows = append(rows, [6]string{pl.Name, version, on, source, pl.Marketplace, strings.Join(pl.Uses, ",")})
 	}
-	var width [4]int
+	var width [5]int
 	for _, r := range rows {
 		for i := range width {
 			width[i] = max(width[i], ansi.StringWidth(r[i])+2)
 		}
 	}
 	for i, r := range rows {
-		roles := [5]string{"", "hint", statusRole[r[2]], "hint", "hint"}
+		roles := [6]string{"", "hint", statusRole[r[2]], "hint", "hint", "hint"}
 		if i == 0 && len(rows) > len(ps) {
-			roles = [5]string{"title", "title", "title", "title", "title"}
+			roles = [6]string{"title", "title", "title", "title", "title", "title"}
 		}
-		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+pad(p, roles[3], r[3], width[3])+paint(p, roles[4], r[4]))
+		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+pad(p, roles[3], r[3], width[3])+pad(p, roles[4], r[4], width[4])+paint(p, roles[5], r[5]))
 	}
 }
 
