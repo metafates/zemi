@@ -265,6 +265,21 @@ func place(ctx context.Context, d config.Dirs, name, tmp string) (Plugin, string
 	return load(ctx, dest, false, true), id, nil
 }
 
+// dropSynth removes a synthesized manifest an install left untracked: a
+// checkout or merge bringing the same path in would refuse otherwise. A
+// tracked manifest is the plugin's own and stays.
+func dropSynth(ctx context.Context, dir string) {
+	for _, file := range []string{ManifestFile, ClaudeManifestFile} {
+		if _, err := os.Lstat(filepath.Join(dir, file)); err != nil {
+			continue
+		}
+		if tracked, _ := git(ctx, dir, "ls-files", file); tracked != "" {
+			continue
+		}
+		os.Remove(filepath.Join(dir, file))
+	}
+}
+
 // update fetches a plugin and checks out its highest semver tag of the same
 // major when it is on a tag already; a branch moves to the highest tag ahead
 // of it, or else fast-forward. A dirty checkout makes git refuse, and that
@@ -282,6 +297,7 @@ func update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	// a cancel stops the fetch only: a killed merge or checkout would leave
 	// .git/index.lock and a half-moved worktree the next boot loads
 	ctx = context.WithoutCancel(ctx)
+	dropSynth(ctx, dir)
 	to := ""
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
 	if cur := highest(here, ""); cur != "" {
@@ -606,15 +622,13 @@ func MarketplaceOf(d config.Dirs, name string) (Provenance, bool) {
 	return Provenance(reg), ok
 }
 
-// recordInstall writes the provenance of an installed entry; an existing row
-// keeps its id, so an update never resets the identity its state hangs on.
+// recordInstall writes the provenance of an installed entry. The caller owns
+// the install id: a fresh install supplies a new one, so a stale row cannot
+// hand its state to a reinstall, an update re-supplies the row's.
 func recordInstall(d config.Dirs, name, mkt string, e MarketplacePlugin, kind, id string) error {
 	f, err := readMarketplaces(d)
 	if err != nil {
 		return err
-	}
-	if old := f.Installs[name]; old.ID != "" {
-		id = old.ID
 	}
 	if f.Installs == nil {
 		f.Installs = map[string]installReg{}
@@ -704,13 +718,16 @@ func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Write
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	// one fixed tmp, since the manifest decides the destination and no name
-	// can be derived from the URL; concurrent adds serialize on it
-	tmp := filepath.Join(dir, ".add.tmp")
-	if err := cloneRepo(ctx, source, tmp); err != nil {
+	// the manifest decides the destination, so no name can be derived from
+	// the URL: a temp dir keeps concurrent adds apart
+	tmp, err := os.MkdirTemp(dir, ".add-")
+	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmp)
+	if err := cloneRepo(ctx, source, tmp); err != nil {
+		return err
+	}
 	m, err := ReadMarketplace(tmp)
 	if errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%s holds neither %s nor %s: zemi installs plugins only from a marketplace", source, ZemiMarketplaceFile, ClaudeMarketplaceFile)
@@ -942,7 +959,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 		}
 		return p, nil
 	case "relative", "git-subdir":
-		return placeCopy(ctx, d, mkt, e, name, true)
+		return placeCopy(ctx, d, mkt, e, name, true, rand.Text())
 	default:
 		return Plugin{}, fmt.Errorf("plugin %s: %s sources are not supported", e.Name, e.Source.Kind)
 	}
@@ -967,9 +984,10 @@ func copySource(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlu
 
 // placeCopy (re)copies the entry's subtree into installed/<name>: a plain
 // dir, no .git, so scan, sweep and uninstall treat it like any other
-// install. The entry becomes the manifest when the dir has none of its own.
-// A copy is staged and renamed, so a reload never reads half of it.
-func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin, name string, on bool) (Plugin, error) {
+// install. The entry becomes the manifest when the dir has none of its own,
+// and the caller's id records the install's identity. A copy is staged and
+// renamed, so a reload never reads half of it.
+func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin, name string, on bool, id string) (Plugin, error) {
 	src, done, err := copySource(ctx, d, mkt, e)
 	if err != nil {
 		return Plugin{}, err
@@ -1010,7 +1028,7 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlug
 		}
 		off = nil
 	}
-	if err := recordInstall(d, name, mkt, e, kindCopy, rand.Text()); err != nil {
+	if err := recordInstall(d, name, mkt, e, kindCopy, id); err != nil {
 		return Plugin{}, err
 	}
 	p := load(ctx, dest, false, !off[name])
@@ -1054,7 +1072,10 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 		if !changed && reg.Version == e.Version {
 			continue
 		}
-		if _, err := placeCopy(ctx, d, mkt, e, name, false); err != nil {
+		// an update re-records under the row's id; a row from before ids
+		// backfills one now
+		id := cmp.Or(reg.ID, rand.Text())
+		if _, err := placeCopy(ctx, d, mkt, e, name, false, id); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			continue
 		}
@@ -1068,9 +1089,10 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 	return moved, errors.Join(errs...)
 }
 
-// refreshInstall points a git-kind row's recorded version at what its
-// marketplace clone currently lists, so the next check compares against the
-// marketplace's state as of this update. The clone is a cache: no pull.
+// refreshInstall re-supplies a git-kind install's synthesized manifest and
+// points its row's recorded version at what its marketplace clone currently
+// lists, so the next check compares against the marketplace's state as of
+// this update. The clone is a cache: no pull.
 func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", reg.Marketplace))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -1083,10 +1105,15 @@ func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	if !ok {
 		return fmt.Errorf("marketplace %s no longer lists %s", reg.Marketplace, reg.Entry)
 	}
+	// update dropped the synthesized manifest to unblock its checkout; the
+	// entry re-supplies it unless the tree grew one of its own
+	if _, err := e.synthManifest(filepath.Join(d.PluginsRoot(), "installed", name)); err != nil {
+		return err
+	}
 	if e.Version == reg.Version {
 		return nil
 	}
-	return recordInstall(d, name, reg.Marketplace, e, reg.Kind, "")
+	return recordInstall(d, name, reg.Marketplace, e, reg.Kind, reg.ID)
 }
 
 // pullMarketplace fetches the marketplace clone and hard-resets it to the

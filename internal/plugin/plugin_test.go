@@ -363,15 +363,18 @@ func TestMarketplace(t *testing.T) {
 	// a zemi-native marketplace; its claude manifest would name and list
 	// different things, so the add shows which one was read
 	both := filepath.Join(tmp, "src", "both")
-	write(t, both, map[string]string{
-		".zemi/marketplace.json": `{
+	bothManifest := func(strictOne string) string {
+		return fmt.Sprintf(`{
 			"name": "bothz", "owner": {"name": "t"},
 			"plugins": [
-				{"name": "strict_one", "source": "./plugins/strict-one", "version": "1.0.0", "uses": ["http"]},
+				{"name": "strict_one", "source": "./plugins/strict-one", "version": %q, "uses": ["http"]},
 				{"name": "own-z", "source": "./plugins/own-z", "version": "9.9.9", "description": "entry says"},
 				{"name": "rel-one", "source": "./plugins/rel-one"}
 			]
-		}`,
+		}`, strictOne)
+	}
+	write(t, both, map[string]string{
+		".zemi/marketplace.json":            bothManifest("1.0.0"),
 		".claude-plugin/marketplace.json":   `{"name": "Other Name", "plugins": [{"name": "claude-only", "source": "./plugins/strict-one"}]}`,
 		"plugins/strict-one/.zemi/init.lua": "-- strict one\n",
 		"plugins/own-z/.zemi/plugin.json":   `{"version": "2.0.0", "description": "its own", "uses": ["agent"]}`,
@@ -419,6 +422,7 @@ func TestMarketplace(t *testing.T) {
 		return nil
 	}
 	var added time.Time
+	var orphanID, relID string
 
 	for _, c := range []struct {
 		name   string
@@ -591,6 +595,23 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
+			name: "a reinstall over an orphan row takes a fresh id",
+			before: func() {
+				if prov, ok := MarketplaceOf(d, "strict_one"); ok {
+					orphanID = prov.ID
+				}
+				// the dir went away without the registry learning it
+				os.RemoveAll(filepath.Join(d.PluginsRoot(), "installed", "strict_one"))
+			},
+			args: []string{"install", "strict_one@bothz"}, want: "\nstrict_one 1.0.0\n",
+			check: func(t *testing.T) {
+				prov, ok := MarketplaceOf(d, "strict_one")
+				if !ok || prov.ID == "" || prov.ID == orphanID {
+					t.Errorf("the reinstall did not reset the identity: %+v, stale %q", prov, orphanID)
+				}
+			},
+		},
+		{
 			name: "a bare name found in two marketplaces lists the candidates",
 			args: []string{"install", "rel-one"}, want: "rel-one@bothz, rel-one@demo-market", err: true,
 		},
@@ -622,16 +643,25 @@ func TestMarketplace(t *testing.T) {
 		},
 		{name: "check skips the copies", args: []string{"check"}, want: "\nPlugins up to date\n"},
 		{
-			name:   "an update re-copies from a pulled clone",
-			before: func() { bump("1.1.0", "0.2.0", "0.1.0", "0.5.0") },
-			args:   []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
+			name: "an update re-copies from a pulled clone",
+			before: func() {
+				if prov, ok := MarketplaceOf(d, "rel-one"); ok {
+					relID = prov.ID
+				}
+				bump("1.1.0", "0.2.0", "0.1.0", "0.5.0")
+			},
+			args: []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
 			check: func(t *testing.T) {
 				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
 				if err != nil || !strings.Contains(string(b), `"version":"1.1.0"`) {
 					t.Errorf("the copy did not move to 1.1.0: %q, %v", b, err)
 				}
-				if prov, _ := MarketplaceOf(d, "rel-one"); prov.Version != "1.1.0" {
+				prov, _ := MarketplaceOf(d, "rel-one")
+				if prov.Version != "1.1.0" {
 					t.Errorf("provenance version %q", prov.Version)
+				}
+				if prov.ID != relID {
+					t.Errorf("the update reset the install id: %q, want %q", prov.ID, relID)
 				}
 			},
 		},
@@ -696,12 +726,24 @@ func TestMarketplace(t *testing.T) {
 			args: []string{"update", "rel-one"}, want: "\nrel-one 1.1.0 -> 1.2.0\n",
 		},
 		{
+			// one bare update pulls each of the two marketplaces once and
+			// re-copies every group: a dropped group loses its line
+			name: "one update re-copies both marketplaces' copies",
+			before: func() {
+				write(t, both, map[string]string{".zemi/marketplace.json": bothManifest("1.1.0")})
+				gitIn(both, "commit", "-qam", "bump")
+				bump("1.3.0", "0.3.0", "0.1.0", "0.5.0")
+			},
+			args: []string{"update"},
+			want: "own-z updated strict_one 1.0.0 -> 1.1.0 entry-manifest updated loose updated own-manifest updated rel-one 1.2.0 -> 1.3.0 sub-one updated",
+		},
+		{
 			name: "a git-subdir copy updates from its own repo",
 			before: func() {
 				write(t, zedsub, map[string]string{"plugins/sub/commands/two.md": "do two"})
 				gitIn(zedsub, "add", ".")
 				gitIn(zedsub, "commit", "-qm", "two")
-				bump("1.2.0", "0.3.0", "0.2.0", "0.5.0")
+				bump("1.3.0", "0.3.0", "0.2.0", "0.5.0")
 			},
 			args: []string{"update", "sub-one"}, want: "\nsub-one 0.1.0 -> 0.2.0\n",
 			check: func(t *testing.T) {
@@ -716,9 +758,14 @@ func TestMarketplace(t *testing.T) {
 		{
 			name: "a marketplace update pulls once and names the installs behind it",
 			before: func() {
-				gitIn(zed, "commit", "-q", "--allow-empty", "-m", "v2")
+				// upstream grows the very path the install's synthesized
+				// manifest occupies, so the checkout would refuse without
+				// zemi dropping its own file first
+				write(t, zed, map[string]string{".claude-plugin/plugin.json": `{"version": "2.0.0", "description": "upstream's own"}`})
+				gitIn(zed, "add", ".")
+				gitIn(zed, "commit", "-qm", "v2")
 				gitIn(zed, "tag", "v0.2.0")
-				bump("1.2.0", "0.3.0", "0.2.0", "0.6.0")
+				bump("1.3.0", "0.3.0", "0.2.0", "0.6.0")
 			},
 			args: []string{"marketplace", "update", "demo-market"},
 			want: "behind it: entry-manifest, loose, own-manifest, rel-one, sub-one",
@@ -737,12 +784,17 @@ func TestMarketplace(t *testing.T) {
 				if !ok || prov.Version != "0.6.0" || prov.Kind != kindGit {
 					t.Errorf("the row did not refresh to the marketplace's version: %+v, %v", prov, ok)
 				}
+				// upstream's own manifest replaced the synthesized one
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "git-one", ClaudeManifestFile))
+				if err != nil || !strings.Contains(string(b), "2.0.0") {
+					t.Errorf("the update did not take upstream's manifest: %q, %v", b, err)
+				}
 			},
 		},
 		{
 			name: "an update refuses an entry the marketplace renamed",
 			before: func() {
-				renamed := strings.Replace(manifest("1.2.0", "0.3.0", "0.2.0", "0.6.0"), `"name": "Rel One"`, `"name": "Rel Two"`, 1)
+				renamed := strings.Replace(manifest("1.3.0", "0.3.0", "0.2.0", "0.6.0"), `"name": "Rel One"`, `"name": "Rel Two"`, 1)
 				write(t, mkt, map[string]string{".claude-plugin/marketplace.json": renamed})
 				gitIn(mkt, "commit", "-qam", "rename")
 			},
