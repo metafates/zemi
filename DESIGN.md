@@ -545,16 +545,17 @@ never re-runs it, a message sent within the capture window gets it on the
 next send, a headless one-shot may never see it, and a `SessionEnd` hook
 does not fire on process quit (nothing calls closeSession there).
 `/plugins` is a toggle list built off the key loop, local plugins first,
-each row's state first (`failed`, an update), then its version and its
-description, and the marketplace it came from (none for a local plugin or a
-legacy clone); its detail names the source, the load status, the manifest's
+each row's state first (`failed`, an update), then its version, the
+marketplace it came from (none for a local plugin or a legacy clone) and its
+description; its detail names the source, the load status, the manifest's
 `uses` and what the plugin registered, and the git and marketplace verbs run
 on a goroutine that refreshes the list when they end, unless the user closed
 it meanwhile. Under the plugin rows a Marketplaces section lists each
 registered marketplace, its source and entry count in the row, the clone
 manifest's entries in its detail, `u` updating the clone and `x` removing
 the marketplace, refused with the plugins whose copies still update from
-it. Four
+it; none registered, the section's one row fills
+`/plugins marketplace add `. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
 `new [what it should do]`, the list's first row, and `modify <name> [what
