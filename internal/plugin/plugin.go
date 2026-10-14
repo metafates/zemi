@@ -718,13 +718,16 @@ func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Write
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	// one fixed tmp, since the manifest decides the destination and no name
-	// can be derived from the URL; concurrent adds serialize on it
-	tmp := filepath.Join(dir, ".add.tmp")
-	if err := cloneRepo(ctx, source, tmp); err != nil {
+	// the manifest decides the destination, so no name can be derived from
+	// the URL: a temp dir keeps concurrent adds apart
+	tmp, err := os.MkdirTemp(dir, ".add-")
+	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmp)
+	if err := cloneRepo(ctx, source, tmp); err != nil {
+		return err
+	}
 	m, err := ReadMarketplace(tmp)
 	if errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%s holds neither %s nor %s: zemi installs plugins only from a marketplace", source, ZemiMarketplaceFile, ClaudeMarketplaceFile)
