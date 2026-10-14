@@ -267,8 +267,10 @@ func (h *Host) addClaudeMCP(name, root, data string, servers []plugin.ClaudeMCPS
 			h.Log.Warn("mcp server name does not fit zemi's rule, skipped", "origin", "mcp", "plugin", name, "server", s.Name)
 			continue
 		}
-		spec := mcpSpec{Command: s.Command, Args: s.Args, URL: s.URL, Headers: s.Headers,
-			ClientID: s.ClientID, ClientSecret: s.ClientSecret, CallbackPort: s.CallbackPort}
+		spec := mcpSpec{
+			Command: s.Command, Args: s.Args, URL: s.URL, Headers: s.Headers,
+			ClientID: s.ClientID, ClientSecret: s.ClientSecret, CallbackPort: s.CallbackPort,
+		}
 		if spec.Command != "" {
 			env := maps.Clone(s.Env)
 			if env == nil {

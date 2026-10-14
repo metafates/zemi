@@ -473,6 +473,41 @@ checked-out tag (else the short commit) and `.zemi/init.lua`'s first line; `uses
 is the set of host capabilities the plugin's code calls, and what §9 makes
 the switch grant. It never names the plugin: the directory does,
 in the settings keys, the principals and every verb.
+
+A plugin laid out for Claude Code (`.claude-plugin/plugin.json`, no `.zemi`)
+loads too, with no Lua of its own. Its manifest, `.mcp.json` and hooks file
+are read by `internal/plugin`; its skills, agents and commands load through
+the same layered steps under the plugin's sanitized name as a prefix
+(`<plugin>-<name>`, so two plugins cannot take one name), with the skill
+frontmatter's `name` and `description` optional (the directory and the
+body's first line stand in), every body carrying `${CLAUDE_PLUGIN_ROOT}`
+and `${CLAUDE_PLUGIN_DATA}`, and each command also a model-invocable skill
+row that is no `/<name>` - the command is. Enabling the plugin is the
+consent for all of it, as for an MCP stdio child: nothing prompts past the
+enable.
+
+Its MCP servers register through the same `addMCP` as user config, named
+`<plugin>-<server>`, stdio children carrying the two plugin variables in
+their environment; `sse` and `ws` types are logged and skipped. Its hooks
+build a generation-tagged registry beside the other ones, rebuilt by the
+plugins step from the plugin dirs and purged with the generation. The
+mapped events (`PostToolUse`, `PermissionDenied`, `Stop`, `SessionEnd`,
+`SubagentStart`, `SubagentStop`) fire from the events' emit sites, each
+entry a shell child run off the caller's goroutine, the plugin root as its
+directory, the Claude payload on stdin and its output only logged, never
+interpreted (a `PostToolUse` hook loses Claude's exit-2 feedback path with
+it). Refused at load, the plugin otherwise loading: `PreToolUse` and
+`PermissionRequest` (the two modes do not deny, and a subprocess cannot sit
+inside the 50 ms veto budget), `UserPromptSubmit` (it would tax every
+submit), `Setup`, `Notification`, every unmapped event, hook type but
+`command`, and an entry with an `if` condition. A `SessionStart` hook is
+session context instead of an event: the capture starts off the
+session-creation path, holds each hook to 10 s and stores its
+`additionalContext`, else its stdout, for that session alone, dropping a
+pinned prompt it lands after so the next send rebuilds with it. A reload
+never re-runs it, a message sent within the capture window gets it on the
+next send, a headless one-shot may never see it, and a `SessionEnd` hook
+does not fire on process quit (nothing calls closeSession there).
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and its
 description; its detail names the source, the load status, the manifest's

@@ -13,8 +13,8 @@ description: Load before running the integration tests, or when they fail on a m
 2. Wait for `pg_isready`, then run `go test -tags integration ./...`.
 ```
 
-- `name` is the directory's name: lowercase letters, digits, `-`.
-- `description` is the trigger: when to load it, not a summary, at most 512 characters. Every request carries it.
+- `name` is the directory's name: lowercase letters, digits, `-`. It may be left out; the directory's name is it. A written name that does not match the directory is an error.
+- `description` is the trigger: when to load it, not a summary, at most 512 characters. Every request carries it. It may be left out; the body's first non-empty line is it.
 - `user-invocable: true` also makes it the command `/<name> [request]`, which sends the skill with the request; `argument-hint: <pr number>` shows after it in the palette, and `$ARGUMENTS` in the body becomes the request. The palette shows its description beside zemi's own commands, so lead it with a verb ("Run the integration tests; load before..."). When `/<name>` is already zemi's own command, or one from the skill's own place or a more trusted one (the user's config over a plugin over the repository), that command stays, the skill is no command, and `/errors` says so.
 - `disable-model-invocation: true` keeps it out of the model's index, so only the user runs it; it is then a command unless it also sets `user-invocable: false`.
 - Material the steps need only sometimes goes in files beside SKILL.md, named in the body; the skill tool hands the model the skill's directory, where it reads one when needed, so SKILL.md stays short.

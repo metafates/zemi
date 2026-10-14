@@ -40,8 +40,8 @@ type Dir struct {
 	Source Source
 	// Prefix joins every discovered name, Root and Data ride the parsed
 	// skills' substitutions: a Claude-layout plugin's, "" for the rest.
-	Prefix      string
-	Root, Data  string
+	Prefix     string
+	Root, Data string
 }
 
 // Caps: SKILL.md is bounded so a huge file cannot stall boot or the
@@ -62,8 +62,8 @@ type Skill struct {
 	// command, which loads as a model-invocable skill row. Root and Data are
 	// what ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} stand for in the
 	// body, set for a Claude-layout plugin's entries, "" for everything else.
-	File        string
-	Root, Data  string
+	File       string
+	Root, Data string
 	// UserInvocable: the skill is also /<name>. A skill the model may not
 	// load is the user's, so it is one unless its frontmatter says otherwise.
 	UserInvocable          bool
