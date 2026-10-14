@@ -314,16 +314,21 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	if h.GlobalDB == nil {
 		return
 	}
-	ids, fresh := map[string]string{}, map[string]bool{}
+	ids, fresh, adopt := map[string]string{}, map[string]bool{}, map[string]bool{}
 	for _, p := range ps {
-		id := strconv.Quote(plugin.InstallID(p.Dir))
+		q := strconv.Quote(installID(h.Dirs, p.Name, p.Dir))
 		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
-		if errors.Is(err, store.ErrNotFound) {
+		switch {
+		case errors.Is(err, store.ErrNotFound) && q != `""`:
+			// a copy's id lives in its row alone: adopt it on first sight, or
+			// the id an update backfilled into the row would wipe the state
+			was, adopt[p.Name] = q, true
+		case errors.Is(err, store.ErrNotFound):
 			was = `""` // no id kept: a local plugin, or a clone no sweep has seen
-		} else if err != nil {
-			was = id // a failed read must not drop the plugin's keys
+		case err != nil:
+			was = q // a failed read must not drop the plugin's keys
 		}
-		ids[p.Name], fresh[p.Name] = id, was != id
+		ids[p.Name], fresh[p.Name] = q, was != q
 	}
 	keys, _ := h.GlobalDB.KeysKV("plugin:")
 	picks, _ := h.GlobalDB.KeysKV("config:plugins.")
@@ -344,10 +349,20 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		}
 	}
 	for name, id := range ids {
-		if fresh[name] && id != `""` {
+		if fresh[name] && id != `""` || adopt[name] {
 			_ = h.GlobalDB.SetKV("plugin:"+name, id)
 		}
 	}
+}
+
+// installID is the identity the sweep compares for the plugin name in dir:
+// the marketplace row's, which a copy has and a git install shares with its
+// .git, else the clone's own.
+func installID(d config.Dirs, name, dir string) string {
+	if reg, ok := plugin.MarketplaceOf(d, name); ok && reg.ID != "" {
+		return reg.ID
+	}
+	return plugin.InstallID(dir)
 }
 
 // localPlugins holds the plugins the user develops in place: the prompt

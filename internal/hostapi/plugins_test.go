@@ -52,7 +52,7 @@ func TestPluginsStep(t *testing.T) {
 		plugins map[string]string // under the plugins root
 		user    string            // init.lua
 		cfg     map[string]string // more files under the config home
-		seed    []string          // zemi.state keys set before boot
+		seed    map[string]string // zemi.state keys set before boot
 		want    []string
 		not     []string
 	}{
@@ -132,21 +132,59 @@ func TestPluginsStep(t *testing.T) {
 				"local/b/.zemi/init.lua":    `zemi.state.set("k", "b") print(zemi.state.get("k")) local ok = pcall(zemi.job.start, { cmd = "true" }) print("b job", ok)`,
 				"local/b/.zemi/plugin.json": `{"uses": ["job"]}`,
 			},
-			seed: []string{"plugin:gone:k", "plugin:a:old"},
+			seed: map[string]string{"plugin:gone:k": "1", "plugin:a:old": "1"},
 			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", "plugin|a job false", "plugin|b job true"},
 			not:  []string{"plugin:gone:k", "permission ask required"},
 		},
 		{
 			name:    "a plugin installed again under the name does not get the old one's state",
 			plugins: map[string]string{"installed/a/.zemi/init.lua": `print(zemi.state.get("k"))`, "installed/a/.git/zemi-install": "new\n"},
-			seed:    []string{"plugin:a", "plugin:a:k"},
+			seed:    map[string]string{"plugin:a": "1", "plugin:a:k": "1"},
 			want:    []string{"plugin|nil\n", "plugin:a\n"},
 			not:     []string{"plugin:a:k"},
 		},
 		{
+			name: "a kindless row from before marketplaces keeps a copy's state",
+			plugins: map[string]string{
+				"installed/a/.zemi/init.lua": `print(zemi.state.get("k"))`,
+				"marketplaces.json":          `{"installs":{"a":{"marketplace":"m","entry":"a","version":"1.0.0"}}}`,
+			},
+			seed: map[string]string{"plugin:a:k": "1"},
+			want: []string{"plugin|1\n", "plugin:a:k\n"},
+			not:  []string{`plugin:a "`},
+		},
+		{
+			name: "a copy's backfilled row adopts its id and keeps the state",
+			plugins: map[string]string{
+				"installed/a/.zemi/init.lua": `print(zemi.state.get("k"))`,
+				"marketplaces.json":          `{"installs":{"a":{"marketplace":"m","entry":"a","kind":"copy","id":"copy-1"}}}`,
+			},
+			seed: map[string]string{"plugin:a:k": "1"},
+			want: []string{"plugin|1\n", `plugin:a "copy-1"`},
+		},
+		{
+			name: "a git install whose marketplace row is gone keeps its state",
+			plugins: map[string]string{
+				"installed/a/.zemi/init.lua":    `print(zemi.state.get("k"))`,
+				"installed/a/.git/zemi-install": "clone-1\n",
+			},
+			seed: map[string]string{"plugin:a": `"clone-1"`, "plugin:a:k": "1"},
+			want: []string{"plugin|1\n", "plugin:a:k\n"},
+		},
+		{
+			name: "a copy installed again under the name does not get the old one's state",
+			plugins: map[string]string{
+				"installed/a/.zemi/init.lua": `print(zemi.state.get("k"))`,
+				"marketplaces.json":          `{"installs":{"a":{"marketplace":"m","entry":"a","kind":"copy","id":"new-1"}}}`,
+			},
+			seed: map[string]string{"plugin:a": `"old-1"`, "plugin:a:k": "1"},
+			want: []string{"plugin|nil\n", `plugin:a "new-1"`},
+			not:  []string{"plugin:a:k"},
+		},
+		{
 			name:    "a failed scan keeps every plugin's state",
 			plugins: map[string]string{"local/a/.zemi/init.lua": "", "disabled/x": ""},
-			seed:    []string{"plugin:a:saved"},
+			seed: map[string]string{"plugin:a:saved": "1"},
 			want:    []string{"is a directory", "plugin:a:saved\n"},
 		},
 		{
@@ -266,8 +304,8 @@ func TestPluginsStep(t *testing.T) {
 			var out strings.Builder
 			r.SetPrintHook(func(origin, line string) { fmt.Fprintf(&out, "%s|%s\n", origin, line) })
 			h := NewHost(r, log, config.NewStore(), dirs)
-			for _, k := range c.seed {
-				if err := h.GlobalDB.SetKV(k, "1"); err != nil {
+			for k, v := range c.seed {
+				if err := h.GlobalDB.SetKV(k, v); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -292,6 +330,11 @@ func TestPluginsStep(t *testing.T) {
 			keys, _ := h.GlobalDB.KeysKV("")
 			for _, k := range keys {
 				fmt.Fprintf(&out, "%s\n", k)
+				// an install id key's value: what the sweep adopted or replaced
+				if name, ok := strings.CutPrefix(k, "plugin:"); ok && !strings.Contains(name, ":") {
+					v, _ := h.GlobalDB.GetKV(k)
+					fmt.Fprintf(&out, "%s %s\n", k, v)
+				}
 			}
 			fmt.Fprintf(&out, "mode: %s\n", h.PermMode())
 			for _, s := range h.skillsReg.list() {
