@@ -188,7 +188,7 @@ func (h *Host) pluginsCommand(line string) error {
 			err := plugin.Run(ctx, h.Dirs, args, &out)
 			body := strings.TrimSpace(out.String())
 			title := map[string]string{"add": "Marketplace added", "remove": "Marketplace removed", "update": "Marketplace updated"}[sub]
-			if body == marketplaceUpToDate {
+			if body == plugin.MarketplacesUpToDate {
 				title, body = body, ""
 			}
 			if err == nil || body != "" {
@@ -239,10 +239,6 @@ func (h *Host) pluginsCommand(line string) error {
 	}
 	return nil
 }
-
-// marketplaceUpToDate is what marketplace update prints when no clone moved;
-// the wording is plugin.Run's, matched here so the toast reads it plain.
-const marketplaceUpToDate = "marketplaces up to date"
 
 // pluginsErr turns a usage error into verb's own grammar, which fits a
 // toast, or the whole of it for a verb /plugins does not take.
