@@ -65,15 +65,21 @@ func (h *Host) PluginsStep() lua.BootStep {
 				root := filepath.Join(h.pluginsRoot(), kind, p.Name)
 				grant.roots[i] = root
 				grant.uses[p.Name] = p.Uses
-				// zemi's own manifest wins: a plugin that has one loads none
-				// of the Claude side (its servers, hooks and name prefixes)
+				// zemi's own tree wins: a plugin carrying .zemi loads none of
+				// the Claude side (its servers, hooks and name prefixes)
 				if !plugin.IsClaude(root) {
 					continue
 				}
-				if _, err := os.Stat(filepath.Join(root, plugin.ManifestFile)); err == nil {
+				if _, err := os.Stat(filepath.Join(root, plugin.CodeDir)); err == nil {
 					continue
 				}
 				grant.claude[root] = true
+				// the parts of the layout zemi has no use for yet (§6 v1 cuts)
+				for _, part := range []string{"output-styles", ".lsp.json", "settings.json"} {
+					if _, err := os.Stat(filepath.Join(root, part)); err == nil {
+						h.Log.Warn("plugin part zemi does not load, skipped", "origin", "plugins", "plugin", p.Name, "part", part)
+					}
+				}
 				data := h.pluginDataDir(p.Name)
 				if mkErr := os.MkdirAll(data, 0o755); mkErr != nil {
 					h.Log.Warn("plugin data dir not created", "origin", "plugins", "plugin", p.Name, "error", mkErr)
