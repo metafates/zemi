@@ -514,65 +514,6 @@ func (f marketplaceFile) save(d config.Dirs) error {
 	return config.WriteFileAtomic(filepath.Join(d.PluginsRoot(), "marketplaces.json"), data)
 }
 
-// Marketplace is one registered marketplace.
-type Marketplace struct {
-	Name, Source string
-	Added        time.Time
-}
-
-// ListMarketplaces reads the registered marketplaces, by name.
-func ListMarketplaces(d config.Dirs) ([]Marketplace, error) {
-	f, err := readMarketplaces(d)
-	if err != nil {
-		return nil, err
-	}
-	ms := make([]Marketplace, 0, len(f.Marketplaces))
-	for _, name := range slices.Sorted(maps.Keys(f.Marketplaces)) {
-		r := f.Marketplaces[name]
-		ms = append(ms, Marketplace{Name: name, Source: r.Source, Added: r.Added})
-	}
-	return ms, nil
-}
-
-// AddMarketplace registers the marketplace at source, a git URL or a local
-// path: its clone lands in marketplaces/<name>/, shared by the installs it
-// serves, and re-adding refreshes it.
-func AddMarketplace(ctx context.Context, d config.Dirs, source string) (string, error) {
-	url, err := installURL(source)
-	if err != nil {
-		return "", err
-	}
-	tmp, err := cloneRepo(ctx, d, url, Name(url), "", "")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tmp)
-	name, _, err := addMarketplace(d, tmp, url)
-	return name, err
-}
-
-// RemoveMarketplace forgets a marketplace no installed plugin still draws
-// from, and drops its clone.
-func RemoveMarketplace(d config.Dirs, name string) error {
-	f, err := readMarketplaces(d)
-	if err != nil {
-		return err
-	}
-	if _, ok := f.Marketplaces[name]; !ok {
-		return fmt.Errorf("no marketplace is named %s", name)
-	}
-	for _, reg := range f.Installs {
-		if reg.Marketplace == name {
-			return fmt.Errorf("marketplace %s still serves installed plugins", name)
-		}
-	}
-	delete(f.Marketplaces, name)
-	if err := f.save(d); err != nil {
-		return err
-	}
-	return os.RemoveAll(filepath.Join(d.PluginsRoot(), "marketplaces", name))
-}
-
 // Provenance is the marketplace origin an installed plugin was copied from.
 type Provenance struct {
 	Marketplace, Entry, Version string
