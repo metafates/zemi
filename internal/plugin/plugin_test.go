@@ -295,8 +295,16 @@ func TestMarketplace(t *testing.T) {
 	gitIn(zed, "commit", "-q", "--allow-empty", "-m", "init")
 	gitIn(zed, "tag", "v0.1.0")
 
+	zedsub := filepath.Join(tmp, "src", "zedsub")
+	write(t, zedsub, map[string]string{
+		"plugins/sub/commands/one.md": "do one",
+	})
+	gitIn(zedsub, "init", "-q")
+	gitIn(zedsub, "add", ".")
+	gitIn(zedsub, "commit", "-qm", "init")
+
 	mkt := filepath.Join(tmp, "src", "mkt")
-	manifest := func(relOne, entryManifest string) string {
+	manifest := func(relOne, entryManifest, subOne string) string {
 		return fmt.Sprintf(`{
 			"name": "Demo Market",
 			"owner": {"name": "t"},
@@ -307,12 +315,13 @@ func TestMarketplace(t *testing.T) {
 				 "mcpServers": {"srv": {"command": "srv"}}},
 				{"name": "Own Manifest", "source": "./plugins/own-manifest", "version": "5.0.0"},
 				{"name": "git-one", "source": {"source": "git", "url": "file://%s", "ref": "v0.1.0"}},
-				{"name": "npm-one", "source": {"source": "npm", "package": "x"}}
+				{"name": "npm-one", "source": {"source": "npm", "package": "x"}},
+				{"name": "sub-one", "source": {"source": "git-subdir", "url": "file://%s", "path": "plugins/sub"}, "version": %q}
 			]
-		}`, relOne, entryManifest, zed)
+		}`, relOne, entryManifest, zed, zedsub, subOne)
 	}
 	write(t, mkt, map[string]string{
-		".claude-plugin/marketplace.json":                 manifest("1.0.0", "0.2.0"),
+		".claude-plugin/marketplace.json":                 manifest("1.0.0", "0.2.0", "0.1.0"),
 		"plugins/rel-one/skills/a/SKILL.md":               "---\ndescription: a\n---\nbody",
 		"plugins/rel-one/skills/b/SKILL.md":               "---\ndescription: b\n---\nbody",
 		"plugins/entry-manifest/commands/x.md":            "do x",
@@ -334,8 +343,8 @@ func TestMarketplace(t *testing.T) {
 	gitIn(bad, "init", "-q")
 	gitIn(bad, "add", ".")
 	gitIn(bad, "commit", "-qm", "init")
-	bump := func(relOne, entryManifest string) {
-		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest)})
+	bump := func(relOne, entryManifest, subOne string) {
+		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest, subOne)})
 		gitIn(mkt, "commit", "-qam", "bump")
 	}
 	provides := func(t *testing.T, name string) []string {
@@ -363,7 +372,7 @@ func TestMarketplace(t *testing.T) {
 	}{
 		{
 			name: "a marketplace repo registers instead of installing",
-			args: []string{"install", mkt}, want: "marketplace demo-market added (5 plugins)",
+			args: []string{"install", mkt}, want: "marketplace demo-market added (6 plugins)",
 			check: func(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(d.PluginsRoot(), "marketplaces", "demo-market", ".claude-plugin", "marketplace.json")); err != nil {
 					t.Fatal(err)
@@ -437,13 +446,29 @@ func TestMarketplace(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "a git-subdir entry copies its path",
+			args: []string{"install", "sub-one@demo-market"}, want: "\nsub-one 0.1.0\n",
+			check: func(t *testing.T) {
+				dir := filepath.Join(d.PluginsRoot(), "installed", "sub-one")
+				if _, err := os.Lstat(filepath.Join(dir, "commands", "one.md")); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+					t.Error("the git-subdir copy carries a .git")
+				}
+				if prov, ok := MarketplaceOf(d, "sub-one"); !ok || prov.Entry != "sub-one" {
+					t.Errorf("provenance: %+v, %v", prov, ok)
+				}
+			},
+		},
 		{name: "an npm entry is refused", args: []string{"install", "npm-one@demo-market"}, want: "not supported", err: true},
 		{name: "an unknown marketplace", args: []string{"install", "x@nope"}, want: "no marketplace is named nope", err: true},
 		{name: "an unknown entry", args: []string{"install", "nope@demo-market"}, want: "lists no plugin named nope", err: true},
 		{name: "check skips the copies", args: []string{"check"}, want: "\nPlugins up to date\n"},
 		{
 			name:   "an update re-copies from a pulled clone",
-			before: func() { bump("1.1.0", "0.2.0") },
+			before: func() { bump("1.1.0", "0.2.0", "0.1.0") },
 			args:   []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
 			check: func(t *testing.T) {
 				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
@@ -458,7 +483,7 @@ func TestMarketplace(t *testing.T) {
 		{name: "disable a copy", args: []string{"disable", "entry-manifest"}},
 		{
 			name:   "an update keeps a disabled copy off",
-			before: func() { bump("1.1.0", "0.3.0") },
+			before: func() { bump("1.1.0", "0.3.0", "0.1.0") },
 			args:   []string{"update", "entry-manifest"}, want: "0.2.0 -> 0.3.0",
 			check: func(t *testing.T) {
 				ps, err := Scan(d)
@@ -473,6 +498,33 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{name: "nothing new", args: []string{"update"}, want: "\nPlugins up to date\n"},
+		{
+			name: "a moved clone with a still version prints updated",
+			before: func() {
+				write(t, mkt, map[string]string{"plugins/rel-one/CHANGELOG.md": "note"})
+				gitIn(mkt, "add", ".")
+				gitIn(mkt, "commit", "-qm", "note")
+			},
+			args: []string{"update", "rel-one"}, want: "\nrel-one updated\n",
+		},
+		{
+			name: "a git-subdir copy updates from its own repo",
+			before: func() {
+				write(t, zedsub, map[string]string{"plugins/sub/commands/two.md": "do two"})
+				gitIn(zedsub, "add", ".")
+				gitIn(zedsub, "commit", "-qm", "two")
+				bump("1.1.0", "0.3.0", "0.2.0")
+			},
+			args: []string{"update", "sub-one"}, want: "\nsub-one 0.1.0 -> 0.2.0\n",
+			check: func(t *testing.T) {
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "sub-one", "commands", "two.md")); err != nil {
+					t.Errorf("the re-copy did not bring the new file: %v", err)
+				}
+				if prov, _ := MarketplaceOf(d, "sub-one"); prov.Version != "0.2.0" {
+					t.Errorf("provenance version %q", prov.Version)
+				}
+			},
+		},
 		{
 			name: "a delete drops the provenance",
 			args: []string{"delete", "rel-one"},

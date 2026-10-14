@@ -425,11 +425,17 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		moved := false
 		for _, name := range rest {
 			if reg, ok := mf.Installs[name]; ok {
-				v, err := updateFromMarketplace(ctx, d, name, reg)
+				v, changed, err := updateFromMarketplace(ctx, d, name, reg)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("%s: %w", name, err))
-				} else if reg.Version != v {
+					continue
+				}
+				switch {
+				case reg.Version != v:
 					fmt.Fprintf(out, "%s %s -> %s\n", name, reg.Version, v)
+					moved = true
+				case changed: // a versionless entry still shows its clone moved
+					fmt.Fprintf(out, "%s updated\n", name)
 					moved = true
 				}
 				continue
@@ -741,7 +747,8 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketpla
 	}
 	defer done()
 	dest := filepath.Join(d.PluginsRoot(), "installed", name)
-	staging := filepath.Join(d.PluginsRoot(), "installed", "."+name+".tmp")
+	// .copy.tmp: copySource may be reading a clone staged at .<name>.tmp
+	staging := filepath.Join(d.PluginsRoot(), "installed", "."+name+".copy.tmp")
 	var synth bool
 	// NOTE: os.CopyFS refuses a symlink in the subtree; a plugin carrying
 	// one fails the copy until CopyFS learns to copy them
@@ -796,42 +803,51 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e ClaudeMarketpla
 }
 
 // updateFromMarketplace re-copies a marketplace copy from its clone, pulled
-// first; it returns the entry's version after the pull.
-func updateFromMarketplace(ctx context.Context, d config.Dirs, name string, reg installReg) (string, error) {
+// first; it returns the entry's version after the pull and whether the pull
+// moved the clone.
+func updateFromMarketplace(ctx context.Context, d config.Dirs, name string, reg installReg) (string, bool, error) {
 	dir := filepath.Join(d.PluginsRoot(), "marketplaces", reg.Marketplace)
 	if !exists(dir) {
-		return "", fmt.Errorf("marketplace %s is not installed", reg.Marketplace)
+		return "", false, fmt.Errorf("marketplace %s is not installed", reg.Marketplace)
 	}
-	if err := pullMarketplace(ctx, dir); err != nil {
-		return "", err
+	changed, err := pullMarketplace(ctx, dir)
+	if err != nil {
+		return "", false, err
 	}
 	m, err := ReadClaudeMarketplace(dir)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	i := slices.IndexFunc(m.Plugins, func(e ClaudeMarketplaceEntry) bool { return e.Name == reg.Entry })
+	i := slices.IndexFunc(m.Plugins, func(e ClaudeMarketplaceEntry) bool { return SanitizeName(e.Name) == SanitizeName(reg.Entry) })
 	if i < 0 {
-		return "", fmt.Errorf("marketplace %s no longer lists %s", reg.Marketplace, reg.Entry)
+		return "", false, fmt.Errorf("marketplace %s no longer lists %s", reg.Marketplace, reg.Entry)
 	}
 	e := m.Plugins[i]
 	if sname := SanitizeName(e.Name); sname != name {
-		return "", fmt.Errorf("%s is now named %s: delete and install it again", reg.Entry, sname)
+		return "", false, fmt.Errorf("%s is now named %s: delete and install it again", reg.Entry, sname)
 	}
 	_, err = placeCopy(ctx, d, reg.Marketplace, e, name, false)
-	return e.Version, err
+	return e.Version, changed, err
 }
 
 // pullMarketplace fetches the marketplace clone and hard-resets it to the
 // remote's default branch; the clone is a cache, so local state is dropped.
-func pullMarketplace(ctx context.Context, dir string) error {
+// It reports whether the reset moved HEAD, the movement a versionless entry
+// has to show for an update.
+func pullMarketplace(ctx context.Context, dir string) (bool, error) {
 	nctx, cancel := context.WithTimeout(ctx, netTimeout)
 	defer cancel()
 	if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
-		return err
+		return false, err
 	}
 	// the reset is local and finishes even when the update is cancelled
-	_, err := git(context.WithoutCancel(ctx), dir, "reset", "--quiet", "--hard", "origin/HEAD")
-	return err
+	ctx = context.WithoutCancel(ctx)
+	was, _ := git(ctx, dir, "rev-parse", "HEAD")
+	if _, err := git(ctx, dir, "reset", "--quiet", "--hard", "origin/HEAD"); err != nil {
+		return false, err
+	}
+	now, _ := git(ctx, dir, "rev-parse", "HEAD")
+	return was != now, nil
 }
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {
