@@ -196,14 +196,14 @@ func TestModeSwitchQuiet(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
 	_ = a.Frame()
-	if err := a.host.SetPermMode("auto"); err != nil {
+	if err := a.host.SetPermMode("allow"); err != nil {
 		t.Fatal(err)
 	}
 	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
 		t.Fatalf("a switch must not explain itself:\n%s", ansi.Strip(f))
 	}
 	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
-		a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "auto"}, Anchor: anchor})
+		a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "allow"}, Anchor: anchor})
 		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
 		edge := func(row string) bool {
 			if anchor == hostapi.OverlayBottomLeft {

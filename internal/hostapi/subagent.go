@@ -1265,7 +1265,7 @@ func decodeInput(info fantasy.ToolInfo, input string, in any) error {
 func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
-	decision, reason, _, _ := h.toolPreHook()(tool, m)
+	decision, reason, _ := h.toolPreHook()(tool, m)
 	if decision == tools.PreRewrite {
 		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true
 	}

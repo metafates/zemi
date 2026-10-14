@@ -1,5 +1,5 @@
 {
   "version": "1.2.0",
   "description": "snippets, the git branch and the weather",
-  "uses": ["agent", "http", "job.unsandboxed", "model"]
+  "uses": ["agent", "http", "job", "model"]
 }

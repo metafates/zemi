@@ -23,7 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -625,8 +624,8 @@ func waitPrompt(t *testing.T, app *App, cond func() bool) {
 }
 
 // TestGoldenPermission pins the Go-owned permission ask (DESIGN §6.2, §8):
-// Go chrome, the title saying where a command runs, the facts table, the
-// badge, the answers, and the always answer delivered to the asker.
+// Go chrome, the title, the facts table, the badge, and the answers
+// delivered to the asker.
 func TestGoldenPermission(t *testing.T) {
 	script := "set -e; for pkg in $(go list ./internal/...); do go test -count=1 -run TestGolden \"$pkg\" 2>&1 | tee -a \"$TMPDIR/golden.log\"; done; grep -c FAIL \"$TMPDIR/golden.log\" || true; rm -rf ~/.cache/zemi-golden && git stash list | head -5"
 	diff := "--- a/internal/ui/agent.go\n+++ b/internal/ui/agent.go\n@@ -41,5 +41,5 @@\n func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {\n \treq := pa.req\n-\tisDiff := strings.HasPrefix(req.Preview, \"--- \")\n+\tisDiff := req.Subject == perm.SubjectWrite && req.Preview != \"\"\n \tmaxW := 96\n"
@@ -635,28 +634,24 @@ func TestGoldenPermission(t *testing.T) {
 		w, h int
 		req  hostapi.PermRequest
 	}{
-		{"unsandboxed-80x40", 80, 40, hostapi.PermRequest{
-			Tool: "shell", Subject: "tool.shell", Arg: script, Where: hostapi.RunsOutside,
-			Runs:        perm.Normalize(script).Programs(""),
+		{"shell-80x40", 80, 40, hostapi.PermRequest{
+			Tool: "shell", Subject: "tool.shell", Arg: script,
 			Reason:      "the model asked to leave the sandbox",
 			Description: "Run the golden tests one package at a time, then clear the cache",
-			Always:      "allow go list, go test and 6 more outside the sandbox", Project: true,
 		}},
 		{"edit-diff-120x30", 120, 30, hostapi.PermRequest{
 			Tool: "edit", Subject: "fs.write", Arg: "internal/ui/agent.go", Preview: diff,
 			Reason: "this changes a file outside cmd/, the directory zemi was started in",
-			Always: "allow edits in internal/ui/ and below",
 		}},
-		{"network-subagent-80x24", 80, 24, hostapi.PermRequest{
-			Tool: "shell", Subject: "tool.shell", Arg: "npm ci && npm run build", Where: hostapi.RunsNetwork,
-			Runs:  perm.Normalize("npm ci && npm run build").Programs(""),
+		{"subagent-80x24", 80, 24, hostapi.PermRequest{
+			Tool: "shell", Subject: "tool.shell", Arg: "npm ci && npm run build",
 			Agent: "general agent", Reason: "the model asked for the network",
-			Description: "Install dependencies and build the site", Always: "allow npm ci and npm run with the network",
+			Description: "Install dependencies and build the site",
 		}},
 		{"plugin-tool-80x30", 80, 30, hostapi.PermRequest{
 			Tool: "jira_create", Subject: "tool.jira_create", Arg: "jira_create", Owner: "plugin:jira",
 			Preview: `{"project":"ZEM","type":"Task","summary":"Permission prompt lists the programs a command runs","labels":["ui","permissions"]}`,
-			Reason:  "zemi cannot tell what this tool does", Always: "allow the jira_create tool",
+			Reason:  "zemi cannot tell what this tool does",
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -671,9 +666,9 @@ func TestGoldenPermission(t *testing.T) {
 			waitPrompt(t, app, func() bool { return app.permAsk != nil })
 			app.renderSync(t)
 			golden.RequireEqual(t, app.Frame())
-			app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+			app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 			<-done
-			if !allowed || by != "user:always" {
+			if !allowed || by != "user:once" {
 				t.Fatalf("allowed=%v by=%q", allowed, by)
 			}
 		})
@@ -683,10 +678,13 @@ func TestGoldenPermission(t *testing.T) {
 // Which ask surfaces first is not fixed, so exactly one is denied.
 func TestPermissionDenyOneAtATime(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
+	if err := host.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	pipe := host.PipelineFor()
 	res := make(chan bool, 2)
 	for _, req := range []tools.Request{{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"}, {Subject: "tool.shell", Arg: "make test"}} {
-		go func() { res <- pipe.Check(req).Decision == perm.Allow }()
+		go func() { res <- pipe.Check(req).Allowed }()
 	}
 	waitPrompt(t, app, func() bool { return app.permAsk != nil && host.AsksWaiting() == 2 })
 	app.renderSync(t)
@@ -700,9 +698,6 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 	if a, b := <-res, <-res; a == b {
 		t.Fatalf("exactly one ask must be denied: %v %v", a, b)
 	}
-	if len(host.Perm.Rules()) != 0 {
-		t.Fatalf("once must not store rules: %+v", host.Perm.Rules())
-	}
 	waitPrompt(t, app, func() bool { return app.permAsk == nil })
 	app.permAsk = &permAskPrompt{} // answered, and the Refresh that drops it lost
 	if app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}); app.permAsk != nil || app.composer.text != "x" {
@@ -715,10 +710,13 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 // denies the open ask and the waiting one.
 func TestPermissionTellNarrow(t *testing.T) {
 	app, host := bootAgentApp(t, 30, 30)
+	if err := host.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	pipe := host.PipelineFor()
 	res := make(chan bool, 2)
 	for _, arg := range []string{"make test", "make lint"} {
-		go func() { res <- pipe.Check(tools.Request{Subject: "tool.shell", Arg: arg}).Decision == perm.Allow }()
+		go func() { res <- pipe.Check(tools.Request{Subject: "tool.shell", Arg: arg}).Allowed }()
 	}
 	waitPrompt(t, app, func() bool { return app.permAsk != nil && host.AsksWaiting() == 2 })
 	app.renderSync(t)
@@ -755,12 +753,12 @@ func TestPermissionBoxFits(t *testing.T) {
 		},
 		{
 			"short screen", 60, 20,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./internal/ui/... -run TestGoldenPermissionOverlay -count=1 -v 2>&1 | tee /tmp/out.txt && grep -n FAIL /tmp/out.txt | head", Description: "Run the golden permission overlay test verbosely and keep the log for later", Always: "allow go test and 3 more"},
-			[]string{"█", "ctrl+d/u scroll", "esc deny", "[t] No, and tell"},
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./internal/ui/... -run TestGoldenPermissionOverlay -count=1 -v 2>&1 | tee /tmp/out.txt && grep -n FAIL /tmp/out.txt | head", Description: "Run the golden permission overlay test verbosely and keep the log for later"},
+			[]string{"esc deny", "[t] No, and tell"},
 		},
 		{
 			"narrow and short", 60, 15,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./internal/ui/... -run X\necho a\necho b\necho c", Always: "allow go test and 3 more"},
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./internal/ui/... -run X\necho a\necho b\necho c"},
 			[]string{"enter pick", "█"},
 		},
 		{
@@ -769,19 +767,19 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"EOT ", "enter pick · esc deny"},
 		},
 		{
-			"always label wraps", 70, 30,
-			hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/ and below"},
-			[]string{"session", "esc deny"},
+			"a long path shows", 70, 30,
+			hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt"},
+			[]string{"file", "esc deny"},
 		},
 		{
 			"scrolled preview keeps its last column", 80, 16,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: strings.Repeat("abcdefghij", 60)},
-			[]string{strings.Repeat("abcdefghij", 7) + " █"},
+			[]string{strings.Repeat("abcdefghij", 7) + "  █"},
 		},
 		{
-			"runs outside sandbox", 80, 24,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "git push origin main", Where: hostapi.RunsOutside, Reason: "the model asked to leave the sandbox"},
-			[]string{"Run this command outside the sandbox?", "runs  unknown: read the command"},
+			"a long command shows", 80, 24,
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "git push origin main", Reason: "the model asked for the network"},
+			[]string{"Run this command?", "command"},
 		},
 		{
 			"a script's ask says so", 80, 24,
@@ -790,27 +788,16 @@ func TestPermissionBoxFits(t *testing.T) {
 		},
 		{
 			"title beats a long badge", 80, 24,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Where: hostapi.RunsOutside, Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526 · general agent"},
-			[]string{"Run this command outside the sandbox? ", "workflow 7c2"},
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526 · general agent"},
+			[]string{"Run this command?", "workflow 7c2"},
 		},
 		{
 			"facts survive a short screen", 80, 16,
 			hostapi.PermRequest{
-				Subject: "tool.shell", Arg: strings.Repeat("rm -rf build && go build ./...\n", 20), Runs: []perm.Program{{Name: "rm", Risk: perm.RiskDeletes}, {Name: "go build"}},
-				Reason: "this may delete many files", Description: "Rebuild from a clean tree", Always: "allow go build and 1 more",
+				Subject: "tool.shell", Arg: strings.Repeat("rm -rf build && go build ./...\n", 20),
+				Reason: "this may delete many files", Description: "Rebuild from a clean tree",
 			},
-			[]string{"runs  rm (deletes) · go build", "why   this may delete many files", "[t] No, and tell", "█"},
-		},
-		{
-			"long list cuts to +N more", 80, 24,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "x", Runs: func() []perm.Program {
-				var ps []perm.Program
-				for i := range 30 {
-					ps = append(ps, perm.Program{Name: fmt.Sprintf("program%02d", i)})
-				}
-				return append(ps, perm.Program{Name: "shred", Risk: perm.RiskDeletes})
-			}()},
-			[]string{"runs  shred (deletes) · program00", "more", "[t] No, and tell"},
+			[]string{"why      this may delete many files", "[t] No, and tell", "█"},
 		},
 	}
 	for _, c := range cases {
@@ -1769,7 +1756,10 @@ func TestKeySequence(t *testing.T) {
 // answers the highlighted one, and the letters answer directly; without an
 // always choice there are three.
 func TestPermissionChoices(t *testing.T) {
-	app, _ := bootAgentApp(t, 100, 30)
+	app, host := bootAgentApp(t, 100, 30)
+	if err := host.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
 		t.Helper()
 		done := make(chan struct{})
@@ -1785,8 +1775,8 @@ func TestPermissionChoices(t *testing.T) {
 	}
 	down, up, enter := tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}, tea.KeyPressMsg{Code: tea.KeyEnter}
 	letter := func(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }
-	shell := func(always string) hostapi.PermRequest {
-		return hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "go test ./...", Always: always}
+	shell := func() hostapi.PermRequest {
+		return hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "go test ./..."}
 	}
 	for _, c := range []struct {
 		name string
@@ -1795,15 +1785,11 @@ func TestPermissionChoices(t *testing.T) {
 		ok   bool
 		by   string
 	}{
-		{"down enter takes always", shell("allow go test"), []tea.KeyPressMsg{down, enter}, true, "user:always"},
-		{"down down enter denies", shell("allow go test"), []tea.KeyPressMsg{down, down, enter}, false, "user"},
-		{"up stays on yes", shell("allow go test"), []tea.KeyPressMsg{up, enter}, true, "user:once"},
-		{"a takes always", shell("allow go test"), []tea.KeyPressMsg{letter('a')}, true, "user:always"},
-		{"n denies", shell("allow go test"), []tea.KeyPressMsg{letter('n')}, false, "user"},
-		{"without always, down enter denies", shell(""), []tea.KeyPressMsg{down, enter}, false, "user"},
-		{"without always, a does nothing", shell(""), []tea.KeyPressMsg{letter('a'), letter('o')}, true, "user:once"},
-		{"p takes this project", hostapi.PermRequest{Subject: "tool.shell", Arg: "git push", Always: "allow git push", Project: true}, []tea.KeyPressMsg{letter('p')}, true, "user:project"},
-		{"r takes the repo-wide read", hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/ and below", Wider: "allow reads anywhere in /repo/"}, []tea.KeyPressMsg{letter('r')}, true, "user:wider"},
+		{"down enter takes no", shell(), []tea.KeyPressMsg{down, enter}, false, "user"},
+		{"up stays on yes", shell(), []tea.KeyPressMsg{up, enter}, true, "user:once"},
+		{"enter takes yes", shell(), []tea.KeyPressMsg{enter}, true, "user:once"},
+		{"o takes yes", shell(), []tea.KeyPressMsg{letter('o')}, true, "user:once"},
+		{"n denies", shell(), []tea.KeyPressMsg{letter('n')}, false, "user"},
 	} {
 		if ok, by := ask(c.req, c.keys...); ok != c.ok || by != c.by {
 			t.Errorf("%s: %v %q", c.name, ok, by)
@@ -2242,10 +2228,8 @@ func TestPermTitle(t *testing.T) {
 		req           hostapi.PermRequest
 		title, target string // target: the fact's name and text, "" for none
 	}{
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Where: hostapi.RunsOutside, Runs: []perm.Program{{Name: "make"}}}, "Run this command outside the sandbox?", "runs make"},
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Where: hostapi.RunsNoSandbox}, "Run this command?", "runs unknown: read the command"},
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "true", Where: hostapi.RunsNetwork, Runs: []perm.Program{}}, "Run this command in the sandbox, with the network?", ""},
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Where: hostapi.RunsConfined, Runs: []perm.Program{{Name: "make"}}}, "Run this command in the sandbox?", "runs make"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make"}, "Run this command?", "command make"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "true"}, "Run this command?", "command true"},
 		{hostapi.PermRequest{Tool: "skill", Subject: "fs.read", Arg: "/p/skills/x/SKILL.md"}, "Load this skill?", "file skills/x/SKILL.md"},
 		{hostapi.PermRequest{Tool: "read", Subject: "fs.read", Arg: "/etc/hosts"}, "Read this file?", "file /etc/hosts"},
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "file a.go"},

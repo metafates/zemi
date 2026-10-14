@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,15 +9,12 @@ import (
 
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestJobStartFailure: a command that cannot start is a runtime failure,
 // so job.start and job.wait return nil, err instead of raising (DESIGN §6.0).
 func TestJobStartFailure(t *testing.T) {
-	h, r := newTestHost(t)
-	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	_, r := newTestHost(t)
 	runUser(t, r, `
 		local res, err = zemi.job.wait({ cmd = "zemi-no-such-binary" })
 		assert(res == nil and type(err) == "string", tostring(err))
@@ -26,8 +24,7 @@ func TestJobStartFailure(t *testing.T) {
 }
 
 func TestJobHandleColonCalls(t *testing.T) {
-	h, r := newTestHost(t)
-	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	_, r := newTestHost(t)
 	runUser(t, r, `
 		local j = zemi.job.start({ cmd = "cat", stdin = true })
 		assert(j:write("hi") == true, "write")
@@ -37,73 +34,10 @@ func TestJobHandleColonCalls(t *testing.T) {
 	`)
 }
 
-// TestJobGateSeesCommandLine: lua.job.start rules match the whole normalized
-// line, so arguments are scoped and a compound command cannot ride.
-func TestJobGateSeesCommandLine(t *testing.T) {
+// TestJobCwd: a job's cwd resolves in the read jail, so no job starts
+// outside it.
+func TestJobCwd(t *testing.T) {
 	h, r := newTestHost(t)
-	h.SetUIHooks(&fakeUI{})
-	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "true*", Decision: perm.Allow})
-	runUser(t, r, `
-		assert(zemi.job.wait({ cmd = "true", args = { "x" } }), "allowed")
-		assert(not pcall(zemi.job.start, { cmd = "echo", args = { "true" } }), "the program leads the line")
-	`)
-}
-
-// TestReadJailCoversRepo: started in a subdirectory of a trusted repository,
-// reads elsewhere in it settle; secret shapes, writes and an untrusted
-// project still ask.
-func TestReadJailCoversRepo(t *testing.T) {
-	h, _ := newTestHost(t)
-	root := t.TempDir()
-	sub := filepath.Join(root, "pkg")
-	for _, d := range []string{filepath.Join(root, ".git"), sub} {
-		if err := os.Mkdir(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	h.Dirs.ProjectDir = sub
-	sibling, secret := filepath.Join(root, "other", "main.go"), filepath.Join(root, ".env")
-	for _, c := range []struct {
-		name    string
-		trusted bool
-		subject string
-		arg     string
-		want    perm.Decision
-	}{
-		{"untrusted sibling", false, "fs.read", sibling, perm.Ask},
-		{"trusted sibling", true, "fs.read", sibling, perm.Allow},
-		{"secret", true, "fs.read", secret, perm.Ask},
-		{"write", true, "fs.write", sibling, perm.Ask},
-	} {
-		h.SetProjectTrusted(c.trusted)
-		if got := h.fsDefault(c.subject, c.arg); got != c.want {
-			t.Errorf("%s: %v, want %v", c.name, got, c.want)
-		}
-		// the write jail is the launch dir by design; the ask says so and
-		// shows the sibling's path from the repository root, not absolute
-		if c.subject == "fs.write" {
-			req := tools.Request{Subject: c.subject, Arg: c.arg}
-			ui := &fakeUI{}
-			h.SetUIHooks(ui)
-			h.askHook()(req)
-			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, "outside pkg/, the directory zemi was started in") {
-				t.Errorf("%s: ask = %+v", c.name, ui.asked)
-			}
-			if got := h.shownArg(req); got != filepath.Join("other", "main.go") {
-				t.Errorf("%s: shown %q", c.name, got)
-			}
-			if label, _ := h.alwaysChoice(req); label != "allow edits in other/ and below" {
-				t.Errorf("%s: always label %q", c.name, label)
-			}
-		}
-	}
-}
-
-// TestJobCwdAndSandbox: cwd stays in the read jail, and sandbox = true runs
-// under the policy, which keeps writes inside it.
-func TestJobCwdAndSandbox(t *testing.T) {
-	h, r, _, _ := sandboxedShell(t)
-	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -113,28 +47,16 @@ func TestJobCwdAndSandbox(t *testing.T) {
 		local res = assert(zemi.job.wait({ cmd = "pwd", cwd = "sub" }))
 		assert(res.stdout:match("/sub\n$"), res.stdout)
 		assert(not pcall(zemi.job.wait, { cmd = "pwd", cwd = outside }), "cwd outside the jail")
-		local h, err = zemi.job.start({ cmd = "zz-no-such-program", sandbox = true })
-		assert(not h and err:find("not found"), err)
-		h, err = zemi.job.start({ cmd = "pwd", cwd = "gone", sandbox = true })
+		local h, err = zemi.job.start({ cmd = "pwd", cwd = "gone" })
 		assert(not h and err:find("cwd: .*gone"), err)
-		for _, c in ipairs({
-			{ "in.txt", true, 0 },
-			{ outside .. "/out.txt", true, 1 },
-			{ outside .. "/free.txt", false, 0 },
-		}) do
-			res = assert(zemi.job.wait({ cmd = "touch", args = { c[1] }, sandbox = c[2] }))
-			assert((res.code == 0) == (c[3] == 0), c[1] .. ": " .. res.stderr)
-		end
 	`)
 }
 
-// TestFsDataDir: user code reads and, with a rule, writes its data dir and
-// may hand it to the editor; plugin code gets neither the path nor the jail.
+// TestFsDataDir: user code reads and writes its data dir and may hand it to
+// the editor; plugin code gets neither the path nor the jail.
 func TestFsDataDir(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
-	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "pwd", Decision: perm.Allow})
 	runUser(t, r, `
 		local dir = zemi.fs.data_dir("notes")
 		assert(zemi.fs.write(dir .. "/a.txt", "hi"))
@@ -176,7 +98,6 @@ func TestEditRepoRoot(t *testing.T) {
 	if err := os.Mkdir(h.Dirs.ProjectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
 	for _, trusted := range []string{"false", "true"} {
 		h.SetProjectTrusted(trusted == "true")
 		runUser(t, r, `
@@ -186,36 +107,47 @@ func TestEditRepoRoot(t *testing.T) {
 	}
 }
 
-// TestBrainReadJails: the user brain's reads settle in every project, and
-// under auto the private brain's do too, where the fs.read default still
-// asks (DESIGN §9); no brain root enters the write
-// jail, so a brain write never auto-settles.
+// TestBrainReadJails: the user brain's reads resolve in every project, and a
+// trusted project's private brain reads too (DESIGN §9); a write there dies
+// at jail resolution in TestLuaFsWriteBrainRefused.
 func TestBrainReadJails(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	user, private := h.brainParts()
 	userPath, privatePath := filepath.Join(user.Dir, "style.md"), filepath.Join(private.Dir, "repo-map.md")
+	if err := os.MkdirAll(user.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(privatePath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
-		name         string
-		trusted      bool
-		subject, arg string
-		want         perm.Decision // fsDefault, the every-mode floor
-		auto         bool          // autoLocal, what auto mode settles
+		name       string
+		trusted    bool
+		target     string
+		wantJailed bool
 	}{
-		{"user brain read, untrusted", false, "fs.read", userPath, perm.Allow, true},
-		{"user brain read, trusted", true, "fs.read", userPath, perm.Allow, true},
-		{"private brain read, untrusted", false, "fs.read", privatePath, perm.Ask, true},
-		{"private brain read, trusted", true, "fs.read", privatePath, perm.Allow, true},
-		{"user brain write", true, "fs.write", userPath, perm.Ask, false},
-		{"private brain write", true, "fs.write", privatePath, perm.Ask, false},
+		{"user brain read, untrusted", false, userPath, false},
+		{"user brain read, trusted", true, userPath, false},
+		{"private brain read, untrusted", false, privatePath, true},
+		{"private brain read, trusted", true, privatePath, false},
 	} {
-		h.SetProjectTrusted(c.trusted)
-		if got := h.fsDefault(c.subject, c.arg); got != c.want {
-			t.Errorf("%s: default %v, want %v", c.name, got, c.want)
-		}
-		if got := h.autoLocal(tools.Request{Subject: c.subject, Arg: c.arg}); got != c.auto {
-			t.Errorf("%s: auto %v, want %v", c.name, got, c.auto)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			h.SetProjectTrusted(c.trusted)
+			err := runChunk(t, r, fmt.Sprintf(`
+				local ok, v = pcall(zemi.fs.read, %q)
+				if not ok and tostring(v):find("outside the jail", 1, true) then error("jailed") end
+				assert(ok and v == "x", v)`, c.target))
+			if (err != nil) != c.wantJailed {
+				t.Fatalf("err = %v, wantJailed %v", err, c.wantJailed)
+			}
+		})
 	}
 }
 
@@ -226,7 +158,6 @@ func TestLuaFsWriteBrainRefused(t *testing.T) {
 	h.Dirs.DataHome = t.TempDir()
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
 	user, private := h.brainParts()
 	mem := filepath.Join(user.Dir, brain.MemFile)
 	runUser(t, r, `

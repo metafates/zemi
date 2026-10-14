@@ -19,7 +19,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
@@ -84,7 +83,7 @@ func TestPluginsStep(t *testing.T) {
 				"local/a/.zemi/plugin.json": `{"uses": ["http", "fs.read"]}`,
 			},
 			want: []string{
-				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, job.unsandboxed, model, tool`,
+				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, model, tool`,
 				"health: 1 plugin: 1 failed, 0 ready",
 			},
 			not: []string{"plugin|a ran"},
@@ -162,12 +161,12 @@ func TestPluginsStep(t *testing.T) {
 					tail = function(f) return f("yolo") end,
 				}`,
 				"local/b/.zemi/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
-				"local/p/.zemi/lua/p/meta.lua": `return setmetatable({ subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x" },
-					{ __index = zemi.permission.rule.add })`,
+				"local/p/.zemi/lua/p/meta.lua": `return setmetatable({},
+					{ __index = zemi.state.set })`,
 			},
 			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.permission.mode.set(m) end))
 				print(pcall(function() return require("p.meta").setup end))`,
-			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: auto\n", "__index must be a Lua function of this plugin's own code"},
+			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: allow\n", "__index must be a Lua function of this plugin's own code"},
 			not:  []string{"plugin:b:"},
 		},
 		{
@@ -206,7 +205,7 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name: "a plugin module that exports a Go function does not load",
 			plugins: map[string]string{
-				"local/p/.zemi/lua/p/init.lua": `return { subject = "tool.shell", pattern = "*", decision = "allow", match = "rm -rf x", setup = zemi.permission.rule.add }`,
+				"local/p/.zemi/lua/p/init.lua": `return { setup = zemi.state.set }`,
 			},
 			user: `print("P", pcall(function() return require("p"):setup() end))`,
 			want: []string{"user|P false", "exports the Go function .setup"},
@@ -220,8 +219,6 @@ func TestPluginsStep(t *testing.T) {
 			want: []string{
 				"skill s plugin:a true\n", "skill mine user true\n", "agent s plugin:a\n", "agent mine user\n",
 				"command s plugin:a\n", "command mine user\n", "workflow s plugin:a\n", "workflow mine user\n",
-				"read s allow ask\n", // the skill tool reads it; plugin Lua gets no jail
-				"read .git ask\n",    // a clone's remote URL may carry a token
 				"provides: command /s · skill s · agent s · workflow s\n",
 			},
 			not: []string{"gone", "plugin|hook", "mine plugin", "error: plugins", "error: skills"},
@@ -269,8 +266,6 @@ func TestPluginsStep(t *testing.T) {
 			var out strings.Builder
 			r.SetPrintHook(func(origin, line string) { fmt.Fprintf(&out, "%s|%s\n", origin, line) })
 			h := NewHost(r, log, config.NewStore(), dirs)
-			// scoped to one plugin, so a case can tell the principals apart
-			h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
 			for _, k := range c.seed {
 				if err := h.GlobalDB.SetKV(k, "1"); err != nil {
 					t.Fatal(err)
@@ -303,10 +298,6 @@ func TestPluginsStep(t *testing.T) {
 				if s.Source != skill.Builtin {
 					fmt.Fprintf(&out, "skill %s %s %v\n", s.Name, h.sourceOf(string(s.Source), s.Dir), h.skillsReg.isEnabled(s.Name))
 				}
-				if s.Source == skill.Plugin {
-					md := filepath.Join(s.Dir, "SKILL.md")
-					fmt.Fprintf(&out, "read %s %s %s\n", s.Name, h.fsDefault("fs.read", md), h.fsDefault("lua.fs.read", md))
-				}
 			}
 			for _, d := range h.agentDefs() {
 				if d.Source != "builtin" {
@@ -323,7 +314,6 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "workflow %s %s\n", w.Name, h.sourceOf(w.Source, w.Path))
 				}
 			}
-			fmt.Fprintf(&out, "read .git %s\n", h.fsDefault("fs.read", filepath.Join(h.pluginsRoot(), "installed/a/.git/config")))
 			fmt.Fprintf(&out, "provides: %s\n", strings.Join(h.pluginProvides()["a"], " · "))
 			h.errs.mu.Lock()
 			for _, e := range h.errs.entries {
@@ -551,7 +541,7 @@ func TestPluginCapVocabulary(t *testing.T) {
 		if strings.HasSuffix(probe, ".") {
 			probe += "x"
 		}
-		if got := pluginCap(probe, true); got != c.cap {
+		if got := pluginCap(probe); got != c.cap {
 			t.Errorf("pluginCap(%q) = %q, want its row's %q", probe, got, c.cap)
 		}
 		if !slices.Contains(plugin.Uses, c.cap) {
@@ -559,21 +549,19 @@ func TestPluginCapVocabulary(t *testing.T) {
 		}
 	}
 	for _, c := range []struct {
-		subject   string
-		sandboxed bool
-		cap       string
+		subject string
+		cap     string
 	}{
-		{"lua.job.start", true, "job"},
-		{"lua.job.start", false, "job.unsandboxed"},
-		{"lua.fs.read", false, ""},  // a read is not declarable
-		{"zemi.env.get", false, ""}, // nor is the plugin's own env
+		{"lua.job.start", "job"},
+		{"lua.fs.read", ""},  // a read is not declarable
+		{"zemi.env.get", ""}, // nor is the plugin's own env
 	} {
-		if got := pluginCap(c.subject, c.sandboxed); got != c.cap {
-			t.Errorf("pluginCap(%q, sandboxed=%v) = %q, want %q", c.subject, c.sandboxed, got, c.cap)
+		if got := pluginCap(c.subject); got != c.cap {
+			t.Errorf("pluginCap(%q) = %q, want %q", c.subject, got, c.cap)
 		}
 	}
 	// every word the manifest may declare is one a subject maps to
-	mapped := map[string]bool{"job": true, "job.unsandboxed": true}
+	mapped := map[string]bool{"job": true}
 	for _, c := range pluginCaps {
 		mapped[c.cap] = true
 	}
@@ -632,7 +620,6 @@ func TestPluginUses(t *testing.T) {
 	for _, c := range []struct {
 		name     string
 		uses     string // the manifest's uses array; "" for a plugin with none
-		rule     *perm.Rule
 		readOnly bool
 		stub     bool   // h.modelFn answers "pong"
 		send     bool   // the call starts a turn of the agent
@@ -641,33 +628,13 @@ func TestPluginUses(t *testing.T) {
 	}{
 		{
 			name: "a declared call settles", uses: `["http"]`,
-			// the gate settles it; the §9 address check still refuses loopback,
-			// which only a user allow rule for the host earns
 			call: fmt.Sprintf(`local res, err = zemi.http.get(%q):wait()
-				assert(res == nil and err:find("is private", 1, true), tostring(err))`, srv.URL+"/x"),
+				assert(res ~= nil and res.body == "ok", tostring(err))`, srv.URL+"/x"),
 		},
 		{
 			name: "an undeclared call is refused, not asked",
 			call: fmt.Sprintf(`zemi.http.get(%q)`, srv.URL+"/x"),
 			err:  `plugin a declares no "http"; add "http" to uses in .zemi/plugin.json`,
-		},
-		{
-			name: "a user's allow rule cannot widen it",
-			rule: &perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Allow, Principal: "plugin:a"},
-			call: fmt.Sprintf(`zemi.http.get(%q)`, srv.URL+"/x"),
-			err:  `plugin a declares no "http"`,
-		},
-		{
-			name: "a user's deny rule still narrows a declared call", uses: `["http"]`,
-			rule: &perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"},
-			call: fmt.Sprintf(`zemi.http.get(%q):wait()`, srv.URL+"/x"),
-			err:  "permission denied (rule)",
-		},
-		{
-			name: "an ask rule hands a declared call to the user", uses: `["http"]`,
-			rule: &perm.Rule{Subject: "lua.http.get", Pattern: "*", Decision: perm.Ask, Principal: "plugin:a"},
-			call: fmt.Sprintf(`zemi.http.get(%q):wait()`, srv.URL+"/x"),
-			err:  "permission ask required",
 		},
 		{
 			name: "a plugin that declares nothing cannot call a model",
@@ -680,22 +647,13 @@ func TestPluginUses(t *testing.T) {
 				assert(text == "pong", tostring(err))`,
 		},
 		{
-			name: "a confined job settles with job declared", uses: `["job"]`,
-			call: `assert(zemi.job.start({ cmd = "true", sandbox = true }):wait(5000).code == 0, "confined")`,
+			name: "a job settles with job declared", uses: `["job"]`,
+			call: `assert(zemi.job.start({ cmd = "true" }):wait(5000).code == 0, "the job")`,
 		},
 		{
-			name: "an unconfined job is refused with job alone declared", uses: `["job"]`,
+			name: "a read-only turn's job does not settle", uses: `["job"]`, readOnly: true,
 			call: `zemi.job.start({ cmd = "true" })`,
-			err:  `plugin a declares no "job.unsandboxed"`,
-		},
-		{
-			name: "an unconfined job settles with job.unsandboxed declared", uses: `["job.unsandboxed"]`,
-			call: `assert(zemi.job.start({ cmd = "true" }):wait(5000).code == 0, "unconfined")`,
-		},
-		{
-			name: "a read-only turn leaves an unconfined job to the user", uses: `["job.unsandboxed"]`, readOnly: true,
-			call: `zemi.job.start({ cmd = "true" })`,
-			err:  "permission ask required",
+			err:  "permission denied (read-only agent)",
 		},
 		{
 			name: "a declared agent send settles", uses: `["agent"]`, stub: true, send: true,
@@ -711,29 +669,9 @@ func TestPluginUses(t *testing.T) {
 			call: `assert(zemi.fs.write("%project%/notes.txt", "x") == true, "the project write")`,
 		},
 		{
-			name: "a secret-shaped write still asks with fs.write declared", uses: `["fs.write"]`,
-			call: `zemi.fs.write("%project%/.env", "x")`,
-			err:  "permission ask required",
-		},
-		{
-			name: "a read-only turn's write no longer settles", uses: `["fs.write"]`, readOnly: true,
+			name: "a read-only turn's write does not settle", uses: `["fs.write"]`, readOnly: true,
 			call: `zemi.fs.write("%project%/notes.txt", "x")`,
-			err:  "permission ask required",
-		},
-		{
-			name: "a protected write still asks with fs.write declared", uses: `["fs.write"]`,
-			call: `zemi.fs.write("%project%/.git/config", "x")`,
-			err:  "permission ask required",
-		},
-		{
-			name: "the plugin's own code still asks with fs.write declared", uses: `["fs.write"]`,
-			call: `zemi.fs.write("%plugin%/.zemi/init.lua", "x")`,
-			err:  "permission ask required",
-		},
-		{
-			name: "a secret-shaped path still asks",
-			call: `zemi.fs.read("%project%/.env")`,
-			err:  "permission ask required",
+			err:  "permission denied (read-only agent)",
 		},
 		{
 			name: "a subject no capability covers keeps its default",
@@ -754,15 +692,11 @@ func TestPluginUses(t *testing.T) {
 			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
 				t.Fatal(err)
 			}
-			fakeSandbox(h, true)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
 			if c.stub {
 				seedSession(t, h)
 				reflectStub(t, h, "pong")
-			}
-			if c.rule != nil {
-				h.Perm.Add(*c.rule)
 			}
 			if c.readOnly {
 				if err := h.SetProfile("planner"); err != nil {
@@ -796,41 +730,42 @@ func TestPluginUses(t *testing.T) {
 	}
 }
 
-// TestPluginToolCall: the model's call of a tool a plugin registered needs no
-// rule where the plugin's manifest declares "tool", and asks wherever it does
-// not, in a read-only run too; a tool the user's or a project's config
-// registered still asks, and so does a plugin's tool a rule asked for.
+// TestPluginToolCall: the model's call of a Lua tool a plugin registered is
+// gated like any tool: it asks in ask mode, runs in allow mode, and a
+// read-only run may call none of them.
 func TestPluginToolCall(t *testing.T) {
 	for _, c := range []struct {
 		name     string
-		origin   lua.Origin
-		uses     string        // the plugin a's manifest, when the origin is a plugin
-		rule     perm.Decision // a rule on tool.ping, "" for none
+		mode     string
 		readOnly bool
 		asked    bool
+		denied   string // a refusal the result names, "" when it settles
 	}{
-		{name: "a plugin's tool it declared", origin: lua.OriginPlugin, uses: `["tool"]`},
-		{name: "a plugin's tool it did not declare", origin: lua.OriginPlugin, asked: true},
-		{name: "a plugin's tool in a read-only run", origin: lua.OriginPlugin, uses: `["tool"]`, readOnly: true, asked: true},
-		{name: "a plugin's tool a rule asks for", origin: lua.OriginPlugin, uses: `["tool"]`, rule: perm.Ask, asked: true},
-		{name: "a user's tool", origin: lua.OriginUser, asked: true},
-		{name: "a project's tool", origin: lua.OriginProject, asked: true},
+		{name: "ask mode asks", mode: "ask", asked: true},
+		{name: "allow mode runs", mode: "allow"},
+		{name: "a read-only run may not call it", mode: "allow", readOnly: true, denied: "read-only agent"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, r := newTestHostPlugin(t, c.uses)
+			h, r := newTestHostPlugin(t, `["tool"]`)
 			ui := &fakeUI{askAllowed: true, askBy: tools.ByUser}
 			h.SetUIHooks(ui)
-			if err := chunkAs(t.Context(), h, r, c.origin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
+			if err := h.SetPermMode(c.mode); err != nil {
 				t.Fatal(err)
 			}
-			if c.rule != "" {
-				h.Perm.Add(perm.Rule{Subject: "tool.ping", Pattern: "*", Decision: c.rule})
+			if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
+				t.Fatal(err)
 			}
 			pipe := h.PipelineFor()
 			if c.readOnly {
 				pipe.Plan = func() bool { return true }
 			}
 			resp, err := h.luaFantasyTools(pipe)[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+			if c.denied != "" {
+				if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.denied) {
+					t.Fatalf("resp = %+v, %v; want %q", resp, err, c.denied)
+				}
+				return
+			}
 			if err != nil || resp.Content != "pong" {
 				t.Fatalf("resp = %+v, %v; want pong", resp, err)
 			}

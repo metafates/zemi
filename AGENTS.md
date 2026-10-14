@@ -33,20 +33,21 @@ Parse at the boundary: a check returns the checked value in the shape inner code
 struct, a `perm.Path`) and inner code takes that type, never the raw string; a check that
 returns only an error, followed by `x, _ :=` on the same input, is a bug. A type gets an
 unexported field only when it carries a proof something acts on, like a path safe to open.
-
 Comments say only what the code cannot: a why, an invariant, a ceiling, in one or two lines,
 describing the code as it is and never the diff. A deliberate shortcut gets a `NOTE:` naming
 the ceiling. Tests are tables and one runner, a case another case covers is deleted,
-non-trivial logic leaves exactly one runnable check, and security and sandbox assertions are
-never weakened.
+non-trivial logic leaves exactly one runnable check, and security assertions are never
+weakened.
 
 Fast is a feature. Nothing slow sits between submit and the provider request, an idle zemi
 redraws nothing, and there are no per-frame Lua or allocation hot spots. Cosmetics never cost a
 model call: the model supplies its own labels, like a shell call's `about`, as it streams the
 call.
 
-Safety comes from the sandbox, not from nagging. Auto mode does not ask for what the sandbox
-already confines, only for what is destructive or leaves it. Never fail open.
+The permission system is a UX feature, not isolation: two modes, ask (every action
+prompts) and allow (the default, everything runs). It never parses a command to judge it,
+and it is never a security boundary - a run that must not touch the machine runs in a
+container or VM. An ask no one can answer fails closed.
 
 The UI has one identity in every theme: neutrals from its fg and bg, one accent (whorl's
 periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas and
@@ -79,8 +80,8 @@ Each of these has a failure mode, not a style preference; the skill in brackets 
 - All `ui.App` state mutates on the bubbletea Update goroutine, and nothing `Update` calls may call `program.Send`/`program.Quit` (bubbletea's unbuffered channel makes the loop wait on itself: the `/quit` hang). Blocking hooks run off the UI goroutine only. [zemi-ui]
 - Never keep a pointer into an old generation: every registration is `Gen`-tagged and purged before the replay. [zemi-lua-runtime]
 - A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes a logged default, fail-closed for a permission ask. [zemi-lua-runtime]
-- An ask with no overlay available fails closed, and a rewritten tool input re-enters at the permission gate. [zemi-perm-sandbox]
-- A child process starts through `internal/proc`, never a plain `exec.Command`. [zemi-perm-sandbox]
+- An ask with no overlay available fails closed, and a rewritten tool input re-enters at the permission gate. [zemi-perm]
+- A child process starts through `internal/proc`, never a plain `exec.Command`. [zemi-perm]
 - The store schema is one `schema` const run on open: a change bumps `schemaVersion` and a store stamped with another one is refused with its path, never migrated. [zemi-host-flow]
 
 ## Commands
@@ -116,8 +117,8 @@ or settled builds.
 ## Where the rest lives
 
 The flow, the invariants and the gotchas behind these commands are this repo's own skills under
-`.agents/skills/`, one per area: the permission engine, the sandbox, the shell parse and the
-process layer; the Lua runtime and its types; host flow, the CLI, boot and trust, config, turns
-and sessions; subagents, workflows, MCP and LSP; the TUI. Their triggers are in the skills index
-in your context - load the matching one before changing that area. `zemi-dev-lessons` and
-`zemi-tui-test` hold the traps and how to drive the binary.
+`.agents/skills/`, one per area: the permission modes and the process layer; the Lua runtime and
+its types; host flow, the CLI, boot and trust, config, turns and sessions; subagents, workflows,
+MCP and LSP; the TUI. Their triggers are in the skills index in your context - load the matching
+one before changing that area. `zemi-dev-lessons` and `zemi-tui-test` hold the traps and how to
+drive the binary.

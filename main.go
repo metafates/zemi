@@ -6,10 +6,8 @@ import (
 	"os"
 
 	"github.com/metafates/zemi/internal/cli"
-	"github.com/metafates/zemi/internal/sandbox"
 )
 
 func main() {
-	sandbox.DispatchHelper()
 	os.Exit(cli.Main(os.Args[1:], os.Stdout, os.Stderr))
 }

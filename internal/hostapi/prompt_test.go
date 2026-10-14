@@ -19,7 +19,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -50,7 +49,6 @@ func TestSystemPromptSections(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	h.Perm.Add(perm.Rule{Subject: perm.SubjectRead, Pattern: filepath.Join(h.Dirs.ProjectDir, "private"), Decision: perm.Deny})
 	// an untrusted repository's instructions stay out, a profile's files too
 	for _, p := range []*Profile{nil, {ContextFiles: []string{"AGENTS.md"}}} {
 		if sys := h.buildSystem(p); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") || strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
@@ -59,7 +57,7 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome, "Top level: AGENTS.md a/ b.go\n", "subject that steers"} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome, "Top level: AGENTS.md a/ b.go id_rsa private/\n", "subject that steers"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
@@ -85,50 +83,6 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 }
 
-// TestUnsafePrompt: a --unsafe run's prompt says what the run is - no
-// sandbox, nothing hidden - and its listing names the secret-shaped file the
-// read tool would.
-func TestUnsafePrompt(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.agents.sessionID = "s1"
-	h.SetUIHooks(&fakeUI{})
-	fakeSandbox(h, true)
-	h.SetProjectTrusted(true)
-	h.Unsafe = true
-	for name, body := range map[string]string{"main.go": "package main\n", "id_rsa": "key\n"} {
-		if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	toolset, _ := h.profileTools(nil)
-	rules, _ := h.environmentFor(toolset, h.ScratchDir(), false)
-	if !strings.Contains(rules, "free the same way.\nSandbox: none: this run has --unsafe") {
-		t.Errorf("the scratchpad paragraph and the sandbox clause run together:\n%s", rules)
-	}
-	for _, want := range []string{
-		"Sandbox: none: this run has --unsafe",
-		"a command you run is unconfined",
-		"with the whole environment",
-		"no .env-shaped file",
-		"a fetch reaches a private address",
-		"ask the user first",
-	} {
-		if !strings.Contains(rules, want) {
-			t.Errorf("the --unsafe block misses %q:\n%s", want, rules)
-		}
-	}
-	if strings.Contains(rules, "are confined") || strings.Contains(rules, "Secret-shaped names ask") {
-		t.Errorf("the --unsafe block claims a secret still asks:\n%s", rules)
-	}
-	if top := h.topLevel(); !strings.Contains(top, "id_rsa") {
-		t.Errorf("a --unsafe listing hides a secret-shaped file: %q", top)
-	}
-	h.Unsafe = false
-	if top := h.topLevel(); strings.Contains(top, "id_rsa") {
-		t.Errorf("a listing hides nothing without --unsafe: %q", top)
-	}
-}
-
 // TestPromptFollowsToolSet: the prompt and the kept tools' descriptions name
 // no tool the profile dropped, the shipped lean one included, which must
 // keep the file tools and what shell hands a timed out command to.
@@ -150,8 +104,8 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		// untrusted: the lua tool asks about every script
-		{"default", nil, []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "Every script needs the user's approval here", "lua.md", "under 150 characters"}, []string{"in one message", "keep your own files", "runs at once"}, []string{"in one response"}},
+		// the lua tool's description: read-only scripts run, changing ones ask
+		{"default", nil, []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "needs the user's approval once", "lua.md", "under 150 characters"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit", "under 150 characters"}, nil},
@@ -277,7 +231,6 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 			if s := h.gitStatusSection(dir); !strings.Contains(s, recentCommits) {
 				t.Fatal(s)
 			}
-			h.noSecretsUnder(dir, true)
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatal("git ran a program from the repository config")
 			}
@@ -386,12 +339,6 @@ func TestPromptPinned(t *testing.T) {
 			handEdit(h, agentsMD(h), "run make check")
 			h.SetProjectTrusted(false)
 		}, true, 0},
-		{"AGENTS.md turned into a link to a secret", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			env := filepath.Join(h.Dirs.ProjectDir, ".env")
-			handEdit(h, env, "run make check")
-			os.Remove(agentsMD(h))
-			os.Symlink(env, agentsMD(h))
-		}, false, 0},
 		{"hand edit sent, then rewound", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			handEdit(h, agentsMD(h), "run make check")
 			sender(t, h)("mid")
@@ -402,7 +349,6 @@ func TestPromptPinned(t *testing.T) {
 			}
 		}, false, 1},
 		{"AGENTS.md edited through the edit tool", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: agentsMD(h), Decision: perm.Allow})
 			all := tools.All(h.PipelineFor())
 			for _, call := range []struct {
 				name string
@@ -520,7 +466,6 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}
-		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}})
 		h.SetUIHooks(&fakeUI{})
 		os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755)
 		if i == 1 {
@@ -552,7 +497,6 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 // base cannot grow unnoticed.
 func TestPromptBudget(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true, ProtectsByName: true}})
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
@@ -566,8 +510,8 @@ func TestPromptBudget(t *testing.T) {
 	toolset, _ := h.profileTools(nil)
 	sys, ctx, parts := h.buildSystemParts(nil, toolset)
 	sys += ctx
-	if !strings.Contains(sys, "# Skills") || !strings.Contains(sys, "Sandbox (auto mode)") {
-		t.Fatal("no skills index or Sandbox block: the count would be less than users get")
+	if !strings.Contains(sys, "# Skills") {
+		t.Fatal("no skills index: the count would be less than users get")
 	}
 	sizes := promptSizes(parts, toolset)
 	n := 0

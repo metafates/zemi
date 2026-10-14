@@ -49,14 +49,13 @@ EXISTS` stamped with `PRAGMA user_version`; no migrations before the
 first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/openai-go` (the SDK options an `OPENAI` provider's `body` sets, §6.3), `charmbracelet/x/exp/golden` (golden-file assertions
-for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
-(sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6),
+for TUI output), `aymanbagabas/go-udiff` (edit previews),
+`sahilm/fuzzy` (the one list filter, §6.6),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
 already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` and `golang.org/x/net/html` (the `fetch` tool: the article
-out of a page, as markdown the model can read), `mvdan.cc/sh/v3` (its
-`syntax` parser alone reads the model's shell commands, §9), `golang.org/x/text`
-(the case folding APFS does, for paths and program names),
-`golang.org/x/sys` (openat, Landlock and seccomp), `golang.org/x/mod` (plugin
+out of a page, as markdown the model can read), `golang.org/x/text`
+(the case folding APFS does, for paths),
+`golang.org/x/sys` (openat), `golang.org/x/mod` (plugin
 release tags and the build's version), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion with values from the project store and an inert boot, `Host.Inert`; kong was weighed and lost on completion). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
 for its embedded provider catalog and its client (§6.3): no network at
@@ -364,7 +363,7 @@ splash, its first screen with no prompt argument and no resume, offers other pro
 only to pick one, so it runs untrusted as after Later and the statusline
 keeps `/trust`.
 `/projects` lists every root zemi keeps state for, switches to one by
-restarting zemi there (trust, origins, stores and the sandbox are bound at
+restarting zemi there (trust, origins and stores are bound at
 start, so one process runs one project), forgets another
 project's decision (the next start there asks again) and deletes its data; it
 never grants trust. Its ages are the last use: the root file is touched when
@@ -374,28 +373,18 @@ as the statusline does.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
 it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
-even if that reload stops at an earlier failing step. When a sandboxed
-command creates a protected path that did not exist when it started
-(`.agents`, `.git`; only the Linux namespace backend lets it), trust is held
-off for the process until `/trust` is answered, without saving: the tool
-result and a notification name the path, and the config watcher and the
-trust step check running commands before they read project config. There is no content hash:
-once the user lets auto mode run a repository's commands,
-re-asking about a pulled `.agents/init.lua` protects nothing, and project
-origin is denylisted anyway (below).
+even if that reload stops at an earlier failing step.
 
 Trusted, zemi loads the project's `.agents` config and instruction files
-(and a profile's `context.files`), starts language servers (builtin and
-user-added; sandboxed when a backend is live, §9; the Lua of zemi's own
-trees gets its server either way), auto mode and read-only agents settle builds and tests in the sandbox, and
-auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no project language server starts (zemi's own Lua still gets its own), `.agents` edits trigger no reload, and auto mode and read-only agents
-settle only reads, `perm.Normalized.ReadCommand` commands and, confined, a plugin's
-tests (§9). Either way zemi's own
+(and a profile's `context.files`) and starts language servers (builtin and
+user-added; the Lua of zemi's own trees gets its server either way).
+Untrusted, none of that: only the user's `<config>/AGENTS.md`
+is an instruction file, no project language server starts (zemi's own Lua still gets its own), and `.agents` edits trigger no reload.
+Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule
 recursion, LFS smudging, log's signature checks (`gpg.program`),
-transports other than https, ssh and file, and repository filter drivers: a sandboxed command can plant a nested
-repository whose config would otherwise run unconfined on zemi's next
+transports other than https, ssh and file, and repository filter drivers: a command can plant a nested
+repository whose config would otherwise run on zemi's next
 `git status`. A plugin clone is someone else's repository, so its git
 calls blank the user's global filter drivers too.
 
@@ -412,14 +401,13 @@ trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
 trust prompt without holding the UI. The host's own steps (namespaces, builtin
 commands, the shipped UI, markdown commands, `app.ready`) are hard: the first
 failure stops the boot, the runtime goes hot and the screen is the Go-drawn
-boot box (§8). Everything a user owns (trust, project permissions, plugins,
+boot box (§8). Everything a user owns (trust, plugins,
 `init.lua`, skill hooks, project `init.lua`) is a soft step: its error is
 recorded for `/errors` and the boot goes on. Agents and workflows are read when
 used: the user's, then the builtin ones, then each plugin's, then the
 project's under the current decision; the first of a name wins. Project config loads late with
 flagged reduced trust: its registrations are tagged `origin = "project"`
-(shown in the UI and logs), its permission rules may only tighten (deny or
-ask rules and `not_match` guards; allow rules are user-config-only), and
+(shown in the UI and logs), and
 its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.tool.override` (same rewrite capability, same denial), no
 `zemi.provider.add`, no `zemi.agent.profile.add` and no `agent.profile`
@@ -528,7 +516,7 @@ no IO by construction: the process starts no process (`proc.Refuse`), and
 a job, HTTP request, model ask, agent send or `zemi.fs` write passes the
 gate only when a `test.stub` answers it, its reply standing in for the
 transport; a call no stub answers raises naming the stub line to add, and
-a `false` reply refuses it as a missing rule does, whatever rules exist. Time is a fake clock at 2026-01-01 UTC
+a `false` reply refuses it. Time is a fake clock at 2026-01-01 UTC
 that only `test.advance` moves, driving timers, `os.time`/`os.date`/`os.clock`,
 a render's `ctx.time` and log times; every driver returns once zemi is
 quiet (no host goroutine running, no timer due). An error zemi records in
@@ -737,11 +725,9 @@ A runtime pick outlives the process: the global store keeps it per key as
 and a start applies the rows before any Lua. The layers are schema default <
 saved pick < init.lua < this run: init.lua always wins a restart, and a pick
 over a key it sets lasts the run. A pick back to what the key would be without
-it forgets the row. Flags, `zemi run` and `zemi health` keep nothing, and neither does a
-mode whose base is yolo: a flip made for one task must not start every later
-zemi, in any repository, allowing what the rules do not deny. zemi never edits
+it forgets the row. Flags, `zemi run` and `zemi health` keep nothing. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
-config files through the permission-gated file tools. zemi makes no commits.
+config files through the gated file tools. zemi makes no commits.
 
 A plugin's options are settings of its own: `zemi.config.add(key, spec)`
 registers a key (a string, a number, a bool, or one of a list) with its
@@ -762,43 +748,15 @@ deleted or reinstalled plugin's picks go with its `zemi.state`. A plugin
 reads its settings and never writes them (its write would be kept as the
 user's pick), and a secret never goes in one: /config shows it.
 
-Permission rules are data with one API and an optional principal:
+The permission mode is a config key and a runtime pick like any other:
 
 ```lua
-zemi.permission.rule.add{ subject = "tool.shell", pattern = "make *",
-                          decision = zemi.permission.decision.DENY, match = "make check" }
+permissions.mode = "ask" -- every action prompts; "allow" (the default) runs everything
 ```
 
-A rule outside the subject families, or on a builtin tool other than
-`tool.shell`, `tool.lua` and `tool.workflow`, raises when added, since it
-would never match. Once boot is done, each `tool.*` rule and tool override
-no tool answers to is an `/errors` entry naming the ones there are: the Lua
-tool a rule names may come from a project or a plugin, so the call that
-adds the rule cannot tell.
-
-A Lua rule carries no principal and matches every principal, unless user
-config scopes it to one plugin with `principal = "plugin:<name>"` (§9),
-which `/permissions` shows in the row's tag; rules stored by an `always`
-answer are scoped to the `model` principal, so a model tool call cannot
-ride a rule meant for the user. Every rule lives
-in memory until zemi exits; a rule meant to last is a line in `init.lua`,
-which adds it again on every boot and a reload replays. There is no rule
-file, since a dumped rule deleted from `init.lua` would stay in force:
-`scope = "permanent"` raises with a pointer to `init.lua`. Origins: user config may add any rule;
-plugin and project origins may add only deny/ask rules. Overlay `always` answers (§8) append session rules to
-the same store, so rules never live in `zemi.state` or the DB, and no
-Lua can forge one. Only the user's own config and `always` answers
-write allow rules (the widening direction; plugin and project rules are
-deny/ask only, so their globs can only tighten).
-
-A project's `permissions` file (§5, in its state dir) is a list of shell
-commands zemi always allows in that project, read as a boot step only
-when the project is trusted. Each line is allowed as a whole with the
-overlay's rule shape (§8): no rule is written from a wrapper or deleting
-program or a line carrying a glob. Because the file lives outside the
-repository (a clone cannot ship it; a gitignore line would not untrack a
-committed one) and no sandbox can write it, allow rules from it are safe
-where project `.agents` Lua above is not.
+A `zemi.tool.override` no tool answers to is an `/errors` entry once boot
+is done naming the tools there are: the Lua tool it names may come from a
+project or a plugin, so the call that adds it cannot tell.
 
 ### 6.2 Keys, commands, events
 
@@ -913,34 +871,7 @@ otherwise return a decision table:
   (fantasy `StopTurn`). There is no `allow`
   decision: absence of denial is the only pass, so a Lua hook can never
   pre-approve a permission (crush's `allow` does pre-approve; zemi
-  deliberately diverges). A `rewrite` from a non-user principal
-  additionally flips an `allow` decision to `ask` (a `deny` stays `deny`:
-  a rewrite never loosens an existing denial), so a rewrite can never
-  ride a pre-existing allow glob. An `always` answer (key `a`, §8)
-  stores session-scope allow rules scoped to the `model` principal, and
-  they are prefix globs, not exact values: for `tool.shell` one rule per
-  normalized segment, each the segment's program (its program and
-  subcommand for `git`, `go`, `cargo` and the like, with the options
-  before the subcommand kept) plus that prefix with ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
-  segment §9 calls destructive stores its exact normalized string, since
-  the rule runs unconfined, and none when a word in it is an expansion
-  (`rm $f` deletes whatever a loop hands it); for `fs.read` and `fs.write` the file's directory
-  with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;
-  for anything else the exact argument. A file read is also offered a
-  wider choice covering its whole repository, since in a deep tree the
-  directory rule is the same ask again one package over. A call §9
-  gate-forces to `ask` (heredoc/herestring, dangerous assignment), a
-  pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
-  a value the rules never see), a wrapper program that runs what it is
-  handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, `zemi`
-  itself, whose `plugins install` fetches code that runs everywhere, and the
-  `npm exec`/`uv run` spellings of `npx`) offer no `always` option at
-  all, so they re-ask every time: no rule written from such a segment
-  says what the next call would run. A secret-shaped file is offered only
-  its exact path, since a directory rule would cover the next secret
-  too: a file request a `model` glob rule allows goes back to the ask when
-  it is secret-shaped, and so does a reader command naming one (`cat
-  .env`) under an `always` rule.
+  deliberately diverges).
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.
@@ -1151,8 +1082,8 @@ on the claimed agent, as `/btw`.
 
 Builtin providers come from catwalk's embedded catalog, or the one
 `/model update` or `zemi models update` fetched from catwalk.charm.land and saved in the data
-dir (the catalog picks where each key is sent, so it lives where no
-sandbox writes, and it reads only the variables the bundled one names;
+dir (the catalog picks where each key is sent, so it lives in zemi's own
+data dir, and it reads only the variables the bundled one names;
 one saved under another bundled catwalk version is ignored, so an
 upgrade brings its newer bundle back): every generation
 seeds the registry with the providers whose key env var is exported
@@ -1172,9 +1103,8 @@ while a builtin's key may be exported for other tools.
 
 `zemi.provider.add` and `zemi.provider.del` require a user-owned registration origin: Lua
 from a plugin or a project cannot call them (the
-mechanical check is the origin, not the caller's principal). Provider base URLs ride the §9 net
-gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
-variables for user and builtin origin only, and for any origin under `--unsafe`) and is never
+mechanical check is the origin). A user provider's key comes from user config (`zemi.env.get` reads secret-shaped
+variables for user and builtin origin only) and is never
 exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
@@ -1359,8 +1289,7 @@ five the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
 and pause, resume or stop a background one), `lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
-in an untrusted project or read-only agent, and before a call that widens what
-zemi allows or starts a program outside the sandbox, §9), `tool_search`
+in ask mode like any other action, §9), `tool_search`
 (past ten MCP tools a step offers only it and what a search loaded, its
 description a catalog of names by server, §11), and `update` (what
 a subagent tells its caller mid-run, §6.3; only a subagent holds it).
@@ -1851,9 +1780,7 @@ rides the `memories.md` line and its ledger entries.
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`), and (`statusline.unsafe`, `ctx.unsafe`) a `--unsafe` run its
-  own `unsafe` pill beside the mode, in the `Danger` group, at the mode's own
-  priority so a short row drops both together; only the stuck and errors pills
+  (`rows_below`); only the stuck and errors pills
   are Go-drawn. A boot that
   failed leaves the runtime hot, so no widget, theme, config text or composer
   exists at all: the whole screen left is Go's, and the boot box states the
@@ -2203,11 +2130,7 @@ rides the `memories.md` line and its ledger entries.
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
-  `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips to yolo and back),
-  `/permissions` (the mode and the rules in force; a session rule an "always"
-  answer wrote can be deleted there, from its detail view, and `y` copies it as
-  init.lua lines, which are wider: a config allow skips the secret re-ask the
-  answer keeps, so the detail says so, and a network answer copies none),
+  `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips between ask and allow),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `r` resumes the selected session, `n` renames it, `x` opens its
   Delete, enter offers both), `/rename [title]` (names the session; without a
@@ -2217,7 +2140,7 @@ rides the `memories.md` line and its ledger entries.
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
   answered in an overlay, on stdout in `zemi run`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store,
-  providers, catalog, model, context window, git, sandbox, shell, notify,
+  providers, catalog, model, context window, git, shell, notify,
   project trust, skills, plugins, MCP servers, language servers, reflector,
   pending reviews, recent errors, layout, Lua runtime, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
@@ -2259,40 +2182,20 @@ rides the `memories.md` line and its ledger entries.
   overlay (diff preview for edits, command preview for shell, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls wait in the host: one overlay
-  at a time, in arrival order, each waiter judged again (rules, mode,
-  trust) before its overlay opens, so an answer that covers it settles it
+  at a time, in arrival order, each waiter judged again (mode) before its
+  overlay opens, so a switch to allow settles it
   with no prompt; the answered box stays drawn until the next replaces it
   in place. The title asks what the call would do, built from the
-  request's typed fields, and for a command says where a yes runs it ("Run
-  this command outside the sandbox?", "in the sandbox, with the network?",
-  "in the sandbox?" for a read-only agent's, and "Run this command?" with no
-  backend). The badge names the subagent asking (`explore agent`, a
+  request's typed fields ("Run this command?", "Write this file?", "Fetch
+  this URL?", "Use <tool> from <server>?"). The badge names the subagent asking (`explore agent`, a
   workflow's by its run id, never the model's descriptions), whose code a
   Lua tool runs (`plugin:<name>`) and the queue ("1 of 3"), in what the
   title leaves. Under the title a facts table,
-  dim names beside their values like a detail view's fields: the target (`runs`
-  for a command, `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
-  model's own description, quoted and last since nothing checked it. `runs`
-  lists what the command runs from the gate's one parse (`perm.Normalized.Programs`),
-  each by its base name unless a path names one outside the `PATH` dirs
-  (`./tools/git` reads as that path, never as the system git),
-  a program marked `(deletes)` in Danger when `Destructive` would ask about its
-  segment and `(runs code)` in Warn when it runs code the list cannot see,
-  marked names first, two rows at most and the rest counted as `+N more`; when
-  the parse cannot vouch for the list (a program a substitution or a variable
-  picks, a heredoc a program it does not know reads) it says `unknown: read the command`;
-  a heredoc an interpreter reads (`python3 - <<EOF`) is the interpreter's code,
-  so it adds only an unquoted body's substitutions;
-  a heredoc `cat`, `tee` or another data reader reads adds only its substitutions
-  when no shell or interpreter in the command could run it (`cat <<EOF | sh`
-  lists the body's programs, `cat <<EOF | python3` is `unknown`).
+  dim names beside their values like a detail view's fields: the target (`command`,
+  `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
+  model's own description, quoted and last since nothing checked it.
   Then the command, diff or input, then the choices, a vertical list with their
-  keys, each label saying how long and a dim column saying what it allows:
-  `Yes` (`y`, or `o`), `Yes, this session` (`a`, only
-  when the request has an always choice; a command's scope ends in where the
-  rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
-  for a trusted project's safe shell command, `Yes, this project`
-  (`p`)), `No` (`n` or `esc`), and `No, and tell zemi`
+  keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
@@ -2300,14 +2203,7 @@ rides the `memories.md` line and its ledger entries.
   answer, drawn always so focusing it moves nothing; a batch's Submit tab, whose one
   button stays pinned under the scrolling summary; an overlay's detail view; a
   multi-select stays a list of switches) draws its buttons through one renderer, which puts
-  each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The session `always` and `wider`
-  answers write allow rules to the rule store (§6.1),
-  scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
-  until zemi exits. Lasting rules normally come only from `zemi.permission.rule.add`
-  lines in the user's own config. The one exception is the `Yes, this project`
-  answer (`p`): it appends the command to the project's `permissions` file in its state
-  dir (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
-  boot. The overlay
+  each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself. Its
   chrome (frame, answer keys, subject, badge) renders in the active
   palette's roles through `Host:` styles no group or `hl.set` reaches, and
@@ -2367,9 +2263,9 @@ rides the `memories.md` line and its ledger entries.
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
   it through; the model reads "no one can approve in a headless run".
-  Since the model picks every URL, which only yolo settles, a run with no
-  `net.*` allow rule, yolo base or `decide` in its mode ships neither
-  `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
+  In ask mode a run with no UI to approve an action ships neither
+  `fetch`, `web_search` nor the `web` agent (`Host.webOff`); allow mode,
+  the default, keeps them.
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, every string on a line passes the same sanitize
@@ -2419,615 +2315,52 @@ rides the `memories.md` line and its ledger entries.
   a block it clips itself by setting `fade` on those rows (a segment field):
   the deeper of the two sinks holds.
 
-## 9. Permissions and safety
+## 9. Permissions
 
-- Model: rules `(subject, pattern, decision, principal?)`; `principal` is
-  optional and unscoped by default (it matches every principal); rules
-  stored by an `always` answer are scoped to the triggering principal
-  (§6.2). One subject namespace:
-  `tool.<name>` (model tool calls), `fs.read`, `fs.write`, `net.<host>`,
-  `lua.<ns.call>` for host-API calls from Lua (`lua.fs.read` checks the
-  same jail as `fs.read`, again at the Lua boundary). Decisions
-  `allow|ask|deny`; patterns are globs over the operation argument (path,
-  url; commands match a normalized form: the command is parsed with
-  mvdan.cc/sh's `syntax` package (no hand scanner) once, as POSIX sh,
-  whichever sh runs it: `proc.Shell` is dash where it is installed
-  (macOS since 10.15, Debian, Ubuntu), else sh, which may be bash
-  (Fedora, Arch) or busybox ash (Alpine), and every body another shell
-  runs (a `sh -c`, `bash -c` or `zsh -c` text, one `xargs`, `find -exec`
-  or `sudo` hands a shell, `eval` text, a heredoc a shell reads) is
-  parsed the same way. So zemi accepts only the grammar every sh reads
-  alike: any parse error fails the call before it runs, before any ask
-  too, the tool's result being the reason alone, bash-only syntax naming
-  the POSIX form to write (`&>` is `>file 2>&1`, `<( )` a file or a
-  pipe), and so does text the POSIX parse accepts that bash reads
-  otherwise: `$'..'` and `$".."`, which bash decodes and an older dash
-  reads as `$` and a quote (bash runs `rm` in `$'\x72m' -rf .`), `[[`,
-  `source` and `let`, which bash runs as a test, a script and arithmetic
-  and dash lacks, a `((` opening a statement, arithmetic to bash and
-  nested subshells to sh, `x+=1` or `a[0]=1` as a command's first word,
-  which bash assigns and sh runs (`x+=1 rm -rf .` runs `rm` in bash
-  only), a word bash would brace-expand (`{rm,-rf,.}`,
-  `mkdir a/{b,c}`, `{1..3}`), which dash runs as written, and a
-  backslash ending the text, which bash drops (`cat .env\` reads `.env`)
-  and dash keeps. A parse error names the parser's line, column and
-  message, which a model can act on; one in a `sh -c` text or a heredoc
-  body says which (`in the bash -c text: ...`, `in the heredoc body from
-  line 3: ...`), its position counted from there. Text a shell reads
-  otherwise than the parse asks, and `Destructive` and the program list
-  (§8) cannot vouch for it: a carriage return (the parser reads it as a
-  blank, sh as a character), an `alias`, which sh expands in the lines
-  after it (`alias l=rm` then `l -rf .` runs `rm`), and, in a body
-  another shell runs, a heredoc inside a `$( )`, which bash 3.2 (macOS
-  sh) ends at a `)` in the body (it runs `rm z` in `echo $(cat <<EOF` /
-  `) ; rm z` / `EOF` / `)`); that misreading, which also garbles commit
-  messages, is why `proc.Shell` prefers dash. A heredoc body with
-  bash-only syntax fails the call only where a shell reads it; for any
-  other reader but an interpreter (`$SHELL`, `make`, `busybox sh`) the
-  line it fails on shows no row, so it asks. The parser also reads a
-  backslash ending a comment as a line continuation, which no shell
-  does; that backslash is blanked before the parse. Known ceilings, the
-  sandbox the limit for each: where sh is bash, `declare -i`,
-  `typeset -i` and `$[..]` evaluate arithmetic the POSIX rows show as
-  words, which runs a `$(...)` in a value planted earlier in the text; a
-  bash builtin that repoints a name (`hash -p /x rm`, `enable -f`); a zsh
-  or fish `-c` body judged as POSIX; and a program word holding an
-  expansion (`$X`, `rm$() -rf x`), which names no program, so no deny
-  rule and no `Destructive` check sees what it runs. A segment is a
-  simple command's words as the program receives them where they are
-  static (quotes removed), an expansion kept as written; syntax (`if`, `do`, `done`, a function's
-  name) is no segment; a command in a loop body, a while condition or a
-  function body (which each call runs again) is marked as repeated; a substitution's commands, quoted or not, a
-  function's body, a `time` command (as `time cmd`) and a `sh -c`/`bash -c`/`zsh -c` body (parsed again the same
-  way, the assignment gate included) are segments of their own. Before
-  the walk, leading literal assignments (`D=/long/path; ls $D`, also
-  joined by `&&`) are read in place of `$NAME` and `${NAME}` where the
-  words render, so gates and rules see the real path; only a value the shell leaves as is qualifies (no quotes, no
-  glob or brace, no expansion but an earlier inlined name), heredoc
-  delimiters stay as written, an assignment to a name already in the
-  environment, to a variable the shell itself reads (`CDPATH`, `HOME`,
-  `PWD`, `OLDPWD`, `GLOBIGNORE`, `TMPDIR`, ...) or on the assignment
-  gate's list is never inlined and stops the inlining, the last statement
-  is never inlined (it sets nothing a command reads), and a later mention
-  of the name other than as `$NAME` (`D=`, `for D`, `read D`, `eval $X=`
-  with `X=D`) or a builtin that sets names by a value the parse cannot see
-  (`eval`, `read`, `declare`, `source`, ...) cancels it.
-  Every segment is matched on its own: the call is allowed only if each
-  segment matches an allow rule, so a compound payload (including
-  `cmd1\nrm -rf x` and `cmd1 & cmd2`) cannot ride a broad allow. A
-  segment with a word that climbs (`docs/../x`) is matched as written and
-  again with that word cleaned, and the stricter verdict holds, so
-  `cat docs/*` does not allow `cat docs/../.env`; the cleaning is lexical,
-  the working directory being unknown to the rules, so a path word the
-  shell may still expand into a climb (`docs/{..,a}`, `docs/$X`,
-  `docs/.*`) turns an allow into an ask. An assignment prefix
-  (`GIT_EXTERNAL_DIFF=./x git diff` runs `./x`) and arithmetic naming a
-  variable (`$((x))`, `[[ $x -eq 1 ]]`, `${a[$i]}`: bash evaluates the
-  value as an expression, where a subscript's `$(...)` runs) read a value
-  the rules never see, so either turns an allow into an ask. The
-  assignment gate checks every assignment the parse finds (a prefix, a
-  bare assignment, a `for` variable, an `export`/`declare`/`local`
-  argument), every segment word shaped `NAME=value` or `NAME+=value`
-  after its quotes are removed (an argument to `env` or `sudo`, and
-  `PA'TH'=/tmp/x`, which sh runs as a program, is the name `PATH`), and
-  the names `read`, `mapfile`, `getopts` and `printf -v` assign; one
-  naming an environment-affecting variable forces `ask` for the whole call
-  regardless of allow rules: the name list (`PATH`, `LD_*`, `DYLD_*`,
-  `BASH_ENV`, `ENV`, `IFS`, `PYTHONPATH`, `PYTHONHOME`,
-  `PYTHONSTARTUP`, `NODE_OPTIONS`, `NODE_PATH`, `RUBYOPT`, `RUBYLIB`,
-  `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `LUA_PATH`, `LUA_INIT`,
-  `BASH_FUNC_*`, `SHELLOPTS`, `BASH_XTRACEFD`, `EDITOR`, `VISUAL`,
-  `PAGER`, `GIT_SSH_COMMAND`, `GIT_EDITOR`, `GIT_PAGER`,
-  `GIT_CONFIG_*`; case-insensitive) is a curated denylist, not a proof:
-  `PATH=.:$PATH make`, `export PATH=.:$PATH; make`, and
-  `GIT_SSH_COMMAND=/tmp/x git fetch` cannot ride stored allows. The
-  accepted residual risk is exec-steering by any spelling the scan
-  does not see (an unrecognized env name, or the same effect via flag
-  syntax like `git -c core.sshCommand=/tmp/x fetch`), the same residue
-  the mounts/hardlinks note accepts, caught by the ask defaults for
-  everything the user never allowed. Redirections:
-  fd-dups and fd closes (`[n]>&[m]`, `[n]<&[m]`, `>&-`, `<&-`) gate
-  nothing, but those forms require a digit or `-` target: `>&word` with
-  a non-digit word is bash's both-streams-to-file form and its target
-  gates as `fs.write`, `<&word` with a non-digit word gates as
-  `fs.read`; `&>`, `&>>`, and `>|` are writes whose target gates as
-  `fs.write`; `<>` opens read-write, so its target gates as both
-  `fs.read` (secret-shaped paths ask, below) and `fs.write`; a redirect
-  whose target is empty (`> ""`) fails the whole call; any call using a heredoc or
-  herestring (`<<`, `<<-`, `<<<`) forces `ask` for the whole call, and a
-  heredoc body is parsed as commands unless every program in the call is
-  a reader that runs none of its input (`cat`, `tee`, `echo`, `printf`,
-  `gh`, `patch`, and `git` only as a subcommand named first that reads a
-  message or a patch, `commit`, `tag`, `apply`, `am` and the like, since a
-  `-c` before it can define an alias that runs a shell; beside the reader,
-  a git builtin that runs no program its words name, like `add` or
-  `status`, leaves the body data too), and then an
-  unquoted one for its substitutions
-  and a quoted one is data (a delimiter with any quoting, `E"O"F`
-  included, makes the body literal); an unquoted body is read as the
-  shell hands it on, the backslashes before `$`, `` ` ``, `\` and a
-  newline removed (in `sh <<EOF`, `` echo \`rm x\` `` runs `rm`); a body that does not parse as
-  commands fails the call only
-  when a shell may run it, since an apostrophe in prose or in another
-  language's code is no shell error, and is judged by what parses before
-  the error and line by line, since a shell runs the lines before it and
-  make runs each recipe line in a shell of its own; other input targets
-  gate as `fs.read` (secret-shaped paths ask, below), other output
-  targets gate as `fs.write`, and only the inert character devices
-  `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and
-  every other device file gates like any outside-jail path). Every
-  shell call runs in a fresh shell process (`proc.Shell -c`: dash where
-  it is on `PATH`, looked up once per process, else sh): no fd, cwd, or
-  env state persists between calls. Defaults: `fs.read` inside the jail is allow,
-  `fs.write` is ask. Config ships conservative defaults; prompts during a
-  session add session rules. Evaluation order: `deny`
-  beats `ask` beats `allow` regardless of registration order; within one
-  decision the most specific pattern wins (fewest wildcards, then the
-  longest literal prefix). `not_match` is a runtime exclusion guard on
-  its own rule: a segment matching the pattern but also matching the
-  rule's `not_match` value does not match that rule and evaluation
-  falls through; every fall-through is logged with its decision.
-  Lua-authored rules must carry `match` / `not_match`
-  example strings, validated at load (codex execpolicy style): the
-  `match` example must match the pattern without being excluded by the
-  guard, and the `not_match` example must be excluded by the guard;
-  the loader refuses the rule otherwise (a rule carrying a guard must
-  carry both examples; a guard-less rule needs only the `match`
-  example). The guard's full extent is its own glob, stored in the
-  rule and demonstrated by its examples, so a narrowed deny is
-  auditable end to end. `match` / `not_match`
-  values use the same whole-string glob semantics as the pattern.
-- Principals: every operation carries the principal that originated it:
-  `model` (every tool call, MCP tools included) or, for Lua, the running
-  origin: `user`, `builtin`, `plugin:<name>`, `project` (§5).
-  Attribution follows the registration origin of
-  the running handler and the least trusted code on the call stack, never
-  the trigger: an operation inside a plugin-registered keymap acts as that
-  plugin, not `user`, no matter whose finger pressed the key, and so does
-  a plugin's `setup()` that user config calls; only user code acts as
-  `user`. A refused Lua call names the rule to paste, a plugin's with
-  `principal = "plugin:<name>"`: a principal scopes a rule to one plugin,
-  and only user config writes one. Rules may be scoped per principal, so a
-  prompt-injected tool call (`model`) cannot ride rules meant for the
-  user.
-- Defaults when no rule matches: pure reads (`zemi.config.get`,
-  `zemi.state.get`, `zemi.log`, list/introspection calls) and
-  UI-shaping host APIs (`zemi.state.set`, `zemi.notify`, `zemi.timer`,
-  `zemi.ui.*`, `zemi.keymap`, `zemi.command`,
-  `zemi.model.pick`) are allow; `fs.read`
-  inside the jail is allow except secret-shaped paths (matched
-  case-insensitively on the resolved path: `.env`, `*.env`, `.env.*`, `.envrc`,
-  `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa*`, `id_dsa*`,
-  `id_ecdsa*`, `id_ed25519*` but not their `.pub`, `*credential*`, `*secret*`,
-  `.netrc`, `.npmrc`, `.yarnrc.yml`, `.pgpass`, `.pypirc`, `.htpasswd`, `.my.cnf`;
-  folded like APFS),
-  which ask by default and whose contents are
-  scrubbed at the memory store boundary with the memory-intake scrubber
-  (§10.4); the side-effectful set (`fs.write`,
-  `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
-  `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
-  `lua.agent.send` and `lua.model.ask`) is `ask`. The one exception is an
-  enabled plugin's own calls: its manifest's `uses` is the user's decision, so
-  a declared `lua.model.ask`, `lua.classify.ask`, `lua.agent.send`,
-  `lua.http.*`, `lua.fs.write` or `lua.job.start` (`job` for one that asked for
-  the sandbox, `job.unsandboxed` for one that did not, since it runs with the
-  whole environment) settles
-  while it is on (a disabled plugin never loads), and so does a `tool.<name>`
-  whose tool a plugin registered and declared `tool`, when the model calls it
-  and the run is not read-only. A call the declaration does not cover is refused,
-  naming the manifest field to add: never asked, and no rule of the user's
-  widens it (a rule still narrows a declared one). A protected write
-  (above), a secret-shaped path or any write of a read-only agent still asks -
-  except under `--unsafe`, where
-  a secret-shaped path stops being special (below). User and builtin code
-  send and ask ungated, `zemi.model.set` is refused below builtin origin,
-  project code may neither send nor ask, and `zemi.memory.add` is
-  refused for project code (§5); a Lua-originated call to one of these
-  APIs checks the same capability under its `lua.` subject (`lua.fs.read`
-  mirrors `fs.read`, subject namespace above), so these defaults cover
-  both origins without extra rules. Registration and config APIs
-  (`zemi.permission.rule.add`, `zemi.config.set`, profile/provider
-  registration) follow their origin rules in §6 and refuse outright, as
-  errors, never as asks. Anything unlisted defaults to `ask`; there is no
-  fail-open path.
-- Permission modes answer what is left: a mode sees only the asks that
-  survive the rules above and the `permission.request` veto (§6.2), and
-  it can never overrule a `deny`. An ask a rule asked for (an `ask` rule, a
-  `not_match` exclusion; `Request.Explicit`) is the user's under `auto`,
-  so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). In a read-only agent
-  (the shipped `planner` profile, `Profile.ReadOnly`)
-  `fs.write` is denied even under an allow rule, shell and `mcp.*` allows flip to `ask` unless
-  the shell command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
-  unwritable, which is what keeps a planning session read-only. `auto` settles
-  locally first, without a model: reads anywhere that are not secret-shaped
-  (a `grep` rooted where one of the hidden home dirs sits asks, since the
-  search would print what it holds), writes inside the jail that
-  are not secret-shaped (writes under any `.git`, to the Lua in any `.agents`
-  (`init.lua`, `lua/`), to a `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
-  names, or zemi's own config, data and state dirs excepted: those ask
-  whatever rule allows them, a mode's own included), workflow scripts (the
-  script is sandboxed and each agent it starts is gated), and every shell
-  command, unparsed, since it runs sandboxed (below). Two kinds still ask
-  (`Host.unsettled`): the short `perm.Normalized.Destructive` list (forced or
-  recursive `rm`, or one with a glob operand, `git clean`, `find -delete`,
-  `shred`, `truncate`, `dd`, `rsync --delete`, also behind `xargs`,
-  `find -exec`, `sh -c`, `eval` or a shell keyword, and a bare `rm` in a
-  loop body or a shell body `xargs` or `find -exec` repeats; an `rm` whose
-  every operand is below the scratchpad, as `$TMPDIR/...` or its literal
-  path with no climb, settles while nothing in the command can have
-  changed `$TMPDIR`, and so does one below a native temp dir, by its own
-  path (`perm.FreeZone`); and any command a shell may read otherwise than
-  the parse, above, since the list cannot vouch for it),
-  a git command that writes what the sandbox keeps read-only in `.git`
-  (`perm.Normalized.GitWrites`: with the git dir open, below, config,
-  remotes, worktrees, submodules and rebase state; with it shut, any write), reaches
-  the network (push, fetch, pull, clone) or can drop unreachable commits
-  for good (`gc`, which prunes by object age, not by when a commit turned
-  unreachable, `prune`, `repack`, `reflog expire`, a branch delete, which
-  takes the branch's reflog along, `stash drop` and `clear`, `update-ref
-  -d`), since a
-  confined run could only fail and the ask comes first; `reset --hard`
-  and `checkout -- .` run, since the shell row's snapshot lets rewind
-  restore the files and the reflog keeps the commits; and on a backend that cannot hide files
-  a command naming an existing secret-shaped file. Anything a
-  mode's rules and base cannot settle goes to the user's ask carrying the reason
-  it did not: no model screens permission requests, unless the user wrote a mode
-  whose `decide` is one (below).
-  A file request is judged and shown by its resolved path (relative to
-  the project when inside it), so a symlink a sandboxed command planted
-  cannot dress a write to zemi's config as a project file, and a write
-  under any `.git`, to the Lua in any `.agents` or zemi's own dirs, or outside the project
-  and the free zone (`~/.gitconfig`, a shell rc file: the sandbox cannot
-  confine the write tool; the scratchpad and the temp dirs make up the free zone, and
-  a protected path asks there too), goes to the user.
-  Network is never settled locally, because the URL is the model's.
-  Known ceiling: reads settle wherever the secret shapes and the hidden home
-  dirs do not reach, and in-jail writes and commands both settle, so the
-  model can write code and run it unattended, rewrite any project file and
-  read what neither the shapes nor the sandbox policy hide, outside the
-  project too; that is the
-  auto-mode tradeoff, and the sandbox policy (below) is its only limit.
-  In a project the user has not trusted (§5) both modes settle less:
-  writes and every command but `perm.Normalized.ReadCommand` (an allowlist of
-  programs that only read, named without a path, with per-program flag
-  and script checks, arguments anywhere that are not secret-shaped and not
-  under a `.git`, recursive searches only over trees with no secret-shaped
-  file, no hidden home dir and, unless
-  the searcher skips hidden entries, no `.git` directory; no build
-  tool and no git, which runs programs `.git/config` names) go to the user,
-  but for `zemi plugins test <name>` alone, which with a sandbox settles
-  confined (`perm.Normalized.PluginTest`): it reads only the named plugin
-  and starts no process, and it is the one command the plugin steps repeat.
-  A directory argument asks, since the runner copies it where the model reads.
-  With no sandbox backend a trusted project also settles only
-  `ReadCommand` commands, which run unconfined, and
-  auto mode sends every other command to the user ("no
-  sandbox"), since an approved one would run unconfined.
-  `--unsafe` is that boot by choice: the project is trusted, the pipeline
-  carries no policy at all, the private-address set is off, and nothing is
-  hidden - not from a listing, a grep, the prompt's file list, an attachment or
-  a child's environment. A secret-shaped path stops being special: it is read,
-  written, listed and grepped like any other file, and it stops asking - the
-  built-in `fs.read` default above, an `always` answer's secret re-ask, the
-  write tool's link check and the free zone all read that one predicate
-  (`Host.secretPath`) - and the prompt says what the run is. It starts in
-  yolo, so the destructive and non-reader command, the network, the protected
-  write and a rule's own ask all settle (`--mode` names another mode, whose
-  asks stand); a read-only agent keeps its denials and its ask for
-  anything but a `ReadCommand`, since nothing confines a command now - a
-  `ReadCommand` it settles runs unconfined, and one the user approves has the
-  project writable, the sandbox being what made it read-only.
-  A mode added from config, a plugin's included, may carry a `decide`
-  function that answers one ask from Lua: "allow", "deny", or a table naming
-  the decision and how far an allow reaches (`once`, `session`, `wider`,
-  `project`: the rules the user's own answer of that scope writes, a scope the
-  request does not offer narrowing to the closest one below it, and a mode
-  below user origin narrowing `project` to `session`, since the durable
-  project file is the user's own grant, as an allow rule is). It runs as a
-  task (§4) for at most 60s, long enough for a model call of its own
-  (`zemi.classify.ask`, §6.3, the one that answers with a probability), and,
-  unlike the mode's rules, it may settle what only yolo or the user could - an
-  unsandboxed or network request, an ask a rule asked for, a protected write -
-  since a human could; each such allow appends a notice row saying so.
-  Anything else, a timeout and an error included, leaves the ask to the user.
-  A script the model's Lua tool gets by `path` must be a `.lua` file and is
-  read through the `fs.read` gate the read tool uses, since a Lua error
-  echoes tokens of what it ran.
-  The model's Lua tool asks (`tool.lua`, no always option) in an untrusted
-  project and a read-only agent. Everywhere else it is default-deny: without
-  the user's approval a run may call only the read-only members in
-  `luaReadOnly` (hostapi `luatool.go`). Every Go function a namespace
-  exposes, and every handle method (`lua.GuardFuncs`), runs the sandbox
-  guard (`Sandbox.SetGuard`, `guardLua`), which raises for any other
-  member when the tool's code is calling (its chunk, functions it defined,
-  callbacks it registered, found by frame path and call stack) and the
-  innermost tool code on the stack is not an approved run. Before running,
-  the tool tokenizes the script (`luaUnlisted`): a zemi path off the list,
-  a method call other than string and read-only handle methods, or `_G`,
-  `load`, `require` and the like ask the user once for the whole script
-  with no mode's rules settling it (`Request.Unsandboxed`; headless it is
-  denied), since what it changes or starts runs unconfined. An approved run gets a
-  chunk name of its own, which the guard passes until the run ends, so a
-  callback it registered keeps only the read-only calls afterwards. A new
-  member is guarded until it is added to the list. User, builtin and plugin config may add or
-  drop a mode (`zemi.permission.mode.add`), the project may not, `auto` and `yolo` are
-  reserved by name (a value no mode has still lands on the builtin `auto`), a name another
-  plugin holds is refused, and a mode whose base turns yolo drops the kept `permissions.mode`
-  pick naming it, though a value init.lua itself sets stands. Only user config sets the
-  current one, and an unknown value reads as `auto`, the default. A mode's `decide` that answers neither `allow` nor
-  `deny` sends the ask to the user whatever its base settles, so a mode
-  whose `decide` answers nothing is how a user gets every ask.
-- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.shell`
-  or `job_start` call whose verdict a mode gave
-  (`DecidedBy` `mode:<name>`, any base but `yolo`) or a read-only agent
-  made runs confined, and so does one a session rule written from a
-  `network: true` ask allows (`Rule.Network`: the ask said the command
-  stays sandboxed, so the rule keeps it and adds sockets); other
-  rule-allowed and user-approved runs, `!command`, `zemi.job`, MCP
-  servers and zemi's own git stay unconfined. Stdio MCP servers start in the data dir
-  with `ZEMI_PROJECT_DIR` in their environment, trusted project or not:
-  `npx` and `uv` read `.npmrc`, `node_modules/.bin` and uv config from the
-  working directory, which settled commands and writes may change, and
-  most servers need the network and home caches a sandbox refuses.
-  Language servers run project code (build scripts, proc macros), so with
-  a live backend each starts under `serverPolicy`: readable and hidden as
-  for commands, loopback, the project read-only, and writable only
-  `<cache>/lsp/<trust root hash>/<server>` (`ZEMI_CACHE_HOME`, default
-  `~/.cache/zemi`), which `XDG_CACHE_HOME`, `GOCACHE`, `GOPLSCACHE`,
-  `CARGO_TARGET_DIR`, `TMPDIR` and lua-language-server's `LLS_LOG_PATH`
-  and `LLS_META_PATH` point at. It is not under the state dir:
-  seatbelt hides that dir's own metadata, which cargo stats. A confined
-  cargo cannot create a missing `Cargo.lock`, so rust-analyzer reports
-  nothing until one exists. Without a backend rust-analyzer does not
-  start; the other builtins and user-added servers run unconfined.
-  A `.lua` file of the user's config or a local plugin gets
-  lua-language-server (`luals`, or the user's server of that name) rooted
-  at that tree, in any project: it is the user's own code, zemi writes the
-  tree's editor configs first (`zemiLua`), and the server, which runs a
-  workspace's Lua only when the client agrees and zemi's never does,
-  also reads them (a config tree's `.git`
-  stays hidden). The `.luarc.json` raises the diagnostics that are
-  near-certain bugs (an unknown global, a missing field, a wrong type or
-  argument count) to errors, which is what a write reports; EmmyLua reads
-  a lua-language-server severity as an unknown value, drops the whole
-  config and reports every `zemi.*` as undefined, so its own
-  `.emmyrc.json` beside it carries those severities in its dialect. The
-  reload a write to the tree causes stops only a server whose definition
-  changed, so the next write finds it warm. A file outside
-  the repository goes to no project server. The backend (seatbelt through
-  `/usr/bin/sandbox-exec` on macOS; on Linux the `zemi __sandbox` helper
-  with Landlock plus user, network and mount namespaces where the kernel
-  allows unprivileged user namespaces, else Landlock plus seccomp) is
-  probed once in `NewHost`, before
-  boot (the probe is fast), so `zemi health` and the first turn's tool schema
-  see the result; `/health` has a `sandbox` row, which reads `off (--unsafe)`
-  when the run asked for none. `sandboxPolicy`: everything
-  readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
-  `~/.npmrc`, `~/.git-credentials`, shell histories, ..., under `$HOME` and
-  the account's home when `HOME` was moved), zemi's config,
-  data and state dirs (sessions, logs, keys in `init.lua`; not when they
-  hold the project, and the write roots inside them stay usable; of the
-  data dir the types and builtin skills (`shippedDirs`: rewritten from the
-  embedded runtime every start, nothing of the user's, so the read tool
-  and a command read the same) and a local plugin's code, its `.lua` files and `lua`, `tests` and
-  layered dirs, reads back with the names in the plugin dirs, so
-  `zemi plugins test` runs confined, while its `.git` and a dot entry in
-  its code stay hidden) and, on
-  macOS, the strict secret file shapes (in the scratchpad too: they match
-  names, and a command can move a project directory there whole; a hint
-  names another file name as the way through); writable are the pipeline's scratchpad, also
-  its temp dir (`TMPDIR`, `TMP` and `TEMP`, which every model command gets, confined or not, so
-  the file tools read what a command left there without asking), the machine's own temp dirs and
-  `/tmp` (temp data is disposable: a command writes and deletes there, the file tools read, write
-  and delete there with no ask, and the destructive check settles an `rm` below one, all through
-  the one predicate `perm.FreeZone`; the tradeoff is the shared dir itself, where macOS keeps the
-  `xcrun_db` that picks what `/usr/bin/make` or `git` runs), a Go
-  build cache only sandboxed runs use, one per trust root
-  (`<state>/sandbox-cache/<hash of the trust root>/go-build`, set as
-  `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and Go
-  trusts its cache entries, so the user's own cache written from here could
-  poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not read-only, not `$HOME`
-  or above it, neither holds nor sits in one of zemi's config, data and
-  state dirs, holds no hidden path unless the backend is seatbelt (a
-  Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.agents` (the backend protects the
-  resolved target, not the link), no relative `PATH` entry makes every
-  directory a `PATH` dir, and the backend keeps protected paths
-  read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
-  target; on seatbelt only what runs code, below), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
-  (an activated `.venv/bin`: zemi runs git, the shell, language servers and
-  clipboard helpers unconfined by name) stay read-only (the scratchpad and
-  cache re-allowed); localhost network only, and on seatbelt a unix socket in
-  the policy's own temp dir alone (the scratchpad, or a language server's
-  cache) bound and dialed, since seatbelt filters both by socket path and
-  Landlock can filter neither. Seatbelt's localhost is the
-  machine's; the namespace variant has a loopback of its own, so servers
-  already running on the machine are unreachable (the model is told so),
-  and it binds only protected paths that exist, which is why a created one
-  holds trust off (§5). It cannot protect by name either, so zemi walks the
-  writable project for `.git` and `.agents` entries at any depth: the ones
-  there are bound read-only, one a command created holds trust off at exit,
-  and past 100,000 entries the project stays read-only (or, when the command
-  grew it past that, trust is held off). Landlock plus seccomp enforces neither the
-  read-only paths nor loopback: with it the project is read-only to
-  sandboxed runs (a build that writes it gets the hint and escalates) and
-  every inet socket is refused. Known ceilings: other tools' caches
-  (`~/.cache/uv`, `~/.npm`) stay read-only, so uv and npm fail confined
-  until each gets a per-session cache variable, and a unix socket is refused
-  there too, a bind included (a pathname socket's connect cannot be told from
-  its bind, and Landlock mediates neither).
-  The git dir (`Policy.Git`): on seatbelt, when the writable project is
-  the repository root with a real `.git` directory, `.git` opens to
-  confined commands, so commit, add, checkout, switch, branch, tag, stash,
-  merge, reset and a one-commit cherry-pick or revert run with no ask.
-  Read-only stay,
-  matched by name (case folded), so a part created, moved or hard linked
-  there is caught too (gitrepository-layout names each): `config` and
-  `config.worktree` (hooksPath, fsmonitor, sshCommand, pager, filter and
-  diff drivers, aliases: every program git runs), `hooks/`, which the
-  user's own git runs unconfined later, `info/attributes` (it picks the
-  drivers config names), `commondir` and `objects/info/alternates` and
-  `http-alternates` (they send git to another directory's config, hooks
-  or objects), `gitdir` (a linked worktree's way back), `modules/` (each
-  submodule's whole repo, hooks and config included), `rebase-merge/`,
-  `rebase-apply/` and `sequencer/` (a todo's `exec` lines and a merge
-  strategy, which git runs by name even as a relative path, run when the
-  user's own `git rebase --continue` or `cherry-pick --continue` does),
-  the same names in each `worktrees/<id>/` admin dir, `remotes/` and
-  `branches/` (the legacy remote definitions: they pick where a fetch or
-  push goes, which the ask would not show), and any nested `.git` or
-  `.agents`. So rebase, am and a cherry-pick or revert of more than one
-  commit ask, as a confined run could only fail.
-  `.git` itself, `info`, `objects`, `objects/info`, `worktrees` and each
-  `worktrees/<id>` cannot be made, moved or removed, only written into,
-  since a directory moved in whole would bring one of those files with
-  it, and no symbolic link may be created in `.git`. A linked worktree
-  (a `.git` file), a project below the repository root and every other
-  backend keep `.git` read-only, where git writes ask; the Sandbox block
-  says which holds. Known ceilings: a confined command can rewrite the
-  repository's refs and objects (`rm -rf .git/objects` among them; the
-  `Destructive` list asks for the plain forms), and a branch's upstream
-  and section live in the config, so a rename, delete or upstream flag
-  asks. A confined command's environment sets `branch.autoSetupMerge`
-  off, since git would report an upstream set when its config write
-  failed (`checkout -b x origin/x`), and `maintenance.auto` off, since
-  the auto gc after a commit could prune what a confined command left
-  unreachable; `GIT_CONFIG_COUNT` carries both, replacing a user's own.
-  Hooks run confined like the command that started them, so one that
-  needs the network or a cache outside the roots fails with the hint.
-  zemi's own temp files (the ctrl+g draft, a pasted image)
-  live in `<state>/tmp`. A
-  wrap that fails is a tool error, never an unconfined run.
-  While a backend is live, the shell tool and `job_start` take two escapes,
-  fixed per process so the prompt cache holds. `network: true`
-  (`Request.Network`) keeps the sandbox and adds IP sockets, no unix one (`Policy.Network`),
-  which is all a dependency fetch or a `gh` call needs, and it stays confined
-  whichever verdict allowed it, the user's ask included; `sandbox: false`
-  (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
-  Neither is settled by mode rules or by a base other than `yolo`: they go to
-  the user with the reason "the model asked for the network" or "the model
-  asked to leave the sandbox" (headless nobody can answer, so the parameters and the
-  retry line are left out and the denial is by `network` or `unsandboxed`). A
-  confined run that fails with output that looks like a denial, with
-  none and an exit status above 1, like a silent `curl -s`, or from a
-  crash signal (`sandbox.Killed`: abort, trap, kill, segfault, bus error,
-  illegal instruction or bad system call, as its own death, the shell's
-  128+n, or the shell's "Abort trap: 6" line, which a pipe leaves in a
-  command that exits 0; this is how a browser or GUI app dies once
-  seatbelt denies the window server and the other mach services it
-  needs, printing no path; never a hangup, so git's usage exit 129 is
-  none, nor a job `job_kill` or `/agents kill` stopped), or that exits 0
-  with a denial naming a path, which a pipe (`| head`) hides the same way
-  (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
-  gets one line naming the limit the denied path hit and the one next step:
-  a signal (if the program needs a system service, `sandbox: false`, where
-  a crash of its own repeats; where the schema has no escape, say what
-  could not be checked), the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
-  file tools), a secret-shaped name, a protected one (`.agents`: the write
-  tool), a path outside every write root
-  (the roots by name, `Policy.WriteNames`); the path words come from the
-  output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
-  run's schema carries are offered;
-  a timed-out shell run adopted as a job keeps it. The limits themselves are
-  the pinned system prompt's Sandbox block for a run with the shell tool
-  (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
-  backend, so the text cannot drift from what the kernel enforces (on
-  seatbelt it names the class the profile's deny default leaves out, the
-  window server and system services, with the program kinds that need
-  them, so a model runs one with `sandbox: false` or not at all); it skips
-  the project walk, which must not delay the first request, so on Linux a
-  project over `sandboxWalkMax` entries reads as writable there. Known
-  ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
-  command in a trusted project can read it when it names it by a glob or
-  a variable, or runs code that opens it.
-- Filesystem: the jail and fs rules are checked on `perm.CanonPath`: the
-  path resolved one component at a time, so `..` after a symlink lands
-  where the kernel lands, case-folded on darwin and windows. Writes outside
-  the write jail ask (model tools) and reads outside the read jail are
-  refused (`zemi.fs`); a model read is settled by the secret shapes and the
-  hidden home dirs instead of the jail (above), so the read jail is what the
-  `fs.read` default and `zemi.fs` resolve in. The write root is the launch
-  directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
-  whole trusted repository: the user does that writing); the per-session scratchpad
-  (`<state>/scratch/<session id>`, §5, every model command's `$TMPDIR`) is outside it but
-  is where the model's file tools read and write by default, secret-shaped names aside
-  (`Pipeline.Check` on the pad the pipeline was bound to, so a run that outlives its session
-  keeps it; `zemi.fs` cannot write there), the temp dirs reading and writing the same way
-  (`perm.FreeZone`; a protected path asks there all the same, since what it names runs), and
-  user config's `zemi.fs` also
-  reaches `<data>/lua` (`zemi.fs.data_dir(name)`, outside the watched config
-  tree, never a root of the model's file tools or of a Lua tool script the
-  user did not approve); the read jail is wider: project
-  roots, the config dir, the project's `.agents`, both skills dirs, that
-  scratchpad and `<data>/types` (the API annotations
-  and shipped Lua UI; it and the builtin skills are `shippedDirs`, which
-  commands read too) and, for the model's file tools alone, the plugins
-  minus `.git` (`<data>/plugins`, whose skills the skill tool loads; a
-  clone's remote URL may carry a token; not a `zemi.fs`
-  root, so no plugin reads another's source). The plugins and the rest of the data and state dirs are
-  never write roots: a write to a local plugin asks every time with no
-  always answer, and no mode's rules settle it (a decide may), since the code loads
-  in every project, trusted or not; an installed plugin changes only
-  through git. The one exception is the plugin being created: the user's
-  yes (or yolo) to the write that creates `local/<name>/.zemi/init.lua` lets auto edit
-  that directory, its `.git` aside, in any project until zemi exits,
-  and a directory that already existed is never granted. So an approved
-  `fs.write` in one project cannot silently plant code in a plugin the user
-  did not just create. The config dir is read-only to Lua: of
-  zemi's own code only Go writes there, so `zemi.fs.write` cannot
-  author `init.lua`. The model's `read`, `write`, `edit`
-  and `lsp` tools, `zemi.fs`,
-  `@file` attachments and the `lua` tool's `path` get their path resolved
-  once before the check into a `perm.Path` and open exactly that path,
-  walking it with `openat` and `O_NOFOLLOW` (`Path.Open`), so a directory
-  a sandboxed command swaps for a symlink after the check fails the open.
-  The walk opens each directory search only (`O_SEARCH` on macOS,
-  `O_PATH` on Linux), so a zemi that itself runs confined passes a parent
-  the sandbox hides (its state dir, above the scratchpad) and still reads
-  nothing there.
-  `write` and `edit` refuse a path whose last component is a
-  symbolic link and name the target to edit instead.
-  Residual race: `zemi.fs.stat` and `exists` and the roots `glob` and
-  `grep` walk go by name, so a component swapped between check and use
-  is followed there (the Linux endgame is `openat2` with
-  `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
-  of paths, not of filesystem topology: a mount point inside a project
-  root or a hardlink to an outside file is out of scope (both need
-  privileges or a pre-planted link the threat model cannot create).
-- HTTP: `zemi.http` and the `fetch` tool accept `http`/`https` URLs only
-  (anything else is refused at validation, and every redirect hop is
-  re-gated for scheme as well, deny by default); the denied
-  address set is loopback (v4 and `::1`), RFC1918, link-local (v4 and
-  `fe80::/10`), IPv6 ULA (`fc00::/7`), NAT64 (`64:ff9b::/96`), and
-  metadata (`169.254.169.254` and friends); IPv4-mapped IPv6
-  (`::ffff:0:0/96`) is normalized to its v4 address before matching, and
-  the set is matched on IP literals and on every
-  resolved address at connect, per hop, so DNS rebinding cannot slip past
-  a hostname rule (a public IP literal is an ordinary host). An explicit
-  user-origin allow rule for a named host overrides the resolved-address
-  deny (the localhost development opt-in); project rules do not. `fetch`
-  refuses a host private as written (an IP literal in the set, `localhost`,
-  `*.localhost`) before its ask, since no answer to it could permit one. Userinfo in URLs is a hard
-  error; host rules match the final connected host.
-- Secrets: the env denylist is a case-insensitive substring match on the
-  variable's name (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`,
-  `PASSPHRASE`, `CREDENTIAL`, and `_PWD` or `_PASS` as a suffix;
-  `perm.EnvIsSecret`). `zemi.env.get` refuses a matching name for every
-  origin but user and builtin; providers read their keys in Go, out of
-  Lua's reach. Every child process runs with `perm.Store.ChildEnv`: zemi's own
-  environment minus the matching names the user did not keep
-  (`permissions.env_keep`), plus only the extras the caller passed (a
-  secret-shaped or environment-affecting extra name is refused
-  outright). The shell tool, `job_*`, Lua jobs, and the MCP and LSP
-  server processes all start from it.
-- There is no turn-scoped resource budget: per-turn caps on shell
-  commands, files touched, tokens spent, or Lua host-API calls are not
-  implemented. What bounds a turn is the step limit (`agent.max_steps`,
-  200 steps out of the box) and the
-  doom-loop stop: a block of up to three tool steps (same calls, same
-  results) repeating over six steps or three cycles ends the turn with an
-  error the user can continue from, with `job_read` and `job_list` steps
-  left out because polling a job is not looping.
-
+- Model: two modes, `allow` (the default; everything runs) and `ask`
+  (every action prompts the user first). The permission system is a UX
+  feature: it keeps the user aware of what the agent is doing, it is not
+  security isolation, and it never parses a command to judge it. A run
+  that must not touch the machine runs in a container or VM.
+- An action is everything but a read: `fs.write`, `tool.shell`,
+  `tool.lua`, `tool.workflow`, `net.<host>`, a Lua tool (`tool.<name>`),
+  an MCP tool its server does not mark read-only (`Read` on the request),
+  `memory.write`. Reads (`fs.read`) settle on their own in every mode.
+  The scratchpad and the temp dirs (`perm.FreeZone`) are free in every
+  mode: the model works there.
+- Subjects label the ask and the `tool.denied` event; they are not rules.
+  A request carries tool, subject, arg, reason, preview, description,
+  agent, owner, script; the pipeline fills pad, read-only and the script
+  name.
+- The gate (tools.Pipeline.Check): a read-only agent's action denies;
+  then the mode settles: allow runs, ask puts the request to the user
+  through the `Ask` hook. No UI (zemi run) fails closed (`ByNobody`) and
+  the denial is recorded for the run's summary.
+- The vetoable `permission.request` event runs before the ask; 50 ms,
+  fail-closed (§4). A rewritten tool input re-enters at the gate.
+- Asks reach the user one at a time (`Host.askMu`), and a waiter is
+  judged again once it holds the lock (`Request.Recheck`), so a switch to
+  allow settles the asks behind it. No Lua runs under the ask lock.
+- Host-API calls from Lua never open the overlay (§6.5): in ask mode one
+  that would ask raises "permission ask required"; the fix is allow mode.
+  A plugin's declared capability (`uses`) settles in both modes - the
+  manifest is the consent - and a call it does not declare is refused
+  before any check, naming the line to add.
+- A Lua tool run asks as one action; once approved, its inner `zemi.*`
+  calls ride the approval (`luaApproved`), and each `zemi.tool.call` it
+  drives gates like the model's own call.
+- Path handling (perm): the file tools resolve once (`perm.Resolve`, an
+  openat walk in `Path.Open`), the gate judges and the tool opens exactly
+  that path, so a symlink planted later cannot redirect them. A write
+  whose last component is a symlink is refused, naming the target.
+  `perm.FreeZone` (pad, temp roots) needs no read before write.
+- read-before-write stays: write refuses a file the session has not read
+  unchanged (an edit proves its text with one exact match instead), so a
+  command the model ran or the user's editor is never silently dropped.
+- Safety beyond the modes: the sandboxed Lua interpreter (§5), project
+  trust gating what a repository may load (§5), and the child-process
+  discipline of `internal/proc`. Nothing else stands between the model
+  and the machine in allow mode; that is the deal.
 ## 10. Learning and self-improvement
 
 ### 10.1 Taxonomy: three kinds of improvement
@@ -3316,13 +2649,13 @@ body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
 and kept out of the `skills` table, which is keyed by name across
 projects. They are scanned when the trust decision is set (boot, reload,
 `/trust`), never per turn, and the pinned prompt (§6.3) keeps the index
-a session was built with: a sandboxed command may write one. An untrusted project adds
+a session was built with. An untrusted project adds
 none, like its instruction files (§5).
 
 Recipes are the third source: a trusted project's private skills under
 `<state>/projects/<hash>/skills`, for exact procedures too long for a
-memory. They never enter the repository, no sandbox policy makes the dir
-writable, and they behave like project skills (body only, no toggle, no
+memory. They never enter the repository, and they behave like project
+skills (body only, no toggle, no
 row), losing a name clash to those too. The index lists the recipes found
 when the prompt was pinned (§6.3), while the `skill` tool and `/skills` read the dir on every call: a recipe
 written mid-session loads at once and never moves the prompt. Loading a
@@ -3411,25 +2744,23 @@ skills index, or the untrusted-content framing.
 
 - Never modifies Go behavior; if something needs Go, that is a zemi feature
   request, not a self-modification.
-- Never loosens permissions, never widens the sandbox, never disables
+- Never loosens what a prompt or gate asks, never disables
   telemetry, never edits its own proposals after review begins.
 - Never writes outside its homes - the memory store, the brain partitions
   (private via the memory tool's file mode or an approved file-tool write,
   user via the file tools only when the user approves), the skills dir.
   Anything else is a normal tool call under normal permissions.
-- Only user config raises `memory.autonomy`; no Lua path edits the env
-  deny-list or widens the fs jail. Auto autonomy never applies a memory
+- Only user config raises `memory.autonomy`; no Lua path widens the fs
+  jail. Auto autonomy never applies a memory
   from an untrusted project or a session that read outside text (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
-the host-only proposal channel (§10.3), the user-only config.set and allow rules
+the host-only proposal channel (§10.3), the user-only config.set
 (§6.1), and the reflector's tool-less model call (§10.3). The homes line is
-the permission layer: `protectedWhy`'s dedicated case makes the reserved
-`memories.md` a protected ask no rule settles, the brain roots sit in the
+the jail layer: the brain roots sit in the
 read jails (`readJails`) and out of the write jails, a state-dir write asks
-with the outside-text note in every mode, the AfterWrite hook scrubs what
-the user approves, and the sandbox hides the state dir from settled
-commands as the backstop.
+with the outside-text note in ask mode, and the AfterWrite hook scrubs what
+the user approves.
 
 ## 11. Error handling and observability
 
@@ -3472,7 +2803,7 @@ commands as the backstop.
 ## 12. Repository layout
 
 ```
-main.go                     the entry: the sandbox helper dispatch and one os.Exit
+main.go                     the entry: one os.Exit
 internal/cli/               the front end: wiring, boot steps and the TUI launch
                             (boot.go), the command line (cli.go, cobra), zemi run:
                             the loop, the answer or the JSON events (run.go), zemi
@@ -3489,9 +2820,7 @@ internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/classify/          judging data with a model: protocol, logprobs, schema
 internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
-internal/perm/              rules engine, bash normalizer, ReadCommand, env gates
-internal/sandbox/           OS confinement for settled commands: seatbelt, Landlock +
-                            seccomp, the namespace variant and the helper re-exec
+internal/perm/              path resolution (openat walk), the pad, glob and secret shapes
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse, and zemi run's view of a run
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check

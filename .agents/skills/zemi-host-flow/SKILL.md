@@ -78,12 +78,11 @@ copies the plugin into temp dirs (`copyPlugin`: `.zemi` whole with the layer dir
 of the root, no `node_modules`, a link only when relative and inside, capped), and boots one zemi per case in this
 process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
-first boot collects the case names. `proc.Refuse` makes the process start nothing, git and the
-sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
+first boot collects the case names. `proc.Refuse` makes the process start nothing, git included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
 `WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
 (`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
 only a `test.stub` reply passes, standing in for the transport at the call site, and a `false`
-reply raises the missing-rule error whatever rules exist. The assertions are the builtin module
+reply refuses the call. The assertions are the builtin module
 `zemi.test.assert`. `zemi.test` exists only there
 (`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
 
@@ -93,8 +92,7 @@ apply, never on a reload or after a failed init.lua). Builtin
 providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
 `agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
 `Host.Builtin` pointer): the embedded one, or the one `/model update` or `zemi models update`
-(`agent.UpdateCatalog`) fetched into `<data>/catwalk.json`, never `<cache>`, which a sandbox
-can write, since the catalog picks where each key is sent. A fetched one reads only the
+(`agent.UpdateCatalog`) fetched into `<data>/catwalk.json`, never `<cache>`, since the catalog picks where each key is sent. A fetched one reads only the
 variables the bundled one names (`bundledRef`), so the feed cannot pick which secret goes. No
 network at boot. Each builtin is on only while its key is exported, one without is in
 `Registry.Missing` so the no-model hint (`NoModelHint`) can name the variable, and
@@ -119,9 +117,8 @@ this run. Every runtime write goes through `Host.writeSetting` (`setWatched`, an
 global store's kv as `config:<path>`, or deletes the row when the value is `cfgBase` (config's
 last write when init.lua wrote the key, else the default). It keeps nothing while booting or
 before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `zemi run`
-and `zemi health` keep none, and never a mode whose base is yolo (never fail open across restarts).
-`NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`, a yolo
-row left out since user Lua can write kv directly), so init.lua still wins; per user, not per project.
+and `zemi health` keep none.
+`NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`), so init.lua still wins; per user, not per project.
 A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 
@@ -166,12 +163,12 @@ leave the old decision in force) under the watcher's lock, so the watcher does n
 for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
 commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
-project skills, every project language server, the Lua tool's ask, the read jail reaching past the
-launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` and
+project skills, every project language server, the Lua tool's ask, and the read jail reaching past
+the launch dir to `Dirs.RepoRoot()`. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
 smudging, log's signature checks (`gpg.program`), every transport but https, ssh and file, and repo-local filter drivers (a plugin
-clone's global ones too) in every repository, trusted or not: a sandboxed command can plant a
+clone's global ones too) in every repository, trusted or not: a command can plant a
 nested repo whose config zemi would run.
 
 ## Store
@@ -352,9 +349,8 @@ is refused with its path, to delete (the owner is the only user).
   a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
-  `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
-  allows and a rule's shell allow other than `ReadCommand` flip to ask; the sandbox keeps the
-  project unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
+  `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a fetch, a
+  Lua tool - whatever the mode; reads and scratchpad writes pass. Approving the plan returns to the agent and mode that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
   agent never passes through idle. A read-only turn that ends in plain text instead of the
@@ -369,7 +365,7 @@ is refused with its path, to delete (the owner is the only user).
   then `zemiPrompt`, the read-only agent's plan section, the user, builtin and plugin skills, the
   user's `<config>/AGENTS.md` under `# User instructions` (its own budget) and Lua sections
   (`agent.assemble`, then the `prompt` of each Lua tool in the tool set). Of the project it holds
-  only what trust decides (the sandbox rules among them) and what a trusted project's own Lua
+  only what trust decides and what a trusted project's own Lua
   adds, so a provider that caches a shared prefix (DeepSeek, OpenAI, Gemini, Anthropic's
   breakpoints) keeps it and the tools after it for every session of the user
   (`TestPromptSameAcrossProjects`). What varies is the context message (`agent.Runner.Context`), a
@@ -426,6 +422,5 @@ is refused with its path, to delete (the owner is the only user).
   `set` or `watch` of one whose plugin did not load do nothing); only
   user config sets them, and a read of a key outside it panics under `go test`. Providers ship
   none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
-  `zemi.env.get` reads secret-shaped names for user and builtin origin only, and for any
-  origin under `--unsafe`). Config fields
+  `zemi.env.get` reads secret-shaped names for user and builtin origin only). Config fields
   hold values, never names of env vars.

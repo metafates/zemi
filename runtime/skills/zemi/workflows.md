@@ -12,7 +12,7 @@ Run a workflow inline: pass the script to the `workflow` tool, whose description
 
 ## Saved workflows (`workflows/<name>.lua`)
 
-Save one only when the user wants it by name: copy the run's script with the write tool to `workflows/<name>.lua` in the user config directory or the repository's `.agents/` (commands cannot write `.agents`). The file's leading `--` lines are its description, and the tool's `name` runs it with `args`.
+Save one only when the user wants it by name: copy the run's script with the write tool to `workflows/<name>.lua` in the user config directory or the repository's `.agents/`. The file's leading `--` lines are its description, and the tool's `name` runs it with `args`.
 
 ```lua
 -- Summarize this branch for a PR description.

@@ -144,7 +144,7 @@ type flowRun struct {
 	script                string           // the script's file in the parent's pad, "" with no session
 	src                   string           // the script as approved and run: the pad's copy is the model's to rewrite
 	// journal is the held fd the scheduler appends to, never the path: a
-	// sandboxed command can plant a link at the name. nil with no session.
+	// stale file can plant a link at the name. nil with no session.
 	journal *os.File
 
 	runState
@@ -1055,7 +1055,7 @@ func agentKey(def, model string, schema map[string]any, prompt string) string {
 
 func flowFile(id, ext string) string { return "workflow-" + id + ext }
 
-// padOpen opens name in pad as a sandboxed command would attack it: the pad
+// padOpen opens name in pad defensively: the pad
 // is a write root, so a link planted at the name or a swapped parent fails
 // the open instead of leading zemi, which runs unconfined, elsewhere.
 func padOpen(pad, name string, flag int) (*os.File, error) {
@@ -1134,7 +1134,7 @@ type journal struct {
 }
 
 // readJournal reads run id's journal from pad. Everything in it is model
-// grade: a sandboxed command may have written it.
+// grade: the run may have written it.
 func readJournal(pad, id string) (journal, error) {
 	if !store.IDShape.MatchString(id) {
 		return journal{}, Usagef("%q is not a workflow run id", id)
@@ -1454,7 +1454,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
-	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); v.Decision != perm.Allow {
+	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
 	spec.done = h.deliverFlow("")
@@ -1493,7 +1493,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil
 }
 
-// flowSource reads run id's script from pad once: a sandboxed command or the
+// flowSource reads run id.s script from pad once: the run or the
 // model's file tools may rewrite the file, so what is approved is what runs.
 func flowSource(pad, id string) (string, error) {
 	if _, err := readJournal(pad, id); err != nil {
@@ -1511,7 +1511,7 @@ func (h *Host) approveRerun(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); v.Decision != perm.Allow {
+	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); !v.Allowed {
 		return "", errors.New(tools.DeniedText(v, "workflow "+id))
 	}
 	return src, nil
@@ -1860,7 +1860,7 @@ func (h *Host) openFlowScript(id string) error {
 		if _, err := readPadFile(pad, flowFile(id, ".lua")); err != nil { // no link the editor would follow
 			return err
 		}
-		// above every pad, where no sandboxed command writes, so the editor's
+		// above every pad, where the model does not write, so the editor.s
 		// language server knows zemi.workflow
 		if err := writeEditorConfigs(filepath.Dir(pad), h.TypesDir()); err != nil {
 			h.Log.Warn("editor config not written", "origin", "workflows", "dir", filepath.Dir(pad), "error", err)

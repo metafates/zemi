@@ -633,7 +633,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			out := t.h.postChain(ctx, hs, "", tool, input, ev["ok"] != false, output, changed, time.Duration(ms)*time.Millisecond)
 			return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LString(out)} }, nil
 		case EventToolPre:
-			d, reason, rewritten, _ := t.h.toolPre(tool, input, hs)
+			d, reason, rewritten := t.h.toolPre(tool, input, hs)
 			return veto(string(d), reason, rewritten), nil
 		case EventPermissionRequest, EventAppQuit, EventComposerSubmit:
 			if res := t.h.emitVetoable(ctx, name, hs, ev); res.Denied {

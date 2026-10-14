@@ -238,7 +238,7 @@ func TestToastNotCopied(t *testing.T) {
 	if strings.Contains(got, "failed") || strings.Contains(got, "denied") {
 		t.Fatalf("the drag copied the toast: %q", got)
 	}
-	if !strings.Contains(got, "runs") { // the box's own text on that row
+	if !strings.Contains(got, "command") { // the box's own text on that row
 		t.Fatalf("the drag copied nothing of the box: %q", got)
 	}
 }

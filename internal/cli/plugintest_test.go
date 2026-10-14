@@ -203,7 +203,7 @@ end)`,
 			".zemi/init.lua": `zemi.command.add("log", function()
   zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })
 end)`,
-			".zemi/plugin.json": `{"uses": ["job.unsandboxed"]}`,
+			".zemi/plugin.json": `{"uses": ["job"]}`,
 			".zemi/tests/a.lua": `local test = zemi.test
 test.stub("lua.job.start", "git log", { stdout = "a\nb" })
 test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { "a", "b" }) end)`,

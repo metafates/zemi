@@ -18,7 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/ui"
 )
 
@@ -120,8 +119,7 @@ func TestDeniedHint(t *testing.T) {
 		want    string
 	}{
 		{hostapi.DenyApproval, false, "--trust trusts this project"},
-		{hostapi.DenyApproval, true, "the mode left it to the user"},
-		{hostapi.DenyOutsideSandbox, true, "outside the sandbox needs the TUI"},
+		{hostapi.DenyApproval, true, "ask mode left it to the user"},
 		{hostapi.DenyNeedsTUI, true, "only the TUI approves a Lua script"},
 	} {
 		if got := deniedHint([]hostapi.Denial{{Why: c.why}}, c.trusted); !strings.Contains(got, c.want) {
@@ -250,6 +248,7 @@ func TestRunHeadless(t *testing.T) {
 		stdout, stderr    string // wanted substrings
 		notStdout, notErr string
 		denied            int
+		deniedTool        string
 		jsonDone          func(t *testing.T, d doneEvent, out string)
 	}{
 		{
@@ -260,9 +259,11 @@ func TestRunHeadless(t *testing.T) {
 				}
 			},
 		},
-		{name: "a deny rule's call is a failed row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
-			h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "ls*", Decision: perm.Deny})
-		}, stderr: "✗ run ls -la", notErr: "nobody could answer"},
+		{name: "an ask mode call is a denied row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
+			if err := h.SetPermMode("ask"); err != nil {
+				t.Fatal(err)
+			}
+		}, stderr: "✗ run ls -la", denied: 1, deniedTool: "shell"},
 		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
 			if err := h.SetProfile("planner"); err != nil {
 				t.Fatal(err)
@@ -270,7 +271,12 @@ func TestRunHeadless(t *testing.T) {
 		}, stderr: "permission denied (read-only agent)", notErr: "nobody could answer"},
 		{
 			name: "a subagent's unanswered ask is named", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
-			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1,
+			setup: func(h *hostapi.Host) {
+				if err := h.SetPermMode("ask"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1, deniedTool: "write",
 		},
 		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
 		{
@@ -306,7 +312,7 @@ func TestRunHeadless(t *testing.T) {
 		}
 		if c.denied > 0 {
 			_, out, _ := runPrompt(t, h, options{prompt: c.prompt, json: true})
-			if d := lastDone(t, out); len(d.Denied) != c.denied || !strings.Contains(out, `{"type":"ask","tool":"write"`) {
+			if d := lastDone(t, out); len(d.Denied) != c.denied || !strings.Contains(out, `{"type":"ask","tool":"`+c.deniedTool+`"`) {
 				t.Errorf("%s: --json denied %+v in %s", c.name, d.Denied, out)
 			}
 		}
@@ -347,7 +353,6 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/health", "", "zemi: /health needs the TUI; zemi health prints the checks\n", 1},
 		{"/model", "", "zemi: /model needs the TUI; zemi models lists the ids, /model [<role>] <id> sets one\n", 1},
 		{"/model update", "", "zemi: /model needs the TUI; zemi models update fetches the catalog\n", 1},
-		{"/permissions", "", "zemi: /permissions needs the TUI\n", 1},
 		{"/mode", "", "zemi: /mode needs the TUI\n", 1},
 		{"/memory", "", "zemi: /memory needs the TUI\n", 1},
 		{"/skills", "", "zemi: /skills needs the TUI\n", 1},

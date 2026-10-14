@@ -58,10 +58,10 @@ type watcher struct {
 // mode list (hostapi's builtinModes) and permissions.mode's help both read, so
 // a screen and the config name a mode the same way.
 const (
-	PermModeAuto     = "auto"
-	PermModeYolo     = "yolo"
-	PermModeAutoDesc = "safe actions run on their own, risky ones ask"
-	PermModeYoloDesc = "everything runs without asking"
+	PermModeAsk       = "ask"
+	PermModeAllow     = "allow"
+	PermModeAskDesc   = "every action asks before it runs"
+	PermModeAllowDesc = "everything runs without asking"
 )
 
 // The ui.notify styles, in the order the setting lists them: the resolver that
@@ -94,8 +94,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
 		{Path: "models.planner", Kind: KindString, Default: "", Desc: "the model the planner profile runs on (provider/model; empty uses the model it was defined with, else models.chat)"},
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: "permissions.mode", Kind: KindString, Default: PermModeAuto, Desc: "the permission mode zemi starts in: auto (" + PermModeAutoDesc + "), yolo (" + PermModeYoloDesc + "), or a mode added with zemi.permission.mode.add"},
-		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
+		{Path: "permissions.mode", Kind: KindString, Default: PermModeAllow, Desc: "the permission mode zemi starts in: ask (" + PermModeAskDesc + ") or allow (" + PermModeAllowDesc + ")"},
 		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},

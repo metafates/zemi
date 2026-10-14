@@ -181,10 +181,10 @@ func launch(o options) int {
 }
 
 // relaunch replaces this process with zemi -C dir, flags left behind. Every
-// project fact (trust, origins, stores, sandbox) is bound at start, so a
+// project fact (trust, origins, stores) is bound at start, so a
 // switch is a restart, never a change in place; an exec keeps the PID, so the
 // shell's wait and the terminal's foreground group do not change. The one
-// start of a program outside internal/proc besides the editor and the sandbox
+// start of a program outside internal/proc besides the editor
 // probes: the children are reaped (proc.Reaped) and the terminal restored.
 // NOTE: Windows has no exec; there it names the command to run instead.
 func relaunch(dir string) error {
@@ -216,14 +216,7 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 		host.ResumeDir = dirs.ProjectDir // absolute: -C ran first
 	}
 	trust := &trustGate{h: host, dirs: dirs}
-	switch {
-	case o.unsafe:
-		// --unsafe trusts for this run; the flag is never persisted and is no
-		// config key. Its facts are bound here, before any boot step reads them.
-		host.Unsafe = true
-		host.Perm.FullEnv = true
-		trust.session.Store(new(true))
-	case o.trust != nil:
+	if o.trust != nil {
 		trust.session.Store(o.trust)
 	}
 	return host, trust
@@ -238,7 +231,7 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 	}
 	soft := func(s lua.BootStep) lua.BootStep { return softStep(h, app == nil, s) }
 	return bootSteps(h, mainCommands(quit, trust.command()),
-		[]lua.BootStep{soft(trust.step()), soft(h.ProjectPermissionsStep())},
+		[]lua.BootStep{soft(trust.step())},
 		soft(h.PluginsStep()),
 		[]lua.BootStep{
 			soft(lua.LoadFileStep(initStep, filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
@@ -279,10 +272,6 @@ func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Hos
 		return nil, nil, err
 	}
 	h.Inert, h.Stderr = inert, stderr
-	if o.unsafe && !inert {
-		// a TUI run shows the pill; a headless one has nowhere but stderr
-		fmt.Fprintln(stderr, "zemi: --unsafe: no sandbox, no secret hiding, a trusted project; yolo unless --mode says otherwise")
-	}
 	// a project with no saved decision runs untrusted instead of asking; say
 	// so, or the run looks like it applied the project's setup
 	trust.ask = headlessTrust(notice)
@@ -338,8 +327,6 @@ func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, p
 // trust, which picks the trees, is not decided.
 func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func()) {
 	fingerprint := func() string {
-		// a sandboxed command that created project config turns trust off first
-		h.CheckSandboxed()
 		roots := append(append([]string{h.Dirs.ConfigHome}, h.Dirs.UserTrees()...), pluginRoots(h.Dirs.PluginsRoot())...)
 		if h.ProjectTrusted() {
 			return configFingerprint(h.Dirs.WorktreesDir(), append(roots, h.Dirs.ProjectConfigDir())...)
@@ -553,18 +540,14 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "model", NArgs: hostapi.NArgsAny, Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string) error {
 			return h.SetModel(args)
 		}, GoComplete: (*hostapi.Host).CompleteModel},
-		{Name: "permissions", NArgs: hostapi.NArgsAny, Desc: "see the rules and delete one you allowed", GoFn: func(h *hostapi.Host, args string) error {
-			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
-				return h.ForgetRule(rest)
-			}
-			return h.OpenPermissions()
-		}},
 		{Name: "mode", NArgs: hostapi.NArgsOptional, Desc: "choose the permission mode", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenModePicker()
 			}
 			return h.SetPermMode(args)
-		}, GoComplete: func(h *hostapi.Host, _, _ string) []string { return modeNames(h) }},
+		}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
+			return []string{config.PermModeAsk, config.PermModeAllow}
+		}},
 	}
 }
 
@@ -579,11 +562,7 @@ func stopCompleter(set func(*hostapi.Host) bool) func(h *hostapi.Host, lead, lin
 }
 
 func modeNames(h *hostapi.Host) []string {
-	var names []string
-	for _, m := range h.PermModeList() {
-		names = append(names, m.Name)
-	}
-	return names
+	return []string{config.PermModeAsk, config.PermModeAllow}
 }
 
 // initStep is the user init.lua step's name, which softStep blames a broken
@@ -639,7 +618,6 @@ func (tg *trustGate) step() lua.BootStep {
 	return lua.BootStep{
 		Name: "project trust",
 		Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
-			tg.h.CheckSandboxed()
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
 			// .agents/worktrees/.gitignore, so git status never lists the
@@ -671,9 +649,6 @@ func projectInitStep(h *hostapi.Host) lua.BootStep {
 }
 
 func (tg *trustGate) decide() (bool, error) {
-	if tg.h.TrustHeld() {
-		return false, nil
-	}
 	if s := tg.session.Load(); s != nil {
 		return *s, nil
 	}
@@ -722,7 +697,6 @@ func (tg *trustGate) command() func() {
 			if answer == "later" {
 				return
 			}
-			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
 				tg.h.Notify(slog.LevelError, "Could not save the trust decision", err.Error())

@@ -22,7 +22,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -375,6 +374,9 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 			h, r := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
+			if err := h.SetPermMode("ask"); err != nil {
+				t.Fatal(err)
+			}
 			runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 			if err := h.Remember("deploy by hand"); err != nil {
 				t.Fatal(err)
@@ -655,7 +657,7 @@ func TestAgentsList(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	id, err := h.jobs.Start(t.TempDir(), "echo up; sleep 30", nil, nil, func() string { return "" })
+	id, err := h.jobs.Start(t.TempDir(), "echo up; sleep 30", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +776,6 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 // history and the store instead of vanishing with a failed step.
 func TestHaltKeepsTheStep(t *testing.T) {
 	h, r := newTestHostDB(t)
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `zemi.event.on("tool.pre", function(ev) if ev.tool == "glob" then return { decision = "halt", reason = "stop" } end end)`)
 	file := filepath.Join(h.Dirs.ProjectDir, "new.txt")
 	h.modelFn = func() (fantasy.LanguageModel, error) {

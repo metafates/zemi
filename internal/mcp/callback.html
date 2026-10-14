@@ -4,14 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .OK}}signed in{{else}}sign-in failed{{end}} - zemi</title>
-<!-- the landing page's palette and snail (docs/index.html); a sign-in page loads nothing remote -->
+<!-- the landing page's palette and knot (docs/index.html, docs/style.css); a sign-in page loads nothing remote -->
 <style>
 :root {
-  color-scheme: light dark;
-  --bg: #fafafc; --fg: #202127; --dim: #696b78; --rule: #bcbdc6; --panel: #eff0f3; --accent: #5458c8; --literal: #ab5819;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; }
+  color-scheme: dark;
+  --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; --danger: #f17070;
 }
 * { box-sizing: border-box; }
 body {
@@ -24,9 +21,7 @@ main { max-width: 72ch; margin: 0 auto; }
 p { margin: 0 0 1.2em; max-width: 60ch; }
 .dim { color: var(--dim); }
 .accent { color: var(--accent); }
-.snail { display: block; width: 210px; height: auto; margin: 0 0 1.6rem -6px; }
-.snail .shell { stroke: var(--accent); }
-.snail .head { stroke: var(--fg); }
+.knot pre { color: var(--dim); font: 400 8px/1.15 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; margin: 0 0 1.6rem; }
 h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
 .tag { margin-bottom: .6em; }
 .eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.4rem; list-style: none; padding: 0; }
@@ -43,17 +38,35 @@ h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left
 <body>
 <main>
 
-<svg class="snail" viewBox="0 0 118 64" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <g class="head">
-    <path d="M85 22v18M95 22v18"/>
-    <path d="M45 56h14q6 0 6-6v-4q0-6 6-6h28q6 0 6 6v10"/>
-  </g>
+    <pre role="img" aria-label="a trefoil knot drawn in ascii">
+                    #%%%%%%%#*
+                #%%%##%%%%##@@@@%*=
+              #######***++###%%%%@%#+
+            *###*+=-::::::::-=+*#%%%##+
+           *##*+-::            :+*#%%##*
+           #*++-:                :=*###*+ %%#*
+          ***+-:            +%%%#  =*###*= @@@@%*
+          **+=::          *###**++= +****= *#%@@@%#
+          **+=::        ****++==:    ****+: :+*#%@@%=
+           *++-:   *####*++--=:      +**+=:    =##@@#+
+           +*   %%%##*+====::       ++*++-      -*#@%#-
+             #%@%#**#++-:::         ++++-:       =#%@%*
+           #%@%%##*=::             =++=-:         *%@@*
+          #%@%%*=::   #=           ==--:          +%@%*
+         #%%#*+-:  %#%%%##+        -::::          #%@%*
+         ##**=:    =*#*##%##+      ----:         +#@@**
+        *#*+=:        -**#%%%*-    ++++-        +%%%#*-
+        ***=-:          :##%@%#+:  ##*+-      +#%@%#*=
+        +*+=-::           *%#%@%##+         ##%%@##*=
+         +++=--:           -*#%@@@@%######%%%%####+:
+          +++=-==--          :+#%#@%%%#####*#*#+-:
+           ==+===+++++***####   :=+**###***+=-
+             -==++++++++******+=
+                 ---=======-
 
-  <g class="shell">
-    <rect x="5" y="8" width="50" height="48" rx="8"/>
-    <rect x="15" y="24" width="30" height="16" rx="6"/>
-  </g>
-</svg>
+
+                                                            </pre>
+  </section>
 
 {{if .OK}}
 <h1>signed in</h1>

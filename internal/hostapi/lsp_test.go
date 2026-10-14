@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"encoding/json/v2"
 	"fmt"
 	"io/fs"
@@ -18,7 +17,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -33,7 +31,6 @@ func TestLSPDiagnostics(t *testing.T) {
 		t.Cleanup(func() { h.lsp.stopAll() })
 		h.SetProjectTrusted(true)
 		runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet", "hang" } })`, os.Args[0]))
-		h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 		byName := map[string]fantasy.AgentTool{}
 		for _, tl := range tools.All(h.PipelineFor()) {
 			byName[tl.Info().Name] = tl
@@ -99,7 +96,6 @@ func TestLSPTool(t *testing.T) {
 	defer func() { h.lsp.stopAll()() }()
 	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var tool fantasy.AgentTool
 	for _, tl := range tools.All(h.PipelineFor()) {
 		if tl.Info().Name == "lsp" {
@@ -231,18 +227,16 @@ func TestLSPBuiltins(t *testing.T) {
 	exe(filepath.Join(servers, "rust-analyzer"))
 	exe(filepath.Join(servers, "typescript-language-server"))
 	for _, c := range []struct {
-		name, path, want   string
-		trusted, noSandbox bool
+		name, path, want string
+		trusted          bool
 	}{
-		{"untrusted", filepath.Join(global, "bin"), "", false, false},
-		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js"), true, false},
-		{"repo tsserver", filepath.Join(root, "bin"), "", true, false},
-		{"no tsserver", "", "", true, false},
-		{"no sandbox leaves rust-analyzer out", "", "", false, true},
+		{"untrusted", filepath.Join(global, "bin"), "", false},
+		{"global tsserver", filepath.Join(global, "bin"), filepath.Join(global, "node_modules/typescript/lib/tsserver.js"), true},
+		{"repo tsserver", filepath.Join(root, "bin"), "", true},
+		{"no tsserver", "", "", true},
 	} {
 		t.Setenv("PATH", servers+string(os.PathListSeparator)+c.path)
-		h.SetProjectTrusted(c.trusted || c.noSandbox)
-		fakeSandbox(h, !c.noSandbox)
+		h.SetProjectTrusted(c.trusted)
 		got, rust := "", false
 		for _, d := range h.lspDefs("") {
 			rust = rust || d.Name == "rust-analyzer"
@@ -260,19 +254,6 @@ func TestLSPBuiltins(t *testing.T) {
 		if got != want {
 			t.Fatalf("%s: tsserver = %q, want %q", c.name, got, want)
 		}
-	}
-	// --unsafe is the user's own "no sandbox": the backend is there, so a
-	// server that runs project code starts, unconfined (lspOpen wraps none)
-	t.Setenv("PATH", servers)
-	h.Unsafe = true
-	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	rust := false
-	for _, d := range h.lspDefs("") {
-		rust = rust || d.Name == "rust-analyzer"
-	}
-	if !rust {
-		t.Error("--unsafe leaves a code-running server out")
 	}
 }
 
@@ -408,9 +389,6 @@ func TestLSPRealLuaLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { h.lsp.stopAll()() }()
-	if !h.sandboxLive() {
-		t.Skip("no sandbox")
-	}
 	h.syncTypes()
 	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "demo")
 	if err := os.CopyFS(plugin, os.DirFS("../../testdata/plugins/demo")); err != nil {
@@ -503,98 +481,5 @@ func TestLSPSyncFromGit(t *testing.T) {
 	os.WriteFile(b, []byte("Foo()\n"), 0o644)
 	if got := refs(); got != "2 references" {
 		t.Fatalf("with no mark: %q", got)
-	}
-}
-
-// TestLSPRealServersSandboxed runs the installed gopls, pyright and
-// rust-analyzer under the live backend: each reports a problem, and the
-// build script rust-analyzer runs writes its OUT_DIR but not outside it.
-func TestLSPRealServersSandboxed(t *testing.T) {
-	t.Parallel()
-	if testing.Short() {
-		t.Skip("starts real language servers")
-	}
-	h, _ := newTestHostDB(t)
-	// the temp dirs go once each server and the build it started have ended
-	defer func() { h.lsp.stopAll()() }()
-	if !h.sandboxLive() {
-		t.Skip("no sandbox")
-	}
-	h.SetProjectTrusted(true)
-	h.Dirs.CacheHome = t.TempDir()
-	proj := h.Dirs.ProjectDir
-	outside := filepath.Join(t.TempDir(), "escaped")
-	files := map[string]string{
-		"go.mod":         "module m\n\ngo 1.22\n",
-		"main.go":        "package main\n\nfunc main() { var x int = \"s\"; _ = x }\n",
-		"pyproject.toml": "[project]\nname = \"m\"\n",
-		"a.py":           "x: int = \"s\"\n",
-		"Cargo.toml":     "[package]\nname = \"m\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-		"build.rs": fmt.Sprintf("fn main() {\n    let _ = std::fs::write(%q, \"x\");\n"+
-			"    std::fs::write(std::path::Path::new(&std::env::var(\"OUT_DIR\").unwrap()).join(\"ran\"), \"x\").unwrap();\n}\n", outside),
-		"src/main.rs": "mod missing;\nfn main() {}\n",
-	}
-	for name, body := range files {
-		os.MkdirAll(filepath.Dir(filepath.Join(proj, name)), 0o755)
-		os.WriteFile(filepath.Join(proj, name), []byte(body), 0o644)
-	}
-	// the confined cargo cannot write a missing Cargo.lock into the project
-	if _, err := exec.LookPath("cargo"); err == nil {
-		lock := exec.Command("cargo", "generate-lockfile")
-		lock.Dir = proj
-		if out, err := lock.CombinedOutput(); err != nil {
-			t.Fatalf("cargo generate-lockfile: %v: %s", err, out)
-		}
-	}
-	// the group returns once its parallel servers have all reported
-	t.Run("servers", func(t *testing.T) {
-		for _, c := range []struct {
-			server, file string
-			line         int
-			source       string // "" for any
-		}{
-			{"gopls", "main.go", 3, ""},
-			{"pyright-langserver", "a.py", 1, ""},
-			// cargo check's error, which comes after build.rs ran; rust-analyzer's own may come first
-			{"rust-analyzer", "src/main.rs", 1, "rustc"},
-		} {
-			t.Run(c.server, func(t *testing.T) {
-				t.Parallel()
-				if _, err := exec.LookPath(c.server); err != nil {
-					t.Skip(c.server, " not installed")
-				}
-				// only a hang guard: a server that exits ends the wait
-				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-				defer cancel()
-				path := filepath.Join(proj, c.file)
-				s, err := h.lspOpen(ctx, path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				// read what the server publishes for the open file: touching it
-				// again waits a fixed floor a loaded server misses, and each miss
-				// counts toward the stall that restarts it
-				for tick := time.Tick(100 * time.Millisecond); !slices.ContainsFunc(s.Client.Diagnostics(path), func(d lsp.Diagnostic) bool {
-					return d.Severity == 1 && d.Line == c.line && (c.source == "" || d.Source == c.source)
-				}); {
-					select {
-					case <-s.Client.Done():
-						t.Fatalf("%s exited before reporting", c.server)
-					case <-ctx.Done():
-						t.Fatalf("no error on line %d: %v", c.line, s.Client.Diagnostics(path))
-					case <-tick:
-					}
-				}
-			})
-		}
-	})
-	if _, err := exec.LookPath("rust-analyzer"); err != nil {
-		return
-	}
-	if m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), "rust-analyzer", "target", "*", "build", "*", "out", "ran")); len(m) == 0 {
-		t.Fatal("cargo check reported without running build.rs")
-	}
-	if _, err := os.Stat(outside); err == nil {
-		t.Fatal("build.rs wrote outside its sandbox")
 	}
 }

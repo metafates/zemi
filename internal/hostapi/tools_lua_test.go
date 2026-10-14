@@ -12,7 +12,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestLuaToolAfterReload: a runner built before a reload still holds the old
@@ -25,7 +24,6 @@ func TestLuaToolAfterReload(t *testing.T) {
 		{"", "weather: the tool is gone after a config reload"},
 	} {
 		h, r := newTestHost(t)
-		h.Perm.Add(perm.Rule{Subject: "tool.weather", Pattern: "*", Decision: perm.Allow})
 		runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 		tool := h.luaFantasyTools(h.PipelineFor())[0]
 		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -38,12 +36,15 @@ func TestLuaToolAfterReload(t *testing.T) {
 	}
 }
 
-// TestLuaToolAskCarriesWholeInput: an approval (auto mode caches them) covers
-// the input the ask showed, so the ask must show all of it.
+// TestLuaToolAskCarriesWholeInput: the ask's preview is the whole input, so
+// the user approves what will run.
 func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	input := `{"city":"` + strings.Repeat("a", 400) + `b"}`
 	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: input}); err != nil {
@@ -63,7 +64,7 @@ func TestToolPreHandlerErrorRecorded(t *testing.T) {
 	} {
 		h, r := newTestHost(t)
 		runUser(t, r, `zemi.event.on("tool.pre", function(ev) `+c.body+` end)`)
-		if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
+		if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
 			t.Errorf("%s: decision %q, want %q; unseen errors %v", c.body, d, c.want, h.HasUnseenErrors())
 		}
 	}
@@ -71,7 +72,6 @@ func TestToolPreHandlerErrorRecorded(t *testing.T) {
 
 func TestLuaToolFailures(t *testing.T) {
 	h, r := newTestHost(t)
-	h.Perm.Add(perm.Rule{Subject: "tool.ticket", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `zemi.tool.add({
 		name = "ticket", description = "look up a ticket",
 		input = { id = { type = "string" }, n = { type = "integer" } }, required = { "id" },
@@ -180,8 +180,6 @@ func TestLuaToolWaitFreesInterpreter(t *testing.T) {
 	} {
 		t.Run(c.act, func(t *testing.T) {
 			h, r := newTestHost(t)
-			h.Perm.Add(perm.Rule{Subject: "tool.slow", Pattern: "*", Decision: perm.Allow})
-			h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
 			runUser(t, r, `
 				local job
 				zemi.tool.add({ name = "slow", description = "waits on a job", execute = function()
@@ -238,7 +236,6 @@ func TestToolPostRewrite(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHost(t)
-			h.Perm.Add(perm.Rule{Subject: "tool.echo", Pattern: "*", Decision: perm.Allow})
 			runUser(t, r, `zemi.tool.add({ name = "echo", description = "echo", execute = function() return "x" end })`+c.user)
 			if c.project != "" {
 				if err := r.ExecuteChunk(t.Context(), c.project, "project-chunk", lua.OriginProject); err != nil {
@@ -260,7 +257,6 @@ func TestToolPostRewrite(t *testing.T) {
 // model call of the turn emits agent.step with its tool calls.
 func TestTurnTelemetry(t *testing.T) {
 	h, r := newTestHostDB(t)
-	h.Perm.Add(perm.Rule{Subject: "tool.fetch3", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `
 		zemi.tool.add({ name = "fetch3", description = "fetch", execute = function(_, run)
 			run:progress("fetching\n3/5")

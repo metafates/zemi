@@ -32,7 +32,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -53,16 +52,7 @@ type Profile struct {
 
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
-	Tool string // the asking tool (shell, edit, mcp_github_search)
-	// Always is what the session-long choice allows ("allow go test"),
-	// "" when none is offered
-	Always string
-	// Wider is a second session-long choice covering more than Always (a
-	// read's whole repository), "" when there is none
-	Wider string
-	// Project offers Always's scope written to the project's permissions
-	// file (a trusted shell command)
-	Project bool
+	Tool    string // the asking tool (shell, edit, mcp_github_search)
 	Subject string
 	Arg     string
 	Reason  string
@@ -78,22 +68,7 @@ type PermRequest struct {
 	// Script names the lua tool script a nested call came from, as the badge
 	// says it ("lua script"), "" for a call the model made itself
 	Script string
-	// Runs is what a command runs, nil when the parse cannot say
-	Runs []perm.Program
-	// Where is where a command runs once allowed, "" for any other request
-	Where RunsIn
 }
-
-// RunsIn is where a command runs once the user allows it
-// (Pipeline.SandboxFor).
-type RunsIn string
-
-const (
-	RunsOutside   RunsIn = "outside"  // unconfined, a sandbox exists
-	RunsNoSandbox RunsIn = "none"     // no backend on this machine
-	RunsNetwork   RunsIn = "network"  // confined, sockets added
-	RunsConfined  RunsIn = "confined" // a read-only agent's: confined whoever allows it
-)
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {
@@ -383,19 +358,10 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 	return skip
 }
 
-// webOff reports a run whose every fetch and search is denied: no UI to
-// approve one (the model picks each address, so only yolo settles them), and
-// no allow rule, yolo base or decide function in the mode to allow one.
+// webOff reports a run whose every fetch and search would be denied: no UI
+// to approve one (the model picks each address), and the mode is ask.
 func (h *Host) webOff() bool {
-	if h.hooks() != nil {
-		return false
-	}
-	def := h.permModeDef()
-	if def.Base == config.PermModeYolo || def.Decide != nil {
-		return false
-	}
-	allows := func(r perm.Rule) bool { return r.Decision == perm.Allow && strings.HasPrefix(r.Subject, "net.") }
-	return !slices.ContainsFunc(h.Perm.Rules(), allows) && (def.Rules == nil || !slices.ContainsFunc(def.Rules.Rules(), allows))
+	return h.hooks() == nil && h.PermMode() == config.PermModeAsk
 }
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
@@ -586,7 +552,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.currentModelID(p)
-	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), h.permModeDef().Prompt, strconv.FormatBool(h.takesImages(id))}
+	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
 	if p != nil {
 		key[0] = p.Name
 	}
@@ -2615,7 +2581,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 				// nothing bounds a chain of turns, and zemi run exits after its own
 				L.RaiseError("zemi.agent.send: a plugin cannot send in zemi run")
 			}
-			if _, stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
+			if stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}
@@ -2765,9 +2731,9 @@ func (h *Host) afterWrite(path string) string {
 func (h *Host) PipelineFor() *tools.Pipeline {
 	readOnly := h.readOnly()
 	p := &tools.Pipeline{
-		Store:       h.Perm,
 		Pre:         h.toolPreHook(),
 		Ask:         h.askHook(),
+		Mode:        h.PermMode,
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.afterWrite,
 		Changes:     h.shellChanges,
@@ -2775,27 +2741,12 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return readOnly },
-		Sandbox: func(readOnly bool, pad string) *sandbox.Policy {
-			// read-only is absolute: a planner must not touch the project even
-			// under yolo. Otherwise yolo allows everything and runs unconfined.
-			// A policy with no backend fails every wrap, so without one the
-			// planner keeps only Check's denies and asks.
-			if !h.sandboxLive() || !readOnly && h.permModeDef().Base == config.PermModeYolo {
-				return nil
-			}
-			p := h.sandboxPolicy(readOnly, pad)
-			return &p
-		},
-		SandboxParam: h.sandboxLive() && h.hooks() != nil,
-		Unsafe:       h.Unsafe,
-		Guard:        h.guardSandbox,
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
-		Post:      h.toolPost,
-		Principal: perm.PrincipalModel,
-		Jobs:      h.jobs,
-		Skills:    h.skillIndex,
+		Post:   h.toolPost,
+		Jobs:   h.jobs,
+		Skills: h.skillIndex,
 		Images: func() bool {
 			h.agents.mu.Lock()
 			id := h.liveModelID()
@@ -2806,8 +2757,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			return h.memoryTool(p, h.AgentSessionID(), call)
 		},
 		Pad:          h.ScratchDir(),
-		Protected:    h.protectedWhy,
-		Secret:       h.secretPath,
 		Seen:         h.readLog(),
 		Instructions: h.mainInstructions,
 	}

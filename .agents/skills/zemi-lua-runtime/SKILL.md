@@ -1,6 +1,6 @@
 ---
 name: zemi-lua-runtime
-description: "Load before changing internal/lua or the sandbox guards, a zemi.* namespace, runtime/types/zemi.lua or runtime/lua, the skill loader, or anything crossing a Lua generation: the actor and tasks, the watchdog, require and the origin model, the type annotations."
+description: "Load before changing internal/lua or its Lua sandbox, a zemi.* namespace, runtime/types/zemi.lua or runtime/lua, the skill loader, or anything crossing a Lua generation: the actor and tasks, the watchdog, require and the origin model, the type annotations."
 ---
 
 # The Lua runtime
@@ -16,12 +16,10 @@ description: "Load before changing internal/lua or the sandbox guards, a zemi.* 
    sandbox's `coroutine.resume` raises for it: only the driver resumes a task.
 2. **Watchdog / hot mode.** A wedged request trips the watchdog; after a grace period the
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
-   (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a
-   permission mode's `decide`) are generation-tagged (`hostapi.Gen`) and purged before replay,
+   (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools) are
+   generation-tagged (`hostapi.Gen`) and purged before replay,
    so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
-   not parse and keeps the old Lua permission rules (`staleRules`) until the replay succeeds (a
-   failed one, an init.lua error included, keeps the deny and ask ones and skips `cfgSettle`),
-   and `tool.pre` and `permission.request` vetoes and the mode an ask reads wait out a reload, so a turn is never checked
+   not parse (the old generation stays), and `tool.pre` and `permission.request` vetoes and the mode an ask reads wait out a reload, so a turn is never checked
    against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi
@@ -88,7 +86,7 @@ tests/, workflows/, plugin.json), and one still keeping it at its root is refuse
 (`plugin.OldLayout`) rather than loading nothing. A gone or reinstalled plugin's `zemi.state`
 keys are dropped
 (`sweepPluginState`). `Host.PluginOf` names a plugin by its directory: its state keys are
-`plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`
+`plugin:<name>:<key>`, its state principal and its overlay badge `plugin:<name>`
 (`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
 last-writer-wins, except that one plugin can neither replace nor remove another's command, keymap,
@@ -112,15 +110,12 @@ every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body on
 table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
 runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skill.Recipe`) are the project's
-private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
-policy can write): trusted only, body only, enabled, and they lose every name clash. The
+private skills under `<state>/projects/<hash>/skills` (`recipesDir`): trusted only, body only, enabled, and they lose every name clash. The
 pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIndex` and
 `enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment's `Recipes:` line names the dir, the system prompt's
-`recipesUse` says how); the dir is a
-`protectedWrite`: no rule and neither auto mode nor a read-only agent settles a write (yolo still
-allows), and the ask says when `sessionLocalOnly` fails.
+`recipesUse` says how); in ask mode a write there asks like any write outside the project.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
 rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
@@ -133,7 +128,7 @@ and drops the pinned prompt. Invariants:
   which would defeat a Go-side gate). A disabled skill leaves the index but `/skills use` still
   sends it (the body rides behind `agent.AttachMarker`, like a markdown command's).
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
-  with a warning); bodies load on demand via the `skill` tool, after a permission check.
+  with a warning); bodies load on demand via the `skill` tool.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
   step after user init.lua, as user origin; enabling later does not run it.
 - **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never

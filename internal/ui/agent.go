@@ -59,18 +59,11 @@ type permChoice struct {
 }
 
 func (pa *permAskPrompt) choices() []permChoice {
-	out := []permChoice{{key: "y", label: "Yes", by: "user:once", ok: true}}
-	if pa.req.Always != "" {
-		out = append(out, permChoice{key: "a", label: "Yes, this session", desc: pa.req.Always, by: "user:always", ok: true})
+	return []permChoice{
+		{key: "y", label: "Yes", by: "user:once", ok: true},
+		{key: "n", label: "No", by: tools.ByUser},
+		{key: "t", label: "No, and tell zemi", desc: "stop the turn and say what to do instead", by: tools.ByUser, tell: true},
 	}
-	if pa.req.Wider != "" {
-		out = append(out, permChoice{key: "r", label: "Yes, this session", desc: pa.req.Wider, by: "user:wider", ok: true})
-	}
-	if pa.req.Project {
-		out = append(out, permChoice{key: "p", label: "Yes, this project", desc: "the same, kept after zemi exits", by: "user:project", ok: true})
-	}
-	return append(out, permChoice{key: "n", label: "No", by: tools.ByUser},
-		permChoice{key: "t", label: "No, and tell zemi", desc: "stop the turn and say what to do instead", by: tools.ByUser, tell: true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
@@ -112,12 +105,8 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	// Every field carries model input: strip escapes before the chrome.
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
-	req.Description, req.Always = sanitize.String(req.Description), sanitize.String(req.Always)
-	req.Wider, req.Agent, req.Owner = sanitize.String(req.Wider), sanitize.Line(req.Agent), sanitize.Line(req.Owner)
-	req.Runs = slices.Clone(req.Runs)
-	for i := range req.Runs {
-		req.Runs[i].Name = sanitize.Line(req.Runs[i].Name)
-	}
+	req.Description = sanitize.String(req.Description)
+	req.Agent, req.Owner = sanitize.Line(req.Agent), sanitize.Line(req.Owner)
 	// a tool's input reads as its fields, one per line
 	if strings.HasPrefix(req.Preview, "{") {
 		if out, err := jsontext.AppendFormat(nil, req.Preview, jsontext.WithIndent("  ")); err == nil {
@@ -921,21 +910,11 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 	return r
 }
 
-// runsTitle asks about a command where a yes runs it.
-//
-//exhaustive:enforce
-var runsTitle = map[hostapi.RunsIn]string{
-	hostapi.RunsOutside:   "Run this command outside the sandbox?",
-	hostapi.RunsNoSandbox: "Run this command?",
-	hostapi.RunsNetwork:   "Run this command in the sandbox, with the network?",
-	hostapi.RunsConfined:  "Run this command in the sandbox?",
-}
-
 // permTitle is the question a request asks, from its typed fields.
 func permTitle(req hostapi.PermRequest) string {
 	switch server, mcp := strings.CutPrefix(req.Subject, "mcp."); {
 	case req.Subject == perm.SubjectShell:
-		return cmp.Or(runsTitle[req.Where], "Run this command?")
+		return "Run this command?"
 	case req.Subject == perm.SubjectRead && req.Tool == tools.ToolSkill:
 		return "Load this skill?"
 	case req.Subject == perm.SubjectRead:
@@ -965,29 +944,19 @@ func permTitle(req hostapi.PermRequest) string {
 }
 
 // permFacts is the facts table under the prompt's title, three blocks
-// sharing one name column: the target (the programs a command runs, a file,
+// sharing one name column: the target (the command a call runs, a file,
 // a URL), why zemi asked, and the model's own words, quoted and last since
 // nothing checked them. why and says take two rows at most, a target a
 // third of the screen, keeping its first and last rows.
 func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, says [][]hostapi.Segment) {
 	name, val := permTarget(req, root)
-	// a command's programs, unless it is only shell syntax (set -e; true)
-	runs := req.Subject == perm.SubjectShell && (req.Runs == nil || len(req.Runs) > 0)
-	if runs {
-		name = "runs"
-	}
 	kw := 0
-	for n, on := range map[string]bool{name: val != nil || runs, "why": req.Reason != "", "says": req.Description != ""} {
+	for n, on := range map[string]bool{name: val != nil, "why": req.Reason != "", "says": req.Description != ""} {
 		if on {
 			kw = max(kw, ansi.StringWidth(n)+2)
 		}
 	}
-	switch {
-	case runs && w-kw < 20:
-		target = append(fieldLine(name, nil, w), runsRows(req.Runs, w)...)
-	case runs:
-		target = fieldRow(name, kw, runsRows(req.Runs, w-kw))
-	case val != nil:
+	if val != nil {
 		target = field(name, kw, val, w)
 		if n := max(h/3, 3); len(target) > n {
 			more := fieldRow("", kw, [][]hostapi.Segment{{{Text: hostapi.MoreLines(len(target) - n + 1), HL: hostapi.ChromeHint}}})
@@ -1004,11 +973,10 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 }
 
 // permTarget is the facts table's first row: what a request acts on, as
-// its name and value; no value when the title names it (a tool, a memory)
-// or for a command, whose runs row permFacts lays out.
+// its name and value; no value when the title names it (a tool, a memory).
 func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment) {
-	// a path or URL wraps at its slashes: its file name and its query are
-	// what the user approves
+	// a path, URL or command wraps at its slashes: its file name, its host
+	// and its pipes are what the user approves
 	parts := func(s string) []hostapi.Segment {
 		var segs []hostapi.Segment
 		for p := range strings.SplitAfterSeq(s, "/") {
@@ -1018,14 +986,14 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 	}
 	switch arg := req.Arg; {
 	case req.Subject == perm.SubjectShell:
-		return "", nil
+		return "command", parts(arg)
 	case tools.PathSubject(req.Subject), req.Subject == perm.SubjectLua && arg != "script":
 		if rel, ok := perm.Under(root, arg); ok && root != "" && filepath.IsAbs(arg) {
 			arg = rel
 		}
 		return "file", parts(arg)
 	case strings.HasPrefix(req.Subject, "net."):
-		// the host is what the session answer allows and where a look-alike hides
+		// the host is what a look-alike hides behind
 		if u, err := url.Parse(arg); err == nil && u.Host != "" {
 			before, after, _ := strings.Cut(arg, u.Host)
 			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: hostapi.ChromeValue}, {Text: u.Host, HL: hostapi.ChromeBold}}, parts(after))
@@ -1037,52 +1005,6 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return "", nil
 	}
 	return "arg", parts(req.Arg)
-}
-
-// riskRank and riskHL order and color the marks of the runs row.
-var (
-	riskRank = map[perm.Risk]int{perm.RiskDeletes: 2, perm.RiskCode: 1}
-	riskHL   = map[perm.Risk]string{perm.RiskDeletes: hostapi.ChromeDanger, perm.RiskCode: hostapi.ChromeWarn}
-)
-
-// runsRows lays out what a command runs in at most two rows w wide, each
-// name whole: marked names first (deletes in Danger, runs code in Warn), so
-// a cut never hides one, and the names that do not fit counted as "… N
-// more". nil runs is a list the parse could not vouch for.
-func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
-	if runs == nil {
-		return [][]hostapi.Segment{{{Text: "unknown: read the command", HL: hostapi.ChromeWarn}}}
-	}
-	runs = slices.Clone(runs)
-	slices.SortStableFunc(runs, func(a, b perm.Program) int { return riskRank[b.Risk] - riskRank[a.Risk] })
-	items := make([]hostapi.Segment, len(runs))
-	for i, p := range runs {
-		items[i] = hostapi.Segment{Text: p.Name, HL: hostapi.ChromeValue}
-		if p.Risk != "" {
-			items[i] = hostapi.Segment{Text: p.Name + " (" + string(p.Risk) + ")", HL: riskHL[p.Risk]}
-		}
-	}
-	for n := len(items); ; n-- {
-		shown := items[:n]
-		if n < len(items) {
-			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("… %d more", len(items)-n), HL: hostapi.ChromeHint})
-		}
-		var rows [][]hostapi.Segment
-		var row []hostapi.Segment
-		for _, it := range shown {
-			switch {
-			case len(row) == 0:
-			case hostapi.SegsWidth(row)+3+ansi.StringWidth(it.Text) <= w:
-				row = append(row, hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint})
-			default:
-				rows, row = append(rows, row), nil
-			}
-			row = append(row, it)
-		}
-		if rows = append(rows, row); len(rows) <= 2 || n == 0 {
-			return rows
-		}
-	}
 }
 
 // hintPair is one key of a footer hint and the verb it does.

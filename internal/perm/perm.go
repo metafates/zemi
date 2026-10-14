@@ -1,15 +1,14 @@
-// Package perm is the permission engine (DESIGN §9): rules
-// (subject, pattern, decision) evaluated per operation, with a shell
-// command normalizer that splits compound payloads and gates environment
-// assignments. Decisions: deny beats ask beats allow; within one decision
-// the most specific pattern wins.
+// Package perm holds the pieces the permission gate and the file tools
+// share: the subjects a request names, path resolution (RealPath, Path and
+// its openat walk), the pad and temp roots nothing of the user's depends
+// on, the glob a stub match uses, and the secret-shape matchers.
 package perm
 
 import (
-	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -20,16 +19,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// Decision is what a rule instructs the caller to do.
-type Decision string
-
-const (
-	Allow Decision = "allow"
-	Ask   Decision = "ask"
-	Deny  Decision = "deny"
-)
-
-// The subjects zemi's own tools ask about; the set is open (net.<host>,
+// The subjects the builtin tools ask about; the set is open (net.<host>,
 // lua.<ns.call>, mcp.<server>).
 const (
 	SubjectShell    = "tool.shell"
@@ -39,125 +29,19 @@ const (
 	SubjectWrite    = "fs.write"
 )
 
-// PrincipalModel scopes a rule to the model's calls, like an always answer.
-const PrincipalModel = "model"
-
 const pluginPrefix = "plugin:"
 
-// PluginPrincipal is the principal a plugin's calls run as.
+// PluginPrincipal is the principal a plugin's calls and state keys run as.
 func PluginPrincipal(name string) string { return pluginPrefix + name }
 
 // CutPluginPrincipal returns the plugin a principal names.
 func CutPluginPrincipal(p string) (string, bool) { return strings.CutPrefix(p, pluginPrefix) }
 
-// SubjectPrefixes are the namespaces a subject lives in. A rule for
-// anything else can never fire, so zemi refuses it (DESIGN §9).
-var SubjectPrefixes = []string{"tool.", "fs.", "net.", "lua.", "mcp.", "memory."}
-
-// Rule is one permission rule. Pattern is a glob over the operation
-// argument (path, url, normalized command segment). NotMatch is an
-// optional runtime exclusion: an argument matching Pattern but also
-// NotMatch falls through to the next rule.
-type Rule struct {
-	Subject   string   // tool.shell, fs.read, net.host, lua.fs.read
-	Pattern   string   // glob
-	Decision  Decision // allow | ask | deny
-	NotMatch  string   // optional exclusion glob
-	Principal string   // empty = any principal, else only that one
-	// Source is where a principal-less rule came from, so /permissions can
-	// say what to edit: "" for user config, "permissions" for a project's
-	// permissions file, else the Lua origin that added it
-	Source string
-	// Network marks a session rule written from a network: true ask: a
-	// command it allows keeps the sandbox and gets sockets, as the ask said,
-	// instead of running unconfined like other rule-allowed commands
-	Network bool
-}
-
-// Store holds rules in evaluation order; lookups re-sort by specificity.
-// Session rules added at runtime ("always" answers) live in a Store owned
-// by the host; config-file rules are loaded into it at boot.
-type Store struct {
-	rules []Rule
-
-	// mu guards rules: rules are added from the Lua actor goroutine and the
-	// permission-ask hook, and read concurrently by agent turns.
-	mu sync.Mutex
-
-	// Default applies when no rule matched a subject+arg (DESIGN §9
-	// built-in defaults: fs.read inside the jail allows except secret
-	// paths). It never overrides a matched rule, and an explicit
-	// not_match exclusion still asks.
-	Default func(subject, arg string) Decision
-
-	// EnvKeep returns the comma-separated names ChildEnv passes through
-	// despite their secret shape; the host reads permissions.env_keep from
-	// user config, so a build that needs its own NPM_TOKEN has a way back.
-	EnvKeep func() string
-
-	// FullEnv is a --unsafe run: a child process keeps its whole environment,
-	// the secret-shaped names included.
-	FullEnv bool
-}
-
-// Add appends a rule unless an equal one is stored (config replays on every
-// boot and reload) and reports whether it did; evaluation re-sorts.
-func (s *Store) Add(r Rule) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if slices.Contains(s.rules, r) {
-		return false
-	}
-	s.rules = append(s.rules, r)
-	return true
-}
-
-// Remove drops one rule equal to r, if there is one.
-func (s *Store) Remove(r Rule) {
-	s.mu.Lock()
-	if i := slices.Index(s.rules, r); i >= 0 {
-		s.rules = slices.Delete(s.rules, i, i+1)
-	}
-	s.mu.Unlock()
-}
-
-// Rules returns a copy of all rules.
-func (s *Store) Rules() []Rule {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.rules)
-}
-
-// Match reports whether a rule pattern matches the whole of s: `*` spans
-// any characters (separators included), `?` matches one.
-func Match(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
-
-// Outcome is the aggregated verdict for one operation.
-type Outcome struct {
-	Decision Decision
-	// Rule is the winning rule; nil means the default applied.
-	Rule   *Rule
-	Reason string
-	// notMatched: a rule's match was excluded by its not_match, so the ask is
-	// the rule's own and not the default's.
-	notMatched bool
-}
-
-// subjectMatches compares a rule's subject with the one being asked about.
-// A rule may end in ".*" to cover a family: net.* answers net.example.com,
-// the subject the fetch tool asks with.
-func subjectMatches(rule, subject string) bool {
-	if prefix, ok := strings.CutSuffix(rule, ".*"); ok {
-		return subject == prefix || strings.HasPrefix(subject, prefix+".")
-	}
-	return rule == subject
-}
-
-// CanonPath is the form fs rules match against and file tools key by:
-// absolute, symlinks and .. resolved as the kernel resolves them, and case
-// folded where the filesystem folds.
+// CanonPath is the form file tools key by: absolute, symlinks and ..
+// resolved as the kernel resolves them, and case folded where the
+// filesystem folds.
 // NOTE: a case-sensitive volume on darwin or windows folds two real files
-// into one; a rule for one then covers both.
+// into one; a key for one then covers both.
 func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -166,6 +50,20 @@ func TildePath(p string) string {
 		return "~" + p[len(home):]
 	}
 	return p
+}
+
+// ExpandHome spells a leading ~, $HOME or ${HOME} out.
+func ExpandHome(w string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return w
+	}
+	for _, p := range []string{"~", "$HOME", "${HOME}"} {
+		if w == p || strings.HasPrefix(w, p+"/") {
+			return home + w[len(p):]
+		}
+	}
+	return w
 }
 
 // Under reports whether path is root or below it, and gives its path
@@ -181,9 +79,8 @@ func Under(root, path string) (string, bool) {
 }
 
 // FreeZone reports a path nothing of the user's depends on: inside the pad
-// (a request's scratchpad, "" when it has none) or a native temp dir. A
-// command may write there, and the file tools read, write and delete there
-// with no ask.
+// (a request's scratchpad, "" when it has none) or a native temp dir. The
+// file tools read, write and delete there with no ask and no prior read.
 func FreeZone(pad, path string) bool {
 	if InPad(pad, path) {
 		return true
@@ -198,8 +95,7 @@ func FreeZone(pad, path string) bool {
 }
 
 // InPad reports path inside pad, both resolved, so a symlink in the pad
-// cannot lead out. The pad is zemi's own zone, where no path is a protected
-// one, though it sits in zemi's state dir.
+// cannot lead out.
 func InPad(pad, path string) bool {
 	real := CanonPath(path)
 	_, ok := Under(CanonPath(pad), real)
@@ -207,7 +103,7 @@ func InPad(pad, path string) bool {
 }
 
 // TempRoots are the machine's own temp dirs, this process's temp dir and
-// /tmp, deduped and in the form rules match (/tmp is /private/tmp on macOS).
+// /tmp, deduped and resolved (/tmp is /private/tmp on macOS).
 func TempRoots() []string {
 	var roots []string
 	for _, r := range []string{os.TempDir(), "/tmp"} {
@@ -327,122 +223,81 @@ func fold(s string) string {
 	return strings.ToLower(s)
 }
 
-// canonPattern puts an fs rule pattern in CanonPath form: the literal
-// directory before the first wildcard is canonicalized, the rest only case
-// folded. A pattern that starts with a wildcard ("*/.env") stays as is.
-func canonPattern(pat string) string {
-	// a loop resolves to "", which would turn /loop/* into /*
-	canon := func(p string) string { return cmp.Or(CanonPath(p), FoldCase(p)) }
-	i := strings.IndexAny(pat, "*?")
-	if i < 0 {
-		return canon(pat)
+// Match reports whether the glob pattern matches the whole of s: `*` spans
+// any characters (separators included), `?` matches one.
+func Match(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
+
+// globCache is shared by every goroutine that matches (turns, subagents,
+// Lua gates), so it is locked.
+var (
+	globMu    sync.Mutex
+	globCache = map[string]*regexp.Regexp{}
+)
+
+// globRegexp compiles a glob (`*`, `?`) into an anchored regexp. Patterns
+// are bounded in number, so the cache cannot grow unboundedly.
+func globRegexp(pattern string) *regexp.Regexp {
+	globMu.Lock()
+	re, ok := globCache[pattern]
+	globMu.Unlock()
+	if ok {
+		return re
 	}
-	sep := string(filepath.Separator)
-	cut := strings.LastIndex(pat[:i], sep)
-	switch {
-	case i == 0 || cut == 0:
-		return FoldCase(pat)
-	case cut < 0:
-		return canon(".") + sep + FoldCase(pat)
+	var b strings.Builder
+	b.WriteString(`(?s)^`)
+	for _, r := range pattern {
+		switch r {
+		case '*':
+			b.WriteString(`.*`)
+		case '?':
+			b.WriteString(`.`)
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
 	}
-	return canon(pat[:cut]) + FoldCase(pat[cut:])
+	b.WriteString(`$`)
+	re = regexp.MustCompile(b.String())
+	globMu.Lock()
+	if len(globCache) < 1024 {
+		globCache[pattern] = re
+	}
+	globMu.Unlock()
+	return re
 }
 
-// Evaluate decides one operation argument against one subject's rules.
-// Ordering: deny > ask > allow; within a decision, most specific pattern
-// (fewest wildcards, then longest literal prefix) wins. An argument that
-// matches a rule's pattern but also its NotMatch is skipped, and when no
-// other rule matches it forces ask, ahead of Default.
-func (s *Store) Evaluate(subject, arg, principal string) Outcome {
-	return s.Evaluator(subject, principal)(arg)
+// SecretPathShape matches secret-shaped filesystem names. The attach step
+// refuses one, and a diff or a listing may name it rather than print it.
+var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*secret*")
+
+// strictSecretShape is SecretPathShape without the broad names, which also
+// match source files (credential.ts, secret_prompt.py).
+var strictSecretShape = []string{
+	".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
+	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
+	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf",
 }
 
-// Evaluator is Evaluate for many arguments: the rules are read and their
-// patterns canonicalized once, which resolves symlinks, instead of per call.
-func (s *Store) Evaluator(subject, principal string) func(arg string) Outcome {
-	return s.evaluator(subject, principal, false)
+// PathIsSecret folds on every OS: a shape that flags one file too many is
+// cheaper than a darwin spelling that slips past.
+func PathIsSecret(p string) bool { return secretShaped(fold(filepath.Base(p)), SecretPathShape) }
+
+// secretShaped takes a folded base name.
+func secretShaped(base string, shapes []string) bool {
+	return slices.ContainsFunc(shapes, func(pat string) bool {
+		ok, _ := filepath.Match(pat, base)
+		// an ssh public key is meant to be shared
+		return ok && !(strings.HasPrefix(pat, "id_") && strings.HasSuffix(base, ".pub"))
+	})
 }
 
-// evaluator is Evaluator; segment says arg is one command segment, which
-// Normalize already split at every unquoted newline (a quoted one is one
-// argument, and the pattern the user approved covers it).
-func (s *Store) evaluator(subject, principal string, segment bool) func(arg string) Outcome {
-	type prepared struct {
-		Rule
-		pattern, notMatch string
-	}
-	// DESIGN §9: .. resolves before matching (CanonPath), so dir/* cannot
-	// cover dir/../x
-	isPath := strings.HasPrefix(subject, "fs.") || strings.HasPrefix(subject, "lua.fs.")
-	s.mu.Lock()
-	var rules []prepared
-	for _, r := range s.rules {
-		if subjectMatches(r.Subject, subject) && (r.Principal == "" || r.Principal == principal) {
-			rules = append(rules, prepared{Rule: r, pattern: r.Pattern, notMatch: r.NotMatch})
-		}
-	}
-	s.mu.Unlock()
-	// every spelling of one file (relative, ./, //, a symlink, another
-	// case) must meet the same rules, so both sides match canonical
-	for i, r := range rules {
-		if isPath {
-			rules[i].pattern = canonPattern(r.Pattern)
-			if r.NotMatch != "" {
-				rules[i].notMatch = canonPattern(r.NotMatch)
-			}
-		}
-	}
-	return func(arg string) Outcome {
-		type cand struct {
-			rule  Rule
-			score int
-		}
-		var (
-			byDecision = map[Decision][]cand{}
-			fellThru   []string
-		)
-		match := arg
-		if isPath {
-			match = CanonPath(arg)
-		}
-		for _, pr := range rules {
-			r := pr.Rule
-			if !Match(pr.pattern, match) {
-				continue
-			}
-			// globs span newlines so deny and ask rules hold, but an allow for
-			// one line must not cover a second line the user never saw
-			if r.Decision == Allow && !segment && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
-				continue
-			}
-			if r.NotMatch != "" && Match(pr.notMatch, match) {
-				fellThru = append(fellThru, r.Pattern)
-				continue
-			}
-			byDecision[r.Decision] = append(byDecision[r.Decision], cand{r, specificity(r.Pattern)})
-		}
-		for _, d := range []Decision{Deny, Ask, Allow} {
-			list := byDecision[d]
-			if len(list) == 0 {
-				continue
-			}
-			slices.SortFunc(list, func(a, b cand) int {
-				return cmp.Or(
-					cmp.Compare(a.score, b.score), // fewer wildcards first
-					cmp.Compare(literalPrefix(b.rule.Pattern), literalPrefix(a.rule.Pattern)),
-				)
-			})
-			r := list[0].rule
-			return Outcome{Decision: d, Rule: &r}
-		}
-		if len(fellThru) > 0 {
-			return Outcome{Decision: Ask, notMatched: true, Reason: "excluded by not_match: " + strings.Join(fellThru, ", ")}
-		}
-		if s.Default != nil {
-			if d := s.Default(subject, arg); d != Ask {
-				return Outcome{Decision: d, Reason: "default"}
-			}
-		}
-		return Outcome{Decision: Ask, Reason: "no rule matched"}
-	}
+// EnvIsSecret reports whether an env var name looks like it holds a secret
+// (case-insensitive); such variables reach Lua through zemi.env.get for the
+// user's and zemi's own code only. PWD and PASS count only as a suffix
+// after _, so PWD, OLDPWD and COMPASS pass.
+func EnvIsSecret(name string) bool {
+	up := strings.ToUpper(name)
+	return strings.HasSuffix(up, "_PWD") || strings.HasSuffix(up, "_PASS") ||
+		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
+
+var secretEnvShape = []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL"}

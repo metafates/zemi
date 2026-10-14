@@ -56,12 +56,12 @@ local groups = {
 	StatusUsage = { link = "Dim" },
 	StatusUsageWarn = { link = "Warn" },
 	StatusUsageErr = { link = "Danger", bold = true },
-	-- the statusline's mode: a read-only agent plans; yolo answers every ask
-	-- by itself, so nothing else on screen shows it is on, and it is the only
-	-- red in the statusline
+	-- the statusline's mode: a read-only agent plans; ask prompts before
+	-- every action, so nothing else on screen shows it is on, and it is the
+	-- only red in the statusline
 	ModePlan = { link = "Ok" },
-	ModeAuto = { link = "Accent" },
-	ModeYolo = { link = "Danger", bold = true },
+	ModeAllow = { link = "Accent" },
+	ModeAsk = { link = "Danger", bold = true },
 	-- the shell glyph: what follows goes to the shell, not to the model
 	PromptShell = { link = "Warn", bold = true },
 	PromptCommand = { link = "Title" },

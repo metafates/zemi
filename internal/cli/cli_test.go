@@ -95,15 +95,13 @@ func TestCLI(t *testing.T) {
 		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "cannot be combined"},
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
-		{name: "unsafe", args: []string{"--unsafe"}, want: &options{unsafe: true}},
-		{name: "run unsafe", args: []string{"run", "--unsafe", "-m", "a/b", "hi"}, want: &options{run: true, unsafe: true, model: "a/b", prompt: "hi"}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
 		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
 		{name: "complete a model", args: []string{"__complete", "run", "-m", ""}, stdout: "gw/m1\n"},
 		{name: "complete a profile", args: []string{"__complete", "--profile", ""}, stdout: "cheap\n"},
-		{name: "complete a mode", args: []string{"__complete", "--mode", ""}, stdout: "yolo\n"},
+		{name: "complete a mode", args: []string{"__complete", "--mode", ""}, stdout: "ask\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
 		{name: "sessions as JSON", args: []string{"sessions", "--json"}, stdout: `{"id":"` + sid + `","title":"fix the failing test","updated":"`},
@@ -333,43 +331,6 @@ func TestHeadlessTrust(t *testing.T) {
 	var out strings.Builder
 	if got := headlessTrust(&out)("/repo", "/repo", ""); got != "later" || !strings.HasPrefix(out.String(), "zemi: /repo is not trusted") || !strings.Contains(out.String(), "AGENTS.md") || !strings.Contains(out.String(), "--trust") || len(out.String()) > 130 {
 		t.Fatalf("answer %q, stderr %q", got, out.String())
-	}
-}
-
-// TestUnsafeFlag: --unsafe trusts the project for the run - no prompt, nothing
-// saved - and reaches the host's own facts.
-func TestUnsafeFlag(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
-	h, tg := newHost(dirs, log, options{unsafe: true})
-	if !h.Unsafe || !h.Perm.FullEnv {
-		t.Fatalf("unsafe=%v fullenv=%v", h.Unsafe, h.Perm.FullEnv)
-	}
-	tg.ask = func(string, string, string) string {
-		t.Error("--unsafe must not ask about trust")
-		return "untrust"
-	}
-	if err := h.RT.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), tg.step()}); err != nil {
-		t.Fatal(err)
-	}
-	if !h.ProjectTrusted() {
-		t.Error("--unsafe must trust the project")
-	}
-	if got := dirs.ReadTrust()[dirs.TrustRoot()]; got != "" {
-		t.Errorf("--unsafe saved a trust decision: %q", got)
-	}
-	// the run starts in yolo, never kept for the next start; --mode wins
-	if err := applyOptions(h, options{unsafe: true}); err != nil {
-		t.Fatal(err)
-	}
-	if h.PermMode() != "yolo" {
-		t.Errorf("--unsafe mode = %q, want yolo", h.PermMode())
-	}
-	if err := applyOptions(h, options{unsafe: true, mode: "auto"}); err != nil {
-		t.Fatal(err)
-	}
-	if h.PermMode() != "auto" {
-		t.Errorf("--unsafe --mode auto = %q, want auto", h.PermMode())
 	}
 }
 

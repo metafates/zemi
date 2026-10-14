@@ -28,7 +28,6 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -120,16 +119,14 @@ func (s *mcpServer) keeps(spec mcpSpec) bool {
 func (h *Host) startMCP(s *mcpServer) {
 	// a send before the server is ready runs without its tools
 	defer h.Busy("Starting "+s.name, nil)()
-	env, _ := h.Perm.ChildEnv(nil)
+	env := append([]string{}, os.Environ()...)
 	env = append(env, "ZEMI_PROJECT_DIR="+h.Dirs.ProjectDir)
 	for k, v := range s.spec.Env {
 		env = append(env, k+"="+v)
 	}
 	// Outside the project even when it is trusted: npx and uv read .npmrc,
-	// node_modules/.bin and uv config from the working directory, which
-	// sandboxed commands and settled writes may change, and a server runs
-	// unconfined because most need the network and home caches a sandbox
-	// would refuse. ZEMI_PROJECT_DIR says where the project is.
+	// node_modules/.bin and uv config from the working directory, which the
+	// model's writes may change. ZEMI_PROJECT_DIR says where the project is.
 	headers := map[string]string{}
 	maps.Copy(headers, s.spec.Headers)
 	cfg := mcp.Config{
@@ -323,17 +320,6 @@ func mcpToolName(server, tool string) string {
 // mcpReadOnly reports a tool the server marked read-only and not
 // destructive. It is the server's own word, which is the trust the user
 // already extends by adding the server (zemi.mcp.add is user config only).
-func (h *Host) mcpReadOnly(server, tool string) bool {
-	s, _ := h.mcpServerNamed(server)
-	if s == nil {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := slices.IndexFunc(s.tools, func(t mcp.Tool) bool { return t.Name == tool })
-	return i >= 0 && s.tools[i].ReadOnly()
-}
-
 // mcpOfferedTool is one MCP tool a run gets, under the name a call uses.
 type mcpOfferedTool struct {
 	srv   *mcpServer
@@ -586,8 +572,8 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
-	if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
+	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input, Read: t.tool.ReadOnly()}
+	if v := t.pipe.CheckDenied(req); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
 	// by name, not t.srv: a restart or reload mid-turn replaced the server

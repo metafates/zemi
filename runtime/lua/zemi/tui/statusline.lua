@@ -15,27 +15,11 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		local mode = ctx.permission_mode or "auto"
-		-- the base is auto or yolo (zemi.permission.mode.add refuses others),
-		-- and it picks the mode's color
-		local hl = ({ auto = "ModeAuto", yolo = "ModeYolo" })[ctx.permission_mode_base]
+		local mode = ctx.permission_mode or "allow"
+		-- allow runs everything, ask prompts before every action, and that
+		-- picks the mode's color
+		local hl = ({ allow = "ModeAllow", ask = "ModeAsk" })[mode]
 		return { { { text = mode, hl = hl, click = "mode" } } }
-	end,
-})
-
--- A --unsafe run says so beside the mode: nothing confines a command it
--- settles and no file is hidden. Lowest priority with the mode, so a short
--- row drops both together, and a click opens the mode box that names it.
-zemi.ui.widget.add({
-	id = "statusline.unsafe",
-	region = "statusline.left",
-	priority = 5,
-	on_click = fmt.run_click,
-	---@param ctx zemi.WidgetCtx
-	---@return zemi.Line[]
-	render = function(ctx)
-		if not ctx.unsafe then return {} end
-		return { { { text = "unsafe", hl = "Danger", click = "mode" } } }
 	end,
 })
 

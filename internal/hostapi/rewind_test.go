@@ -25,8 +25,6 @@ import (
 // undoes what the session learned since.
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "*", Decision: perm.Allow})
 	t.Chdir(h.Dirs.ProjectDir) // where shell runs and snapshots
 	edited := filepath.Join(h.Dirs.ProjectDir, "a.txt")
 	created := filepath.Join(h.Dirs.ProjectDir, "sub", "new.txt")

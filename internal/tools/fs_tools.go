@@ -35,7 +35,6 @@ import (
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/sandbox"
 )
 
 // progress shows the command's last output line under its row while it
@@ -96,20 +95,10 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// becomes a job, which outlives the turn.
 	c := proc.ShellCommand(cmd)
 	c.Dir = workdir()
-	env, err := p.childEnv()
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	c.Env = env
+	c.Env = p.childEnv()
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
-	if p.Sandboxed != nil {
-		if err := sandbox.Wrap(c, *p.Sandboxed); err != nil {
-			return fantasy.NewTextErrorResponse("the sandbox failed, so the command did not run: " + err.Error()), nil
-		}
-	}
-	after := p.guard()
 	changes := func() (string, string, []string) { return "", "", nil }
 	if p.Changes != nil {
 		changes = p.Changes(c.Dir)
@@ -123,14 +112,14 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		res.Metadata = diff
 		return res, nil
 	}
-	if err = proc.Start(c); err != nil {
-		after()
+	if err := proc.Start(c); err != nil {
 		return changed(fantasy.NewTextErrorResponse(err.Error()))
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(c) }()
 	stopProgress := p.progress(ctx, buf)
 	timedOut := false
+	var err error
 	select {
 	case err = <-wait:
 	case <-ctx.Done():
@@ -151,22 +140,21 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		}
 		// the work so far is not thrown away: it keeps running as a job
 		if p.Jobs != nil {
-			id := p.Jobs.Adopt(cmd, c, buf, written, wait, p.Sandboxed, after)
+			id := p.Jobs.Adopt(cmd, c, buf, written, wait)
 			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it exits or goes quiet), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
 		}
 		proc.Kill(c)
 		<-wait
 		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
-		b.WriteString(after())
 		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
-	note := after()
 	// the shell exited 0; a child it left behind held the pipe until
 	// WaitDelay, and proc.Wait killed it
+	note := ""
 	if errors.Is(err, exec.ErrWaitDelay) {
 		err = nil
-		note = "\na background process it started was stopped when the command returned; a server or watcher belongs in job_start" + note
+		note = "\na background process it started was stopped when the command returned; a server or watcher belongs in job_start"
 	}
 	if err != nil {
 		if b.Len() > 0 {
@@ -176,19 +164,12 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			b.WriteString("stopped: the user interrupted the command")
 		} else {
 			b.WriteString(err.Error())
-			if p.Sandboxed != nil {
-				b.WriteString(p.sandboxHint(p.Sandboxed, raw, err))
-			}
 		}
 		b.WriteString(note)
 		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
 	if b.Len() == 0 {
 		b.WriteString("(no output)")
-	}
-	if p.Sandboxed != nil {
-		// a crash a pipe hid from the exit status
-		b.WriteString(p.sandboxHint(p.Sandboxed, raw, nil))
 	}
 	b.WriteString(note)
 	return changed(fantasy.NewTextResponse(b.String()))
@@ -383,22 +364,18 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-// childEnv is the environment of a command the model starts: secret-shaped
-// variables stay out, since the model reads whatever it prints, and the pad
-// is its temp dir whoever allowed it, so a file it leaves there is where
-// the prompt says. The touch tells another process's sweep the pad is used.
-func (p *Pipeline) childEnv() ([]string, error) {
-	env, err := p.Store.ChildEnv(nil)
-	if err != nil {
-		return nil, err
-	}
+// childEnv is the environment of a command the model starts: the pad is its
+// temp dir, so a file it leaves there is where the prompt says. The touch
+// tells another process's sweep the pad is used.
+func (p *Pipeline) childEnv() []string {
+	env := append([]string{}, os.Environ()...)
 	env = append(env, proc.NonInteractiveEnv...)
 	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
 		now := time.Now()
 		_ = os.Chtimes(p.Pad, now, now)
 		env = append(env, "TMPDIR="+p.Pad, "TMP="+p.Pad, "TEMP="+p.Pad)
 	}
-	return env, nil
+	return env
 }
 
 const (
@@ -418,7 +395,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	f, fi, err := OpenRegular(p.Path)
 	switch {
 	case fi != nil && fi.IsDir():
-		return listDir(p, p.Path), nil
+		return listDir(p.Path), nil
 	case err != nil:
 		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
@@ -526,9 +503,8 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 }
 
 // listDir lists a directory one level deep, sorted, directories ending in
-// "/". Like glob and grep it hides entries a deny or ask read rule covers,
-// and like grep the strict secret shapes, which it names.
-func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
+// "/".
+func listDir(path perm.Path) fantasy.ToolResponse {
 	f, err := path.Open(os.O_RDONLY, 0)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
@@ -539,30 +515,17 @@ func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut := p.RuledOut()
-	var shown, secret []string
+	var shown []string
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
 			break
 		}
-		switch name := e.Name(); {
-		case ruledOut(filepath.Join(path.String(), name)):
-		case !p.Unsafe && perm.PathIsStrictSecret(name):
-			secret = append(secret, name)
-		default:
-			if e.IsDir() {
-				name += "/"
-			}
-			shown = append(shown, name)
+		name := e.Name()
+		if e.IsDir() {
+			name += "/"
 		}
-	}
-	if len(secret) > 0 {
-		n := len(secret)
-		if n > 5 {
-			secret = append(secret[:5:5], "...")
-		}
-		shown = append(shown, fmt.Sprintf("(%d secret-shaped entries hidden: %s; read them to ask)", n, strings.Join(secret, ", ")))
+		shown = append(shown, name)
 	}
 	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(empty directory)")
@@ -882,7 +845,6 @@ func (p *Pipeline) notFound(path string, err error) string {
 	}
 	base := strings.ToLower(filepath.Base(path))
 	stem := stemOf(base)
-	ruledOut, dir := p.RuledOut(), filepath.Dir(path)
 	type sibling struct {
 		name       string
 		stem, full int // edit distances
@@ -891,7 +853,7 @@ func (p *Pipeline) notFound(path string, err error) string {
 	for _, e := range entries {
 		name := strings.ToLower(e.Name())
 		s := stemOf(name)
-		if e.IsDir() || !p.Unsafe && perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
+		if e.IsDir() {
 			continue
 		}
 		if d := editDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
@@ -1139,18 +1101,14 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if note != "" {
 		out = append(out, note)
 	}
-	// a check resolves symlinks, so only as many hits are checked as are shown
-	ruledOut, shown := p.RuledOut(), 0
+	shown := 0
 	for i, rel := range rels {
 		if shown == globMaxFiles {
-			// "up to": RuledOut may hide some of the rest
 			out = append(out, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
 			break
 		}
-		if !ruledOut(rel) {
-			out = append(out, rel)
-			shown++
-		}
+		out = append(out, rel)
+		shown++
 	}
 	if shown == 0 {
 		out = append(out, "(no matches)")
@@ -1193,9 +1151,8 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	capped := len(files) == ListLimit
-	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) || !p.Unsafe && perm.PathIsStrictSecret(rel) })
-	ruledOut := p.RuledOut()
-	hits, err := Grep(ctx, root, files, re, grepMaxMatches, func(rel string) bool { return !ruledOut(filepath.Join(root, rel)) })
+	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) })
+	hits, err := Grep(ctx, root, files, re, grepMaxMatches, nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -1216,11 +1173,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		out = append(out, fmt.Sprintf("... (searched the first %d files; narrow the path)", ListLimit))
 	}
 	if len(hits) == 0 {
-		hidden := "; secret-shaped files like .env are not searched, read one to ask"
-		if p.Unsafe {
-			hidden = ""
-		}
-		out = append(out, "(no matches"+hidden+")")
+		out = append(out, "(no matches)")
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
@@ -1399,20 +1352,6 @@ func wholeFile(re *regexp.Regexp) *regexp.Regexp {
 
 func anchorsText(re *syntax.Regexp) bool {
 	return re.Op == syntax.OpBeginText || re.Op == syntax.OpEndText || slices.ContainsFunc(re.Sub, anchorsText)
-}
-
-// RuledOut reports whether a deny or ask rule covers reading path: glob,
-// grep and a listing are gated on their root only, so each name meets the
-// read rules.
-func (p *Pipeline) RuledOut() func(path string) bool {
-	if p.Store == nil {
-		return func(string) bool { return false }
-	}
-	eval := p.Store.Evaluator(perm.SubjectRead, p.Principal)
-	return func(path string) bool {
-		o := eval(path)
-		return o.Rule != nil && o.Decision != perm.Allow
-	}
 }
 
 // walk visits the regular files under root, by path relative to it, when

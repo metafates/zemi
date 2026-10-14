@@ -1,6 +1,6 @@
 ---
 name: zemi-subagents
-description: "Load before changing a subagent, a fork, an agent run, the workflow tool, the lua tool, MCP or LSP: definitions and nesting, run lifecycle and reporting, workflow scripts and their sandbox, model memory writes, MCP tools and language servers."
+description: "Load before changing a subagent, a fork, an agent run, the workflow tool, the lua tool, MCP or LSP: definitions and nesting, run lifecycle and reporting, workflow scripts and their Lua sandbox, model memory writes, MCP tools and language servers."
 ---
 
 # Subagents, workflows, MCP and LSP
@@ -48,7 +48,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   the one control path; controls
   write the run's fields under its lock and wake the scheduler, so none waits on a script busy
   in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`
-  and read back no-follow, regular and capped (`readPadFile`), since a sandboxed command can
+  and read back no-follow, regular and capped (`readPadFile`), since any command can
   write the pad, and a rerun the user starts asks about the script as the tool's does
   (`approveRerun`), since the model can rewrite it; for that reason `/workflows save`
   saves the source the run held (`flowRun.src`), and only for a run this process holds.
@@ -106,14 +106,13 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
   that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
-  `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
-  `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
-  decided, a read-only agent's included, but a secret-shaped name (`tools.FreeSecret`). The
-  machine's temp dirs (`perm.TempRoots`) are allowed the same way, a `protectedWrite` aside;
-  they are not jails for `zemi.fs` or the Lua tool, which keep the pad alone. `write`
-  and `edit` need no prior read there (the stale check stays), a pad write is never
-  checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
-  or a temp dir (`$TMPDIR/...`, its literal path, or `/tmp/...`) settle. A file tool path starting with `$`, `~` or
+  `TEMP` in every command the model starts (`Pipeline.childEnv`; the user's
+  `!command` keeps the user's). The gate allows reads and writes in the pad and the machine's
+  temp dirs (`perm.FreeZone`, `perm.TempRoots`) before anything else, a read-only agent's
+  included; they are not reachable for `zemi.fs` or the Lua tool, which keep the pad alone.
+  `write`
+  and `edit` need no prior read there (the stale check stays) and a pad write is never
+  checkpointed. A file tool path starting with `$`, `~` or
   `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
   system prompt (which runs of one agent share in the provider cache), to keep its files in
   `<pad>/<agent>-<run id>`. `ensureScratch` (building the environment prompt) creates the live
@@ -123,8 +122,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
-  a namespace, and a script `luaUnlisted` finds reaching past them asks `tool.lua` once, as
-  `Request.Unsandboxed`, so no mode's rules settle it. A new API member is guarded until added to
+  a namespace, and a script `luaUnlisted` finds reaching past them asks once, as one action
+  with the whole script the preview. In an untrusted project or a read-only agent every script
+  asks. A new API member is guarded until added to
   `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
   flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
@@ -135,8 +135,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   learned user-scope memory's `quote` is checked against the typed part of the session's user
   rows (`quoteInSession`, cut at `agent.AttachMarker`), and an apply that would push its
   scope past `brain.ScopeBudget` cuts its oldest learned lines to the ledger, a cut that
-  would take a user line queueing instead. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write` as
-  `Unsandboxed`), and a learned one goes at once only when `memoryAuto` holds; `subagentHooks`
+  would take a user line queueing instead. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write`),
+  and a learned one goes at once only when `memoryAuto` holds; `subagentHooks`
   and `markNotLocal` record what makes a session not local-only, once per session and in a
   subagent run's own. A plugin's send reaches the model behind
   `agent.Attached("plugin:<name>")`, so no quote comes from it.
@@ -144,9 +144,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
   origin only); `PurgeGeneration` parks them, the replay keeps a live one (or one waiting for a
-  sign-in) it adds with the same spec and the rest stop. They run unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set,
+  sign-in) it adds with the same spec and the rest stop. They run in `DataHome` with `ZEMI_PROJECT_DIR` set,
   trusted project or not: `npx` and `uv` read config from the working directory, and most
-  servers need the network a sandbox refuses. Tools are
+  servers need the network. Tools are
   `mcp_<server>_<tool>`, gated as subject `mcp.<server>` with the tool name as argument. Past
   `mcpDeferAt` (10) MCP tools in a set, `deferMCP` adds `tool_search` and `Runner.ActiveTools`
   offers each step only the other tools, `tool_search` and the loaded ones: a search loads at
@@ -160,12 +160,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `internal/mcp/mcptest`.
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file, and only in
   a trusted project: they run repo code (rust-analyzer build scripts), so `lspDefs` returns
-  nothing untrusted and `noLSP` says why. With a live backend every server starts through
-  `lsp.Config.Wrap` under `serverPolicy`: the project read-only, writes only to
-  `<cache>/lsp/<trust key>/<server>`. A confined cargo cannot write a missing `Cargo.lock`, so
-  rust-analyzer reports nothing until one exists; without a backend it (`RunsCode`) does not
-  start at all. A `.lua` file of the user's config or a local plugin gets lua-language-server
-  (`zemiLua`, DESIGN §9) in any project; it is ready only once a symbol request answers, since it
+  nothing untrusted and `noLSP` says why. A `.lua` file of the user's config or a local plugin
+  gets lua-language-server (`zemiLua`, DESIGN §9) in any project; it is ready only once a
+  symbol request answers, since it
   never checks a file opened while it loads. A file outside the repository goes to no other
   server. rust-analyzer gets no save while its `experimental/serverStatus` says it is not
   quiescent: it exits on the save of a file opened during its workspace scan, and checks the

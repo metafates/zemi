@@ -19,7 +19,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -504,8 +503,7 @@ func TestAgentsHomeSkills(t *testing.T) {
 }
 
 // TestRecipes: the steps share one host, in order. The pinned prompt lists
-// the recipes it was built with; the skill tool resolves them live. A
-// step naming a tool runs it in auto mode, where the user is asked every time.
+// the recipes it was built with; the skill tool resolves them live.
 func TestRecipes(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "deploy", "the user's deploy", "")
@@ -516,11 +514,8 @@ func TestRecipes(t *testing.T) {
 	for _, name := range []string{"rig", "deploy", "lint"} {
 		writeSkill(t, dir, name, "recipe "+name, "")
 	}
-	ui := &fakeUI{askAllowed: true, askBy: "user:once"}
+	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	sid := seedSession(t, h)
 	md := func(sub, name, body string) string {
 		in, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, sub, "SKILL.md"), "content": "---\nname: " + name + "\ndescription: recipe " + name + "\n---\n\n" + body + "\n"}, json.Deterministic(true))
@@ -541,12 +536,10 @@ func TestRecipes(t *testing.T) {
 		name         string
 		do           func()
 		prompt, tool []string
-		read         perm.Decision
 		call, input  string // a tool the model runs, and what its result says
 		out          string
-		outside      bool // the ask names text from outside the machine
 	}{
-		{name: "untrusted project is inert", do: func() { h.SetProjectTrusted(false) }, read: perm.Ask},
+		{name: "untrusted project is inert", do: func() { h.SetProjectTrusted(false) }},
 		{name: "trusted lists it, a taken name is dropped", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: []string{"rig"}},
 		{name: "written mid-session loads, the prompt stays", do: func() { writeSkill(t, dir, "late", "recipe late", "") }, prompt: []string{"rig"}, tool: late},
 		{name: "a reload's trust step keeps the pin", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: late},
@@ -556,7 +549,7 @@ func TestRecipes(t *testing.T) {
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
 		{name: "a name a user skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
-		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load", outside: true},
+		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load"},
 		{name: "only a recipe is deleted", do: func() {
 			if h.skillsCommand("delete ship") == nil || h.skillsCommand("delete lint") == nil {
 				t.Error("deleted a skill that is no recipe")
@@ -578,11 +571,6 @@ func TestRecipes(t *testing.T) {
 			resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: c.call, Input: c.input})
 			if err != nil || resp.IsError || !strings.Contains(resp.Content, c.out) {
 				t.Errorf("%s: %v %q, want %q", c.name, err, resp.Content, c.out)
-			}
-			// no mode's rules settle a recipe and no rule could: Always stays empty
-			if len(ui.asked) != 1 || ui.asked[0].Always != "" || !strings.Contains(ui.asked[0].Reason, "zemi's own files") ||
-				strings.Contains(ui.asked[0].Reason, "outside the machine") != c.outside {
-				t.Errorf("%s: asked %+v", c.name, ui.asked)
 			}
 		}
 		var prompt, tool, items []string
@@ -607,9 +595,6 @@ func TestRecipes(t *testing.T) {
 		slices.Sort(items)
 		if !slices.Equal(prompt, c.prompt) || !slices.Equal(items, c.tool) || !slices.Equal(tool, c.tool) {
 			t.Errorf("%s: prompt %v, /skills %v, tool %v", c.name, prompt, items, tool)
-		}
-		if got := h.fsDefault("fs.read", filepath.Join(dir, "rig", "SKILL.md")); got != cmp.Or(c.read, perm.Allow) {
-			t.Errorf("%s: read = %v, want %v", c.name, got, cmp.Or(c.read, perm.Allow))
 		}
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, "tok", "SKILL.md")); !strings.Contains(string(data), "step 1") || !strings.Contains(string(data), "realms/local") || strings.Contains(string(data), "ghp_") {

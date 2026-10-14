@@ -13,69 +13,32 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestPlanMode: a read-only agent (the planner profile) refuses file changes
-// even under an allow rule and turns allowed commands that change things into
-// asks, and the prompt says so; it works whatever the permission mode.
+// TestPlanMode: a read-only agent (the planner profile) may change nothing
+// and the prompt says so; it works whatever the permission mode.
 func TestPlanMode(t *testing.T) {
 	h, _ := newTestHost(t)
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "make deploy*", Decision: perm.Allow})
 	check := func(subject, arg string) tools.Verdict {
 		pipe := h.PipelineFor()
 		pipe.Ask = nil
 		return pipe.Check(tools.Request{Subject: subject, Arg: arg})
 	}
-	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Allow {
-		t.Fatalf("allowed write = %v", v.Decision)
+	if v := check("fs.write", "/p/a.go"); !v.Allowed {
+		t.Fatalf("allowed write = %+v", v)
 	}
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
 	// the reason says what the planner can do; it cannot pick another agent
-	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly || !strings.HasPrefix(v.Reason, "describe the change") {
-		t.Fatalf("read-only write = %v by %s: %s", v.Decision, v.DecidedBy, v.Reason)
-	}
-	if v := check("tool.shell", "make deploy"); v.Decision != perm.Ask {
-		t.Fatalf("read-only shell = %v", v.Decision)
-	}
-	// the sandbox is what keeps the project read-only, so leaving it is denied
-	// before any mode (yolo would settle it) or the user sees the ask
-	for _, mode := range []string{"auto", "yolo"} {
-		h.Settings.SetQuiet("permissions.mode", mode)
-		pipe := h.PipelineFor()
-		pipe.Ask = func(tools.Request) (bool, string, string) { return true, "user", "" }
-		if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly {
-			t.Fatalf("%s: sandbox: false for a planner = %v by %s: %s", mode, v.Decision, v.DecidedBy, v.Reason)
-		}
+	if v := check("fs.write", "/p/a.go"); v.Allowed || v.DecidedBy != tools.ByReadOnly || !strings.Contains(v.Reason, "may not change anything") {
+		t.Fatalf("read-only write = %+v by %s: %s", v, v.DecidedBy, v.Reason)
 	}
 	p, _ := h.resolveProfile("planner")
 	if !strings.Contains(h.buildSystem(p), "# Planning") {
 		t.Fatal("system prompt misses the planning section")
-	}
-}
-
-// TestPlanSandbox: a read-only agent's commands run confined under every
-// mode, but only with a backend; a policy with none fails every command.
-func TestPlanSandbox(t *testing.T) {
-	h, _ := newTestHost(t)
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		live bool
-		mode string
-		want bool
-	}{{false, "auto", false}, {false, "yolo", false}, {true, "auto", true}, {true, "yolo", true}} {
-		fakeSandbox(h, c.live)
-		h.Settings.SetQuiet("permissions.mode", c.mode)
-		if pipe := h.PipelineFor(); (pipe.Sandbox(pipe.Plan(), "") != nil) != c.want {
-			t.Fatalf("live=%v mode=%s: policy=%v", c.live, c.mode, !c.want)
-		}
 	}
 }
 

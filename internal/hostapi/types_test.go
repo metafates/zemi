@@ -19,7 +19,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -286,7 +285,6 @@ func TestTypesEnums(t *testing.T) {
 		live         []string
 	}{
 		{"zemi.ProviderKind", "zemi.provider.kind", strs(agent.Kinds)},
-		{"zemi.Decision", "zemi.permission.decision", []string{string(perm.Allow), string(perm.Ask), string(perm.Deny)}},
 		{"zemi.Scope", "zemi.memory.scope", strs(store.Scopes)},
 		{"zemi.Level", "zemi.notify.level", slices.Collect(maps.Keys(notifyLevels))},
 		{"zemi.ModelRole", "zemi.model.role", roleNames()},

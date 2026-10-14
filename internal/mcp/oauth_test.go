@@ -248,20 +248,36 @@ func TestCallbackPageEscapes(t *testing.T) {
 }
 
 // TestCallbackPageMatchesLanding: callback.html copies the landing's palette
-// and snail, since go:embed cannot reach docs/.
+// and knot, since go:embed cannot reach docs/.
 func TestCallbackPageMatchesLanding(t *testing.T) {
 	landing, err := os.ReadFile("../../docs/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
+	style, err := os.ReadFile("../../docs/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ name, from, to string }{
-		{"snail", `<svg class="snail"`, "</svg>"},
-		{"palette", ":root {", "}\n}"}, // the light tokens through the dark block
+		{"knot", `<pre role="img" aria-label="a trefoil knot drawn in ascii">`, "</pre>"},
 	} {
 		_, rest, ok := strings.Cut(string(landing), c.from)
 		block, _, found := strings.Cut(rest, c.to)
 		if !ok || !found || !strings.Contains(callbackHTML, c.from+block+c.to) {
-			t.Errorf("%s: callback.html no longer matches docs/index.html", c.name)
+			t.Errorf("%s: callback.html no longer matches the landing", c.name)
+		}
+	}
+	// every color token the landing's palette defines and the callback
+	// carries is the same: var/value pairs from docs/style.css's :root
+	_, root, _ := strings.Cut(string(style), ":root {")
+	root, _, _ = strings.Cut(root, "}")
+	for line := range strings.SplitSeq(root, "\n") {
+		pair := strings.TrimSpace(line)
+		if !strings.HasPrefix(pair, "--") || !strings.Contains(pair, ": #") {
+			continue // not a color token (color-scheme, the fonts)
+		}
+		if !strings.Contains(callbackHTML, strings.TrimSuffix(pair, ";")) {
+			t.Errorf("palette: %q is not on the callback page", pair)
 		}
 	}
 }

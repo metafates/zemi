@@ -42,10 +42,13 @@ func TestAgentSelfAccess(t *testing.T) {
 	if !strings.Contains(pad, filepath.Join("scratch", "s1")) {
 		t.Fatalf("pad = %q", pad)
 	}
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
-	if pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Decision != perm.Allow || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Decision != perm.Ask {
-		t.Fatal("writes allow in the scratchpad only")
+	if !pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Allowed || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Allowed {
+		t.Fatal("writes settle in the scratchpad only")
 	}
 
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
@@ -71,14 +74,13 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 }
 
-// TestLuaToolDefaultDeny: in trusted auto mode a Lua script that only reads
-// runs with no ask; one that names any other call asks first, the same call
-// hidden from that scan raises, and an approved run makes it.
+// TestLuaToolDefaultDeny: a Lua script asks once at the gate in ask mode,
+// an unapproved run's guarded calls raise naming the member, and an approved
+// run makes them; a read-only script runs with no ask in allow mode.
 func TestLuaToolDefaultDeny(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	if err := h.SetPermMode("auto"); err != nil {
+	if err := h.SetPermMode("ask"); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
@@ -97,12 +99,11 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		return ui, resp.Content
 	}
 
-	// the routes the trust and sandbox verification found
+	// the routes the trust verification found
 	for _, c := range []struct{ name, script, scan, member string }{
 		{"composer shell", `zemi.composer.set("!touch MARKER") zemi.composer.submit()`, "zemi.composer.set", "composer.set"},
 		{"editor command", `zemi.config.set("editor.command", "touch MARKER; true") zemi.ui.edit("f.txt", {}, function() end)`, "zemi.config.set", "config.set"},
 		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.titles", "e/m")`, "zemi.provider.add", "provider.add"},
-		{"allow rule", `zemi.permission.rule.add({ subject = "tool.shell", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
 		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
 		{"model call", `zemi.model.ask({ prompt = "x" })`, "zemi.model.ask", "model.ask"},
@@ -112,11 +113,11 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 				t.Errorf("unapproved run: %v", err)
 			}
 			ui, out := run(c.script, false)
-			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, c.scan) || !strings.Contains(out, "permission denied") {
+			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Preview, c.scan) || !strings.Contains(out, "permission denied") {
 				t.Errorf("pre-ask: %+v %q", ui.asked, out)
 			}
-			// the model's words are the description, not part of zemi's reason
-			if a := ui.asked[0]; a.Description != "x" || strings.HasSuffix(a.Reason, ": x") {
+			// the model's words are the description, not part of the script
+			if a := ui.asked[0]; a.Description != "x" || strings.HasSuffix(a.Preview, ": x") {
 				t.Errorf("ask fields: %+v", a)
 			}
 			if ui, out = run(c.script, true); len(ui.asked) != 1 || strings.Contains(out, "asks before") {
@@ -128,6 +129,8 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		t.Error("the approved job did not run")
 	}
 
+	// a read-only script runs with no ask once the mode allows
+	h.SetPermMode("allow")
 	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().id`
 	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
 		t.Errorf("read-only script: %+v %q", ui.asked, out)
@@ -142,20 +145,16 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 			t.Errorf("%s asked: %+v %q", src, ui.asked, out)
 		}
 	}
-	for _, hidden := range []string{`local z = zemi z.job.wait({ cmd = "true" })`, `local j = _G["zemi"].job`} {
-		if ui, _ := run(hidden, false); len(ui.asked) != 1 {
-			t.Errorf("%s: no ask", hidden)
-		}
-	}
 
 	// a callback an approved run left behind loses the approval with the run
+	h.SetPermMode("ask")
 	os.Remove(marker)
 	run(`zemi.event.on("user.zz", function() zemi.job.wait({ cmd = "touch", args = { "MARKER" } }) end)`, true)
 	run(`zemi.event.emit("user.zz")`, true)
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("an earlier run's handler started a program")
 	}
-	if h.PermMode() != "auto" {
+	if h.PermMode() != "ask" {
 		t.Error("the mode changed")
 	}
 
@@ -189,10 +188,6 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 func TestLuaToolCeiling(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	old := luaToolCeiling
 	t.Cleanup(func() { luaToolCeiling = old })
 	tool := h.luaEvalTool(h.PipelineFor())
@@ -214,36 +209,28 @@ func TestLuaToolCeiling(t *testing.T) {
 	}
 }
 
-// TestLuaToolPath: a script file is read the way the read tool reads it, so
-// a Lua error cannot echo a secret unasked.
+// TestLuaToolPath: a script file is read the way the read tool reads it,
+// and a path that is not a script is refused.
 func TestLuaToolPath(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	outside := filepath.Join(outsideTemp(t), "x.lua")
-	for _, f := range []string{filepath.Join(h.Dirs.ProjectDir, "ok.lua"), filepath.Join(h.Dirs.ProjectDir, ".env.lua"), outside} {
+	for _, f := range []string{filepath.Join(h.Dirs.ProjectDir, "ok.lua"), outside} {
 		if err := os.WriteFile(f, []byte("return 1"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, c := range []struct {
-		path, want string
-		asks       int
-	}{
-		{"ok.lua", "return: 1", 0},
-		{"nope.lua", "nope.lua: no such file or directory", 0},
-		{"notes.txt", "notes.txt: not a .lua file", 0},
-		{".env.lua", "permission denied", 1},
-		{outside, "return: 1", 0},
+	for _, c := range []struct{ path, want string }{
+		{"ok.lua", "return: 1"},
+		{"nope.lua", "nope.lua: no such file or directory"},
+		{"notes.txt", "notes.txt: not a .lua file"},
+		{outside, "return: 1"},
 	} {
 		ui := &fakeUI{askBy: "user"}
 		h.SetUIHooks(ui)
 		input, _ := json.Marshal(map[string]string{"about": "x", "path": c.path}, json.Deterministic(true))
 		resp, _ := h.luaEvalTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
-		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != c.asks {
+		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != 0 {
 			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
 		}
 	}
@@ -279,10 +266,6 @@ func TestLuaToolReloads(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHost(t)
 			h.SetProjectTrusted(true)
-			fakeSandbox(h, true)
-			if err := h.SetPermMode("auto"); err != nil {
-				t.Fatal(err)
-			}
 			changed := c.changed
 			h.SetReload(func() error {
 				changed = false
@@ -307,10 +290,6 @@ func TestLuaToolReloads(t *testing.T) {
 func TestLuaToolDrivesTools(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	file := filepath.Join(h.Dirs.ProjectDir, "a.txt")
 	if err := os.WriteFile(file, []byte("hello\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -354,14 +333,23 @@ func TestLuaToolDrivesTools(t *testing.T) {
 		t.Fatalf("shell through a script: %q, asked %+v", out, ui.asked)
 	}
 	// a call the gate asks about asks once, says the script asked, and denies
-	// the script's wait when the user says no
+	// the script's wait when the user says no; the script's own ask the user
+	// answers yes to
+	ui.onAsk = func(req PermRequest) (bool, string) {
+		if req.Subject == perm.SubjectLua {
+			return true, "user"
+		}
+		return false, "user"
+	}
+	h.SetPermMode("ask")
 	out := run(`local o, e = zemi.tool.call("shell", { command = "rm -rf build" }):wait() print(e or o)`)
-	if len(ui.asked) != 1 || ui.asked[0].Script != "lua script" || ui.asked[0].Subject != perm.SubjectShell {
+	if len(ui.asked) != 2 || ui.asked[1].Script != "lua script" || ui.asked[1].Subject != perm.SubjectShell {
 		t.Fatalf("nested ask: %+v", ui.asked)
 	}
 	if !strings.Contains(out, "permission denied") || strings.Contains(out, "rm -rf") {
 		t.Fatalf("denied call: %q", out)
 	}
+	h.SetPermMode("allow")
 	// an unknown tool and unusable arguments come back as nil, err; nothing runs
 	ui.asked = nil
 	if out := run(`local h, e = zemi.tool.call("nope", {}) print(h == nil, e ~= nil)`); out != "true\ttrue" {

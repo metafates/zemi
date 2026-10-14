@@ -12,18 +12,15 @@ git worktree add -b feat/retry .agents/worktrees/retry
 
 `.agents/worktrees/<short name>` at the repository root is the right place:
 
-- it is inside the project, so writes there need no permission prompt and sandboxed commands may
-  write it. The rest of `.agents` is
-  project config that sandboxed commands cannot write, but a checkout under `.agents/worktrees` is treated like
-  the project: auto mode edits it with no approval and sandboxed commands may write it (its own
-  `.git` and `.agents` stay protected). A worktree outside the project is outside the write
-  jail: every write there needs approval, one prompt at a time.
+- it is inside the project, so writes there are ordinary writes: they run in allow mode and ask
+  one prompt at a time in ask mode. zemi's Lua `zemi.fs` write jail is the project dir, so a
+  checkout under `.agents/worktrees` is inside it when zemi started at the repository root.
 - zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
-  or reload of a trusted project and before a sandboxed command that may write it, so
+  or reload of a trusted project, so
   `git status` stays clean, and `grep`, `glob` and a command's `rg` skip it, so a search does not
   return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
-- `git worktree add` itself writes `.git`, so it needs approval once.
+- In ask mode `git worktree add` asks like any command: it writes `.git`.
 
 zemi started inside such a worktree shares the main checkout's trust decision, sessions and
 memories.
@@ -42,7 +39,7 @@ Long builds and test runs belong in `job_start`, so one worktree's build does no
 the other.
 
 A subagent (the `agent` tool) is the usual way to drive one: give it the worktree path in
-the prompt and let it stay there. Subagents share this session's permission rules and mode.
+the prompt and let it stay there. Subagents share this session's mode.
 
 ## Finishing one
 
@@ -65,7 +62,7 @@ so an abandoned worktree is reused instead of piling up.
 | Symptom | Cause |
 | --- | --- |
 | `fatal: '<branch>' is already checked out` | another worktree holds it; `git worktree list` says which |
-| search results appear twice | the worktree is not under `.agents/worktrees/`, or the project is not trusted, or neither a reload nor a sandboxed command came since the directory was made, so `.agents/worktrees/.gitignore` is missing |
+| search results appear twice | the worktree is not under `.agents/worktrees/`, or the project is not trusted, or no start came since the directory was made, so `.agents/worktrees/.gitignore` is missing |
 | the worktree has no `node_modules`, `.env`, build cache | untracked and ignored files are not copied; install or symlink them |
 | `git worktree remove` fails | uncommitted changes, or the directory was already deleted (`git worktree prune`) |
 | project config not loaded in the worktree | the main checkout is not trusted: a worktree shares its trust decision; `/trust` there |

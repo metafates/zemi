@@ -1,8 +1,6 @@
-// net_tools.go ships the network built-ins (DESIGN §6.4, §9): fetch and
+// net_tools.go ships the network built-ins (DESIGN §6.4): fetch and
 // web_search. Both go through the net.<host> permission subject, accept
-// http/https URLs only, refuse userinfo, and every connect is checked
-// against the denied-address set on the resolved IP (per hop), so DNS
-// rebinding cannot slip past a hostname rule.
+// http/https URLs only and refuse userinfo.
 
 package tools
 
@@ -13,13 +11,11 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -29,68 +25,14 @@ import (
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	xhtml "golang.org/x/net/html"
-
-	"github.com/metafates/zemi/internal/perm"
 )
 
-// deniedNets is the §9 SSRF set; v4-mapped v6 normalizes to v4 before
-// matching. Loopback and RFC1918 are refused unless the caller passes
-// SafeClient's allowPrivate (the user's search URL, a user-allowed host).
-var deniedNets = func() []*net.IPNet {
-	raw := []string{
-		"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-		"169.254.0.0/16", "0.0.0.0/8", "100.64.0.0/10", "224.0.0.0/4",
-		"::1/128", "fe80::/10", "fc00::/7", "64:ff9b::/96", "::/128",
-	}
-	var out []*net.IPNet
-	for _, s := range raw {
-		_, n, err := net.ParseCIDR(s)
-		if err == nil {
-			out = append(out, n)
-		}
-	}
-	return out
-}()
-
-// ipDenied matches one resolved address against the §9 set: v4-mapped v6
-// normalizes to v4 first, so every family is covered by the table.
-func ipDenied(ip net.IP) bool {
-	if v4 := ip.To4(); v4 != nil {
-		ip = v4
-	}
-	for _, n := range deniedNets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
-
-// SafeClient builds an HTTP client whose dialer refuses denied IPs at
-// connect time (after resolution) and whose redirects, each a URL
-// ParseNetURL takes, the caller follows through onHop. allowPrivate skips
-// the address check: the §9 localhost development opt-in, which only an
-// explicit user allow rule for the named host earns.
-func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
-	d := &net.Dialer{Timeout: 10 * time.Second}
-	d.Control = func(_, address string, _ syscall.RawConn) error {
-		host, _, err := net.SplitHostPort(address)
-		if err != nil {
-			return err
-		}
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return fmt.Errorf("non-IP dial address %q", host)
-		}
-		if !allowPrivate && ipDenied(ip) {
-			return &privateAddrError{ip}
-		}
-		return nil
-	}
+// SafeClient builds an HTTP client whose redirects, each a URL ParseNetURL
+// takes, the caller follows through onHop.
+func SafeClient(onHop func(u *url.URL) error) *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			DialContext:           d.DialContext,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ResponseHeaderTimeout: 20 * time.Second,
 			Proxy:                 nil,
@@ -105,35 +47,6 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 			return onHop(req.URL)
 		},
 	}
-}
-
-// privateAddrError is a dial the §9 set refused; fetch names the rule that
-// would permit it.
-type privateAddrError struct{ ip net.IP }
-
-func (e *privateAddrError) Error() string { return "address " + e.ip.String() + " is private" }
-
-func privateRefused(addr, host string) error {
-	return fmt.Errorf("refused: %s is a private address; only an allow rule for net.%s in the user's init.lua permits it", addr, host)
-}
-
-// checkFetchHost refuses a host that is private as written before the gate
-// asks: only a user config rule permits one (runFetch's allowPrivate), so no
-// answer to the ask could. A name that resolves private is refused at dial.
-// A --unsafe run denies no address at all.
-func checkFetchHost(p *Pipeline, u *url.URL) error {
-	if p.Unsafe {
-		return nil
-	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	ip := net.ParseIP(host)
-	if (ip == nil || !ipDenied(ip)) && host != "localhost" && !strings.HasSuffix(host, ".localhost") {
-		return nil
-	}
-	if o := p.Store.Evaluate("net."+u.Hostname(), u.String(), p.Principal); o.Decision == perm.Allow && UserRule(o.Rule) {
-		return nil
-	}
-	return privateRefused(u.Hostname(), u.Hostname())
 }
 
 // ParseNetURL validates scheme and userinfo for every fetch hop.
@@ -155,14 +68,10 @@ func ParseNetURL(raw string) (*url.URL, error) {
 }
 
 // netGate checks a redirect hop the way the tool gate checked the first URL:
-// the whole URL under net.<host>, so the same rules answer both. The
-// resolve-time Control hook covers the IP side.
-func netGate(p *Pipeline, u *url.URL, reason string) error {
-	if err := checkFetchHost(p, u); err != nil {
-		return err
-	}
-	v := p.CheckDenied(Request{Tool: ToolFetch, Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
-	if v.Decision != perm.Allow {
+// the whole URL under net.<host>.
+func netGate(p *Pipeline, u *url.URL) error {
+	v := p.CheckDenied(Request{Tool: ToolFetch, Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "fetch redirect"})
+	if !v.Allowed {
 		return errors.New(DeniedText(v, "net."+u.Hostname()+" "+u.String()))
 	}
 	return nil
@@ -175,14 +84,10 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// the tool gate already checked this URL; a second check here would ask
 	// the user again
 	raw := str(input["url"])
-	u, err := ParseNetURL(raw)
-	if err != nil {
+	if _, err := ParseNetURL(raw); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	// §9 localhost development opt-in: only a rule the user's own config wrote;
-	// --unsafe dials the address whoever asked.
-	allowPrivate := p.Unsafe || UserRule(p.verdict.Rule)
-	client := SafeClient(func(hop *url.URL) error { return netGate(p, hop, "fetch redirect") }, allowPrivate)
+	client := SafeClient(func(hop *url.URL) error { return netGate(p, hop) })
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -192,9 +97,6 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// headings and prose
 	req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, text/html;q=0.8, */*;q=0.5")
 	resp, err := client.Do(req)
-	if private, ok := errors.AsType[*privateAddrError](err); ok {
-		return fantasy.NewTextErrorResponse(privateRefused(private.ip.String(), u.Hostname()).Error()), nil
-	}
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -291,7 +193,7 @@ func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 		return fantasy.NewTextErrorResponse("empty query"), nil
 	}
 	// the gate approved this one URL, so a redirect elsewhere is refused
-	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") }, false)
+	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") })
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

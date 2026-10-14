@@ -3,8 +3,8 @@
 // Rewinding to a message restores every file changed since, drops the
 // message and the rest of the conversation with what it learned and its todo
 // list, and hands its text back to the composer. A shell call's changes are
-// rewound only for repository files git does not ignore and the sandbox does
-// not hide, at most snapCheckpoints of them per call.
+// rewound only for repository files git does not ignore, at most
+// snapCheckpoints of them per call.
 
 package hostapi
 

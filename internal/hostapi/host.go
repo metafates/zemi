@@ -25,7 +25,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -365,14 +364,12 @@ type Host struct {
 	Dirs     config.Dirs
 
 	// Agent core (DESIGN §6.3). DB is the project store, GlobalDB
-	// the state-dir store; Perm holds config + session rules with the §9
-	// built-in defaults.
+	// the state-dir store.
 	Providers *agent.Registry
 	// Builtin seeds Providers on every generation: the catalog with the
 	// env keys resolved at boot, since the environment cannot change under
 	// a running zemi, and again by /model update.
 	Builtin  atomic.Pointer[agent.Catalog]
-	Perm     *perm.Store
 	DB       *store.DB
 	GlobalDB *store.DB
 
@@ -547,15 +544,6 @@ type Host struct {
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
 	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
 
-	// luaRules are the rules zemi.permission.rule.add and the project
-	// permissions file registered: a reload replays the config that adds them.
-	// PurgeGeneration moves them to staleRules, which stay in Perm until the
-	// replay is done so no call runs without them; ForceReload then drops those
-	// the replay did not add again, or on a failed replay only the allows.
-	luaRulesMu sync.Mutex
-	luaRules   []perm.Rule
-	staleRules []perm.Rule
-
 	// reloadDone is non-nil and open while reloads run; reloadSeq counts
 	// reloads started (see awaitReload). reloadRun keeps one reload's sweep
 	// of staleRules from racing the next one's replay.
@@ -576,8 +564,8 @@ type Host struct {
 	projectTrusted atomic.Bool
 	trustDropped   atomic.Bool // trust went off: the next reload must run to drop project config
 	// trustRoot is the repository the session belongs to (a worktree maps to
-	// its main checkout), found once: it keys the store, the scratchpad and
-	// the sandbox cache, and finding it walks the disk. project is the same
+	// its main checkout), found once: it keys the store and the scratchpad,
+	// and finding it walks the disk. project is the same
 	// path ~-shortened, which widgets read every frame.
 	trustRoot func() string
 	project   func() string
@@ -589,19 +577,6 @@ type Host struct {
 	// seconds to answer, and on the send path that is time to first token.
 	gitStatus func() string
 
-	// sandbox is the startup probe's result (sandbox.go)
-	sandbox atomic.Pointer[sandboxProbe]
-	// Unsafe is a --unsafe boot: no sandbox, no secret hiding, no
-	// private-address deny, and the project is trusted. Set once in main,
-	// before boot, so every read sees the same run.
-	Unsafe bool
-	// guards holds, per running sandboxed command, the protected paths that
-	// were missing when it started (guardSandbox)
-	guardMu sync.Mutex
-	guards  map[*sandboxGuard]bool
-	// trustHeld keeps the project untrusted until /trust, after a sandboxed
-	// command created a protected path
-	trustHeld atomic.Bool
 	// projectSkills is a trusted project's skills, found when the decision
 	// is set, which every reload does
 	projectSkills atomic.Pointer[[]skill.Skill]
@@ -687,7 +662,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
-		Perm:      &perm.Store{},
 		agents:    newAgentHost(rt.Clock()),
 		luaTools:  newToolReg(),
 		stops:     newStopReg(),
@@ -698,10 +672,8 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		lsp:       newLSPReg(),
 	}
 	h.Builtin.Store(&agent.Catalog{})
-	h.Perm.Default = h.fsDefault
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnExit = h.refresh
-	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
@@ -754,10 +726,17 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	h.splashStale.Store(true)
 	h.instrStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
-	// sync: the first turn's tool schema and zemi health read it (the probe is fast)
-	b, err := sandbox.Probe()
-	h.sandbox.Store(&sandboxProbe{b, err})
 	return h
+}
+
+// TempDir is a directory for the host's own scratch files (a memory the
+// editor opens, a warm diff index).
+func (h *Host) TempDir() (string, error) {
+	if h.Dirs.StateHome == "" {
+		return "", errors.New("no state dir for temp files")
+	}
+	dir := filepath.Join(h.Dirs.StateHome, "tmp")
+	return dir, os.MkdirAll(dir, 0o700)
 }
 
 // now is the time Lua sees (lua.Clock): a toast's, a log line's, a render's.
@@ -1670,10 +1649,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	mode := h.permModeDef()
-	tb.RawSetString("permission_mode", glua.LString(mode.Name))
-	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
-	tb.RawSetString("unsafe", glua.LBool(h.Unsafe))
+	tb.RawSetString("permission_mode", glua.LString(h.PermMode()))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
 	// the tail's render leaves the pending row's inputs out: the rows printed
 	// above it drew it once, and the tail draws it under them
@@ -2106,7 +2082,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.124.0"))
+	api.RawSetString("version", glua.LString("0.125.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -2223,17 +2199,6 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	if err == nil && h.InitError() != "" {
 		err = errors.New(h.InitError())
 	}
-	// A failed replay keeps the old deny and ask rules and the settings it
-	// did not write: part of a config never loosens what the whole one set.
-	h.luaRulesMu.Lock()
-	h.staleRules = slices.DeleteFunc(h.staleRules, func(r perm.Rule) bool {
-		drop := err == nil || r.Decision == perm.Allow
-		if drop {
-			h.Perm.Remove(r)
-		}
-		return drop
-	})
-	h.luaRulesMu.Unlock()
 	if err == nil {
 		h.dropPluginKeys()
 		h.cfgSettle()
@@ -2264,30 +2229,6 @@ func (h *Host) checkInits() error {
 		}
 	}
 	return nil
-}
-
-// claimStale reports whether r is a rule the replaced generation added,
-// taking it off the list its reload drops.
-func (h *Host) claimStale(r perm.Rule) bool {
-	h.luaRulesMu.Lock()
-	defer h.luaRulesMu.Unlock()
-	i := slices.Index(h.staleRules, r)
-	if i >= 0 {
-		h.staleRules = slices.Delete(h.staleRules, i, i+1)
-	}
-	return i >= 0
-}
-
-// addPermissionRule registers a config rule (from zemi.permission.rule.add or
-// the project permissions file) and keeps an equal "always" answer alive: a
-// reload replays the config that adds these, PurgeGeneration moves them to
-// staleRules, and claimStale drops each one the replay adds again.
-func (h *Host) addPermissionRule(r perm.Rule) {
-	if h.Perm.Add(r) || h.claimStale(r) {
-		h.luaRulesMu.Lock()
-		h.luaRules = append(h.luaRules, r)
-		h.luaRulesMu.Unlock()
-	}
 }
 
 // awaitReload waits out running reloads and returns how many have started.
@@ -2324,16 +2265,9 @@ func (h *Host) outsideReload(fn func()) {
 // replaying the boot steps so no stale callback fires into a dropped
 // LState (DESIGN §4).
 func (h *Host) PurgeGeneration() {
-	h.modes.mu.Lock()
-	h.modes.list = nil
-	h.modes.mu.Unlock()
 	h.agents.targetsMu.Lock()
 	clear(h.agents.targets)
 	h.agents.targetsMu.Unlock()
-	h.luaRulesMu.Lock()
-	h.staleRules = append(h.staleRules, h.luaRules...)
-	h.luaRules = nil
-	h.luaRulesMu.Unlock()
 	h.Keymaps.Purge()
 	h.Commands.Purge()
 	h.Widgets.Purge()

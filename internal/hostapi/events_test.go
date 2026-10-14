@@ -19,7 +19,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -30,18 +29,20 @@ func TestToolDeniedEvent(t *testing.T) {
 	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
 		zemi.state.set("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
 	end)`)
-	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: "*secret*", Decision: perm.Deny})
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name != "read" {
+		if tl.Info().Name != "write" {
 			continue
 		}
-		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "read", Input: `{"path":"/p/secret.txt","limit":0}`})
+		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "write", Input: `{"path":"/p/secret.txt","content":"x"}`})
 		if err != nil || !resp.IsError {
-			t.Fatalf("denied read = %+v, %v", resp, err)
+			t.Fatalf("denied write = %+v, %v", resp, err)
 		}
 	}
 	waitFor(t, func() error {
-		if v, _ := h.GlobalDB.GetKV("denied"); v != `"read fs.read rule"` {
+		if v, _ := h.GlobalDB.GetKV("denied"); v != `"write fs.write nobody"` {
 			return fmt.Errorf("tool.denied payload = %s", v)
 		}
 		return nil
@@ -58,7 +59,9 @@ func TestHostToolEvents(t *testing.T) {
 	zemi.event.on("tool.post", function(ev)
 		zemi.state.set("wpost", tostring(ev.ok))
 	end)`)
-	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Deny})
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
@@ -167,9 +170,8 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
-		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
+		`zemi.config.set("permissions.mode", "ask")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.del("gopls")`,
-		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("auto")`,
 		`zemi.keymap.set("<leader>y", "zemi.permission.mode.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`,
 		`zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.keymap.set("<leader>y", "mode")`, `zemi.keymap.set("<leader>y", "profile")`,
@@ -179,14 +181,8 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 			t.Errorf("%s from project: %v", src, err)
 		}
 	}
-	// a mode rule outside the subject namespaces would sit in its store and never match
-	if err := r.ExecuteChunk(t.Context(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "shell", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "shell" starts with none of`) {
-		t.Fatalf("mode rule with a bare subject: %v", err)
-	}
 	runUser(t, r, `
-		zemi.config.set("permissions.mode", "yolo")
-		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.shell", "ls *", "allow" } } })
-		zemi.permission.mode.del("x")
+		zemi.config.set("permissions.mode", "ask")
 		zemi.lsp.del("gopls")
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.next")
 		assert(zemi.command.run("gocmd"))
@@ -229,7 +225,7 @@ func TestToolPreOnce(t *testing.T) {
 	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "deny", reason = "once" } end, { once = true })`)
 	pre := h.toolPreHook()
 	for i, want := range []tools.PreVerdict{tools.PreDeny, ""} {
-		if d, _, _, _ := pre("shell", map[string]any{"command": "ls"}); d != want {
+		if d, _, _ := pre("shell", map[string]any{"command": "ls"}); d != want {
 			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
 		}
 	}
@@ -247,7 +243,6 @@ func TestToolPostOnceOverlap(t *testing.T) {
 	}))
 	defer srv.Close()
 	runUser(t, r, fmt.Sprintf(`
-		zemi.permission.rule.add({ subject = "lua.http.get", pattern = "%[1]s*", decision = "allow", match = "%[1]s/x" })
 		zemi.event.on("tool.post", function() zemi.http.get("%[1]s/x"):wait() end)
 		zemi.event.on("tool.post", function(ev) return { output = ev.output .. " once" } end, { once = true })`, srv.URL))
 	outs := make([]string, 2)
@@ -270,7 +265,7 @@ func TestVetoShape(t *testing.T) {
 	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied || res.Reason != "nope" {
 		t.Errorf("permission.request = %+v, want denied with reason nope", res)
 	}
-	if d, reason, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
+	if d, reason, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
 		t.Errorf("tool.pre = %q %q, want halt stop", d, reason)
 	}
 }
@@ -292,7 +287,7 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 				t.Errorf("app.quit = %+v, want proceed", res)
 			}
-			if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
+			if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
 				t.Errorf("tool.pre = %q, want deny", d)
 			}
 		})
@@ -319,7 +314,7 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 	if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("app.quit while hot = %+v, want proceed", res)
 	}
-	if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
+	if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
 		t.Errorf("tool.pre while hot = %q, want deny", d)
 	}
 }
@@ -343,7 +338,7 @@ func TestToolPreRewrite(t *testing.T) {
 			if err := r.ExecuteChunk(t.Context(), c.src, "c.lua", c.origin); err != nil {
 				t.Fatal(err)
 			}
-			d, _, rw, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"})
+			d, _, rw := h.toolPreHook()("shell", map[string]any{"command": "ls"})
 			cmd, _ := rw["command"].(string)
 			if d != c.wantDecision || cmd != c.wantCommand {
 				t.Fatalf("decision %q command %q, want %q %q", d, cmd, c.wantDecision, c.wantCommand)

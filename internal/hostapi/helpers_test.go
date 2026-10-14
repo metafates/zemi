@@ -34,7 +34,7 @@ func TestArgTypes(t *testing.T) {
 		{"workflow.run on_done", `zemi.workflow.run({ script = "return 1" }, 1)`, "zemi.workflow.run: the argument must be a function, not a number"},
 		{"session.list opts", `zemi.session.list("x")`, "zemi.session.list: the argument must be a table, not a string"},
 		{"http.get opts", `zemi.http.get("http://127.0.0.1:1/x", "x")`, "zemi.http.get: the argument must be a table, not a string"},
-		{"job.start on_stdout", `zemi.permission.rule.add({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "true" }) zemi.job.start({ cmd = "true", on_stdout = "x" })`, "on_stdout must be a function, not a string"},
+		{"job.start on_stdout", `zemi.job.start({ cmd = "true", on_stdout = "x" })`, "on_stdout must be a function, not a string"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -47,10 +47,10 @@ type snapshots struct {
 	wrote map[string][32]byte // what file tools wrote meanwhile, by content
 }
 
-// snapPathspec is what a snapshot adds: every file but the secret shapes the
-// sandbox hides, whose blobs a confined command could read in the object
-// store. The broad *secret* and *credential* are no kernel rule, so they stay.
-// NOTE: a command's change to a hidden file shows in no row and no rewind.
+// snapPathspec is what a snapshot adds: every file but a secret-shaped one,
+// whose content a diff would print. The broad *secret* and *credential* match
+// source files, so they stay out.
+// NOTE: a command.s change to such a file shows in no row and no rewind.
 var snapPathspec = func() []string {
 	out := []string{"--", "."}
 	for _, p := range perm.SecretPathShape {
@@ -247,7 +247,7 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 		}
 		switch {
 		case len(paths) > snapFiles:
-		case h.secretPath(abs):
+		case perm.PathIsSecret(abs):
 			lines = append(lines, status+" "+path+snapSecretAs)
 		default:
 			shown = append(shown, path)

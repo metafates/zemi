@@ -21,15 +21,13 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
-	"github.com/yuin/gopher-lua/ast"
-	"github.com/yuin/gopher-lua/parse"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -68,7 +66,7 @@ var luaReadOnly = map[string]bool{
 	"log": true, "log.list": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
 	"lsp.list": true, "mcp.list": true, "memory.list": true,
 	"model.list": true, "notify.list": true,
-	"permission.mode.get": true, "permission.mode.list": true, "permission.rule.list": true, "project.root": true, "project.trusted": true, "provider.list": true,
+	"permission.mode.get": true, "permission.mode.list": true, "project.root": true, "project.trusted": true, "provider.list": true,
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
 	"skills.list": true, "state.get": true, "tool.describe": true, "tool.list": true,
 	"ui.focus.get": true, "ui.hl.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.highlight": true, "ui.diff": true, "ui.wrap": true, "ui.width": true, "ui.screenshot": true, "ui.theme.get": true, "ui.theme.list": true, "ui.widget.list": true,
@@ -79,88 +77,6 @@ var luaReadOnly = map[string]bool{
 // script itself: zemi.tool.call decides for itself, one gate per call, and
 // reaches nothing else of zemi.
 var luaDelegated = map[string]bool{"tool.call": true}
-
-// luaReadMethods are the method calls the text scan lets through: string
-// methods and the read-only handle methods.
-var luaReadMethods = map[string]bool{
-	"byte": true, "find": true, "format": true, "gmatch": true, "gsub": true, "len": true,
-	"lower": true, "match": true, "rep": true, "reverse": true, "sub": true, "upper": true,
-	"wait": true,
-}
-
-// luaBuiltinRequire reports whether the require at i names a zemi.*
-// module: those are shipped code the requirer gets read-only, so loading
-// one changes nothing.
-func luaBuiltinRequire(toks []ast.Token, i int) bool {
-	j := i + 1
-	if j < len(toks) && toks[j].Type == '(' {
-		j++
-	}
-	return j < len(toks) && toks[j].Type == parse.TString && strings.HasPrefix(toks[j].Str, "zemi.")
-}
-
-// luaDynamic names what can reach zemi without spelling a member out.
-var luaDynamic = map[string]bool{
-	"_G": true, "getfenv": true, "setfenv": true, "rawget": true, "load": true,
-	"loadstring": true, "dofile": true, "loadfile": true, "require": true, "debug": true,
-}
-
-// luaUnlisted lists what src may call beyond luaReadOnly: zemi paths off the
-// list (a bare namespace too), other method calls, and dynamic access. A
-// script that does not tokenize lists nothing, as it will not compile.
-func luaUnlisted(src string) []string {
-	sc := parse.NewScanner(strings.NewReader(src), luaToolChunk)
-	lx := &parse.Lexer{}
-	var toks []ast.Token
-	for {
-		tok, err := sc.Scan(lx)
-		if err != nil {
-			return nil
-		}
-		if tok.Type == parse.EOF {
-			break
-		}
-		lx.PrevTokenType = tok.Type
-		toks = append(toks, tok)
-	}
-	var out []string
-	add := func(s string) {
-		if !slices.Contains(out, s) {
-			out = append(out, s)
-		}
-	}
-	for i := 0; i < len(toks); i++ {
-		t, prev := toks[i], 0
-		if i > 0 {
-			prev = toks[i-1].Type
-		}
-		switch {
-		case t.Type == ':' && i+1 < len(toks) && toks[i+1].Type == parse.TIdent:
-			if !luaReadMethods[toks[i+1].Str] {
-				add(":" + toks[i+1].Str)
-			}
-		case t.Type != parse.TIdent || prev == '.' || prev == ':':
-		case luaDynamic[t.Str]:
-			if t.Str != "require" || !luaBuiltinRequire(toks, i) {
-				add(t.Str)
-			}
-		case t.Str == "zemi":
-			var path []string
-			for i+2 < len(toks) && toks[i+1].Type == '.' && toks[i+2].Type == parse.TIdent {
-				path = append(path, toks[i+2].Str)
-				i += 2
-			}
-			// a path nothing calls is a field read: it does nothing on its
-			// own, and a function read into a variable still meets the guard.
-			// zemi itself with no path is the aliasing route, always listed.
-			called := i+1 < len(toks) && (toks[i+1].Type == '(' || toks[i+1].Type == parse.TString || toks[i+1].Type == '{')
-			if name := strings.Join(path, "."); len(path) == 0 || called && !luaReadOnly[name] && !luaDelegated[name] {
-				add(strings.TrimSuffix("zemi."+name, "."))
-			}
-		}
-	}
-	return out
-}
 
 // luaEvalTool is the model's lua tool. build is profileTools' builder, which a
 // script's callable set is built with under its own pipeline copy. writesNote
@@ -179,12 +95,10 @@ func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
 
 // luaAsksAll reports that every script asks, reads included: the model's
 // text is less trusted here, or the user wants nothing changed.
-func (h *Host) luaAsksAll() bool { return !h.ProjectTrusted() || h.readOnly() }
-
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
-	if t.h.luaAsksAll() {
-		approval = " Every script needs the user's approval here, so write every call out by name."
+	if t.h.PermMode() == config.PermModeAsk {
+		approval = " The whole script is what the user approves, so write every call out by name."
 	}
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
@@ -233,7 +147,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		}
 		pipe := *t.pipe
 		pipe.Path = path // judged where it is opened, not resolved again
-		if v := pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); v.Decision != perm.Allow {
+		if v := pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); !v.Allowed {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
 		}
 		f, fi, err := tools.OpenRegular(path)
@@ -259,29 +173,17 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	// every run gets its own chunk name: guardLua tags an approved one, and a
 	// script's calls are keyed by it (h.scripts)
 	rel := fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
-	// the script can do anything user config can, so it asks where the
-	// model's text is less trusted or the user wants nothing changed, and
-	// before any call that is not a read: no mode's rules settle that, since
-	// what it changes or starts runs unconfined
-	unlisted := luaUnlisted(src)
-	if len(unlisted) > 0 || h.luaAsksAll() {
-		arg := "script"
-		if in.Path != "" {
-			arg = in.Path
-		}
-		req := tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.About, Preview: src}
-		if len(unlisted) > 0 {
-			req.Unsandboxed = true
-			req.Reason = "uses " + strings.Join(unlisted, ", ") + ", which can change zemi or start programs outside the sandbox"
-		}
-		if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
-		}
-		if len(unlisted) > 0 {
-			h.luaApproved.Store(rel, true)
-			defer h.luaApproved.Delete(rel)
-		}
+	// the script runs as user origin, so it asks like one: the whole script
+	// is the ask's preview, and once it is approved its own calls ride that
+	arg := "script"
+	if in.Path != "" {
+		arg = in.Path
 	}
+	if v := t.pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.About, Preview: src}); !v.Allowed {
+		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
+	}
+	h.luaApproved.Store(rel, true)
+	defer h.luaApproved.Delete(rel)
 	// what zemi.tool.call reaches while this runs: dropped with the run, so a
 	// callback the script registered cannot drive tools, and so a call still
 	// running when the script ends stops with it
@@ -345,8 +247,8 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 	return strings.TrimRight(b.String(), "\n"), err
 }
 
-// guardLua is the sandbox guard every Go function exposed to Lua runs
-// through: code from an unapproved Lua tool run may call only luaReadOnly and
+// guardLua is the guard every Go function exposed to Lua runs through: code
+// from an unapproved Lua tool run may call only luaReadOnly and
 // luaDelegated, and a widget render, which runs every frame, only the
 // luaReadOnly members other than fs.* and a handle's wait.
 func (h *Host) guardLua(L *glua.LState, member string) {

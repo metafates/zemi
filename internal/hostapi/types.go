@@ -124,7 +124,7 @@ func replaceDir(dir string, trees ...fs.FS) error {
 
 // writeEditorConfigs writes the settings zemi generates for the two editors
 // that read the annotations, each in its own dialect, replacing an edited
-// file: the settings describe zemi's sandbox, and a stale copy costs the user
+// file: the settings describe the API, and a stale copy costs the user
 // diagnostics on every line.
 func writeEditorConfigs(dir, typesDir string) error {
 	if dir == "" {
@@ -145,7 +145,7 @@ func writeEditorConfigs(dir, typesDir string) error {
 func luarcSettings(typesDir string) map[string]any {
 	return map[string]any{
 		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-		// the sandbox's own basic, os and debug are described in zemi.lua
+		// the interpreter.s own basic, os and debug are described in zemi.lua
 		"runtime": map[string]any{"version": "Lua 5.1", "builtin": map[string]string{
 			"basic": "disable", "io": "disable", "os": "disable", "debug": "disable", "utf8": "disable",
 		}},

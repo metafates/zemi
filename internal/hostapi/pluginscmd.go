@@ -299,13 +299,12 @@ func (h *Host) pluginItems() []any {
 // pluginGloss is what each declared name grants, for the detail pane: the same
 // words as the skill's table, short enough to sit in one line of prose.
 var pluginGloss = map[string]string{
-	"model":           "a model or classify call",
-	"agent":           "a message to the agent",
-	"http":            "a fetch",
-	"job":             "a command in the sandbox",
-	"job.unsandboxed": "a command with the whole environment",
-	"fs.write":        "a file write outside the secret and protected ones",
-	"tool":            "a tool it registers being called",
+	"model":    "a model or classify call",
+	"agent":    "a message to the agent",
+	"http":     "a fetch",
+	"job":      "a command it starts",
+	"fs.write": "a file write",
+	"tool":     "a tool it registers being called",
 }
 
 // pluginDetail is the detail pane's prose: what the plugin ships, the set its

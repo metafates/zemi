@@ -21,6 +21,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -92,22 +93,23 @@ func TestResolveSchemaRefs(t *testing.T) {
 	}
 }
 
-// testPipeline builds a store with the given rules and an overlay that
-// answers overlayAllows. Deny by default: nothing executes unless a rule
-// allows it.
-func testPipeline(t *testing.T, overlayAllows bool, rules ...perm.Rule) (*Pipeline, *[]Request) {
+// testPipeline builds a pipeline in the given mode. In ask mode an overlay
+// answers every ask with no and records the requests; in allow mode nothing
+// asks.
+func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 	t.Helper()
-	s := new(perm.Store)
-	for _, r := range rules {
-		s.Add(r)
-	}
 	var asked []Request
-	p := &Pipeline{
-		Store: s,
-		Ask: func(req Request) (bool, string, string) {
+	p := &Pipeline{Mode: func() string {
+		if allow {
+			return config.PermModeAllow
+		}
+		return config.PermModeAsk
+	}}
+	if !allow {
+		p.Ask = func(req Request) (bool, string, string) {
 			asked = append(asked, req)
-			return overlayAllows, "overlay", ""
-		},
+			return false, "overlay", ""
+		}
 	}
 	return p, &asked
 }
@@ -136,41 +138,36 @@ func onPath(t *testing.T, p *Pipeline, path string) *Pipeline {
 }
 
 func TestShellGate(t *testing.T) {
-	allow := func(pattern string) perm.Rule {
-		return perm.Rule{Subject: "tool.shell", Pattern: pattern, Decision: perm.Allow}
-	}
-	rewrite := func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
+	rewrite := func(tool string, input map[string]any) (PreVerdict, string, map[string]any) {
 		if str(input["command"]) == "rewrite-me" {
-			return "rewrite", "", map[string]any{"command": "echo hi"}, true
+			return "rewrite", "", map[string]any{"command": "echo hi"}
 		}
-		return "", "", nil, false
+		return "", "", nil
 	}
 	for _, c := range []struct {
 		name      string
-		rule      perm.Rule
-		pre       func(string, map[string]any) (PreVerdict, string, map[string]any, bool)
+		allow     bool
+		pre       func(string, map[string]any) (PreVerdict, string, map[string]any)
 		noOverlay bool
 		command   string
 		want      string
-		lead      bool // want starts the result
 		wantErr   bool
 		wantAsks  []string
 	}{
-		{name: "text the shell will not run fails before the gate", rule: allow("*"), command: "echo (x", want: "the command does not parse", lead: true, wantErr: true},
-		{name: "allowed runs without asking", rule: allow("echo *"), command: "echo hello", want: "hello"},
-		{name: "unmatched asks the denying overlay", rule: allow("echo *"), command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
-		{name: "compound needs every segment", rule: allow("ls*"), command: "ls; rm -rf x", wantErr: true, wantAsks: []string{"ls; rm -rf x"}},
-		{name: "no overlay fails closed", noOverlay: true, command: "echo hi", want: "ask failed", wantErr: true},
-		{name: "loosened rewrite re-asks under allow", rule: allow("*"), pre: rewrite, command: "rewrite-me", want: "permission denied (overlay)", wantErr: true, wantAsks: []string{"echo hi"}},
+		{name: "allow mode runs without asking", allow: true, command: "echo hello", want: "hello"},
+		{name: "ask mode asks the denying overlay", command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
+		{name: "a compound is one ask", command: "ls; rm -rf x", wantErr: true, wantAsks: []string{"ls; rm -rf x"}},
+		{name: "no overlay fails closed", noOverlay: true, command: "echo hi", want: "no overlay available", wantErr: true},
+		{name: "a rewrite re-enters at the gate", pre: rewrite, command: "rewrite-me", want: "permission denied (overlay)", wantErr: true, wantAsks: []string{"echo hi"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			p, asked := testPipeline(t, false, c.rule)
+			p, asked := testPipeline(t, c.allow)
 			if c.noOverlay {
 				p.Ask = nil
 			}
 			p.Pre = c.pre
 			resp := call(t, toolNamed(t, "shell", p), `{"command":"`+c.command+`"}`)
-			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) || c.lead && !strings.HasPrefix(resp.Content, c.want) {
+			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) {
 				t.Fatalf("got %+v", resp)
 			}
 			var args []string
@@ -188,9 +185,7 @@ func TestShellGate(t *testing.T) {
 // second depending on the first, apply in call order whichever goroutine
 // runs first.
 func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, false)
 	p.Seen = &sync.Map{}
 	read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
 	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
@@ -221,9 +216,7 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 // its own ids only, the same id included; a cancelled ctx gives up the wait.
 func TestCallOrderReleases(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		p, _ := testPipeline(t, false,
-			perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-			perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+		p, _ := testPipeline(t, true)
 		p.Seen = &sync.Map{}
 		read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
 		path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
@@ -288,15 +281,15 @@ func TestCallOrderReleases(t *testing.T) {
 // what it could have meant, for read and edit alike, without asking anyone
 // about the edit.
 func TestNotFoundNamesSiblings(t *testing.T) {
-	p, asked := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p, asked := testPipeline(t, true)
 	p.Seen = &sync.Map{}
 	for _, c := range []struct {
 		name, missing, want string
 		files               []string
 	}{
-		// dotfiles sort first, a directory is no file to read and a secret
-		// is not named: none may fill the suggestions
-		{"secrets, dotfiles and directories left out", "ap.go", "app.go, apt.go, apps.go", []string{".git", ".gitignore", "ap/", "app.go", "apps.go", "apt.go", "main.go", "app.env"}},
+		// dotfiles sort first and a directory is no file to read: none of them
+		// fills the suggestions
+		{"dotfiles and directories left out", "ap.go", "app.go, apt.go, app.env", []string{".git", ".gitignore", "ap/", "app.go", "apps.go", "apt.go", "main.go", "app.env"}},
 		{"the nearest three, not the first three", "config.go", "config.ts, confg.go, configs.go", []string{"a_config.go", "confg.go", "config.ts", "config_old.go", "configs.go"}},
 		{"no near name", "zzz.txt", "", []string{"app.go"}},
 	} {
@@ -326,41 +319,40 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 // asked, not how the rules failed to match, and does not echo the command.
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, why, want string }{
-		{"user", "the model asked to leave the sandbox", "it asked because the model asked to leave the sandbox"},
-		{"nobody", "this project is not trusted (zemi run --trust)", "no one can approve in a headless run: this project is not trusted (zemi run --trust)"},
-		{"mode:auto", "", "denied by permission mode auto"},
+		{"user", "", "permission denied (user): tool.shell"},
+		{"nobody", "", "permission denied (nobody): tool.shell"},
+		{"nobody", "this project is not trusted", "permission denied (nobody): tool.shell: this project is not trusted"},
 	} {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
 		resp := call(t, toolNamed(t, "shell", p), `{"command":"echo j > out.txt"}`)
-		if !resp.IsError || resp.Content != "permission denied ("+c.by+"): tool.shell: "+c.want {
-			t.Errorf("%s: %q", c.by, resp.Content)
+		if !resp.IsError || resp.Content != c.want {
+			t.Errorf("%s: %q, want %q", c.by, resp.Content, c.want)
 		}
 	}
 }
 
 func TestPreHookDenyRewriteReentry(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "tool.shell", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	denied := 0
 	rewrites := 0
-	p.Pre = func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
+	p.Pre = func(tool string, input map[string]any) (PreVerdict, string, map[string]any) {
 		if tool != "shell" {
-			return "", "", nil, false
+			return "", "", nil
 		}
 		cmd := str(input["command"])
 		if cmd == "danger --x" {
 			denied++
-			return "deny", "no danger", nil, false
+			return "deny", "no danger", nil
 		}
 		if cmd == "echo {{TWICE}}" {
 			rewrites++
 			if rewrites == 1 {
-				return "rewrite", "", map[string]any{"command": "echo once"}, false
+				return "rewrite", "", map[string]any{"command": "echo once"}
 			}
 			t.Fatal("rewrite hook re-fired on re-entry")
 		}
-		return "", "", nil, false
+		return "", "", nil
 	}
 	ag := toolNamed(t, "shell", p)
 	resp := call(t, ag, `{"command":"danger --x"}`)
@@ -380,10 +372,7 @@ func TestPreHookDenyRewriteReentry(t *testing.T) {
 }
 
 func TestWriteReadEditRoundtrip(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow},
-	)
+	p, _ := testPipeline(t, true)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "a.txt")
 	write, read, edit := toolNamed(t, "write", p), toolNamed(t, "read", p), toolNamed(t, "edit", p)
@@ -417,27 +406,22 @@ func TestUnsafeHidesNoSecret(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	read, grep := toolNamed(t, "read", p), toolNamed(t, "grep", p)
 	list := func() string { return call(t, read, fmt.Sprintf(`{"path":%q,"limit":0}`, dir)).Content }
-	if got := list(); !strings.Contains(got, "2 secret-shaped entries hidden") || !strings.Contains(got, "main.go") {
-		t.Fatalf("a listing must hide the secret shapes: %q", got)
-	}
-	p.Unsafe = true
-	if got := list(); !strings.Contains(got, ".env") || !strings.Contains(got, "cert.pem") || strings.Contains(got, "hidden") {
-		t.Errorf("a --unsafe listing: %q", got)
+	if got := list(); !strings.Contains(got, ".env") || !strings.Contains(got, "cert.pem") || !strings.Contains(got, "main.go") {
+		t.Errorf("a listing: %q", got)
 	}
 	if got := call(t, grep, fmt.Sprintf(`{"pattern":"K=secret","path":%q}`, dir)).Content; !strings.Contains(got, ".env:1") {
-		t.Errorf("a --unsafe grep: %q", got)
+		t.Errorf("a grep: %q", got)
 	}
 }
 
 // TestGlobAndGrep runs over a real git repository, outside one and with no
 // git binary.
 func TestGlobAndGrep(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	dir, out := t.TempDir(), t.TempDir()
-	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	files := map[string]string{
 		"main.go": "package main\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
 		".gitignore": "node_modules/\ngen/\nbuild/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
@@ -490,14 +474,13 @@ func TestGlobAndGrep(t *testing.T) {
 		{tool: glob, input: `{"pattern":"*.{go,txt}"}`, want: "notes.txt", not: "node_modules"},
 		{tool: grep, input: `{"pattern":"package sub"}`, want: "x.go:1", not: "main.go"},
 		{tool: grep, input: `{"pattern":"package","include":"[m]*.go"}`, want: "main.go:1", not: "x.go"},
-		{tool: grep, input: `{"pattern":"package (y|secret)"}`, want: "(no matches; secret-shaped", not: "y.go"},
-		{tool: grep, input: `{"pattern":"loadCredential|package secret"}`, want: "src/credential.ts:1", not: "package secret"},
+		{tool: grep, input: `{"pattern":"package (y|secret)"}`, want: ".env:1", not: "credential"},
+		{tool: grep, input: `{"pattern":"loadCredential|package secret"}`, want: "src/credential.ts:1"},
 		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "gen/"},
 		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "bin.dat"},
 		{tool: glob, input: `{"pattern":"**/*.txt"}`, want: "src/a.txt", not: "gen/"},
-		{tool: glob, input: `{"pattern":"**/*.go"}`, want: "main.go", not: "private"},
-		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "k.go"},
-		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "lnk.txt"},
+		{tool: glob, input: `{"pattern":"**/*.go"}`, want: "main.go"},
+		{tool: grep, input: `{"pattern":"package priv"}`, want: "private/k.go:1", not: "lnk.txt"},
 		{tool: grep, input: `{"pattern":"outside"}`, want: "no matches", not: "swap/"},
 		{tool: grep, input: `{"pattern":"package","path":"sub/x.go"}`, want: "sub/x.go:1: package sub", not: "main.go"},
 		{tool: grep, input: `{"pattern":"sub("}`, want: "(pattern taken literally)\n", not: "bad pattern"},
@@ -540,8 +523,8 @@ func TestGlobAndGrep(t *testing.T) {
 			}
 		})
 	}
-	// a hit in .env must not change the answer, and the same call answers the same
-	for _, pat := range [][2]string{{"package (y|secret)", "package (y|zzz)"}, {"dup|needle", "dup|needle"}} {
+	// the same call answers the same whatever it matched
+	for _, pat := range [][2]string{{"package (y|secret)", "package (y|secret)"}, {"dup|needle", "dup|needle"}} {
 		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"`+pat[0]+`"}`), call(t, grep, `{"path":"`+dir+`","pattern":"`+pat[1]+`"}`); a.Content != b.Content {
 			t.Errorf("%q and %q answer differently: %q vs %q", pat[0], pat[1], a.Content, b.Content)
 		}
@@ -555,19 +538,17 @@ func TestGlobAndGrep(t *testing.T) {
 	}
 }
 
-// TestGlobChecksOnlyShownHits: every check resolves symlinks, so a broad
-// glob checks the hits it shows, not every file it scanned.
+// TestGlobChecksOnlyShownHits: a broad glob checks the hits it shows, not
+// every file it scanned.
 func TestGlobChecksOnlyShownHits(t *testing.T) {
 	p, _ := testPipeline(t, true)
-	checks := 0
-	p.Store.Default = func(string, string) perm.Decision { checks++; return perm.Ask }
 	dir := t.TempDir()
 	for i := range 1000 {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), nil, 0o644)
 	}
 	resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`)
-	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
-		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
+	if !strings.Contains(resp.Content, "up to 800 more") {
+		t.Errorf("got %q", resp.Content[max(0, len(resp.Content)-80):])
 	}
 }
 
@@ -575,9 +556,7 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 // are, keep CRLF endings, move a whitespace-tolerant replacement to the
 // file's indentation, and point a failed match at where it diverges.
 func TestEditSafety(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	p.Seen = &sync.Map{}
 	read, write, edit := toolNamed(t, "read", p), toolNamed(t, "write", p), toolNamed(t, "edit", p)
 	dir := outsideTemp(t)
@@ -696,7 +675,7 @@ func TestScratchpad(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(free) })
 	t.Chdir(proj)
 	p, asked := testPipeline(t, false)
-	p.Pad, p.Seen, p.Secret = pad, &sync.Map{}, perm.PathIsSecret
+	p.Pad, p.Seen = pad, &sync.Map{}
 	p.Plan = func() bool { return true } // a read-only agent writes only there
 	var checkpoints []string
 	p.Checkpoint = func(path string) { checkpoints = append(checkpoints, path) }
@@ -717,11 +696,11 @@ func TestScratchpad(t *testing.T) {
 			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\nb\n"), 0o644)
 			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
 		}, "not read its current version", false},
-		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "give it another name", true},
+		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "wrote", false},
 		{"write in a temp dir, unread", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "wrote", false},
 		{"edit in a temp dir, unread", ToolEdit, `{"path":"FREE/notes.txt","old_string":"x","new_string":"y"}`, nil, "edited", false},
 		{"read in a temp dir", ToolRead, `{"path":"FREE/notes.txt","limit":0}`, nil, "1\ty", false},
-		{"secret-shaped name in a temp dir", ToolWrite, `{"path":"FREE/cert.pem","content":"x"}`, nil, "give it another name", true},
+		{"secret-shaped name in a temp dir", ToolWrite, `{"path":"FREE/cert.pem","content":"x"}`, nil, "wrote", false},
 		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
@@ -798,7 +777,7 @@ func TestReadAndShellShapes(t *testing.T) {
 		{"i.png", 0, "image", ""},
 		{"b.bin", 0, "text", "binary file"},
 		{"t.txt", 5, "text", "past the end"},
-		{"d", 0, "text", "a/\nc"},
+		{"d", 0, "text", "a/\nb.pem\nc"},
 	} {
 		res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, c.name)), map[string]any{"offset": c.offset})
 		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {
@@ -881,9 +860,7 @@ func TestValidationErrors(t *testing.T) {
 }
 
 func TestPostHookRuns(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "tool.shell", Pattern: "echo *", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	var posts []string
 	p.Post = func(_ context.Context, _, tool string, input map[string]any, ok bool, output string, changed []string, _ time.Duration) string {
 		posts = append(posts, fmt.Sprintf("%s ok=%v %s changed=%v", tool, ok, output, changed))
@@ -902,7 +879,7 @@ func TestPostHookRuns(t *testing.T) {
 	if len(posts) != 3 {
 		t.Fatalf("post must run for success and denial: %+v", posts)
 	}
-	for i, want := range []string{"changed=[/by/shell]", "changed=[]", "changed=[" + file + "]"} {
+	for i, want := range []string{"changed=[/by/shell]", "changed=[/by/shell]", "changed=[" + file + "]"} {
 		if !strings.HasSuffix(posts[i], want) {
 			t.Errorf("post %d = %q, want %s", i, posts[i], want)
 		}
@@ -1100,7 +1077,7 @@ func TestChangeDiff(t *testing.T) {
 }
 
 func TestFileToolsRefuseSymlink(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	write, edit := toolNamed(t, "write", p), toolNamed(t, "edit", p)
 	dir := perm.RealPath(t.TempDir())
 	target, link := filepath.Join(dir, "real.txt"), filepath.Join(dir, "link.txt")
@@ -1166,19 +1143,3 @@ func trunc(s string, n int) string {
 
 // TestUserRule pins which rule earns the §9 localhost development opt-in: one
 // the user's own config wrote, never a session "always" answer.
-func TestUserRule(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		r    *perm.Rule
-		want bool
-	}{
-		{"no rule matched", nil, false},
-		{"a user rule", &perm.Rule{Principal: ""}, true},
-		{"a rule the user scoped to a plugin", &perm.Rule{Principal: perm.PluginPrincipal("x")}, true},
-		{"a session always answer", &perm.Rule{Principal: perm.PrincipalModel}, false},
-	} {
-		if got := UserRule(c.r); got != c.want {
-			t.Fatalf("%s: UserRule = %v, want %v", c.name, got, c.want)
-		}
-	}
-}

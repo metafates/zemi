@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"encoding/json/v2"
-	"errors"
 	"reflect"
 	"regexp"
 	"slices"
@@ -193,12 +192,9 @@ func (h *Host) writeSetting(path string, v any) ([]config.WatchFired, error) {
 
 // keepPick keeps path's live value in the global store for the next start,
 // or forgets it when it is the key's cfgBase. A write during boot is
-// init.lua's, and one before KeepPicks is a flag's. A yolo mode is never
-// kept: a flip made for one task must not start every later zemi, in any
-// project, allowing what the rules do not deny.
+// init.lua's, and one before KeepPicks is a flag's.
 func (h *Host) keepPick(path string) {
-	if h.GlobalDB == nil || h.RT.Booting() || !h.KeepPicks.Load() ||
-		path == "permissions.mode" && h.permModeDef().Base == config.PermModeYolo {
+	if h.GlobalDB == nil || h.RT.Booting() || !h.KeepPicks.Load() {
 		return
 	}
 	live, _ := h.Settings.Get(path)
@@ -255,9 +251,6 @@ func (h *Host) loadPicks() {
 		}
 		if err == nil {
 			v, err = h.Settings.Check(path, v)
-		}
-		if err == nil && path == "permissions.mode" && v == config.PermModeYolo {
-			err = errors.New("yolo is never kept")
 		}
 		if err == nil {
 			_, err = h.Settings.SetQuiet(path, v)

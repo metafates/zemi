@@ -23,7 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -746,7 +745,9 @@ func TestWorkflowToolInput(t *testing.T) {
 	h.agents.sessionID = "s1"
 	ui := &fakeUI{askAllowed: true}
 	h.SetUIHooks(ui)
-	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Ask})
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	tool := h.workflowTool(h.PipelineFor())
 	call := func(input string) (string, bool) {
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})

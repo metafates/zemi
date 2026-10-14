@@ -233,7 +233,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 				return fantasy.NewTextErrorResponse(workRel(f) + ": " + err.Error()), nil
 			}
 			resolved[f] = ps
-			if v := p.CheckDenied(Request{Tool: ToolLSP, Subject: perm.SubjectWrite, Arg: ps.String(), Reason: reason}); v.Decision != perm.Allow {
+			if v := p.CheckDenied(Request{Tool: ToolLSP, Subject: perm.SubjectWrite, Arg: ps.String(), Reason: reason}); !v.Allowed {
 				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+workRel(f)+"; nothing was changed")), nil
 			}
 		}

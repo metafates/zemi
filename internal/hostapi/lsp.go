@@ -29,7 +29,6 @@ import (
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -268,13 +267,6 @@ func (h *Host) lspKnown() []lspDef {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
 			}
-			// NOTE: without a backend every server runs unconfined; a user-added
-			// one is the user's call, and of the builtins only rust-analyzer is
-			// left out (typescript plugins and clangd drivers are not). --unsafe
-			// is no backend of the user's asking, so its servers start too.
-			if d.RunsCode && h.sandboxBroken() {
-				continue
-			}
 			if d.Name == "typescript" {
 				// without tsserver.path the server prefers node_modules/typescript
 				ts := globalTSServer(h.Dirs.RepoRoot())
@@ -475,7 +467,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 					ui.OpenOverlay(h.lspOverlay(true))
 				}
 			}()
-			env, _ := h.Perm.ChildEnv(nil)
+			env := append([]string{}, os.Environ()...)
 			for k, v := range def.Env {
 				env = append(env, k+"="+v)
 			}
@@ -485,10 +477,6 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 				Command: def.Command, Args: def.Args, Env: env, Root: cmp.Or(def.Root, h.Dirs.RepoRoot()),
 				InitOptions: def.Init, Settings: def.Config,
 				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
-			}
-			if h.sandboxLive() {
-				policy := h.serverPolicy(def)
-				cfg.Wrap = func(cmd *exec.Cmd) error { return sandbox.Wrap(cmd, policy) }
 			}
 			p.client, p.err = lsp.Start(sctx, cfg)
 			if p.err != nil {

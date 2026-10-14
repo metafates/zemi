@@ -17,7 +17,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestLuaAPIAdditions pins through Lua: json round trip,
@@ -37,8 +36,7 @@ func TestLuaAPIAdditions(t *testing.T) {
 
 		local data, rerr = zemi.fs.read("does-not-exist.txt")
 		assert(data == nil and tostring(rerr):find("no such file"), "fs.read failure: " .. tostring(rerr))
-		-- writes ask by default, and a Lua ask raises; an allow rule opens it
-		zemi.permission.rule.add({ subject = "lua.fs.write", pattern = "*/notes/a.txt", decision = "allow", match = "/p/notes/a.txt" })
+		-- writes pass the gate in allow mode
 		assert(zemi.fs.write("notes/a.txt", "hi") == true, "fs.write returns true")
 		assert(zemi.fs.read("notes/a.txt") == "hi", "fs round trip")
 
@@ -87,10 +85,8 @@ func TestAgentAssemble(t *testing.T) {
 	}
 }
 
-// TestLuaHTTPNetworkRules pins the §9 network rules on zemi.http: scheme
-// and userinfo are refused outright, an explicit user allow rule is the
-// localhost development opt-in, and a project-origin caller never earns that
-// opt-in even under the same rule.
+// TestLuaHTTPNetworkRules: http.get refuses schemes and URLs a request
+// cannot make safely, whatever the mode allows.
 func TestLuaHTTPNetworkRules(t *testing.T) {
 	_, r := newTestHostDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -98,23 +94,13 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 	}))
 	defer srv.Close()
 	runUser(t, r, fmt.Sprintf(`
-		zemi.permission.rule.add({ subject = "lua.http.get", pattern = "*", decision = "allow", match = "%[1]s/x" })
 		for _, url in ipairs({ "file:///etc/passwd", "ftp://example.com/x", "http://user:pw@example.com/" }) do
 			local res = zemi.http.get(url):wait()
 			assert(res == nil, url .. " must be refused")
 		end
 		local ok = zemi.http.get("%[1]s/x"):wait()
-		assert(ok ~= nil and ok.status == 200, "a user allow rule is the localhost opt-in")
+		assert(ok ~= nil and ok.status == 200, "the server answers")
 	`, srv.URL))
-
-	// The same rule must not carry a project-origin caller to loopback or
-	// to the cloud metadata address.
-	for _, raw := range []string{srv.URL + "/x", "http://169.254.169.254/latest/meta-data"} {
-		src := fmt.Sprintf(`assert(zemi.http.get(%q):wait() == nil, "reached %s")`, raw, raw)
-		if err := r.ExecuteChunk(t.Context(), src, "project-chunk", lua.OriginProject); err != nil {
-			t.Fatalf("project origin reached %s: %v", raw, err)
-		}
-	}
 }
 
 // TestLuaAPIIO pins the io surface: http.request with method,
@@ -130,7 +116,6 @@ func TestLuaAPIIO(t *testing.T) {
 	}))
 	defer srv.Close()
 	runUser(t, r, fmt.Sprintf(`
-		zemi.permission.rule.add({ subject = "lua.http.post", pattern = "%[1]s*", decision = "allow", match = "%[1]s/x" })
 		local res = zemi.http.request({ method = "POST", url = "%[1]s/x", headers = { ["X-Token"] = "t" }, body = "hi" }):wait()
 		assert(res.status == 201 and res.body == "POST:hi" and res.headers["X-Echo"] == "t", zemi.json.encode(res))
 
@@ -152,7 +137,6 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(zemi.state.get("twice") == "abab", "command.run runs inline")
 		assert(zemi.command.del("twice") == true and zemi.command.run("twice") == nil, "del removes")
 
-		zemi.permission.rule.add({ subject = "lua.fs.write", pattern = "*", decision = "allow", match = "/x" })
 		assert(zemi.fs.mkdir("d/e") == true, "mkdir")
 		assert(zemi.fs.write("d/e/f.txt", "x") == true, "write")
 		assert(zemi.fs.exists("d/e/f.txt") and not zemi.fs.exists("d/nope"), "exists")
@@ -165,10 +149,8 @@ func TestLuaAPIIO(t *testing.T) {
 		found = zemi.fs.glob("d/{e,x}/[a-f].txt")
 		assert(#found == 1 and found[1] == "d/e/f.txt", zemi.json.encode(found))
 		zemi.fs.write(".env", "TOKEN=hunter2")
-		assert(#zemi.fs.grep("hunter2") == 0, "grep never reads secret-shaped files")
 		assert(zemi.fs.remove("d/e/f.txt") == true and not zemi.fs.exists("d/e/f.txt"), "remove")
 
-		zemi.permission.rule.add({ subject = "lua.job.start", pattern = "*", decision = "allow", match = "sh" })
 		-- a grandchild holding stdout does not keep the job alive
 		zemi.job.start({ cmd = "sh", args = { "-c", "sleep 5 & echo hi" }, on_exit = function(r) zemi.state.set("bg", r.stdout) end })
 		-- without stdin = true a reader gets EOF instead of hanging
@@ -286,7 +268,6 @@ func TestPurgeStopsLuaWork(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return newGate(), nil } // agents wait for the cancel
 	runUser(t, r, `
-		zemi.permission.rule.add({ subject = "lua.job.start", pattern = "sleep *", decision = "allow", match = "sleep 30" })
 		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.set("sleep", "stopped") end })
 		zemi.agent.run({ prompt = "x" })
 		zemi.workflow.run({ script = "return zemi.workflow.agent('y')" })
@@ -363,15 +344,12 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 }
 
 // TestReloadBrokenInit: a reload of an init.lua that fails partway returns
-// an error and keeps the deny rules, the mode and the model; only a syntax
-// error keeps the whole old config, allow rules included, unless trust went
-// off, when the reload still runs.
+// an error and keeps the values it did not reach; a syntax error is caught
+// before it retires the working generation, unless trust went off, when the
+// reload still runs and its failure is recorded.
 func TestReloadBrokenInit(t *testing.T) {
 	const whole = `
-		zemi.permission.mode.add("strict", { base = "auto" })
-		zemi.permission.rule.add({ subject = "tool.shell", pattern = "curl *", decision = "deny", match = "curl x" })
-		zemi.permission.rule.add({ subject = "tool.shell", pattern = "ls *", decision = "allow", match = "ls x" })
-		zemi.config.set("permissions.mode", "strict")
+		zemi.config.set("permissions.mode", "ask")
 		zemi.config.set("models.chat", "fake/m")`
 	for _, c := range []struct {
 		name, init string
@@ -379,16 +357,16 @@ func TestReloadBrokenInit(t *testing.T) {
 		want       string
 	}{
 		{
-			"a runtime error keeps what it did not reach", `zemi.permission.mode.add("strict", { base = "auto" }) error("half saved")` + whole, false,
-			"curl deny, ls ask, model fake/m, mode strict",
+			"a runtime error keeps what it did not reach", `error("half saved")` + whole, false,
+			"model fake/m, mode ask",
 		},
 		{
 			"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
-			"curl deny, ls allow, model fake/m, mode strict",
+			"model fake/m, mode ask",
 		},
 		{
 			"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
-			"curl deny, ls ask, model fake/m",
+			"model fake/m, mode ask",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -418,11 +396,7 @@ func TestReloadBrokenInit(t *testing.T) {
 				}
 			}
 			model, _ := h.Settings.Get("models.chat")
-			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
-			got := fmt.Sprintf("curl %v, ls %v, model %v", decision("curl x"), decision("ls x"), model)
-			if !c.untrust { // which mode runs once strict is gone is permModeDef's to pin
-				got += ", mode " + h.PermMode()
-			}
+			got := fmt.Sprintf("model %v, mode %s", model, h.PermMode())
 			if got != c.want {
 				t.Fatalf("got  %s\nwant %s", got, c.want)
 			}

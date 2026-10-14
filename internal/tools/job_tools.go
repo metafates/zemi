@@ -18,7 +18,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/sandbox"
 )
 
 // JobHandoff opens the shell result note for a command that outlived its
@@ -68,15 +67,8 @@ type Job struct {
 	done   chan struct{}
 	code   int
 	err    string
-	werr   error // what Wait returned
-	// policy confines the job, nil when unconfined; its failure may need
-	// the sandbox hint, which names the policy's writable dirs
-	policy *sandbox.Policy
-	after  func() string // runs at exit (Pipeline.Guard)
-	note   string        // what after returned
-	told   bool          // the exit's hint and note were read
-	killed bool          // Jobs.Kill ended it, so its signal is no sandbox's
-	sent   [2]int64      // bytes of stdout/stderr already read, see since
+	werr   error    // what Wait returned
+	sent   [2]int64 // bytes of stdout/stderr already read, see since
 	mu     sync.Mutex
 }
 
@@ -182,11 +174,10 @@ func NewJobs() *Jobs {
 	return &Jobs{jobs: map[string]*Job{}}
 }
 
-// Start runs a shell line with proc.Shell in dir with env, confined by pol
-// unless it is nil, and runs after once it exits; returns the
+// Start runs a shell line with proc.Shell in dir with env and returns the
 // job id. Output is captured as it arrives, so job_read shows a server's
 // lines while it runs.
-func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after func() string) (string, error) {
+func (m *Jobs) Start(dir, line string, env []string) (string, error) {
 	if strings.TrimSpace(line) == "" {
 		return "", errors.New("command is required")
 	}
@@ -194,21 +185,12 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 	cmd.Dir = dir
 	cmd.Env = env
 	j := &Job{
-		Name: line, cmd: cmd, done: make(chan struct{}), policy: pol,
-		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}, after: after,
+		Name: line, cmd: cmd, done: make(chan struct{}),
+		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20},
 	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
-	fail := func(err error) (string, error) {
-		after()
-		return "", err
-	}
-	if pol != nil {
-		if err := sandbox.Wrap(cmd, *pol); err != nil {
-			return fail(fmt.Errorf("the sandbox failed, so the command did not run: %w", err))
-		}
-	}
 	if err := proc.Start(cmd); err != nil {
-		return fail(err)
+		return "", err
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- proc.Wait(cmd) }()
@@ -216,12 +198,11 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 }
 
 // Adopt registers a command that is already running, with the buffer it
-// writes to, the byte count the caller already delivered from it, a channel
-// carrying its Wait, its policy (nil when unconfined) and what runs at its
-// exit: a shell call past its timeout keeps going as a job instead of losing
-// the work done so far.
-func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, pol *sandbox.Policy, after func() string) string {
-	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, policy: pol, after: after}
+// writes to, the byte count the caller already delivered from it and a
+// channel carrying its Wait: a shell call past its timeout keeps going as a
+// job instead of losing the work done so far.
+func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error) string {
+	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }
@@ -235,9 +216,8 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	m.mu.Unlock()
 	go func() {
 		err := <-wait
-		note := j.after()
 		j.mu.Lock()
-		j.werr, j.note = err, note
+		j.werr = err
 		switch exit, ok := errors.AsType[*exec.ExitError](err); {
 		case ok:
 			j.code = exit.ExitCode()
@@ -298,9 +278,8 @@ func (m *Jobs) Kill(id string) error {
 		return fmt.Errorf("%s already exited", id)
 	}
 	j.mu.Lock()
-	j.killed = true
-	j.mu.Unlock()
 	proc.Kill(j.cmd)
+	j.mu.Unlock()
 	return nil
 }
 
@@ -309,11 +288,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
 	line := str(input["command"])
-	env, err := p.childEnv()
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	id, err := p.Jobs.Start(workdir(), line, env, p.Sandboxed, p.guard())
+	id, err := p.Jobs.Start(workdir(), line, p.childEnv())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -378,19 +353,6 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	}
 	if running && out.text == "" && errOut.text == "" {
 		b.WriteString("(no new output)")
-	}
-	if !running && j.policy != nil {
-		j.mu.Lock()
-		werr, note, told, killed := j.werr, j.note, j.told, j.killed
-		j.told = true
-		j.mu.Unlock()
-		if !told && !killed {
-			// the whole retained tail: a denial may have been read while it ran
-			note = p.sandboxHint(j.policy, j.Output(), werr) + note
-		}
-		if !told {
-			b.WriteString(note)
-		}
 	}
 	// a job that exited badly: the result is an error, so the model does not
 	// read its exit as done and its row is no green check (Job.Mark says err)

@@ -58,9 +58,7 @@ func TestProjectsCommand(t *testing.T) {
 	files := []string{
 		filepath.Join(dirs.StateHome, "scratch", "sid-other"),
 		filepath.Join(dirs.DataHome, "plans", "sid-other.md"),
-		filepath.Join(dirs.StateHome, "sandbox-cache", key, "go-build"),
 		filepath.Join(dirs.CacheHome, "lsp", key, "gopls"),
-		filepath.Join(projectState(dirs.StateHome, other), "permissions"),
 	}
 	for _, f := range files {
 		os.MkdirAll(filepath.Dir(f), 0o755)
@@ -98,7 +96,7 @@ func TestProjectsCommand(t *testing.T) {
 				// the running decision beside the saved one, and a gone root's decision in its detail
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "key:current",
 				"desc:missing                  · now", "[trust trusted] [sessions ]",
-				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed echo , go test ./...]",
+				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]",
 				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes",
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},

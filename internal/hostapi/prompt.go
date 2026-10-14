@@ -19,6 +19,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -179,8 +180,8 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 			sys += planAsking
 		}
 	}
-	if def := h.permModeDef(); def.Prompt != "" {
-		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
+	if h.PermMode() == config.PermModeAsk {
+		sys += "\n\n# Permission mode: ask\nEvery action you take (a command, a file change, a fetch) prompts the user first; reads do not. Batch what you can, and keep the asks few and worth reading."
 	}
 	reply := ""
 	if p == nil || p.System == "" {
@@ -223,8 +224,8 @@ const contextOpener = "<context>\nzemi's notes for this session, not the user's 
 
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
-// files, the environment with the run's scratchpad pad and sandbox
-// (readOnly: a read-only agent's) and the session's # Brain section.
+// files, the environment with the run.s scratchpad pad
+// (readOnly: a read-only agent.s) and the session.s # Brain section.
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
 	system, ctxMsg, _ = h.systemFor(sys, nil, toolset, pad, readOnly, "")
 	return system, ctxMsg
@@ -451,8 +452,8 @@ func (h *Host) instructionEdits() string {
 			had = files[p]
 		}
 		fi, err := os.Stat(p)
-		// the sandbox cannot write the user's file, while a repository one
-		// may have become a link to a secret since the prompt was built,
+		// a repository file may have become a link to a secret since the
+		// prompt was built,
 		// and loads only while the project is trusted
 		if err != nil || fi.ModTime().Equal(had) || p != mine && (!h.ProjectTrusted() || !h.instructionFile(p)) {
 			continue
@@ -485,11 +486,10 @@ func (h *Host) instructionEdits() string {
 }
 
 // instructionFile reports whether a repository instruction file may load.
-// It skips the read gate, so a symlink must not lead out of the repository
-// or to a secret-shaped file.
+// It refuses a symlink out of the repository or a secret-shaped file.
 func (h *Host) instructionFile(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode().IsRegular() && !h.secretPath(p) && h.inJail(p, h.Dirs.RepoRoot())
+	return err == nil && fi.Mode().IsRegular() && !perm.PathIsSecret(p) && h.inJail(p, h.Dirs.RepoRoot())
 }
 
 // scratchUse, scratchWrite, scratchRead and recipesUse are the rules for
@@ -501,11 +501,7 @@ const (
 	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. The temp dirs (/tmp and the system's own) are free the same way."
 	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent."
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
-	// scratchSecret is what the two above say of the names that still ask
-	// there, and the newline that ends their paragraph: a --unsafe run hides
-	// nothing, so it leaves the sentence out and keeps the newline.
-	scratchSecret = " Secret-shaped names ask even there: use another name.\n"
-	scratchOwn    = "Other agents share the scratchpad: keep your own files in %s."
+	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
 	// forkTask opens the only message a fork receives, after the conversation
 	// it continues: the caller's own prompt says it may ask and delegate, and
 	// this run may do neither.
@@ -513,31 +509,23 @@ const (
 	recipesUse = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md in the recipes directory (under Environment): yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
-// environmentFor gives the rules for the run's scratchpad, recipes and the
-// sandbox its commands run in, the clauses toolset can use, the same in
-// every project but one with a PATH dir inside it; and the pinned
-// environment, with pad, the run's scratchpad.
+// environmentFor gives the rules for the run's scratchpad and recipes, the
+// clauses toolset can use, the same in every project but one with a PATH dir
+// inside it; and the pinned environment, with pad, the run's scratchpad.
 func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly bool) (rules, env string) {
 	writes := hasTool(toolset, tools.ToolWrite) || hasTool(toolset, tools.ToolEdit)
 	scratch := ""
 	if pad != "" {
 		scratch = "Scratchpad: " + pad + "\n"
-		// scratchSecret is what ends the paragraph; a --unsafe run leaves it out
-		// and needs the newline on its own
-		secret := "\n"
-		if !h.Unsafe {
-			secret = scratchSecret
-		}
 		switch {
 		case hasTool(toolset, tools.ToolShell):
-			rules = scratchUse + secret
+			rules = scratchUse + "\n"
 		case writes:
-			rules = scratchWrite + secret
+			rules = scratchWrite + "\n"
 		default:
 			rules = scratchRead
 		}
 	}
-	rules += h.sandboxPrompt(toolset, readOnly, pad)
 	// a read-only agent's write there is denied
 	if writes && !readOnly && h.recipesDir() != "" && h.ProjectTrusted() {
 		recipes := recipesUse
@@ -547,7 +535,7 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 		rules += recipes
 	}
 	if rules != "" {
-		rules = "\n\n# Scratchpad and sandbox\n" + rules
+		rules = "\n\n# Scratchpad\n" + rules
 	}
 	env, pdir, top, recipes := h.environmentPrompt(), h.Dirs.ProjectConfigDir(), "", ""
 	if h.ProjectTrusted() {
@@ -613,11 +601,10 @@ func (h *Host) topLevel() string {
 		return ""
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut := (&tools.Pipeline{Store: h.Perm, Principal: perm.PrincipalModel}).RuledOut()
 	var names []string
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasPrefix(name, ".") || !h.Unsafe && perm.PathIsStrictSecret(name) || strings.ContainsFunc(name, unicode.IsControl) || ruledOut(filepath.Join(h.Dirs.ProjectDir, name)) {
+		if strings.HasPrefix(name, ".") || strings.ContainsFunc(name, unicode.IsControl) {
 			continue
 		}
 		if e.IsDir() {

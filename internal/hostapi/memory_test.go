@@ -450,6 +450,9 @@ func TestMemoryGate(t *testing.T) {
 				if err := h.Remember("deploy by hand"); err != nil {
 					t.Fatal(err)
 				}
+				if err := h.SetPermMode("ask"); err != nil {
+					t.Fatal(err)
+				}
 				return projectMemories(t, h)[0].ID
 			},
 			want: "permission denied",

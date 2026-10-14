@@ -34,40 +34,9 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// secretPath matches the §9 secret shapes on the path as written and on the
-// resolved one, so an innocently named symlink cannot hide a secret, and
-// the home paths the sandbox hides (secretDirs), whose names say nothing.
-// A --unsafe run hides nothing, so this is its one switch.
-func (h *Host) secretPath(p string) bool {
-	if h.Unsafe {
-		return false
-	}
-	if perm.PathIsSecret(p) {
-		return true
-	}
-	real := perm.CanonPath(p)
-	return real == "" || perm.PathIsSecret(real) || slices.ContainsFunc(homeSecrets(), func(root string) bool {
-		_, ok := perm.Under(root, real)
-		return ok
-	})
-}
-
-// homeSecrets are the secretDirs under homes(), resolved once: home does not
-// move under a running zemi.
-var homeSecrets = sync.OnceValue(func() []string {
-	var roots []string
-	for _, home := range homes() {
-		for _, s := range secretDirs {
-			roots = append(roots, perm.CanonPath(filepath.Join(home, s)))
-		}
-	}
-	return roots
-})
 
 // inJail reports whether path, resolved, is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {
@@ -138,108 +107,60 @@ func (h *Host) luaJails(L *glua.LState, write bool) []string {
 	return roots
 }
 
-// fsDefault implements the §9 built-in defaults for fs subjects: reads
-// inside the jail allow except secret-shaped paths, and the file tools read
-// the plugins (their skills load through them) but not a clone's .git, whose
-// config may hold a token in the remote URL; everything else asks. A
-// pipeline allows its own scratchpad (tools.Pipeline.Pad).
-func (h *Host) fsDefault(subject, arg string) perm.Decision {
-	switch subject {
-	case perm.SubjectRead, "lua.fs.read":
-		if h.secretPath(arg) {
-			return perm.Ask
-		}
-		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) ||
-			subject == perm.SubjectRead && h.inJail(arg, h.pluginsRoot()) && !inDirNamed(arg, ".git") {
-			return perm.Allow
-		}
-	case perm.SubjectWrite, "lua.fs.write":
-		if h.inJail(arg, h.writeJails()...) && !h.secretPath(arg) {
-			return perm.Ask // write stays ask inside the jail too
-		}
-	}
-	return perm.Ask
-}
-
 // luaGate runs one Lua-boundary permission check. Asks fail closed with
 // the §6.5 contract ("permission ask required"): host-API calls from Lua
 // never open the interactive overlay, so the asker is stripped from the
-// pipeline copy and an unresolved ask stays an ask for the gate to refuse.
-// req describes the call for a test zemi, where only a test.stub passes one
-// of the calls that do IO: its reply is returned and stands in for the
-// transport, a call none answers raises naming the stub to add, and a false
-// reply is refused whatever rules exist; req is a func so no other zemi
-// builds it. sandboxed is what a subject that runs a command passes: a
-// plugin's job needs "job" declared when it runs confined and
-// "job.unsandboxed" when it does not (Host.pluginSettles).
-func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any, sandboxed ...bool) (tools.Verdict, *stubReply) {
+// pipeline copy and an ask stays a refusal naming what to do. req describes
+// the call for a test zemi, where only a test.stub passes one of the calls
+// that do IO: its reply is returned and stands in for the transport, a call
+// none answers raises naming the stub to add, and a false reply is refused;
+// req is a func so no other zemi builds it.
+func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) *stubReply {
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
 	// through its callback would keep the rest.
 	if h.Inert && subject != "lua.fs.read" {
 		L.RaiseError("%s %s: permission denied (inert)", subject, arg)
 	}
-	confined := len(sandboxed) > 0 && sandboxed[0]
-	// a plugin calls nothing its manifest does not declare, and no rule widens
-	// that: the manifest is what the user reviewed when they switched it on
+	// a plugin calls nothing its manifest does not declare: the manifest is
+	// what the user reviewed when they switched it on
 	name := ""
 	if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 		name = h.PluginOf(h.RT.CurrentPath(L))
 	}
-	if cap := pluginCap(subject, confined); name != "" && cap != "" && !h.pluginDeclares(name, cap) {
+	if cap := pluginCap(subject); name != "" && cap != "" && !h.pluginDeclares(name, cap) {
 		L.RaiseError("%s %s: plugin %s declares no %q; add %q to uses in %s", subject, arg, name, cap, cap, plugin.ManifestFile)
 	}
 	stubbed := false
 	if h.test != nil {
 		var reply *stubReply
 		if reply, stubbed = h.test.reply(L, subject, arg, req); reply != nil {
-			return tools.Verdict{Decision: perm.Allow, DecidedBy: "test.stub"}, reply
+			return reply
+		}
+		if stubbed {
+			// a false stub refuses the call whatever the mode settles
+			L.RaiseError("%s %s: permission ask required: a host-API call from Lua never opens the interactive overlay", subject, arg)
 		}
 	}
-	// a program the Lua tool starts runs unconfined, so the user approves it
+	// a program the Lua tool's script starts rides the script's own approval
 	tool, approved := h.modelLuaRun(L)
 	approved = subject == "lua.job.start" && tool && approved && !stubbed
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
-	// rules are attributed to the calling code, not to the model
-	pipe.Principal = h.principal(L)
-	var v tools.Verdict
+	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	switch {
-	case stubbed:
-		v = tools.Verdict{Decision: perm.Ask}
-	case subject == "lua.job.start":
-		// a command line, normalized like a shell command so rules can scope arguments
-		// and a second command cannot ride an allow
-		o := pipe.Store.CheckCommandFor(subject, perm.Normalize(arg), pipe.Principal)
-		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: tools.ByDefault}
-		if o.Ruled() {
-			v.DecidedBy = tools.ByRule
-		}
-	default:
-		v = pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
-	}
-	switch {
-	case v.Decision == perm.Allow:
-	case v.Decision == perm.Ask && approved:
-		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByUser}
-	case v.Decision == perm.Ask && v.DecidedBy == tools.ByDefault && h.pluginSettles(name, subject, arg, confined):
-		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByPlugin}
-	case v.Decision == perm.Ask:
+	case v.Allowed:
+	case v.DecidedBy == tools.ByNobody && approved, v.DecidedBy == tools.ByNobody && h.pluginSettles(name, subject):
+		return nil
+	case v.DecidedBy == tools.ByNobody:
 		h.EmitAsync(EventPermissionRequest, map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
 		})
-		// name the rule that settles it: a host-API call has no overlay, so
-		// "ask required" is the whole problem and none of the fix
-		principal := ""
-		if _, ok := perm.CutPluginPrincipal(pipe.Principal); ok {
-			principal = pipe.Principal
-		}
-		L.RaiseError("%s %s: permission ask required; allow it in config with %s",
-			subject, arg, allowLine(subject, arg, arg, principal))
+		L.RaiseError("%s %s: permission ask required: a host-API call from Lua never opens the interactive overlay; run zemi with permissions.mode = \"allow\"", subject, arg)
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
-	return v, nil
+	return nil
 }
 
 // gateAsk is the origin gate both ask paths share: project code may not call a
@@ -251,8 +172,7 @@ func (h *Host) gateAsk(L *glua.LState, api, subject, id string, payload func() m
 	case o.Rank() <= lua.OriginProject.Rank():
 		L.RaiseError("%s: %s code may not call a model", api, o)
 	case o == lua.OriginPlugin:
-		_, stub := h.luaGate(L, subject, id, payload)
-		return stub
+		return h.luaGate(L, subject, id, payload)
 	}
 	return nil
 }
@@ -270,14 +190,10 @@ var pluginCaps = []struct{ prefix, cap string }{
 
 // pluginCap is the capability a plugin must declare for a gated subject, ""
 // when no capability covers it (lua.fs.read, zemi.state.*, zemi.env.get): a
-// subject nothing declares keeps its own default.
-func pluginCap(subject string, sandboxed bool) string {
+// subject nothing declares keeps its own gate.
+func pluginCap(subject string) string {
 	if subject == "lua.job.start" {
-		// one that asks for the sandbox does not run with the whole environment
-		if sandboxed {
-			return "job"
-		}
-		return "job.unsandboxed"
+		return "job"
 	}
 	for _, c := range pluginCaps {
 		if strings.HasPrefix(subject, c.prefix) {
@@ -289,33 +205,17 @@ func pluginCap(subject string, sandboxed bool) string {
 
 // pluginSettles reports whether the calling plugin's manifest is what answers
 // this call: its own model, agent, HTTP, file-write and job calls settle where
-// it declared the capability. A protected write, which changes what a later
-// boot runs, a secret-shaped path, and every write a read-only agent asks for
-// still ask, and a test zemi answers IO through its stubs alone.
-func (h *Host) pluginSettles(name, subject, arg string, sandboxed bool) bool {
+// it declared the capability, in either mode. A write a read-only agent asks
+// for still fails, and a test zemi answers IO through its stubs alone.
+func (h *Host) pluginSettles(name, subject string) bool {
 	if h.test != nil || name == "" {
 		return false
 	}
-	cap := pluginCap(subject, sandboxed)
+	cap := pluginCap(subject)
 	if cap == "" || !h.pluginDeclares(name, cap) {
 		return false
 	}
-	// a read-only agent changes nothing, whoever allowed it (DESIGN §9), and an
-	// unconfined job would leave it with the writable project the sandbox denies
-	if cap == "fs.write" {
-		return !h.readOnly() && !h.secretPath(arg) && !h.protectedWrite(arg)
-	}
-	return cap != "job.unsandboxed" || !h.readOnly()
-}
-
-// allowLine is the init.lua line of an allow rule, match its example.
-func allowLine(subject, pattern, match, principal string) string {
-	scope := ""
-	if principal != "" {
-		scope = ", principal = " + luaLiteral(principal)
-	}
-	return fmt.Sprintf(`zemi.permission.rule.add{ subject = %s, pattern = %s, decision = "allow", match = %s%s }`,
-		luaLiteral(subject), luaLiteral(pattern), luaLiteral(match), scope)
+	return cap != "fs.write" || !h.readOnly()
 }
 
 // zemi.env
@@ -325,9 +225,8 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		// user config reads its own keys (api_key = zemi.env.get(...));
-		// plugins and projects never see secret-shaped names, unless the run
-		// hides nothing (--unsafe)
-		if o := h.RT.CurrentOrigin(L); !h.Unsafe && perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
+		// plugins and projects never see secret-shaped names
+		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
 			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
 		}
 		// unset is nil, never "": an empty api_key registers a provider that
@@ -742,15 +641,13 @@ func (h *Host) jailedGlob(ctx context.Context, pattern string) ([]string, error)
 	return slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) }), err
 }
 
-// jailedGrep never reads secret-shaped files, which the lua.fs.read gate
-// would ask for.
+// jailedGrep searches the project's files.
 func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, error) {
 	root := h.Dirs.ProjectDir
 	files, _, err := tools.ListFiles(ctx, root, tools.ListLimit)
 	if err != nil {
 		return nil, err
 	}
-	files = slices.DeleteFunc(files, func(rel string) bool { return h.secretPath(filepath.Join(root, rel)) })
 	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
 }
 
@@ -817,16 +714,11 @@ type httpHandle struct {
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
-	origin := h.RT.CurrentOrigin(L)
-	v, stub := h.luaGate(L, subject, req.url, func() map[string]any {
+	stub := h.luaGate(L, subject, req.url, func() map[string]any {
 		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
 	})
-	// §9 localhost development opt-in: an explicit user allow rule for the
-	// host overrides the resolved-address deny, which a project's rule may not
-	// and a --unsafe run does not have.
-	allowPrivate := h.Unsafe || tools.UserRule(v.Rule) && origin.Rank() > lua.OriginProject.Rank()
 	fetch := func(ctx context.Context) (map[string]any, error) {
-		return h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
+		return h.httpFetch(ctx, req)
 	}
 	if stub != nil {
 		fetch = func(context.Context) (map[string]any, error) {
@@ -873,20 +765,13 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	return 1
 }
 
-// httpFetch performs the request with size and time caps under the same §9
-// network rules as the fetch tool: http/https only, no userinfo, denied
-// addresses refused at connect time, and every redirect hop re-gated under
-// the same subject as the calling origin (deny/ask refuses the hop, §6.5).
-func (h *Host) httpFetch(ctx context.Context, subject, principal string, allowPrivate bool, r httpReq) (map[string]any, error) {
+// httpFetch performs the request with size and time caps: http/https only,
+// no userinfo, redirects re-validated (SafeClient).
+func (h *Host) httpFetch(ctx context.Context, r httpReq) (map[string]any, error) {
 	if _, err := tools.ParseNetURL(r.url); err != nil {
 		return nil, err
 	}
-	client := tools.SafeClient(func(hop *url.URL) error {
-		if o := h.Perm.Evaluate(subject, hop.String(), principal); o.Decision != perm.Allow {
-			return fmt.Errorf("redirect to %s refused by the permission gate", hop)
-		}
-		return nil
-	}, allowPrivate)
+	client := tools.SafeClient(func(*url.URL) error { return nil })
 	client.Timeout = cmp.Or(r.timeout, 30*time.Second)
 	var body io.Reader
 	if r.body != "" {
@@ -1138,7 +1023,7 @@ func argvLine(cmd string, args []string) string {
 func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	// start runs spec = { cmd, args, env, cwd, sandbox, on_stdout(lines), on_stderr(lines),
+	// start runs spec = { cmd, args, env, cwd, on_stdout(lines), on_stderr(lines),
 	// on_exit(result) }; output is also buffered (1 MiB) for wait(). Misuse
 	// raises; a process that cannot start is the returned error.
 	start := func(L *glua.LState) (*jobHandle, error) {
@@ -1151,12 +1036,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(L, spec, "args")
-		// read before the gate: a plugin's job settles only confined, and this
-		// is what wraps it below
-		sandboxed := rawBool(L, spec, "sandbox")
-		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
+		stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
 			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(L, spec, "cwd")}
-		}, sandboxed)
+		})
 		extras := map[string]any{}
 		if envT, ok := opt[*glua.LTable](L, spec, "env"); ok {
 			if v, err := lua.ToGo(envT); err == nil {
@@ -1165,9 +1047,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 		}
-		env, err := h.Perm.ChildEnv(extras)
-		if err != nil {
-			L.RaiseError("zemi.job.start: %v", err)
+		env := append([]string{}, os.Environ()...)
+		for k, v := range extras {
+			env = append(env, k+"="+fmt.Sprint(v))
 		}
 		// own session and group (proc): kill stops its children too, and a
 		// background grandchild holding stdout does not keep the job alive
@@ -1185,20 +1067,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 		}
 		cmd.Env = env
-		guard := func() string { return "" }
-		// a program that was not found is proc.Start's returned error, not a
-		// sandbox failure
-		if sandboxed && cmd.Err == nil && stub == nil {
-			pol := h.sandboxPolicy(h.readOnly(), h.ScratchDir())
-			// never an unconfined run in its place
-			if err := sandbox.Wrap(cmd, pol); err != nil {
-				L.RaiseError("zemi.job.start: sandbox: %v", err)
-			}
-			// NOTE: on a namespace backend with a writable project this walks
-			// the project (sandboxWalkMax entries) while holding the interpreter;
-			// a snapshot taken off it would need start to return before the run.
-			guard = h.guardSandbox(pol)
-		}
 		h.lspDirty()
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
@@ -1246,7 +1114,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				jh.stdin = stdin
 			}
 			if err := proc.Start(cmd); err != nil {
-				guard()
 				if strings.ContainsAny(cmdName, " \t") {
 					return nil, fmt.Errorf("zemi.job.start: %w (cmd is the program alone; the rest goes in args = { ... })", err)
 				}
@@ -1258,9 +1125,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		h.GoSafe("job wait", func() {
 			code, err := exit()
 			h.stops.remove(stopID)
-			guard()
 			outW.flush()
-			errW.flush()
 			jh.mu.Lock()
 			jh.code = code
 			if err != nil {

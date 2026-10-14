@@ -11,7 +11,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/brain"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -514,7 +513,6 @@ func TestBrainRenameScrub(t *testing.T) {
 	// the user partition rides inside the project, so a server covers its files
 	h.Dirs.DataHome = filepath.Join(h.Dirs.ProjectDir, ".data")
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "md" } })`, os.Args[0]))
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	user, _ := h.brainParts()
 	if err := os.MkdirAll(user.Dir, 0o700); err != nil {
 		t.Fatal(err)

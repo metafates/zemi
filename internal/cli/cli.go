@@ -62,7 +62,6 @@ type options struct {
 	text             bool   // the prompt came from stdin after -: a leading / is text, never a command
 	dir              string // -C
 	trust            *bool  // --trust for this run; nil when not given
-	unsafe           bool   // --unsafe: no sandbox, no secret hiding, no SSRF deny, a trusted project
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -242,10 +241,9 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
 	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	f.StringVar(&o.mode, "mode", "", "permission `mode`: auto, yolo or one init.lua adds")
+	f.StringVar(&o.mode, "mode", "", "permission `mode`: ask or allow")
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
-	f.BoolVar(&o.unsafe, "unsafe", false, "run with no sandbox, no secret hiding and no private-address deny, in a trusted project; yolo unless --mode says otherwise, a secret-shaped path stops asking")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 	_ = c.RegisterFlagCompletionFunc("profile", completeBooted((*hostapi.Host).ProfileNames))
@@ -582,8 +580,7 @@ func modelsCommand(o *options) *cobra.Command {
 			return nil
 		},
 	}
-	// the catalog picks where each key is sent, so it lives in <data>, which
-	// no sandbox writes; nothing boots
+	// the catalog picks where each key is sent, so it lives in <data>; nothing boots
 	cmd.AddCommand(&cobra.Command{
 		Use:   "update",
 		Short: "fetch the latest model catalog",
@@ -797,14 +794,8 @@ func applyOptions(h *hostapi.Host, o options) error {
 		}
 	}
 	if o.mode != "" {
-		// checked here, after init.lua: it may add modes
+		// checked here, after init.lua: init.lua writes the key too
 		if err := h.SetPermMode(o.mode); err != nil {
-			return err
-		}
-	} else if o.unsafe {
-		// nothing confines this run, so nothing it would ask can be answered:
-		// yolo settles it, and a yolo pick is never kept for the next start
-		if err := h.SetPermMode(config.PermModeYolo); err != nil {
 			return err
 		}
 	}

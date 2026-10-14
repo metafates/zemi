@@ -166,7 +166,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	// the user names this path, so it may leave the project; a secret-shaped
 	// target is still refused, and only user or builtin code reaches here
 	// (zemi.command.run gates Go commands by origin)
-	if h.secretPath(path) {
+	if perm.PathIsSecret(path) {
 		return "", Usagef("refusing to write over %s", path)
 	}
 	md, err := SessionMarkdown(h.DB, sid, full)

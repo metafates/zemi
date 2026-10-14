@@ -23,8 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -162,10 +160,9 @@ func TestProfileTemperatureReachesRunner(t *testing.T) {
 	}
 }
 
-// TestPermissionRuleValidation covers the zemi.permission.rule contract:
-// examples must be provided and must behave exactly as the rule claims
-// (DESIGN §6.2), allow rules are user-config-only, and accepted rules
-// take effect in the permission engine.
+// TestCheckToolNames records a zemi.tool.override naming a tool nothing
+// answers to, once boot has added every Lua tool: the tool one names may
+// come from a project or a plugin, so the call that adds it cannot tell.
 // TestProviderBody: extra request-body fields are kept on the spec, and a
 // kind whose requests cannot carry them is refused where it is written.
 func TestProviderBody(t *testing.T) {
@@ -186,115 +183,21 @@ func TestProviderBody(t *testing.T) {
 	}
 }
 
-func TestPermissionRuleValidation(t *testing.T) {
+func TestCheckToolNames(t *testing.T) {
 	h, r := newTestHost(t)
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git status", decision = "allow",
-	})`, "needs a match example")
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git status", decision = "allow",
-		match = "git push",
-	})`, "does not match pattern")
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git status", decision = "allow",
-		match = "git status", scope = "permanent",
-	})`, "a rule in init.lua applies on every start")
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git *", decision = "allow",
-		not_match = "git push*", match = "git status",
-	})`, "needs both examples")
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "shell", pattern = "git status", decision = "allow", match = "git status",
-	})`, "starts with none of")
-
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.read", pattern = "*", decision = "deny", match = "x",
-	})`, `no tool asks as "tool.read": tool subjects are tool.* tool.shell tool.lua tool.workflow and tool.<a Lua tool>`)
-
-	runUser(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git status", decision = "allow",
-		match = "git status",
-	})`)
 	runUser(t, r, `
-		local rules = zemi.permission.rule.list()
-		assert(#rules == 1, "rules=" .. #rules)
-		assert(rules[1].pattern == "git status", "pattern=" .. rules[1].pattern)
-		assert(rules[1].decision == "allow", "decision=" .. rules[1].decision)
-	`)
-
-	err := r.ExecuteChunk(t.Context(), `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "git status", decision = "allow",
-		match = "git status",
-	})`, "plugin.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "only come from user config") {
-		t.Fatalf("plugin-origin allow rule: %v", err)
-	}
-
-	// Lua may always deny, from any origin.
-	runUser(t, r, `zemi.permission.rule.add({
-		subject = "tool.shell", pattern = "rm -rf *", decision = "deny",
-		match = "rm -rf /tmp/x",
-	})
-	zemi.permission.rule.add({ subject = "tool.ticket", pattern = "*", decision = "deny", match = "x" })
-	zemi.tool.add({ name = "ticket", description = "a ticket", execute = function() end })
-	zemi.permission.rule.add({ subject = "tool.bash", pattern = "*", decision = "deny", match = "x" })
-	for _, name in ipairs({ "shell", "ticket", "mcp_gh_search", "bash" }) do
-		zemi.tool.override(name, { pre = function() end })
-	end`)
+		zemi.tool.add({ name = "ticket", description = "a ticket", execute = function() end })
+		for _, name in ipairs({ "shell", "ticket", "mcp_gh_search", "bash" }) do
+			zemi.tool.override(name, { pre = function() end })
+		end`)
 	// only what no tool answers to once boot is done is named
 	h.CheckToolNames()
 	var named []string
 	for _, e := range h.errs.entries {
 		named = append(named, e.msg[:strings.Index(e.msg, ",")])
 	}
-	if want := []string{`no tool asks as "tool.bash"`, `zemi.tool.override names "bash"`}; !slices.Equal(named, want) {
+	if want := []string{`zemi.tool.override names "bash"`}; !slices.Equal(named, want) {
 		t.Fatalf("recorded %q, want %q", named, want)
-	}
-
-	if out := h.Perm.Evaluate("tool.shell", "git status", "model"); out.Decision != perm.Allow {
-		t.Fatalf("git status: %v (%s)", out.Decision, out.Reason)
-	}
-	if out := h.Perm.Evaluate("tool.shell", "git push", "model"); out.Decision != perm.Ask {
-		t.Fatalf("git push: %v (%s)", out.Decision, out.Reason)
-	}
-	if out := h.Perm.Evaluate("tool.shell", "rm -rf /tmp/x", "model"); out.Decision != perm.Deny {
-		t.Fatalf("rm -rf: %v (%s)", out.Decision, out.Reason)
-	}
-
-	// a principal scopes a user rule to one plugin; nobody else may scope one
-	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "lua.model.ask", pattern = "*", decision = "allow", match = "x", principal = "model",
-	})`, `principal must be "plugin:<name>"`)
-	err = r.ExecuteChunk(t.Context(), `zemi.permission.rule.add({
-		subject = "lua.model.ask", pattern = "*", decision = "deny", match = "x", principal = "plugin:b",
-	})`, "plugin.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "only user config scopes a rule") {
-		t.Fatalf("plugin-origin principal: %v", err)
-	}
-	runUser(t, r, `
-		zemi.permission.rule.add({ subject = "lua.model.ask", pattern = "*", decision = "allow", match = "x", principal = "plugin:a" })
-		local rules = zemi.permission.rule.list()
-		assert(rules[#rules].principal == "plugin:a", "principal=" .. tostring(rules[#rules].principal))
-	`)
-	if a, b := h.Perm.Evaluate("lua.model.ask", "x", "plugin:a"), h.Perm.Evaluate("lua.model.ask", "x", "plugin:b"); a.Decision != perm.Allow || b.Decision == perm.Allow {
-		t.Fatalf("plugin:a %v, plugin:b %v", a.Decision, b.Decision)
-	}
-
-	// A reload replays config, so its rules go; an "always" answer keeps its.
-	always := perm.Rule{Subject: "tool.shell", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
-	h.Perm.Add(always)
-	for range 2 {
-		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := h.Perm.Rules(); !slices.Equal(got, []perm.Rule{always}) {
-		t.Fatalf("rules after reload: %+v", got)
 	}
 }
 
@@ -308,7 +211,6 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
 	initLua := filepath.Join(dir, "init.lua")
 	const head = `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "e" }, { id = "z" } } })
-zemi.permission.mode.add("wild", { base = "yolo" })
 `
 	if err := os.WriteFile(initLua, []byte(head), 0o600); err != nil {
 		t.Fatal(err)
@@ -335,8 +237,6 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 		source   string // cfgSource after the reload
 		keep     bool   // KeepPicks for the pick: off is a flag's
 		restart  bool   // a new zemi instead of a reload
-		row      string // a kv row written straight to the global store before the restart
-		unkept   bool   // the pick must leave no row in the global store
 	}{
 		{name: "first load applies config", config: []any{"p/a"}, want: "p/a", source: "init.lua"},
 		{name: "unchanged config keeps a pick", config: []any{"p/a"}, pick: "p/b", want: "p/b", source: "this run"},
@@ -348,8 +248,8 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 		{name: "a pick outlives the last set", pick: "p/e", want: "p/e", source: "this run"},
 		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
 		{name: "dropping every set returns the default", want: "", source: "default"},
-		{name: "a key's own setter is a config write", key: "permissions.mode", set: "zemi.permission.mode.set(%[2]s)", config: []any{"yolo"}, want: "yolo", source: "init.lua"},
-		{name: "and keeps a pick like one", key: "permissions.mode", set: "zemi.permission.mode.set(%[2]s)", config: []any{"yolo"}, pick: "auto", want: "auto", source: "this run"},
+		{name: "a key's own setter is a config write", key: "permissions.mode", config: []any{"ask"}, want: "ask", source: "init.lua"},
+		{name: "and keeps a pick like one", key: "permissions.mode", config: []any{"ask"}, pick: "allow", want: "allow", source: "this run"},
 		{name: "a Lua number sets a number key", key: "ui.composer.history", config: []any{5.0}, want: 5.0, source: "init.lua"},
 		{name: "so dropping it returns the default", key: "ui.composer.history", want: 50.0, source: "default"},
 		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
@@ -359,9 +259,6 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 		{name: "dropping the line restores the pick", want: "p/c", source: "saved"},
 		{name: "reset forgets it", pick: "reset", keep: true, want: "", source: "default"},
 		{name: "for good", restart: true, want: "", source: "default"},
-		{name: "yolo is not saved", key: "permissions.mode", pick: "yolo", keep: true, unkept: true, restart: true, want: "auto", source: "default"},
-		{name: "nor a mode based on it", key: "permissions.mode", pick: "wild", keep: true, unkept: true, restart: true, want: "auto", source: "default"},
-		{name: "nor loaded", key: "permissions.mode", row: `"yolo"`, restart: true, want: "auto", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
 		key := cmp.Or(c.key, "models.chat")
@@ -384,14 +281,6 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 				t.Fatal(err)
 			}
 		}
-		if _, err := h.GlobalDB.GetKV("config:" + key); c.unkept && !errors.Is(err, store.ErrNotFound) {
-			t.Errorf("%s: the pick left a row in the global store (%v)", c.name, err)
-		}
-		if c.row != "" {
-			if err := h.GlobalDB.SetKV("config:"+key, c.row); err != nil {
-				t.Fatal(err)
-			}
-		}
 		if c.restart {
 			start()
 		} else if err := h.ForceReload(t.Context(), steps()); err != nil {
@@ -407,7 +296,7 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 }
 
 // TestReloadKeepsUserVetoes: while a reload replays config, tool calls are
-// still checked against the old Lua rules and wait for the tool.pre handlers
+// still checked against the old Lua veto and wait for the tool.pre handlers
 // to come back instead of passing without them.
 func TestReloadKeepsUserVetoes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -420,24 +309,17 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 		}
 		initLua := filepath.Join(dir, "init.lua")
 		src := `
-		zemi.permission.rule.add({ subject = "tool.shell", pattern = "rm *", decision = "deny", match = "rm x" })
 		zemi.event.on("tool.pre", function() return { decision = "deny", reason = "vetoed" } end)`
 		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		runUser(t, r, src+`
-		zemi.permission.rule.add({ subject = "tool.shell", pattern = "curl *", decision = "deny", match = "curl x" })`)
-		decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
 
 		pre := h.toolPreHook()
 		var vetoed tools.PreVerdict
 		done := make(chan struct{})
 		probe := lua.BootStep{Name: "probe", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
-			if d := decision("rm x"); d != perm.Deny {
-				t.Errorf("mid-reload rm x = %v, want deny", d)
-			}
 			go func() {
-				vetoed, _, _, _ = pre("shell", map[string]any{"command": "ls"})
+				vetoed, _, _ = pre("shell", map[string]any{"command": "ls"})
 				close(done)
 			}()
 			// virtual time: a hook that could return would have by now
@@ -456,19 +338,6 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 		<-done
 		if vetoed != "deny" {
 			t.Fatalf("tool.pre during reload = %q, want deny", vetoed)
-		}
-		if decision("rm x") != perm.Deny || decision("curl x") == perm.Deny {
-			t.Fatalf("after reload: rm x %v, curl x %v", decision("rm x"), decision("curl x"))
-		}
-		// the replayed rule is tracked again, so a config without it drops it
-		if err := os.WriteFile(initLua, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
-			t.Fatal(err)
-		}
-		if d := decision("rm x"); d == perm.Deny {
-			t.Fatal("a rule the config no longer adds survived the reload")
 		}
 	})
 }
@@ -554,52 +423,6 @@ func TestModelNamespace(t *testing.T) {
 		assert(#zemi.model.list() == 1, "re-register must replace, not add")
 	`)
 	runExpectErr(t, r, `zemi.provider.add({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
-}
-
-// TestFsDefaults pins the §9 built-in permission defaults: reads inside
-// the jail allow unless the path is secret-shaped; everything else asks.
-// The Lua boundary fails closed on asks (DESIGN §6.5).
-func TestFsDefaults(t *testing.T) {
-	h, r := newTestHost(t)
-	proj := h.Dirs.ProjectDir
-
-	if out := h.Perm.Evaluate("fs.read", filepath.Join(proj, "main.go"), "model"); out.Decision != perm.Allow {
-		t.Fatalf("in-jail read: %v (%s)", out.Decision, out.Reason)
-	}
-	if out := h.Perm.Evaluate("fs.read", filepath.Join(proj, ".env"), "model"); out.Decision != perm.Ask {
-		t.Fatalf(".env read: %v (%s)", out.Decision, out.Reason)
-	}
-	if out := h.Perm.Evaluate("fs.read", "/etc/hosts", "model"); out.Decision != perm.Ask {
-		t.Fatalf("out-of-jail read: %v (%s)", out.Decision, out.Reason)
-	}
-	if out := h.Perm.Evaluate("fs.write", filepath.Join(proj, "main.go"), "model"); out.Decision != perm.Ask {
-		t.Fatalf("in-jail write: %v (%s)", out.Decision, out.Reason)
-	}
-	if !h.inJail("/etc/hosts", "/") {
-		t.Fatal("a root of / holds nothing")
-	}
-
-	// In-jail reads pass the gate (file may be missing; that is a plain
-	// read error, not a permission failure).
-	runUser(t, r, `
-		local ok, err = pcall(function() return zemi.fs.read("main.go") end)
-		if not ok and tostring(err):find("permission ask required", 1, true) then
-			error("in-jail read was gated: " .. tostring(err))
-		end
-	`)
-	runExpectErr(t, r, `zemi.fs.read("/etc/hosts")`, "outside the jail")
-	// judged by its name too, not only by its innocently named target
-	os.WriteFile(filepath.Join(proj, "notes.txt"), []byte("K=v"), 0o644)
-	if err := os.Symlink("notes.txt", filepath.Join(proj, ".env")); err != nil {
-		t.Fatal(err)
-	}
-	runExpectErr(t, r, `zemi.fs.read(".env")`, "permission ask required")
-	runExpectErr(t, r, `zemi.ui.edit(".env", {}, function() end)`, "permission ask required")
-	pipe := h.PipelineFor()
-	pipe.Ask = nil
-	if v := pipe.Check(tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Ask {
-		t.Fatalf("model read of the .env link: %+v", v)
-	}
 }
 
 // TestSessionNamespace covers the session surface: empty id before the
@@ -801,31 +624,34 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 	}
 }
 
-// TestPipelineForCheck verifies the model-principal pipeline the host
-// builds for agent tool calls: rules decide, unresolved asks fail closed
-// when no UI is attached, and an asker resolves them (DESIGN §6.2).
+// TestPipelineForCheck verifies the pipeline the host builds for agent tool
+// calls: ask mode leaves every action to the user, an unresolved ask fails
+// closed when no UI is attached, and an asker resolves it (DESIGN §6.2).
 func TestPipelineForCheck(t *testing.T) {
 	h, _ := newTestHost(t)
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	pipe := h.PipelineFor()
 
-	// No rules, no UI: the ask hook fails closed.
-	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Decision != perm.Deny || v.DecidedBy != tools.ByNobody {
-		t.Fatalf("unruled shell: %v by %q (%s)", v.Decision, v.DecidedBy, v.Reason)
-	}
-
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "git status", Decision: perm.Allow, Principal: "model"})
-	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Decision != perm.Allow {
-		t.Fatalf("ruled shell: %v (%s)", v.Decision, v.Reason)
-	}
-	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git push"}); v.Decision != perm.Deny {
-		t.Fatalf("other shell: %v (%s)", v.Decision, v.Reason)
+	// No UI: the ask hook fails closed.
+	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Allowed || v.DecidedBy != tools.ByNobody {
+		t.Fatalf("unanswered shell: %+v (%s)", v, v.Reason)
 	}
 
 	// An asker (the UI overlay) resolves the leftover ask.
 	pipe2 := h.PipelineFor()
 	pipe2.Ask = func(req tools.Request) (bool, string, string) { return true, "user:once", "" }
-	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git push"}); v.Decision != perm.Allow || v.DecidedBy != "user:once" {
-		t.Fatalf("asked shell: %v by %q", v.Decision, v.DecidedBy)
+	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != "user:once" {
+		t.Fatalf("asked shell: %+v by %q", v, v.DecidedBy)
+	}
+
+	// Allow mode, the default, settles the same call on its own.
+	h.SetPermMode("allow")
+	pipe3 := h.PipelineFor()
+	pipe3.Ask = nil
+	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByMode("allow") {
+		t.Fatalf("allowed shell: %+v by %q", v, v.DecidedBy)
 	}
 }
 
@@ -938,38 +764,6 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
 	f.planAsked++
 	return f.planVerdict, f.planOK
-}
-
-// TestAskHookAlwaysStoresRules drives the real askHook (veto event, UI
-// overlay, rule storage) through the model pipeline: an "always" answer
-// stores the command's prefix rules, which answer the next check without
-// asking (DESIGN §6.2).
-func TestAskHookAlwaysStoresRules(t *testing.T) {
-	h, _ := newTestHost(t)
-	fakeSandbox(h, true)
-	ui := &fakeUI{askAllowed: true, askBy: "user:always"}
-	h.SetUIHooks(ui)
-
-	pipe := h.PipelineFor()
-	v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git push origin main"})
-	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
-		t.Fatalf("always shell: %v by %q", v.Decision, v.DecidedBy)
-	}
-	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow git push outside the sandbox" {
-		t.Fatalf("asked: %+v", ui.asked)
-	}
-	rules := h.Perm.Rules()
-	if len(rules) != 2 || rules[1].Pattern != "git push *" || rules[1].Decision != perm.Allow {
-		t.Fatalf("stored rules: %+v", rules)
-	}
-
-	// The prefix rule answers the next push without asking again.
-	if got := h.PipelineFor().Check(tools.Request{Subject: "tool.shell", Arg: "git push origin feature"}); got.Decision != perm.Allow {
-		t.Fatalf("ruled re-check: %v by %q", got.Decision, got.DecidedBy)
-	}
-	if len(ui.asked) != 1 {
-		t.Fatalf("ruled re-check must not ask: %+v", ui.asked)
-	}
 }
 
 // TestMemoryToolThroughPipeline drives the memory tool as the model sees
@@ -1338,200 +1132,6 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 	}
 	if !slices.Equal(todos, want) {
 		t.Fatalf("settled list = %+v, want %+v", todos, want)
-	}
-}
-
-func TestAlwaysChoice(t *testing.T) {
-	h, _ := newTestHost(t)
-	fakeSandbox(h, false) // the effect cases below settle it
-	t.Chdir(h.Dirs.ProjectDir)
-	proj := perm.RealPath(h.Dirs.ProjectDir) // rules name the resolved dir
-	home := perm.RealPath(os.Getenv("HOME"))
-	for _, c := range []struct {
-		req      tools.Request
-		label    string
-		patterns []string
-	}{
-		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && git diff"}, "allow go test and git diff", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
-		// a quoted program name is one word: `my *` would allow program my
-		{tools.Request{Subject: "tool.shell", Arg: "'my tool' --x"}, "allow my tool", []string{"my tool", "my tool *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
-		// shell syntax is no command, and a no-op builtin is not named
-		{tools.Request{Subject: "tool.shell", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"ls", "ls *", "cat", "cat *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "if true; then ls; fi"}, "allow ls", []string{"true", "true *", "ls", "ls *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "for f in $(ls); do rm $f; done"}, "", nil},
-		// syntax is named when nothing else is, so the label says what the rules allow
-		{tools.Request{Subject: "tool.shell", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
-		// read evaluates a quoted subscript, which can run $(...): exact
-		{tools.Request{Subject: "tool.shell", Arg: "read n"}, "allow this exact command", []string{"read n"}},
-		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
-		{tools.Request{Subject: "tool.shell", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
-		{tools.Request{Subject: "tool.shell", Arg: "git status && rm -rf build && rm -f x"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build", "rm -f x"}},
-		{tools.Request{Subject: "tool.shell", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
-		{tools.Request{Subject: "tool.shell", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
-		{tools.Request{Subject: "tool.shell", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
-		{tools.Request{Subject: "tool.shell", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
-		// a destructive subcommand too: `git clean` as a whole covers -fdx
-		{tools.Request{Subject: "tool.shell", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
-		{tools.Request{Subject: "tool.shell", Arg: "PATH=/tmp ls"}, "", nil},
-		// a leading option keeps the subcommand pair, never the bare program
-		{tools.Request{Subject: "tool.shell", Arg: "git --no-pager log -5"}, "allow git --no-pager log", []string{"git --no-pager log", "git --no-pager log *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "git -C sub status"}, "allow git -C sub status", []string{"git -C sub status", "git -C sub status *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "cargo +nightly build"}, "allow cargo +nightly build", []string{"cargo +nightly build", "cargo +nightly build *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "git -C /other/repo status"}, "allow git -C /other/repo status", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
-		// kubectl's -s takes a value, so prod is not its subcommand
-		{tools.Request{Subject: "tool.shell", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
-		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
-		{tools.Request{Subject: "tool.shell", Arg: "/usr/bin/git push"}, "allow /usr/bin/git push", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "Git push"}, "allow Git push", []string{"Git push", "Git push *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "/usr/bin/git"}, "allow this exact command", []string{"/usr/bin/git"}},
-		// a bare subcommand program stays exact too: `git *` is every subcommand
-		{tools.Request{Subject: "tool.shell", Arg: "git"}, "allow this exact command", []string{"git"}},
-		{tools.Request{Subject: "tool.shell", Arg: "npx prettier --check ."}, "", nil},
-		// interpreters and wrappers run whatever they are handed: no rule
-		// written from one of these says what the next call would run
-		{tools.Request{Subject: "tool.shell", Arg: "bash -c 'go test ./...'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "/bin/sh -lc 'ls'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "baſh -c id"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "zsh script.sh"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "node -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "python3 -c 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "perl -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "ruby -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "env FOO=1 ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "sudo ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "xargs rm"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "nohup ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "time ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "trap 'rm -rf x' EXIT"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "coproc ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && sudo ls"}, "", nil},
-		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/ and below", []string{filepath.Join(proj, "internal", "*")}},
-		// home, / and above hold every dotfile: only the file, named with ~
-		{tools.Request{Subject: "fs.write", Arg: filepath.Join(home, ".zshrc")}, "allow edits of ~/.zshrc", []string{filepath.Join(home, ".zshrc")}},
-		{tools.Request{Subject: "fs.write", Arg: "/foo.txt"}, "allow edits of /foo.txt", []string{"/foo.txt"}},
-		{tools.Request{Subject: "fs.read", Arg: filepath.Join(home, "notes", "a.md")}, "allow reads in ~/notes/ and below", []string{filepath.Join(home, "notes", "*")}},
-		// the gate asks about a protected write whatever the rules say
-		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".agents", "init.lua")}, "", nil},
-		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says
-		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads of .env", []string{filepath.Join(proj, ".env")}},
-		{tools.Request{Subject: "fs.read", Arg: "main.go"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
-		// the subcommand spellings of npx and uvx, and a wrapper name, offer nothing
-		{tools.Request{Subject: "tool.shell", Arg: "npm exec prettier -- --check ."}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "pnpm dlx x"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "uv run x.py"}, "", nil},
-		// an unknown option may take the next word, so the subcommand is not sure
-		{tools.Request{Subject: "tool.shell", Arg: "npm -w web test"}, "allow this exact command", []string{"npm -w web test"}},
-		{tools.Request{Subject: "tool.shell", Arg: "uv --directory sub run pytest"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "busybox ls"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "zemi plugins"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "awk '{print}' f"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "npm run build"}, "allow npm run", []string{"npm run", "npm run *"}},
-		{tools.Request{Subject: "tool.shell", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
-		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
-		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
-		{tools.Request{Subject: "memory.write", Arg: "e9865952"}, "", nil},
-		{tools.Request{Subject: "tool.jira_create", Arg: "jira_create"}, "allow the jira_create tool", []string{"jira_create"}},
-		{tools.Request{Subject: "mcp.github", Arg: "create_issue"}, "allow create_issue from github", []string{"create_issue"}},
-		{tools.Request{Subject: "tool.shell", Arg: "rm *.tmp"}, "", nil},
-		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && ls ?"}, "", nil},
-		{tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "*", "notes.md")}, "", nil},
-		{tools.Request{Subject: "net.*", Arg: "https://*/"}, "", nil},
-	} {
-		label, rules := h.alwaysChoice(c.req)
-		var pats []string
-		for _, r := range rules {
-			pats = append(pats, r.Pattern)
-		}
-		if label != c.label || strings.Join(pats, "|") != strings.Join(c.patterns, "|") {
-			t.Errorf("%s %q: label %q rules %q", c.req.Subject, c.req.Arg, label, pats)
-		}
-	}
-	// a whole-command rule lets the next run differ in its arguments
-	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "ls -la"})
-	s := new(perm.Store)
-	for _, r := range rules {
-		s.Add(r)
-	}
-	if o := s.CheckCommandFor(perm.SubjectShell, perm.Normalize("ls -R src"), "model"); o.Decision != perm.Allow {
-		t.Errorf("ls -R src after allow `ls` = %v, want allow", o)
-	}
-	// a deleter's exact rule does not cover another target
-	_, del := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "rm build.tmp"})
-	s2 := new(perm.Store)
-	for _, r := range del {
-		s2.Add(r)
-	}
-	if o := s2.CheckCommandFor(perm.SubjectShell, perm.Normalize("rm src.orig"), "model"); o.Decision == perm.Allow {
-		t.Errorf("rm src.orig after allow `rm build.tmp` must ask, got %v", o)
-	}
-	// a read deep in a tree also offers the whole repository
-	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
-	os.MkdirAll(filepath.Join(proj, "internal", "api"), 0o755)
-	label, rules := h.repoChoice(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "internal", "api", "x.go")})
-	if label != "allow reads anywhere in the project" || len(rules) != 1 || rules[0].Pattern != filepath.Join(proj, "*") {
-		t.Errorf("repo choice: %q %+v", label, rules)
-	}
-	if label, _ := h.repoChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}); label != "" {
-		t.Errorf("writes must not offer the repository: %q", label)
-	}
-	if label, _ := h.repoChoice(tools.Request{Subject: "fs.read", Arg: filepath.Join(t.TempDir(), "x.go")}); label != "" {
-		t.Errorf("a file in no repository: %q", label)
-	}
-	// what the pipeline decides: the rule, then the protected-write re-ask
-	pipe := h.PipelineFor()
-	pipe.Ask = nil // an ask comes back as Ask instead of reaching a prompt
-	for approved, cases := range map[string]map[string]perm.Decision{
-		"main.go": {
-			"main.go": perm.Allow, "internal/a.go": perm.Allow, ".gitignore": perm.Allow, ".gitkeep": perm.Allow,
-			".github/workflows/ci.yml": perm.Allow, ".gitlab-ci.yml": perm.Allow,
-			".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask, "sub/.gitmodules": perm.Ask,
-		},
-		".gitmodules": {".gitmodules": perm.Ask},
-		"sub/.git":    {"sub/.git": perm.Ask},
-	} {
-		_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, approved)})
-		for _, r := range rules {
-			h.Perm.Add(r)
-		}
-		for arg, want := range cases {
-			if got := pipe.Check(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, arg)}).Decision; got != want {
-				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, got, want)
-			}
-		}
-	}
-	// a segment this manager already allows for the session is not listed or
-	// re-ruled: only the still-new programs get a name and a rule
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
-	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "go test ./x && go vet"})
-	if label != "allow go vet" {
-		t.Errorf("already-allowed segment must not be listed: %q", label)
-	}
-	var pats []string
-	for _, r := range rules {
-		pats = append(pats, r.Pattern)
-	}
-	if strings.Join(pats, "|") != "go vet|go vet *" {
-		t.Errorf("already-allowed segment must not get a rule: %q", pats)
-	}
-	// when everything is already allowed there is nothing to offer: a label
-	// with no rules would still let the project answer persist the line
-	if label, rules := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "go test ./x"}); label != "" || len(rules) != 0 {
-		t.Errorf("all-allowed command must offer nothing: %q %+v", label, rules)
-	}
-	// the label says where the allowed command will run
-	fakeSandbox(h, true)
-	for req, want := range map[tools.Request]string{
-		{Subject: "tool.shell", Arg: "ls -la"}:                 "allow ls outside the sandbox",
-		{Subject: "tool.shell", Arg: "ls -la", Network: true}:  "allow ls with the network",
-		{Subject: "tool.shell", Arg: "ls -la", ReadOnly: true}: "allow ls outside the sandbox",
-	} {
-		if label, _ := h.alwaysChoice(req); label != want {
-			t.Errorf("%+v: label %q, want %q", req, label, want)
-		}
 	}
 }
 
@@ -1943,100 +1543,6 @@ func TestMaxOutput(t *testing.T) {
 	}
 }
 
-// TestAlwaysRuleSkipsProtectedWrites: a broad allow for the project still
-// asks for writes under a nested .agents or .git, but not for the scratchpad.
-func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.agents.sessionID = "s1"
-	h.Dirs.DataHome = t.TempDir()
-	proj := perm.RealPath(h.Dirs.ProjectDir)
-	plugin := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local", "p", plugin.InitFile)
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.StateHome), "*"), Decision: perm.Allow, Principal: "model"})
-	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.DataHome), "*"), Decision: perm.Allow, Principal: "model"})
-	if label, _ := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: plugin}); label != "" {
-		t.Errorf("a local plugin write offers %q", label)
-	}
-	pipe := h.PipelineFor()
-	for _, c := range []struct {
-		path string
-		want perm.Decision
-	}{
-		{filepath.Join(proj, "main.go"), perm.Allow},
-		{filepath.Join(proj, "pkg", ".agents", "init.lua"), perm.Deny},
-		{filepath.Join(proj, "pkg", ".git", "config"), perm.Deny},
-		{plugin, perm.Deny},
-		{filepath.Join(h.ScratchDir(), "notes.md"), perm.Allow},
-	} {
-		if v := pipe.Check(tools.Request{Subject: "fs.write", Arg: c.path}); v.Decision != c.want {
-			t.Errorf("%s: %s (%s), want %s", c.path, v.Decision, v.Reason, c.want)
-		}
-	}
-}
-
-// TestAlwaysRuleSkipsSecrets: "allow reads anywhere in the project" is a
-// directory glob, and the label does not say "including every .env and
-// *.pem in it", so those still ask. A rule the user wrote does not.
-func TestAlwaysRuleSkipsSecrets(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	h.agents.sessionID = "s1"
-	proj := perm.RealPath(h.Dirs.ProjectDir)
-	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
-	pipe := h.PipelineFor()
-	for _, c := range []struct {
-		path string
-		want perm.Decision
-	}{
-		{filepath.Join(proj, "main.go"), perm.Allow},
-		{filepath.Join(proj, ".env"), perm.Deny},
-		{filepath.Join(proj, "deploy", "prod.pem"), perm.Deny},
-	} {
-		if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: c.path}); v.Decision != c.want {
-			t.Errorf("%s: %s (%s), want %s", c.path, v.Decision, v.Reason, c.want)
-		}
-	}
-	// an always answer for the one file the user saw names it exactly
-	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "deploy", "prod.pem"), Decision: perm.Allow, Principal: "model"})
-	if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "deploy", "prod.pem")}); v.Decision != perm.Allow {
-		t.Errorf("an exact model rule for prod.pem: %s (%s)", v.Decision, v.Reason)
-	}
-	// the user's own rule means what it says
-	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, ".env"), Decision: perm.Allow})
-	if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Allow {
-		t.Errorf("a user rule for .env: %s (%s)", v.Decision, v.Reason)
-	}
-	// "allow cat" was answered for a file the user saw; a later cat of a
-	// secret-shaped file, or of a glob that may expand to one, asks again
-	t.Chdir(proj)
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "cat *", Decision: perm.Allow, Principal: "model"})
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "head *", Decision: perm.Allow, Source: "permissions"})
-	for _, c := range []struct {
-		cmd  string
-		want perm.Decision
-	}{
-		{"cat main.go", perm.Allow},
-		{"cat .env", perm.Deny},
-		{"cat ~/.ssh/id_rsa", perm.Deny},
-		// no secret name, but a path the sandbox hides from confined commands
-		{"cat ~/.kube/config", perm.Deny},
-		{"cat $HOME/.config/gh/hosts.yml", perm.Deny},
-		{"cat .e*", perm.Deny},
-		{"grep -r secret .", perm.Allow},
-		{"make .env", perm.Allow},
-		{"head deploy/prod.pem", perm.Deny},
-		{"cat main.go && head .npmrc", perm.Deny},
-	} {
-		if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: c.cmd}); v.Decision != c.want {
-			t.Errorf("%s: %s (%s), want %s", c.cmd, v.Decision, v.Reason, c.want)
-		}
-	}
-	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "cat .env", Decision: perm.Allow})
-	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "cat .env"}); v.Decision != perm.Allow {
-		t.Errorf("a user rule for cat: %s (%s)", v.Decision, v.Reason)
-	}
-}
-
 // TestHeadlessToolsetDropsPrompts: a zemi run has nobody to answer a
 // question, approve a plan, open an editor or watch a window, so those
 // schemas never ship with it, the prompt stops telling the model to use
@@ -2044,6 +1550,9 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 // at idle would throw away.
 func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	h, _ := newTestHost(t)
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
+	}
 	names := func() map[string]bool {
 		out := map[string]bool{}
 		toolset, _ := h.profileTools(nil)
@@ -2065,13 +1574,15 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	if strings.Contains(sys, "question tool") || strings.Contains(sys, "Ask before") || strings.Contains(sys, "ask why") {
 		t.Error("the headless prompt still tells the model to ask")
 	}
-	// every fetch and search would be denied: no rule allows one
+	// in ask mode every fetch and search would be denied: nobody answers one
 	if names()[tools.ToolFetch] || names()[tools.ToolWebSearch] || slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
-		t.Error("the headless toolset ships the web tools no rule allows")
+		t.Error("the headless toolset ships the web tools nothing can settle")
 	}
-	h.Perm.Add(perm.Rule{Subject: "net.*", Pattern: "https://docs.example.com/*", Decision: perm.Allow})
+	if err := h.SetPermMode("allow"); err != nil {
+		t.Fatal(err)
+	}
 	if !names()[tools.ToolFetch] || !slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
-		t.Error("a net allow rule does not bring the web tools back")
+		t.Error("allow mode does not bring the web tools back")
 	}
 
 	h.SetUIHooks(&fakeUI{})

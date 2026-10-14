@@ -195,8 +195,8 @@ func (h *Host) modelSkills() []skill.Skill {
 	return slices.DeleteFunc(h.enabledSkills(), func(s skill.Skill) bool { return s.DisableModelInvocation })
 }
 
-// recipesDir holds a project's recipes: skills private to this machine, kept
-// outside the repository where no sandboxed command can write.
+// recipesDir holds a project.s recipes: skills private to this machine, kept
+// outside the repository.
 func (h *Host) recipesDir() string {
 	if h.Dirs.StateHome == "" {
 		return ""

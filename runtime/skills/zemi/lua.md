@@ -1,12 +1,12 @@
 # zemi Lua
 
-zemi runs Lua 5.1 (gopher-lua) in a sandbox. There is no `io` and no C modules, and `os` keeps only `time`, `date` and `clock`; filesystem, network and processes go through `zemi.fs`, `zemi.http` and `zemi.job`, each behind the permission engine. The `zemi.*` tables are frozen: you cannot add or replace members, and reading a member a namespace does not have raises with the list of the ones it does.
+zemi runs Lua 5.1 (gopher-lua) in a sandbox. There is no `io` and no C modules, and `os` keeps only `time`, `date` and `clock`; filesystem, network and processes go through `zemi.fs`, `zemi.http` and `zemi.job`, each behind the permission gate. The `zemi.*` tables are frozen: you cannot add or replace members, and reading a member a namespace does not have raises with the list of the ones it does.
 
 ## Origins
 
-Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) > `builtin` (shipped) > `plugin` (`<data>/plugins/installed|local/<name>`) > `project` (`<repo>/.agents`). A call runs as the least trusted code on its stack, so a plugin's `setup()` that init.lua calls runs as the plugin, not as user config. A registration with the same id from a lower origin is refused; the same origin replaces its own, except that one plugin can neither replace nor remove another's, and a binding may not be a prefix or an extension of a more trusted key. Only `user` may register providers, add allow rules or decide learning proposals. Below `builtin`, code may not call `zemi.model.set` or run a more trusted origin's command with `zemi.command.run`, and a project handler cannot deny `app.quit`.
+Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) > `builtin` (shipped) > `plugin` (`<data>/plugins/installed|local/<name>`) > `project` (`<repo>/.agents`). A call runs as the least trusted code on its stack, so a plugin's `setup()` that init.lua calls runs as the plugin, not as user config. A registration with the same id from a lower origin is refused; the same origin replaces its own, except that one plugin can neither replace nor remove another's, and a binding may not be a prefix or an extension of a more trusted key. Only `user` may register providers, switch the permission mode or decide learning proposals. Below `builtin`, code may not call `zemi.model.set` or run a more trusted origin's command with `zemi.command.run`, and a project handler cannot deny `app.quit`.
 
-Lua calls to gated APIs (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify.ask`, and a plugin's `zemi.agent.send` and `zemi.model.ask`) never open a prompt. A plugin's own call settles where its manifest (`uses`, `plugins.md`) declares it - and a call it does not declare is refused, naming the line to add, with no rule of the user's widening it - except a write to its own code, another plugin's, `.git`, the Lua in `.agents`, zemi's own files or a secret-shaped path, except a write of a read-only run, and except `zemi.job.start` without `sandbox = true`, which needs `job.unsandboxed` since it runs with the whole environment; a user or project call raises `permission ask required` with the `zemi.permission.rule.add` line that allows it, which only the user's init.lua may add (show it to the user and ask before adding it), and `principal = "plugin:<name>"` on such a line scopes it to one plugin. A rule's `deny` refuses whoever calls, and no permission mode allows such a call, yolo included.
+A gated host-API call (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify.ask`, and a plugin's `zemi.agent.send` and `zemi.model.ask`) never opens a prompt. A plugin's own call settles where its manifest (`uses`, `plugins.md`) declares it, in either mode, and a call it does not declare is refused, naming the line to add. A user or project call that would ask in ask mode raises `permission ask required`; the fix is allow mode (`zemi.permission.mode.set("allow")`, or `permissions.mode = "allow"` in init.lua).
 
 In plugin and project code, `setmetatable` takes only that code's own Lua functions as handlers (a `zemi.*` member, a builtin helper or another plugin's function raises) and reads them when it runs, so set every handler before the call. `plugins.md` lists what a plugin cannot do.
 
@@ -22,11 +22,11 @@ In plugin and project code, `setmetatable` takes only that code's own Lua functi
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 - Once a `pcall` catches an error, closures made before it stop sharing locals with the function that made them (gopher-lua): a later `n = n + 1` inside one is lost outside it. Share state through a table (`local got = {}`), or return values out of the `pcall`.
 - Module locals die on a reload. `zemi.state` is persisted and shared by every project and running zemi, so put the project in the key (`"branch:" .. zemi.project.root()`) and keep what only this run needs in a local. Each plugin and project code get their own space (stored under `plugin:<name>:` or `project:`) and never see user keys; user config sees them all.
-- Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette key or an ANSI color name, a rule subject outside `tool. fs. net. lua. mcp. memory.`, a printable key with no `focus`, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no `description` or with a wrapped `input` all raise.
+- Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette key or an ANSI color name, a printable key with no `focus`, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no `description` or with a wrapped `input` all raise.
 
 ## Waiting
 
-A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `zemi.job.wait` suspend the task that calls them: the interpreter serves keys, renders and other callbacks until the result is there, and the task goes on after the call. A task is a Lua tool's `execute`, a Lua command, a keymap function, an overlay callback (`on_select`, `on_action`, `on_close`, `keys`, `reload`), an `on_done` or `on_exit` callback, a `tool.post` handler, a permission mode's `decide`, and a lua tool script. Anywhere else `wait` raises: in a widget render, any other event handler, a timer callback, `on_stdout`, a completion source or a health check use the callback form (`on_done`, `on_exit`) instead. It also raises under `pcall` and inside a library callback such as a `table.sort` comparator or a `gsub` function, and in a coroutine you made: call it outside them and check its `nil, err`. `return job:wait()` is fine. A keymap or command that waits lets the next key run, so two presses can interleave, and a reload ends every waiting task at once.
+A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `zemi.job.wait` suspend the task that calls them: the interpreter serves keys, renders and other callbacks until the result is there, and the task goes on after the call. A task is a Lua tool's `execute`, a Lua command, a keymap function, an overlay callback (`on_select`, `on_action`, `on_close`, `keys`, `reload`), an `on_done` or `on_exit` callback, a `tool.post` handler, and a lua tool script. Anywhere else `wait` raises: in a widget render, any other event handler, a timer callback, `on_stdout`, a completion source or a health check use the callback form (`on_done`, `on_exit`) instead. It also raises under `pcall` and inside a library callback such as a `table.sort` comparator or a `gsub` function, and in a coroutine you made: call it outside them and check its `nil, err`. `return job:wait()` is fine. A keymap or command that waits lets the next key run, so two presses can interleave, and a reload ends every waiting task at once.
 
 ## The lua tool
 
@@ -127,13 +127,7 @@ zemi.tool.add({
 	end,
 })
 
--- Guidance ships with the tool; state lives in a data dir (the rule is the user's to add)
-zemi.permission.rule.add({
-	subject = "lua.fs.write",
-	pattern = zemi.fs.data_dir("tickets") .. "/*",
-	decision = zemi.permission.decision.ALLOW,
-	match = zemi.fs.data_dir("tickets") .. "/seen.json",
-})
+-- Guidance ships with the tool; state lives in a data dir
 zemi.tool.add({
 	name = "ticket_seen",
 	description = "mark a ticket as seen",
@@ -148,14 +142,13 @@ zemi.tool.add({
 })
 
 -- Run the project's tests after the model changes Go files: only in a trusted project,
--- confined, from the repository root.
+-- from the repository root.
 zemi.event.on("tool.post", function(ev)
 	if not zemi.project.trusted() or not table.concat(ev.changed, " "):find("%.go") then return end
 	zemi.job.start({
 		cmd = "go",
 		args = { "test", "./..." },
 		cwd = zemi.project.root(),
-		sandbox = true,
 		on_exit = function(res) zemi.log.info("go test: " .. res.stdout .. res.stderr) end,
 	})
 end)

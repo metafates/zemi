@@ -1474,9 +1474,9 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 	return redactedNote(string(clean)), true
 }
 
-// forgetMemory drops a memory for the model: one the user saved asks
-// (Unsandboxed, so no mode's rules settle it), a learned one goes at once under
-// auto autonomy and is proposed for review otherwise. The ask goes through
+// forgetMemory drops a memory for the model: one the user saved asks,
+// a learned one goes at once under auto autonomy and is proposed for review
+// otherwise. The ask goes through
 // p, so it names the agent that asked.
 func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	db, m, err := h.locateMemory(id)
@@ -1485,8 +1485,8 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	}
 	switch {
 	case m.Origin == store.OriginUser:
-		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text, Unsandboxed: true}
-		if v := p.CheckDenied(req); v.Decision != perm.Allow {
+		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text}
+		if v := p.CheckDenied(req); !v.Allowed {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, m.ID)
 		}
 	case !h.memoryAuto(sid):

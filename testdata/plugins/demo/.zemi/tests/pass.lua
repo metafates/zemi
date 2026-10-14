@@ -121,7 +121,7 @@ test("a refused job leaves a health row", function()
 		row = r.name == "demo" and r or row
 	end
 	test.eq(row.level, "warn")
-	test.contains(row.detail, 'principal = "plugin:demo"')
+	test.contains(row.detail, "permission ask required")
 end)
 
 test("a timer from another case is gone", function()

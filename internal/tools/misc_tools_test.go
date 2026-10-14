@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,7 +27,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/learn"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/runtime"
 )
@@ -88,7 +86,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("failed writes must not replace the list: %+v", stored)
 	}
 
-	broken := &Pipeline{Store: new(perm.Store)}
+	broken := &Pipeline{}
 	resp = call(t, toolNamed(t, "todos", broken), `{}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "no todo list in this run") {
 		t.Fatalf("nil read hook: %+v", resp)
@@ -241,8 +239,6 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 			{Name: "beta", Path: beta},
 		}
 	}
-	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: data + "/*", Decision: perm.Allow})
-	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: cfg + "/*", Decision: perm.Allow})
 	skill := toolNamed(t, "skill", p)
 
 	resp := call(t, skill, `{"name":"alpha"}`)
@@ -277,12 +273,6 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 	lines := strings.Split(big.String(), "\n")
 	if a < 6 || !strings.Contains(resp.Content, lines[a-2]+"\n... (lines") || strings.Contains(resp.Content, lines[a-1]+"\n") {
 		t.Fatalf("cut at line %d does not match SKILL.md:\n%s", a, resp.Content[:200])
-	}
-
-	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: beta + "/SKILL.md", Decision: perm.Deny})
-	resp = call(t, skill, `{"name":"beta"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "permission denied") {
-		t.Fatalf("denied read: %+v", resp)
 	}
 
 	p.Skills = nil
@@ -459,29 +449,15 @@ func TestParseNetURL(t *testing.T) {
 	}
 }
 
-func TestIPDenied(t *testing.T) {
-	cases := map[string]bool{
-		"127.0.0.1": true, "127.8.8.8": true, "10.1.2.3": true,
-		"172.16.5.5": true, "172.31.255.255": true, "172.32.0.1": false,
-		"192.168.0.1": true, "169.254.1.1": true, "0.1.2.3": true,
-		"100.64.0.1": true, "100.128.0.1": false, "224.0.0.1": true,
-		"8.8.8.8": false, "::1": true, "fe80::1": true, "fc00::1": true,
-		"::ffff:127.0.0.1": true, "::ffff:8.8.8.8": false,
-		"2606:4700::1": false, "::": true, "64:ff9b::1.2.3.4": true,
-	}
-	for in, want := range cases {
-		if got := ipDenied(net.ParseIP(in)); got != want {
-			t.Fatalf("ipDenied(%s) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestFetchGates(t *testing.T) {
-	p, _ := testPipeline(t, false)
+	p, asked := testPipeline(t, false)
 	fetch := toolNamed(t, "fetch", p)
 	resp := call(t, fetch, `{"url":"https://example.com/"}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "permission denied") {
 		t.Fatalf("denied net gate must stop fetch before dialing: %+v", resp)
+	}
+	if len(*asked) != 1 {
+		t.Fatalf("one ask: %+v", *asked)
 	}
 
 	// a URL the tool cannot fetch is its own error, never an ask
@@ -493,7 +469,7 @@ func TestFetchGates(t *testing.T) {
 		}
 	}
 
-	allowed, asked := testPipeline(t, true)
+	allowed, _ := testPipeline(t, true)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/x", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -513,57 +489,31 @@ func TestFetchGates(t *testing.T) {
 		http.Redirect(w, r, strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)+"/x", http.StatusFound)
 	})
 	defer srv.Close()
-	// a host private as written is refused before an ask no answer could pass
-	for _, raw := range []string{srv.URL + "/x", "http://localhost:1/", "http://LocalHost./", "http://a.localhost/", "http://[::1]/"} {
+	// a private address fetches like any other: localhost development is the
+	// point, and ask mode is what gates the URL
+	for _, raw := range []string{srv.URL + "/x"} {
 		res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, raw))
-		if !res.IsError || !strings.Contains(res.Content, "is a private address; only an allow rule for net.") || len(*asked) != 0 {
-			t.Fatalf("%s: %+v asked %+v", raw, res, *asked)
+		if res.IsError {
+			t.Fatalf("%s: %+v", raw, res)
 		}
 	}
-	// the §9 opt-in: a rule from the user's config allows the private
-	// address, a session "always" answer (principal model) does not
-	for _, c := range []struct {
-		principal string
-		wantErr   bool
-	}{{"", false}, {"model", true}} {
-		local, localAsked := testPipeline(t, false, perm.Rule{Subject: "net.127.0.0.1", Pattern: "*", Decision: perm.Allow, Principal: c.principal})
-		local.Principal = "model"
-		res := call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
-		if res.IsError != c.wantErr {
-			t.Fatalf("principal %q: %+v", c.principal, res)
-		}
-		// a 200 html page is just its text; a status or type worth saying heads the body
-		if c.principal == "" {
-			if res.Content != "hi" {
-				t.Fatalf("html body = %q", res.Content)
-			}
-			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
-				t.Fatalf("json body = %q", res.Content)
-			}
-			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/big")); !strings.Contains(res.Content, "\n(only the first 1 MB of the page was read, of 1048586 bytes)\n") {
-				t.Fatalf("a page past the cap says so: %q", res.Content[:200])
-			}
-			// a redirect hop to a private host is refused like a first URL, before any ask
-			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/r")); !res.IsError || !strings.Contains(res.Content, "only an allow rule for net.localhost") || len(*localAsked) != 0 {
-				t.Fatalf("redirect to localhost: %+v asked %+v", res, *localAsked)
-			}
-		}
+	// a 200 html page is just its text; a status or type worth saying heads the body
+	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x")); res.Content != "hi" {
+		t.Fatalf("html body = %q", res.Content)
 	}
-
-	// a --unsafe run denies no address: the same URL passes the gate's ask and
-	// is dialed, with no rule at all
-	unsafe, unsafeAsked := testPipeline(t, true)
-	unsafe.Unsafe = true
-	res := call(t, toolNamed(t, "fetch", unsafe), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
-	if res.IsError || res.Content != "hi" || len(*unsafeAsked) != 1 {
-		t.Fatalf("--unsafe fetch of a private host: %+v asked %+v", res, *unsafeAsked)
+	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
+		t.Fatalf("json body = %q", res.Content)
 	}
-
-	// the rules an "always" answer writes also cover a redirect hop
-	hops, hopAsks := testPipeline(t, false,
-		perm.Rule{Subject: "net.example.com", Pattern: "https://example.com/*", Decision: perm.Allow})
-	if err := netGate(hops, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}, "fetch redirect"); err != nil || len(*hopAsks) != 0 {
-		t.Fatalf("hop under an allowed url: %v, asked %+v", err, *hopAsks)
+	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/big")); !strings.Contains(res.Content, "\n(only the first 1 MB of the page was read, of 1048586 bytes)\n") {
+		t.Fatalf("a page past the cap says so: %q", res.Content[:200])
+	}
+	// a redirect hop asks like a first URL in ask mode, and passes in allow mode
+	hops, hopAsks := testPipeline(t, false)
+	if err := netGate(hops, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err == nil || len(*hopAsks) != 1 {
+		t.Fatalf("hop in ask mode: %v, asked %+v", err, *hopAsks)
+	}
+	if err := netGate(allowed, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err != nil {
+		t.Fatalf("hop in allow mode: %v", err)
 	}
 }
 
@@ -641,7 +591,7 @@ func TestParseDDGLite(t *testing.T) {
 // pipeline before subjects ran, so the first call answered "empty query" and
 // the next one fetched the previous query's URL.
 func TestWebSearchURLReachesRun(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "net.lite.duckduckgo.com", Pattern: "*", Decision: perm.Allow})
+	p, _ := testPipeline(t, true)
 	ag := *toolNamed(t, ToolWebSearch, p).(*tool)
 	ag.run = func(_ context.Context, run *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
 		if run.search == nil {
@@ -683,19 +633,14 @@ func TestDeniedOutsideRun(t *testing.T) {
 		run  func(t *testing.T, p *Pipeline)
 		want string
 	}{
-		{"a refused skill read", func(t *testing.T, p *Pipeline) {
-			call(t, toolNamed(t, "skill", p), `{"name":"x"}`)
-		}, ToolSkill},
 		{"a refused fetch redirect hop", func(t *testing.T, p *Pipeline) {
-			if err := netGate(p, &url.URL{Scheme: "https", Host: "example.com", Path: "/x"}, "fetch redirect"); err == nil {
-				t.Fatal("a hop no rule allows must be refused")
+			if err := netGate(p, &url.URL{Scheme: "https", Host: "example.com", Path: "/x"}); err == nil {
+				t.Fatal("a hop ask mode denies must be refused")
 			}
 		}, ToolFetch},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p, _ := testPipeline(t, false)
-			// a skill outside the free zone, or the read is allowed before any ask
-			p.Skills = func() []SkillInfo { return []SkillInfo{{Name: "x", Path: outsideTemp(t)}} }
 			var tools []string
 			p.Denied = func(tool string, _ Request, _ Verdict) { tools = append(tools, tool) }
 			c.run(t, p)

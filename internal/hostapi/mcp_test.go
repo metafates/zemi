@@ -22,7 +22,6 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -34,12 +33,8 @@ func TestLuaToolDrivesDeferredMCP(t *testing.T) {
 	defer h.mcp.stopParked()
 	defer h.mcp.park()
 	h.SetProjectTrusted(true)
-	if err := h.SetPermMode("auto"); err != nil {
-		t.Fatal(err)
-	}
 	ui := &fakeUI{askAllowed: true, askBy: "user"}
 	h.SetUIHooks(ui)
-	h.Perm.Add(perm.Rule{Subject: "mcp.a", Pattern: "*", Decision: perm.Allow})
 	srv := httptest.NewServer(mcptest.Handler())
 	defer srv.Close()
 	for _, name := range []string{"a", "b", "c", "d"} {
@@ -103,9 +98,8 @@ print(#names, names[1], names[#names])
 }
 
 // TestMCPBridge registers a fake server from Lua and drives its tool the
-// way the model does: filtered by enabled_tools and disabled_tools, asking
-// (and failing closed without a UI) until a rule allows it, through a
-// reload, a restart and an expired sign-in.
+// way the model does: filtered by enabled_tools and disabled_tools, gated by
+// the permission mode, through a reload, a restart and an expired sign-in.
 func TestMCPBridge(t *testing.T) {
 	var expired atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,21 +147,18 @@ func TestMCPBridge(t *testing.T) {
 		}
 		return resp
 	}
-	if resp := run(0, `{"text":"hi"}`); !resp.IsError {
-		t.Fatalf("unruled call must fail closed: %+v", resp)
+	// in ask mode the user's no refuses the call; allow mode runs it
+	if err := h.SetPermMode("ask"); err != nil {
+		t.Fatal(err)
 	}
-	h.Perm.Add(perm.Rule{Subject: "mcp.fake", Pattern: "*", Decision: perm.Allow})
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError {
+		t.Fatalf("a call nobody can answer must fail closed: %+v", resp)
+	}
+	if err := h.SetPermMode("allow"); err != nil {
+		t.Fatal(err)
+	}
 	if resp := run(0, `{"text":"hi"}`); resp.IsError || resp.Content != "hi" {
 		t.Fatalf("allowed call = %+v", resp)
-	}
-
-	// the server marks shot read-only, so auto mode settles it without
-	// asking, and its png reaches the model instead of a placeholder
-	if !h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "shot"}) {
-		t.Error("a read-only MCP tool did not settle in auto mode")
-	}
-	if h.autoLocal(tools.Request{Subject: "mcp.fake", Arg: "echo"}) {
-		t.Error("an unannotated MCP tool settled locally")
 	}
 	resp := run(1, `{"text":"x"}`)
 	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {

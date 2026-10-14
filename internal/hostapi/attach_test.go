@@ -19,9 +19,8 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestExpandAttachments: project files referenced with @ attach; secret-
-// shaped paths, missing files and symlinks leading out of the project do
-// not.
+// TestExpandAttachments: project files referenced with @ attach; files
+// outside the project, missing ones and symlinks leading out of it do not.
 func TestExpandAttachments(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	proj := h.Dirs.ProjectDir
@@ -32,28 +31,23 @@ func TestExpandAttachments(t *testing.T) {
 		}
 	}
 	write(filepath.Join(proj, "main.go"), "package main // attached")
-	write(filepath.Join(proj, ".env"), "TOKEN=from-dotenv")
 	outside := filepath.Join(t.TempDir(), "creds")
 	write(outside, "outside-secret")
 	if err := os.Symlink(outside, filepath.Join(proj, "notes.md")); err != nil {
 		t.Fatal(err)
 	}
 
-	got, _ := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go", true)
-	if !strings.HasPrefix(got, "look at @main.go, @.env, @notes.md and @missing.go"+agent.AttachMarker) {
+	got, _ := h.expandAttachments("look at @main.go, @notes.md and @missing.go", true)
+	if !strings.HasPrefix(got, "look at @main.go, @notes.md and @missing.go"+agent.AttachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
 	if !strings.Contains(got, `<file path="main.go">`) || !strings.Contains(got, "package main // attached") {
 		t.Fatalf("main.go not attached: %q", got)
 	}
-	for _, leak := range []string{"from-dotenv", "outside-secret", "missing.go\">"} {
+	for _, leak := range []string{"outside-secret", "missing.go\">"} {
 		if strings.Contains(got, leak) {
 			t.Fatalf("%q must not attach: %q", leak, got)
 		}
-	}
-	// the user row shows the reference, so the user hears it did not attach
-	if n := h.evlog.notes; len(n) != 1 || n[0].level != "warn" || n[0].title != "Could not attach .env" || n[0].body != "reading it needs your approval" {
-		t.Fatalf("refused attachment said nothing: %+v", n)
 	}
 	pipe := filepath.Join(proj, "pipe")
 	if exec.Command("mkfifo", pipe).Run() == nil {
@@ -70,11 +64,10 @@ func TestExpandAttachments(t *testing.T) {
 	}
 	write(filepath.Join(proj, "big.txt"), strings.Repeat("x", attachMax+1))
 	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
-	got, _ = h.expandAttachments("@big.txt @blob.txt @.env", true)
+	got, _ = h.expandAttachments("@big.txt @blob.txt", true)
 	for _, want := range []string{
 		`<file path="big.txt">not attached: it is over the 64 KB`,
 		`<file path="blob.txt">not attached: it is not text`,
-		`<file path=".env">not attached: reading it needs your approval`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)

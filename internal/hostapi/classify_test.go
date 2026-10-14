@@ -18,7 +18,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 )
 
 // fakeEndpoint serves one reply to every request and reports the bodies and
@@ -310,19 +309,10 @@ func TestClassifyGate(t *testing.T) {
 	}
 
 	// the gate: a plugin's declared call settles with no rule (its manifest's
-	// `model` is the consent), an explicit user rule still decides first, and
-	// project code may not call it at all
+	// `model` is the consent), and project code may not call it at all
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
 	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin with no rule: %v", err)
-	}
-	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
-	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err == nil {
-		t.Error("a user's deny rule did not refuse a plugin's classify call")
-	}
-	h.Perm.Add(perm.Rule{Subject: "lua.classify.ask", Pattern: "*", Decision: perm.Allow, Principal: "plugin:b"})
-	if err := r.ExecuteChunk(t.Context(), `local h = `+src+``, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err == nil {
-		t.Error("another plugin's allow rule settled plugin a's call")
 	}
 	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code may not call a model") {
 		t.Errorf("project code: err = %v", err)

@@ -24,9 +24,9 @@ import (
 	"charm.land/fantasy"
 	"github.com/aymanbagabas/go-udiff"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -65,28 +65,20 @@ const (
 type Request struct {
 	Tool    string // the tool asking (shell, edit, mcp_github_search); set by the pipeline
 	Subject string // tool.shell, fs.read, fs.write, net.<host>
-	Arg     string // path, url or normalized command segment
+	Arg     string // path, url or command
 	Reason  string // human-facing description for the overlay
 	Preview string // a file tool's unified diff, a script, or a memory's text
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string
-	// Unsandboxed is the model's sandbox: false, a Lua tool script that
-	// widens what zemi allows, or a model memory edit zemi does not apply on
-	// its own: no mode's rules settle the request, the user or a decide answers it
-	Unsandboxed bool
+	// Read marks a call the request's tool itself knows is read-only (an
+	// MCP tool its server annotates so): ask mode settles it on its own
+	Read bool
 	// Script is the lua tool call this one came from (Pipeline.Script), "" for
 	// a call the model made itself: it labels the ask and keeps the output whole
 	Script string
-	// Network is the model's network: true, which keeps the sandbox and adds
-	// outbound sockets. The URL is the model's, so no mode's rules settle it either.
-	Network bool
-	// Explicit marks an ask a rule asked for (an ask rule, a not_match
-	// exclusion): auto settles nothing here, the user answers; set by the
+	// ReadOnly marks a read-only agent's request (Pipeline.Plan); set by the
 	// pipeline
-	Explicit bool
-	// ReadOnly marks a read-only agent's request (Pipeline.Plan), whose
-	// command runs confined whoever allows it; set by the pipeline
 	ReadOnly bool
 	// Pad is the checking pipeline's scratchpad (Pipeline.Pad); set by the
 	// pipeline
@@ -97,8 +89,6 @@ type Request struct {
 	// Owner is whose code a Lua tool runs, as an overlay badge names it
 	// ("plugin:jira"), "" for the user's and zemi's own
 	Owner string
-	// cmd is a tool.shell Arg parsed; set by shellRequests or the pipeline
-	cmd *perm.Normalized
 	// gate is the pipeline and request as Check got them; set by the pipeline
 	gate *checked
 }
@@ -108,30 +98,20 @@ type checked struct {
 	req Request
 }
 
-// Recheck judges the request again against the rules as they are now, the
-// pipeline's loosening included, and asks nobody: an ask verdict fails
-// closed, with the request it would have asked, whose Explicit and ReadOnly
-// are judged afresh. A request that never went through the gate asks.
+// Recheck judges the request again as things are now, and asks nobody: the
+// mode may have moved to allow while the ask waited. Anything still left to
+// the user comes back as a ByNobody verdict with the request that asked.
 func (r Request) Recheck() (Verdict, Request) {
 	if r.gate == nil {
-		return Verdict{Decision: perm.Ask, DecidedBy: ByDefault}, r
+		return Verdict{DecidedBy: ByNobody}, r
 	}
 	q := *r.gate.p
-	var asked *Request
-	q.Ask = func(a Request) (bool, string, string) { asked = &a; return false, ByDefault, "" }
-	if v := q.Check(r.gate.req); asked == nil {
+	q.Ask = nil
+	v := q.Check(r.gate.req)
+	if v.Allowed || v.DecidedBy == ByReadOnly {
 		return v, r.gate.req
 	}
-	return Verdict{Decision: perm.Ask, Reason: "still asks", DecidedBy: ByDefault}, *asked
-}
-
-// Command is a tool.shell request's command, parsed once by the gate, or
-// here for a request that never went through it.
-func (r Request) Command() perm.Normalized {
-	if r.cmd != nil {
-		return *r.cmd
-	}
-	return perm.Normalize(r.Arg)
+	return Verdict{DecidedBy: ByNobody, Reason: "still needs the user"}, r.gate.req
 }
 
 // InPad reports a file request inside the request's scratchpad: the one place
@@ -144,15 +124,13 @@ func (r Request) FreeZone() bool { return PathSubject(r.Subject) && perm.FreeZon
 
 // Verdict is the pipeline outcome for one permission request.
 type Verdict struct {
-	Decision  perm.Decision
+	Allowed   bool
 	Reason    string
-	DecidedBy string     // a By value, a user answer ("user:always") or ByMode
-	Rule      *perm.Rule // the rule behind a "rule" verdict, nil otherwise
+	DecidedBy string // a By value, or a user answer ("user")
 }
 
 // Who decided a Verdict.
 const (
-	ByRule     = "rule"
 	ByDefault  = "default"
 	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
@@ -160,19 +138,12 @@ const (
 	// ByPlugin is a call the calling plugin's own manifest declared settled (DESIGN §9)
 	ByPlugin   = "plugin"
 	modePrefix = "mode:"
-	// ByRecheck is an asker's answer that the request's Recheck now settles;
-	// the pipeline returns that verdict whole, its Rule included
+	// ByRecheck is an asker's answer that the request's Recheck now settles
 	ByRecheck = "recheck"
 )
 
 // ByMode is a verdict the permission mode name settled.
 func ByMode(name string) string { return modePrefix + name }
-
-// UserRule reports a rule the user's own config wrote, which is what earns
-// the §9 localhost development opt-in: a rule scoped to a plugin is still
-// theirs, while a session "always" answer carries the model principal and
-// never counts.
-func UserRule(r *perm.Rule) bool { return r != nil && r.Principal != perm.PrincipalModel }
 
 // DeniedText and stopTurn build their user-stop wordings from these, and
 // UserStopped matches them, so a producer reword cannot desync the matcher.
@@ -224,11 +195,8 @@ func VerdictResponse(v PreVerdict, reason string) (resp fantasy.ToolResponse, do
 }
 
 // PreHook runs the tool.pre Lua events. Rewritten carries the replacement
-// input (already shallow-merged over the original). Loosened reports a
-// rewrite decided by a non-user principal: on re-entry an allow decision
-// flips to ask, so a rewrite can never ride a pre-existing allow glob
-// (DESIGN §6.2, §6.4).
-type PreHook func(tool string, input map[string]any) (decision PreVerdict, reason string, rewritten map[string]any, loosened bool)
+// input (already shallow-merged over the original).
+type PreHook func(tool string, input map[string]any) (decision PreVerdict, reason string, rewritten map[string]any)
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side). ByRecheck as
@@ -237,15 +205,16 @@ type PreHook func(tool string, input map[string]any) (decision PreVerdict, reaso
 // settled: this project is not trusted (/trust)"), "" otherwise.
 type Asker func(req Request) (allowed bool, decidedBy, reason string)
 
-// Pipeline wires tools to the permission store and the host hooks.
+// Pipeline wires tools to the permission mode and the host hooks.
 type Pipeline struct {
-	Store *perm.Store
-	Pre   PreHook // nil = no tool.pre events
-	Ask   Asker   // nil = asks fail closed
+	Pre PreHook // nil = no tool.pre events
+	Ask Asker   // nil = asks fail closed
+	// Mode reports the active permission mode ("ask" or "allow"); nil or ""
+	// = allow, the default.
+	Mode func() string
 	// Post runs the tool.post events after a call the gate let through or
 	// refused, and returns the output the model gets; nil = none.
-	Post      func(ctx context.Context, pad, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
-	Principal string
+	Post func(ctx context.Context, pad, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
 
 	// TodosRead/TodosWrite back the session todo list; nil = todos error.
 	TodosRead  func() ([]store.Todo, error)
@@ -308,33 +277,14 @@ type Pipeline struct {
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
 
-	// Plan reports a read-only agent: file writes are denied and allowed commands
-	// ask instead unless they only read; nil = never.
+	// Plan reports a read-only agent: actions are denied, reads settle on
+	// their own; nil = never.
 	Plan func() bool
 
 	// Checkpoint records a file's content before a write tool changes it,
 	// so the turn can be rewound; nil = no checkpoints.
 	Checkpoint func(path string)
 
-	// RewriteLoosened marks a re-entry after a non-user rewrite: allow
-	// decisions ask instead (never skips the gate, §6.4).
-	RewriteLoosened bool
-
-	// Sandbox is the policy a command a permission mode settled runs under,
-	// with pad (Pad) writable and the project unwritable when readOnly
-	// (Plan, which a read-only subagent sets on its copy); nil or a nil
-	// result = unconfined (no backend, yolo).
-	Sandbox func(readOnly bool, pad string) *sandbox.Policy
-	// SandboxParam gives shell and job_start the sandbox: false escape; set
-	// while a backend is live and someone can answer the ask.
-	SandboxParam bool
-	// Unsafe is a --unsafe run's pipeline: no listing or grep hides a
-	// secret-shaped name, no child environment is filtered, and SafeClient
-	// denies no address.
-	Unsafe bool
-	// Sandboxed is this run's policy, set on the per-run copy once the gate
-	// settled a command by mode; nil = unconfined.
-	Sandboxed *sandbox.Policy
 	// Script is the lua tool call a run driven by a script came from, set on the
 	// copy its calls run under: it labels their asks and keeps their output
 	// whole, where a call the model made gets the cut. "" for the model's own.
@@ -346,17 +296,6 @@ type Pipeline struct {
 	// search is web_search's URL as the gate approved it, set on the per-run
 	// copy by its subjects.
 	search *url.URL
-	// Protected says why a write to .git, the Lua in .agents or zemi's own dirs is
-	// protected, "" for any other: a rule allow for it still asks, since
-	// broad "always" globs cannot exclude every such path; nil = none.
-	Protected func(path string) string
-	// Secret reports a secret-shaped path (.env, *.pem, id_rsa): an
-	// "always" answer allows a whole directory, and its label does not say
-	// "including every secret in it"; nil = none.
-	Secret func(path string) bool
-	// Guard runs before a sandboxed command starts; the func it returns runs
-	// once the command exited, and its text ends the result. nil = none.
-	Guard func(sandbox.Policy) func() string
 	// Changes runs before a shell command starts in dir; the func it returns
 	// runs once it ended and reports the files it changed: a line for the
 	// model, a diff for the row (the result's Metadata) and every path. nil = none.
@@ -367,9 +306,6 @@ type Pipeline struct {
 
 	// changed is what a shell run found changed, kept on its per-run copy for post
 	changed []string
-	// verdict is the gate's answer to the run's last request, kept on the
-	// per-run copy: fetch reads which rule allowed the URL
-	verdict Verdict
 }
 
 // LSPSession is a language server ready for one file's queries.
@@ -391,305 +327,60 @@ func PathSubject(subject string) bool {
 // audit handler sees every refusal.
 func (p *Pipeline) CheckDenied(req Request) Verdict {
 	v := p.Check(req)
-	if v.Decision != perm.Allow && p.Denied != nil {
+	if !v.Allowed && p.Denied != nil {
 		p.Denied(req.Tool, req, v)
 	}
 	return v
 }
 
-// Check decides one request; for tool.shell the store normalizes the
-// command (segments, redirect gates, assignment gate) in one call.
+// Check decides one request. A read-only agent's actions deny; the mode
+// settles the rest: allow runs, ask puts the request to the user, and an
+// ask no one can answer fails closed.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
-	// the rules and the secret shapes see the path as the request names it,
-	// and the rest judges and shows where it lands, so a planted symlink
-	// cannot dress a write to zemi's config as a project file. The run's own
-	// Path is resolved already and named that way: a second resolve could land
-	// elsewhere than the tool opens. NOTE: so the gated file tools are judged
-	// by the target alone; a secret-named link to a plain file opens with no
-	// ask, while a plain-named link to a secret still asks (a run that hides
-	// nothing, `--unsafe`, asks about neither).
-	written := req.Arg
-	if PathSubject(req.Subject) && (p.Path == perm.Path{} || req.Arg != p.Path.String()) {
-		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
+	req.ReadOnly, req.Pad, req.Script = p.Plan != nil && p.Plan(), p.Pad, p.Script
+	if !req.Action() {
+		return Verdict{Allowed: true, DecidedBy: ByDefault}
 	}
-	plan := p.Plan != nil && p.Plan()
-	req.ReadOnly, req.Pad, req.Script = plan, p.Pad, p.Script
-	if req.Subject == perm.SubjectShell && req.cmd == nil {
-		req.cmd = new(perm.Normalize(req.Arg))
+	if req.FreeZone() {
+		return Verdict{Allowed: true, Reason: "the scratchpad and the temp dirs are disposable", DecidedBy: ByDefault}
 	}
-	// pad is the scratchpad, in zemi's own state dir: its writes are free and
-	// no protected path either. A temp dir is free too, but .git, the Lua in
-	// .agents, zemi's own dirs and a local plugin's code stay protected
-	// wherever they sit: they decide what runs next.
-	free, pad := req.FreeZone(), req.InPad()
-	if plan && req.Subject == perm.SubjectWrite && !free {
-		return Verdict{Decision: perm.Deny, Reason: "describe the change instead of making it", DecidedBy: ByReadOnly}
+	if req.ReadOnly {
+		return Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
 	}
-	// read-only holds under every mode: yolo would settle the escape and
-	// run the command unconfined, with the project writable
-	if plan && req.Subject == perm.SubjectShell && req.Unsandboxed {
-		return Verdict{Decision: perm.Deny, Reason: "commands stay in the sandbox, which keeps the project read-only", DecidedBy: ByReadOnly}
+	if mode := p.mode(); mode != config.PermModeAsk {
+		return Verdict{Allowed: true, DecidedBy: ByMode(mode)}
 	}
-	// rule is the one that allowed the request, nil when a default did
-	loosen := func(v Verdict, rule *perm.Rule) Verdict {
-		protected := ""
-		if v.Decision == perm.Allow && req.Subject == perm.SubjectWrite && p.Protected != nil && !pad {
-			protected = p.Protected(req.Arg)
-		}
-		switch {
-		case v.Decision != perm.Allow:
-		case p.RewriteLoosened:
-			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
-		case protected != "":
-			return p.resolveAsk(req, protected)
-		// an "always" answer allows the file's whole directory, or names the
-		// one secret the user saw; a rule the user wrote in init.lua says
-		// what it means and stays authoritative
-		case PathSubject(req.Subject) && rule != nil && rule.Principal == perm.PrincipalModel && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(written):
-			return p.resolveAsk(req, "this file looks like it holds secrets")
-		// "allow cat" was answered for a file the user saw; a project file
-		// line names the program alone. The user's init.lua rule stays.
-		case req.Subject == perm.SubjectShell && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && req.cmd.ReadsSecret(p.Secret):
-			return p.resolveAsk(req, "this file looks like it holds secrets")
-		// the user allowed the command confined; no mode's rules settle an
-		// Unsandboxed ask, so dropping the sandbox reaches them
-		case req.Unsandboxed && rule != nil && rule.Network:
-			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
-		// the rule was written for an agent that may change things; a reader
-		// keeps the allow
-		case plan && req.Subject == perm.SubjectShell && req.cmd.ReadCommand(nil):
-		case plan && (req.Subject == perm.SubjectShell || strings.HasPrefix(req.Subject, "mcp.")):
-			return p.resolveAsk(req, "read-only agent: commands that change things ask")
-		}
-		return v
-	}
-	var o perm.Outcome
-	if req.Subject == perm.SubjectShell {
-		o = p.Store.CheckCommandFor(perm.SubjectShell, *req.cmd, p.Principal)
-	} else {
-		o = p.Store.Evaluate(req.Subject, written, p.Principal)
-	}
-	// the scratchpad and the temp dirs are neither project nor zemi dir: what
-	// no rule decided there allows, a secret-shaped name aside, which the
-	// sandbox refuses there too
-	if free && !o.Ruled() {
-		if p.Secret != nil && p.Secret(written) {
-			req.Reason = strings.TrimPrefix(req.Reason+"; "+FreeSecret, "; ")
-			return p.resolveAsk(req, FreeSecret)
-		}
-		o = perm.Outcome{Decision: perm.Allow, Reason: "the scratchpad and the temp dirs are disposable"}
-	}
-	switch o.Decision {
-	case perm.Allow:
-		return loosen(Verdict{Decision: perm.Allow, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}, o.Rule)
-	case perm.Deny:
-		return Verdict{Decision: perm.Deny, Reason: o.Reason, DecidedBy: decidedBy(o), Rule: o.Rule}
-	default:
-		req.Explicit = o.Ruled()
-		v := p.resolveAsk(req, o.Reason)
-		// no asker answered (the Lua gate sets none): an ask a rule forced -
-		// an ask rule, a not_match exclusion - is the rule's, and a caller
-		// that settles what no rule decided has to tell the two apart
-		if o.Ruled() && v.Decision == perm.Ask {
-			v.DecidedBy = ByRule
-		}
-		return v
-	}
+	return p.resolveAsk(req, "")
 }
 
-// SandboxFor is the policy a checked command runs under: one a permission
-// mode settled or a read-only agent runs confined, rule-allowed and
-// user-approved ones as they are. nil = unconfined.
-func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
-	if p.Sandbox == nil || req.Subject != perm.SubjectShell || v.Decision != perm.Allow || req.Unsandboxed {
-		return nil
-	}
-	// network: true keeps the sandbox, which is what the model and the user
-	// were told, so it stays confined whoever allowed it; no mode's rules
-	// settle it, a decide may. Read-only is absolute: the policy
-	// is what keeps the project unwritable, and Check denies the escape
-	plan := p.Plan != nil && p.Plan()
-	network := req.Network || v.Rule != nil && v.Rule.Network
-	if !plan && !strings.HasPrefix(v.DecidedBy, modePrefix) && !network {
-		return nil
-	}
-	pol := p.Sandbox(plan, p.Pad)
-	if pol != nil && network {
-		pol.Network = true
-	}
-	return pol
+// Action reports a request that changes something: ask mode prompts for
+// these and a read-only agent denies them. Everything else (a file read, a
+// listing, a search) settles on its own.
+func (r Request) Action() bool {
+	return r.Subject != perm.SubjectRead && !r.Read
 }
 
-// guard starts Guard for a sandboxed run and returns what runs at its exit.
-func (p *Pipeline) guard() func() string {
-	if p.Sandboxed == nil || p.Guard == nil {
-		return func() string { return "" }
-	}
-	return p.Guard(*p.Sandboxed)
-}
-
-// sandboxOff is the one escape a confined failure offers when the run's
-// schema carries sandbox: false; the clauses below add their own lead-in.
-const sandboxOff = "call it again with sandbox: false (needs approval)"
-
-// sandboxHint is the line a confined command's failure gets when the
-// sandbox may be why: the limit a denied path hit and the one next step; ""
-// otherwise. It offers only the escapes the run's schema carries: none
-// without a UI, and no sandbox: false for a read-only agent, which Check
-// denies.
-func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) string {
-	if !sandbox.LikelyDenied(out, err) {
+// mode is the active permission mode, "" read as allow.
+func (p *Pipeline) mode() string {
+	if p.Mode == nil {
 		return ""
 	}
-	if pol == nil {
-		pol = &sandbox.Policy{}
-	}
-	plan := p.Plan != nil && p.Plan()
-	net, all := p.SandboxParam, p.SandboxParam && !plan
-	// or is a retry clause, when the escape it names is offered
-	or := func(offered bool, clause string) string {
-		if offered {
-			return clause
-		}
-		return ""
-	}
-	project := perm.RealPath(workdir())
-	var denied []limit
-	for _, d := range sandbox.DeniedPaths(out) {
-		denied = append(denied, limitOf(pol, cmp.Or(perm.RealPath(d), d)))
-	}
-	// has finds the first denied path ok holds for and keeps it in l
-	var l limit
-	has := func(ok func(limit) bool) bool {
-		i := slices.IndexFunc(denied, ok)
-		if i >= 0 {
-			l = denied[i]
-		}
-		return i >= 0
-	}
-	is := func(k limitKind) func(limit) bool { return func(l limit) bool { return l.kind == k } }
-	b, _ := sandbox.Probe()
-	netFail := sandbox.LikelyNetwork(out, err)
-	line := "a limit may have stopped it (Sandbox in the system prompt lists them)"
-	switch {
-	case plan && has(func(l limit) bool { _, in := perm.Under(project, l.path); return in && l.kind != hidden }):
-		return "\nSandbox: the project is read-only to this agent; describe the change instead of making it." + or(net && netFail, " network: true adds the network (needs approval).")
-	case sandbox.Killed(out, err):
-		line = "it died from a signal: if it needs a system service (a browser, a GUI app, docker), "
-		if all {
-			line += sandboxOff + "; a crash of its own repeats there"
-		} else {
-			line += "it cannot run here: say what you could not check"
-		}
-	case pol.Network && netFail:
-		line = "it had the network already" + or(all, "; sandbox: false drops every limit (needs approval)")
-	case netFail:
-		line = "no network here" + or(net, ": call it again with network: true, which keeps the rest of the sandbox (needs approval)")
-	case has(is(hidden)):
-		root := perm.TildePath(l.root)
-		// a credential dir is no place to send the read tool either
-		if p.Secret != nil && p.Secret(l.root) {
-			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, "+sandboxOff)
-			break
-		}
-		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or "+sandboxOff)
-	case b.HidesSecretFiles && has(func(l limit) bool { return perm.PathIsHiddenSecret(l.path) }):
-		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, "+sandboxOff)
-	case has(is(protected)):
-		line = workRel(l.root) + " is read-only to commands"
-		switch {
-		case pol.Git == l.root:
-			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; "+sandboxOff)
-		case filepath.Base(l.root) == ".agents":
-			line += ": create and edit files there with the write and edit tools"
-		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):
-			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise "+sandboxOff)
-		case slices.Contains(filepath.SplitList(os.Getenv("PATH")), l.root):
-			line += ": zemi runs programs from it unconfined" + or(all, "; "+sandboxOff)
-		default:
-			line += or(all, ": "+sandboxOff)
-		}
-	case len(pol.Write) > 0 && has(is(outside)):
-		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or "+sandboxOff)
-	case all:
-		line += ": network: true adds the network, sandbox: false drops every limit; both need approval"
-	case net:
-		line += ": network: true adds the network (needs approval)"
-	}
-	return "\nSandbox: " + line + "."
+	return p.Mode()
 }
 
-// limit is what the policy does at a denied path: the entry deepest above
-// it, as the backend matches.
-type limit struct {
-	path, root string
-	kind       limitKind
-}
-
-type limitKind int
-
-const (
-	outside limitKind = iota // under no entry, or only a Read one: not writable
-	writable
-	protected
-	hidden
-)
-
-// limitOf finds the entry deepest above path; at one depth Hide beats
-// Protect beats the rest, as in the seatbelt profile.
-func limitOf(pol *sandbox.Policy, path string) limit {
-	best := limit{path: path}
-	depth := -1
-	try := func(roots []string, kind limitKind) {
-		for _, r := range roots {
-			real := cmp.Or(perm.RealPath(r), r)
-			if _, in := perm.Under(real, path); in && (len(real) > depth || len(real) == depth && kind > best.kind) {
-				best.root, best.kind, depth = r, kind, len(real)
-			}
-		}
+// resolveAsk puts the request to the user through Ask; a nil Ask (no
+// overlay, a Lua gate without one) denies fail-closed.
+func (p *Pipeline) resolveAsk(req Request, note string) Verdict {
+	if note != "" {
+		req.Reason = strings.TrimPrefix(req.Reason+"; "+note, "; ")
 	}
-	try(slices.Concat(pol.Read, pol.List), outside)
-	try(pol.Write, writable)
-	try(pol.Protect, protected)
-	try(pol.Hide, hidden)
-	return best
-}
-
-// FreeSecret is why a secret-shaped name in the scratchpad or a temp dir
-// asks: a command can move a project directory there, and the shapes match
-// names only.
-const FreeSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad and the temp dirs; if the file holds no secret, give it another name"
-
-// networkProp is the middle tier: the sandbox stays, the command gets
-// sockets. It is the answer to almost every sandbox denial, since the file
-// rules are the ones a settled command is meant to keep.
-func networkProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
-}
-
-// sandboxProp is shell's escape while a backend is live; job_start's points at
-// it. The limits are the system prompt's Sandbox block, built from the policy.
-func sandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "false runs the command with no sandbox (Sandbox in the system prompt). Needs approval; only when network: true was not enough."}
-}
-
-// decidedBy is who decided an outcome; Ruled covers a not_match exclusion,
-// whose forced ask is the rule's as much as an ask rule's is.
-func decidedBy(o perm.Outcome) string {
-	if o.Ruled() {
-		return ByRule
-	}
-	return ByDefault
-}
-
-func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	if p.Ask == nil {
-		// say why it asked: nobody will, and the caller retries blind otherwise
-		if req.Reason != "" {
-			reason += " (asked because " + req.Reason + ")"
+		reason := req.Reason
+		if reason != "" {
+			note += " (asked because " + reason + ")"
 		}
-		return Verdict{Decision: perm.Ask, Reason: reason + "; no overlay available, failing closed", DecidedBy: ByDefault}
+		return Verdict{Reason: cmp.Or(note, "it is an action") + "; no overlay available, failing closed", DecidedBy: ByNobody}
 	}
 	allowed, by, why := p.Ask(req)
 	if by == ByRecheck {
@@ -697,35 +388,15 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		return v
 	}
 	if allowed {
-		return Verdict{Decision: perm.Allow, DecidedBy: by}
+		return Verdict{Allowed: true, DecidedBy: by}
 	}
-	// who said no and why it asked; the rule text ("no rule matched") says neither
-	who := "denied (" + by + ")"
-	mode, byMode := strings.CutPrefix(by, modePrefix)
 	switch {
-	case strings.HasPrefix(by, ByUser):
-		// they saw the request and refused it: the ask's reason says why it
-		// asked, which after a no is not why the call was denied; who said
-		// no is in DecidedBy already
-		if why != "" {
-			return Verdict{Decision: perm.Deny, Reason: "it asked because " + why, DecidedBy: by}
-		}
-		return Verdict{Decision: perm.Deny, DecidedBy: by}
+	case why != "":
+		return Verdict{DecidedBy: by, Reason: why}
 	case by == ByNobody:
-		who = "no one can approve in a headless run"
-		// nobody saw the ask, so the reason it asked is all the caller gets
-		if why == "" {
-			why = req.Reason
-		}
-	case by == "event":
-		who = "denied by a permission.request handler"
-	case byMode:
-		who = "denied by permission mode " + mode
+		return Verdict{DecidedBy: by, Reason: req.Reason}
 	}
-	if why != "" {
-		who += ": " + why
-	}
-	return Verdict{Decision: perm.Deny, Reason: who, DecidedBy: by}
+	return Verdict{DecidedBy: by}
 }
 
 // callIDKey carries the tool call id to a run function, for Progress.
@@ -772,20 +443,19 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	pipe := t.pipe
 	if t.pipe.Pre != nil {
-		decision, reason, rewritten, loosened := t.pipe.Pre(t.info.Name, input)
+		decision, reason, rewritten := t.pipe.Pre(t.info.Name, input)
 		if resp, done := VerdictResponse(decision, reason); done {
 			return resp, nil
 		}
 		if decision == PreRewrite && rewritten != nil {
 			// The rewritten input re-enters at the permission gate below
-			// (never skips it, DESIGN §6.4); a per-run pipeline copy keeps
+			// (never skips it); a per-run pipeline copy keeps
 			// concurrent tools race-free.
 			if err := Validate(t.info, rewritten, false); err != nil {
 				return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
 			}
 			input = rewritten
 			rp := *t.pipe
-			rp.RewriteLoosened = loosened
 			pipe = &rp
 		}
 	}
@@ -801,7 +471,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	if t.gated {
 		// resolved once: the gate judges and the tool opens the same path, so
-		// a symlink a sandboxed command plants later cannot redirect the tool
+		// a symlink planted later cannot redirect the tool
 		path, err := perm.Resolve(str(input["path"]))
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -834,23 +504,15 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	for _, req := range reqs {
 		req.Tool = t.info.Name
 		v := run.CheckDenied(req)
-		run.verdict = v
 		// a command is not echoed: the model has its call and the row shows it
 		what := req.Subject
-		switch {
-		case PathSubject(req.Subject):
+		if PathSubject(req.Subject) {
 			what += " " + workRel(req.Arg) // as the ask showed it
-		case req.Subject != perm.SubjectShell:
+		} else if req.Subject != perm.SubjectShell {
 			what += " " + req.Arg
 		}
-		if v.Decision == perm.Deny {
+		if !v.Allowed {
 			return fantasy.NewTextErrorResponse(DeniedText(v, what)), nil
-		}
-		if v.Decision == perm.Ask {
-			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + what + ": " + v.Reason), nil
-		}
-		if pol := run.SandboxFor(req, v); pol != nil {
-			run.Sandboxed = pol
 		}
 	}
 	return t.run(ctx, &run, input)
@@ -1126,20 +788,6 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		}
 	}
 
-	withSandbox := func(props, sandbox, network map[string]any) map[string]any {
-		if p != nil && p.SandboxParam {
-			props["sandbox"], props["network"] = sandbox, network
-			// about is what streams first, so the sentence lands there; a tool
-			// whose schema has none gets no sentence rather than a panic
-			if about, ok := props["about"].(map[string]any); ok {
-				if desc, ok := about["description"].(string); ok {
-					about["description"] = desc + " With network or sandbox set, also why it needs that."
-				}
-			}
-		}
-		return props
-	}
-
 	// pathReq is the subjects func of a tool that makes one request about the
 	// path its input names: how the input names it (searchRoot where a search
 	// may name none) and why, for the ask.
@@ -1161,23 +809,19 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	if p != nil && p.Images != nil && !p.Images() {
 		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source and with the project's build or tests, or ask the user to look."
 	}
-	addresses := " Local and private addresses are refused."
-	if p != nil && p.Unsafe {
-		addresses = " Local and private addresses are fetched like any other."
-	}
 
 	return []fantasy.AgentTool{
-		mk(ToolShell, `Run a command with sh -c. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays. A bash -c body is POSIX sh too: write a bash script to a file and run bash file. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
+		mk(ToolShell, `Run a command with bash -c. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
 Chain dependent steps with &&.`,
 			false,
-			withSandbox(map[string]any{
+			map[string]any{
 				// "about", not "description": a schema's properties reach the model
 				// sorted by name, and this one has to stream before the command
 				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."},
 				"command":    map[string]any{"type": "string"},
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-			}, sandboxProp(), networkProp()),
+			},
 			[]string{"command"},
 			shellRequests,
 			runShell),
@@ -1231,7 +875,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot, ""),
 			runGrep),
 
-		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation."+addresses,
+		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -1239,14 +883,10 @@ Chain dependent steps with &&.`,
 			[]string{"url"},
 			func(p *Pipeline, in map[string]any) ([]Request, error) {
 				u, err := ParseNetURL(str(in["url"]))
-				if err == nil {
-					err = checkFetchHost(p, u)
-				}
 				if err != nil {
 					return nil, err
 				}
-				// the real host, so a rule (or an "always allow") matches the
-				// per-hop check runFetch makes later
+				// the real host, so a redirect hop's check names what runs
 				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}, nil
 			},
 			runFetch),
@@ -1320,12 +960,12 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			runWebSearch),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with sh -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with bash -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
-			withSandbox(map[string]any{
+			map[string]any{
 				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server."},
 				"command": map[string]any{"type": "string"},
-			}, map[string]any{"type": "boolean", "description": "as shell's sandbox"}, map[string]any{"type": "boolean", "description": "as shell's network"}),
+			},
 			[]string{"command"},
 			shellRequests,
 			runJobStart),
@@ -1486,18 +1126,10 @@ func changePreview(in map[string]any) string {
 	return strings.Join(lines, "\n")
 }
 
-// shellRequests routes the whole command through the tool.shell subject;
-// the store's CheckCommandFor judges it by segment. Text the shell will
-// not run fails here, before any ask, and the model reads why (the POSIX
-// form of bash-only syntax) rather than a permission verdict.
+// shellRequests routes the whole command through the tool.shell subject.
 func shellRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
-	n := perm.Normalize(str(in["command"]))
-	if n.Fail != "" {
-		return nil, errors.New(n.Fail)
-	}
 	return []Request{{
 		Subject: perm.SubjectShell, Arg: str(in["command"]), Description: str(in["about"]),
-		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true, cmd: &n,
 	}}, nil
 }
 

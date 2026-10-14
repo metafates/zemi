@@ -579,7 +579,7 @@ function zemi.command.list() end
 ---@class zemi.ev.PermissionResolved: zemi.Event
 ---@field subject string
 ---@field arg string
----@field decision zemi.Decision Never "ask".
+---@field decision "allow"|"deny"
 ---@field by string
 
 ---@class zemi.ev.Resize: zemi.Event
@@ -868,8 +868,6 @@ function zemi.event.stats() end
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field permission_mode string
----@field permission_mode_base string
----@field unsafe boolean The run started with --unsafe: no sandbox, no secret hiding.
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
 ---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running, and `agent` is that run's name, the model's description or the definition's when it wrote none.
@@ -2115,130 +2113,26 @@ function zemi.composer.edit() end
 
 -- zemi.permission
 
----@alias zemi.Decision
----| "allow"
----| "ask"
----| "deny"
-
----@class zemi.RuleSpec
----@field subject string "tool.shell", "tool.lua", "tool.workflow", "tool.<a Lua tool>", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write". Any other family, or another builtin tool, raises; a tool no config adds is an /errors entry once boot is done.
----@field pattern string Glob over the subject's argument.
----@field decision zemi.Decision Allow rules need user config.
----@field match string Required: an argument the rule must match, checked at registration.
----@field not_match? string A glob that falls through and forces an ask.
----@field not_match_example? string An argument `not_match` must catch; required with `not_match`.
----@field scope? "session" The only scope: a rule lasts until zemi exits, and init.lua adds it again on the next start.
----@field principal? string "plugin:<name>": only that plugin's Lua calls match. User config only.
-
----@class zemi.Rule
----@field subject string
----@field pattern string
----@field decision zemi.Decision
----@field not_match string
----@field principal? string
-
----@class zemi.PermModeSpec
----@field base? string The mode this one starts from: "auto" or "yolo".
----@field description? string
----@field prompt? string A system prompt section while the mode is active.
----@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on. Allow rules need user config, as in `zemi.permission.rule.add`.
----@field decide? fun(req: zemi.PermRequest): zemi.PermVerdict|"allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs as a task for at most 60s, so it may wait on a model call (zemi.http), which frees the interpreter. Unlike the mode's rules it may settle a command leaving the sandbox or reaching the network, an ask a rule asked for and a protected write, since a human could; the transcript gets a row saying so.
-
----@class zemi.PermVerdict
----@field decision "allow"|"deny"
----@field scope? "once"|"session"|"wider"|"project" How far an allow reaches: one call, the session rules an "always" answer writes, a file read's whole repository, or the project's permissions file. A scope the request does not offer narrows to the closest one below it, never wider, and a mode below user origin narrows "project" to "session": that durable file is the user's own grant.
----@field reason? string Why: on a denial it stands in for the ask's reason, and a settled allow of a call no rule may settle carries it on the notice row.
-
----@class zemi.PermRequest
----@field subject string
----@field arg string Path relative to the project, url or command.
----@field tool string
----@field reason string
----@field preview string
----@field description string
----@field agent string The subagent asking, such as "explore agent"; "" for the main agent.
----@field options string[] The scopes an allow may take here, "once" first; a scope left out is not on offer.
----@field read_only boolean A read-only agent's turn.
----@field trusted boolean The project is trusted.
----@field sandbox boolean A sandbox backend is live, so a settled command runs confined.
----@field unsandboxed boolean A command asked to leave the sandbox.
----@field network boolean A command asked for sockets.
----@field explicit boolean A rule asked for this call: a deny, or an ask whose exclusion matched.
----@field protected_write boolean A write that changes what zemi runs or allows (.git, the Lua in .agents, zemi's own dirs, a local plugin).
----@field protected_why string Why it is protected, "" otherwise.
-
 ---@class zemi.PermMode
 ---@field name string
----@field base string
 ---@field description string
 
 ---@class zemi.permission
 zemi.permission = {}
 
----@class zemi.permission.decision
----@field ALLOW "allow"
----@field ASK "ask"
----@field DENY "deny"
-zemi.permission.decision = {}
-
----@class zemi.permission.rule
-zemi.permission.rule = {}
-
---- Add a permission rule. Any origin may add deny and ask rules; allow rules
---- need user config. Ordering is deny > ask > allow, then
---- fewest wildcards, then longest literal prefix.
----
---- ```lua
---- zemi.permission.rule.add({
---- 	subject = "tool.shell",
---- 	pattern = "go test *",
---- 	decision = zemi.permission.decision.ALLOW,
---- 	match = "go test ./...",
---- })
---- ```
----@param spec zemi.RuleSpec
-function zemi.permission.rule.add(spec) end
-
---- The rules in force, in evaluation order. There is no `del`: an "always"
---- answer's rule lasts until zemi exits (`/permissions` deletes one) and
---- config rules are declarative file state.
----@return zemi.Rule[]
-function zemi.permission.rule.list() end
-
 ---@class zemi.permission.mode
 zemi.permission.mode = {}
 
---- Define a permission mode, or replace the one of that name: a lowercase
---- letter, then up to 15 lowercase letters, digits and "-". User, builtin or
---- plugin origin; the project may not. "auto" and "yolo" are reserved, and a
---- name another plugin holds is refused.
----
---- ```lua
---- zemi.permission.mode.add("review", {
---- 	base = "auto",
---- 	description = "reads settle, the rest asks me",
---- 	decide = function(req) return req.subject == "fs.read" and "allow" or nil end,
---- })
---- ```
----@param name string
----@param spec zemi.PermModeSpec
-function zemi.permission.mode.add(name, spec) end
-
---- Remove a mode. User, builtin or plugin origin; raises for a name no mode has
---- hold of, for "auto" and "yolo", and for the last mode.
----@param name string
-function zemi.permission.mode.del(name) end
-
---- Switch the active mode. User or builtin origin only.
+--- Switch the active permission mode: "ask" prompts before every action,
+--- "allow" (the default) runs everything. User or builtin origin only.
 ---@param name string
 ---@return true|nil ok, string? err
 function zemi.permission.mode.set(name) end
 
---- The active mode: the one `permissions.mode` names, or auto when that
---- names no mode. A mode built on yolo has `base = "yolo"`.
+--- The active mode, "ask" or "allow".
 ---
 --- ```lua
---- if zemi.permission.mode.get().base == "yolo" then zemi.permission.mode.set("auto") end
+--- if zemi.permission.mode.get().name == "ask" then zemi.permission.mode.set("allow") end
 --- ```
 ---@return zemi.PermMode
 function zemi.permission.mode.get() end

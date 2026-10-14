@@ -1,6 +1,6 @@
 ---
 name: zemi-dev-lessons
-description: "Load before a non-trivial change to zemi: checks against real user data, fail-opens in the bash parse and sandbox, prompt-cache traps, tests that do not flake, landing on main."
+description: "Load before a non-trivial change to zemi: checks against real user data, fail-opens at trust boundaries, prompt-cache traps, tests that do not flake, landing on main."
 ---
 
 # Lessons for changing zemi
@@ -15,10 +15,6 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - A rebase that meets main's api version bump takes the next minor above main's, in `host.go` and `TestNamespaceVersion` together.
 - golangci-lint holds one lock per machine: while another worktree lints, `make check` fails with "parallel golangci-lint is running". Run it again; that is no finding.
 
-git commits run confined on macOS in the main checkout, where the sandbox opens `.git` but for
-what runs code; in a linked worktree or on Linux `.git` is read-only inside the sandbox, so a
-confined `git commit` fails on `index.lock` and runs unsandboxed (`sandbox: false`).
-
 ## Every commit boots
 
 - zemi keeps no migrations before its first release. A schema change bumps `schemaVersion` in `internal/store/store.go`; after merging it, `make reset-db` drops the owner's stores (allowed) instead of writing an ALTER.
@@ -28,19 +24,7 @@ confined `git commit` fails on `index.lock` and runs unsandboxed (`sandbox: fals
 - Parallel workers in worktrees: never `git stash` (the stash is shared by every worktree of
   the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display
   diff tool that `git apply` cannot read). When copying state for a boot check, leave out
-  `sandbox-cache`, `scratch` and `tmp`, which run to gigabytes.
-
-## The bash parse and the sandbox
-
-A change that treats text as data (a heredoc body, a quoted word) or that exempts a path from
-the policy is where a fail-open comes from, a fix included. mvdan.cc/sh reads the grammar right;
-what fails open is a shell that reads the same text otherwise.
-
-- Try what runs the text under another name: `$SHELL`, `busybox sh`, `make -f -`, `eval "$(cat)"`, a pipe into a shell, a git alias, `RM` on a case-insensitive disk, an escape that spells a name (`$'\x72m'`).
-- Try what the other shells make of it. zemi parses the model's commands once as POSIX sh and fails any text the parse refuses or some sh reads otherwise, bodies another shell runs (`sh -c`, `bash -c`, a heredoc fed to a shell) included, since that sh may be bash. It runs them with dash where installed because macOS `sh` is bash 3.2: it closes a `$( )` at a `)` in a heredoc body and runs the rest (a commit message loses its `1)`), and fails on an apostrophe there. Debian's is dash: it ends `$'\'` at the backslash (a newer dash decodes `$'..'` as bash does) and runs the words of `[[ ]]` and `(( ))` as commands. Both expand an `alias` in the lines after it, and hand an unquoted heredoc body on with `\$` and `` \` `` unescaped. The parser itself reads a comment's trailing backslash and a carriage return otherwise than every shell. Run the text under /bin/sh, /bin/dash and /bin/bash with a PATH of stubs that log their argv, one write per record, in an empty dir (`TestRowsCoverShells` does it under `proc.Shell`), never with the real PATH; a row covers what ran only word for word.
-- The fail-open class is text the POSIX parse takes as plain words that bash reads as syntax: `$'\x72m'`, `{rm,-rf,.}`, `let`, `((`, a trailing backslash. Each must fail in the walker unconditionally; a check gated on which shell runs the text fails open where sh is bash and in every `bash -c` body. Anything that recurses (a heredoc, `sh -c`) multiplies per level of nesting unless it is read once (`walker.inner`).
-- A rule keyed on a file's name is judged where the file is, so a writable root exempt from it takes a renamed directory with the files inside, and a dir holding such a file must refuse being made, moved or removed (seatbelt's `gitParents`).
-- A rewrite of `perm/bash.go` that must change no verdict is checked against a copy of main's package: every string literal of the perm, hostapi and tools tests through both, then a few minutes of fuzzing the difference, and each difference that loosens a verdict run under the shells as above. The tables alone missed a panic and an endless loop.
+  `scratch` and `tmp`, which run to gigabytes.
 
 ## Prompt cache
 
@@ -51,9 +35,9 @@ Anything in the prefix that varies per request busts the provider cache for the 
 - Never synchronize on `time.Sleep`; wait on a channel, `waitIdle`, a hook or an observable state. A sleep fails under load or makes the assertion vacuous.
 - A test's budget measures work, never the clock: CPU time (`TestSendPrepCheap`, the snapshot cutoff); "returned before its deadline" is `ctx.Err() == nil` after the call. A wall-clock slice in the product gets a floor that holds on any machine, bounded by what it draws rather than by the data, and its test runs on a clock always past the slice (`TestColdChatRender`'s `lagClock`). A limit a case must wait out is short only in that case (`TestPluginsTest`'s `hangs`).
 - Pure timer logic (watchdog, idle model, priority queues) runs under `testing/synctest`. It does not fit child processes, ptys, sockets, or a Host booted outside the bubble, whose Lua actor and `database/sql` goroutines never go idle.
-- `t.Parallel()` on slow process-driven tests (LSP, sandbox builds) more than halves the hostapi run. It is safe only with no `t.Setenv`, `t.Chdir`, package globals or shared ports.
+- `t.Parallel()` on slow process-driven tests (LSP, plugin test boots) more than halves the hostapi run. It is safe only with no `t.Setenv`, `t.Chdir`, package globals or shared ports.
 - Boot-time goroutines (the `git status` warm-up, MCP start) capture what they read by value; a test that mutates `h.Dirs` after boot races them.
-- A package global written per host (`perm.EnvKeep` once) races between parallel hosts; make it a field.
+- A package global written per host races between parallel hosts; make it a field.
 - Run `make race` after touching concurrency.
 
 ## Traps
@@ -71,7 +55,7 @@ Anything in the prefix that varies per request busts the provider cache for the 
   (and a 30s slice ceiling, which load does not reach) - reuse it for any test that runs Lua.
 - The Lua API surface is pinned by `TestTypesCoverAPI`, `TestTypesDeclareNothingExtra` and `TestTypesEnums` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
 - Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
-  units (perm normalizer, learn intake, store) get table tests.
+  units (the gate in tools, learn intake, store) get table tests.
 - Skills tests: `newTestHostSkills(t)` boots namespaces + skills steps;
   `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting - every `Boot` builds a fresh
   generation, so steps sharing state must be passed in ONE call.

@@ -1,5 +1,5 @@
 // health.go is /health (after neovim's :checkhealth): one row per check,
-// so a piece failing quietly (no API key, a missing sandbox, a
+// so a piece failing quietly (no API key, a
 // reflector that keeps erroring) is visible in one place.
 
 package hostapi
@@ -332,17 +332,6 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthWarn, "notify", style+", "+why)
 	default:
 		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
-	}
-
-	switch s := h.sandbox.Load(); {
-	case h.Unsafe:
-		add(HealthWarn, "sandbox", "off (--unsafe): commands run unconfined with the whole environment, and no file is hidden")
-	case s.err != nil:
-		add(HealthWarn, "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
-	case !s.backend.EnforcesProtect:
-		add(HealthOK, "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run; it cannot keep .git read-only, so the project is read-only to them")
-	default:
-		add(HealthOK, "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run")
 	}
 
 	h.agents.mu.Lock()

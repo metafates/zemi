@@ -79,8 +79,7 @@ var ErrRefused = errors.New("zemi plugins test starts no process")
 
 var refusing atomic.Int32
 
-// Refuse makes every start fail, zemi's own git and the sandbox probe
-// included, until each release it returned has run, so one runner ending
+// Refuse makes every start fail, zemi.s own git included, until each release it returned has run, so one runner ending
 // never lifts another's.
 // NOTE: process wide: a zemi not under test in the same process starts
 // nothing either meanwhile. zemi plugins test is a process of its own.

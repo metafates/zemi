@@ -163,12 +163,9 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- 	render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Dim" } } } end,
 -- })
 
--- Permissions: allow rules come only from your own config. Each rule needs
--- match, an argument its pattern must match, so a typo fails at startup.
--- zemi.permission.rule.add({
--- 	subject = "tool.shell", pattern = "git push *", decision = zemi.permission.decision.ASK,
--- 	match = "git push origin main",
--- })
+-- Permission modes: "ask" prompts before every action, "allow" (the
+-- default) runs everything. Switch at runtime with ctrl+y or /mode.
+-- permissions.mode = "ask"
 
 -- zemi writes type annotations for the whole zemi.* API and the editor
 -- configs (.luarc.json, .emmyrc.json) beside this file, so your editor

@@ -442,7 +442,7 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 	if n := len(denied) - len(shown); n > 0 {
 		fmt.Fprintf(w, "  … %d more\n", n)
 	}
-	fmt.Fprintf(w, "  %s;\n  an allow rule (zemi.permission.rule.add in init.lua) lets a call through\n", deniedHint(denied, trusted))
+	fmt.Fprintf(w, "  %s;\n  run with permissions.mode = \"allow\" (the default) to settle it here\n", deniedHint(denied, trusted))
 }
 
 // deniedHint says what would let zemi run's denied calls through.
@@ -451,12 +451,10 @@ func deniedHint(denied []hostapi.Denial, trusted bool) string {
 		return slices.ContainsFunc(denied, func(d hostapi.Denial) bool { return d.Why == why })
 	}
 	switch {
-	case has(hostapi.DenyOutsideSandbox):
-		return "running outside the sandbox needs the TUI"
 	case has(hostapi.DenyNeedsTUI):
 		return "only the TUI approves a Lua script or a memory edit"
 	case !trusted:
 		return "--trust trusts this project for the run"
 	}
-	return "the mode left it to the user"
+	return "ask mode left it to the user"
 }

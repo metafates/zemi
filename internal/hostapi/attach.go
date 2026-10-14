@@ -116,12 +116,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
-		// the model reads the file, so the model's rules apply, before it is
-		// opened: opening a device has effects
-		if !drop && h.Perm.Evaluate(perm.SubjectRead, h.projectAbs(name), perm.PrincipalModel).Decision != perm.Allow {
-			note("reading it needs your approval")
-			continue
-		}
+		// the model reads the file, so opening a device has effects
 		f, fi, err := tools.OpenRegular(path)
 		if err != nil {
 			continue
@@ -254,8 +249,8 @@ func (h *Host) AttachPath(path string) string {
 		}
 		return attachRefToken(rel, image)
 	}
-	// a secret-shaped name is copied in unless the run hides nothing (--unsafe)
-	if fi.IsDir() || !h.Unsafe && perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
+	// a secret-shaped name is not copied into the chat
+	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return tools.ShellQuote(path)
 	}
 	data, err := os.ReadFile(path)

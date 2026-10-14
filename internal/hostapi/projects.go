@@ -5,6 +5,8 @@ package hostapi
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -252,6 +254,14 @@ func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
 	return nil
 }
 
+// trustKey names the trust root in cache paths. Caches are kept one per
+// trust root: Go trusts its cache entries, so a shared one lets one
+// project's build plant what another's links.
+func trustKey(root string) string {
+	key := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(key[:8])
+}
+
 // argDir is a directory a /projects verb names: it may start with ~ and is
 // taken from the launch dir when relative.
 func (h *Host) argDir(arg string) (string, error) {
@@ -308,8 +318,7 @@ func (h *Host) deleteProject(p Project) error {
 		h.removeSessionFiles(id)
 	}
 	key := trustKey(p.Root)
-	err = errors.Join(os.RemoveAll(projectState(h.Dirs.StateHome, p.Root)),
-		os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-cache", key)))
+	err = errors.Join(os.RemoveAll(projectState(h.Dirs.StateHome, p.Root)))
 	if h.Dirs.CacheHome != "" {
 		err = errors.Join(err, os.RemoveAll(filepath.Join(h.Dirs.CacheHome, "lsp", key)))
 	}
@@ -354,7 +363,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"
-			item["detail"] = "zemi runs here: /trust changes its trust and /permissions its allowed commands. Switch to another project to delete this one's data."
+			item["detail"] = "zemi runs here: /trust changes its trust. Switch to another project to delete this one's data."
 			items = append(items, item)
 			continue
 		case p.Missing:
@@ -410,14 +419,10 @@ func (h *Host) projectFields(p Project) []any {
 	if dirs, _ := os.ReadDir(filepath.Join(state, "skills")); len(dirs) > 0 {
 		recipes = strconv.Itoa(len(dirs))
 	}
-	allowed := permissionLines(filepath.Join(state, "permissions"))
-	for i, l := range allowed {
-		allowed[i] = sanitize.String(l) // per line: an unterminated escape runs to the end of its string
-	}
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
 	trust := h.trustWord(Project{Root: p.Root, Trust: p.Trust})
 	return fieldList("trust", trust, "sessions", sessions, "memories", memories, "recipes", recipes,
-		"allowed", strings.Join(allowed, ", "), "path", sanitize.String(perm.TildePath(p.Root)), "data", perm.TildePath(state), "error", errText)
+		"path", sanitize.String(perm.TildePath(p.Root)), "data", perm.TildePath(state), "error", errText)
 }

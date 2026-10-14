@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -34,8 +35,8 @@ func (h *Host) RunShell(cmd string) {
 		defer cancel()
 		c := proc.CommandContext(ctx, "sh", "-c", cmd)
 		c.Dir = h.Dirs.ProjectDir
-		env, _ := h.Perm.ChildEnv(nil)
-		c.Env = append(env, proc.NonInteractiveEnv...)
+		env := append(os.Environ(), proc.NonInteractiveEnv...)
+		c.Env = env
 		out := &proc.Buffer{Max: 1 << 20}
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)

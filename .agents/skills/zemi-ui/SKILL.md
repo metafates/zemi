@@ -136,8 +136,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   which the completion picks up again. A file from outside the project zemi copies in becomes
   `[Image <name>]` or `[File <name>]`, the kind read from the extension, the name the copy's
   own basename, capped at 60 cells; a name the project root already holds is refused, a
-  directory or a binary or oversized file keeps its quoted path (a secret-shaped one too,
-  unless the run hides nothing, `--unsafe`), and a
+  directory or a binary or oversized file, a secret-shaped one included, keeps its quoted path,
+  and a
   clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. A project path an `@` word
   would not read back whole - one holding whitespace, or ending in the punctuation a sentence
   ends on - keeps the chip, named project-relative with the `./` a bare root name needs; one
