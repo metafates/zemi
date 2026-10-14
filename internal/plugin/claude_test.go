@@ -243,6 +243,8 @@ func TestReadClaudeMarketplace(t *testing.T) {
 
 	for _, c := range []struct{ name, json, want string }{
 		{"a relative source needs the dot", `{"name": "m", "plugins": [{"name": "p", "source": "nope"}]}`, `must start with "./"`},
+		{"a relative source stays inside the clone", `{"name": "m", "plugins": [{"name": "p", "source": "./../../secret"}]}`, "stay inside the marketplace"},
+		{"a git-subdir path stays inside the clone", `{"name": "m", "plugins": [{"name": "p", "source": {"source": "git-subdir", "url": "https://x/y.git", "path": "../../etc"}}]}`, "stay inside the marketplace"},
 		{"a source names no kind", `{"name": "m", "plugins": [{"name": "p", "source": {"url": "https://x"}}]}`, "names no kind"},
 		{"an entry without a name", `{"name": "m", "plugins": [{"source": "./p"}]}`, "without a name"},
 		{"malformed", `{"name": `, "unexpected EOF"},

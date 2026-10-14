@@ -574,6 +574,16 @@ type claudeMarketplaceEntryJSON struct {
 	MCPServers jsontext.Value `json:"mcpServers"`
 }
 
+// localIn guards a source path that must resolve inside the marketplace
+// clone: one that climbs out would copy an arbitrary disk dir in as plugin
+// code.
+func localIn(name, dir string) error {
+	if !filepath.IsLocal(filepath.Clean(dir)) {
+		return fmt.Errorf("plugin %s: source path %q must stay inside the marketplace", name, dir)
+	}
+	return nil
+}
+
 // claudeSource parses an entry's source: a "./path" inside the marketplace
 // clone, or an object naming a git URL.
 func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
@@ -581,6 +591,9 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 	if json.Unmarshal(raw, &rel) == nil {
 		if !strings.HasPrefix(rel, "./") {
 			return ClaudeSource{}, fmt.Errorf("plugin %s: source %q must start with %q", name, rel, "./")
+		}
+		if err := localIn(name, rel); err != nil {
+			return ClaudeSource{}, err
 		}
 		return ClaudeSource{Kind: "relative", Dir: rel}, nil
 	}
@@ -601,6 +614,9 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 	case "git", "url":
 		return ClaudeSource{Kind: o.Source, URL: o.URL, Ref: o.Ref, SHA: o.SHA}, nil
 	case "git-subdir":
+		if err := localIn(name, o.Path); err != nil {
+			return ClaudeSource{}, err
+		}
 		return ClaudeSource{Kind: o.Source, URL: o.URL, Dir: o.Path, Ref: o.Ref, SHA: o.SHA}, nil
 	case "":
 		return ClaudeSource{}, fmt.Errorf("plugin %s: source names no kind", name)

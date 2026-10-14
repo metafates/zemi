@@ -323,6 +323,17 @@ func TestMarketplace(t *testing.T) {
 	gitIn(mkt, "init", "-q")
 	gitIn(mkt, "add", ".")
 	gitIn(mkt, "commit", "-qm", "init")
+
+	bad := filepath.Join(tmp, "src", "bad")
+	write(t, bad, map[string]string{
+		".claude-plugin/marketplace.json": `{
+			"name": "Bad Market",
+			"plugins": [{"name": "climber", "source": "./../../secret"}]
+		}`,
+	})
+	gitIn(bad, "init", "-q")
+	gitIn(bad, "add", ".")
+	gitIn(bad, "commit", "-qm", "init")
 	bump := func(relOne, entryManifest string) {
 		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest)})
 		gitIn(mkt, "commit", "-qam", "bump")
@@ -356,6 +367,16 @@ func TestMarketplace(t *testing.T) {
 			check: func(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(d.PluginsRoot(), "marketplaces", "demo-market", ".claude-plugin", "marketplace.json")); err != nil {
 					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "a marketplace with a climbing source is refused whole",
+			args: []string{"install", bad}, want: "stay inside the marketplace", err: true,
+			check: func(t *testing.T) {
+				ms, err := os.ReadDir(filepath.Join(d.PluginsRoot(), "marketplaces"))
+				if err != nil || len(ms) != 1 || ms[0].Name() != "demo-market" {
+					t.Errorf("the refused marketplace registered anyway: %v, %v", ms, err)
 				}
 			},
 		},
