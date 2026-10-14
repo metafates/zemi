@@ -1073,6 +1073,9 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 // marketplace's state as of this update. The clone is a cache: no pull.
 func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", reg.Marketplace))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil // the clone is gone; the row keeps the version it has
+	}
 	if err != nil {
 		return err
 	}
