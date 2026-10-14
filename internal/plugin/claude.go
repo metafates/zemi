@@ -481,9 +481,20 @@ func readJSONFile(path string) jsontext.Value {
 	return jsontext.Value(data)
 }
 
-// ClaudeMarketplaceFile is the marketplace manifest inside ClaudeDir, the
-// one file that makes a repository a marketplace.
+// ClaudeMarketplaceFile is the marketplace manifest inside ClaudeDir, one of
+// the two files that make a repository a marketplace.
 const ClaudeMarketplaceFile = ClaudeDir + "/marketplace.json"
+
+// ZemiMarketplaceFile is the zemi-native marketplace manifest, preferred
+// over Claude's when a repository holds both.
+const ZemiMarketplaceFile = CodeDir + "/marketplace.json"
+
+// The marketplace kinds: which manifest a Marketplace was read from. It
+// decides how entry names match and what a synthesized manifest looks like.
+const (
+	KindZemi   = "zemi"
+	KindClaude = "claude"
+)
 
 // ClaudeSource is a marketplace entry's source.
 type ClaudeSource struct {
@@ -494,34 +505,69 @@ type ClaudeSource struct {
 	SHA  string
 }
 
-// ClaudeMarketplaceEntry is one plugins[] entry of a marketplace.json. Its
+// MarketplacePlugin is one plugins[] entry of a marketplace manifest. Its
 // component fields ride as written: when the plugin dir has no plugin.json,
-// the entry acts as the manifest and they pass through.
-type ClaudeMarketplaceEntry struct {
+// the entry acts as the manifest, and Kind says which file that is.
+type MarketplacePlugin struct {
+	Kind                                 string
 	Name, Version, Description, Homepage string
 	Author                               ClaudeAuthor
 	Source                               ClaudeSource
 	Strict                               bool // Claude defaults an unwritten strict to true
 
 	Commands, Agents, Skills, Hooks, MCPServers jsontext.Value
+	Uses                                        []string // the zemi manifest's capability grants
 }
 
-// ClaudeMarketplace is marketplace.json parsed; unknown fields are ignored,
+// Marketplace is a marketplace manifest parsed; unknown fields are ignored,
 // Claude's own rule.
-type ClaudeMarketplace struct {
+type Marketplace struct {
 	Name    string
-	Owner   ClaudeAuthor
-	Plugins []ClaudeMarketplaceEntry
+	Kind    string
+	Plugins []MarketplacePlugin
 }
 
-// ReadClaudeMarketplace reads dir's marketplace.json. It is data-only: an
-// entry whose source zemi cannot install still comes back, its kind naming
-// the reason.
-func ReadClaudeMarketplace(dir string) (ClaudeMarketplace, error) {
-	raw := readJSONFile(filepath.Join(dir, ClaudeMarketplaceFile))
-	if raw == nil {
-		return ClaudeMarketplace{}, fs.ErrNotExist
+// find returns the entry a user's name picks: exact in a zemi marketplace,
+// whose names are already zemi's, sanitized in a Claude one.
+func (m Marketplace) find(name string) (MarketplacePlugin, bool) {
+	match := func(e MarketplacePlugin) bool { return e.Name == name }
+	if m.Kind == KindClaude {
+		want := SanitizeName(name)
+		match = func(e MarketplacePlugin) bool { return SanitizeName(e.Name) == want }
 	}
+	i := slices.IndexFunc(m.Plugins, match)
+	if i < 0 {
+		return MarketplacePlugin{}, false
+	}
+	return m.Plugins[i], true
+}
+
+// installName is the name the entry installs under: a zemi entry's name is
+// already zemi's, a Claude one is folded into it.
+func (e MarketplacePlugin) installName() string {
+	if e.Kind == KindZemi {
+		return e.Name
+	}
+	return SanitizeName(e.Name)
+}
+
+// ReadMarketplace reads dir's marketplace manifest, the zemi-native one
+// preferred over Claude's; neither present is fs.ErrNotExist. It is
+// data-only: an entry whose source zemi cannot install still comes back,
+// its kind naming the reason.
+func ReadMarketplace(dir string) (Marketplace, error) {
+	if raw := readJSONFile(filepath.Join(dir, ZemiMarketplaceFile)); raw != nil {
+		return readMarketplace(raw, KindZemi)
+	}
+	if raw := readJSONFile(filepath.Join(dir, ClaudeMarketplaceFile)); raw != nil {
+		return readMarketplace(raw, KindClaude)
+	}
+	return Marketplace{}, fs.ErrNotExist
+}
+
+// readMarketplace parses one manifest of either kind: one shape, the zemi
+// one stricter about names and validated on uses here, at the boundary.
+func readMarketplace(raw jsontext.Value, kind string) (Marketplace, error) {
 	var j struct {
 		Name  string `json:"name"`
 		Owner struct {
@@ -529,49 +575,59 @@ func ReadClaudeMarketplace(dir string) (ClaudeMarketplace, error) {
 			Email string `json:"email"`
 			URL   string `json:"url"`
 		} `json:"owner"`
-		Plugins []claudeMarketplaceEntryJSON `json:"plugins"`
+		Plugins []struct {
+			Name        string         `json:"name"`
+			Source      jsontext.Value `json:"source"`
+			Version     string         `json:"version"`
+			Description string         `json:"description"`
+			Homepage    string         `json:"homepage"`
+			Author      struct {
+				Name  string `json:"name"`
+				Email string `json:"email"`
+				URL   string `json:"url"`
+			} `json:"author"`
+			Strict *bool `json:"strict"`
+
+			Commands   jsontext.Value `json:"commands"`
+			Agents     jsontext.Value `json:"agents"`
+			Skills     jsontext.Value `json:"skills"`
+			Hooks      jsontext.Value `json:"hooks"`
+			MCPServers jsontext.Value `json:"mcpServers"`
+			Uses       []string       `json:"uses"`
+		} `json:"plugins"`
 	}
 	if err := json.Unmarshal(raw, &j); err != nil {
-		return ClaudeMarketplace{}, err
+		return Marketplace{}, err
 	}
-	m := ClaudeMarketplace{Name: j.Name, Owner: ClaudeAuthor(j.Owner)}
+	m := Marketplace{Name: j.Name, Kind: kind}
+	if kind == KindZemi && !nameRe.MatchString(m.Name) {
+		return Marketplace{}, fmt.Errorf("%q is not a marketplace name: lowercase letters, digits, '_' and '-'", m.Name)
+	}
 	for _, e := range j.Plugins {
 		if e.Name == "" {
-			return ClaudeMarketplace{}, errors.New("a plugin entry without a name")
+			return Marketplace{}, errors.New("a plugin entry without a name")
+		}
+		if kind == KindZemi {
+			if !nameRe.MatchString(e.Name) {
+				return Marketplace{}, fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '_' and '-'", e.Name)
+			}
+			if err := CheckUses(e.Uses); err != nil {
+				return Marketplace{}, err
+			}
 		}
 		src, err := claudeSource(e.Name, e.Source)
 		if err != nil {
-			return ClaudeMarketplace{}, err
+			return Marketplace{}, err
 		}
-		m.Plugins = append(m.Plugins, ClaudeMarketplaceEntry{
-			Name: e.Name, Version: e.Version, Description: e.Description,
+		m.Plugins = append(m.Plugins, MarketplacePlugin{
+			Kind: kind, Name: e.Name, Version: e.Version, Description: e.Description,
 			Homepage: e.Homepage, Author: ClaudeAuthor(e.Author),
 			Source: src, Strict: e.Strict == nil || *e.Strict,
 			Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
-			Hooks: e.Hooks, MCPServers: e.MCPServers,
+			Hooks: e.Hooks, MCPServers: e.MCPServers, Uses: e.Uses,
 		})
 	}
 	return m, nil
-}
-
-type claudeMarketplaceEntryJSON struct {
-	Name        string         `json:"name"`
-	Source      jsontext.Value `json:"source"`
-	Version     string         `json:"version"`
-	Description string         `json:"description"`
-	Homepage    string         `json:"homepage"`
-	Author      struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-		URL   string `json:"url"`
-	} `json:"author"`
-	Strict *bool `json:"strict"`
-
-	Commands   jsontext.Value `json:"commands"`
-	Agents     jsontext.Value `json:"agents"`
-	Skills     jsontext.Value `json:"skills"`
-	Hooks      jsontext.Value `json:"hooks"`
-	MCPServers jsontext.Value `json:"mcpServers"`
 }
 
 // localIn guards a source path that must resolve inside the marketplace
@@ -626,9 +682,10 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 	}
 }
 
-// manifestJSON renders the plugin.json for a dir whose entry acts as the
-// manifest: the entry's scalars and its component fields as written.
-func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
+// manifestJSON renders the .claude-plugin/plugin.json for a dir whose entry
+// acts as the manifest: the entry's scalars and its component fields as
+// written.
+func (e MarketplacePlugin) manifestJSON() ([]byte, error) {
 	var author *ClaudeAuthor
 	if e.Author != (ClaudeAuthor{}) {
 		author = &e.Author
@@ -650,6 +707,36 @@ func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
 		Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
 		Hooks: e.Hooks, MCPServers: e.MCPServers,
 	})
+}
+
+// synthManifest writes the entry as the plugin's manifest in dir when the
+// dir holds no manifest of its own: the entry is then the manifest, uses
+// included. It reports whether it wrote one.
+func (e MarketplacePlugin) synthManifest(dir string) (bool, error) {
+	if exists(filepath.Join(dir, ManifestFile)) || exists(filepath.Join(dir, ClaudeManifestFile)) {
+		return false, nil
+	}
+	var file string
+	var b []byte
+	var err error
+	if e.Kind == KindZemi {
+		file = ManifestFile
+		b, err = json.Marshal(struct {
+			Version     string   `json:"version,omitempty"`
+			Description string   `json:"description,omitempty"`
+			Uses        []string `json:"uses,omitempty"`
+		}{e.Version, e.Description, e.Uses})
+	} else {
+		file = ClaudeManifestFile
+		b, err = e.manifestJSON()
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(file)), 0o755); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(filepath.Join(dir, file), b, 0o644)
 }
 
 // claudeProvides summarizes what a Claude-layout plugin contributes, for

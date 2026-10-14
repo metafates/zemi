@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/proc"
@@ -87,7 +88,10 @@ func TestCheckUses(t *testing.T) {
 	}
 }
 
-// TestPlugins walks one plugin tree through the CLI verbs, in order.
+// TestPlugins walks one plugin tree through the CLI verbs, in order: the
+// marketplace registers, its entries install and update through their own
+// git, a clone from before marketplaces keeps updating, and enable, disable
+// and delete behave.
 func TestPlugins(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -128,25 +132,38 @@ func TestPlugins(t *testing.T) {
 	os.MkdirAll(filepath.Join(local, CodeDir), 0o755)
 	installed := filepath.Join(d.PluginsRoot(), "installed")
 
+	mkt := filepath.Join(tmp, "src", "mkt")
+	write(t, mkt, map[string]string{
+		".claude-plugin/marketplace.json": fmt.Sprintf(`{
+			"name": "Demo Market", "owner": {"name": "t"},
+			"plugins": [
+				{"name": "x", "source": {"source": "git", "url": "file://%s"}},
+				{"name": "why", "source": {"source": "git", "url": "%s"}},
+				{"name": "loc", "source": "./plugins/loc"}
+			]
+		}`, tagged, filepath.Join(tmp, "src", "y.git")),
+		"plugins/loc/.zemi/plugin.json": `{"description": "the local twin"}`,
+	})
+	gitIn(mkt, "init", "-q")
+	gitIn(mkt, "add", ".")
+	gitIn(mkt, "commit", "-qm", "init")
+
 	for _, c := range []struct {
 		name   string
 		before func()
-		args   []string // nil lists: name, version, enabled, source
+		args   []string // nil lists: name, version, enabled, source, marketplace
 		want   string   // in the output (words joined by one space, a newline on each end), or in the error when err
 		err    bool
 	}{
 		{name: "local only", args: nil, want: "loc true " + local},
-		{name: "install takes the highest tag", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
-		{name: "install a branch under a name", args: []string{"install", filepath.Join(tmp, "src", "y.git"), "why"}, want: "\nwhy "},
-		{name: "a taken name", args: []string{"install", "file://" + tagged}, want: "already named x", err: true},
-		{name: "a local plugin's name", args: []string{"install", "file://" + tagged, "loc"}, want: "already named loc", err: true},
-		{name: "a name that climbs", args: []string{"install", "file://" + tagged, "../x"}, want: "not a plugin name", err: true},
-		{name: "a dotted name, which require cannot reach", args: []string{"install", "file://" + tagged, "x.zemi"}, want: "not a plugin name", err: true},
-		{name: "a name like a flag", args: []string{"install", "file://" + tagged, "-x"}, want: "not a plugin name", err: true},
-		{name: "a URL like a flag", args: []string{"install", "--upload-pack=x"}, want: "not a git URL", err: true},
-		{name: "a remote helper", args: []string{"install", "ext::sh -c touch% " + marker, "e"}, want: "not allowed", err: true},
-		{name: "a plaintext transport", args: []string{"install", "git://127.0.0.1/x", "g"}, want: "not allowed", err: true},
-		{name: "a clone that fails leaves nothing", args: []string{"install", "file://" + tmp + "/nope", "nope"}, want: "clone", err: true},
+		{name: "the marketplace registers", args: []string{"marketplace", "add", mkt}, want: "marketplace demo-market added (3 plugins)"},
+		{name: "install takes the highest tag", args: []string{"install", "x@demo-market"}, want: "\nx v1.0.0\n"},
+		{name: "a taken name", args: []string{"install", "x@demo-market"}, want: "already named x", err: true},
+		{name: "install a branch entry", args: []string{"install", "why@demo-market"}, want: "\nwhy "},
+		{name: "a local plugin's name", args: []string{"install", "loc@demo-market"}, want: "already named loc", err: true},
+		{name: "a URL is no longer a door", args: []string{"install", "file://" + tagged}, want: "marketplace add", err: true},
+		{name: "a remote helper is never run", args: []string{"install", "ext::sh -c touch% " + marker}, want: "marketplace add", err: true},
+		{name: "a clone that fails leaves nothing", args: []string{"marketplace", "add", "file://" + tmp + "/nope"}, want: "clone", err: true},
 		{
 			name:   "check sees the same major first",
 			before: func() { gitIn(filepath.Join(installed, "x"), "checkout", "-q", "refs/tags/v0.1.0") },
@@ -173,7 +190,7 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "a branch moves to the first tag", args: []string{"update", "why"}, want: " -> v0.1.0\n"},
 		{name: "disable", args: []string{"disable", "x"}},
-		{name: "list", args: nil, want: "x v0.10.0 false file://" + tagged},
+		{name: "list", args: nil, want: "x v0.10.0 false file://" + tagged + " demo-market"},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},
 		{
 			name:   "delete a local plugin",
@@ -198,9 +215,8 @@ func TestPlugins(t *testing.T) {
 			before: func() {
 				older := repo("w")
 				gitIn(older, "commit", "-q", "--allow-empty", "-m", "c2")
-				if _, err := Install(t.Context(), d, older, ""); err != nil {
-					t.Fatal(err)
-				}
+				// a clone from before marketplaces: no registry row, its own git
+				gitIn(tmp, "clone", "-q", "file://"+older, filepath.Join(installed, "w"))
 				gitIn(older, "tag", "v0.1.0", "HEAD~1")
 				gitIn(older, "commit", "-q", "--allow-empty", "-m", "c3")
 			},
@@ -212,7 +228,7 @@ func TestPlugins(t *testing.T) {
 			args:   []string{"check"}, want: " -> 1 new commit x ",
 		},
 		{name: "delete", args: []string{"delete", "x"}},
-		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
+		{name: "reinstall after the delete", args: []string{"install", "x@demo-market"}, want: "\nx v1.0.0\n"},
 		{
 			name: "a manifest outranks the tag",
 			before: func() {
@@ -229,6 +245,7 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},
 		{name: "enable takes one name", args: []string{"enable"}, want: "usage:", err: true},
+		{name: "marketplace takes a subcommand", args: []string{"marketplace", "frob"}, want: "usage:", err: true},
 	} {
 		if c.before != nil {
 			c.before()
@@ -237,7 +254,7 @@ func TestPlugins(t *testing.T) {
 		ps, err := List(t.Context(), d)
 		if c.args == nil {
 			for _, p := range ps {
-				fmt.Fprintln(&out, p.Name, p.Version, p.Enabled, cmp.Or(p.URL, p.Dir))
+				fmt.Fprintln(&out, p.Name, p.Version, p.Enabled, cmp.Or(p.URL, p.Dir), p.Marketplace)
 			}
 		} else {
 			err = Run(t.Context(), d, c.args, &out)
@@ -272,8 +289,9 @@ func TestPlugins(t *testing.T) {
 }
 
 // TestMarketplace walks one marketplace tree through the CLI verbs, in
-// order: the repo registers as a marketplace, its entries install, a copy
-// updates from the clone and a delete drops the provenance.
+// order: the repos register, their entries install by their own kind's
+// matching, copies update from pulled clones, a check reads the fetched ref
+// without moving a worktree, and removals respect what still needs the cache.
 func TestMarketplace(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -304,7 +322,7 @@ func TestMarketplace(t *testing.T) {
 	gitIn(zedsub, "commit", "-qm", "init")
 
 	mkt := filepath.Join(tmp, "src", "mkt")
-	manifest := func(relOne, entryManifest, subOne string) string {
+	manifest := func(relOne, entryManifest, subOne, gitOne string) string {
 		return fmt.Sprintf(`{
 			"name": "Demo Market",
 			"owner": {"name": "t"},
@@ -314,24 +332,63 @@ func TestMarketplace(t *testing.T) {
 				{"name": "entry-manifest", "source": "./plugins/entry-manifest", "version": %q,
 				 "mcpServers": {"srv": {"command": "srv"}}},
 				{"name": "Own Manifest", "source": "./plugins/own-manifest", "version": "5.0.0"},
-				{"name": "git-one", "source": {"source": "git", "url": "file://%s", "ref": "v0.1.0"}},
+				{"name": "git-one", "source": {"source": "git", "url": "file://%s", "ref": "v0.1.0"}, "version": %q},
 				{"name": "npm-one", "source": {"source": "npm", "package": "x"}},
-				{"name": "sub-one", "source": {"source": "git-subdir", "url": "file://%s", "path": "plugins/sub"}, "version": %q}
+				{"name": "sub-one", "source": {"source": "git-subdir", "url": "file://%s", "path": "plugins/sub"}, "version": %q},
+				{"name": "loose", "source": "./plugins/loose"}
 			]
-		}`, relOne, entryManifest, zed, zedsub, subOne)
+		}`, relOne, entryManifest, zed, gitOne, zedsub, subOne)
 	}
 	write(t, mkt, map[string]string{
-		".claude-plugin/marketplace.json":                 manifest("1.0.0", "0.2.0", "0.1.0"),
+		".claude-plugin/marketplace.json":                 manifest("1.0.0", "0.2.0", "0.1.0", "0.5.0"),
 		"plugins/rel-one/skills/a/SKILL.md":               "---\ndescription: a\n---\nbody",
 		"plugins/rel-one/skills/b/SKILL.md":               "---\ndescription: b\n---\nbody",
 		"plugins/entry-manifest/commands/x.md":            "do x",
 		"plugins/entry-manifest/commands/y.md":            "do y",
 		"plugins/entry-manifest/hooks/hooks.json":         `{"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "fmt.sh"}]}]}}`,
 		"plugins/own-manifest/.claude-plugin/plugin.json": `{"version": "1.2.3", "description": "its own"}`,
+		"plugins/loose/commands/loose.md":                 "loose",
 	})
 	gitIn(mkt, "init", "-q")
 	gitIn(mkt, "add", ".")
 	gitIn(mkt, "commit", "-qm", "init")
+
+	// a second repo claiming the same marketplace name, from another source
+	mkt2 := filepath.Join(tmp, "src", "mkt2")
+	write(t, mkt2, map[string]string{".claude-plugin/marketplace.json": `{"name": "Demo Market", "plugins": []}`})
+	gitIn(mkt2, "init", "-q")
+	gitIn(mkt2, "add", ".")
+	gitIn(mkt2, "commit", "-qm", "init")
+
+	// a zemi-native marketplace; its claude manifest would name and list
+	// different things, so the add shows which one was read
+	both := filepath.Join(tmp, "src", "both")
+	write(t, both, map[string]string{
+		".zemi/marketplace.json": `{
+			"name": "bothz", "owner": {"name": "t"},
+			"plugins": [
+				{"name": "strict_one", "source": "./plugins/strict-one", "version": "1.0.0", "uses": ["http"]},
+				{"name": "own-z", "source": "./plugins/own-z", "version": "9.9.9", "description": "entry says"},
+				{"name": "rel-one", "source": "./plugins/rel-one"}
+			]
+		}`,
+		".claude-plugin/marketplace.json":   `{"name": "Other Name", "plugins": [{"name": "claude-only", "source": "./plugins/strict-one"}]}`,
+		"plugins/strict-one/.zemi/init.lua": "-- strict one\n",
+		"plugins/own-z/.zemi/plugin.json":   `{"version": "2.0.0", "description": "its own", "uses": ["agent"]}`,
+	})
+	gitIn(both, "init", "-q")
+	gitIn(both, "add", ".")
+	gitIn(both, "commit", "-qm", "init")
+
+	ghost := filepath.Join(tmp, "src", "ghost")
+	write(t, ghost, map[string]string{
+		".claude-plugin/marketplace.json": `{"name": "Ghost", "plugins": [
+			{"name": "ghost-one", "source": {"source": "git", "url": "file://` + zed + `"}}
+		]}`,
+	})
+	gitIn(ghost, "init", "-q")
+	gitIn(ghost, "add", ".")
+	gitIn(ghost, "commit", "-qm", "init")
 
 	bad := filepath.Join(tmp, "src", "bad")
 	write(t, bad, map[string]string{
@@ -343,8 +400,8 @@ func TestMarketplace(t *testing.T) {
 	gitIn(bad, "init", "-q")
 	gitIn(bad, "add", ".")
 	gitIn(bad, "commit", "-qm", "init")
-	bump := func(relOne, entryManifest, subOne string) {
-		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest, subOne)})
+	bump := func(relOne, entryManifest, subOne, gitOne string) {
+		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest, subOne, gitOne)})
 		gitIn(mkt, "commit", "-qam", "bump")
 	}
 	provides := func(t *testing.T, name string) []string {
@@ -361,6 +418,7 @@ func TestMarketplace(t *testing.T) {
 		t.Fatalf("%s is not scanned", name)
 		return nil
 	}
+	var added time.Time
 
 	for _, c := range []struct {
 		name   string
@@ -371,17 +429,37 @@ func TestMarketplace(t *testing.T) {
 		check  func(t *testing.T)
 	}{
 		{
-			name: "a marketplace repo registers instead of installing",
-			args: []string{"install", mkt}, want: "marketplace demo-market added (6 plugins)",
+			name: "a marketplace repo registers by its manifest",
+			args: []string{"marketplace", "add", mkt}, want: "marketplace demo-market added (7 plugins)",
 			check: func(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(d.PluginsRoot(), "marketplaces", "demo-market", ".claude-plugin", "marketplace.json")); err != nil {
 					t.Fatal(err)
 				}
+				ms, err := Marketplaces(d)
+				if err != nil || len(ms) != 1 || ms[0].Name != "demo-market" || ms[0].Source != mkt || len(ms[0].Entries) != 7 {
+					t.Fatalf("marketplaces: %+v, %v", ms, err)
+				}
+				added = ms[0].Added
 			},
 		},
 		{
+			name: "a same-source re-add refreshes the clone and keeps its Added",
+			args: []string{"marketplace", "add", mkt}, want: "marketplace demo-market added (7 plugins)",
+			check: func(t *testing.T) {
+				ms, _ := Marketplaces(d)
+				if !ms[0].Added.Equal(added) {
+					t.Errorf("the re-add reset Added: %v, want %v", ms[0].Added, added)
+				}
+			},
+		},
+		{
+			name: "a same name from another source is refused",
+			args: []string{"marketplace", "add", mkt2},
+			want: "demo-market is already registered from " + mkt + ", not " + mkt2, err: true,
+		},
+		{
 			name: "a marketplace with a climbing source is refused whole",
-			args: []string{"install", bad}, want: "stay inside the marketplace", err: true,
+			args: []string{"marketplace", "add", bad}, want: "stay inside the marketplace", err: true,
 			check: func(t *testing.T) {
 				ms, err := os.ReadDir(filepath.Join(d.PluginsRoot(), "marketplaces"))
 				if err != nil || len(ms) != 1 || ms[0].Name() != "demo-market" {
@@ -401,8 +479,9 @@ func TestMarketplace(t *testing.T) {
 				if err != nil || !strings.Contains(string(b), `"version":"1.0.0"`) || !strings.Contains(string(b), `"name":"Rel One"`) {
 					t.Errorf("the entry did not become the manifest: %q, %v", b, err)
 				}
-				if prov, ok := MarketplaceOf(d, "rel-one"); !ok ||
-					prov != (Provenance{Marketplace: "demo-market", Entry: "Rel One", Version: "1.0.0"}) {
+				prov, ok := MarketplaceOf(d, "rel-one")
+				if !ok || prov.Marketplace != "demo-market" || prov.Entry != "Rel One" || prov.Version != "1.0.0" ||
+					prov.Kind != kindCopy || prov.ID == "" {
 					t.Errorf("provenance: %+v, %v", prov, ok)
 				}
 				if got := provides(t, "rel-one"); !slices.Equal(got, []string{"2 skills"}) {
@@ -438,11 +517,20 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
-			name: "a git entry clones, honoring the ref",
+			name: "a git entry clones, synthesizes its manifest and records git provenance",
 			args: []string{"install", "git-one@demo-market"}, want: "\ngit-one v0.1.0\n",
 			check: func(t *testing.T) {
-				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "git-one", ".git")); err != nil {
+				dir := filepath.Join(d.PluginsRoot(), "installed", "git-one")
+				if _, err := os.Lstat(filepath.Join(dir, ".git")); err != nil {
 					t.Fatal(err)
+				}
+				b, err := os.ReadFile(filepath.Join(dir, ClaudeManifestFile))
+				if err != nil || !strings.Contains(string(b), `"version":"0.5.0"`) {
+					t.Errorf("the entry did not become the manifest: %q, %v", b, err)
+				}
+				prov, ok := MarketplaceOf(d, "git-one")
+				if !ok || prov.Kind != kindGit || prov.ID == "" || prov.ID != InstallID(dir) {
+					t.Errorf("provenance: %+v, %v, install id %q", prov, ok, InstallID(dir))
 				}
 			},
 		},
@@ -465,10 +553,77 @@ func TestMarketplace(t *testing.T) {
 		{name: "an npm entry is refused", args: []string{"install", "npm-one@demo-market"}, want: "not supported", err: true},
 		{name: "an unknown marketplace", args: []string{"install", "x@nope"}, want: "no marketplace is named nope", err: true},
 		{name: "an unknown entry", args: []string{"install", "nope@demo-market"}, want: "lists no plugin named nope", err: true},
+		{
+			name: "a zemi marketplace registers by its own manifest",
+			args: []string{"marketplace", "add", both}, want: "marketplace bothz added (3 plugins)",
+		},
+		{
+			name: "a zemi entry installs under its exact name",
+			args: []string{"install", "strict_one@bothz"}, want: "\nstrict_one 1.0.0\n",
+			check: func(t *testing.T) {
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "strict_one", ManifestFile))
+				if err != nil || !strings.Contains(string(b), `"uses":["http"]`) {
+					t.Errorf("the entry did not become a zemi manifest: %q, %v", b, err)
+				}
+				ps, err := Scan(d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, p := range ps {
+					if p.Name == "strict_one" && !slices.Equal(p.Uses, []string{"http"}) {
+						t.Errorf("uses: %v", p.Uses)
+					}
+				}
+			},
+		},
+		{
+			name: "a zemi entry matches exactly, not sanitized",
+			args: []string{"install", "strict-one@bothz"}, want: "lists no plugin named strict-one", err: true,
+		},
+		{
+			name: "a zemi entry's own manifest wins",
+			args: []string{"install", "own-z@bothz"}, want: "\nown-z 2.0.0\n",
+			check: func(t *testing.T) {
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "own-z", ManifestFile))
+				if err != nil || !strings.Contains(string(b), "2.0.0") || strings.Contains(string(b), "9.9.9") {
+					t.Errorf("the dir's manifest was overwritten: %q, %v", b, err)
+				}
+			},
+		},
+		{
+			name: "a bare name found in two marketplaces lists the candidates",
+			args: []string{"install", "rel-one"}, want: "rel-one@bothz, rel-one@demo-market", err: true,
+		},
+		{
+			name: "a bare name in no marketplace names the ones searched",
+			args: []string{"install", "nope"},
+			want: `no marketplace lists "nope" (searched bothz, demo-market)`, err: true,
+		},
+		{name: "a ghost marketplace registers", args: []string{"marketplace", "add", ghost}, want: "marketplace ghost added (1 plugins)"},
+		{
+			name: "a ghost git entry installs from its own clone",
+			args: []string{"install", "ghost-one@ghost"}, want: "\nghost-one v0.1.0\n",
+		},
+		{
+			name:   "a bare name skips a marketplace whose clone is gone",
+			before: func() { os.RemoveAll(filepath.Join(d.PluginsRoot(), "marketplaces", "ghost")) },
+			args:   []string{"install", "loose"},
+			want:   "skipped ghost: its clone is missing",
+			check: func(t *testing.T) {
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "loose")); err != nil {
+					t.Error("loose did not install:", err)
+				}
+			},
+		},
+		{
+			name: "a bare name with a skip reports it in the error too",
+			args: []string{"install", "nope"},
+			want: "skipped ghost: its clone is missing", err: true,
+		},
 		{name: "check skips the copies", args: []string{"check"}, want: "\nPlugins up to date\n"},
 		{
 			name:   "an update re-copies from a pulled clone",
-			before: func() { bump("1.1.0", "0.2.0", "0.1.0") },
+			before: func() { bump("1.1.0", "0.2.0", "0.1.0", "0.5.0") },
 			args:   []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
 			check: func(t *testing.T) {
 				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
@@ -483,7 +638,7 @@ func TestMarketplace(t *testing.T) {
 		{name: "disable a copy", args: []string{"disable", "entry-manifest"}},
 		{
 			name:   "an update keeps a disabled copy off",
-			before: func() { bump("1.1.0", "0.3.0", "0.1.0") },
+			before: func() { bump("1.1.0", "0.3.0", "0.1.0", "0.5.0") },
 			args:   []string{"update", "entry-manifest"}, want: "0.2.0 -> 0.3.0",
 			check: func(t *testing.T) {
 				ps, err := Scan(d)
@@ -497,7 +652,18 @@ func TestMarketplace(t *testing.T) {
 				}
 			},
 		},
-		{name: "nothing new", args: []string{"update"}, want: "\nPlugins up to date\n"},
+		{
+			name: "a no-op update re-copies nothing",
+			before: func() {
+				os.WriteFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER"), []byte("x"), 0o644)
+			},
+			args: []string{"update", "rel-one"}, want: "\nPlugins up to date\n",
+			check: func(t *testing.T) {
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER")); err != nil {
+					t.Error("the no-op update re-copied the tree:", err)
+				}
+			},
+		},
 		{
 			name: "a moved clone with a still version prints updated",
 			before: func() {
@@ -506,6 +672,28 @@ func TestMarketplace(t *testing.T) {
 				gitIn(mkt, "commit", "-qm", "note")
 			},
 			args: []string{"update", "rel-one"}, want: "\nrel-one updated\n",
+			check: func(t *testing.T) {
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "rel-one", "MARKER")); err == nil {
+					t.Error("the re-copy left the old tree in place")
+				}
+			},
+		},
+		{
+			name:   "check reads a newer version off the fetched ref",
+			before: func() { bump("1.2.0", "0.3.0", "0.1.0", "0.5.0") },
+			args:   []string{"check"},
+			want: "entry-manifest updated in the marketplace (demo-market) loose updated in the marketplace (demo-market) " +
+				"own-manifest updated in the marketplace (demo-market) rel-one 1.1.0 -> 1.2.0 sub-one updated in the marketplace (demo-market)",
+			check: func(t *testing.T) {
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
+				if err != nil || strings.Contains(string(b), "1.2.0") {
+					t.Errorf("check reset the copy: %q, %v", b, err)
+				}
+			},
+		},
+		{
+			name: "an update takes the version check saw",
+			args: []string{"update", "rel-one"}, want: "\nrel-one 1.1.0 -> 1.2.0\n",
 		},
 		{
 			name: "a git-subdir copy updates from its own repo",
@@ -513,7 +701,7 @@ func TestMarketplace(t *testing.T) {
 				write(t, zedsub, map[string]string{"plugins/sub/commands/two.md": "do two"})
 				gitIn(zedsub, "add", ".")
 				gitIn(zedsub, "commit", "-qm", "two")
-				bump("1.1.0", "0.3.0", "0.2.0")
+				bump("1.2.0", "0.3.0", "0.2.0", "0.5.0")
 			},
 			args: []string{"update", "sub-one"}, want: "\nsub-one 0.1.0 -> 0.2.0\n",
 			check: func(t *testing.T) {
@@ -526,9 +714,35 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
+			name: "a marketplace update pulls once and names the installs behind it",
+			before: func() {
+				gitIn(zed, "commit", "-q", "--allow-empty", "-m", "v2")
+				gitIn(zed, "tag", "v0.2.0")
+				bump("1.2.0", "0.3.0", "0.2.0", "0.6.0")
+			},
+			args: []string{"marketplace", "update", "demo-market"},
+			want: "behind it: entry-manifest, loose, own-manifest, rel-one, sub-one",
+			check: func(t *testing.T) {
+				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
+				if err != nil || strings.Contains(string(b), "0.6.0") {
+					t.Errorf("the marketplace update touched an install: %q, %v", b, err)
+				}
+			},
+		},
+		{
+			name: "a git-kind install updates through its own git",
+			args: []string{"update", "git-one"}, want: "\ngit-one v0.1.0 -> v0.2.0\n",
+			check: func(t *testing.T) {
+				prov, ok := MarketplaceOf(d, "git-one")
+				if !ok || prov.Version != "0.6.0" || prov.Kind != kindGit {
+					t.Errorf("the row did not refresh to the marketplace's version: %+v, %v", prov, ok)
+				}
+			},
+		},
+		{
 			name: "an update refuses an entry the marketplace renamed",
 			before: func() {
-				renamed := strings.Replace(manifest("1.1.0", "0.3.0", "0.2.0"), `"name": "Rel One"`, `"name": "Rel Two"`, 1)
+				renamed := strings.Replace(manifest("1.2.0", "0.3.0", "0.2.0", "0.6.0"), `"name": "Rel One"`, `"name": "Rel Two"`, 1)
 				write(t, mkt, map[string]string{".claude-plugin/marketplace.json": renamed})
 				gitIn(mkt, "commit", "-qam", "rename")
 			},
@@ -547,6 +761,31 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{name: "enable an unknown name", args: []string{"enable", "rel-one"}, want: "no plugin is named", err: true},
+		{
+			name: "a marketplace with copy installs is not removable",
+			args: []string{"marketplace", "remove", "bothz"},
+			want: "still has copy installs that update from it: own-z, strict_one", err: true,
+		},
+		{
+			name: "a marketplace of git installs removes with a note",
+			args: []string{"marketplace", "remove", "ghost"},
+			want: "ghost-one keeps its own clone",
+			check: func(t *testing.T) {
+				if _, ok := MarketplaceOf(d, "ghost-one"); ok {
+					t.Error("the git-kind row outlived the marketplace")
+				}
+				ps, err := Scan(d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !slices.ContainsFunc(ps, func(p Plugin) bool { return p.Name == "ghost-one" }) {
+					t.Error("the git-kind install stopped being scanned")
+				}
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", "ghost")); err == nil {
+					t.Error("the clone is still there")
+				}
+			},
+		},
 	} {
 		if c.before != nil {
 			c.before()
