@@ -40,6 +40,10 @@ type Plugin struct {
 	Enabled   bool
 	Uses      []string // the manifest's declared capabilities: what enabling it grants
 
+	// Provides is what a Claude-layout plugin contributes beyond that
+	// vocabulary, display-only: CheckUses never sees it.
+	Provides []string
+
 	// revision is what the checkout is at, the tag else the short commit: what
 	// update compares, since a manifest version may stand still across one
 	revision string
@@ -107,7 +111,9 @@ var ErrUsage = errors.New("usage: plugins install <git url> [name] | update [nam
 func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 	ps, err := Scan(d)
 	for i, p := range ps {
+		provides := p.Provides
 		ps[i] = load(ctx, p.Dir, p.Local, p.Enabled)
+		ps[i].Provides = provides
 	}
 	return ps, err
 }
@@ -130,7 +136,11 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 			// a symlink is listed so the loader can say why it refuses it
 			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
 				root := filepath.Join(dir, e.Name())
-				ps = append(ps, Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off[e.Name()], Uses: manifestOf(root).Uses})
+				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off[e.Name()], Uses: manifestOf(root).Uses}
+				if IsClaude(root) {
+					p.Provides = claudeProvides(root)
+				}
+				ps = append(ps, p)
 			}
 		}
 	}

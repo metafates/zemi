@@ -611,8 +611,7 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 
 // manifestJSON renders the plugin.json for a dir whose entry acts as the
 // manifest: the entry's scalars and its component fields as written.
-func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
-	var author *ClaudeAuthor
+func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {	var author *ClaudeAuthor
 	if e.Author != (ClaudeAuthor{}) {
 		author = &e.Author
 	}
@@ -633,4 +632,75 @@ func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
 		Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
 		Hooks: e.Hooks, MCPServers: e.MCPServers,
 	})
+}
+
+// claudeProvides summarizes what a Claude-layout plugin contributes, for
+// display: the layered dirs' component counts, the MCP servers and the hook
+// events. Not a Uses list - CheckUses would refuse every word here.
+func claudeProvides(dir string) []string {
+	m, err := ReadClaude(dir, "")
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, c := range []struct {
+		what  string
+		set   bool
+		paths []string
+		keep  func(string) bool
+	}{
+		{"skill", m.SkillsSet, m.Skills, func(n string) bool { return n == "SKILL.md" }},
+		{"agent", m.AgentsSet, m.Agents, mdFile},
+		{"command", m.CommandsSet, m.Commands, mdFile},
+	} {
+		roots := c.paths
+		if !c.set {
+			roots = []string{filepath.Join(dir, c.what+"s")}
+		}
+		if n := countClaude(roots, c.keep); n > 0 {
+			what := c.what
+			if n > 1 {
+				what += "s"
+			}
+			out = append(out, fmt.Sprintf("%d %s", n, what))
+		}
+	}
+	if len(m.MCP) > 0 {
+		names := make([]string, len(m.MCP))
+		for i, s := range m.MCP {
+			names[i] = s.Name
+		}
+		out = append(out, "mcp: "+strings.Join(names, ","))
+	}
+	if len(m.Hooks) > 0 {
+		events := make([]string, len(m.Hooks))
+		for i, g := range m.Hooks {
+			events[i] = g.Event
+		}
+		out = append(out, "hooks: "+strings.Join(events, ","))
+	}
+	return out
+}
+
+func mdFile(name string) bool { return strings.HasSuffix(name, ".md") }
+
+// countClaude counts the component files under roots, where a root may be a
+// single file; 0 for a root that is not there.
+func countClaude(roots []string, keep func(string) bool) int {
+	n := 0
+	for _, root := range roots {
+		if fi, err := os.Lstat(root); err == nil && fi.Mode().IsRegular() {
+			if keep(filepath.Base(root)) {
+				n++
+			}
+			continue
+		}
+		fs.WalkDir(os.DirFS(root), ".", func(p string, e fs.DirEntry, err error) error {
+			if err == nil && !e.IsDir() && keep(e.Name()) {
+				n++
+			}
+			return nil
+		})
+	}
+	return n
 }

@@ -257,3 +257,51 @@ func TestReadClaudeMarketplace(t *testing.T) {
 		t.Errorf("a missing marketplace.json: %v", err)
 	}
 }
+
+func TestClaudeProvides(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  []string
+	}{
+		{name: "nothing", want: nil},
+		{
+			name: "the conventional dirs and files",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": "Demo"}`,
+				"skills/a/SKILL.md":          "a",
+				"skills/b/SKILL.md":          "b",
+				"agents/one.md":              "one",
+				"commands/x.md":              "x",
+				"commands/nested/y.md":       "y",
+				"hooks/hooks.json":           `{"hooks": {"PostToolUse": [], "Stop": []}}`,
+				".mcp.json":                  `{"mcpServers": {"acme": {"command": "srv"}}}`,
+			},
+			want: []string{"2 skills", "1 agent", "2 commands", "mcp: acme", "hooks: PostToolUse,Stop"},
+		},
+		{
+			name: "declared paths replace the conventional dir",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": "Demo", "skills": "./more-skills", "agents": ["./agents/a.md"]}`,
+				"skills/hidden/SKILL.md":     "not counted",
+				"more-skills/SKILL.md":       "counted",
+				"agents/a.md":                "a",
+			},
+			want: []string{"1 skill", "1 agent"},
+		},
+		{
+			name: "a malformed manifest provides nothing",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": `,
+				"skills/a/SKILL.md":          "a",
+			},
+			want: nil,
+		},
+	} {
+		dir := t.TempDir()
+		write(t, dir, c.files)
+		if got := claudeProvides(dir); !slices.Equal(got, c.want) {
+			t.Errorf("%s: provides %v, want %v", c.name, got, c.want)
+		}
+	}
+}
