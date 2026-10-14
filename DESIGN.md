@@ -460,8 +460,10 @@ install: the install's id comes from its `marketplaces.json` row, else from
 the clone's `.git`, and the key `plugin:<name>` keeps the one that wrote
 them. The one-second config
 watcher reads `local/` whole, `.zemi` included, the `disabled` file,
-`marketplaces.json` and each clone's git index, so an edit, a toggle, an
-install, an update and a delete each reload.
+`marketplaces.json` and each installed clone's git index, so an edit, a
+toggle, an install, an update and a delete each reload; a marketplace
+clone's index is unwatched, since updating it changes no installed plugin,
+whose reload the `marketplaces.json` write carries.
 
 `/plugins` and `zemi plugins` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua. Every install comes from a marketplace:
