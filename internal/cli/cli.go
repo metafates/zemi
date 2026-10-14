@@ -416,7 +416,7 @@ func pluginsCommand(o *options) *cobra.Command {
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
 	}{
-		{"install <git url> [name]", "clone a plugin at its highest vX.Y.Z tag", nargs(2), nil},
+		{"install <git url|marketplace> [name]", "clone a plugin at its highest vX.Y.Z tag, or add a .claude-plugin marketplace and install its <name>@<marketplace> entries", nargs(2), nil},
 		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins},
 		{"check", "fetch, then list the updates", cobra.NoArgs, nil},
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins},
