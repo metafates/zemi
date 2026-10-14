@@ -347,19 +347,19 @@ func (h *Host) pluginItems() []any {
 				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
 	}
-	h.marketplaceItems(&items, err == nil)
+	h.marketplaceItems(&items)
 	return items
 }
 
 // marketplaceItems appends the Marketplaces section: one row per registered
 // marketplace, or the filler row that adds one when none is.
-func (h *Host) marketplaceItems(items *[]any, listOK bool) {
+func (h *Host) marketplaceItems(items *[]any) {
 	ms, err := plugin.Marketplaces(h.Dirs)
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the marketplaces", err.Error())
 	}
 	if len(ms) == 0 {
-		if err == nil && listOK {
+		if err == nil {
 			*items = append(*items, map[string]any{
 				"text": "Add a marketplace", "verb": "fill", "fill": "/plugins marketplace add ",
 				"section": "Marketplaces", "desc": "none registered",
