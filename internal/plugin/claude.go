@@ -11,7 +11,9 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -477,4 +479,158 @@ func readJSONFile(path string) jsontext.Value {
 	}
 	data, _ := io.ReadAll(io.LimitReader(f, 64<<10))
 	return jsontext.Value(data)
+}
+
+// ClaudeMarketplaceFile is the marketplace manifest inside ClaudeDir, the
+// one file that makes a repository a marketplace.
+const ClaudeMarketplaceFile = ClaudeDir + "/marketplace.json"
+
+// ClaudeSource is a marketplace entry's source.
+type ClaudeSource struct {
+	Kind string // relative, github, git, url, git-subdir; npm, pip and anything unknown are unsupported
+	URL  string // the git URL to clone; github's is built from the repo
+	Dir  string // relative: the "./path" in the marketplace; git-subdir: the path inside the clone
+	Ref  string
+	SHA  string
+}
+
+// ClaudeMarketplaceEntry is one plugins[] entry of a marketplace.json. Its
+// component fields ride as written: when the plugin dir has no plugin.json,
+// the entry acts as the manifest and they pass through.
+type ClaudeMarketplaceEntry struct {
+	Name, Version, Description, Homepage string
+	Author                               ClaudeAuthor
+	Source                               ClaudeSource
+	Strict                               bool // Claude defaults an unwritten strict to true
+
+	Commands, Agents, Skills, Hooks, MCPServers jsontext.Value
+}
+
+// ClaudeMarketplace is marketplace.json parsed; unknown fields are ignored,
+// Claude's own rule.
+type ClaudeMarketplace struct {
+	Name    string
+	Owner   ClaudeAuthor
+	Plugins []ClaudeMarketplaceEntry
+}
+
+// ReadClaudeMarketplace reads dir's marketplace.json. It is data-only: an
+// entry whose source zemi cannot install still comes back, its kind naming
+// the reason.
+func ReadClaudeMarketplace(dir string) (ClaudeMarketplace, error) {
+	raw := readJSONFile(filepath.Join(dir, ClaudeMarketplaceFile))
+	if raw == nil {
+		return ClaudeMarketplace{}, fs.ErrNotExist
+	}
+	var j struct {
+		Name  string `json:"name"`
+		Owner struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+			URL   string `json:"url"`
+		} `json:"owner"`
+		Plugins []claudeMarketplaceEntryJSON `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &j); err != nil {
+		return ClaudeMarketplace{}, err
+	}
+	m := ClaudeMarketplace{Name: j.Name, Owner: ClaudeAuthor(j.Owner)}
+	for _, e := range j.Plugins {
+		if e.Name == "" {
+			return ClaudeMarketplace{}, errors.New("a plugin entry without a name")
+		}
+		src, err := claudeSource(e.Name, e.Source)
+		if err != nil {
+			return ClaudeMarketplace{}, err
+		}
+		m.Plugins = append(m.Plugins, ClaudeMarketplaceEntry{
+			Name: e.Name, Version: e.Version, Description: e.Description,
+			Homepage: e.Homepage, Author: ClaudeAuthor(e.Author),
+			Source: src, Strict: e.Strict == nil || *e.Strict,
+			Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
+			Hooks: e.Hooks, MCPServers: e.MCPServers,
+		})
+	}
+	return m, nil
+}
+
+type claudeMarketplaceEntryJSON struct {
+	Name        string         `json:"name"`
+	Source      jsontext.Value `json:"source"`
+	Version     string         `json:"version"`
+	Description string         `json:"description"`
+	Homepage    string         `json:"homepage"`
+	Author      struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		URL   string `json:"url"`
+	} `json:"author"`
+	Strict *bool `json:"strict"`
+
+	Commands   jsontext.Value `json:"commands"`
+	Agents     jsontext.Value `json:"agents"`
+	Skills     jsontext.Value `json:"skills"`
+	Hooks      jsontext.Value `json:"hooks"`
+	MCPServers jsontext.Value `json:"mcpServers"`
+}
+
+// claudeSource parses an entry's source: a "./path" inside the marketplace
+// clone, or an object naming a git URL.
+func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
+	var rel string
+	if json.Unmarshal(raw, &rel) == nil {
+		if !strings.HasPrefix(rel, "./") {
+			return ClaudeSource{}, fmt.Errorf("plugin %s: source %q must start with %q", name, rel, "./")
+		}
+		return ClaudeSource{Kind: "relative", Dir: rel}, nil
+	}
+	var o struct {
+		Source string `json:"source"`
+		URL    string `json:"url"`
+		Repo   string `json:"repo"`
+		Path   string `json:"path"`
+		Ref    string `json:"ref"`
+		SHA    string `json:"sha"`
+	}
+	if err := json.Unmarshal(raw, &o); err != nil {
+		return ClaudeSource{}, fmt.Errorf("plugin %s: %w", name, err)
+	}
+	switch o.Source {
+	case "github":
+		return ClaudeSource{Kind: o.Source, URL: "https://github.com/" + o.Repo, Ref: o.Ref, SHA: o.SHA}, nil
+	case "git", "url":
+		return ClaudeSource{Kind: o.Source, URL: o.URL, Ref: o.Ref, SHA: o.SHA}, nil
+	case "git-subdir":
+		return ClaudeSource{Kind: o.Source, URL: o.URL, Dir: o.Path, Ref: o.Ref, SHA: o.SHA}, nil
+	case "":
+		return ClaudeSource{}, fmt.Errorf("plugin %s: source names no kind", name)
+	default:
+		return ClaudeSource{Kind: o.Source}, nil
+	}
+}
+
+// manifestJSON renders the plugin.json for a dir whose entry acts as the
+// manifest: the entry's scalars and its component fields as written.
+func (e ClaudeMarketplaceEntry) manifestJSON() ([]byte, error) {
+	var author *ClaudeAuthor
+	if e.Author != (ClaudeAuthor{}) {
+		author = &e.Author
+	}
+	return json.Marshal(struct {
+		Name        string         `json:"name"`
+		Version     string         `json:"version,omitempty"`
+		Description string         `json:"description,omitempty"`
+		Homepage    string         `json:"homepage,omitempty"`
+		Author      *ClaudeAuthor  `json:"author,omitempty"`
+		Commands    jsontext.Value `json:"commands,omitempty"`
+		Agents      jsontext.Value `json:"agents,omitempty"`
+		Skills      jsontext.Value `json:"skills,omitempty"`
+		Hooks       jsontext.Value `json:"hooks,omitempty"`
+		MCPServers  jsontext.Value `json:"mcpServers,omitempty"`
+	}{
+		Name: e.Name, Version: e.Version, Description: e.Description,
+		Homepage: e.Homepage, Author: author,
+		Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
+		Hooks: e.Hooks, MCPServers: e.MCPServers,
+	})
 }

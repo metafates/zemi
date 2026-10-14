@@ -1,9 +1,12 @@
 package plugin
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -180,5 +183,77 @@ func TestClaudeMCPDropsInvalidEntries(t *testing.T) {
 	}
 	if !slices.ContainsFunc(m.MCP, func(s ClaudeMCPServer) bool { return s.Name == "good" }) {
 		t.Errorf("the good entry was dropped: %+v", m.MCP)
+	}
+}
+
+func TestReadClaudeMarketplace(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		".claude-plugin/marketplace.json": `{
+			"name": "Demo", "owner": {"name": "o", "url": "https://o"},
+			"$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+			"metadata": {"whatever": 1},
+			"plugins": [
+				{"name": "Rel", "source": "./p/rel", "version": "1.0.0", "author": {"name": "a"}, "category": "x", "strict": false},
+				{"name": "Git", "source": {"source": "git", "url": "https://x/y.git", "ref": "main", "sha": "abc"}},
+				{"name": "Hub", "source": {"source": "github", "repo": "me/hub"}},
+				{"name": "Sub", "source": {"source": "git-subdir", "url": "https://x/y.git", "path": "p/sub"}},
+				{"name": "Npm", "source": {"source": "npm", "package": "x"}},
+				{"name": "Comp", "source": "./p/comp", "commands": "./cmds", "hooks": {"Stop": []}}
+			]
+		}`,
+	})
+	m, err := ReadClaudeMarketplace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "Demo" || m.Owner.Name != "o" || m.Owner.URL != "https://o" {
+		t.Errorf("scalars: %+v", m)
+	}
+	es := map[string]ClaudeMarketplaceEntry{}
+	for _, e := range m.Plugins {
+		es[e.Name] = e
+	}
+	if len(es) != 6 {
+		t.Fatalf("entries: %v", m.Plugins)
+	}
+	if e := es["Rel"]; e.Source != (ClaudeSource{Kind: "relative", Dir: "./p/rel"}) ||
+		e.Version != "1.0.0" || e.Author.Name != "a" || e.Strict {
+		t.Errorf("Rel: %+v", e)
+	}
+	if e := es["Git"]; e.Source != (ClaudeSource{Kind: "git", URL: "https://x/y.git", Ref: "main", SHA: "abc"}) {
+		t.Errorf("Git: %+v", e.Source)
+	}
+	if e := es["Hub"]; e.Source != (ClaudeSource{Kind: "github", URL: "https://github.com/me/hub"}) {
+		t.Errorf("Hub: %+v", e.Source)
+	}
+	if e := es["Sub"]; e.Source != (ClaudeSource{Kind: "git-subdir", URL: "https://x/y.git", Dir: "p/sub"}) {
+		t.Errorf("Sub: %+v", e.Source)
+	}
+	if e := es["Npm"]; e.Source.Kind != "npm" || e.Source.URL != "" {
+		t.Errorf("Npm: %+v", e.Source)
+	}
+	// an unwritten strict defaults true; the component fields ride as written
+	if e := es["Comp"]; !e.Strict || string(e.Commands) != `"./cmds"` || string(e.Hooks) != `{"Stop": []}` {
+		t.Errorf("Comp: %+v", e)
+	}
+	if e := es["Rel"]; e.Strict {
+		t.Errorf("Rel: strict %v, want false", e.Strict)
+	}
+
+	for _, c := range []struct{ name, json, want string }{
+		{"a relative source needs the dot", `{"name": "m", "plugins": [{"name": "p", "source": "nope"}]}`, `must start with "./"`},
+		{"a source names no kind", `{"name": "m", "plugins": [{"name": "p", "source": {"url": "https://x"}}]}`, "names no kind"},
+		{"an entry without a name", `{"name": "m", "plugins": [{"source": "./p"}]}`, "without a name"},
+		{"malformed", `{"name": `, "unexpected EOF"},
+	} {
+		dir := t.TempDir()
+		write(t, dir, map[string]string{".claude-plugin/marketplace.json": c.json})
+		if _, err := ReadClaudeMarketplace(dir); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to hold %q", c.name, err, c.want)
+		}
+	}
+	if _, err := ReadClaudeMarketplace(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a missing marketplace.json: %v", err)
 	}
 }
