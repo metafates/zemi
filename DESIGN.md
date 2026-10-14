@@ -314,16 +314,19 @@ Directories (XDG):
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  plugins/installed/<name>/  plugins zemi cloned (git); their code under .zemi/: init.lua loaded,
+  plugins/installed/<name>/  plugins installed from a marketplace entry: a copy of a relative
+                          source, or a clone of a git one; their code under .zemi/: init.lua loaded,
                           lua/<name>/ require()-able, tests/, workflows/, and plugin.json, the
                           manifest with its optional version, description and uses (§9);
                           skills|agents|commands/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
-  plugins/marketplaces/<name>/  claude marketplaces zemi registered: one git clone each, shared
-                          by the entries installed from it
-  plugins/marketplaces.json  the registered marketplaces and, per installed plugin, the
-                          marketplace entry it was copied from
+  plugins/marketplaces/<name>/  marketplaces zemi registered: one git clone each, shared by the
+                          entries installed from it; a clone's root holds a marketplace manifest,
+                          `.zemi/marketplace.json` or Claude's `.claude-plugin/marketplace.json`,
+                          the zemi one read when a repo holds both
+  plugins/marketplaces.json  the registered marketplaces and, per installed plugin, the entry
+                          it was installed from, with the install's kind (copy or git) and id
   plugins/data/<name>/    a Claude-layout plugin's ${CLAUDE_PLUGIN_DATA}, where its hooks and
                           servers may keep state
   plugins/disabled        names turned off, one per line
@@ -453,26 +456,48 @@ to `/errors` and the `/health` plugins row counts it. A local plugin named
 like an installed one does not load, nor does a symlinked plugin dir (its
 files would resolve outside the plugin class). The step also drops the
 `zemi.state` keys of a plugin whose directory is gone or holds another
-install: `install` writes a random id into the clone's `.git`, and the key
-`plugin:<name>` keeps the one that wrote them. The one-second config
-watcher reads `local/` whole, `.zemi` included, the `disabled` file and each
-clone's git
-index, so an edit, a toggle, an install, an update and a delete each
-reload.
+install: the install's id comes from its `marketplaces.json` row, else from
+the clone's `.git`, and the key `plugin:<name>` keeps the one that wrote
+them. The one-second config
+watcher reads `local/` whole, `.zemi` included, the `disabled` file,
+`marketplaces.json` and each clone's git index, so an edit, a toggle, an
+install, an update and a delete each reload.
 
 `/plugins` and `zemi plugins` manage the tree through `internal/plugin`,
-which is plain git and runs no Lua: `install <git url> [name]` clones into a
-dot dir, checks out the highest `vX.Y.Z` tag and renames it into place; a
-root holding `.claude-plugin/marketplace.json` registers as a marketplace
-instead, and `install <entry>@<marketplace>` installs one of its entries, a
-relative source copied into `installed/` as a plain dir whose provenance
-`plugins/marketplaces.json` keeps, so `update` re-copies it and `check`
-skips it;
-`update [name...]` fetches, then moves a tag within its major version, a
+which is plain git and runs no Lua. Every install comes from a marketplace:
+`marketplace add <url>` clones a repo holding a marketplace manifest into
+`marketplaces/<name>/`, named by the manifest - `.zemi/marketplace.json`, or
+Claude's `.claude-plugin/marketplace.json`, the zemi one read when a repo
+holds both; a repo holding neither is refused with both files named, the
+same name and source re-adds by re-cloning the cache, and a different
+source under a taken name is refused naming both. `marketplace list` shows each
+marketplace with its source and entries; `marketplace update [name]` pulls
+one or all clones, naming what moved and the installs now behind it;
+`marketplace remove <name>` is refused while a copy install still updates
+from it, and drops the rows of git-kind installs, which keep working from
+their own clones. `install <name>[@<marketplace>]` installs one entry: a
+relative source is copied into `installed/` as a plain dir, a git one is
+cloned into a dot dir, checked out at the highest `vX.Y.Z` tag and renamed
+into place, and the install's row in `plugins/marketplaces.json` keeps the
+marketplace, the entry, the version, the kind and the id; a bare name
+searches every registered marketplace, installing the one match, listing
+the candidates when several carry it and hinting `marketplace add` when
+none does, and a URL or a path is refused with the same hint - there is no
+install from a git URL. `update [name...]` routes by the row's kind: a
+git-kind install fetches, then moves a tag within its major version, a
 branch to the highest tag when that tag is ahead of it, or else a branch
-fast-forward, and names only the plugins that moved; `check` fetches, so
-the list names each update from local refs; `enable`, `disable` and
-`delete` (an installed clone, else the local plugin; a symlink loses the
+fast-forward, and refreshes its recorded version; a copy pulls its
+marketplace clone and re-copies, marketplaces grouped so one update pulls
+each once, the re-copy and the save skipped when nothing moved; an install
+with no row is the legacy plain clone, updated by its own git. A git-kind
+entry's ref or sha pin is install-time: update floats within the repo's own
+tags, and a marketplace repin needs delete and install. `check` fetches the
+clones and, for copies, fetches each marketplace holding copy installs
+without resetting its clone, reading the manifest off the fetched ref, so
+the list names each update from local refs: a version move as
+`<ver> -> <ver>`, a versionless entry's movement as `updated in the
+marketplace (<name>)`; `enable`, `disable` and `delete` (an installed
+plugin, else the local plugin; a symlink loses the
 link only; `zemi plugins delete` asks first, and needs `--yes` off a
 terminal). `zemi plugins` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
@@ -521,16 +546,22 @@ next send, a headless one-shot may never see it, and a `SessionEnd` hook
 does not fire on process quit (nothing calls closeSession there).
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and its
-description; its detail names the source, the load status, the manifest's
-`uses` and what the plugin registered, and the git verbs run on a goroutine that
-refreshes the list when they end, unless the user closed it meanwhile. Four
+description, and the marketplace it came from (none for a local plugin or a
+legacy clone); its detail names the source, the load status, the manifest's
+`uses` and what the plugin registered, and the git and marketplace verbs run
+on a goroutine that refreshes the list when they end, unless the user closed
+it meanwhile. Under the plugin rows a Marketplaces section lists each
+registered marketplace, its source and entry count in the row, the clone
+manifest's entries in its detail, `u` updating the clone and `x` removing
+the marketplace, refused with the plugins whose copies still update from
+it. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
 `new [what it should do]`, the list's first row, and `modify <name> [what
 to change]`, which a local plugin's detail fills; the last two send the
 agent a short prompt pointing at the zemi skill's plugins.md, where the
 procedure lives. `modify` also lets auto mode edit that plugin until zemi
-exits, as an approved creating write does (§9); an installed clone is
+exits, as an approved creating write does (§9); an installed plugin is
 refused, since the agent never writes there.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
