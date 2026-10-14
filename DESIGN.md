@@ -320,6 +320,10 @@ Directories (XDG):
                           skills|agents|commands/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
                           and .emmyrc.json
+  plugins/marketplaces/<name>/  claude marketplaces zemi registered: one git clone each, shared
+                          by the entries installed from it
+  plugins/marketplaces.json  the registered marketplaces and, per installed plugin, the
+                          marketplace entry it was copied from
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  copies of the files attached from outside the project
@@ -456,7 +460,12 @@ reload.
 
 `/plugins` and `zemi plugins` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua: `install <git url> [name]` clones into a
-dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
+dot dir, checks out the highest `vX.Y.Z` tag and renames it into place; a
+root holding `.claude-plugin/marketplace.json` registers as a marketplace
+instead, and `install <entry>@<marketplace>` installs one of its entries, a
+relative source copied into `installed/` as a plain dir whose provenance
+`plugins/marketplaces.json` keeps, so `update` re-copies it and `check`
+skips it;
 `update [name...]` fetches, then moves a tag within its major version, a
 branch to the highest tag when that tag is ahead of it, or else a branch
 fast-forward, and names only the plugins that moved; `check` fetches, so

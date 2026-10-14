@@ -233,4 +233,4 @@ end)
 
 ## Publishing
 
-`git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag, with the manifest's `version` in step with it: `/plugins` shows the manifest's, and it is what to bump. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the highest tag once that tag is ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
+`git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag, with the manifest's `version` in step with it: `/plugins` shows the manifest's, and it is what to bump. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the highest tag once that tag is ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`; a repo whose root holds `.claude-plugin/marketplace.json` registers as a marketplace instead, and `install <entry>@<marketplace>` installs one of its plugins.
