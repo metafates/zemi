@@ -419,6 +419,7 @@ func TestMarketplace(t *testing.T) {
 		return nil
 	}
 	var added time.Time
+	var orphanID, relID string
 
 	for _, c := range []struct {
 		name   string
@@ -591,6 +592,23 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
+			name: "a reinstall over an orphan row takes a fresh id",
+			before: func() {
+				if prov, ok := MarketplaceOf(d, "strict_one"); ok {
+					orphanID = prov.ID
+				}
+				// the dir went away without the registry learning it
+				os.RemoveAll(filepath.Join(d.PluginsRoot(), "installed", "strict_one"))
+			},
+			args: []string{"install", "strict_one@bothz"}, want: "\nstrict_one 1.0.0\n",
+			check: func(t *testing.T) {
+				prov, ok := MarketplaceOf(d, "strict_one")
+				if !ok || prov.ID == "" || prov.ID == orphanID {
+					t.Errorf("the reinstall did not reset the identity: %+v, stale %q", prov, orphanID)
+				}
+			},
+		},
+		{
 			name: "a bare name found in two marketplaces lists the candidates",
 			args: []string{"install", "rel-one"}, want: "rel-one@bothz, rel-one@demo-market", err: true,
 		},
@@ -622,16 +640,25 @@ func TestMarketplace(t *testing.T) {
 		},
 		{name: "check skips the copies", args: []string{"check"}, want: "\nPlugins up to date\n"},
 		{
-			name:   "an update re-copies from a pulled clone",
-			before: func() { bump("1.1.0", "0.2.0", "0.1.0", "0.5.0") },
-			args:   []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
+			name: "an update re-copies from a pulled clone",
+			before: func() {
+				if prov, ok := MarketplaceOf(d, "rel-one"); ok {
+					relID = prov.ID
+				}
+				bump("1.1.0", "0.2.0", "0.1.0", "0.5.0")
+			},
+			args: []string{"update", "rel-one"}, want: "\nrel-one 1.0.0 -> 1.1.0\n",
 			check: func(t *testing.T) {
 				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
 				if err != nil || !strings.Contains(string(b), `"version":"1.1.0"`) {
 					t.Errorf("the copy did not move to 1.1.0: %q, %v", b, err)
 				}
-				if prov, _ := MarketplaceOf(d, "rel-one"); prov.Version != "1.1.0" {
+				prov, _ := MarketplaceOf(d, "rel-one")
+				if prov.Version != "1.1.0" {
 					t.Errorf("provenance version %q", prov.Version)
+				}
+				if prov.ID != relID {
+					t.Errorf("the update reset the install id: %q, want %q", prov.ID, relID)
 				}
 			},
 		},

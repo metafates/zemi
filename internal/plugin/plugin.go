@@ -606,15 +606,13 @@ func MarketplaceOf(d config.Dirs, name string) (Provenance, bool) {
 	return Provenance(reg), ok
 }
 
-// recordInstall writes the provenance of an installed entry; an existing row
-// keeps its id, so an update never resets the identity its state hangs on.
+// recordInstall writes the provenance of an installed entry. The caller owns
+// the install id: a fresh install supplies a new one, so a stale row cannot
+// hand its state to a reinstall, an update re-supplies the row's.
 func recordInstall(d config.Dirs, name, mkt string, e MarketplacePlugin, kind, id string) error {
 	f, err := readMarketplaces(d)
 	if err != nil {
 		return err
-	}
-	if old := f.Installs[name]; old.ID != "" {
-		id = old.ID
 	}
 	if f.Installs == nil {
 		f.Installs = map[string]installReg{}
@@ -942,7 +940,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 		}
 		return p, nil
 	case "relative", "git-subdir":
-		return placeCopy(ctx, d, mkt, e, name, true)
+		return placeCopy(ctx, d, mkt, e, name, true, rand.Text())
 	default:
 		return Plugin{}, fmt.Errorf("plugin %s: %s sources are not supported", e.Name, e.Source.Kind)
 	}
@@ -967,9 +965,10 @@ func copySource(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlu
 
 // placeCopy (re)copies the entry's subtree into installed/<name>: a plain
 // dir, no .git, so scan, sweep and uninstall treat it like any other
-// install. The entry becomes the manifest when the dir has none of its own.
-// A copy is staged and renamed, so a reload never reads half of it.
-func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin, name string, on bool) (Plugin, error) {
+// install. The entry becomes the manifest when the dir has none of its own,
+// and the caller's id records the install's identity. A copy is staged and
+// renamed, so a reload never reads half of it.
+func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlugin, name string, on bool, id string) (Plugin, error) {
 	src, done, err := copySource(ctx, d, mkt, e)
 	if err != nil {
 		return Plugin{}, err
@@ -1010,7 +1009,7 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlug
 		}
 		off = nil
 	}
-	if err := recordInstall(d, name, mkt, e, kindCopy, rand.Text()); err != nil {
+	if err := recordInstall(d, name, mkt, e, kindCopy, id); err != nil {
 		return Plugin{}, err
 	}
 	p := load(ctx, dest, false, !off[name])
@@ -1054,7 +1053,10 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 		if !changed && reg.Version == e.Version {
 			continue
 		}
-		if _, err := placeCopy(ctx, d, mkt, e, name, false); err != nil {
+		// an update re-records under the row's id; a row from before ids
+		// backfills one now
+		id := cmp.Or(reg.ID, rand.Text())
+		if _, err := placeCopy(ctx, d, mkt, e, name, false, id); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			continue
 		}
@@ -1086,7 +1088,7 @@ func refreshInstall(d config.Dirs, name string, reg installReg) error {
 	if e.Version == reg.Version {
 		return nil
 	}
-	return recordInstall(d, name, reg.Marketplace, e, reg.Kind, "")
+	return recordInstall(d, name, reg.Marketplace, e, reg.Kind, reg.ID)
 }
 
 // pullMarketplace fetches the marketplace clone and hard-resets it to the
