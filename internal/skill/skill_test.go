@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -157,11 +156,7 @@ func TestParseNonRegularSkillFile(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
-		{"fifo", func(t *testing.T, path string) {
-			if err := syscall.Mkfifo(path, 0o600); err != nil {
-				t.Skipf("mkfifo unavailable: %v", err)
-			}
-		}},
+		{"fifo", makeFifo},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

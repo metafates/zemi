@@ -1718,7 +1718,8 @@ One-liner memories are lines in each partition's reserved `memories.md`
 byte is ever created in a repository, so nothing of it can be written by a
 pull; committed team knowledge stays in the repo's own files. Every write to
 a partition - a memory-tool apply, the reflector, `/memory`, migration,
-rewind, the post-write scrub - holds an exclusive flock on the partition's
+rewind, the post-write scrub - holds an exclusive lock (flock, or LockFileEx
+on windows) on the partition's
 `memories.lock` for the whole operation (a blocked writer waits 2s, then
 fails; a cross-partition move takes both locks, user then private), inserts
 its ledger entries before the file replace - except the reconcile-on-open

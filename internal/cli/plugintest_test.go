@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -256,21 +255,8 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 				defer func() { caseTimeout = old }()
 			}
 			if c.spare > 0 {
-				var was syscall.Rlimit
-				if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &was); err != nil {
-					t.Fatal(err)
-				}
-				lower := was
-				// other tests' hosts stay open, the more so under -count
-				open, err := os.ReadDir("/dev/fd")
-				if err != nil {
-					t.Fatal(err)
-				}
-				lower.Cur = uint64(len(open)) + c.spare
-				if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &lower); err != nil {
-					t.Fatal(err)
-				}
-				defer syscall.Setrlimit(syscall.RLIMIT_NOFILE, &was)
+				restore := limitFDs(t, c.spare)
+				defer restore()
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			if c.cancel {

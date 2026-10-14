@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
 	"time"
 )
 
@@ -20,7 +19,7 @@ const LockTimeout = 2 * time.Second
 var ErrLocked = errors.New("another zemi is writing the memory store")
 
 // Lock takes the partition's exclusive memories.lock for the whole of a
-// write, waiting up to LockTimeout. The lock is one flock on one fd: it
+// write, waiting up to LockTimeout. The lock is held on the open fd: it
 // survives no process, so a writer that dies releases it.
 func Lock(p Partition) (unlock func(), err error) {
 	if p.Zero() {
@@ -35,10 +34,10 @@ func Lock(p Partition) (unlock func(), err error) {
 	}
 	deadline := time.Now().Add(LockTimeout)
 	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err = lockFile(f)
 		if err == nil {
 			return func() {
-				_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+				_ = unlockFile(f)
 				_ = f.Close()
 			}, nil
 		}
