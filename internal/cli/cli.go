@@ -57,7 +57,7 @@ type options struct {
 	run, cont, json  bool
 	quiet, reasoning bool
 	resume, model    string
-	mode, profile    string
+	profile          string
 	prompt           string
 	text             bool   // the prompt came from stdin after -: a leading / is text, never a command
 	dir              string // -C
@@ -198,7 +198,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 		Long: `Answer one prompt and exit, with no TUI. stdout gets the last message, or
 with --json one JSON event per line; stderr shows the run as the chat draws it.
 Piped stdin is attached behind the prompt; - reads the prompt itself from
-stdin. Nobody can approve a call, so one the mode leaves to the user is denied
+stdin. Nobody can approve a call, so one a gate puts to the user is denied
 and stderr lists them at the end.`,
 		Example: `  zemi run "explain main.go"
   git diff | zemi run "review this"
@@ -241,13 +241,11 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
 	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	f.StringVar(&o.mode, "mode", "", "permission `mode`: ask or allow")
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 	_ = c.RegisterFlagCompletionFunc("profile", completeBooted((*hostapi.Host).ProfileNames))
-	_ = c.RegisterFlagCompletionFunc("mode", completeBooted(modeNames))
 }
 
 // completeBooted offers what only config knows (models, profiles, modes),
@@ -828,12 +826,6 @@ func applyOptions(h *hostapi.Host, o options) error {
 	}
 	if o.model != "" {
 		if err := h.SetModel(h.ConversationTarget() + " " + o.model); err != nil {
-			return err
-		}
-	}
-	if o.mode != "" {
-		// checked here, after init.lua: init.lua writes the key too
-		if err := h.SetPermMode(o.mode); err != nil {
 			return err
 		}
 	}

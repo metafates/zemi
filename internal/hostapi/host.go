@@ -698,16 +698,14 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.reconcileBrain(h.partition(store.ScopeUser))
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help":              func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick":           func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
-		"zemi.ui.focus.set":         func(h *Host, id string) error { return h.focusNode(id) },
-		"zemi.ui.focus.next":        func(h *Host, _ string) error { return h.cycleFocus(1) },
-		"zemi.ui.focus.prev":        func(h *Host, _ string) error { return h.cycleFocus(-1) },
-		"zemi.permission.mode.next": func(h *Host, _ string) error { return h.cyclePermMode(1) },
-		"zemi.permission.mode.prev": func(h *Host, _ string) error { return h.cyclePermMode(-1) },
-		"zemi.agent.profile.next":   func(h *Host, _ string) error { return h.cycleProfile(1) },
-		"zemi.agent.profile.prev":   func(h *Host, _ string) error { return h.cycleProfile(-1) },
-		"zemi.reload":               nil, // Go-reserved; never dispatched here
+		"zemi.ui.help":            func(h *Host, _ string) error { return h.OpenHelp() },
+		"zemi.model.pick":         func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
+		"zemi.ui.focus.set":       func(h *Host, id string) error { return h.focusNode(id) },
+		"zemi.ui.focus.next":      func(h *Host, _ string) error { return h.cycleFocus(1) },
+		"zemi.ui.focus.prev":      func(h *Host, _ string) error { return h.cycleFocus(-1) },
+		"zemi.agent.profile.next": func(h *Host, _ string) error { return h.cycleProfile(1) },
+		"zemi.agent.profile.prev": func(h *Host, _ string) error { return h.cycleProfile(-1) },
+		"zemi.reload":             nil, // Go-reserved; never dispatched here
 	}
 	for _, a := range scrollActions {
 		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, id string) error { h.scroll(a, id); return nil }
@@ -1107,6 +1105,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}
 	res := VetoResult{}
+	asked := false
 	var askReason string
 	for _, o := range outcomes {
 		if o.timed {
@@ -1115,11 +1114,11 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		if o.denied && !res.Denied {
 			res.Denied, res.Reason = true, o.reason
 		}
-		if o.ask && askReason == "" {
-			askReason = o.reason
+		if o.ask && !asked {
+			asked, askReason = true, o.reason
 		}
 	}
-	if !res.Denied && askReason != "" {
+	if asked && !res.Denied {
 		res.Ask, res.Reason = true, askReason
 	}
 	if res.Denied {
@@ -1668,7 +1667,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	tb.RawSetString("permission_mode", glua.LString(h.PermMode()))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
 	// the tail's render leaves the pending row's inputs out: the rows printed
 	// above it drew it once, and the tail draws it under them
@@ -2078,7 +2076,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.http", h.httpNamespace(L), nil},
 		{"zemi.job", h.jobNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
-		{"zemi.permission", h.permissionNamespace(L), nil},
 		{"zemi.perm", h.permNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
 		{"zemi.model", h.modelNamespace(L), nil},
@@ -2103,7 +2100,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.127.0"))
+	api.RawSetString("version", glua.LString("0.128.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

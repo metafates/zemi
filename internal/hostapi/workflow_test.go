@@ -730,13 +730,12 @@ func TestWorkflowSchema(t *testing.T) {
 // TestWorkflowToolInput: which fields go together, what a rerun asks
 // about, and what headless leaves out.
 func TestWorkflowToolInput(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
 	h.agents.sessionID = "s1"
 	ui := &fakeUI{askAllowed: true}
 	h.SetUIHooks(ui)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	// the ask-everything policy a plugin's veto makes
+	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
 	tool := h.workflowTool(h.PipelineFor())
 	call := func(input string) (string, bool) {
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})

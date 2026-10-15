@@ -19,7 +19,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools) are
    generation-tagged (`hostapi.Gen`) and purged before replay,
    so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
-   not parse (the old generation stays), and `tool.pre` and `permission.request` vetoes and the mode an ask reads wait out a reload, so a turn is never checked
+   not parse (the old generation stays), and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
    against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi
@@ -115,7 +115,7 @@ pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIn
 `enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment's `Recipes:` line names the dir, the system prompt's
-`recipesUse` says how); in ask mode a write there asks like any write outside the project.
+`recipesUse` says how); a write there is an ordinary write.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
 rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted

@@ -48,26 +48,23 @@ A definition is a target as well: `models.<profile>` overrides the `model` a pro
 - `ui.notify`: how zemi alerts while its window is unfocused: `osc` (OSC 9, which iTerm2, Ghostty, WezTerm and kitty show; tmux, screen and zellij drop it without passthrough), `native` (osascript on macOS, notify-send on Linux; a bell when neither is found), `bell` or `off`. `auto` picks osc for a terminal known to show it outside those multiplexers, else native on this machine, else a bell; the `/health` notify row names the pick and why.
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.
 - `keymap.leader`: what `<leader>` stands for in keymaps (`ui.md`).
-- `permissions.mode`: under Permissions. `lsp.auto`: under MCP and language servers.
+- `lsp.auto`: under MCP and language servers.
 
 The schema's description covers `agent.max_background`, `agent.max_steps`, `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.progress`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
 
 ## Permissions
 
-`permissions.mode` is `ask` or `allow`, `allow` the default. The permission system keeps the
-user aware of what the agent does; it is not isolation. A run that must not touch the machine
-goes in a container or a VM.
-
-- `allow`: everything runs without asking.
-- `ask`: every action prompts - any command, any file write or edit, any fetch or search, a Lua tool, an MCP tool the server does not mark read-only. Reads never prompt.
-
-Switch it with `/mode`, ctrl+y, `--mode` or `zemi.permission.mode.set("ask")` (user config only); `zemi.permission.mode.get()` returns the active one, `zemi.permission.mode.list()` both of them. `zemi.permission` holds only the mode: no rules, no principals, no custom modes.
+There are no permission modes and no rules: model tool calls run, and the user stays aware
+through the ask overlay, which only a plugin opens - a `permission.request` handler returning
+`{ decision = "ask" }`, or its own `zemi.perm.ask` - with `perm` in the manifest's `uses`
+(`plugins.md`). The permission system keeps the user aware of what the agent does; it is not
+isolation. A run that must not touch the machine goes in a container or a VM.
 
 At a prompt `y` allows once, `n` denies, and `t` denies and stops the turn so the user can say what to do instead.
 
 Model tool names, for the `tools` of a profile or agent: `shell`, `read`, `write`, `edit`, `glob`, `grep`, `fetch`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `update` (subagent definitions only, and not a fork's: see `agents.md`), `mcp_<server>_<tool>`, `tool_search` (past ten MCP tools their schemas leave the request and the model loads them through it) and tools added from Lua.
 
-Planning is the `planner` profile (`/profile planner`, ctrl+t): every action is denied - writes, commands, fetches, Lua tools - and the turn ends in a plan the user approves (implemented in the next turn), asks changes to, or saves to start later, whatever the mode.
+Planning is the `planner` profile (`/profile planner`, ctrl+t): every action is denied - writes, commands, fetches, Lua tools - and the turn ends in a plan the user approves (implemented in the next turn), asks changes to, or saves to start later.
 
 ## MCP and language servers
 
@@ -88,8 +85,8 @@ Language servers (gopls, pyright, typescript-language-server, clangd, rust-analy
 
 ## Command line
 
-`zemi [flags] [prompt]` opens the TUI; `zemi run [prompt | -]` answers without it: the last message on stdout, the run as the chat draws it on stderr (`-q`: only what went wrong; `--reasoning`: every thought and call whole), or with `--json` one JSON event per line on stdout, `done` last (DESIGN §8 has the fields). Piped stdin, 1 MiB at most, is attached to the prompt, or is the prompt after `-`, sent as text even when it starts with `/`; from a script add `</dev/null`, or it waits 3 s for input. Both take `-c` (continue the last session), `-r <id>`, `-m provider/model`, `--mode` (`ask` or `allow`), `--profile` and `--trust`; `-C <dir>` runs any command as if started in dir.
-`zemi health` prints the checks (exits 1 when one errors); `zemi sessions` lists this project's sessions, `zemi sessions export <id>` prints one as markdown (`--full` as `/export full`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `sessions`, `projects`, `plugins` and `health` take `--json`: one object per line (DESIGN §8 has the fields). A prompt naming a command runs it: `zemi run "/review HEAD~1"`; one that opens a screen fails with "/<name> needs the TUI", `/btw` prints its answer, and `zemi run "/goal make check is clean"` runs until the goal is met (exit 1 when it stops blocked or paused). With `--mode ask` nobody can approve in a headless run, so every action is denied ("asks nobody could answer in a headless run", listed on stderr at the end), and the run has no `fetch`; in the default allow mode everything runs. A `zemi run` makes no title call; the first line of its first message names the session. `zemi plugins ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
+`zemi [flags] [prompt]` opens the TUI; `zemi run [prompt | -]` answers without it: the last message on stdout, the run as the chat draws it on stderr (`-q`: only what went wrong; `--reasoning`: every thought and call whole), or with `--json` one JSON event per line on stdout, `done` last (DESIGN §8 has the fields). Piped stdin, 1 MiB at most, is attached to the prompt, or is the prompt after `-`, sent as text even when it starts with `/`; from a script add `</dev/null`, or it waits 3 s for input. Both take `-c` (continue the last session), `-r <id>`, `-m provider/model`, `--profile` and `--trust`; `-C <dir>` runs any command as if started in dir.
+`zemi health` prints the checks (exits 1 when one errors); `zemi sessions` lists this project's sessions, `zemi sessions export <id>` prints one as markdown (`--full` as `/export full`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `sessions`, `projects`, `plugins` and `health` take `--json`: one object per line (DESIGN §8 has the fields). A prompt naming a command runs it: `zemi run "/review HEAD~1"`; one that opens a screen fails with "/<name> needs the TUI", `/btw` prints its answer, and `zemi run "/goal make check is clean"` runs until the goal is met (exit 1 when it stops blocked or paused). A `zemi run` has nobody to approve an ask, so one a plugin's veto puts to the user is denied ("asks nobody could answer in a headless run", listed on stderr at the end); everything else runs. A `zemi run` makes no title call; the first line of its first message names the session. `zemi plugins ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
 
 ## Commands and input
 

@@ -209,8 +209,8 @@ Contracts that make this safe:
   the accepted cost of no-kill cancellation. Reload purges every
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
-  dropped `LState`. `tool.pre` and `permission.request` vetoes and the mode an ask reads
-  wait for a running reload, so no tool call is checked against half a config.
+  dropped `LState`. `tool.pre` and `permission.request` vetoes wait for a running
+  reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
   the 50 ms deadline the host cancels the handler's context (the
@@ -533,8 +533,8 @@ entry a shell child run off the caller's goroutine, the plugin root as its
 directory, the Claude payload on stdin and its output only logged, never
 interpreted (a `PostToolUse` hook loses Claude's exit-2 feedback path with
 it). Refused at load, the plugin otherwise loading: `PreToolUse` and
-`PermissionRequest` (the two modes do not deny, and a subprocess cannot sit
-inside the 50 ms veto budget), `UserPromptSubmit` (it would tax every
+`PermissionRequest` (a hook's output is logged, never interpreted, so it
+neither denies nor asks, and a subprocess cannot sit inside the 50 ms veto budget), `UserPromptSubmit` (it would tax every
 submit), `Setup`, `Notification`, every unmapped event, hook type but
 `command`, and an entry with an `if` condition. A `SessionStart` hook is
 session context instead of an event: the capture starts off the
@@ -788,13 +788,12 @@ Config values from `init.lua` merge with the defaults in Go's schema.
 runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
+so a runtime pick (`/model`, `/effort`, `/profile`, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
-`memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
-config may raise it, project and plugin code may not, and the
-model's `lua` tool asks before any such call.
+`memory.autonomy` (§10.4) is one of them: user config may raise it, project
+and plugin code may not, and the model's `lua` tool asks before any such call.
 
 A runtime pick outlives the process: the global store keeps it per key as
 `config:<path>`, one row each, so two windows never lose each other's picks,
@@ -823,12 +822,6 @@ is off or failed, so turning a plugin off never breaks init.lua, and a
 deleted or reinstalled plugin's picks go with its `zemi.state`. A plugin
 reads its settings and never writes them (its write would be kept as the
 user's pick), and a secret never goes in one: /config shows it.
-
-The permission mode is a config key and a runtime pick like any other:
-
-```lua
-permissions.mode = "ask" -- every action prompts; "allow" (the default) runs everything
-```
 
 A `zemi.tool.override` no tool answers to is an `/errors` entry once boot
 is done naming the tools there are: the Lua tool it names may come from a
@@ -1285,8 +1278,8 @@ section, skills index, project context ship as built-in sections).
 The main agent's fixed prefix, the system prompt and every tool's
 description and schema, is built once and sent verbatim, because anything
 that varies per turn busts the provider's prompt cache. It is keyed on
-what the user switches (profile, model, trust, a permission mode's
-prompt) and each tool's name and input schema, since a stale schema
+what the user switches (profile, model, trust) and each tool's name and
+input schema, since a stale schema
 fails calls: a change there rebuilds it. Otherwise it is rebuilt only
 where the cache is gone anyway: `/new`, `/resume`, a compaction, and
 `/skills delete`. Nothing edited mid-session moves it: instruction files,
@@ -1346,8 +1339,8 @@ goes back to `pending`, so nothing reads as running while the agent is idle), `q
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
 open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; for a
-read-only agent the agent and mode active before it are remembered at its start,
-and approval returns to them - the turn ends there because the read-only
+read-only agent the agent active before it is remembered at its start,
+and approval returns to it - the turn ends there because the read-only
 pipeline cannot implement, and its follow-up is a fresh send as the
 restored agent under the same claim; Save, don't start approves it with no
 handoff, saving the plan and leaving the turn ended until the user says when; a
@@ -1364,8 +1357,7 @@ call hierarchy), `skill` (loads a SKILL.md body on demand), plus the
 five the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
 and pause, resume or stop a background one), `lua` (run Lua inside zemi, main agent only, as user origin:
-full access to toggle skills and anything else user Lua can do; it asks
-in ask mode like any other action, §9), `tool_search`
+full access to toggle skills and anything else user Lua can do), `tool_search`
 (past ten MCP tools a step offers only it and what a search loaded, its
 description a catalog of names by server, §11), and `update` (what
 a subagent tells its caller mid-run, §6.3; only a subagent holds it).
@@ -1379,7 +1371,7 @@ same pipeline:
 ```
 model call -> schema validation
            -> tool.pre events (Lua: deny | rewrite | halt)
-           -> permission gate (mode; ask = overlay)
+           -> permission gate (veto; ask decision = overlay)
            -> execute (Go impl or Lua callback on interpreter thread)
            -> tool.post events (Lua: may rewrite the output)
            -> result -> fantasy ToolResponse
@@ -1455,14 +1447,11 @@ task and frees the interpreter until the handle is done, its timeout
 passes (`zemi.job.wait` then kills the command) or the task ends; it
 raises outside a task (§4), so an event handler or a render uses the
 callback form. Host-API calls
-from Lua never open the interactive overlay: when the matched decision
-is `ask`, the call raises `permission ask required` (a
-`permission.request` event is emitted, post-hoc and informational: the
-outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
-the agent worker (§4). Keymap- and command-bound use of an ask-default
-API fails closed every time in ask mode
-(a plugin's own gated calls settle where its manifest declares them, §9); the fix is allow mode. URLs go through the permission gate like tools do;
-a redirect is re-checked against the gate before it is followed. Subprocess
+from Lua never open the interactive overlay: the gate settles them (§9) -
+a read-only agent's writes deny, everything else runs; only model tool
+calls surface the overlay, on the agent worker (§4). URLs go through the
+permission gate like tools do; a redirect is re-checked against the gate
+before it is followed. Subprocess
 environments are the parent's whole environ: a command the model starts
 adds the non-interactive vars and points `TMPDIR` at the scratchpad;
 `zemi.job.start` appends the job's opt-in extras (`env = { ... }`,
@@ -1726,7 +1715,7 @@ those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.permission.mode` (`set` user config only, §9; `get`, `list`).
+and `zemi.perm` (`ask`, plugin origin only, §9).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
 registration origin: the model can propose, but a
@@ -1871,8 +1860,8 @@ rides the `memories.md` line and its ledger entries.
   until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: over the statusline, the border in line with the
-  composer frame on the side of the pill that opened it: `/mode` left,
-  `/profile`, `/model` and `/usage` right; the box stands on the frame,
+  composer frame on the side of the pill that opened it: a Lua picker
+  left, `/profile`, `/model` and `/usage` right; the box stands on the frame,
   whose top rule is its bottom border, the label that rule carries giving
   way to it cell for cell). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
@@ -2240,8 +2229,8 @@ rides the `memories.md` line and its ledger entries.
   item index; widget segments carry their `click` id (§6.6) and are
   targets only while their widget has `on_click` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `tui/statusline.lua`: the mode and the profile open their
-  pickers, the project path `/projects`, the model the model
+  `tui/statusline.lua`: the profile opens its
+  picker, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a digest (`turn:<first
   index>`, opens or folds the run under it), a rail's or a notice burst's fold
@@ -2263,10 +2252,8 @@ rides the `memories.md` line and its ledger entries.
   overlay (diff preview for edits, command preview for shell, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls wait in the host: one overlay
-  at a time, in arrival order, each waiter judged again (mode) before its
-  overlay opens, so a switch to allow settles it
-  with no prompt; the answered box stays drawn until the next replaces it
-  in place. The title asks what the call would do, built from the
+  at a time, in arrival order; the answered box stays drawn until the next
+  replaces it in place. The title asks what the call would do, built from the
   request's typed fields ("Run this command?", "Write this file?", "Fetch
   this URL?", "Use <tool> from <server>?"). The badge names the subagent asking (`explore agent`, a
   workflow's by its run id, never the model's descriptions), whose code a
@@ -2344,8 +2331,7 @@ rides the `memories.md` line and its ledger entries.
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
   it through; the model reads "no one can approve in a headless run".
-  In ask mode a run with no UI to approve an action ships no
-  `fetch` (`Host.webOff`); allow mode, the default, keeps it.
+  `fetch` ships in headless runs like anywhere else.
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, every string on a line passes the same sanitize
@@ -2397,38 +2383,42 @@ rides the `memories.md` line and its ledger entries.
 
 ## 9. Permissions
 
-- Model: two modes, `allow` (the default; everything runs) and `ask`
-  (every action prompts the user first). The permission system is a UX
-  feature: it keeps the user aware of what the agent is doing, it is not
-  security isolation, and it never parses a command to judge it. A run
-  that must not touch the machine runs in a container or VM.
+- Model: everything runs; the user stays aware through the ask overlay,
+  which only a plugin's gate-steering opens. The permission system is a
+  UX feature: it keeps the user aware of what the agent is doing, it is
+  not security isolation, and it never parses a command to judge it. A
+  run that must not touch the machine runs in a container or VM.
 - An action is everything but a read: `fs.write`, `tool.shell`,
   `tool.lua`, `tool.workflow`, `net.<host>`, a Lua tool (`tool.<name>`),
   an MCP tool its server does not mark read-only (`Read` on the request),
-  `memory.write`. Reads (`fs.read`) settle on their own in every mode.
+  `memory.write`. Reads (`fs.read`) settle on their own.
 - Subjects label the ask and the `tool.denied` event.
   A request carries tool, subject, arg, reason, preview, description,
   agent, owner, script; the pipeline fills read-only and the script
   name.
 - The gate (tools.Pipeline.Check): a read-only agent's action denies,
-  except a write in its scratchpad;
-  then the mode settles: allow runs, ask puts the request to the user
-  through the `Ask` hook. No UI (zemi run) fails closed (`ByNobody`) and
-  the denial is recorded for the run's summary.
+  except a write in its scratchpad; then the veto settles: a denial
+  refuses, an ask decision runs the ask path; what survives runs.
 - The vetoable `permission.request` event runs at the gate, once per
-  action request in both modes; a handler denies, or returns
-  `decision = "ask"` to run the ask path. 50 ms, fail-closed (§4). A
-  rewritten tool input re-enters at the gate. Registering a handler and
-  `zemi.perm.ask` both need the manifest's `perm` word: steering the
-  gate is a declared capability.
-- Asks reach the user one at a time (`Host.askMu`), and a waiter is
-  judged again once it holds the lock (`Request.Recheck`), so a switch to
-  allow settles the asks behind it. No Lua runs under the ask lock.
-- Host-API calls from Lua never open the overlay (§6.5): in ask mode one
-  that would ask raises "permission ask required"; the fix is allow mode.
-  A plugin's declared capability (`uses`) settles in both modes - the
-  manifest is the consent - and a call it does not declare is refused
-  before any check, naming the line to add.
+  action request; a handler denies, or returns `decision = "ask"` to
+  run the ask path. 50 ms, fail-closed (§4). A rewritten tool input
+  re-enters at the gate. Registering a handler and `zemi.perm.ask` both
+  need the manifest's `perm` word: steering the gate is a declared
+  capability, and enabling the plugin is the consent. A plugin recipe
+  that restores a nervous gate is a `permission.request` handler
+  returning `{ decision = "ask" }`.
+- Asks reach the user one at a time (`Host.askMu`); no Lua runs under
+  the ask lock. An ask no UI can answer (zemi run) fails closed
+  (`ByNobody`) and the denial is recorded for the run's summary.
+- `zemi.perm.ask({subject=, arg=, reason=, preview=})` is a plugin's own
+  ask from a task: the shipped overlay, `permission.resolved`, headless
+  failing closed. `:wait()` answers allow, deny or told (the user denied
+  and said what to do instead).
+- Host-API calls from Lua never open the overlay (§6.5): the gate
+  settles them, a read-only agent's writes deny, everything else runs.
+  A plugin's declared capability (`uses`) is checked before the gate -
+  the manifest is the consent - and a call it does not declare is
+  refused there, naming the line to add.
 - A Lua tool run asks as one action; once approved, its inner `zemi.*`
   calls ride the approval (`luaApproved`), and each `zemi.tool.call` it
   drives gates like the model's own call.
@@ -2440,10 +2430,10 @@ rides the `memories.md` line and its ledger entries.
 - read-before-write stays: write refuses a file the session has not read
   unchanged (an edit proves its text with one exact match instead), so a
   command the model ran or the user's editor is never silently dropped.
-- Safety beyond the modes: the sandboxed Lua interpreter (§5), project
+- Safety beyond the gate: the sandboxed Lua interpreter (§5), project
   trust gating what a repository may load (§5), and the child-process
   discipline of `internal/proc`. Nothing else stands between the model
-  and the machine in allow mode; that is the deal.
+  and the machine; that is the deal.
 ## 10. Learning and self-improvement
 
 ### 10.1 Taxonomy: three kinds of improvement
@@ -2670,9 +2660,7 @@ by the next startup sweep, since the session still has unseen messages.
   hit id the result's footer names is actionable. Both modes ride tool
   results, never the pinned prefix (§10.7), and a replace of a promoted id
   proceeds, its result naming the file the text moved into.
-- A recipe (§10.5) is written with the file tools; in ask mode every write
-  there asks, and the ask says when the session read text from
-  outside the machine. A recipe is instructions a later unattended
+- A recipe (§10.5) is written with the file tools. A recipe is instructions a later unattended
   session follows, which is worth a look each time. The secret scrub
   runs after the write, on any file in the dir, and redacts it in
   place, telling the model which lines it cut. It keeps the key shapes
@@ -2684,9 +2672,8 @@ by the next startup sweep, since the session still has unseen messages.
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
 - A brain file the file tools write - write, edit, an LSP rename's
-  secondary targets - asks in ask mode like any write outside the project
-  (the ask carries the outside-text note); Lua's `zemi.fs.write` is refused at jail
-  resolution, never asked. The reserved `memories.md` carries its own
+  secondary targets - is an ordinary write; Lua's `zemi.fs.write` is
+  refused at jail resolution, never asked. The reserved `memories.md` carries its own
   reason, "the memory tool owns this file", with the file's open lint
   findings named in the ask. Once approved the write gets the recipe
   treatment: the secret scrub runs after the write, the instruction-shape
@@ -2717,8 +2704,7 @@ zemi does not ship: MCP and Lua-registered ones, and a plugin's send or
 `tool.post` rewrite, which stores a `plugin:<name>` row; all read from the
 session's `tool_calls`), since injected memories come from there.
 The same conditions decide whether the `memory` tool's forget of a learned
-memory applies at once or waits for review; one the user saved asks,
-whatever the permission mode. Known ceiling: a command the user let run
+memory applies at once or waits for review; one the user saved asks. Known ceiling: a command the user let run
 can fetch too, and that is not seen.
 
 ### 10.5 Skills
@@ -2875,9 +2861,8 @@ Each line is enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), the user-only config.set
 (§6.1), and the reflector's tool-less model call (§10.3). The homes line is
 the jail layer: the brain roots sit in the
-read jails (`readJails`) and out of the write jails, a state-dir write asks
-with the outside-text note in ask mode, and the AfterWrite hook scrubs what
-the user approves.
+read jails (`readJails`) and out of the write jails, and the AfterWrite hook
+scrubs what the user approves.
 
 ## 11. Error handling and observability
 
@@ -2913,7 +2898,7 @@ the user approves.
   script reaches any of them by name, deferred or not, through the same gate,
   and `zemi.tool.list()` names the run's MCP tools beside its own.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
-  its decision's source: the mode, a plugin's declared capability, a hook,
+  its decision's source: a plugin's declared capability, a hook's veto,
   the user, or a fail-closed default), decisions
   and memory writes are all logged with IDs, so the reflector and the user
   can audit the loop end to end.
@@ -2931,7 +2916,7 @@ internal/lua/               interpreter thread, Lua sandbox, origins, marshal, r
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,
                             agent runs, memory, reflector, skills hosting,
-                            permissions + modes, mcp and
+                            permissions, mcp and
                             lsp wiring, rewind, scratchpads, health, export,
                             zemi.test
 internal/agent/             the fantasy runner: one turn, steps, stops, retries

@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/tools"
@@ -36,7 +35,8 @@ const (
 
 // hookEventMap maps the Claude events zemi runs to the zemi events that
 // consult them. Everything else is refused at load: PreToolUse and
-// PermissionRequest would need deny semantics zemi's two modes do not have,
+// PermissionRequest would need deny semantics zemi's gate does not give a
+// subprocess (a hook's output is logged, never interpreted),
 // UserPromptSubmit would tax every submit (SessionStart is the supported
 // route), and the rest have no counterpart.
 var hookEventMap = map[string]string{
@@ -196,14 +196,16 @@ func (h *Host) consultHooks(event string, payload map[string]any) {
 		return
 	}
 	h.GoSafe("plugin hooks "+event, func() {
-		sid, mode := h.AgentSessionID(), h.claudePermMode()
+		sid := h.AgentSessionID()
 		for _, e := range entries {
 			if tool, _ := payload["tool_name"].(string); e.match != nil && !e.match(tool) {
 				continue
 			}
 			full := make(map[string]any, len(payload)+4)
 			maps.Copy(full, payload)
-			full["cwd"], full["permission_mode"], full["hook_event_name"] = h.Dirs.ProjectDir, mode, e.event
+			// Claude hooks read a permission_mode from the payload; zemi
+			// has none for them to steer
+			full["cwd"], full["permission_mode"], full["hook_event_name"] = h.Dirs.ProjectDir, "bypassPermissions", e.event
 			// the payload may name the session it is about, not the live one
 			if _, ok := full["session_id"]; !ok {
 				full["session_id"] = sid
@@ -211,14 +213,6 @@ func (h *Host) consultHooks(event string, payload map[string]any) {
 			h.runHook(e, marshalHookPayload(full), e.timeout)
 		}
 	})
-}
-
-// claudePermMode names zemi's mode the way a Claude hook reads it.
-func (h *Host) claudePermMode() string {
-	if h.PermMode() == config.PermModeAsk {
-		return "default"
-	}
-	return "bypassPermissions"
 }
 
 func marshalHookPayload(payload map[string]any) []byte {
@@ -300,7 +294,7 @@ func (h *Host) captureSessionContext(sid, kind string) {
 func (h *Host) hookBase(e hookEntry) map[string]any {
 	return map[string]any{
 		"session_id": h.AgentSessionID(), "cwd": h.Dirs.ProjectDir,
-		"permission_mode": h.claudePermMode(), "hook_event_name": e.event,
+		"permission_mode": "bypassPermissions", "hook_event_name": e.event,
 	}
 }
 

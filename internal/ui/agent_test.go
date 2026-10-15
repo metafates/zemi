@@ -678,10 +678,9 @@ func TestGoldenPermission(t *testing.T) {
 // Which ask surfaces first is not fixed, so exactly one is denied.
 func TestPermissionDenyOneAtATime(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
-	if err := host.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
+	pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 	res := make(chan bool, 2)
 	for _, req := range []tools.Request{{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"}, {Subject: "tool.shell", Arg: "make test"}} {
 		go func() { res <- pipe.Check(req).Allowed }()
@@ -710,10 +709,9 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 // denies the open ask and the waiting one.
 func TestPermissionTellNarrow(t *testing.T) {
 	app, host := bootAgentApp(t, 30, 30)
-	if err := host.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
+	pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 	res := make(chan bool, 2)
 	for _, arg := range []string{"make test", "make lint"} {
 		go func() { res <- pipe.Check(tools.Request{Subject: "tool.shell", Arg: arg}).Allowed }()
@@ -1840,10 +1838,7 @@ func TestKeySequence(t *testing.T) {
 // answers the highlighted one, and the letters answer directly; without an
 // always choice there are three.
 func TestPermissionChoices(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 30)
-	if err := host.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	app, _ := bootAgentApp(t, 100, 30)
 	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
 		t.Helper()
 		done := make(chan struct{})

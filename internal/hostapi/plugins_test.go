@@ -192,19 +192,19 @@ func TestPluginsStep(t *testing.T) {
 			plugins: map[string]string{
 				"local/p/.zemi/lua/p/init.lua": `return {
 					setup = function()
-						print(tostring(pcall(zemi.config.set, "permissions.mode", "allow")))
+						print(tostring(pcall(zemi.config.set, "agent.profile", "planner")))
 						require("b").put("via-setup")
 						zemi.keymap.set("ctrl+g", function() require("b").put("via-keymap") end)
 					end,
-					tail = function(f) return f("allow") end,
+					tail = function(f) return f("default") end,
 				}`,
 				"local/b/.zemi/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
 				"local/p/.zemi/lua/p/meta.lua": `return setmetatable({},
 					{ __index = zemi.state.set })`,
 			},
-			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.permission.mode.set(m) end))
+			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.config.set("agent.profile", m) end))
 				print(pcall(function() return require("p.meta").setup end))`,
-			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: allow\n", "__index must be a Lua function of this plugin's own code"},
+			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "profile: default\n", "__index must be a Lua function of this plugin's own code"},
 			not:  []string{"plugin:b:"},
 		},
 		{
@@ -336,7 +336,7 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "%s %s\n", k, v)
 				}
 			}
-			fmt.Fprintf(&out, "mode: %s\n", h.PermMode())
+			fmt.Fprintf(&out, "profile: %s\n", cmp.Or(h.Settings.Str("agent.profile"), "default"))
 			for _, s := range h.skillsReg.list() {
 				if s.Source != skill.Builtin {
 					fmt.Fprintf(&out, "skill %s %s %v\n", s.Name, h.sourceOf(string(s.Source), s.Dir), h.skillsReg.isEnabled(s.Name))
@@ -781,26 +781,26 @@ func TestPluginUses(t *testing.T) {
 func TestPluginToolCall(t *testing.T) {
 	for _, c := range []struct {
 		name     string
-		mode     string
+		ask      bool
 		readOnly bool
 		asked    bool
 		denied   string // a refusal the result names, "" when it settles
 	}{
-		{name: "ask mode asks", mode: "ask", asked: true},
-		{name: "allow mode runs", mode: "allow"},
-		{name: "a read-only run may not call it", mode: "allow", readOnly: true, denied: "read-only agent"},
+		{name: "an ask policy asks", ask: true, asked: true},
+		{name: "no policy runs"},
+		{name: "a read-only run may not call it", readOnly: true, denied: "read-only agent"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostPlugin(t, `["tool"]`)
 			ui := &fakeUI{askAllowed: true, askBy: tools.ByUser}
 			h.SetUIHooks(ui)
-			if err := h.SetPermMode(c.mode); err != nil {
-				t.Fatal(err)
-			}
 			if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
 				t.Fatal(err)
 			}
 			pipe := h.PipelineFor()
+			if c.ask {
+				pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
+			}
 			if c.readOnly {
 				pipe.Plan = func() bool { return true }
 			}

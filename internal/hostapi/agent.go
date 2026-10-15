@@ -29,7 +29,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -345,7 +344,7 @@ var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan:
 // toolSkip adds to base the tools that could only answer with why they
 // cannot, whose schemas would ride every step: the language server tools
 // when no server can start in this project (untrusted, or none installed
-// for it), and the web tools when webOff.
+// for it).
 func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 	skip := maps.Clone(base)
 	if skip == nil {
@@ -354,16 +353,7 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 	if len(h.lspDefs("")) == 0 {
 		skip[tools.ToolLSP], skip[tools.ToolDiagnostics] = true, true
 	}
-	if h.webOff() {
-		skip[tools.ToolFetch] = true
-	}
 	return skip
-}
-
-// webOff reports a headless run: a fetch's address is the model's pick and
-// nothing can approve it.
-func (h *Host) webOff() bool {
-	return h.hooks() == nil && h.PermMode() == config.PermModeAsk
 }
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
@@ -417,31 +407,11 @@ func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTo
 }
 
 // wireLua gives each lua tool the builder its script's calls come from, so a
-// script reaches exactly the set the model has, and the fs.write note naming
-// the file tools this run actually has.
+// script reaches exactly the set the model has.
 func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)) {
-	hasW, hasE := false, false
-	for _, t := range out {
-		switch t.Info().Name {
-		case tools.ToolWrite:
-			hasW = true
-		case tools.ToolEdit:
-			hasE = true
-		}
-	}
-	note := ""
-	switch {
-	case hasW && hasE:
-		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the write and edit tools."
-	case hasW:
-		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the write tool."
-	case hasE:
-		note = " A script's own zemi.fs.write is refused in ask mode: change project files with the edit tool."
-	}
 	for _, t := range out {
 		if lt, ok := t.(*luaEvalTool); ok {
 			lt.build = build
-			lt.writesNote = note
 		}
 	}
 }
@@ -547,7 +517,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 
 // pinPrompt gives the pinned prompt while its key holds and builds and pins a
 // new one otherwise. The key is what the user switches (profile, model,
-// trust, the permission mode), whether the model takes images (read's
+// trust), whether the model takes images (read's
 // description says) and each tool's name and input schema, since a stale
 // schema fails calls. Descriptions, instruction files, skills and
 // agent.assemble output wait for a drop point (closeSession, compactDone,
@@ -555,7 +525,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.currentModelID(p)
-	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id)), h.PermMode()}
+	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
 	if p != nil {
 		key[0] = p.Name
 	}
@@ -2367,13 +2337,12 @@ func (h *Host) SetProfile(name string) error {
 	if next != nil && next.ReadOnly && !h.readOnly() {
 		h.modes.mu.Lock()
 		h.modes.prePlanProfile = h.Settings.Str("agent.profile")
-		h.modes.prePlanMode = h.Settings.Str("permissions.mode")
 		h.modes.mu.Unlock()
 	}
 	return h.setWatched("agent.profile", name)
 }
 
-// cycleProfile steps through the agents (a key binding, like cyclePermMode):
+// cycleProfile steps through the agents (a key binding):
 // default, planner, then profiles in definition order, and back.
 func (h *Host) cycleProfile(step int) error {
 	names := h.ProfileNames()
@@ -2739,7 +2708,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pre:         h.toolPreHook(),
 		Ask:         h.askHook(),
 		Veto:        h.vetoHook(),
-		Mode:        h.PermMode,
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.afterWrite,
 		Changes:     h.shellChanges,

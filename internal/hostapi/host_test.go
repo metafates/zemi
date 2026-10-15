@@ -186,7 +186,7 @@ func waitFor(t *testing.T, cond func() error) {
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.127.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.128.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -484,7 +484,7 @@ func TestRenderAllowlist(t *testing.T) {
 	h, r := newTestHost(t)
 	cases := []struct{ call, refused string }{
 		{`zemi.config.get("ui.mouse")`, ""},
-		{`zemi.permission.mode.set("ask")`, "permission.mode.set"},
+		{`zemi.perm.ask({ subject = "fs.write" })`, "perm.ask"},
 		{`zemi.agent.run({ prompt = "x" })`, "agent.run"},
 		{`zemi.memory.add("x")`, "memory.add"},
 		{`zemi.skills.enable("x")`, "skills.enable"},

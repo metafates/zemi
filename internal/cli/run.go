@@ -50,7 +50,6 @@ type event struct {
 	Session string    `json:"session,omitempty"`
 	Model   string    `json:"model,omitempty"`
 	Profile string    `json:"profile,omitempty"`
-	Mode    string    `json:"mode,omitempty"`
 	Trusted *bool     `json:"trusted,omitzero"`
 	CWD     string    `json:"cwd,omitempty"`
 	Text    string    `json:"text,omitempty"`
@@ -356,7 +355,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		}
 		if id := h.AgentSessionID(); !started && id != "" && !sending {
 			started = true
-			emit(event{Type: evStart, Session: id, Model: fr.Stream.Model, Profile: fr.Stream.Profile, Mode: h.PermMode(), Trusted: new(h.ProjectTrusted()), CWD: h.Session().CWD})
+			emit(event{Type: evStart, Session: id, Model: fr.Stream.Model, Profile: fr.Stream.Profile, Trusted: new(h.ProjectTrusted()), CWD: h.Session().CWD})
 		}
 		evs := f.step(fr, h.HeadlessDenials()[asked:])
 		// the tail's working rule shows a retry itself
@@ -442,7 +441,7 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 	if n := len(denied) - len(shown); n > 0 {
 		fmt.Fprintf(w, "  … %d more\n", n)
 	}
-	fmt.Fprintf(w, "  %s;\n  run with permissions.mode = \"allow\" (the default) to settle it here\n", deniedHint(trusted))
+	fmt.Fprintf(w, "  %s\n", deniedHint(trusted))
 }
 
 // deniedHint says what would let zemi run's denied calls through.
@@ -450,5 +449,5 @@ func deniedHint(trusted bool) string {
 	if !trusted {
 		return "--trust trusts this project for the run"
 	}
-	return "ask mode left it to the user"
+	return "a plugin's permission.request handler returning { decision = \"ask\" } could gate the calls here"
 }

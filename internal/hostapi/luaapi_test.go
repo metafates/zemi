@@ -349,7 +349,7 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 // reload still runs and its failure is recorded.
 func TestReloadBrokenInit(t *testing.T) {
 	const whole = `
-		zemi.config.set("permissions.mode", "ask")
+		zemi.config.set("models.agents", "fake/other")
 		zemi.config.set("models.chat", "fake/m")`
 	for _, c := range []struct {
 		name, init string
@@ -358,15 +358,15 @@ func TestReloadBrokenInit(t *testing.T) {
 	}{
 		{
 			"a runtime error keeps what it did not reach", `error("half saved")` + whole, false,
-			"model fake/m, mode ask",
+			"model fake/m, agents fake/other",
 		},
 		{
 			"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
-			"model fake/m, mode ask",
+			"model fake/m, agents fake/other",
 		},
 		{
 			"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
-			"model fake/m, mode ask",
+			"model fake/m, agents fake/other",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -396,7 +396,8 @@ func TestReloadBrokenInit(t *testing.T) {
 				}
 			}
 			model, _ := h.Settings.Get("models.chat")
-			got := fmt.Sprintf("model %v, mode %s", model, h.PermMode())
+			agents, _ := h.Settings.Get("models.agents")
+			got := fmt.Sprintf("model %v, agents %v", model, agents)
 			if got != c.want {
 				t.Fatalf("got  %s\nwant %s", got, c.want)
 			}

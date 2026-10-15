@@ -42,14 +42,6 @@ func TestAgentSelfAccess(t *testing.T) {
 	if !strings.Contains(pad, filepath.Join("scratch", "s1")) {
 		t.Fatalf("pad = %q", pad)
 	}
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
-	pipe := h.PipelineFor()
-	pipe.Ask = nil
-	if pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Allowed || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Allowed {
-		t.Fatal("an ask with no overlay fails closed")
-	}
 
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
 		t.Fatal(err)
@@ -74,19 +66,27 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 }
 
-// TestLuaToolDefaultDeny: a Lua script asks once at the gate in ask mode,
-// an unapproved run's guarded calls raise naming the member, and an approved
-// run makes them; a read-only script runs with no ask in allow mode.
+// TestLuaToolDefaultDeny: a script under an ask-everything veto policy asks
+// once at the gate, an unapproved run's guarded calls raise naming the
+// member, and an approved run makes them; with no policy a read-only script
+// runs with no ask.
 func TestLuaToolDefaultDeny(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(t.TempDir(), "made")
+	// ask routes every action to the overlay, as a plugin's
+	// permission.request handler returning { decision = "ask" } would; off
+	// turns it off for the no-policy sections
+	ask := func(on bool) {
+		if on {
+			runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
+		} else {
+			runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
+		}
+	}
 	tool := h.luaEvalTool(h.PipelineFor())
 	run := func(script string, allow bool) (*fakeUI, string) {
 		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
@@ -98,6 +98,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		}
 		return ui, resp.Content
 	}
+	ask(true)
 
 	// the routes the trust verification found
 	for _, c := range []struct{ name, script, scan, member string }{
@@ -129,8 +130,8 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		t.Error("the approved job did not run")
 	}
 
-	// a read-only script runs with no ask once the mode allows
-	h.SetPermMode("allow")
+	// a read-only script runs with no ask once no policy asks
+	ask(false)
 	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().id`
 	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
 		t.Errorf("read-only script: %+v %q", ui.asked, out)
@@ -147,15 +148,12 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	}
 
 	// a callback an approved run left behind loses the approval with the run
-	h.SetPermMode("ask")
+	ask(true)
 	os.Remove(marker)
 	run(`zemi.event.on("user.zz", function() zemi.job.wait({ cmd = "touch", args = { "MARKER" } }) end)`, true)
 	run(`zemi.event.emit("user.zz")`, true)
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("an earlier run's handler started a program")
-	}
-	if h.PermMode() != "ask" {
-		t.Error("the mode changed")
 	}
 
 	// every member is read-only or guarded, so a new one asks by default
@@ -288,7 +286,7 @@ func TestLuaToolReloads(t *testing.T) {
 // pipeline a direct call takes, only what the script prints comes back, and a
 // script that only drives tools asks nobody.
 func TestLuaToolDrivesTools(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	file := filepath.Join(h.Dirs.ProjectDir, "a.txt")
 	if err := os.WriteFile(file, []byte("hello\n"), 0o600); err != nil {
@@ -341,7 +339,9 @@ func TestLuaToolDrivesTools(t *testing.T) {
 		}
 		return false, "user"
 	}
-	h.SetPermMode("ask")
+	// the ask-everything policy: the script's own gate and the nested call
+	// each ask
+	runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
 	out := run(`local o, e = zemi.tool.call("shell", { command = "rm -rf build" }):wait() print(e or o)`)
 	if len(ui.asked) != 2 || ui.asked[1].Script != "lua script" || ui.asked[1].Subject != perm.SubjectShell {
 		t.Fatalf("nested ask: %+v", ui.asked)
@@ -349,7 +349,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if !strings.Contains(out, "permission denied") || strings.Contains(out, "rm -rf") {
 		t.Fatalf("denied call: %q", out)
 	}
-	h.SetPermMode("allow")
+	runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
 	// an unknown tool and unusable arguments come back as nil, err; nothing runs
 	ui.asked = nil
 	if out := run(`local h, e = zemi.tool.call("nope", {}) print(h == nil, e ~= nil)`); out != "true\ttrue" {

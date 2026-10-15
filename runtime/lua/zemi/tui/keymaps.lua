@@ -5,18 +5,6 @@
 -- ("zemi.ui.scroll.up sidebar"); without one it moves the stage's scrolled
 -- region.
 
--- ctrl+y flips between ask and allow. The mode it left is remembered here,
--- so the next press restores it.
-local before
-zemi.keymap.set("ctrl+y", function()
-	local cur = zemi.permission.mode.get()
-	if cur.name == "ask" then
-		zemi.permission.mode.set(before or "allow")
-		before = nil
-	elseif zemi.permission.mode.set("ask") then
-		before = cur.name
-	end
-end, { desc = "ask until the next press" })
 zemi.keymap.set("ctrl+t", "zemi.agent.profile.next", { desc = "next profile" })
 zemi.keymap.set(
 	"ctrl+shift+t",

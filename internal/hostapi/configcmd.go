@@ -136,8 +136,6 @@ func (h *Host) SetConfig(path string, val any) error {
 		return h.SetModel(role + " " + cmp.Or(s, "chat"))
 	}
 	switch path {
-	case "permissions.mode":
-		return h.SetPermMode(s)
 	case "agent.profile":
 		return h.SetProfile(s)
 	case "ui.theme":
@@ -223,8 +221,6 @@ func configPicker(path string) string {
 	switch role, ok := strings.CutPrefix(path, "models."); {
 	case ok:
 		return "model " + role
-	case path == "permissions.mode":
-		return "mode"
 	case path == "agent.profile":
 		return "profile"
 	case path == "ui.theme":

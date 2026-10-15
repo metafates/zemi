@@ -20,7 +20,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -77,23 +76,19 @@ func TestResolveSchemaRefs(t *testing.T) {
 	}
 }
 
-// testPipeline builds a pipeline in the given mode. In ask mode an overlay
-// answers every ask with no and records the requests; in allow mode nothing
-// asks.
+// testPipeline builds a pipeline: with allow, everything runs ungated; with
+// !allow, a veto hands every action to the overlay, the shape a plugin's
+// ask-everything policy makes, and the asker answers no and records.
 func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 	t.Helper()
 	var asked []Request
-	p := &Pipeline{Mode: func() string {
-		if allow {
-			return config.PermModeAllow
-		}
-		return config.PermModeAsk
-	}}
+	p := &Pipeline{}
 	if !allow {
 		p.Ask = func(req Request) (bool, string) {
 			asked = append(asked, req)
 			return false, "overlay"
 		}
+		p.Veto = func(Request) string { return VetoAsk }
 	}
 	return p, &asked
 }
@@ -112,8 +107,8 @@ func TestVetoGate(t *testing.T) {
 	}{
 		{name: "a veto denies", ask: true, veto: VetoDeny, want: Verdict{DecidedBy: ByEvent}, wantVeto: true},
 		{name: "a veto ask runs the asker", ask: true, veto: VetoAsk, want: Verdict{DecidedBy: "overlay"}, wantVeto: true, wantAskRun: true},
-		{name: "no opinion lets the mode run", ask: true, veto: "", want: Verdict{Allowed: true, DecidedBy: ByMode("")}, wantVeto: true},
-		{name: "no asker skips the veto", veto: VetoDeny, want: Verdict{Allowed: true, DecidedBy: ByMode("")}},
+		{name: "no opinion runs", ask: true, veto: "", want: Verdict{Allowed: true, DecidedBy: ByDefault}, wantVeto: true},
+		{name: "no asker skips the veto", veto: VetoDeny, want: Verdict{Allowed: true, DecidedBy: ByDefault}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &Pipeline{}
@@ -163,26 +158,21 @@ func TestShellGate(t *testing.T) {
 		return "", "", nil
 	}
 	for _, c := range []struct {
-		name      string
-		allow     bool
-		pre       func(string, map[string]any) (PreVerdict, string, map[string]any)
-		noOverlay bool
-		command   string
-		want      string
-		wantErr   bool
-		wantAsks  []string
+		name     string
+		allow    bool
+		pre      func(string, map[string]any) (PreVerdict, string, map[string]any)
+		command  string
+		want     string
+		wantErr  bool
+		wantAsks []string
 	}{
-		{name: "allow mode runs without asking", allow: true, command: "echo hello", want: "hello"},
-		{name: "ask mode asks the denying overlay", command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
+		{name: "ungated runs without asking", allow: true, command: "echo hello", want: "hello"},
+		{name: "an ask policy asks the denying overlay", command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
 		{name: "a compound is one ask", command: "ls; rm -rf x", wantErr: true, wantAsks: []string{"ls; rm -rf x"}},
-		{name: "no overlay fails closed", noOverlay: true, command: "echo hi", want: "no overlay available", wantErr: true},
 		{name: "a rewrite re-enters at the gate", pre: rewrite, command: "rewrite-me", want: "permission denied (overlay)", wantErr: true, wantAsks: []string{"echo hi"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p, asked := testPipeline(t, c.allow)
-			if c.noOverlay {
-				p.Ask = nil
-			}
 			p.Pre = c.pre
 			resp := call(t, toolNamed(t, "shell", p), `{"command":"`+c.command+`"}`)
 			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) {

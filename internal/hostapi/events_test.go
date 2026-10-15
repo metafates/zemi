@@ -18,7 +18,6 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -30,10 +29,8 @@ func TestToolDeniedEvent(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
 		zemi.state.set("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
-	end)`)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	end)
+	zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
 	for _, tl := range tools.All(h.PipelineFor()) {
 		if tl.Info().Name != "write" {
 			continue
@@ -60,10 +57,8 @@ func TestHostToolEvents(t *testing.T) {
 	end)
 	zemi.event.on("tool.post", function(ev)
 		zemi.state.set("wpost", tostring(ev.ok))
-	end)`)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	end)
+	zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
 	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
@@ -172,11 +167,11 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
-		`zemi.config.set("permissions.mode", "ask")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
+		`zemi.config.set("agent.profile", "planner")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.del("gopls")`,
-		`zemi.keymap.set("<leader>y", "zemi.permission.mode.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`,
-		`zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`, `assert(zemi.command.run("gocmd"))`,
-		`zemi.keymap.set("<leader>y", "mode")`, `zemi.keymap.set("<leader>y", "profile")`,
+		`zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`,
+		`assert(zemi.command.run("gocmd"))`,
+		`zemi.keymap.set("<leader>y", "profile")`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`,
 	} {
 		if err := r.ExecuteChunk(t.Context(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
@@ -187,9 +182,9 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		t.Errorf("project env.get: %v", err)
 	}
 	runUser(t, r, `
-		zemi.config.set("permissions.mode", "ask")
+		zemi.config.set("agent.profile", "planner")
 		zemi.lsp.del("gopls")
-		zemi.keymap.set("<leader>y", "zemi.permission.mode.next")
+		zemi.keymap.set("<leader>y", "zemi.agent.profile.next")
 		assert(zemi.command.run("gocmd"))
 		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
 	if err := r.ExecuteChunk(t.Context(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
@@ -329,9 +324,6 @@ func TestVetoAskLeg(t *testing.T) {
 func TestVetoAtTheGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
-	if _, err := h.Settings.SetQuiet("permissions.mode", config.PermModeAsk); err != nil {
-		t.Fatal(err)
-	}
 	runUser(t, r, `
 		zemi.event.on("permission.request", function()
 			zemi.state.set("seen", (zemi.state.get("seen") or 0) + 1)
@@ -343,8 +335,7 @@ func TestVetoAtTheGate(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.state.get("seen") == 1, "the veto ran " .. zemi.state.get("seen") .. " times")`)
 	runUser(t, r, `
-		local ok, err = pcall(zemi.fs.write, "jail-escapes-nothing", "x")
-		assert(not ok and tostring(err):find("permission ask required"), err)
+		assert(zemi.fs.write("jail-escapes-nothing", "x"), "the Lua gate runs")
 		assert(zemi.state.get("seen") == 1, "the Lua gate ran the veto")`)
 }
 

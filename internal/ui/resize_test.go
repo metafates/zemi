@@ -188,30 +188,23 @@ func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	}
 }
 
-// TestModeSwitchQuiet: a mode switch only changes the pill, and a
-// picker opens by the statusline instead of mid-chat, its border in line
-// with the composer frame on the side of the pill that opened it, standing
-// on the frame's top rule.
-func TestModeSwitchQuiet(t *testing.T) {
+// TestAnchoredPickerComposerLine: a picker opens by the statusline instead
+// of mid-chat, its border in line with the composer frame on the side of the
+// pill that opened it, standing on the frame's top rule.
+func TestAnchoredPickerComposerLine(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
 	_ = a.Frame()
-	if err := a.host.SetPermMode("allow"); err != nil {
-		t.Fatal(err)
-	}
-	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
-		t.Fatalf("a switch must not explain itself:\n%s", ansi.Strip(f))
-	}
 	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
-		a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "allow"}, Anchor: anchor})
+		a.openOverlay(hostapi.Overlay{ID: "pick", Title: "Picker", Items: []any{"manual", "allow"}, Anchor: anchor})
 		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
 		edge := func(row string) bool {
 			if anchor == hostapi.OverlayBottomLeft {
-				return strings.HasPrefix(row, "┌ Permission mode") || strings.HasPrefix(row, "├─")
+				return strings.HasPrefix(row, "┌ Picker") || strings.HasPrefix(row, "├─")
 			}
 			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "┤")
 		}
-		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Permission mode") })
+		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Picker") })
 		c := a.LayoutRects()["composer"]
 		if top < 0 || !edge(rows[top]) || !edge(rows[c.Y]) {
 			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, c.Y, strings.Join(rows, "\n"))
@@ -224,7 +217,7 @@ func TestModeSwitchQuiet(t *testing.T) {
 		if s := dropCells(a.lastRows[c.Y], x)[0]; s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel {
 			t.Errorf("%s: its corner is %q %s on fill %d", anchor, s.Text, s.HL, s.Fill)
 		}
-		a.closeOverlayByID("mode")
+		a.closeOverlayByID("pick")
 	}
 }
 

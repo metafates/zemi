@@ -9,7 +9,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 
 | Task | Read |
 | --- | --- |
-| settings, providers and models, permission modes, MCP and language servers, trust, the command line, what a slash command or key does | `config.md` |
+| settings, providers and models, MCP and language servers, trust, the command line, what a slash command or key does | `config.md` |
 | Lua in init.lua or the lua tool: the API, origins, events, what may wait | `lua.md` |
 | keymaps, widgets, the statusline, themes and colors, layout | `ui.md`, then `lua.md` for API |
 | a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a widget or key), which says when `lua.md` is needed |
@@ -22,7 +22,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 
 ## Where things go
 
-- Settings, keymaps, profiles, permission modes, colors, layout and changes to the shipped widgets: the user's `init.lua`.
+- Settings, keymaps, profiles, colors, layout and changes to the shipped widgets: the user's `init.lua`.
 - A feature with logic of its own (a tool, a new widget, a command and its handlers): a local plugin, which the user can share, update and turn off on its own (`plugins.md`).
 - Agents, prompt commands, skills and saved workflows: files in the user config directory (every project) or in the repository's `.agents/` (shared through git, loaded once the user trusts the project). Writing one, ask where it lives in one `question` call: recommend the repository for one about this code base and every project otherwise; outside a git repository offer only every project, and in a project the user has not trusted say that a repository file loads only after `/trust`. Without the `question` tool (`zemi run`) take the recommended answers and say which.
 

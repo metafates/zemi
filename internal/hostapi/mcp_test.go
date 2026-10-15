@@ -119,8 +119,18 @@ func TestMCPBridge(t *testing.T) {
 	}
 
 	var list []fantasy.AgentTool
+	// the ask-everything policy a plugin's veto makes, until the restart
+	// section, whose calls run ungated
+	ask := true
+	pipe := h.PipelineFor()
+	pipe.Veto = func(tools.Request) string {
+		if ask {
+			return tools.VetoAsk
+		}
+		return ""
+	}
 	waitFor(t, func() error {
-		if list = h.mcpFantasyTools(h.PipelineFor()); len(list) == 0 {
+		if list = h.mcpFantasyTools(pipe); len(list) == 0 {
 			return fmt.Errorf("server never became ready: %+v", h.mcp.list())
 		}
 		return nil
@@ -141,6 +151,8 @@ func TestMCPBridge(t *testing.T) {
 	if err := h.openMCP(""); err != nil || row()["desc"] != "ready · 2 of 3 tools" || row()["mark"] != "ok" || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
+	// under the ask-everything policy the user's no refuses the call; with
+	// no policy it runs
 	run := func(i int, input string) fantasy.ToolResponse {
 		resp, err := list[i].Run(t.Context(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
 		if err != nil {
@@ -148,18 +160,8 @@ func TestMCPBridge(t *testing.T) {
 		}
 		return resp
 	}
-	// in ask mode the user's no refuses the call; allow mode runs it
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
 	if resp := run(0, `{"text":"hi"}`); !resp.IsError {
-		t.Fatalf("a call nobody can answer must fail closed: %+v", resp)
-	}
-	if err := h.SetPermMode("allow"); err != nil {
-		t.Fatal(err)
-	}
-	if resp := run(0, `{"text":"hi"}`); resp.IsError || resp.Content != "hi" {
-		t.Fatalf("allowed call = %+v", resp)
+		t.Fatalf("a refused call must fail the tool: %+v", resp)
 	}
 	resp := run(1, `{"text":"x"}`)
 	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {
@@ -167,6 +169,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 
 	first, _ := h.mcpServerNamed("fake")
+	ask = false // the restart section's calls run ungated
 	readd := lua.BootStep{Name: "mcp", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", first.spec) }}
 	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
 		t.Fatal(err)

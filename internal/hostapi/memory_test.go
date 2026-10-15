@@ -451,9 +451,6 @@ func TestMemoryGate(t *testing.T) {
 				if err := h.Remember("deploy by hand"); err != nil {
 					t.Fatal(err)
 				}
-				if err := h.SetPermMode("ask"); err != nil {
-					t.Fatal(err)
-				}
 				return projectMemories(t, h)[0].ID
 			},
 			want: "permission denied",
@@ -512,6 +509,10 @@ func TestMemoryGate(t *testing.T) {
 			h.SetUIHooks(ui)
 			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			h.SetProjectTrusted(true)
+			// the ask-everything policy a plugin's veto makes, for the
+			// memory.write case that asks
+			pipe := h.PipelineFor()
+			pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 			sid := seedSession(t, h)
 			replaces := ""
 			if tc.seed != nil {
@@ -526,7 +527,7 @@ func TestMemoryGate(t *testing.T) {
 			if tc.note {
 				err = h.Remember(tc.text)
 			} else {
-				msg, err = h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Scope: cmp.Or(tc.scope, store.ScopeProject), Text: tc.text, Quote: tc.quote, Replaces: replaces})
+				msg, err = h.memoryTool(pipe, sid, tools.MemoryCall{Scope: cmp.Or(tc.scope, store.ScopeProject), Text: tc.text, Quote: tc.quote, Replaces: replaces})
 			}
 			if tc.refused != (err != nil) {
 				t.Fatalf("refused = %v, err = %v", tc.refused, err)

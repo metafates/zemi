@@ -56,12 +56,9 @@ local groups = {
 	StatusUsage = { link = "Dim" },
 	StatusUsageWarn = { link = "Warn" },
 	StatusUsageErr = { link = "Danger", bold = true },
-	-- the statusline's mode: a read-only agent plans; ask prompts before
-	-- every action, so nothing else on screen shows it is on; yellow says
-	-- "attention", not "something went wrong"
+	-- the statusline's plan marker: a read-only agent plans, and nothing
+	-- else on screen shows it is on
 	ModePlan = { link = "Ok" },
-	ModeAllow = { link = "Accent" },
-	ModeAsk = { link = "Warn", bold = true },
 	-- the shell glyph: what follows goes to the shell, not to the model
 	PromptShell = { link = "Warn", bold = true },
 	PromptCommand = { link = "Title" },

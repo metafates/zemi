@@ -19,7 +19,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -179,9 +178,6 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 		default:
 			sys += planAsking
 		}
-	}
-	if h.PermMode() == config.PermModeAsk {
-		sys += "\n\n# Permission mode: ask\nEvery action you take (a command, a file change, a fetch) prompts the user first; reads do not. Batch what you can, and keep the asks few and worth reading."
 	}
 	reply := ""
 	if p == nil || p.System == "" {
@@ -498,8 +494,8 @@ func (h *Host) instructionFile(p string) bool {
 // command. scratchOwn names a subagent run's own directory in its task,
 // since per run it would bust the cached prompt.
 const (
-	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Writes there follow the permission mode like any write; a read-only agent may write only there. Deleting there asks only where any command would."
-	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Writes there follow the permission mode like any write; a read-only agent may write only there."
+	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Writes there settle like any write; a read-only agent may write only there. Deleting there asks only where any command would."
+	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Writes there settle like any write; a read-only agent may write only there."
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
 	// forkTask opens the only message a fork receives, after the conversation

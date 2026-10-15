@@ -116,7 +116,7 @@ func TestDeniedHint(t *testing.T) {
 		want    string
 	}{
 		{false, "--trust trusts this project"},
-		{true, "ask mode left it to the user"},
+		{true, "a plugin's permission.request handler"},
 	} {
 		if got := deniedHint(c.trusted); !strings.Contains(got, c.want) {
 			t.Errorf("trusted %v: %q", c.trusted, got)
@@ -255,8 +255,8 @@ func TestRunHeadless(t *testing.T) {
 				}
 			},
 		},
-		{name: "an ask mode call is a denied row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
-			if err := h.SetPermMode("ask"); err != nil {
+		{name: "an ask policy call is a denied row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
+			if err := h.RT.ExecuteChunk(t.Context(), `zemi.event.on("permission.request", function() return { decision = "ask" } end)`, "init.lua", lua.OriginUser); err != nil {
 				t.Fatal(err)
 			}
 		}, stderr: "✗ run ls -la", denied: 1, deniedTool: "shell"},
@@ -268,7 +268,7 @@ func TestRunHeadless(t *testing.T) {
 		{
 			name: "a subagent's unanswered ask is named", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
 			setup: func(h *hostapi.Host) {
-				if err := h.SetPermMode("ask"); err != nil {
+				if err := h.RT.ExecuteChunk(t.Context(), `zemi.event.on("permission.request", function() return { decision = "ask" } end)`, "init.lua", lua.OriginUser); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -349,7 +349,6 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/health", "", "zemi: /health needs the TUI; zemi health prints the checks\n", 1},
 		{"/model", "", "zemi: /model needs the TUI; zemi models lists the ids, /model [<role>] <id> sets one\n", 1},
 		{"/model update", "", "zemi: /model needs the TUI; zemi models update fetches the catalog\n", 1},
-		{"/mode", "", "zemi: /mode needs the TUI\n", 1},
 		{"/memory", "", "zemi: /memory needs the TUI\n", 1},
 		{"/skills", "", "zemi: /skills needs the TUI\n", 1},
 		{"/skills open zemi", "", "zemi: /skills needs the TUI\n", 1},

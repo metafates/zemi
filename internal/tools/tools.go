@@ -4,7 +4,6 @@
 package tools
 
 import (
-	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -23,7 +22,6 @@ import (
 	"charm.land/fantasy"
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -70,7 +68,7 @@ type Request struct {
 	// what gets checked and shown, this only helps the user read it
 	Description string
 	// Read marks a call the request's tool itself knows is read-only (an
-	// MCP tool its server annotates so): ask mode settles it on its own
+	// MCP tool its server annotates so): it settles on its own
 	Read bool
 	// Script is the lua tool call this one came from (Pipeline.Script), "" for
 	// a call the model made itself: it labels the ask and keeps the output whole
@@ -93,22 +91,6 @@ type checked struct {
 	req Request
 }
 
-// Recheck judges the request again as things are now, and asks nobody: the
-// mode may have moved to allow while the ask waited. Anything still left to
-// the user comes back as a ByNobody verdict with the request that asked.
-func (r Request) Recheck() (Verdict, Request) {
-	if r.gate == nil {
-		return Verdict{DecidedBy: ByNobody}, r
-	}
-	q := *r.gate.p
-	q.Ask = nil
-	v := q.Check(r.gate.req)
-	if v.Allowed || v.DecidedBy == ByReadOnly {
-		return v, r.gate.req
-	}
-	return Verdict{DecidedBy: ByNobody, Reason: "still needs the user"}, r.gate.req
-}
-
 // Verdict is the pipeline outcome for one permission request.
 type Verdict struct {
 	Allowed   bool
@@ -125,21 +107,16 @@ const (
 	// ByPlugin is a call the calling plugin's own manifest declared settled (DESIGN §9)
 	ByPlugin = "plugin"
 	// ByEvent is a verdict the permission.request veto decided
-	ByEvent    = "event"
-	modePrefix = "mode:"
-	// ByRecheck is an asker's answer that the request's Recheck now settles
-	ByRecheck = "recheck"
+	ByEvent = "event"
 )
 
 // What a Veto hook answers with: deny the request, or run the ask path
-// (the overlay). "" leaves the request to the mode.
+// (the overlay). "" never happens at the gate: Check treats the veto's
+// silence as "run".
 const (
 	VetoDeny = "deny"
 	VetoAsk  = "ask"
 )
-
-// ByMode is a verdict the permission mode name settled.
-func ByMode(name string) string { return modePrefix + name }
 
 // DeniedText and stopTurn build their user-stop wordings from these, and
 // UserStopped matches them, so a producer reword cannot desync the matcher.
@@ -195,22 +172,19 @@ func VerdictResponse(v PreVerdict, reason string) (resp fantasy.ToolResponse, do
 type PreHook func(tool string, input map[string]any) (decision PreVerdict, reason string, rewritten map[string]any)
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
-// caller's concern (one overlay at a time, host-side). ByRecheck as
-// decidedBy hands the answer to the request's Recheck.
+// caller's concern (one overlay at a time, host-side).
 type Asker func(req Request) (allowed bool, decidedBy string)
 
-// Pipeline wires tools to the permission mode and the host hooks.
+// Pipeline wires tools to the host hooks: the veto and the ask settle
+// every action, everything else runs.
 type Pipeline struct {
 	Pre PreHook // nil = no tool.pre events
-	Ask Asker   // nil = asks fail closed
+	Ask Asker   // nil = no overlay to ask: the veto is skipped and actions run
 	// Veto runs the permission.request event for an action request and
 	// answers "deny", "ask" or "". Fired only when Ask is set: a gate
 	// without an asker (a Lua call from the actor goroutine) cannot
 	// survive the veto's own interpreter round-trip.
 	Veto func(req Request) string
-	// Mode reports the active permission mode ("ask" or "allow"); nil or ""
-	// = allow, the default.
-	Mode func() string
 	// Post runs the tool.post events after a call the gate let through or
 	// refused, and returns the output the model gets; nil = none.
 	Post func(ctx context.Context, pad, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
@@ -330,9 +304,8 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 }
 
 // Check decides one request. A read-only agent's actions deny, its writes
-// in the scratchpad aside; the permission.request veto settles next, and
-// the mode settles the rest: allow runs, ask puts the request to the user,
-// and an ask no one can answer fails closed.
+// in the scratchpad aside; the permission.request veto settles next (a
+// denial refuses, an ask decision runs the ask path); what survives runs.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
 	req.ReadOnly, req.Script = p.Plan != nil && p.Plan(), p.Script
@@ -355,38 +328,19 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req)
 		}
 	}
-	if mode := p.mode(); mode != config.PermModeAsk {
-		return Verdict{Allowed: true, DecidedBy: ByMode(mode)}
-	}
-	return p.resolveAsk(req)
+	return Verdict{Allowed: true, DecidedBy: ByDefault}
 }
 
-// Action reports a request that changes something: ask mode prompts for
-// these and a read-only agent denies them. Everything else (a file read, a
-// listing, a search) settles on its own.
+// Action reports a request that changes something: the veto and the ask
+// path cover these, and a read-only agent denies them. Everything else (a
+// file read, a listing, a search) settles on its own.
 func (r Request) Action() bool {
 	return r.Subject != perm.SubjectRead && !r.Read
 }
 
-// mode is the active permission mode, "" read as allow.
-func (p *Pipeline) mode() string {
-	if p.Mode == nil {
-		return ""
-	}
-	return p.Mode()
-}
-
-// resolveAsk puts the request to the user through Ask; a nil Ask (no
-// overlay, a Lua gate without one) denies fail-closed.
+// resolveAsk puts the request to the user through Ask.
 func (p *Pipeline) resolveAsk(req Request) Verdict {
-	if p.Ask == nil {
-		return Verdict{Reason: cmp.Or(req.Reason, "it is an action") + "; no overlay available, failing closed", DecidedBy: ByNobody}
-	}
 	allowed, by := p.Ask(req)
-	if by == ByRecheck {
-		v, _ := req.Recheck()
-		return v
-	}
 	if allowed {
 		return Verdict{Allowed: true, DecidedBy: by}
 	}

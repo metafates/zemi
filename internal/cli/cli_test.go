@@ -101,7 +101,6 @@ func TestCLI(t *testing.T) {
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
 		{name: "complete a model", args: []string{"__complete", "run", "-m", ""}, stdout: "gw/m1\n"},
 		{name: "complete a profile", args: []string{"__complete", "--profile", ""}, stdout: "cheap\n"},
-		{name: "complete a mode", args: []string{"__complete", "--mode", ""}, stdout: "ask\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
 		{name: "sessions as JSON", args: []string{"sessions", "--json"}, stdout: `{"id":"` + sid + `","title":"fix the failing test","updated":"`},

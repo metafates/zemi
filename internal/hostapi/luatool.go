@@ -27,7 +27,6 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -66,7 +65,7 @@ var luaReadOnly = map[string]bool{
 	"log": true, "log.list": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
 	"lsp.list": true, "mcp.list": true, "memory.list": true,
 	"model.list": true, "notify.list": true,
-	"permission.mode.get": true, "permission.mode.list": true, "project.root": true, "project.trusted": true, "provider.list": true,
+	"project.root": true, "project.trusted": true, "provider.list": true,
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
 	"skills.list": true, "state.get": true, "tool.describe": true, "tool.list": true,
 	"ui.focus.get": true, "ui.hl.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.highlight": true, "ui.diff": true, "ui.wrap": true, "ui.width": true, "ui.screenshot": true, "ui.theme.get": true, "ui.theme.list": true, "ui.widget.list": true,
@@ -79,14 +78,12 @@ var luaReadOnly = map[string]bool{
 var luaDelegated = map[string]bool{"tool.call": true}
 
 // luaEvalTool is the model's lua tool. build is profileTools' builder, which a
-// script's callable set is built with under its own pipeline copy. writesNote
-// names the file tools the run has, for the fs.write clause.
+// script's callable set is built with under its own pipeline copy.
 type luaEvalTool struct {
 	tools.NoProviderOptions
-	h          *Host
-	pipe       *tools.Pipeline
-	build      func(*tools.Pipeline) ([]fantasy.AgentTool, []string)
-	writesNote string
+	h     *Host
+	pipe  *tools.Pipeline
+	build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)
 }
 
 func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
@@ -104,9 +101,6 @@ type luaArgs struct {
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
-	if t.h.PermMode() == config.PermModeAsk {
-		approval = " The whole script is what the user approves, so write every call out by name."
-	}
 	props, required := tools.ArgsOf(luaArgs{})
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
@@ -116,7 +110,6 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 			" A script drives this run's tools too: `zemi.tool.call(name, args)` returns a handle whose `:wait()` gives its output; start independent calls together and wait on each; only the script's prints and returns reach you. `zemi.tool.list()` names this run's tools, deferred MCP ones too; `zemi.tool.describe(name)` gives its parameters." +
 			" File calls, paths inside the project: `zemi.fs.read(path)` -> `content, err`; `write(path, content)`; `list(path)` -> entries `{name, type, size}`; `glob(pattern)` -> paths (one string pattern, `**` spans directories); `grep(pattern)` -> hits `{path, line, text}`; plus `stat`, `exists`, `mkdir`, `remove`, `data_dir(name)`. `glob` and `grep` raise on a bad pattern; the rest return `nil, err`." +
 			" Work from these signatures on the first attempt: never a script that just probes the API." +
-			t.writesNote +
 			approval +
 			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
 		Parameters: props,

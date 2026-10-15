@@ -106,7 +106,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts (`Pipeline.cmdEnv`; the user's
-  `!command` keeps the user's). Writes in the pad settle by permission mode like any write,
+  `!command` keeps the user's). Writes in the pad settle like any write,
   and the read-only agent may write only there; `zemi.fs` and the Lua tool jail it to
   the pad alone.
   `write`

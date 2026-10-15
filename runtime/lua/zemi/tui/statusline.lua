@@ -1,27 +1,9 @@
--- The statusline widgets: statusline.left holds the mode, the project and
--- what needs attention, statusline.right the model and context use. Each
+-- The statusline widgets: statusline.left holds the project and what needs
+-- attention, statusline.right the model and context use. Each
 -- side draws from its outer edge in priority order and a short row drops the
 -- highest priority first, so what lasts sits outermost and what comes and
 -- goes sits inner, where it moves nothing.
 local fmt = require("zemi.tui.text")
-
--- The permission mode, the only place its color shows. A click opens the
--- mode picker.
-zemi.ui.widget.add({
-	id = "statusline.mode",
-	region = "statusline.left",
-	priority = 5,
-	on_click = fmt.run_click,
-	---@param ctx zemi.WidgetCtx
-	---@return zemi.Line[]
-	render = function(ctx)
-		local mode = ctx.permission_mode or "allow"
-		-- allow runs everything, ask prompts before every action, and that
-		-- picks the mode's color
-		local hl = ({ allow = "ModeAllow", ask = "ModeAsk" })[mode]
-		return { { { text = mode, hl = hl, click = "mode" } } }
-	end,
-})
 
 -- The project: its path when short, else its name (the splash has the whole
 -- path), and whether it is untrusted. A click on the path opens /projects.

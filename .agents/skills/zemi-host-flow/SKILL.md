@@ -33,7 +33,7 @@ behind the typed prompt, is the typed prompt itself after `-` (`options.text`: s
 when it starts with `/`, so piped text runs no command), and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
-completion function. `zemi models` and the `-m`, `--profile` and `--mode` completion boot
+completion function. `zemi models` and the `-m` and `--profile` completion boot
 inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
 guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
 server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
@@ -53,7 +53,7 @@ renders the chat and working widgets over the frame with `UIState.Printed` (`ctx
 and the `follower` turns the same frames into `--json` events, each once (a call by
 `ChatMessage.ID`, which `flushOutput` sets). An ask no UI can answer is denied as
 `tools.ByNobody` and recorded (`Host.HeadlessDenials`, subagents' too). It also drops what
-needs a user (`headlessExcluded`), fetch when nothing could allow one (`webOff`), the agent tool's `background` and `send_to` (a detached
+needs a user (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached
 report would outlive the run), the workflow tool's `background` and every `action` but
 `status`, `list`, `wait` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
 raises there (nothing would bound its chain of turns). With no UI `Host.Notify` prints a
@@ -125,7 +125,7 @@ applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 `saved`, `default` or `this run`) and value. A key changes on a screen of its own, its picker or
 `/config edit` (its choices, else a one-line prompt whose `Overlay.Run`, Go-only, runs `config set`
 with the text), which closes back onto the rebuilt list. `/config` and `/effort` write through
-`Host.SetConfig`, which sends `models.*`, `permissions.mode` and `agent.profile` through their
+`Host.SetConfig`, which sends `models.*` and `agent.profile` through their
 own setters and refuses a `ui.theme` no theme answers to (`checkTheme`); `zemi.config.set` takes
 any name, since a plugin's or the project's theme may not be added yet, and `CheckTheme`
 records one nothing added once boot is done, while whorl draws. A key's `Choices` refuse any other value in `config.checkKind`,
@@ -355,7 +355,7 @@ is refused with its path, to delete (the owner is the only user).
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a fetch, a
-  Lua tool - whatever the mode; reads and scratchpad writes pass. Approving the plan returns to the agent and mode that ran before: the read-only
+  Lua tool; reads and scratchpad writes pass. Approving the plan returns to the agent that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
   agent never passes through idle. A read-only turn that ends in plain text instead of the

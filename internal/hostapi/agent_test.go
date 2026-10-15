@@ -248,8 +248,8 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "a pick outlives the last set", pick: "p/e", want: "p/e", source: "this run"},
 		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
 		{name: "dropping every set returns the default", want: "", source: "default"},
-		{name: "a key's own setter is a config write", key: "permissions.mode", config: []any{"ask"}, want: "ask", source: "init.lua"},
-		{name: "and keeps a pick like one", key: "permissions.mode", config: []any{"ask"}, pick: "allow", want: "allow", source: "this run"},
+		{name: "a key's own setter is a config write", key: "agent.profile", config: []any{"planner"}, want: "planner", source: "init.lua"},
+		{name: "and keeps a pick like one", key: "agent.profile", config: []any{"planner"}, pick: "default", want: "default", source: "this run"},
 		{name: "a Lua number sets a number key", key: "ui.composer.history", config: []any{5.0}, want: 5.0, source: "init.lua"},
 		{name: "so dropping it returns the default", key: "ui.composer.history", want: 50.0, source: "default"},
 		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
@@ -625,13 +625,12 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 }
 
 // TestPipelineForCheck verifies the pipeline the host builds for agent tool
-// calls: ask mode leaves every action to the user, an unresolved ask fails
-// closed when no UI is attached, and an asker resolves it (DESIGN §6.2).
+// calls: an ask policy's veto leaves every action to the user, an
+// unanswered ask fails closed when no UI is attached, and an asker resolves
+// it (DESIGN §6.2).
 func TestPipelineForCheck(t *testing.T) {
-	h, _ := newTestHost(t)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
+	h, r := newTestHostDB(t)
+	runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
 	pipe := h.PipelineFor()
 
 	// No UI: the ask hook fails closed.
@@ -646,11 +645,10 @@ func TestPipelineForCheck(t *testing.T) {
 		t.Fatalf("asked shell: %+v by %q", v, v.DecidedBy)
 	}
 
-	// Allow mode, the default, settles the same call on its own.
-	h.SetPermMode("allow")
+	// No veto policy: the same call settles on its own.
+	runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
 	pipe3 := h.PipelineFor()
-	pipe3.Ask = nil
-	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByMode("allow") {
+	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByDefault {
 		t.Fatalf("allowed shell: %+v by %q", v, v.DecidedBy)
 	}
 }
@@ -1550,9 +1548,6 @@ func TestMaxOutput(t *testing.T) {
 // at idle would throw away.
 func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	h, _ := newTestHost(t)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
 	names := func() map[string]bool {
 		out := map[string]bool{}
 		toolset, _ := h.profileTools(nil)
@@ -1573,16 +1568,6 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	sys := h.buildSystem(nil)
 	if strings.Contains(sys, "question tool") || strings.Contains(sys, "Ask before") || strings.Contains(sys, "ask why") {
 		t.Error("the headless prompt still tells the model to ask")
-	}
-	// in ask mode a fetch would be denied: nobody answers one
-	if names()[tools.ToolFetch] {
-		t.Error("the headless toolset ships the fetch nothing can settle")
-	}
-	if err := h.SetPermMode("allow"); err != nil {
-		t.Fatal(err)
-	}
-	if !names()[tools.ToolFetch] {
-		t.Error("allow mode does not bring fetch back")
 	}
 
 	h.SetUIHooks(&fakeUI{})

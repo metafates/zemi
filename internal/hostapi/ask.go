@@ -49,16 +49,13 @@ func (h *Host) resolved(req tools.Request, allowed bool, by string) {
 	})
 }
 
-// ask answers one request. Asks reach the user one at a time under askMu,
-// and each is judged again once it holds the lock (held): a mode switch to
-// allow while it waited may settle it. No Lua runs under askMu (the veto
-// ran at the gate, and the rejudge's copy has no asker), so nothing on the
+// ask answers one request. Asks reach the user one at a time under askMu.
+// No Lua runs under askMu (the veto ran at the gate), so nothing on the
 // interpreter can wait on it, and the UI goroutine never takes it.
 // NOTE: sync.Mutex hands off in arrival order only once a waiter has
 // waited over 1ms (starvation mode), so prompt order is FIFO in practice,
 // not by guarantee.
 func (h *Host) ask(req tools.Request, held bool) (bool, string) {
-	entry := req
 	resolved := func(allowed bool, by string) (bool, string) {
 		h.resolved(req, allowed, by)
 		return allowed, by
@@ -84,10 +81,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string) {
 		if h.askCut.Load() != cut {
 			return resolved(false, tools.ByUser) // told zemi what to do instead
 		}
-		if v, _ := entry.Recheck(); v.Allowed {
-			return false, tools.ByRecheck
-		}
-		return h.ask(entry, true)
+		return h.ask(req, true)
 	}
 	pr := PermRequest{
 		Tool: req.Tool, Subject: req.Subject, Arg: h.shownArg(req),

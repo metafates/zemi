@@ -107,14 +107,14 @@ func (h *Host) luaJails(L *glua.LState, write bool) []string {
 	return roots
 }
 
-// luaGate runs one Lua-boundary permission check. Asks fail closed with
-// the §6.5 contract ("permission ask required"): host-API calls from Lua
-// never open the interactive overlay, so the asker is stripped from the
-// pipeline copy and an ask stays a refusal naming what to do. req describes
-// the call for a test zemi, where only a test.stub passes one of the calls
-// that do IO: its reply is returned and stands in for the transport, a call
-// none answers raises naming the stub to add, and a false reply is refused;
-// req is a func so no other zemi builds it.
+// luaGate runs one Lua-boundary permission check. The gate settles every
+// call: a read-only agent's writes deny, everything else runs (a plugin's
+// own call it declared above already returned); a plugin calling past its
+// manifest was refused there. req describes the call for a test zemi, where
+// only a test.stub passes one of the calls that do IO: its reply is
+// returned and stands in for the transport, a call none answers raises
+// naming the stub to add, and a false reply is refused; req is a func so no
+// other zemi builds it.
 func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) *stubReply {
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
@@ -131,33 +131,23 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	if cap := pluginCap(subject); name != "" && cap != "" && !h.pluginDeclares(name, cap) {
 		L.RaiseError("%s %s: plugin %s declares no %q; add %q to uses in %s", subject, arg, name, cap, cap, plugin.ManifestFile)
 	}
-	stubbed := false
 	if h.test != nil {
 		var reply *stubReply
+		var stubbed bool
 		if reply, stubbed = h.test.reply(L, subject, arg, req); reply != nil {
 			return reply
 		}
 		if stubbed {
-			// a false stub refuses the call whatever the mode settles
+			// a false stub refuses the call whatever the gate settles
 			L.RaiseError("%s %s: permission ask required: a host-API call from Lua never opens the interactive overlay", subject, arg)
 		}
 	}
-	// a program the Lua tool's script starts rides the script's own approval
-	tool, approved := h.modelLuaRun(L)
-	approved = subject == "lua.job.start" && tool && approved && !stubbed
+	// no veto here: it runs on the actor goroutine, where its own
+	// interpreter round-trip would deadlock, and the ask path has no
+	// overlay to offer a Lua call anyway
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
-	v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
-	switch {
-	case v.Allowed:
-	case v.DecidedBy == tools.ByNobody && approved, v.DecidedBy == tools.ByNobody && h.pluginSettles(name, subject):
-		return nil
-	case v.DecidedBy == tools.ByNobody:
-		h.EmitAsync(EventPermissionRequest, map[string]any{
-			"subject": subject, "arg": arg, "post_hoc": true,
-		})
-		L.RaiseError("%s %s: permission ask required: a host-API call from Lua never opens the interactive overlay; run zemi with permissions.mode = \"allow\"", subject, arg)
-	default:
+	if v := pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"}); !v.Allowed {
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
 	return nil
@@ -201,21 +191,6 @@ func pluginCap(subject string) string {
 		}
 	}
 	return ""
-}
-
-// pluginSettles reports whether the calling plugin's manifest is what answers
-// this call: its own model, agent, HTTP, file-write and job calls settle where
-// it declared the capability, in either mode. A write a read-only agent asks
-// for still fails, and a test zemi answers IO through its stubs alone.
-func (h *Host) pluginSettles(name, subject string) bool {
-	if h.test != nil || name == "" {
-		return false
-	}
-	cap := pluginCap(subject)
-	if cap == "" || !h.pluginDeclares(name, cap) {
-		return false
-	}
-	return cap != "fs.write" || !h.readOnly()
 }
 
 // zemi.env

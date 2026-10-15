@@ -81,15 +81,6 @@ func TestMouseClicks(t *testing.T) {
 	}
 
 	ran := make(chan string, 1)
-	host.Commands.Add(&hostapi.Command{Name: "mode", GoFn: func(*hostapi.Host, string) error { ran <- "mode"; return nil }, Origin: lua.OriginBuiltin})
-	x, y = findCell(t, app, "allow")
-	clickAt(app, x+1, y)
-	select {
-	case <-ran:
-	case <-time.After(2 * time.Second):
-		t.Fatal("clicking the mode pill should run /mode")
-	}
-
 	host.SetReload(func() error { ran <- "reload"; return nil }, nil)
 	app.lastRows = [][]hostapi.Segment{{{Text: " stuck /reload ", Click: "reload"}}}
 	if _, act, ok := app.target(2, 0); ok {

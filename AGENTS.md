@@ -44,10 +44,11 @@ redraws nothing, and there are no per-frame Lua or allocation hot spots. Cosmeti
 model call: the model supplies its own labels, like a shell call's `about`, as it streams the
 call.
 
-The permission system is a UX feature, not isolation: two modes, ask (every action
-prompts) and allow (the default, everything runs). It never parses a command to judge it,
-and it is never a security boundary - a run that must not touch the machine runs in a
-container or VM. An ask no one can answer fails closed.
+The permission system is a UX feature, not isolation: everything runs, and a
+plugin's `permission.request` handler (the `perm` word in its `uses`) may deny
+or force the ask overlay per action. It never parses a command to judge it,
+and it is never a security boundary - a run that must not touch the machine
+runs in a container or VM. An ask no one can answer fails closed.
 
 The UI has one identity in every theme: neutrals from its fg and bg, one accent (whorl's
 periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas and
@@ -117,7 +118,7 @@ or settled builds.
 ## Where the rest lives
 
 The flow, the invariants and the gotchas behind these commands are this repo's own skills under
-`.agents/skills/`, one per area: the permission modes and the process layer; the Lua runtime and
+`.agents/skills/`, one per area: the permission gate and the process layer; the Lua runtime and
 its types; host flow, the CLI, boot and trust, config, turns and sessions; subagents, workflows,
 MCP and LSP; the TUI. Their triggers are in the skills index in your context - load the matching
 one before changing that area. `zemi-dev-lessons` and `zemi-tui-test` hold the traps and how to

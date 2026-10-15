@@ -352,8 +352,6 @@ function zemi.config.schema() end
 ---| "zemi.composer.history_next"
 ---| "zemi.composer.paste"
 ---| "zemi.composer.edit"
----| "zemi.permission.mode.next"
----| "zemi.permission.mode.prev"
 ---| "zemi.agent.profile.next"
 ---| "zemi.agent.profile.prev"
 
@@ -391,8 +389,8 @@ zemi.keymap = {}
 --- zemi.ui.help, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
 --- zemi.ui.focus.set [id],
---- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
---- and zemi.agent.profile.{next,prev} (user or builtin origin only).
+--- zemi.ui.focus.{next,prev} and zemi.agent.profile.{next,prev}
+--- (user or builtin origin only).
 ---
 --- ```lua
 --- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
@@ -566,7 +564,7 @@ function zemi.command.list() end
 ---@field tool string
 ---@field subject string
 ---@field arg string
----@field by string Who decided, such as "user" or "mode:allow".
+---@field by string Who decided, such as "user" or "event".
 ---@field reason string
 
 ---@class zemi.ev.PermissionRequest: zemi.Event
@@ -574,7 +572,6 @@ function zemi.command.list() end
 ---@field arg string
 ---@field reason? string
 ---@field agent? string The subagent asking, such as "explore agent"; "" for the main agent.
----@field post_hoc? boolean A Lua API call already refused for want of an ask; a veto changes nothing.
 
 ---@class zemi.ev.PermissionResolved: zemi.Event
 ---@field subject string
@@ -876,7 +873,6 @@ function zemi.event.stats() end
 ---@field profile string
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
----@field permission_mode string
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
 ---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running, and `agent` is that run's name, the model's description or the definition's when it wrote none.
@@ -2119,36 +2115,6 @@ function zemi.composer.paste() end
 --- Open the draft in the user's editor (ctrl+g when no keymap starts with
 --- it). User or builtin origin only.
 function zemi.composer.edit() end
-
--- zemi.permission
-
----@class zemi.PermMode
----@field name string
----@field description string
-
----@class zemi.permission
-zemi.permission = {}
-
----@class zemi.permission.mode
-zemi.permission.mode = {}
-
---- Switch the active permission mode: "ask" prompts before every action,
---- "allow" (the default) runs everything. User or builtin origin only.
----@param name string
----@return true|nil ok, string? err
-function zemi.permission.mode.set(name) end
-
---- The active mode, "ask" or "allow".
----
---- ```lua
---- if zemi.permission.mode.get().name == "ask" then zemi.permission.mode.set("allow") end
---- ```
----@return zemi.PermMode
-function zemi.permission.mode.get() end
-
---- Every mode, in /mode order.
----@return zemi.PermMode[]
-function zemi.permission.mode.list() end
 
 -- zemi.perm
 

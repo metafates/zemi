@@ -1,46 +1,14 @@
 package hostapi
 
 import (
-	"fmt"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// TestModeToggle: the mode cycle action flips between ask and allow, and a
-// permissions.mode outside the schema is refused at the write.
-func TestModeToggle(t *testing.T) {
-	for _, c := range []struct {
-		name, setup string
-		want        []string // get().name first, then after each press
-	}{
-		{"allow flips to ask and back", ``, []string{"allow", "ask", "allow"}},
-		{"an unknown permissions.mode is refused", `assert(not pcall(zemi.config.set, "permissions.mode", "gone"))`, []string{"allow"}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			h := newTestHostUI(t)
-			runUser(t, h.RT, c.setup)
-			for i, want := range c.want {
-				if i > 0 {
-					if err := h.cyclePermMode(1); err != nil {
-						t.Fatal(err)
-					}
-				}
-				runUser(t, h.RT, fmt.Sprintf(`local m = zemi.permission.mode.get()
-					assert(m.name == %q, "mode " .. m.name)
-					for _, row in ipairs(zemi.permission.mode.list()) do assert(row.active == nil) end`, want))
-			}
-		})
-	}
-	if err := newTestHostUI(t).SetPermMode("nope"); err == nil {
-		t.Error("an unknown mode name was taken")
-	}
-}
 
 // TestPermAsk: zemi.perm.ask is plugin origin only, needs the manifest's
 // "perm" word, waits only from a task, and a headless run denies and
@@ -92,9 +60,6 @@ func TestPermAsk(t *testing.T) {
 // noted for the run to report.
 func TestHeadlessDenialNotes(t *testing.T) {
 	h, _ := newTestHost(t)
-	if err := h.SetPermMode("ask"); err != nil {
-		t.Fatal(err)
-	}
 	ok, by := h.askHook()(tools.Request{Subject: "tool.shell", Arg: "make out"})
 	if ok || by != tools.ByNobody {
 		t.Fatalf("an ask with no UI = %v by %q", ok, by)
@@ -105,14 +70,15 @@ func TestHeadlessDenialNotes(t *testing.T) {
 	}
 }
 
-// TestPlanApprovalAfterModeGone: a mode the config dropped since the read-only
-// agent was picked is no reason to read an approved plan as a dismissal. The
-// restore skips it, the fallback mode stands, and the handoff is still recorded.
-func TestPlanApprovalAfterModeGone(t *testing.T) {
+// TestPlanApprovalAfterProfileGone: a profile the config dropped since the
+// read-only agent was picked is no reason to read an approved plan as a
+// dismissal. The restore skips it, the default stands, and the handoff is
+// still recorded.
+func TestPlanApprovalAfterProfileGone(t *testing.T) {
 	h, _ := newTestHost(t)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
-	h.Settings.SetQuiet("permissions.mode", "gone") // the mode the agent was picked under, gone since
+	h.Settings.SetQuiet("agent.profile", "gone") // the agent the read-only pick restored to, gone since
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
@@ -120,18 +86,14 @@ func TestPlanApprovalAfterModeGone(t *testing.T) {
 	if !ok || !v.Approved {
 		t.Fatalf("approve: %+v ok=%v", v, ok)
 	}
-	if got := h.PermMode(); got != config.PermModeAllow {
-		t.Fatalf("mode after the approval = %q, want the fallback", got)
-	}
 	if h.takePlanApproved() != implementNow {
 		t.Fatal("the approval recorded no handoff")
 	}
 }
 
-// TestAskWaiterJudgedAgain: asks reach the user one at a time, and one
-// that waited behind a prompt is judged again (the mode now) once the prompt
-// is answered, so a mode switch that settles it ends without a second prompt.
-func TestAskWaiterJudgedAgain(t *testing.T) {
+// TestAskFIFO: asks reach the user one at a time under askMu, and the user's
+// tell denies the ones waiting behind the prompt.
+func TestAskFIFO(t *testing.T) {
 	for _, c := range []struct {
 		name          string
 		first, second tools.Request
@@ -150,14 +112,6 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 			"user:once",
 		},
 		{
-			"an allow switch settles the waiter",
-			tools.Request{Subject: "tool.shell", Arg: "make out"},
-			tools.Request{Subject: "tool.shell", Arg: "make test"},
-			"user:once", func(h *Host) { h.SetPermMode("allow") }, 1,
-			[2]bool{true, true},
-			tools.ByMode("allow"),
-		},
-		{
 			"a tell denies the waiter",
 			tools.Request{Subject: "tool.shell", Arg: "make out"},
 			tools.Request{Subject: "tool.shell", Arg: "make test"},
@@ -168,9 +122,6 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHost(t)
-			if err := h.SetPermMode("ask"); err != nil {
-				t.Fatal(err)
-			}
 			opened := make(chan struct{})
 			ui := &fakeUI{}
 			ui.onAsk = func(PermRequest) (bool, string) {
@@ -191,6 +142,8 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 			}
 			h.SetUIHooks(ui)
 			pipe := h.PipelineFor()
+			// the ask-everything policy a plugin's veto makes
+			pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 			var first tools.Verdict
 			done := make(chan struct{})
 			go func() { first = pipe.Check(c.first); close(done) }()

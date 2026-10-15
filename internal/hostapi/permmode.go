@@ -12,7 +12,6 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
@@ -20,26 +19,13 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// builtinModes are the two permission modes, in cycle order: ask prompts
-// before every action, allow runs everything. The permission system is a UX
-// feature - it keeps the user aware of what the agent is doing - not
-// isolation; a run that must not touch the machine runs in a container.
-var builtinModes = []PermModeDef{
-	{Name: config.PermModeAsk, Description: config.PermModeAskDesc},
-	{Name: config.PermModeAllow, Description: config.PermModeAllowDesc},
-}
-
-// PermModeDef is one permission mode: a name and what it means.
-type PermModeDef struct {
-	Name, Description string
-}
-
 // modeReg holds the read-only agent's restore point and the asks a headless
 // run denied.
 type modeReg struct {
-	mu             sync.Mutex
-	prePlanMode    string // the mode active before a read-only agent was picked
-	prePlanProfile string // the agent active before a read-only agent was picked
+	mu sync.Mutex
+	// prePlanProfile is the agent active before a read-only agent was
+	// picked, restored when its plan is approved
+	prePlanProfile string
 
 	headless []Denial
 }
@@ -76,42 +62,6 @@ func (h *Host) HeadlessDenials() []Denial {
 	return slices.Clip(h.modes.headless)
 }
 
-// PermMode reports the active permission mode. An unknown value reads as
-// the default, allow.
-func (h *Host) PermMode() string {
-	if mode := h.Settings.Str("permissions.mode"); mode == config.PermModeAsk || mode == config.PermModeAllow {
-		return mode
-	}
-	return config.PermModeAllow
-}
-
-// SetPermMode switches the mode at runtime (/mode, ctrl+y).
-func (h *Host) SetPermMode(mode string) error {
-	if mode != config.PermModeAsk && mode != config.PermModeAllow {
-		return Usagef("unknown permission mode %q (want %s or %s)", mode, config.PermModeAsk, config.PermModeAllow)
-	}
-	return h.setWatched("permissions.mode", mode)
-}
-
-// OpenModePicker lists the modes with what they mean; enter switches.
-func (h *Host) OpenModePicker() error {
-	ui, err := h.Screen()
-	if err != nil {
-		return err
-	}
-	cur, sel := h.PermMode(), 0
-	var items []any
-	for i, m := range builtinModes {
-		item := map[string]any{"text": m.Name, "desc": m.Description, "run": "mode " + m.Name}
-		if m.Name == cur {
-			item["key"], sel = "current", i
-		}
-		items = append(items, item)
-	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
-	return nil
-}
-
 // CheckToolNames records a zemi.tool.override no tool answers to, once boot
 // has added every Lua tool: the tool one names may come from a project or a
 // plugin, so the call that adds it cannot tell.
@@ -142,12 +92,12 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	}
 	var v tools.PlanVerdict
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
-	restore, mode := "", ""
+	restore := ""
 	if h.readOnly() {
 		h.modes.mu.Lock()
-		restore, mode = h.modes.prePlanProfile, h.modes.prePlanMode
+		restore = h.modes.prePlanProfile
 		h.modes.mu.Unlock()
-		if restore == "" { // a read-only agent picked from config: the shipped profile, the mode as it is
+		if restore == "" { // a read-only agent picked from config: the shipped profile
 			restore = "default"
 		}
 		v.Profile = restore
@@ -166,15 +116,10 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		}
 	}
 	if restore != "" {
-		// a profile or mode the config dropped since is no reason to read the
-		// approval as a dismissal: the fallbacks (default, allow) stand
+		// a profile the config dropped since is no reason to read the
+		// approval as a dismissal: the default stands
 		if err := h.SetProfile(restore); err != nil {
 			h.Log.Info("plan restore skipped a profile", "origin", "permissions", "profile", restore, "error", err)
-		}
-		if mode != "" {
-			if err := h.SetPermMode(mode); err != nil {
-				h.Log.Info("plan restore skipped a mode", "origin", "permissions", "mode", mode, "error", err)
-			}
 		}
 		if !verdict.Hold {
 			// the read-only turn cannot implement the plan itself; the turn-end
@@ -184,21 +129,6 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	}
 	v.Approved, v.Hold = true, verdict.Hold
 	return v, true
-}
-
-// cyclePermMode steps through the modes (the mode next and prev actions).
-func (h *Host) cyclePermMode(step int) error {
-	n := len(builtinModes)
-	i := slices.IndexFunc(builtinModes, func(d PermModeDef) bool { return d.Name == h.PermMode() })
-	return h.SetPermMode(builtinModes[((i+step)%n+n)%n].Name)
-}
-
-// permissionNamespace is zemi.permission: the mode table, and nothing else -
-// the permission system prompts or allows, it keeps no rules.
-func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("mode", h.modeNamespace(L))
-	return tb
 }
 
 // permNamespace is zemi.perm: the plugin ask surface. The `perm` capability
@@ -268,38 +198,4 @@ func (h *Host) requirePermUse(L *glua.LState, api string) {
 		return
 	}
 	L.RaiseError("%s: plugin %s declares no %q; add %q to uses in %s", api, name, "perm", "perm", plugin.ManifestFile)
-}
-
-func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		name := L.CheckString(1)
-		h.refuseBelowUser(L, "permission.mode.set")
-		return luaResult(L, h.SetPermMode(strings.ToLower(name)))
-	}))
-	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		row := L.NewTable()
-		row.RawSetString("name", glua.LString(h.PermMode()))
-		row.RawSetString("description", glua.LString(h.modeDef().Description))
-		L.Push(row)
-		return 1
-	}))
-	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
-		for _, d := range builtinModes {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(d.Name))
-			row.RawSetString("description", glua.LString(d.Description))
-			out.Append(row)
-		}
-		L.Push(out)
-		return 1
-	}))
-	return tb
-}
-
-func (h *Host) modeDef() PermModeDef {
-	mode := h.PermMode()
-	i := slices.IndexFunc(builtinModes, func(d PermModeDef) bool { return d.Name == mode })
-	return builtinModes[max(i, 0)]
 }

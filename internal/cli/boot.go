@@ -545,14 +545,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "model", NArgs: hostapi.NArgsAny, Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string) error {
 			return h.SetModel(args)
 		}, GoComplete: (*hostapi.Host).CompleteModel},
-		{Name: "mode", NArgs: hostapi.NArgsOptional, Desc: "choose the permission mode", GoFn: func(h *hostapi.Host, args string) error {
-			if args = strings.TrimSpace(args); args == "" {
-				return h.OpenModePicker()
-			}
-			return h.SetPermMode(args)
-		}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
-			return []string{config.PermModeAsk, config.PermModeAllow}
-		}},
 	}
 }
 
@@ -564,10 +556,6 @@ func stopCompleter(set func(*hostapi.Host) bool) func(h *hostapi.Host, lead, lin
 		}
 		return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
 	}
-}
-
-func modeNames(h *hostapi.Host) []string {
-	return []string{config.PermModeAsk, config.PermModeAllow}
 }
 
 // initStep is the user init.lua step's name, which softStep blames a broken
