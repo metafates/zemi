@@ -296,11 +296,11 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 				h.callLuaAsync("zemi.ui.edit on_done", at, cb, "no UI in this run")
 				return
 			}
-			h.lspDirty()
 			if err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title}); err != nil {
 				h.callLuaAsync("zemi.ui.edit on_done", at, cb, err.Error())
 				return
 			}
+			h.lspDirty()
 			h.callLuaAsync("zemi.ui.edit on_done", at, cb)
 		})
 		return 0

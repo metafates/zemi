@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -514,6 +515,18 @@ func TestLSPSyncFromGit(t *testing.T) {
 	os.WriteFile(b, []byte("Foo()\n"), 0o644)
 	if got := refs(); got != "4 references" {
 		t.Fatalf("a query syncs without a mark: %q", got)
+	}
+	// a command marks the tree dirty as it finishes, not when it starts
+	e := filepath.Join(dir, "e.txt")
+	h.RunShell(fmt.Sprintf("printf 'Foo()\\n' >> '%s'", e))
+	waitFor(t, func() error {
+		if !h.lsp.dirty.Load() {
+			return errors.New("the finished command left no mark")
+		}
+		return nil
+	})
+	if got := refs(); got != "5 references" {
+		t.Fatalf("after the command: %q", got)
 	}
 }
 

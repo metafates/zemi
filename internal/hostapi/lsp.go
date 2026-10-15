@@ -350,7 +350,9 @@ var lspQuietTool = map[string]bool{
 }
 
 // lspDirty records that something may have changed files without telling
-// the language servers, so the next lspSync asks git.
+// the language servers, so the next lspSync asks git. Mark it when the
+// change is done, not when it starts: a query mid-run would take the flag
+// and miss the writes that follow.
 func (h *Host) lspDirty() { h.lsp.dirty.Store(true) }
 
 // lspSig is what a scan remembers about a file git listed.

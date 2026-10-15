@@ -1064,7 +1064,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 		}
 		cmd.Env = env
-		h.lspDirty()
 		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
@@ -1121,6 +1120,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		onExit, _ := opt[*glua.LFunction](L, spec, "on_exit")
 		h.GoSafe("job wait", func() {
 			code, err := exit()
+			h.lspDirty()
 			h.stops.remove(stopID)
 			outW.flush()
 			jh.mu.Lock()

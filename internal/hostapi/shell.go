@@ -29,7 +29,6 @@ func (h *Host) RunShell(cmd string) {
 	if cmd == "" {
 		return
 	}
-	h.lspDirty()
 	h.GoSafe("shell", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
 		defer cancel()
@@ -40,6 +39,7 @@ func (h *Host) RunShell(cmd string) {
 		out := &proc.Buffer{Max: 1 << 20}
 		c.Stdout, c.Stderr = out, out
 		err := proc.Run(c)
+		h.lspDirty()
 		raw, written := out.Snapshot()
 		text := tools.CmdOut(h.ScratchDir(), "shell", raw, written-int64(out.Max), false)
 		status := CallOK
