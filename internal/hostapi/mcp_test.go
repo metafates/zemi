@@ -291,8 +291,12 @@ func TestMCPSignInAll(t *testing.T) {
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("bad", { url = %q })`, badSrv.URL+"/mcp"))
 	waitFor(t, func() error {
 		for _, name := range []string{"good", "bad"} {
-			if s, _ := h.mcpServerNamed(name); s.status != StatusSignIn {
-				return fmt.Errorf("%s = %q, want a sign-in request", name, s.status)
+			s, _ := h.mcpServerNamed(name)
+			s.mu.Lock()
+			status := s.status
+			s.mu.Unlock()
+			if status != StatusSignIn {
+				return fmt.Errorf("%s = %q, want a sign-in request", name, status)
 			}
 		}
 		return nil
@@ -306,18 +310,22 @@ func TestMCPSignInAll(t *testing.T) {
 	}
 	waitFor(t, func() error {
 		s, _ := h.mcpServerNamed("good")
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		if s.status != StatusReady {
 			return fmt.Errorf("good = %q", s.status)
 		}
-		s.mu.Lock()
-		defer s.mu.Unlock()
 		if s.signIn != "" {
 			return errors.New("good still waits in the browser")
 		}
 		return nil
 	})
-	if s, _ := h.mcpServerNamed("bad"); s.status != StatusSignIn {
-		t.Fatalf("bad = %q, want it still waiting", s.status)
+	s, _ := h.mcpServerNamed("bad")
+	s.mu.Lock()
+	status := s.status
+	s.mu.Unlock()
+	if status != StatusSignIn {
+		t.Fatal("bad is no longer waiting for a sign-in")
 	}
 	if o := h.mcpOverlay(false); len(o.Keys) != 0 {
 		t.Errorf("one waiting server still offers the batch key: %+v", o.Keys)
