@@ -871,7 +871,7 @@ func (h *Host) signInMCP(name string) error {
 	h.GoSafe("mcp sign-in "+name, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		if err := h.authorizeMCP(s, ctx); err != nil {
+		if err := h.authorizeMCP(ctx, s); err != nil {
 			h.RecordError("mcp "+name, err.Error())
 			h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
 			return
@@ -884,7 +884,7 @@ func (h *Host) signInMCP(name string) error {
 // authorizeMCP runs one server's browser sign-in to completion: it parks the
 // URL on the server for /mcp to show, opens the browser, and clears the URL
 // when the flow ends either way. The context bounds the wait for the user.
-func (h *Host) authorizeMCP(s *mcpServer, ctx context.Context) error {
+func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	err := h.mcpAuth(s).Authorize(ctx, func(u string) {
 		// too long for a toast: /mcp shows it whole, to copy
 		s.mu.Lock()
@@ -939,7 +939,7 @@ func (h *Host) signInAllMCP() error {
 				if waiting == "" && status == StatusSignIn {
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 					done := h.Busy("Signing in to "+name, cancel)
-					err = h.authorizeMCP(s, ctx)
+					err = h.authorizeMCP(ctx, s)
 					aborted := errors.Is(ctx.Err(), context.Canceled) // esc-esc stopped the queue
 					done()
 					cancel()
