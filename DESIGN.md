@@ -2637,6 +2637,37 @@ by the next startup sweep, since the session still has unseen messages.
   settled overwrite keeps the replaced file's prior bytes in its ledger
   write op, capped with a truncation flag, so rewind restores what
   checkpoints never saw.
+- The `memory` tool's promote mode moves a stored line into a brain file in
+  its own partition - `promote` is the id, `path` the bare .md file name,
+  and `description` and `read_if` both required (a catalog line without
+  either renders the self-repair note and never triggers): the body is the
+  line's text byte-for-byte, the frontmatter composed from the two fields.
+  The frontmatter passes the file-mode intake at propose time, before
+  anything queues or applies. The pre-flight - the trail holds the id with
+  neither a forget nor a serving promotion on it, the name is free, the
+  catalog would still render the file (`CatalogAdmits`, the render check at
+  its sorted position) - refuses with nothing written at propose and again
+  at accept, `brain.Promote` the one entry point. No new op kind: the
+  supersede entry's `superseded_by` holds the file name and a paired write
+  op records the creation, ledger first under the partition lock (§7), so
+  rewind, lint and the trail replay it unchanged; the id still resolves for
+  replaces and forget through its trail, and a forget of a promoted id
+  refuses while the file exists ("promoted to <name>; drop the file"), so
+  the catalog line cannot outlive the trail's explainer. A line the user
+  saved, or one in the user scope, always queues - the accept is the
+  approval the homes line (§10.8) asks for - and a learned private line
+  settles under the autonomy gate like a write. Accept pushes its own undo,
+  not the /memory forget's: the file goes only while its bytes still match
+  what promotion wrote, a live line is re-prepended with no ledger entry,
+  and a ledger-only undo journals an archive entry carrying the text under
+  the literal session id "user", which no rewind queries, so rewinding the
+  accepting session never resurrects a cut line live past the budget. The
+  tool's query mode searches the live lines and the ledger trail (newest op
+  an archive or a supersede carrying text) in both scopes by text or id; a
+  forgotten id and the frozen table's superseded rows stay out, so every
+  hit id the result's footer names is actionable. Both modes ride tool
+  results, never the pinned prefix (§10.7), and a replace of a promoted id
+  proceeds, its result naming the file the text moved into.
 - A recipe (§10.5) is written with the file tools, and every write asks:
   the dir is under zemi's state, so auto mode never settles it, no
   "always" is offered, and the ask says when the session read text from
@@ -2811,6 +2842,9 @@ file whose `paths:` globs (rg-style, as the file tools match them: `**` crosses
 directories) match a file the session reads or edits earns a
 one-line pointer as tool-result text, at most three per result, once per
 conversation - outside the pinned prefix, so recall never moves the cache.
+The memory tool's promote and query answers ride the same surface: a
+promotion's result is tool text, a search's hits are tool text, and the
+query hint a budget cut names rides the tool result only.
 Context
 files are injected verbatim, and only in a trusted project (§5); an
 untrusted one gets the user's `<config>/AGENTS.md` alone. A pull can
@@ -2829,7 +2863,9 @@ skills index, or the untrusted-content framing.
   telemetry, never edits its own proposals after review begins.
 - Never writes outside its homes - the memory store, the brain partitions
   (private via the memory tool's file mode or an approved file-tool write,
-  user via the file tools only when the user approves), the skills dir.
+  user via the file tools only when the user approves; a promotion
+  relocates an attested line into a brain file of its own partition and
+  waits for that approval on a user line), the skills dir.
   Anything else is a normal tool call under normal permissions.
 - Only user config raises `memory.autonomy`; no Lua path widens the fs
   jail. Auto autonomy never applies a memory

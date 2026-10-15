@@ -6,6 +6,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/v2"
@@ -148,6 +149,15 @@ func cutNote(cut []string) string {
 		len(cut), Plural(len(cut), "line", "lines"), strings.Join(cut, ", "))
 }
 
+// queryHint teaches the recall for what a budget cut, on the tool result
+// only - cutNote also feeds toasts, where tool-call syntax is noise.
+func queryHint(cut []string) string {
+	if len(cut) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; memory {query: %q} recalls its text", cut[0])
+}
+
 // memoryOutcome is what became of a proposed memory: stored under ID,
 // queued for review (Queued says why, "" for the autonomy setting alone),
 // refused as a near-duplicate of a live or pending one, or dropped because
@@ -166,7 +176,7 @@ type memoryOutcome struct {
 func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
-		return "saved as " + o.ID + cutNote(o.Cut) + "; shows from the next session"
+		return "saved as " + o.ID + cutNote(o.Cut) + queryHint(o.Cut) + "; shows from the next session"
 	case o.Duplicate != nil && o.DupQueued:
 		return fmt.Sprintf("already queued for the user's review as %s: %q", o.Duplicate.ID, o.Duplicate.Text)
 	case o.Duplicate != nil:
@@ -317,7 +327,13 @@ func (h *Host) memoryCommand(args string) error {
 		h.Notify(slog.LevelInfo, "Memory forgotten", m.Text)
 		return nil
 	case "accept":
-		undo := h.undoKeep(id)
+		var undo func() error
+		props := h.memoryProposals()
+		if i := slices.IndexFunc(props, func(p memoryProposal) bool { return p.ID == id }); i >= 0 && props[i].Promote {
+			undo = h.undoPromote(&props[i]) // undoKeep can neither delete the file nor restore the line
+		} else {
+			undo = h.undoKeep(id)
+		}
 		if _, err := h.acceptProposal(id); err != nil {
 			return err
 		}
@@ -686,6 +702,8 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 		default:
 			err = brain.Forget(db, cmp.Or(h.AgentSessionID(), "user"), p.Supersedes, h.now())
 		}
+	} else if p.Promote {
+		err = h.acceptPromoteProposal(p)
 	} else if p.Path != "" {
 		err = h.acceptFileProposal(p)
 	} else {
@@ -709,13 +727,18 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 
 // memoryProposal is a queued proposal's payload. Forget proposes deleting
 // the memory Supersedes names; the embedded memory is a copy of it. A
-// file-mode proposal writes the brain file Path with Content instead (DESIGN §10.4).
+// file-mode proposal writes the brain file Path with Content instead (DESIGN
+// §10.4); a promote proposal moves the embedded memory into the brain file
+// Path, its frontmatter Description and ReadIf (DESIGN §10.4).
 type memoryProposal struct {
 	store.Memory
-	Supersedes string `json:",omitempty"`
-	Forget     bool   `json:",omitzero"`
-	Path       string `json:",omitempty"`
-	Content    string `json:",omitempty"`
+	Supersedes  string `json:",omitempty"`
+	Forget      bool   `json:",omitzero"`
+	Path        string `json:",omitempty"`
+	Content     string `json:",omitempty"`
+	Promote     bool   `json:",omitzero"`
+	Description string `json:",omitempty"`
+	ReadIf      string `json:",omitempty"`
 }
 
 // memoryProposals lists pending memory proposals from both scopes.
@@ -761,6 +784,20 @@ func (h *Host) memoryItems() []any {
 	}
 	items := make([]any, 0, len(props)+len(live)+1)
 	for _, p := range props {
+		if p.Promote {
+			item := map[string]any{
+				"id": p.ID, "text": clipRunes("promote to "+p.Path, 40),
+				"desc": fmt.Sprintf("Suggested by zemi (%d)", len(props)), "section": scopeWords[p.Scope],
+				"preview": p.Memory.Text, "copy": p.Memory.Text,
+				"fields": fieldList("file", p.Path, "description", p.Description, "read_if", p.ReadIf, "moves", p.Memory.Text),
+			}
+			item["actions"] = []any{
+				map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
+				map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
+			}
+			items = append(items, item)
+			continue
+		}
 		if p.Path != "" {
 			item := map[string]any{
 				"id": p.ID, "text": clipRunes("write "+filepath.Base(p.Path), 40),
@@ -1142,9 +1179,17 @@ func (h *Host) proposeMemory(sid string, origin store.Origin, scope store.Scope,
 }
 
 // memoryTool is the memory tool that run p called from session sid: text
-// supersedes what replaces names, empty text with replaces forgets it, and
-// a non-empty path writes a private-partition brain file (DESIGN §10.4).
+// supersedes what replaces names, empty text with replaces forgets it, a
+// non-empty path writes a private-partition brain file, promote moves a
+// stored line into one, and query searches the live lines and the ledger
+// (DESIGN §10.4).
 func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) (string, error) {
+	if call.Query != "" {
+		return h.memorySearch(call.Query)
+	}
+	if call.Promote != "" {
+		return h.promoteMemory(sid, call)
+	}
 	if call.Path != "" {
 		return h.memoryFileTool(sid, call.Path, call.Content)
 	}
@@ -1159,6 +1204,11 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 		return "", err
 	}
 	msg := out.String()
+	if out.ID != "" && call.Replaces != "" {
+		if file := h.promotedInto(call.Replaces); file != "" {
+			msg += "; its text now lives in " + file + "; edit or delete that file"
+		}
+	}
 	if out.Dropped || out.Duplicate != nil {
 		// nothing was stored, so the call answers an error: the row and the
 		// model both read a refusal as one
@@ -1323,6 +1373,267 @@ func (h *Host) queueFileProposal(sid string, p brain.Partition, name, content, r
 		return "", err
 	}
 	return "queued for the user's review (" + reason + ")", nil
+}
+
+// promoteFrontmatterReason is the injected-surface intake over a promotion's
+// frontmatter (DESIGN §10.4): the file-mode checks, "" when it may serve.
+func (h *Host) promoteFrontmatterReason(description, readIf string) string {
+	switch {
+	case multiLine(description) || multiLine(readIf):
+		return "multi-line frontmatter"
+	case learn.InstructionShaped(description) || learn.InstructionShaped(readIf):
+		return "instruction-shaped frontmatter"
+	case brain.Oversized(description) || brain.Oversized(readIf):
+		return fmt.Sprintf("the description or read_if is over the %d-character cap", brain.FieldCap)
+	}
+	return ""
+}
+
+// promoteMemory is the memory tool's promote mode (DESIGN §10.4): an existing
+// line moves into a brain file in its own partition, the body its text
+// byte-for-byte, the frontmatter the description and read_if given. A line
+// the user saved, or one in the user scope, always queues - the accept is
+// the approval the hard line asks for; a learned private line settles under
+// the autonomy gate like a write. The trail, collision and catalog checks
+// refuse before anything queues or applies.
+func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) {
+	if strings.TrimSpace(call.Path) == "" {
+		return "", errors.New("a promotion needs path, the .md file name in the line's brain dir")
+	}
+	_, m, err := h.locateMemory(call.Promote)
+	if err != nil {
+		return "", err
+	}
+	if m.Text == "" {
+		// the latest trail op is a replaces that carried no text
+		return "", fmt.Errorf("memory %s has no text to promote; it was replaced", call.Promote)
+	}
+	if call.Description == "" || call.ReadIf == "" {
+		return "", errors.New("a promotion needs description and read_if; the catalog line cannot trigger without them")
+	}
+	if _, scrubbed := learn.ScrubSecrets(string(brain.ComposeFile(call.Description, call.ReadIf, m.Text))); scrubbed {
+		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
+	}
+	if reason := h.promoteFrontmatterReason(call.Description, call.ReadIf); reason != "" {
+		return h.queuePromoteProposal(sid, m, call, reason)
+	}
+	if err := brain.CheckPromote(h.partition(m.Scope), m.ID, call.Path, call.Description, call.ReadIf); err != nil {
+		return "", err
+	}
+	switch {
+	case m.Origin == store.OriginUser:
+		return h.queuePromoteProposal(sid, m, call, "it moves a memory you saved")
+	case m.Scope == store.ScopeUser:
+		return h.queuePromoteProposal(sid, m, call, "it writes into the brain every project sees")
+	case !h.memoryAuto(sid):
+		return h.queuePromoteProposal(sid, m, call, "")
+	case !h.autoApplyBudgetLeft(sid):
+		return h.queuePromoteProposal(sid, m, call, "this session's auto budget is spent")
+	}
+	partition := h.partition(m.Scope)
+	composed, err := brain.Promote(partition, sid, m.ID, call.Path, call.Description, call.ReadIf, h.now())
+	if err != nil {
+		return "", err
+	}
+	if partition.Kind == brain.Private {
+		h.markBrainWrite(filepath.Join(partition.Dir, call.Path), composed)
+	}
+	h.spendAutoBudget(sid)
+	out := "promoted " + m.ID + " to " + call.Path + "; the catalog picks it up from the next session"
+	if note := h.brainLintNote(partition, call.Path); note != "" {
+		out += "; " + note
+	}
+	return out, nil
+}
+
+// queuePromoteProposal queues a promotion for review; accept applies it.
+func (h *Host) queuePromoteProposal(sid string, m *store.Memory, call tools.MemoryCall, reason string) (string, error) {
+	pr := memoryProposal{Memory: *m, Promote: true, Path: call.Path, Description: call.Description, ReadIf: call.ReadIf}
+	pr.ProvenanceSessionID = sid
+	if err := h.addProposal(pr); err != nil {
+		return "", err
+	}
+	if reason == "" {
+		return "queued for the user's review", nil
+	}
+	return "queued for the user's review (" + reason + ")", nil
+}
+
+// acceptPromoteProposal applies the promote proposal the user accepted:
+// brain.Promote is the one entry point, so its checks fire again with
+// nothing written on a refusal; a private promotion joins the session's
+// write set, so the same session's file-mode overwrite applies under the
+// hash gate. The user partition stays file-tools-only and marks nothing.
+func (h *Host) acceptPromoteProposal(p *memoryProposal) error {
+	partition, m, err := h.locateMemory(p.Memory.ID)
+	if err != nil {
+		return err
+	}
+	if m.Text != p.Memory.Text {
+		return errors.New("the memory changed since zemi proposed promoting it")
+	}
+	composed, err := brain.Promote(partition, cmp.Or(p.ProvenanceSessionID, "user"), p.Memory.ID, p.Path, p.Description, p.ReadIf, h.now())
+	if err != nil {
+		return err
+	}
+	if partition.Kind == brain.Private {
+		h.markBrainWrite(filepath.Join(partition.Dir, p.Path), composed)
+	}
+	return nil
+}
+
+// undoPromote is the reverse of accepting a promote proposal: the file goes
+// only while its bytes still match what promotion wrote, and the line comes
+// back the way the trail explains it - re-prepended when it was live,
+// re-archived into the ledger when it was not. A replace or forget since
+// makes the step a no-op, so a replacement's file cannot silently vanish.
+func (h *Host) undoPromote(p *memoryProposal) func() error {
+	partition := h.partition(p.Memory.Scope)
+	return func() error {
+		unlock, err := brain.Lock(partition)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		lg, err := partition.OpenLedger()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lg.Close() }()
+		trail, err := lg.ByID(p.Memory.ID)
+		if err != nil {
+			return err
+		}
+		if len(trail) == 0 || trail[len(trail)-1].Op != brain.OpSupersede || trail[len(trail)-1].SupersededBy != p.Path {
+			return nil
+		}
+		promoted := trail[len(trail)-1]
+		path := filepath.Join(partition.Dir, p.Path)
+		if cur, rerr := os.ReadFile(path); rerr == nil {
+			if !bytes.Equal(cur, brain.ComposeFile(p.Description, p.ReadIf, p.Memory.Text)) {
+				h.Notify(slog.LevelInfo, "Promotion kept", p.Path+" changed since; only the ledger entry is undone")
+			} else if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		if promoted.Text != "" {
+			// the line was live: restored whole, no ledger entry - the
+			// trail's add and promote-supersede entries carry its hash (DESIGN §10.4)
+			return brain.RestoreLocked(partition, "", []brain.Line{lineOf(&p.Memory)}, nil, h.now())
+		}
+		// the line was ledger-only: back into the ledger as an archive entry
+		// carrying the text, so recall and /memory's trail keep it. "user" is
+		// no session id (store.IDShape), so no rewind ever replays the entry:
+		// rewinding before the accept leaves the line ledger-only, the state
+		// that held (DESIGN §10.4)
+		return lg.Insert(&brain.Op{
+			Op: brain.OpArchive, ID: p.Memory.ID, Text: p.Memory.Text, SessionID: "user",
+			Hash: brain.TextHash(p.Memory.Text), Scope: partition.Kind.Scope(), Origin: p.Memory.Origin, TS: h.now().UnixMilli(),
+		})
+	}
+}
+
+// promotedInto is the brain file id's promotion moved it into, "" when the
+// id is not promoted or the file is gone.
+func (h *Host) promotedInto(id string) string {
+	partition, _, err := h.locateMemory(id)
+	if err != nil || partition.Zero() {
+		return ""
+	}
+	lg, err := partition.OpenLedger()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = lg.Close() }()
+	trail, err := lg.ByID(id)
+	if err != nil {
+		return ""
+	}
+	for _, o := range slices.Backward(trail) {
+		if o.Op == brain.OpSupersede && strings.HasSuffix(o.SupersededBy, ".md") {
+			if _, err := os.ReadFile(filepath.Join(partition.Dir, o.SupersededBy)); err == nil {
+				return o.SupersededBy
+			}
+		}
+	}
+	return ""
+}
+
+// memorySearch is the memory tool's query mode: the live lines and the
+// ledger trail whose text or id matches the words, both scopes (DESIGN
+// §10.4). A trail hit is one whose newest op is an archive or a supersede
+// carrying text; forgotten ids and the frozen table's rows stay out, so
+// every hit id the footer names is actionable.
+// NOTE: substring scan over the live lines and the trail; an index only when
+// a corpus outgrows it.
+func (h *Host) memorySearch(query string) (string, error) {
+	words := strings.Fields(strings.ToLower(query))
+	if len(words) == 0 {
+		return "", errors.New("query is empty")
+	}
+	live, _ := h.memoryList(false)
+	liveIDs := map[string]bool{}
+	type hit struct {
+		line  brain.Line
+		scope store.Scope
+	}
+	var hits []hit
+	for _, m := range live {
+		liveIDs[m.ID] = true
+		if searchHit(words, m.ID, m.Text) {
+			hits = append(hits, hit{brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text}, m.Scope})
+		}
+	}
+	for _, scope := range store.Scopes {
+		p := h.partition(scope)
+		if p.Zero() {
+			continue
+		}
+		lg, err := p.OpenLedger()
+		if err != nil {
+			continue
+		}
+		latest, err := lg.Latest()
+		_ = lg.Close()
+		if err != nil {
+			continue
+		}
+		for _, op := range latest {
+			if liveIDs[op.ID] || op.Text == "" || op.Op != brain.OpArchive && op.Op != brain.OpSupersede {
+				continue
+			}
+			if searchHit(words, op.ID, op.Text) {
+				hits = append(hits, hit{brain.Line{ID: op.ID, Origin: op.Origin, Date: brain.Day(time.UnixMilli(op.TS).UTC()), Text: op.Text}, scope})
+			}
+		}
+	}
+	if len(hits) == 0 {
+		return fmt.Sprintf("no memory matches %q", query), nil
+	}
+	const cap = 8
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d of %d memories match %q:", min(len(hits), cap), len(hits), query)
+	for i, hit := range hits {
+		if i == cap {
+			fmt.Fprintf(&b, "\n ... %d more matched", len(hits)-cap)
+			break
+		}
+		fmt.Fprintf(&b, "\n%s (%s)", hit.line.String(), hit.scope)
+	}
+	b.WriteString("\npass a hit back with memory {text: \"...\", replaces: \"<id>\"} to re-enter it")
+	return b.String(), nil
+}
+
+// searchHit reports whether every word matches the text or the id, the one
+// key cutNote hands the model for what the budget archived.
+func searchHit(words []string, id, text string) bool {
+	hay := strings.ToLower(text + " " + id)
+	for _, w := range words {
+		if !strings.Contains(hay, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // brainLintNote is the file's own open lint findings, one line.
@@ -1520,8 +1831,9 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 		if err != nil {
 			if uc, ok := errors.AsType[brain.UserCutError](err); ok {
 				// the write queues instead, so the proposal is not
-				// dropped while the user makes room
-				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error()}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
+				// dropped while the user makes room; the model's own way
+				// out of the jam is promoting the line, which asks first
+				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error() + "; promoting it into a brain file asks first"}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 			}
 			return memoryOutcome{}, err
 		}

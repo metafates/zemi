@@ -259,6 +259,125 @@ func supersedeOp(lg *Ledger, lines []Line, sid, id, byID string, scope store.Sco
 	return op, slices.Delete(lines, i, i+1), nil
 }
 
+// promotedInto names the brain file a supersede entry's SupersededBy holds
+// when that entry is a promotion's (a replacing id never carries .md; memory
+// ids cannot).
+func promotedInto(o *Op) (string, bool) {
+	if o.Op != OpSupersede || !strings.HasSuffix(o.SupersededBy, ".md") {
+		return "", false
+	}
+	return o.SupersededBy, true
+}
+
+// CheckPromote is the propose-time pre-flight, nothing written: the same
+// checks Promote runs under the partition lock.
+func CheckPromote(p Partition, id, name, description, readIf string) error {
+	unlock, err := Lock(p)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	_, err = promoteChecks(p, id, name, description, readIf)
+	return err
+}
+
+// promoteChecks is Promote's pre-flight, the caller holding the partition
+// lock: the target is a servable brain file name, the trail holds the id
+// with neither a forget nor a serving promotion on it, the name is free and
+// the catalog would render the file. The id's text comes back for the body.
+func promoteChecks(p Partition, id, name, description, readIf string) (string, error) {
+	if name == MemFile || !strings.HasSuffix(name, ".md") || strings.Contains(name, "/") || strings.Contains(name, string(filepath.Separator)) {
+		return "", errors.New("the file name is a bare .md name in the brain dir")
+	}
+	if description == "" || readIf == "" {
+		return "", errors.New("a promotion needs description and read_if; the catalog line cannot trigger without them")
+	}
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = lg.Close() }()
+	trail, err := lg.ByID(id)
+	if err != nil {
+		return "", err
+	}
+	if len(trail) == 0 {
+		return "", fmt.Errorf("%w: %s", ErrNoMemory, id)
+	}
+	if trail[len(trail)-1].Op == OpForget {
+		return "", fmt.Errorf("%s is forgotten; save it fresh instead", id)
+	}
+	var text string
+	for _, o := range trail {
+		if file, ok := promotedInto(o); ok {
+			// keyed on any such op, so a later replaces of the id cannot mask
+			// it; a missing file was a half-done promote, which retries
+			if _, err := readSafe(p, file); err == nil {
+				return "", fmt.Errorf("%s is already promoted to %s", id, file)
+			}
+		}
+		if o.Text != "" {
+			text = o.Text
+		}
+	}
+	if text == "" {
+		return "", fmt.Errorf("%w: %s", ErrNoMemory, id)
+	}
+	if _, err := readSafe(p, name); err == nil {
+		return "", fmt.Errorf("%s already exists in the %s brain; name another file", name, p.Kind)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	if !CatalogAdmits(p, name, description, readIf) {
+		return "", fmt.Errorf("the %s brain catalog is full; %s stays put until its brain files make room", p.Kind, id)
+	}
+	return text, nil
+}
+
+// Promote relocates the memory id into the brain file name, a bare .md name
+// in the partition: the body is the line's text byte-for-byte, the
+// frontmatter the description and read_if given (DESIGN §10.4). The supersede
+// entry names the file and the paired write entry records the creation,
+// ledger first under the partition lock (DESIGN §7); the id still resolves
+// for replaces and forget through its trail. The composed bytes come back
+// for the session's write set.
+func Promote(p Partition, sid, id, name, description, readIf string, at time.Time) ([]byte, error) {
+	unlock, err := Lock(p)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	text, err := promoteChecks(p, id, name, description, readIf)
+	if err != nil {
+		return nil, err
+	}
+	lines, raw, err := readMemories(p)
+	if err != nil {
+		return nil, err
+	}
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = lg.Close() }()
+	op, next, err := supersedeOp(lg, lines, sid, id, name, p.Kind.Scope(), at)
+	if err != nil {
+		return nil, err
+	}
+	composed := ComposeFile(description, readIf, text)
+	for _, o := range []*Op{op, {
+		Op: OpWrite, ID: name, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli(),
+	}} {
+		if err := lg.Insert(o); err != nil {
+			return nil, err
+		}
+	}
+	if err := writeMemories(p, raw, next); err != nil {
+		return nil, err
+	}
+	return composed, config.WriteFileAtomic(filepath.Join(p.Dir, name), composed)
+}
+
 // Supersede removes id's line with a supersede entry naming byID (DESIGN §7), for
 // a replacement whose new line lands in the other partition; an id only the
 // ledger holds gets its entry alone.
@@ -298,16 +417,25 @@ func editChange(sid, id, text string, origin store.Origin, scope store.Scope, at
 
 // Forget removes the line id and writes its forget entry, so the absence
 // always has an explainer (DESIGN §7). An id the file no longer holds must have a
-// ledger trail; one neither holds is ErrNoMemory.
+// ledger trail; one neither holds is ErrNoMemory. A promotion into a brain
+// file that still exists refuses: the forget would supersede the trail while
+// the file and its catalog line keep injecting (DESIGN §10.4).
 func Forget(p Partition, sid, id string, at time.Time) error {
 	return mutate(p, func(l *Ledger, _ []byte, lines []Line) ([]Line, []*Op, error) {
+		trail, err := l.ByID(id)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, o := range trail {
+			if file, ok := promotedInto(o); ok {
+				if _, err := readSafe(p, file); err == nil {
+					return nil, nil, fmt.Errorf("%s is promoted to %s; drop the file", id, file)
+				}
+			}
+		}
 		op := &Op{Op: OpForget, ID: id, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli()}
 		i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id })
 		if i < 0 {
-			trail, err := l.ByID(id)
-			if err != nil {
-				return nil, nil, err
-			}
 			if len(trail) == 0 {
 				return nil, nil, fmt.Errorf("%w: %s", ErrNoMemory, id)
 			}

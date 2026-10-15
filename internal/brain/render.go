@@ -2,6 +2,7 @@ package brain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -87,6 +88,26 @@ func catalogLine(e Entry) string {
 		return "- " + name + " - (" + note + ")"
 	}
 	return "- " + name + " - " + desc + ". (Read If: " + read + ".)"
+}
+
+// CatalogAdmits reports whether a file named name with this frontmatter
+// would render in the partition's catalog: the scan ceiling not hit and the
+// line surviving the cap at its sorted position (Load returns Entries by
+// name and catalogText cuts that order's tail). A promotion the catalog
+// would not render is refused, not written.
+func CatalogAdmits(p Partition, name, description, readIf string) bool {
+	l := Load(p)
+	if l.Over || len(l.Entries) >= MaxCatalogFiles {
+		return false
+	}
+	e := Entry{Name: name, FM: Frontmatter{Description: description, ReadIf: readIf}}
+	i, found := slices.BinarySearchFunc(l.Entries, name, func(e Entry, n string) int { return strings.Compare(e.Name, n) })
+	if found {
+		return false
+	}
+	l.Entries = slices.Insert(l.Entries, i, e)
+	line := catalogLine(e)
+	return slices.Contains(strings.Split(catalogText(l), "\n"), line)
 }
 
 // memoryText renders one partition's memories.md (DESIGN §10.7): the digest's lines,

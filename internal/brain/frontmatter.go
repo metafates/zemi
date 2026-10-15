@@ -76,6 +76,25 @@ func (fm Frontmatter) BadGlob() error {
 // FieldCap: intake queues the write instead of truncating (DESIGN §10.4).
 func Oversized(s string) bool { return len([]rune(strip(s))) > FieldCap }
 
+// yamlQuote renders s as a YAML double-quoted scalar, the one shape a
+// frontmatter composer needs (intake has already refused control
+// characters): the escapes a double-quoted scalar knows are all it can hold.
+func yamlQuote(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+}
+
+// ComposeFile renders a brain file's bytes: the frontmatter block over the
+// body. Promotion writes with it and its undo compares against it, so the
+// bytes-equal guard compares like against like.
+func ComposeFile(description, readIf, body string) []byte {
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	return []byte("---\ndescription: " + yamlQuote(description) +
+		"\nread_if: " + yamlQuote(readIf) + "\n---\n" + body)
+}
+
 // Normalize makes one field safe to inject: control characters and
 // newlines stripped, capped at FieldCap runes. Intake applies it and the
 // render applies it again (DESIGN §10.4).

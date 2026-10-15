@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1010,7 +1011,467 @@ func TestMemoryFileRefusesUserBrain(t *testing.T) {
 	}
 }
 
-// TestMemoryCommandsRegistered pins the /memory command step.
+// TestPromoteMemory covers the memory tool's promote mode (DESIGN §10.4):
+// the gate per origin and scope, the refusals, the accept/undo lifecycle and
+// what a rewind replays.
+func TestPromoteMemory(t *testing.T) {
+	setup := func(t *testing.T) (*Host, string, brain.Partition) {
+		t.Helper()
+		h, _ := newTestHostDB(t)
+		h.SetProjectTrusted(true)
+		sid := seedSession(t, h)
+		h.Settings.SetQuiet("memory.autonomy", "auto")
+		_, private := h.brainParts()
+		if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if db, err := store.Open(private.DB); err == nil {
+			t.Cleanup(func() { _ = db.Close() })
+		}
+		return h, sid, private
+	}
+	seedLine := func(t *testing.T, h *Host, scope store.Scope, origin store.Origin, text string) store.Memory {
+		t.Helper()
+		m := store.Memory{Scope: scope, Text: text, Origin: origin, ProvenanceSessionID: "seed", UpdatedAt: 1}
+		seedMemory(t, h, &m)
+		return m
+	}
+	call := func(h *Host, sid, id, name, description, readIf string) (string, error) {
+		return h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Promote: id, Path: name, Description: description, ReadIf: readIf})
+	}
+	// fill a scope until the budget cuts its oldest learned line
+	cutOldest := func(t *testing.T, h *Host, scope store.Scope) string {
+		t.Helper()
+		var archived string
+		for i := range 12 {
+			m := store.Memory{Scope: scope, Text: strings.TrimSpace(strings.Repeat(fmt.Sprintf("w%02d ", i), 65)), Origin: store.OriginLearned, ProvenanceSessionID: "seed", UpdatedAt: int64(i + 1)}
+			if _, cut, err := brain.Apply(h.partition(scope), m, "", time.Now()); err != nil {
+				t.Fatal(err)
+			} else if len(cut) > 0 && archived == "" {
+				archived = cut[0]
+			}
+		}
+		if archived == "" {
+			t.Fatal("the fill cut nothing")
+		}
+		return archived
+	}
+
+	for _, tc := range []struct {
+		name                string
+		seed                func(t *testing.T, h *Host) store.Memory
+		path, want          string
+		description, readIf string
+		check               func(t *testing.T, h *Host, m store.Memory)
+	}{
+		{
+			name: "a user line queues", path: "d.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginUser, "deploy by hand")
+			},
+			want: "queued for the user's review (it moves a memory you saved)",
+		},
+		{
+			name: "a learned line in the user scope queues", path: "d.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "user", store.OriginLearned, "short replies everywhere")
+			},
+			want: "(it writes into the brain every project sees)",
+		},
+		{
+			name: "instruction-shaped frontmatter queues", path: "d.md", description: "always run make check first", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+			},
+			want: "(instruction-shaped frontmatter)",
+		},
+		{
+			name: "missing read_if refuses", path: "d.md", description: "d", readIf: "",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+			},
+			want: "needs description and read_if",
+		},
+		{
+			name: "a secret in the frontmatter refuses", path: "d.md", description: "the token is ghp_0123456789abcdefghijklmnopqrstuv", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+			},
+			want: "cannot hold a secret",
+		},
+		{
+			name: "a collision refuses", path: "f00.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				_, private := h.brainParts()
+				if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(private.Dir, "f00.md"), []byte("taken"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+			},
+			want: "already exists",
+		},
+		{
+			name: "a full catalog refuses", path: "zz.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				_, private := h.brainParts()
+				if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				for i := range brain.MaxCatalogFiles {
+					f := filepath.Join(private.Dir, fmt.Sprintf("f%02d.md", i))
+					if err := os.WriteFile(f, brain.ComposeFile("d", "r", "b"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+			},
+			want: "catalog is full",
+		},
+		{
+			name: "a forgotten id refuses", path: "d.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				m := seedLine(t, h, "project", store.OriginLearned, "a forgotten fact")
+				if err := brain.Forget(h.partition("project"), "seed", m.ID, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+				return m
+			},
+			want: "is forgotten; save it fresh instead",
+		},
+		{
+			name: "learned in private under auto applies", path: "d.md", description: "the deploy map", readIf: "before any deploy",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginLearned, "the deploy script lives in bin/deploy")
+			},
+			want: "promoted ",
+			check: func(t *testing.T, h *Host, m store.Memory) {
+				_, private := h.brainParts()
+				b, err := os.ReadFile(filepath.Join(private.Dir, "d.md"))
+				if err != nil || !strings.Contains(string(b), "the deploy script lives in bin/deploy") {
+					t.Fatalf("file = %q, %v", b, err)
+				}
+				if fm, err := brain.ParseFrontmatter(string(b)); err != nil || fm.Description != "the deploy map" {
+					t.Fatalf("frontmatter = %+v, %v", fm, err)
+				}
+				if lines, _ := brain.Lines(private); slices.ContainsFunc(lines, func(l brain.Line) bool { return l.ID == m.ID }) {
+					t.Fatal("the line stayed live")
+				}
+				l := brain.Load(private)
+				if !slices.ContainsFunc(l.Entries, func(e brain.Entry) bool { return e.Name == "d.md" }) {
+					t.Fatal("the catalog does not name the file")
+				}
+				if hash, ours := h.brainWriteOf(filepath.Join(private.Dir, "d.md")); !ours || hash == "" {
+					t.Fatal("the write set does not name the file")
+				}
+				if h.agents.memAuto != 1 {
+					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
+				}
+			},
+		},
+		{
+			name: "a ledger-only id promotes with no line change", path: "old.md", description: "an archived fact", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return store.Memory{ID: cutOldest(t, h, "project"), Scope: "project", Origin: store.OriginLearned}
+			},
+			want: "promoted ",
+			check: func(t *testing.T, h *Host, m store.Memory) {
+				live, _ := h.memoryList(false)
+				if slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
+					t.Fatal("the archived line came back live")
+				}
+				if h.agents.memAuto != 1 {
+					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, sid, _ := setup(t)
+			m := tc.seed(t, h)
+			msg, err := call(h, sid, m.ID, tc.path, tc.description, tc.readIf)
+			if err != nil {
+				msg = err.Error()
+			}
+			if !strings.Contains(msg, tc.want) {
+				t.Fatalf("answer %q, want %q", msg, tc.want)
+			}
+			if tc.check != nil {
+				tc.check(t, h, m)
+			}
+		})
+	}
+
+	t.Run("accept writes and undo restores the line and the file", func(t *testing.T) {
+		h, _, _ := setup(t)
+		h.Settings.SetQuiet("memory.autonomy", "ask")
+		m := seedLine(t, h, "project", store.OriginUser, "deploy by hand")
+		if _, err := call(h, "sess0001", m.ID, "out.md", "the deploy map", "r"); err != nil {
+			t.Fatal(err)
+		}
+		p := h.memoryProposals()[0]
+		if err := h.memoryCommand("accept " + p.ID + " --yes"); err != nil {
+			t.Fatal(err)
+		}
+		_, user := h.brainParts()
+		b, err := os.ReadFile(filepath.Join(user.Dir, "out.md"))
+		if err != nil || !strings.Contains(string(b), "deploy by hand") {
+			t.Fatalf("file = %q, %v", b, err)
+		}
+		if lines, _ := brain.Lines(user); slices.ContainsFunc(lines, func(l brain.Line) bool { return l.ID == m.ID }) {
+			t.Fatal("the line stayed live")
+		}
+		if err := h.memoryCommand("undo --yes"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(user.Dir, "out.md")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("the file survived the undo: %v", err)
+		}
+		live, _ := h.memoryList(false)
+		if !slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID && x.Text == "deploy by hand" }) {
+			t.Fatal("the undo did not restore the line")
+		}
+	})
+
+	t.Run("an edited file survives the undo, the line comes back", func(t *testing.T) {
+		h, _, _ := setup(t)
+		h.Settings.SetQuiet("memory.autonomy", "ask")
+		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+		if _, err := call(h, "sess0001", m.ID, "out.md", "d", "r"); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(h.partition("project").Dir, "out.md"), []byte("edited by hand\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("undo --yes"); err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(filepath.Join(h.partition("project").Dir, "out.md"))
+		if err != nil || string(b) != "edited by hand\n" {
+			t.Fatalf("file = %q, %v", b, err)
+		}
+		live, _ := h.memoryList(false)
+		if !slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
+			t.Fatal("the undo did not restore the line")
+		}
+	})
+
+	t.Run("a replace between accept and undo makes the undo a no-op", func(t *testing.T) {
+		h, _, _ := setup(t)
+		h.Settings.SetQuiet("memory.autonomy", "ask")
+		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+		if _, err := call(h, "sess0001", m.ID, "out.md", "d", "r"); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+			t.Fatal(err)
+		}
+		// the replace supersedes the promoted id with a text-less entry
+		if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Scope: "project", Text: "a plain fact, kept", Replaces: m.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("undo --yes"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(h.partition("project").Dir, "out.md")); err != nil {
+			t.Fatalf("the replacement's file vanished: %v", err)
+		}
+		live, _ := h.memoryList(false)
+		if !slices.ContainsFunc(live, func(x *store.Memory) bool { return x.Text == "a plain fact, kept" }) {
+			t.Fatal("the undo disturbed the replacement")
+		}
+		if slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
+			t.Fatal("the undo restored the replaced line")
+		}
+	})
+
+	t.Run("a replace of a promoted id proceeds and names the file", func(t *testing.T) {
+		h, _, _ := setup(t)
+		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+		msg, err := call(h, "sess0001", m.ID, "out.md", "d", "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Scope: "project", Text: "a plain fact, restated", Replaces: m.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "its text now lives in out.md") {
+			t.Fatalf("replace = %q (promote = %q)", out, msg)
+		}
+	})
+
+	t.Run("rewind restores the line and deletes the file", func(t *testing.T) {
+		h, sid, private := setup(t)
+		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
+		if _, err := call(h, sid, m.ID, "out.md", "d", "r"); err != nil {
+			t.Fatal(err)
+		}
+		h.forgetLearned(sid, 0, time.Now().UnixMilli()+1, nil)
+		if _, err := os.Stat(filepath.Join(private.Dir, "out.md")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("the file survived the rewind: %v", err)
+		}
+		live, _ := h.memoryList(false)
+		if !slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID && x.Text == "a plain fact" }) {
+			t.Fatal("the rewind did not restore the line")
+		}
+	})
+
+	t.Run("a ledger-only promote undone in its session stays ledger-only under rewind", func(t *testing.T) {
+		h, sid, private := setup(t)
+		h.Settings.SetQuiet("memory.autonomy", "ask")
+		archived := cutOldest(t, h, "project")
+		if _, err := call(h, sid, archived, "old.md", "an archived fact", "r"); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(private.Dir, "old.md")); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("undo --yes"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(private.Dir, "old.md")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal("the undo left the file")
+		}
+		h.forgetLearned(sid, 0, time.Now().UnixMilli()+1, nil)
+		live, _ := h.memoryList(false)
+		if slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == archived }) {
+			t.Fatal("the rewind resurrected the line live")
+		}
+		if _, err := os.Stat(filepath.Join(private.Dir, "old.md")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal("the rewind left the file")
+		}
+		lg, _ := private.OpenLedger()
+		defer func() { _ = lg.Close() }()
+		trail, err := lg.ByID(archived)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if last := trail[len(trail)-1]; last.Op != brain.OpArchive || last.Text == "" || last.SessionID != "user" {
+			t.Fatalf("trail end = %+v", last)
+		}
+	})
+}
+
+// TestMemorySearch covers the memory tool's query mode (DESIGN §10.4).
+func TestMemorySearch(t *testing.T) {
+	setup := func(t *testing.T) (*Host, string, brain.Partition) {
+		t.Helper()
+		h, _ := newTestHostDB(t)
+		h.SetProjectTrusted(true)
+		sid := seedSession(t, h)
+		h.Settings.SetQuiet("memory.autonomy", "auto")
+		_, private := h.brainParts()
+		if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if db, err := store.Open(private.DB); err == nil {
+			t.Cleanup(func() { _ = db.Close() })
+		}
+		return h, sid, private
+	}
+	seedLine := func(t *testing.T, h *Host, scope store.Scope, origin store.Origin, text string) store.Memory {
+		t.Helper()
+		m := store.Memory{Scope: scope, Text: text, Origin: origin, ProvenanceSessionID: "seed", UpdatedAt: 1}
+		seedMemory(t, h, &m)
+		return m
+	}
+	search := func(t *testing.T, h *Host, q string) string {
+		t.Helper()
+		out, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Query: q})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	t.Run("a live hit and an archived hit, by text and by id", func(t *testing.T) {
+		h, _, private := setup(t)
+		seedLine(t, h, "project", store.OriginLearned, "the deploy script lives in bin/deploy")
+		archived := ""
+		for i := range 12 {
+			m := store.Memory{Scope: "project", Text: strings.TrimSpace(strings.Repeat(fmt.Sprintf("w%02d ", i), 65)), Origin: store.OriginLearned, ProvenanceSessionID: "seed", UpdatedAt: int64(i + 1)}
+			if _, cut, err := brain.Apply(private, m, "", time.Now()); err != nil {
+				t.Fatal(err)
+			} else if len(cut) > 0 && archived == "" {
+				archived = cut[0]
+			}
+		}
+		if archived == "" {
+			t.Fatal("the fill cut nothing")
+		}
+		// the first-applied line is the one the cut archived
+		if got := search(t, h, "deploy"); !strings.Contains(got, "the deploy script lives in bin/deploy") {
+			t.Fatalf("the archived text missed: %q", got)
+		}
+		if got := search(t, h, archived); !strings.Contains(got, archived) || !strings.Contains(got, "re-enter it") {
+			t.Fatalf("the archived id missed: %q", got)
+		}
+	})
+
+	t.Run("a forgotten id and a frozen row stay out", func(t *testing.T) {
+		h, _, private := setup(t)
+		m := seedLine(t, h, "project", store.OriginLearned, "a forgotten fact")
+		if err := brain.Forget(private, "seed", m.ID, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		seedFrozen(t, private, &store.Memory{ID: "fz1", Scope: "project", Text: "a frozen fact", Origin: store.OriginLearned, SupersededBy: "frozenid1", UpdatedAt: 1})
+		got := search(t, h, "forgotten frozen")
+		for _, want := range []string{"a forgotten fact", "a frozen fact"} {
+			if strings.Contains(got, want) {
+				t.Fatalf("search surfaced %q:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("the cap holds and a hit re-enters through replaces", func(t *testing.T) {
+		h, _, private := setup(t)
+		var archived string
+		for i := range 12 {
+			m := store.Memory{Scope: "project", Text: strings.TrimSpace(strings.Repeat(fmt.Sprintf("deploys filler %d ", i), 22)), Origin: store.OriginLearned, ProvenanceSessionID: "seed", UpdatedAt: int64(i + 1)}
+			if _, cut, err := brain.Apply(private, m, "", time.Now()); err != nil {
+				t.Fatal(err)
+			} else if len(cut) > 0 && archived == "" {
+				archived = cut[0]
+			}
+		}
+		if archived == "" {
+			t.Fatal("the fill cut nothing")
+		}
+		got := search(t, h, "deploys")
+		if !strings.Contains(got, "8 of 12 memories match") || !strings.Contains(got, "... 4 more matched") {
+			t.Fatalf("search = %q", got)
+		}
+		// the archived hit recalls by its id, the one key cutNote hands out
+		if byID := search(t, h, archived); !strings.Contains(byID, archived) {
+			t.Fatalf("search by id = %q", byID)
+		}
+		// the cut hit re-enters: the near-duplicate scan covers live rows only
+		out, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Scope: "project", Text: "the deploys note, restated", Replaces: archived})
+		if err != nil || !strings.Contains(out, "saved as ") {
+			t.Fatalf("re-entry = %q, %v", out, err)
+		}
+	})
+
+	t.Run("an empty query refuses", func(t *testing.T) {
+		h, _, _ := setup(t)
+		if _, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Query: "   "}); err == nil {
+			t.Fatal("an empty query must fail")
+		}
+	})
+}
+
 func TestMemoryCommandsRegistered(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	if err := h.BuiltinCommandsStep().Run(t.Context(), h.RT, &lua.Generation{ID: 1}); err != nil {

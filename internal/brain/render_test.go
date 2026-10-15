@@ -3,6 +3,8 @@ package brain
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -189,6 +191,49 @@ func TestCatalogSelfRepairNote(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing line %q in:\n%s", want, got)
 		}
+	}
+}
+
+func TestCatalogAdmits(t *testing.T) {
+	_, private := testPartitions(t)
+	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(private.Dir) })
+	if !CatalogAdmits(private, "a.md", "a description", "a read_if") {
+		t.Fatal("an empty partition admits")
+	}
+	if err := os.WriteFile(filepath.Join(private.Dir, "a.md"), ComposeFile("d", "r", "b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if CatalogAdmits(private, "a.md", "another", "read") {
+		t.Fatal("a taken name was admitted")
+	}
+	if err := os.Remove(filepath.Join(private.Dir, "a.md")); err != nil {
+		t.Fatal(err)
+	}
+	// the alphabetically last name is the one a 4 KiB catalog cuts
+	fat := strings.Repeat("d", 300)
+	for i := range 20 {
+		f := fmt.Sprintf("f%02d.md", i)
+		if err := os.WriteFile(filepath.Join(private.Dir, f), ComposeFile(fat, "r", "b"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !CatalogAdmits(private, "a.md", "a description", "a read_if") {
+		t.Fatal("the sorted-in head was refused")
+	}
+	if CatalogAdmits(private, "zz.md", "a description", "a read_if") {
+		t.Fatal("the tail the cap cuts was admitted")
+	}
+	for i := 20; i < MaxCatalogFiles; i++ {
+		f := fmt.Sprintf("f%02d.md", i)
+		if err := os.WriteFile(filepath.Join(private.Dir, f), ComposeFile("d", "r", "b"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if CatalogAdmits(private, "aa.md", "a description", "a read_if") {
+		t.Fatal("a partition at its scan ceiling was admitted")
 	}
 }
 

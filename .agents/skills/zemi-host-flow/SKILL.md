@@ -329,7 +329,13 @@ is refused with its path, to delete (the owner is the only user).
   queues a forget proposal, never auto-applied. There is no config-patch pipeline, the agent
   edits config files directly. The brain build (`brainFor`) renders the `# Brain` section: the
   partitions' catalogs, the memory lines newest first per scope under the scope budget, the loop
-  text and the lint warnings; no search, no ranking.
+  text and the lint warnings; no search, no ranking in the render - recall is the memory tool's
+  `query` (live lines plus the ledger trail, `memorySearch`) and a one-liner graduates into a
+  brain file through the tool's `promote` mode (`brain.Promote`, its pre-flight `promoteChecks`
+  and `brain.CatalogAdmits`; a user-scope or user-origin promote always queues, the accept
+  journals the supersede entry with the file name and a paired write op, and the accept's undo
+  is `undoPromote`, whose ledger-only case re-archives under the literal sid "user" no rewind
+  replays).
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
