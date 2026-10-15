@@ -95,11 +95,19 @@ func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
 
 // luaAsksAll reports that every script asks, reads included: the model's
 // text is less trusted here, or the user wants nothing changed.
+// luaArgs is the lua tool's input and its schema source.
+type luaArgs struct {
+	About  string `json:"about" desc:"what the script does in 3-6 words, shown to the user"`
+	Script string `json:"script,omitempty" desc:"Lua source"`
+	Path   string `json:"path,omitempty" desc:"a .lua file to run instead of script"`
+}
+
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
 	if t.h.PermMode() == config.PermModeAsk {
 		approval = " The whole script is what the user approves, so write every call out by name."
 	}
+	props, required := tools.ArgsOf(luaArgs{})
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
@@ -111,22 +119,14 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 			t.writesNote +
 			approval +
 			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
-		Parameters: map[string]any{
-			"about":  map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
-			"script": map[string]any{"type": "string", "description": "Lua source"},
-			"path":   map[string]any{"type": "string", "description": "a .lua file to run instead of script"},
-		},
-		Required: []string{"about"},
+		Parameters: props,
+		Required:   required,
 	}
 }
 
 func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
-	var in struct {
-		About  string `json:"about"`
-		Script string `json:"script"`
-		Path   string `json:"path"`
-	}
+	var in luaArgs
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

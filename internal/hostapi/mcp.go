@@ -442,19 +442,23 @@ func newToolSearch(h *Host, list []*mcpTool, loaded *sync.Map) *toolSearch {
 	return &toolSearch{h: h, tools: list, loaded: loaded, desc: b.String()}
 }
 
+// toolSearchArgs is the tool_search tool's input and its schema source.
+type toolSearchArgs struct {
+	Query string `json:"query" desc:"tool names, or keywords"`
+}
+
 func (t *toolSearch) Info() fantasy.ToolInfo {
+	props, required := tools.ArgsOf(toolSearchArgs{})
 	return fantasy.ToolInfo{
 		Name:        tools.ToolSearch,
 		Description: t.desc,
-		Parameters:  map[string]any{"query": map[string]any{"type": "string", "description": "tool names, or keywords"}},
-		Required:    []string{"query"},
+		Parameters:  props,
+		Required:    required,
 	}
 }
 
 func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	var in struct {
-		Query string `json:"query"`
-	}
+	var in toolSearchArgs
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

@@ -1286,21 +1286,25 @@ type updateTool struct {
 	pipe *tools.Pipeline
 }
 
+// updateArgs is the update tool's input and its schema source.
+type updateArgs struct {
+	Text string `json:"text" desc:"one or two lines: the finding, the blocker or the question"`
+}
+
 func (t *updateTool) Info() fantasy.ToolInfo {
+	props, required := tools.ArgsOf(updateArgs{})
 	return fantasy.ToolInfo{
 		Name: tools.ToolUpdate,
 		Description: "Tell your caller one or two lines it should not wait for the run's end to read: a finding it asked for, a blocker, a question." +
 			" The caller may steer you in answer, so read what comes back. Keep it to one or two lines, and do not repeat what you already sent.",
-		Parameters: map[string]any{"text": map[string]any{"type": "string", "description": "one or two lines: the finding, the blocker or the question"}},
-		Required:   []string{"text"},
+		Parameters: props,
+		Required:   required,
 		Parallel:   true,
 	}
 }
 
 func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	var in struct {
-		Text string `json:"text"`
-	}
+	var in updateArgs
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
