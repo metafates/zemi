@@ -438,7 +438,7 @@ type armed struct {
 // arm reports whether key is armed for what, disarming it: the second press
 // acts. Otherwise it arms key for 2s.
 func (a *App) arm(key, what string) bool {
-	if a.armed.key == key && a.armed.what == what && a.now().Before(a.armed.until) {
+	if a.isArmed(key) && a.armed.what == what {
 		a.armed = armed{}
 		return true
 	}

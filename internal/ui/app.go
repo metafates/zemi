@@ -685,7 +685,7 @@ func (a *App) termBackground() color.Color {
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
 		Time: a.timeStr, Frame: a.frame(),
-		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc"), RowsBelow: a.rowsBelow(),
+		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt", RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
