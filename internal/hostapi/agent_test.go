@@ -1275,6 +1275,36 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
+// TestPluginProfile: a plugin ships a profile (the read-only planning recipe),
+// project code does not, and the registry's collision rules hold: one plugin
+// cannot replace another's, the user can replace any.
+func TestPluginProfile(t *testing.T) {
+	h, r := newTestHostPlugin(t, "")
+	h.Providers.Reset(agent.Catalog{}) // the profile's model must resolve
+	root := h.pluginsRoot()
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { read_only = true, model = "a/big" })`, filepath.Join(root, "local", "a", ".zemi", "init.lua"), lua.OriginPlugin, time.Minute, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.readOnly() {
+		t.Fatal("the plugin's profile is not read-only")
+	}
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", {})`, filepath.Join(root, "local", "b", ".zemi", "init.lua"), lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "is registered by plugin") {
+		t.Errorf("plugin b replaced plugin a's profile: %v", err)
+	}
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, "init.lua", lua.OriginUser, time.Minute, nil); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := h.resolveProfile("planner"); p == nil || p.System != "mine" || p.ReadOnly {
+		t.Errorf("the user's profile did not take over: %+v", p)
+	}
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("proj", {})`, ".agents/init.lua", lua.OriginProject, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "only user config and plugins may define profiles") {
+		t.Errorf("project code defined a profile: %v", err)
+	}
+}
+
 // TestModelPickerOdd: with nothing usable the picker opens by itself, unless
 // init.lua failed, and ends with the keyless builtin providers by env var,
 // explained only when nothing is usable; a configured id the provider does

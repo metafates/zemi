@@ -966,8 +966,12 @@ zemi.agent.profile.add("coder", {
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
 -- and the pipeline denies writes and confines commands; its turn ends in a
--- plan the user approves, asks changes to, or saves to start later.
+-- plan the user approves, asks changes to, or saves to start later. A plugin
+-- registers profiles the same way (project code may not), so a planner can
+-- ship as a plugin; the switch stays the user's (a /profile pick, ctrl+t, or
+-- their own command or keymap):
 zemi.agent.profile.add("planner", { read_only = true })
+zemi.command.add("plan", function() zemi.config.set("agent.profile", "planner") end)
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
                                            -- and what deleting this line returns to

@@ -1866,8 +1866,9 @@ zemi.agent = {}
 ---@class zemi.agent.profile
 zemi.agent.profile = {}
 
---- Define a named profile (model, prompt, tool set). User or builtin origin
---- only. The `agent.profile` config key names the active one.
+--- Define a named profile (model, prompt, tool set). User, builtin or plugin
+--- origin; project code may not. The `agent.profile` config key names the
+--- active one, and `/profile` or ctrl+t switches it.
 ---@param name string
 ---@param spec zemi.ProfileSpec
 function zemi.agent.profile.add(name, spec) end

@@ -2495,7 +2495,11 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.agent.profile.add: spec must be a table")
 		}
-		h.refuseBelowUser(L, "agent.profile.add")
+		// a profile is the user's or a plugin's shipped shape; project code
+		// may not author one (prompt authorship, DESIGN §5)
+		if h.RT.CurrentOrigin(L) == lua.OriginProject {
+			L.RaiseError("zemi.agent.profile.add: only user config and plugins may define profiles, not project code")
+		}
 		p := &Profile{Name: name, Model: rawString(L, spec, "model"), System: rawString(L, spec, "system"), ReadOnly: rawBool(L, spec, "read_only")}
 		if temp, ok := opt[glua.LNumber](L, spec, "temperature"); ok {
 			t := float64(temp)

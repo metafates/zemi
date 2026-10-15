@@ -221,7 +221,9 @@ is refused with its path, to delete (the owner is the only user).
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send. A profile is defined with `zemi.agent.profile.add`: a `-name` denylist or an
+  fails the send. A profile is defined with `zemi.agent.profile.add` (user or
+  plugin origin; project code may not - prompt authorship is their lever, not a
+  project's): a `-name` denylist or an
   allowlist of tools, so a new tool is in the default set until a profile drops it. An allowed
   name no tool has is an `/errors` entry; a `-name` no tool has fails the send, since the tool
   it meant to drop may run under another name (`profileTools`).
