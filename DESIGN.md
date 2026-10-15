@@ -2712,7 +2712,7 @@ session's `tool_calls`), since injected memories come from there.
 The same conditions decide whether the `memory` tool's forget of a learned
 memory applies at once or waits for review; one the user saved asks,
 whatever the permission mode. Known ceiling: a command the user let run
-unconfined can fetch too, and that is not seen.
+can fetch too, and that is not seen.
 
 ### 10.5 Skills
 

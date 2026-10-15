@@ -32,9 +32,6 @@ const pluginPrefix = "plugin:"
 // PluginPrincipal is the principal a plugin's calls and state keys run as.
 func PluginPrincipal(name string) string { return pluginPrefix + name }
 
-// CutPluginPrincipal returns the plugin a principal names.
-func CutPluginPrincipal(p string) (string, bool) { return strings.CutPrefix(p, pluginPrefix) }
-
 // CanonPath is the form file tools key by: absolute, symlinks and ..
 // resolved as the kernel resolves them, and case folded where the
 // filesystem folds.
