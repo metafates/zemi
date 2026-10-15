@@ -1908,7 +1908,8 @@ rides the `memories.md` line and its ledger entries.
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
   position. Go screens key every action by its verb's initial, one verb per
   letter on a screen: `r` restart, resume or run, `a` ask or run with
-  arguments, `s` sign in or stop, `e` enable, `d` disable, `n` rename, `o` open, `u`
+  arguments, or `/mcp`'s sign in to all, `s` sign in or stop, `e` enable, `d`
+  disable, `n` rename, `o` open, `u`
   update or use now, `c` change, and `x` for what cannot be undone (delete,
   or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
   action per check takes its label's initial. An item or action with

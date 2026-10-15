@@ -450,6 +450,7 @@ type Host struct {
 	cutMu    sync.Mutex
 	initFail atomic.Pointer[string]                // headline of the user init.lua failure this boot recorded
 	modelFn  func() (fantasy.LanguageModel, error) // stubs every model in tests
+	browser  func(string)                          // stubs the sign-in browser in tests
 
 	busyMu sync.Mutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first

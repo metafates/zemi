@@ -155,10 +155,16 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   from the history's `mcp_` calls; a subagent run has its own). Every MCP tool stays
   registered, so a call to one not loaded still runs; the catalog changes only with the
   servers, and each load costs one prompt-cache miss. A start's outcome and a sign-in
-  request go through `setMCP`, which refreshes an open `/mcp`. `ServiceStatus` (host.go) is the
+  request go through `setMCP`, which refreshes an open `/mcp`. A row waiting in the
+  browser renders from its `signIn` URL (the row's copy field), not a `ServiceStatus` of
+  its own. The list key `a` (two or more HTTP servers waiting) runs `mcp sign-in-all`:
+  a sequential queue - the servers share zemi's callback ports - that resolves each
+  server by name at every step, wraps the step in a `Busy` job esc-esc aborts, keeps the
+  5-minute cap per server, and ends in one summary toast; it never starts a server that
+  has not asked for a sign-in. `ServiceStatus` (host.go) is the
   one status word of `/mcp`, `/lsp`, `/plugins`, `/health` and `zemi.mcp.list`/`zemi.lsp.list`,
   colored by the UI's `statusHL`, a map the exhaustive linter keeps complete. Test against
-  `internal/mcp/mcptest`.
+  `internal/mcp/mcptest` - the fake's `Auth` gate answers 401 until a sign-in completes.
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file, and only in
   a trusted project: they run repo code (rust-analyzer build scripts), so `lspDefs` returns
   nothing untrusted and `noLSP` says why. A `.lua` file of the user's config or a local plugin

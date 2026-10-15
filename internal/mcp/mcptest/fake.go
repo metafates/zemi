@@ -1,7 +1,7 @@
 // Package mcptest is a fake MCP server for tests, reachable over stdio and
 // HTTP: it lists echo, shot and fail over two pages; echo returns its text
 // argument, shot is annotated read-only and returns a png, and fail returns
-// a tool error.
+// a tool error. Auth gates the HTTP server behind the OAuth flow zemi runs.
 package mcptest
 
 import (
@@ -10,6 +10,8 @@ import (
 	"encoding/json/v2"
 	"io"
 	"net/http"
+	"net/url"
+	"sync/atomic"
 )
 
 // Respond answers one JSON-RPC message; notifications get nil.
@@ -70,6 +72,68 @@ func Respond(line []byte) []byte {
 
 // onePixelPNG is a 1x1 transparent png, base64 as the wire carries it.
 const onePixelPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+// authToken is the bearer the Auth gate hands out.
+const authToken = "fake-token"
+
+// Auth is the fake's sign-in gate: it answers 401 until a bearer token its
+// own OAuth flow handed out arrives. Base is the server's own URL, set once
+// httptest.NewServer built it; Refuse makes the authorization endpoint send
+// the browser back with an error.
+type Auth struct {
+	Base   atomic.Value
+	Refuse atomic.Bool
+}
+
+func (a *Auth) base() string { b, _ := a.Base.Load().(string); return b }
+
+// Handler serves the gated MCP endpoint and the OAuth discovery,
+// registration, authorization and token endpoints around it.
+func (a *Auth) Handler() http.Handler {
+	mcp := Handler()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+authToken {
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+a.base()+`/.well-known/oauth-protected-resource/mcp"`)
+			http.Error(w, "sign in", http.StatusUnauthorized)
+			return
+		}
+		mcp.ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, map[string]any{"resource": a.base() + "/mcp", "authorization_servers": []string{a.base() + "/auth"}}, json.Deterministic(true))
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server/auth", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, map[string]any{
+			"authorization_endpoint": a.base() + "/auth/authorize",
+			"token_endpoint":         a.base() + "/auth/token", "registration_endpoint": a.base() + "/auth/register",
+		}, json.Deterministic(true))
+	})
+	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, map[string]any{"client_id": "fake"}, json.Deterministic(true))
+	})
+	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		back := url.Values{"state": {q.Get("state")}, "code": {"abc"}}
+		if a.Refuse.Load() {
+			back = url.Values{"state": {q.Get("state")}, "error": {"access_denied"}, "error_description": {"the fake said no"}}
+		}
+		http.Redirect(w, r, q.Get("redirect_uri")+"?"+back.Encode(), http.StatusFound)
+	})
+	mux.HandleFunc("/auth/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("code") != "abc" {
+			http.Error(w, "bad grant", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, map[string]any{"access_token": authToken, "expires_in": 3600}, json.Deterministic(true))
+	})
+	return mux
+}
 
 // ServeStdio answers newline-delimited messages until in closes.
 func ServeStdio(in io.Reader, out io.Writer) {

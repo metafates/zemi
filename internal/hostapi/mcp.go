@@ -708,13 +708,15 @@ func (h *Host) mcpCommands() []*Command {
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
+			case "sign-in-all":
+				return h.signInAllMCP()
 			case "sign-out":
 				name, yes := strings.CutSuffix(strings.TrimSpace(name), " --yes")
 				return h.signOutMCP(name, yes)
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
+		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out"}, func(h *Host, _ string) []string {
 			var names []string
 			for _, s := range h.mcp.list() {
 				names = append(names, s.name)
@@ -744,13 +746,33 @@ func (h *Host) openMCP(confirm string) error {
 	return nil
 }
 
-// mcpOverlay is /mcp; with refresh it only replaces an open one.
+// mcpOverlay is /mcp; with refresh it only replaces an open one. The batch
+// key is there once two or more HTTP servers ask for a sign-in: one is the
+// row's own Sign in.
 func (h *Host) mcpOverlay(refresh bool) Overlay {
-	return Overlay{
+	o := Overlay{
 		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.mcpItems(),
 		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}
+	if h.mcpNeedingSignIn() >= 2 {
+		o.Keys = []OverlayKey{{Key: "a", Desc: "sign in to all", Run: "mcp sign-in-all"}}
+	}
+	return o
+}
+
+// mcpNeedingSignIn counts the HTTP servers waiting for a sign-in.
+func (h *Host) mcpNeedingSignIn() int {
+	n := 0
+	for _, s := range h.mcp.list() {
+		s.mu.Lock()
+		need := s.status == StatusSignIn && s.spec.URL != ""
+		s.mu.Unlock()
+		if need {
+			n++
+		}
+	}
+	return n
 }
 
 // mcpMarks are the list rows' status marks, the chat's: starting spins and
@@ -846,31 +868,104 @@ func (h *Host) signInMCP(name string) error {
 	if s.spec.URL == "" {
 		return Usagef("%s runs a local command; only HTTP servers sign in", name)
 	}
-	auth := h.mcpAuth(s)
 	h.GoSafe("mcp sign-in "+name, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		err := auth.Authorize(ctx, func(u string) {
-			// too long for a toast: /mcp shows it whole, to copy
-			s.mu.Lock()
-			s.signIn = u
-			s.mu.Unlock()
-			h.mcpChanged()
-			h.Notify(slog.LevelInfo, "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
-			h.openBrowser(u)
-		})
-		s.mu.Lock()
-		s.signIn = ""
-		s.mu.Unlock()
-		h.mcpChanged()
-		if err != nil {
+		if err := h.authorizeMCP(s, ctx); err != nil {
 			h.RecordError("mcp "+name, err.Error())
 			h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
 			return
 		}
-		h.Notify(slog.LevelInfo, "Signed in", name)
-		if err := h.restartMCP(name); err != nil {
-			h.Notify(slog.LevelError, "Could not restart "+name, err.Error())
+		h.signedInMCP(name)
+	})
+	return nil
+}
+
+// authorizeMCP runs one server's browser sign-in to completion: it parks the
+// URL on the server for /mcp to show, opens the browser, and clears the URL
+// when the flow ends either way. The context bounds the wait for the user.
+func (h *Host) authorizeMCP(s *mcpServer, ctx context.Context) error {
+	err := h.mcpAuth(s).Authorize(ctx, func(u string) {
+		// too long for a toast: /mcp shows it whole, to copy
+		s.mu.Lock()
+		s.signIn = u
+		s.mu.Unlock()
+		h.mcpChanged()
+		h.Notify(slog.LevelInfo, "Browser opened", "sign in to "+s.name+" there, or open /mcp for the link")
+		h.openBrowser(u)
+	})
+	s.mu.Lock()
+	s.signIn = ""
+	s.mu.Unlock()
+	h.mcpChanged()
+	return err
+}
+
+// signedInMCP restarts a server whose sign-in just succeeded.
+func (h *Host) signedInMCP(name string) {
+	h.Notify(slog.LevelInfo, "Signed in", name)
+	if err := h.restartMCP(name); err != nil {
+		h.Notify(slog.LevelError, "Could not restart "+name, err.Error())
+	}
+}
+
+// signInAllMCP signs every HTTP server asking for a sign-in in, one at a
+// time: the servers share zemi's callback ports, and two browsers at once
+// lose to popup blockers. A server the user is already signing in, one that
+// moved, or one a reload dropped is skipped; the queue never starts a server
+// to force its 401.
+func (h *Host) signInAllMCP() error {
+	var names []string
+	for _, s := range h.mcp.list() {
+		s.mu.Lock()
+		need := s.status == StatusSignIn && s.spec.URL != "" && s.signIn == ""
+		s.mu.Unlock()
+		if need {
+			names = append(names, s.name)
+		}
+	}
+	if len(names) == 0 {
+		return Usagef("no MCP server is waiting for a sign-in")
+	}
+	h.GoSafe("mcp sign-in all", func() {
+		signed, failed := 0, []string(nil)
+		for _, name := range names {
+			// by name each step: a reload replaces the servers mid-queue
+			s, err := h.mcpServerNamed(name)
+			if err == nil {
+				s.mu.Lock()
+				waiting, status := s.signIn, s.status
+				s.mu.Unlock()
+				if waiting == "" && status == StatusSignIn {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					done := h.Busy("Signing in to "+name, cancel)
+					err = h.authorizeMCP(s, ctx)
+					aborted := errors.Is(ctx.Err(), context.Canceled) // esc-esc stopped the queue
+					done()
+					cancel()
+					if aborted {
+						return
+					}
+					if err != nil {
+						h.RecordError("mcp "+name, err.Error())
+						h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
+						failed = append(failed, name)
+						continue
+					}
+					signed++
+					h.signedInMCP(name)
+					continue
+				}
+			}
+			// gone, signed in or restarted under the queue: its news already showed
+		}
+		switch {
+		case signed+len(failed) == 0:
+			return
+		case len(failed) == 0:
+			h.Notify(slog.LevelInfo, fmt.Sprintf("Signed in to %d of %d", signed, len(failed)+signed), "")
+		default:
+			h.Notify(slog.LevelWarn, fmt.Sprintf("Signed in to %d of %d", signed, len(failed)+signed), strings.Join(failed, ", ")+" failed")
 		}
 	})
 	return nil
@@ -913,6 +1008,10 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 // openBrowser opens an http(s) URL with the platform's opener; the URL is
 // one argument, never shell text.
 func (h *Host) openBrowser(u string) {
+	if h.browser != nil {
+		h.browser(u)
+		return
+	}
 	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return
 	}

@@ -258,6 +258,82 @@ func TestMCPBridge(t *testing.T) {
 	}
 }
 
+// TestMCPSignInAll: the batch queue signs each waiting HTTP server in on its
+// own and ends in one summary toast; a refusal fails its server alone and
+// never starts one that did not ask.
+func TestMCPSignInAll(t *testing.T) {
+	good, bad := &mcptest.Auth{}, &mcptest.Auth{}
+	goodSrv := httptest.NewServer(good.Handler())
+	defer goodSrv.Close()
+	good.Base.Store(goodSrv.URL)
+	badSrv := httptest.NewServer(bad.Handler())
+	defer badSrv.Close()
+	bad.Base.Store(badSrv.URL)
+	bad.Refuse.Store(true)
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	if err := h.signInAllMCP(); err == nil || !strings.Contains(err.Error(), "no MCP server is waiting") {
+		t.Fatalf("an empty queue = %v, want a refusal", err)
+	}
+	h.SetUIHooks(&fakeUI{})
+	// the test is the browser: the queue's open follows the authorization
+	// redirect back to zemi's callback
+	h.browser = func(u string) {
+		go func() {
+			resp, err := http.Get(u)
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("good", { url = %q })`, goodSrv.URL+"/mcp"))
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("bad", { url = %q })`, badSrv.URL+"/mcp"))
+	waitFor(t, func() error {
+		for _, name := range []string{"good", "bad"} {
+			if s, _ := h.mcpServerNamed(name); s.status != StatusSignIn {
+				return fmt.Errorf("%s = %q, want a sign-in request", name, s.status)
+			}
+		}
+		return nil
+	})
+	o := h.mcpOverlay(false)
+	if len(o.Keys) != 1 || o.Keys[0].Key != "a" || o.Keys[0].Run != "mcp sign-in-all" {
+		t.Fatalf("two waiting servers offer no batch key: %+v", o.Keys)
+	}
+	if err := h.signInAllMCP(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		s, _ := h.mcpServerNamed("good")
+		if s.status != StatusReady {
+			return fmt.Errorf("good = %q", s.status)
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.signIn != "" {
+			return errors.New("good still waits in the browser")
+		}
+		return nil
+	})
+	if s, _ := h.mcpServerNamed("bad"); s.status != StatusSignIn {
+		t.Fatalf("bad = %q, want it still waiting", s.status)
+	}
+	if o := h.mcpOverlay(false); len(o.Keys) != 0 {
+		t.Errorf("one waiting server still offers the batch key: %+v", o.Keys)
+	}
+	waitFor(t, func() error {
+		h.evlog.mu.Lock()
+		defer h.evlog.mu.Unlock()
+		for _, n := range h.evlog.notes {
+			if n.title == "Signed in to 1 of 2" && n.body == "bad failed" {
+				return nil
+			}
+		}
+		return errors.New("no summary toast")
+	})
+}
+
 // TestMCPMedia: an image goes out the size the read tool's would, and one
 // no provider takes stays out with the reason in the text.
 func TestMCPMedia(t *testing.T) {
