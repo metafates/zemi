@@ -51,13 +51,14 @@ type mcpServer struct {
 	name string
 	spec mcpSpec
 
-	mu      sync.Mutex
-	client  *mcp.Client
-	tools   []mcp.Tool
-	status  ServiceStatus
-	err     string
-	signIn  string // the sign-in URL while one waits in the browser
-	stopped bool
+	mu          sync.Mutex
+	client      *mcp.Client
+	tools       []mcp.Tool
+	status      ServiceStatus
+	err         string
+	signIn      string // the sign-in URL while one waits in the browser
+	authorizing bool   // a flow is between its start and its park, so no second one starts
+	stopped     bool
 }
 
 type mcpReg struct {
@@ -755,24 +756,26 @@ func (h *Host) mcpOverlay(refresh bool) Overlay {
 		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}
-	if h.mcpNeedingSignIn() >= 2 {
+	if len(h.mcpWaitingNames()) >= 2 {
 		o.Keys = []OverlayKey{{Key: "a", Desc: "sign in to all", Run: "mcp sign-in-all"}}
 	}
 	return o
 }
 
-// mcpNeedingSignIn counts the HTTP servers waiting for a sign-in.
-func (h *Host) mcpNeedingSignIn() int {
-	n := 0
+// mcpWaitingNames names the HTTP servers whose sign-in no flow has started
+// yet: the batch key offers once two of them wait, and the batch queue takes
+// the same list, so the footer never offers a key the queue would refuse.
+func (h *Host) mcpWaitingNames() []string {
+	var names []string
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
-		need := s.status == StatusSignIn && s.spec.URL != ""
+		waiting := s.status == StatusSignIn && s.spec.URL != "" && s.signIn == "" && !s.authorizing
 		s.mu.Unlock()
-		if need {
-			n++
+		if waiting {
+			names = append(names, s.name)
 		}
 	}
-	return n
+	return names
 }
 
 // mcpMarks are the list rows' status marks, the chat's: starting spins and
@@ -871,12 +874,9 @@ func (h *Host) signInMCP(name string) error {
 	h.GoSafe("mcp sign-in "+name, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		if err := h.authorizeMCP(ctx, s); err != nil {
-			h.RecordError("mcp "+name, err.Error())
-			h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
-			return
+		if err := h.authorizeMCP(ctx, s); err == nil {
+			h.signedInMCP(name)
 		}
-		h.signedInMCP(name)
 	})
 	return nil
 }
@@ -884,7 +884,13 @@ func (h *Host) signInMCP(name string) error {
 // authorizeMCP runs one server's browser sign-in to completion: it parks the
 // URL on the server for /mcp to show, opens the browser, and clears the URL
 // when the flow ends either way. The context bounds the wait for the user.
+// authorizing marks the window before the URL parks, so a second press of
+// the batch key cannot start a second flow for the same server; a failure
+// the user did not cancel reports here, both callers sharing one toast.
 func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
+	s.mu.Lock()
+	s.authorizing = true
+	s.mu.Unlock()
 	err := h.mcpAuth(s).Authorize(ctx, func(u string) {
 		// too long for a toast: /mcp shows it whole, to copy
 		s.mu.Lock()
@@ -895,9 +901,13 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 		h.openBrowser(u)
 	})
 	s.mu.Lock()
-	s.signIn = ""
+	s.signIn, s.authorizing = "", false
 	s.mu.Unlock()
 	h.mcpChanged()
+	if err != nil && !errors.Is(err, context.Canceled) {
+		h.RecordError("mcp "+s.name, err.Error())
+		h.Notify(slog.LevelError, "Could not sign in to "+s.name, err.Error())
+	}
 	return err
 }
 
@@ -915,15 +925,7 @@ func (h *Host) signedInMCP(name string) {
 // moved, or one a reload dropped is skipped; the queue never starts a server
 // to force its 401.
 func (h *Host) signInAllMCP() error {
-	var names []string
-	for _, s := range h.mcp.list() {
-		s.mu.Lock()
-		need := s.status == StatusSignIn && s.spec.URL != "" && s.signIn == ""
-		s.mu.Unlock()
-		if need {
-			names = append(names, s.name)
-		}
-	}
+	names := h.mcpWaitingNames()
 	if len(names) == 0 {
 		return Usagef("no MCP server is waiting for a sign-in")
 	}
@@ -932,31 +934,34 @@ func (h *Host) signInAllMCP() error {
 		for _, name := range names {
 			// by name each step: a reload replaces the servers mid-queue
 			s, err := h.mcpServerNamed(name)
-			if err == nil {
-				s.mu.Lock()
-				waiting, status := s.signIn, s.status
-				s.mu.Unlock()
-				if waiting == "" && status == StatusSignIn {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-					done := h.Busy("Signing in to "+name, cancel)
-					err = h.authorizeMCP(ctx, s)
-					aborted := errors.Is(ctx.Err(), context.Canceled) // esc-esc stopped the queue
-					done()
-					cancel()
-					if aborted {
-						return
-					}
-					if err != nil {
-						h.RecordError("mcp "+name, err.Error())
-						h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
-						failed = append(failed, name)
-						continue
-					}
-					signed++
-					h.signedInMCP(name)
-					continue
-				}
+			if err != nil {
+				continue
 			}
+			s.mu.Lock()
+			idle := s.signIn == "" && s.status == StatusSignIn && !s.authorizing
+			s.mu.Unlock()
+			if !idle {
+				continue // signed in since, already waiting, or another flow holds it
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			done := h.Busy("Signing in to "+name, cancel)
+			aborted := false
+			func() {
+				// a panic must not strand the busy row or hold the context
+				defer cancel()
+				defer done()
+				err = h.authorizeMCP(ctx, s)
+				aborted = errors.Is(ctx.Err(), context.Canceled) // read before our own cancel lands
+			}()
+			if aborted {
+				return // esc-esc stopped the queue; the failure report stays silent
+			}
+			if err != nil {
+				failed = append(failed, name)
+				continue
+			}
+			signed++
+			h.signedInMCP(name)
 			// gone, signed in or restarted under the queue: its news already showed
 		}
 		switch {
