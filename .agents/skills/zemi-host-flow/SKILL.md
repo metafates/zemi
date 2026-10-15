@@ -104,10 +104,10 @@ an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` a
 baseline every reload moves. Once a second while no turn is active the watcher calls
 `Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
-a key of their own, `zemi.permission.mode.set` and `zemi.model.set`, all
+a key of their own, `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer
-times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
-cycle and the flags survive a reload until the config changes that key. A key the config stopped
+times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`
+and the flags survive a reload until the config changes that key. A key the config stopped
 writing returns to its saved pick, else its schema default, unless a runtime pick moved it since.
 
 Runtime picks outlive the process: the layers are schema default < saved pick < init.lua <
