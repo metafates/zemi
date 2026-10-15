@@ -469,6 +469,31 @@ func TestPromoteMemory(t *testing.T) {
 		lintClean(t, p, m.ID)
 	})
 
+	t.Run("an imported line promotes from its live text", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		lg := openLedger(t, p)
+		line := memLine("abcd2345", "a pre-migration fact")
+		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p.memPath(), serialize([]Line{line}), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// Reconcile's import entry journals the hash, never the text (DESIGN §7)
+		if err := lg.Insert(&Op{Op: OpImport, ID: line.ID, Hash: TextHash(line.Text), Scope: p.Kind.Scope(), Origin: line.Origin, SessionID: "frozen", CreatedAt: 1, UpdatedAt: 2}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Promote(p, "s2", line.ID, "old.md", "an imported fact", "r", later); err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(filepath.Join(p.Dir, "old.md"))
+		if err != nil || !strings.Contains(string(b), "a pre-migration fact") {
+			t.Fatalf("file = %q, %v", b, err)
+		}
+		lintClean(t, p, line.ID)
+	})
+
 	t.Run("ComposeFile round-trips values a naive composer would break", func(t *testing.T) {
 		b := ComposeFile(`uses ": " and "quotes"`, `has \ backslashes`, "body")
 		fm, err := ParseFrontmatter(string(b))

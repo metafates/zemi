@@ -362,16 +362,19 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) {
 	oldest := map[string]*brain.Op{}
 	for _, op := range writes {
-		if _, ok := oldest[op.ID]; !ok {
-			oldest[op.ID] = op
+		// the key is scope-qualified: a name one session promoted in both
+		// partitions journals a write op in each ledger
+		key := string(op.Scope) + "/" + op.ID
+		if _, ok := oldest[key]; !ok {
+			oldest[key] = op
 		}
 	}
-	for name, op := range oldest {
+	for _, op := range oldest {
 		p := private
 		if op.Scope == store.ScopeUser {
 			p = user
 		}
-		path := filepath.Join(p.Dir, name)
+		path := filepath.Join(p.Dir, op.ID)
 		// a checkpoint's pre-turn bytes are the fuller truth and were
 		// restored above; this op's prior is only mid-turn state
 		checkpointed := false

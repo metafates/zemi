@@ -1260,16 +1260,9 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	// injected-surface intake (DESIGN §10.4): the frontmatter fields get what a
 	// one-liner's text gets, the lazy-read body exempt
 	fm, ferr := brain.ParseFrontmatter(content)
-	reason := ""
-	switch {
-	case ferr != nil:
-		reason = "the frontmatter does not parse"
-	case multiLine(fm.Description) || multiLine(fm.ReadIf):
-		reason = "multi-line frontmatter"
-	case learn.InstructionShaped(fm.Description) || learn.InstructionShaped(fm.ReadIf):
-		reason = "instruction-shaped frontmatter"
-	case brain.Oversized(fm.Description) || brain.Oversized(fm.ReadIf):
-		reason = fmt.Sprintf("the description or read_if is over %d characters", brain.FieldCap)
+	reason := "the frontmatter does not parse"
+	if ferr == nil {
+		reason = h.frontmatterReason(fm.Description, fm.ReadIf)
 	}
 	if reason == "" {
 		var want *string
@@ -1375,16 +1368,17 @@ func (h *Host) queueFileProposal(sid string, p brain.Partition, name, content, r
 	return "queued for the user's review (" + reason + ")", nil
 }
 
-// promoteFrontmatterReason is the injected-surface intake over a promotion's
-// frontmatter (DESIGN §10.4): the file-mode checks, "" when it may serve.
-func (h *Host) promoteFrontmatterReason(description, readIf string) string {
+// frontmatterReason is the injected-surface intake over a promotion's or a
+// brain file's frontmatter (DESIGN §10.4): the file-mode checks, "" when it
+// may serve.
+func (h *Host) frontmatterReason(description, readIf string) string {
 	switch {
 	case multiLine(description) || multiLine(readIf):
 		return "multi-line frontmatter"
 	case learn.InstructionShaped(description) || learn.InstructionShaped(readIf):
 		return "instruction-shaped frontmatter"
 	case brain.Oversized(description) || brain.Oversized(readIf):
-		return fmt.Sprintf("the description or read_if is over the %d-character cap", brain.FieldCap)
+		return fmt.Sprintf("the description or read_if is over %d characters", brain.FieldCap)
 	}
 	return ""
 }
@@ -1408,13 +1402,10 @@ func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) 
 		// the latest trail op is a replaces that carried no text
 		return "", fmt.Errorf("memory %s has no text to promote; it was replaced", call.Promote)
 	}
-	if call.Description == "" || call.ReadIf == "" {
-		return "", errors.New("a promotion needs description and read_if; the catalog line cannot trigger without them")
-	}
 	if _, scrubbed := learn.ScrubSecrets(string(brain.ComposeFile(call.Description, call.ReadIf, m.Text))); scrubbed {
 		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
 	}
-	if reason := h.promoteFrontmatterReason(call.Description, call.ReadIf); reason != "" {
+	if reason := h.frontmatterReason(call.Description, call.ReadIf); reason != "" {
 		return h.queuePromoteProposal(sid, m, call, reason)
 	}
 	if err := brain.CheckPromote(h.partition(m.Scope), m.ID, call.Path, call.Description, call.ReadIf); err != nil {
@@ -1540,23 +1531,7 @@ func (h *Host) promotedInto(id string) string {
 	if err != nil || partition.Zero() {
 		return ""
 	}
-	lg, err := partition.OpenLedger()
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = lg.Close() }()
-	trail, err := lg.ByID(id)
-	if err != nil {
-		return ""
-	}
-	for _, o := range slices.Backward(trail) {
-		if o.Op == brain.OpSupersede && strings.HasSuffix(o.SupersededBy, ".md") {
-			if _, err := os.ReadFile(filepath.Join(partition.Dir, o.SupersededBy)); err == nil {
-				return o.SupersededBy
-			}
-		}
-	}
-	return ""
+	return brain.PromotedInto(partition, id)
 }
 
 // memorySearch is the memory tool's query mode: the live lines and the

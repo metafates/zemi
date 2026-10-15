@@ -1309,6 +1309,35 @@ func TestPromoteMemory(t *testing.T) {
 		}
 	})
 
+	t.Run("a name promoted in both partitions rewinds both files", func(t *testing.T) {
+		h, sid, private := setup(t)
+		private1 := seedLine(t, h, "project", store.OriginLearned, "a private fact")
+		if _, err := call(h, sid, private1.ID, "same.md", "d", "r"); err != nil {
+			t.Fatal(err)
+		}
+		h.Settings.SetQuiet("memory.autonomy", "ask")
+		user1 := seedLine(t, h, "user", store.OriginLearned, "a user fact")
+		if _, err := call(h, sid, user1.ID, "same.md", "d", "r"); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+			t.Fatal(err)
+		}
+		_, user := h.brainParts()
+		if _, err := os.Stat(filepath.Join(private.Dir, "same.md")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(user.Dir, "same.md")); err != nil {
+			t.Fatal(err)
+		}
+		h.forgetLearned(sid, 0, time.Now().UnixMilli()+1, nil)
+		for _, p := range []brain.Partition{private, user} {
+			if _, err := os.Stat(filepath.Join(p.Dir, "same.md")); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("the rewind left %s", filepath.Join(p.Dir, "same.md"))
+			}
+		}
+	})
+
 	t.Run("rewind restores the line and deletes the file", func(t *testing.T) {
 		h, sid, private := setup(t)
 		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")

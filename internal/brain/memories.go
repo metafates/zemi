@@ -269,6 +269,29 @@ func promotedInto(o *Op) (string, bool) {
 	return o.SupersededBy, true
 }
 
+// PromotedInto is the brain file id's trail was promoted into whose file
+// still exists, "" when none does. The caller holds the partition lock when
+// the answer feeds a write.
+func PromotedInto(p Partition, id string) string {
+	lg, err := p.OpenLedger()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = lg.Close() }()
+	trail, err := lg.ByID(id)
+	if err != nil {
+		return ""
+	}
+	for _, o := range slices.Backward(trail) {
+		if file, ok := promotedInto(o); ok {
+			if _, err := readSafe(p, file); err == nil {
+				return file
+			}
+		}
+	}
+	return ""
+}
+
 // CheckPromote is the propose-time pre-flight, nothing written: the same
 // checks Promote runs under the partition lock.
 func CheckPromote(p Partition, id, name, description, readIf string) error {
@@ -308,6 +331,13 @@ func promoteChecks(p Partition, id, name, description, readIf string) (string, e
 		return "", fmt.Errorf("%s is forgotten; save it fresh instead", id)
 	}
 	var text string
+	if lines, _, err := readMemories(p); err != nil {
+		return "", err
+	} else if i := slices.IndexFunc(lines, func(l Line) bool { return l.ID == id }); i >= 0 {
+		// the live line is the text locateMemory shows, so the body, the
+		// queued preview and the undo's bytes-equal guard all agree
+		text = lines[i].Text
+	}
 	for _, o := range trail {
 		if file, ok := promotedInto(o); ok {
 			// keyed on any such op, so a later replaces of the id cannot mask
@@ -316,7 +346,9 @@ func promoteChecks(p Partition, id, name, description, readIf string) (string, e
 				return "", fmt.Errorf("%s is already promoted to %s", id, file)
 			}
 		}
-		if o.Text != "" {
+		if text == "" && o.Text != "" {
+			// a ledger-only id: an import entry journals the hash, not the
+			// text, so the last text-carrying op is where the trail keeps it
 			text = o.Text
 		}
 	}
