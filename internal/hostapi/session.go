@@ -161,7 +161,7 @@ func (h *Host) OpenSessions(confirm string) error {
 			desc = append(desc, clipRunes(prompt, 60))
 		}
 		// a list gives its labels room before descriptions: a whole title would hide the age
-		item := map[string]any{"text": SessionMark(s.ID) + " " + cmp.Or(clipRunes(s.Title, 60), "(untitled)"), "desc": strings.Join(desc, " · ")}
+		item := map[string]any{"text": markedTitle(s.ID, cmp.Or(clipRunes(s.Title, 60), "(untitled)")), "desc": strings.Join(desc, " · ")}
 		if s.ID == current {
 			item["key"] = "current"
 			item["detail"] = "zemi runs this session: /new leaves it, and then it can be resumed or deleted here."

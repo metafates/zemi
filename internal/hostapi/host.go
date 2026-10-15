@@ -250,15 +250,11 @@ var Marks = map[string]Mark{
 // Spinner is the running mark's frames, one per frame tick.
 var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// sessionEmoji pools the emoji a session's marker is picked from. Every entry
-// is one codepoint with no joiner, selector, modifier, regional indicator,
-// keycap or combining mark; emoji presentation, so it renders colored
-// everywhere without VS16; East Asian Width W, so zemi.ui.width and the
-// terminal agree on 2 cells; not a glyph the UI already draws (Marks, the
-// spinner, the hint glyphs, the snail art are all one cell), so a marker
-// never reads as a status; no face, hand, heart, clock, flag, arrow or
-// status-shaped mark; and the silhouettes stay distinct. Curated against
-// Unicode's emoji-variants data.
+// sessionEmoji pools the emoji a session's marker is picked from: one
+// codepoint, emoji presentation (colored without VS16), East Asian Width W
+// (so zemi.ui.width and the terminal agree on 2 cells), and none a glyph the
+// UI already draws. The pool test pins the rest of the criteria; the entries
+// were curated against Unicode's emoji-variants data.
 var sessionEmoji = []string{
 	"🌊", "💧", "☔", "⛅", "🌈", "🌙", "⭐", "🌍", "🌵", "🌱",
 	"🍀", "🍄", "🌻", "🦋", "🐢", "🐙", "🐳", "🐧", "🐚", "📎",
@@ -277,7 +273,13 @@ func SessionMark(sid string) string {
 	for i := range len(sid) {
 		h = (h ^ uint32(sid[i])) * 16777619
 	}
-	return sessionEmoji[int(h)%len(sessionEmoji)]
+	return sessionEmoji[h%uint32(len(sessionEmoji))]
+}
+
+// markedTitle is the marker-prefixed title the session surfaces draw: the
+// same shape everywhere a session row names itself.
+func markedTitle(sid, title string) string {
+	return SessionMark(sid) + " " + title
 }
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
@@ -879,7 +881,7 @@ func (h *Host) TerminalTitle() string {
 		return t.text
 	}
 	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
-		return SessionMark(h.AgentSessionID()) + " " + clipRunes(t, 60) + " · zemi"
+		return markedTitle(h.AgentSessionID(), clipRunes(t, 60)) + " · zemi"
 	}
 	return "zemi"
 }
@@ -1809,7 +1811,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 				if title == "" {
 					title = "(untitled)" // as the splash names a session without one
 				}
-				row.RawSetString("title", glua.LString(SessionMark(r.ID)+" "+title))
+				row.RawSetString("title", glua.LString(markedTitle(r.ID, title)))
 				row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
 				recent.Append(row)
 			}

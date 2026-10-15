@@ -159,7 +159,7 @@ function M.render(ctx)
 		local rows = {}
 		for _, r in ipairs(recent) do
 			local ago = zemi.ui.width(r.ago)
-			local label = ctx.projects and tail(r.path, w - ago - 2) or (r.title ~= "" and r.title) or "(untitled)"
+			local label = ctx.projects and tail(r.path, w - ago - 2) or r.title
 			label = fmt.clip(label, w - ago - 2)
 			local click = ctx.projects and ("projects switch " .. r.root) or ("resume " .. r.id)
 			rows[#rows + 1] = {
