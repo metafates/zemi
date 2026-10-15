@@ -224,11 +224,6 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		// user config reads its own keys (api_key = zemi.env.get(...));
-		// plugins and projects never see secret-shaped names
-		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
-			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
-		}
 		// unset is nil, never "": an empty api_key registers a provider that
 		// fails much later, so `zemi.env.get("X") or error(...)` must work
 		v, ok := os.LookupEnv(name)
@@ -473,7 +468,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		// as written: the secret shapes match a secret-named symlink's name
 		h.luaGate(L, subject, h.projectAbs(path), func() map[string]any { return map[string]any{"path": path} })
 		return resolved
 	}

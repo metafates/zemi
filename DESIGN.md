@@ -780,8 +780,7 @@ the binary's API version is `zemi.api.version`.
 zemi.config.get("models.chat")                -- dotted path lookup
 zemi.config.set("ui.theme", "whorl")
 zemi.config.watch("models.chat", function(new, old) end)
-zemi.env.get("EDITOR")                        -- env-read; secret-shaped
-                                              -- names (§9 deny list) are denied
+zemi.env.get("EDITOR")                        -- env-read
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
 zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
@@ -1183,8 +1182,8 @@ while a builtin's key may be exported for other tools.
 
 `zemi.provider.add` and `zemi.provider.del` require a user-owned registration origin: Lua
 from a plugin or a project cannot call them (the
-mechanical check is the origin). A user provider's key comes from user config (`zemi.env.get` reads secret-shaped
-variables for user and builtin origin only) and is never
+mechanical check is the origin). A user provider's key comes from user config
+(`zemi.env.get`) and is never
 exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
@@ -1464,14 +1463,14 @@ is `ask`, the call raises `permission ask required` (a
 `permission.request` event is emitted, post-hoc and informational: the
 outcome is already decided and the event carries no veto leg); only model tool calls surface the overlay, on
 the agent worker (§4). Keymap- and command-bound use of an ask-default
-API therefore needs a pre-existing allow rule from the user's own config
-(a plugin's own gated calls settle where its manifest declares them, §9), or it fails closed every time. URLs go through the permission gate like tools do
-(§9 covers redirects and IP rules). Subprocess environments are filtered:
-a child inherits the parent env minus the §9 secret denylist; extra vars
-are opt-in per job (`env = { ... }`, Lua-supplied values only, never
-looked up from the parent by name); every `env`-extras key runs the §9
-environment gates: a secret-shaped or environment-affecting name is
-refused when the job starts (`perm.Store.ChildEnv`); model `job_start` takes
+API fails closed every time in ask mode
+(a plugin's own gated calls settle where its manifest declares them, §9); the fix is allow mode. URLs go through the permission gate like tools do;
+a redirect is re-checked against the gate before it is followed. Subprocess
+environments are the parent's whole environ: a command the model starts
+adds the non-interactive vars and points `TMPDIR` at the scratchpad;
+`zemi.job.start` appends the job's opt-in extras (`env = { ... }`,
+Lua-supplied values only, never looked up from the parent by name) as
+given; model `job_start` takes
 none, since its shell line sets them (`FOO=1 cmd`); jobs never inherit the
 controlling tty (each runs in its own session through `internal/proc`;
 stdin is closed unless the job asks for a pipe with `stdin = true`).
@@ -2937,7 +2936,7 @@ internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/classify/          judging data with a model: protocol, logprobs, schema
 internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
-internal/perm/              path resolution (openat walk), the pad, glob and secret shapes
+internal/perm/              path resolution, the pad, glob and subjects
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse, and zemi run's view of a run
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check

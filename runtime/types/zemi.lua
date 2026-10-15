@@ -2360,7 +2360,7 @@ function zemi.fs.remove(path) end
 function zemi.fs.glob(pattern) end
 
 --- Search the project's files for a Go regular expression, in path order,
---- skipping secret-shaped, binary and over 4 MB files.
+--- skipping binary and over 4 MB files.
 --- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
 ---@param pattern string
 ---@return zemi.GrepHit[]
@@ -2543,9 +2543,8 @@ function zemi.state.keys(prefix) end
 ---@class zemi.env
 zemi.env = {}
 
---- Read an environment variable, nil when it is not set. A secret-shaped
---- name raises for plugin or project code; config fields hold values, never
---- variable names.
+--- Read an environment variable, nil when it is not set. Config fields
+--- hold values, never variable names.
 ---@param name string
 ---@return string?
 function zemi.env.get(name) end

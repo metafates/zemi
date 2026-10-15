@@ -232,8 +232,8 @@ func (h *Host) AttachLabel(rel string) string {
 // AttachPath turns a path the user dropped or pasted into a composer token:
 // the form AttachLabel gives a project file, where a token names it, [Image
 // name] or [File name] for a file zemi copies into the drops directory under
-// its own name, and otherwise the quoted path (a directory, a large, binary or
-// secret-shaped file) for the model to reach with its tools.
+// its own name, and otherwise the quoted path (a directory, a large or
+// binary file) for the model to reach with its tools.
 func (h *Host) AttachPath(path string) string {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -249,8 +249,7 @@ func (h *Host) AttachPath(path string) string {
 		}
 		return attachRefToken(rel, image)
 	}
-	// a secret-shaped name is not copied into the chat
-	if fi.IsDir() || perm.PathIsSecret(path) || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
+	if fi.IsDir() || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
 		return tools.ShellQuote(path)
 	}
 	data, err := os.ReadFile(path)

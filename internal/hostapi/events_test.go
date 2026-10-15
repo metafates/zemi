@@ -175,11 +175,14 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.keymap.set("<leader>y", "zemi.permission.mode.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`,
 		`zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.keymap.set("<leader>y", "mode")`, `zemi.keymap.set("<leader>y", "profile")`,
-		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
+		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`,
 	} {
-		if err := r.ExecuteChunk(t.Context(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
+		if err := r.ExecuteChunk(t.Context(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
 			t.Errorf("%s from project: %v", src, err)
 		}
+	}
+	if err := r.ExecuteChunk(t.Context(), `assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`, "p.lua", lua.OriginProject); err != nil {
+		t.Errorf("project env.get: %v", err)
 	}
 	runUser(t, r, `
 		zemi.config.set("permissions.mode", "ask")

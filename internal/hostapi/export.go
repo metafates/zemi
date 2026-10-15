@@ -163,12 +163,8 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	} else if !filepath.IsAbs(path) {
 		path = filepath.Join(h.Dirs.ProjectDir, path)
 	}
-	// the user names this path, so it may leave the project; a secret-shaped
-	// target is still refused, and only user or builtin code reaches here
-	// (zemi.command.run gates Go commands by origin)
-	if perm.PathIsSecret(path) {
-		return "", Usagef("refusing to write over %s", path)
-	}
+	// the user names this path, so it may leave the project; only user or
+	// builtin code reaches here (zemi.command.run gates Go commands by origin)
 	md, err := SessionMarkdown(h.DB, sid, full)
 	if err != nil {
 		return "", err

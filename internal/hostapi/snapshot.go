@@ -31,7 +31,6 @@ const (
 	snapBytes       = 4 << 10 // and the bytes they may take
 	snapNoteMax     = 10      // paths the model's line names
 	snapOverlap     = "may include changes from concurrent commands"
-	snapSecretAs    = " (content hidden: secret-shaped name)"
 )
 
 type snapshots struct {
@@ -46,20 +45,6 @@ type snapshots struct {
 	mixed bool                // two of them overlapped
 	wrote map[string][32]byte // what file tools wrote meanwhile, by content
 }
-
-// snapPathspec is what a snapshot adds: every file but a secret-shaped one,
-// whose content a diff would print. The broad *secret* and *credential* match
-// source files, so they stay out.
-// NOTE: a command.s change to such a file shows in no row and no rewind.
-var snapPathspec = func() []string {
-	out := []string{"--", "."}
-	for _, p := range perm.SecretPathShape {
-		if !strings.HasPrefix(p, "*") || !strings.HasSuffix(p, "*") {
-			out = append(out, ":(exclude,icase,glob)**/"+p)
-		}
-	}
-	return out
-}()
 
 // snapshot writes the working tree of dir's repository as a git tree, through
 // a temp index and object directory of this process's own, so the user's
@@ -119,7 +104,7 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 				os.Remove(warm)
 			}
 		}
-		if _, err = git(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
+		if _, err = git(root, env, append([]string{"add", "-A"}, "--", ".")...); err == nil {
 			out, err = git(root, env, "write-tree")
 		}
 		if err == nil || retry {
@@ -245,14 +230,10 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 		if ckpt && len(changed) <= snapCheckpoints {
 			h.checkpointBlob(root, env, before+":"+path, abs, meta[0][1:], meta[1])
 		}
-		switch {
-		case len(paths) > snapFiles:
-		case perm.PathIsSecret(abs):
-			lines = append(lines, status+" "+path+snapSecretAs)
-		default:
+		if len(paths) <= snapFiles {
 			shown = append(shown, path)
-			lines = append(lines, status+" "+path)
 		}
+		lines = append(lines, status+" "+path)
 	}
 	if len(paths) == 0 {
 		return "", "", nil

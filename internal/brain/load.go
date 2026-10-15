@@ -49,7 +49,7 @@ type Loaded struct {
 }
 
 // Load scans a partition's directory. Files that fail instructionFile's
-// bar (a regular file, not secret-shaped, inside the partition) are left
+// bar (a regular file inside the partition) are left
 // out of the catalog, so a symlink planted in a brain dir cannot feed a
 // target outside it into the render (DESIGN §10.7).
 func Load(p Partition) Loaded {
@@ -104,7 +104,7 @@ func readEntry(dir, name string) Entry {
 }
 
 // readSafe reads a brain file through the bar every cataloged file passes: a
-// regular file, not secret-shaped, resolving inside the partition. A missing
+// regular file resolving inside the partition. A missing
 // file is ErrNotExist as a plain read would give; anything planted - a link,
 // a pipe - reads as fs.ErrInvalid, not the store.
 func readSafe(p Partition, name string) ([]byte, error) {
@@ -118,8 +118,8 @@ func readSafe(p Partition, name string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// safe is instructionFile's check: a regular file, not secret-shaped,
-// inside the partition. Symlinks are followed, like a read would follow
+// safe is instructionFile's check: a regular file inside the partition.
+// Symlinks are followed, like a read would follow
 // them, and must not lead out.
 func safe(dir, name string) bool {
 	p := filepath.Join(dir, name)
@@ -127,11 +127,8 @@ func safe(dir, name string) bool {
 	if err != nil || !fi.Mode().IsRegular() {
 		return false
 	}
-	if perm.PathIsSecret(name) {
-		return false
-	}
 	real := perm.CanonPath(p)
-	if real == "" || perm.PathIsSecret(real) {
+	if real == "" {
 		return false
 	}
 	root := perm.CanonPath(dir)
