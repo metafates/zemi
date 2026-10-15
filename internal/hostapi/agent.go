@@ -1187,6 +1187,7 @@ func shownText(head string) string {
 type Queued struct {
 	Text   string
 	Notice bool
+	Run    string // the run a notice names, so its row opens the run's transcript
 }
 
 // queuedRows is what the chat draws of a queue, in the order the model reads
@@ -1201,7 +1202,7 @@ func queuedRows(msgs []string) []Queued {
 			out = append(out, Queued{Text: shown})
 		}
 		for _, h := range reportHeads(tail) {
-			out = append(out, Queued{Text: h.Text, Notice: true})
+			out = append(out, Queued{Text: h.Text, Notice: true, Run: h.Run})
 		}
 	}
 	return out

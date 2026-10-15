@@ -240,11 +240,11 @@ func TestReportHeadsNameTheLine(t *testing.T) {
 	}{
 		{
 			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found it"),
-			want: []notice{{Text: "Background agent r1 (look around) finished", Status: CallOK}},
+			want: []notice{{Text: "Background agent r1 (look around) finished", Status: CallOK, Run: "r1"}},
 		},
 		{
 			name: "a failed report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="failed" description="look around"`, "it broke"),
-			want: []notice{{Text: "Background agent r1 (look around) failed", Status: CallErr}},
+			want: []notice{{Text: "Background agent r1 (look around) failed", Status: CallErr, Run: "r1"}},
 		},
 		{
 			name: "a workflow that finished with a failed agent", tail: agent.Attached(`agent-report run="w1" agent="workflow" status="warn" description="audit"`, "3 of 4 angles came back"),
@@ -262,7 +262,7 @@ not a report
 		{name: "a plugin send with nothing in it", tail: agent.Attached("plugin:demo", ""), want: nil},
 		{
 			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
-			want: []notice{{Text: "Agent r1 (explore): kept going"}},
+			want: []notice{{Text: "Agent r1 (explore): kept going", Run: "r1"}},
 		},
 		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []notice{{Text: "Loop run 1: check a"}}},
 	} {
@@ -285,7 +285,7 @@ func TestMixedMessageRows(t *testing.T) {
 	h.agents.steering = []string{"look at this" + markup}
 	h.agents.mu.Unlock()
 
-	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (look around) finished", Notice: true}}
+	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (look around) finished", Notice: true, Run: "r1"}}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("rows = %+v, want %+v", st.Steering, want)
 	}

@@ -907,6 +907,64 @@ func TestGoldenAgentStream(t *testing.T) {
 	}
 }
 
+// TestQueuedFold: a burst of queued updates keeps its last rows and one fold
+// row for the older ones, however many arrive, a click on the fold row opens
+// the burst in place, and the user's own queued lines never fold.
+func TestQueuedFold(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.AppendMessage("user", "go on")
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	update := func(i int) {
+		src := fmt.Sprintf("\n<agent-update run=\"a%d\" agent=\"explore\">\nupdate %d\n</agent-update>\n</attached-files>", i, i)
+		if err := host.AgentSend(agent.AttachMarker + src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := host.AgentSend("a typed line"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 6; i++ {
+		update(i)
+	}
+	app.AgentStream()
+	rows := func() (fold, notes, typed int) {
+		for _, r := range chatRows(t, app, 78) {
+			switch {
+			case strings.Contains(r, "earlier") || strings.Contains(r, "show the rest"):
+				fold++
+			case strings.Contains(r, " queued Agent a"):
+				notes++
+			case strings.Contains(r, " queued a typed line"):
+				typed++
+			}
+		}
+		return fold, notes, typed
+	}
+	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
+		t.Fatalf("fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
+	}
+	// a seventh update rewrites the fold row's count and adds no row
+	update(7)
+	app.AgentStream()
+	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
+		t.Fatalf("after a seventh update fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
+	}
+	// the fold row opens the burst in place
+	app.renderSync(t)
+	x, y := findCell(t, app, "… 4 earlier")
+	clickAt(app, x+2, y)
+	if fold, notes, typed := rows(); fold != 1 || notes != 7 || typed != 1 {
+		t.Fatalf("opened fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
+	}
+	// and closes it again
+	app.renderSync(t)
+	x, y = findCell(t, app, "… show the rest")
+	clickAt(app, x+2, y)
+	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
+		t.Fatalf("closed fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
+	}
+}
+
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s and an agent view takes it as back; ctrl+c interrupts at once, clears a
 // draft into the history, and on an empty composer arms quit. A held key

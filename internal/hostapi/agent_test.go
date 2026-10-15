@@ -528,9 +528,9 @@ func TestSteeringQueue(t *testing.T) {
 	scope = claim()
 	send(report("x"), "d", report("y"))
 	want := []Queued{
-		{Text: "Background agent x (look around) finished", Notice: true},
+		{Text: "Background agent x (look around) finished", Notice: true, Run: "x"},
 		{Text: "d"},
-		{Text: "Background agent y (look around) finished", Notice: true},
+		{Text: "Background agent y (look around) finished", Notice: true, Run: "y"},
 	}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("queued rows = %+v, want %+v", st.Steering, want)

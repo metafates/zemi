@@ -773,10 +773,16 @@ func (h *Host) updateMessage(pad, id, agentName, text string) string {
 // "workflow" or "workflow:<saved name>", and its description names it, since
 // runs of one script differ by no name.
 func reportHead(id, agent, status, description string) string {
-	if agent == "workflow" || strings.HasPrefix(agent, "workflow:") {
+	if workflowAgent(agent) {
 		return fmt.Sprintf("Workflow %s (%s) %s", id, clipRunes(sanitize.Line(description), 60), status)
 	}
 	return fmt.Sprintf("Background agent %s (%s) %s", id, clipRunes(sanitize.Line(cmp.Or(description, agent)), 60), status)
+}
+
+// workflowAgent reports whether a report's agent attribute names a workflow,
+// whose id is a flow's, not a run the agents view can open.
+func workflowAgent(agent string) bool {
+	return agent == "workflow" || strings.HasPrefix(agent, "workflow:")
 }
 
 // reportMessage is the user message a report reaches the model as. The whole
@@ -859,12 +865,14 @@ func (h *Host) notifyReports(queued []string) {
 }
 
 // notice is a notice row built from the message behind agent.AttachMarker:
-// the line the user reads and the status of the run it names, so a failed
-// report's row carries its failure. The Status is empty for a plugin's send,
-// a loop's run or a running agent's line, which draw the plain note mark.
+// the line the user reads, the status of the run it names, so a failed
+// report's row carries its failure, and that run's id, so the chat's row
+// opens its transcript. The Status is empty for a plugin's send, a loop's run
+// or a running agent's line, which draw the plain note mark.
 type notice struct {
 	Text   string
 	Status CallStatus
+	Run    string
 }
 
 // reportStatus is a report's status word as its row's mark: a failed run
@@ -888,7 +896,11 @@ func reportHeads(tail string) []notice {
 	var heads []notice
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
 		desc, _ := strconv.Unquote(m[4])
-		heads = append(heads, notice{Text: reportHead(m[1], m[2], m[3], desc), Status: reportStatus(m[3])})
+		run := ""
+		if !workflowAgent(m[2]) {
+			run = m[1]
+		}
+		heads = append(heads, notice{Text: reportHead(m[1], m[2], m[3], desc), Status: reportStatus(m[3]), Run: run})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[2]); line != "" {
@@ -902,7 +914,7 @@ func reportHeads(tail string) []notice {
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[3]); line != "" {
-			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200)})
+			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200), Run: m[1]})
 		}
 	}
 	if strings.Contains(tail, planNudgeText) {

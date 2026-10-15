@@ -47,6 +47,9 @@ local unfolded = {}
 ---@type table<integer, true>
 local whole = {}
 local RAIL_KEEP = 6
+-- the queued burst of notices drawn whole: its older rows sit behind one
+-- fold row until clicked, and go back behind it when the queue empties
+local queued_open = nil
 -- The air a rail row keeps after the text it cuts, so an ellipsis reads as the
 -- row's own and never runs into the window's edge; a row's right-aligned tail
 -- keeps the measure's edge instead
@@ -232,13 +235,15 @@ local function builder(ctx, width)
 
 	-- A subagent's or a plugin's message waiting for the turn's next step
 	-- boundary: the notice row it becomes when the model reads it, tagged
-	-- while it waits.
+	-- while it waits. A row naming a run opens its transcript.
 	---@param text string
-	function B.queued(text)
+	---@param run string?
+	function B.queued(text, run)
+		local click = (run or "") ~= "" and "agent:" .. run or nil
 		B.lines[#B.lines + 1] = {
-			mark("note"),
-			{ text = " queued ", hl = "Queued", copy = false },
-			{ text = text, hl = "Dim" },
+			mark("note", click),
+			{ text = " queued ", hl = "Queued", copy = false, click = click },
+			{ text = text, hl = "Dim", click = click },
 		}
 	end
 
@@ -682,6 +687,12 @@ function M.click(ev)
 		assert(zemi.command.run("workflows", "view " .. flow))
 	else
 		local kind, id = ev.id:match("^(%a+):(-?%d+)$")
+		if kind == "moreq" then
+			-- the queued burst's fold row: it holds no transcript rows, and the
+			-- queue is one block, so one state serves every render of it
+			queued_open = not queued_open or nil
+			return
+		end
 		local n = tonumber(id)
 		if not n then return end
 		---@type integer?
@@ -740,7 +751,7 @@ zemi.ui.widget.add({
 		-- for whichever run it shows: that run is the identity instead
 		local ident = ctx.view and ctx.view.id or epoch
 		if ident ~= opened_in then
-			expanded, steps, unrolled, unfolded, whole, opened_in = {}, {}, {}, {}, {}, ident
+			expanded, steps, unrolled, unfolded, whole, queued_open, opened_in = {}, {}, {}, {}, {}, nil, ident
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
@@ -992,6 +1003,7 @@ zemi.ui.widget.add({
 		-- rail after the rows of it already settled: the thinking, the calls,
 		-- the reply.
 		local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
+		if #queued == 0 then queued_open = nil end
 		if ag.active or #tools > 0 or text ~= "" or #queued > 0 then
 			-- the thinking shows while the model thinks: a reasoning block of its own
 			-- is open, so a thought that ended does not go on spinning over the
@@ -1011,16 +1023,42 @@ zemi.ui.widget.add({
 			end
 			-- what waits for the turn's next step boundary: the user's own words
 			-- as typed, and a subagent's message as the head line the model
-			-- reads it by, apart from the agent's rows above. Waiting notices that
-			-- arrive together draw as one block, as a settled burst does.
-			local note = false
+			-- reads it by, apart from the agent's rows above. Waiting notices
+			-- that arrive together draw as one block, as a settled burst does,
+			-- a long one behind one row a click opens; the user's own words
+			-- never fold.
+			local notes = 0
 			for _, q in ipairs(queued) do
-				if not (note and q.notice) then B.gap(q.notice and "note" or "queued") end
-				note = q.notice or false
+				if q.notice then notes = notes + 1 end
+			end
+			local fold = notes - NOTICES_KEEP
+			local seen, note = 0, false
+			for _, q in ipairs(queued) do
 				if q.notice then
-					B.queued(q.text)
+					seen = seen + 1
+					-- the fold row stands where the oldest folded notice was,
+					-- and stays to close what a click opened
+					if seen == 1 and fold > 0 then
+						if not note then B.gap("note") end
+						note = true
+						B.lines[#B.lines + 1] = {
+							{ text = "  ", copy = false, hover = false },
+							{
+								text = queued_open and "… show the rest" or "… " .. fold .. " earlier",
+								hl = "Dim",
+								click = "moreq:0",
+							},
+						}
+					end
+					if seen > fold or queued_open then
+						if not note then B.gap("note") end
+						note = true
+						B.queued(q.text, q.run)
+					end
 				else
+					B.gap("queued")
 					B.user(q.text, "queued")
+					note = false
 				end
 			end
 		end
