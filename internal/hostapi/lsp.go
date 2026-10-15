@@ -106,7 +106,7 @@ const (
 type lspReg struct {
 	mu       sync.Mutex
 	scanMu   sync.Mutex        // one scan at a time, in order
-	scan     map[string]lspSig // last git status listing by path
+	scan     map[string]lspSig // last listing by path
 	scanned  bool              // the baseline exists
 	dirty    atomic.Bool       // something other than zemi's file tools ran
 	head     string            // HEAD at the last listing; its diff names what a checkout swapped
@@ -356,7 +356,7 @@ var lspQuietTool = map[string]bool{
 // and miss the writes that follow.
 func (h *Host) lspDirty() { h.lsp.dirty.Store(true) }
 
-// lspSig is what a scan remembers about a file git listed.
+// lspSig is what a scan remembers about a file the last listing held.
 type lspSig struct {
 	mtime     time.Time
 	size      int64
@@ -398,32 +398,42 @@ func (h *Host) lspSync(force bool) {
 		}
 	}
 	h.lsp.mu.Unlock()
-	root, head, repo := h.Dirs.RepoRoot(), "", false
-	now := map[string]lspSig{}
-	if root != "" {
-		if out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames"); err == nil {
-			repo = true
-			for entry := range strings.SplitSeq(out, "\x00") {
-				if len(entry) < 4 {
-					continue
-				}
-				path := filepath.Join(root, entry[3:])
-				sig := lspSig{gone: strings.ContainsRune(entry[:2], 'D'), untracked: entry[:2] == "??"}
-				if fi, err := os.Stat(path); err == nil {
-					sig.mtime, sig.size = fi.ModTime(), fi.Size()
-				} else {
-					sig.gone = true
-				}
-				now[path] = sig
-			}
-			// the commit the listing was taken at: when it moves, the two
-			// commits' diff names the files it swapped
-			if sha, err := h.git(root, "rev-parse", "HEAD"); err == nil {
-				head = strings.TrimSpace(sha)
-			}
+	root, head := h.Dirs.RepoRoot(), ""
+	// a repository is the root with a .git beside it, the signal RepoRoot
+	// itself uses; the zemiLua trees have none, so a walk stands in there
+	repo := root != ""
+	if repo {
+		if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+			repo = false
 		}
 	}
-	if !repo {
+	now := map[string]lspSig{}
+	if repo {
+		out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames")
+		if err != nil {
+			// a repository whose git failed: storing nothing here would read,
+			// on the next sync, as every listed file restored
+			return
+		}
+		for entry := range strings.SplitSeq(out, "\x00") {
+			if len(entry) < 4 {
+				continue
+			}
+			path := filepath.Join(root, entry[3:])
+			sig := lspSig{gone: strings.ContainsRune(entry[:2], 'D'), untracked: entry[:2] == "??"}
+			if fi, err := os.Stat(path); err == nil {
+				sig.mtime, sig.size = fi.ModTime(), fi.Size()
+			} else {
+				sig.gone = true
+			}
+			now[path] = sig
+		}
+		// the commit the listing was taken at: when it moves, the two
+		// commits' diff names the files it swapped
+		if sha, err := h.git(root, "rev-parse", "HEAD"); err == nil {
+			head = strings.TrimSpace(sha)
+		}
+	} else {
 		now = lspWalk(trees)
 	}
 	prev, last := h.lsp.scan, h.lsp.head
@@ -499,11 +509,12 @@ const lspWalkMax = 2048
 func lspWalk(roots []string) map[string]lspSig {
 	now := map[string]lspSig{}
 	for _, root := range roots {
+		n := 0
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			switch {
 			case err != nil:
 				return nil // a tree may vanish mid-walk
-			case len(now) >= lspWalkMax:
+			case n >= lspWalkMax:
 				return fs.SkipAll
 			case d.IsDir():
 				if d.Name() == ".git" {
@@ -513,6 +524,7 @@ func lspWalk(roots []string) map[string]lspSig {
 			}
 			if fi, err := d.Info(); err == nil {
 				now[path] = lspSig{mtime: fi.ModTime(), size: fi.Size()}
+				n++
 			}
 			return nil
 		})
