@@ -78,10 +78,15 @@ func netGate(p *Pipeline, u *url.URL) error {
 // fetchMax is how much of a body fetch reads.
 const fetchMax = 1 << 20
 
-func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// fetchArgs is the fetch tool's input and its schema source.
+type fetchArgs struct {
+	URL string `json:"url"`
+}
+
+func runFetch(ctx context.Context, p *Pipeline, in fetchArgs) (fantasy.ToolResponse, error) {
 	// the tool gate already checked this URL; a second check here would ask
 	// the user again
-	raw := str(input["url"])
+	raw := in.URL
 	if _, err := ParseNetURL(raw); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

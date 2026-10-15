@@ -74,7 +74,8 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	for _, bad := range []struct{ in, want string }{
 		{`{"todos":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
 		{`{"todos":[{"content":"x","status":"pending"},{"content":"x","status":"nope"}]}`, "todo 2: status must be"},
-		{`{"todos":["not-an-object"]}`, "todo 1: not an object"},
+		// a non-object item never reaches the run: the typed decode refuses it
+		{`{"todos":["not-an-object"]}`, `invalid tool input: json: cannot unmarshal`},
 	} {
 		resp = call(t, todos, bad.in)
 		if !resp.IsError || !strings.HasPrefix(resp.Content, bad.want) {

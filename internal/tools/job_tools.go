@@ -283,11 +283,17 @@ func (m *Jobs) Kill(id string) error {
 	return nil
 }
 
-func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// jobStartArgs is the job_start tool's input and its schema source.
+type jobStartArgs struct {
+	About   string `json:"about,omitempty" desc:"what the process is in 3-6 words, shown to the user, e.g. Dev server."`
+	Command string `json:"command"`
+}
+
+func runJobStart(ctx context.Context, p *Pipeline, in jobStartArgs) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
-	line := str(input["command"])
+	line := in.Command
 	id, err := p.Jobs.Start(workdir(), line, p.cmdEnv())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -295,19 +301,25 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	return fantasy.NewTextResponse(fmt.Sprintf("started %s (%s)", id, line)), nil
 }
 
-func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// jobReadArgs is the job_read tool's input and its schema source.
+type jobReadArgs struct {
+	ID     string `json:"id"`
+	WaitMS int    `json:"wait_ms,omitempty" desc:"wait until the job exits, or goes quiet for 2s after printing, at most this long (max 600000, default 0)"`
+}
+
+func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
-	j, err := p.Jobs.Get(str(input["id"]))
+	j, err := p.Jobs.Get(in.ID)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	// wait_ms blocks until the exit or until new output goes quiet, so a
 	// chatty build costs one model step, not one per burst; the turn's
 	// cancel still wins
-	if v, ok := input["wait_ms"].(float64); ok && v > 0 {
-		deadline := time.After(time.Duration(min(v, 600_000)) * time.Millisecond)
+	if in.WaitMS > 0 {
+		deadline := time.After(time.Duration(min(in.WaitMS, 600_000)) * time.Millisecond)
 		tick := time.NewTicker(250 * time.Millisecond)
 		defer tick.Stop()
 		seen, moved := j.unread(), time.Now()
@@ -362,7 +374,10 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-func runJobList(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// jobListArgs is the job_list tool's input and its schema source.
+type jobListArgs struct{}
+
+func runJobList(ctx context.Context, p *Pipeline, _ jobListArgs) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
@@ -377,11 +392,16 @@ func runJobList(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-func runJobKill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// jobKillArgs is the job_kill tool's input and its schema source.
+type jobKillArgs struct {
+	ID string `json:"id"`
+}
+
+func runJobKill(ctx context.Context, p *Pipeline, in jobKillArgs) (fantasy.ToolResponse, error) {
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
-	id := str(input["id"])
+	id := in.ID
 	if err := p.Jobs.Kill(id); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

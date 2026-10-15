@@ -77,17 +77,25 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	}
 }
 
+// shellArgs is the shell tool's input and its schema source.
+type shellArgs struct {
+	// "about", not "description": a schema's properties reach the model
+	// sorted by name, and this one has to stream before the command
+	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."`
+	Command   string `json:"command"`
+	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
+}
+
 // runShell executes the command in the session directory with a timeout
 // (default 60s, capped at 10min). Every call is a fresh process.
-func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	cmd := str(input["command"])
+func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolResponse, error) {
+	cmd := in.Command
 	if strings.TrimSpace(cmd) == "" {
 		return fantasy.NewTextErrorResponse("empty command"), nil
 	}
 	timeout := 60 * time.Second
-	if v, ok := input["timeout_ms"].(float64); ok && v > 0 {
-		// capped as a float: a huge value would overflow the Duration
-		timeout = time.Duration(min(v, 600_000)) * time.Millisecond
+	if in.TimeoutMS > 0 {
+		timeout = time.Duration(min(in.TimeoutMS, 600_000)) * time.Millisecond
 	}
 	// its own session and process group: cancelling or the timeout stops
 	// pipelines and backgrounded children too, and nothing reads the TUI's tty.
@@ -386,11 +394,18 @@ const (
 	editMaxBytes   = 10 << 20
 )
 
+// readArgs is the read tool's input and its schema source.
+type readArgs struct {
+	Path   string `json:"path" desc:"relative to the working directory, or absolute"`
+	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
+	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
+}
+
 // runRead reads a file with optional 1-based line offset and limit. A page
 // stops at readMaxLines or readMaxBytes and names the offset to continue
 // from. It streams: the peak cost is the page, not the file, so a huge log
 // pages like any other file instead of ending the process.
-func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolResponse, error) {
 	path := p.Path.String()
 	f, fi, err := OpenRegular(p.Path)
 	switch {
@@ -428,12 +443,12 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(rel + " is a binary file"), nil
 	}
 	start := 0
-	if v, ok := input["offset"].(float64); ok && v > 1 {
-		start = int(v) - 1
+	if in.Offset > 1 {
+		start = in.Offset - 1
 	}
 	limit := readMaxLines
-	if v, ok := input["limit"].(float64); ok && v > 0 {
-		limit = min(int(v), limit)
+	if in.Limit > 0 {
+		limit = min(in.Limit, limit)
 	}
 	var b strings.Builder
 	n, kept := 0, 0
@@ -719,10 +734,16 @@ func turn(ctx context.Context, id string) func() {
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
 
+// writeArgs is the write tool's input and its schema source.
+type writeArgs struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
 // runWrite creates or overwrites a file (parents created).
-func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+func runWrite(ctx context.Context, p *Pipeline, in writeArgs) (fantasy.ToolResponse, error) {
 	path := p.Path.String()
-	content := str(input["content"])
+	content := in.Content
 	defer lockFile(path)()
 	if fi, err := os.Stat(path); err == nil {
 		if msg := p.stale(path, fi, false); msg != "" {
@@ -766,9 +787,17 @@ func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) e
 	return WriteFile(path, data, mode)
 }
 
+// editArgs is the edit tool's input and its schema source.
+type editArgs struct {
+	Path       string `json:"path"`
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll bool   `json:"replace_all,omitempty"`
+}
+
 // runEdit applies an edit to a file under its lock. Matching runs on LF
 // text and a CRLF file is written back with CRLF.
-func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+func runEdit(ctx context.Context, p *Pipeline, in editArgs) (fantasy.ToolResponse, error) {
 	path := p.Path.String()
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
@@ -783,7 +812,7 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	rel := workRel(path)
-	out, n, tolerant, msg := editText(lf(string(data)), in, rel)
+	out, n, tolerant, msg := editText(lf(string(data)), in.OldString, in.NewString, in.ReplaceAll, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
@@ -901,9 +930,8 @@ type region struct{ at, count int }
 
 // editText applies an edit's old_string and new_string to LF text; msg
 // explains why it does not apply, and then out is to be ignored.
-func editText(src string, in map[string]any, where string) (out string, n int, tolerant region, msg string) {
-	old, new := lf(str(in["old_string"])), lf(str(in["new_string"]))
-	all, _ := in["replace_all"].(bool)
+func editText(src, old, new string, all bool, where string) (out string, n int, tolerant region, msg string) {
+	old, new = lf(old), lf(new)
 	out, n = applyEdit(src, old, new, all)
 	if n == 0 && old != "" {
 		var at int
@@ -1059,10 +1087,16 @@ const walkedNote = "(no git file list here: .gitignore not read, hidden and buil
 // for seconds; the biggest repository measured, 26k files, lists in 0.3 s cold.
 var listWait = 2 * time.Second
 
+// globArgs is the glob tool's input and its schema source.
+type globArgs struct {
+	Pattern string `json:"pattern" desc:"glob such as *.go, src/**/*.ts or *.{ts,tsx}"`
+	Path    string `json:"path,omitempty" desc:"directory to search under; default the working directory"`
+}
+
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
-func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	pattern, root := strings.TrimPrefix(str(input["pattern"]), "./"), searchRoot(input)
+func runGlob(ctx context.Context, p *Pipeline, in globArgs) (fantasy.ToolResponse, error) {
+	pattern, root := strings.TrimPrefix(in.Pattern, "./"), cmp.Or(in.Path, ".")
 	// the gate saw only root, so an absolute pattern may not reach past it
 	if filepath.IsAbs(pattern) {
 		abs, _ := filepath.Abs(root)
@@ -1114,11 +1148,18 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
+// grepArgs is the grep tool's input and its schema source.
+type grepArgs struct {
+	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line"`
+	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
+	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`
+}
+
 // runGrep searches file contents under root, optionally only in files
 // matching the include glob. A pattern that is no regexp (an unbalanced
 // paren) is searched as text.
-func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
+func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolResponse, error) {
+	pattern, root, include := in.Pattern, cmp.Or(in.Path, "."), in.Include
 	re, err := regexp.Compile(pattern)
 	literal := err != nil
 	if literal {

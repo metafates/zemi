@@ -43,8 +43,8 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 func TestShellTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
 	p := &Pipeline{Jobs: NewJobs()}
-	res, _ := runShell(t.Context(), p, map[string]any{
-		"command": "echo started; sleep 30", "timeout_ms": float64(400),
+	res, _ := runShell(t.Context(), p, shellArgs{
+		Command: "echo started; sleep 30", TimeoutMS: 400,
 	})
 	if res.IsError || !strings.Contains(res.Content, JobHandoff+"job-1") {
 		t.Fatalf("timeout must hand off to a job: %+v", res)
@@ -52,10 +52,10 @@ func TestShellTimeoutBecomesJob(t *testing.T) {
 	if !strings.Contains(res.Content, "started") {
 		t.Fatalf("output from before the timeout must survive: %q", res.Content)
 	}
-	if out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"}); !strings.Contains(out.Content, "running") {
+	if out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"}); !strings.Contains(out.Content, "running") {
 		t.Fatalf("the job must still be running: %q", out.Content)
 	}
-	runJobKill(t.Context(), p, map[string]any{"id": "job-1"})
+	runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"})
 	j, _ := p.Jobs.Get("job-1")
 	select {
 	case <-j.done:
@@ -68,7 +68,7 @@ func TestShellTimeoutBecomesJob(t *testing.T) {
 // pipe exited 0; the child is stopped and named, not reported as a failure.
 func TestShellOrphanIsNotAnError(t *testing.T) {
 	t.Parallel()
-	res, _ := runShell(t.Context(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
+	res, _ := runShell(t.Context(), &Pipeline{}, shellArgs{Command: "sleep 30 &\necho started"})
 	if res.IsError || !strings.HasPrefix(res.Content, "started\na background process it started was stopped") {
 		t.Fatalf("orphan: %+v", res)
 	}
@@ -78,13 +78,13 @@ func TestShellOrphanIsNotAnError(t *testing.T) {
 // while it runs, and a shell line works without args.
 func TestJobStreamsOutput(t *testing.T) {
 	p := &Pipeline{Jobs: NewJobs()}
-	res, _ := runJobStart(t.Context(), p, map[string]any{"command": "echo ready && sleep 30"})
+	res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "echo ready && sleep 30"})
 	if res.IsError {
 		t.Fatal(res.Content)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"})
+		out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"})
 		if strings.Contains(out.Content, "ready") && strings.Contains(out.Content, "running") {
 			break
 		}
@@ -93,10 +93,10 @@ func TestJobStreamsOutput(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"}); strings.Contains(out.Content, "ready") {
+	if out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"}); strings.Contains(out.Content, "ready") {
 		t.Fatalf("a second read must not repeat delivered output: %q", out.Content)
 	}
-	runJobKill(t.Context(), p, map[string]any{"id": "job-1"})
+	runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"})
 	j, _ := p.Jobs.Get("job-1")
 	select {
 	case <-j.done:
@@ -110,12 +110,12 @@ func TestJobStreamsOutput(t *testing.T) {
 func TestJobReadSpillsTheCut(t *testing.T) {
 	dir := t.TempDir()
 	p := &Pipeline{Jobs: NewJobs(), Pad: dir}
-	if res, _ := runJobStart(t.Context(), p, map[string]any{"command": "seq 1 4000"}); res.IsError {
+	if res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "seq 1 4000"}); res.IsError {
 		t.Fatal(res.Content)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		out, _ := runJobRead(t.Context(), p, map[string]any{"id": "job-1"})
+		out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"})
 		if _, file, ok := strings.Cut(out.Content, "(output saved to "); ok {
 			file, _, _ = strings.Cut(file, ")")
 			b, err := os.ReadFile(file)
@@ -147,13 +147,13 @@ func TestJobReadOfAFailedJobIsAnError(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &Pipeline{Jobs: NewJobs(), Pad: t.TempDir()}
-			start, _ := runJobStart(t.Context(), p, map[string]any{"command": c.command})
+			start, _ := runJobStart(t.Context(), p, jobStartArgs{Command: c.command})
 			if start.IsError {
 				t.Fatal(start.Content)
 			}
 			id := JobID(ToolJobStart, start.Content)
 			if c.killed {
-				if res, _ := runJobKill(t.Context(), p, map[string]any{"id": id}); res.IsError {
+				if res, _ := runJobKill(t.Context(), p, jobKillArgs{ID: id}); res.IsError {
 					t.Fatal(res.Content)
 				}
 			}
@@ -162,7 +162,7 @@ func TestJobReadOfAFailedJobIsAnError(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitJobDone(t, j)
-			res, _ := runJobRead(t.Context(), p, map[string]any{"id": id})
+			res, _ := runJobRead(t.Context(), p, jobReadArgs{ID: id})
 			if res.IsError != c.wantErr {
 				t.Fatalf("a read of %q is an error %v, want %v: %q", c.command, res.IsError, c.wantErr, res.Content)
 			}
@@ -204,12 +204,12 @@ func TestShellStops(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		name   string
-		input  map[string]any
+		input  shellArgs
 		cancel bool
 		want   string
 	}{
-		{"interrupt", map[string]any{"command": "sleep 30 | cat"}, true, "interrupted"},
-		{"timeout", map[string]any{"command": "sleep 30 & wait", "timeout_ms": float64(300)}, false, "timed out"},
+		{"interrupt", shellArgs{Command: "sleep 30 | cat"}, true, "interrupted"},
+		{"timeout", shellArgs{Command: "sleep 30 & wait", TimeoutMS: 300}, false, "timed out"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

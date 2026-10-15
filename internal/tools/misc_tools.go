@@ -22,8 +22,20 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	out, cancelled, ok, err := ParseTodos(input)
+// todosArgs is the todos tool's input and its schema source.
+type todosArgs struct {
+	Todos []todoItem `json:"todos,omitempty"`
+}
+
+// todoItem is one list entry as the todos tool reads it.
+type todoItem struct {
+	Content    string           `json:"content"`
+	Status     store.TodoStatus `json:"status"`
+	ActiveForm string           `json:"active_form,omitempty" desc:"on the in_progress item only: present tense shown while it runs, e.g. Running tests"`
+}
+
+func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolResponse, error) {
+	out, cancelled, ok, err := parseTodos(in.Todos)
 	// a run whose host wired no todo hook has no list to write or read
 	if p.TodosRead == nil || ok && p.TodosWrite == nil {
 		return fantasy.NewTextErrorResponse("there is no todo list in this run: keep the steps in your reply instead"), nil
@@ -66,17 +78,12 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	return fantasy.NewTextResponse(TodoList(rows)), nil
 }
 
-// ParseTodos reads the list a todos call sets, dropping the cancelled items it
+// parseTodos reads the list a todos call sets, dropping the cancelled items it
 // counts; ok is false for a call that only reads the list.
-func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool, err error) {
-	list, ok := input["todos"].([]any)
-	for i, v := range list {
-		m, isObj := v.(map[string]any)
-		if !isObj {
-			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
-		}
-		content := str(m["content"])
-		status := store.TodoStatus(str(m["status"]))
+func parseTodos(items []todoItem) (out []store.Todo, cancelled int, ok bool, err error) {
+	ok = items != nil
+	for i, td := range items {
+		status := td.Status
 		// the names other harnesses taught models
 		if status == "completed" {
 			status = store.TodoDone
@@ -85,15 +92,34 @@ func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool,
 			cancelled++
 			continue
 		}
-		if content == "" {
+		if td.Content == "" {
 			return nil, 0, true, fmt.Errorf("todo %d: content is required", i+1)
 		}
 		if !slices.Contains(store.TodoStatuses, status) {
 			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
 		}
-		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"])})
+		out = append(out, store.Todo{Content: td.Content, Status: status, ActiveForm: td.ActiveForm})
 	}
 	return out, cancelled, ok, nil
+}
+
+// ParseTodos reads a todos call's input the run does (rewind replays it).
+func ParseTodos(in map[string]any) ([]store.Todo, int, bool, error) {
+	list, ok := in["todos"].([]any)
+	items := make([]todoItem, 0, len(list))
+	for i, v := range list {
+		m, isObj := v.(map[string]any)
+		if !isObj {
+			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
+		}
+		var td todoItem
+		if err := remarshal(m, &td); err != nil {
+			return nil, 0, true, fmt.Errorf("todo %d: %v", i+1, err)
+		}
+		items = append(items, td)
+	}
+	out, cancelled, _, err := parseTodos(items)
+	return out, cancelled, ok, err
 }
 
 // TodoList is the list as the todos tool reports it.
@@ -141,8 +167,13 @@ func PlanOutcome(output string) (verdict, path string) {
 	return "approved", strings.TrimSuffix(path, ".")
 }
 
-func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	plan := strings.TrimSpace(str(input["plan"]))
+// planArgs is the plan tool's input and its schema source.
+type planArgs struct {
+	Plan string `json:"plan" desc:"the plan in markdown"`
+}
+
+func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolResponse, error) {
+	plan := strings.TrimSpace(in.Plan)
 	if plan == "" {
 		return fantasy.NewTextErrorResponse("plan is required"), nil
 	}
@@ -240,48 +271,66 @@ func (a Answer) Open() bool { return len(a.Picked) == 0 && a.Typed == "" }
 
 const maxQuestions = 4
 
-func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	raw, _ := input["questions"].([]any)
+// questionArgs is the question tool's input and its schema source.
+type questionArgs struct {
+	Questions []questionAsk `json:"questions"`
+}
+
+// questionAsk is one structured ask; the omitted type reads from the shape:
+// options to pick, no options to type.
+type questionAsk struct {
+	Type        QuestionType     `json:"type,omitempty" desc:"multi_choice lets the user mark several; free_text is typed; defaults to single_choice with options, free_text without"`
+	Question    string           `json:"question" desc:"the complete question, ending with a question mark"`
+	Description string           `json:"description,omitempty" desc:"markdown shown under the question"`
+	Header      string           `json:"header,omitempty" desc:"a 1-3 word label, e.g. Auth method"`
+	Options     []questionOption `json:"options,omitempty" desc:"required for single_choice and multi_choice"`
+}
+
+// questionOption is one answer choice.
+type questionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.ToolResponse, error) {
+	raw := in.Questions
 	if len(raw) == 0 || len(raw) > maxQuestions {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("questions must hold 1 to %d questions", maxQuestions)), nil
 	}
 	qs := make([]Question, 0, len(raw))
-	for i, v := range raw {
-		m, _ := v.(map[string]any)
-		if str(m["question"]) == "" {
+	for i, q := range raw {
+		if q.Question == "" {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: the question text is required", i+1)), nil
 		}
-		q := Question{
-			Type:        QuestionType(str(m["type"])),
-			Question:    str(m["question"]),
-			Description: str(m["description"]),
-			Header:      str(m["header"]),
+		ask := Question{
+			Type:        q.Type,
+			Question:    q.Question,
+			Description: q.Description,
+			Header:      q.Header,
 		}
 		// the omitted type reads from the shape: options to pick, no options to type
-		if q.Type == "" {
-			if _, has := m["options"].([]any); has {
-				q.Type = TypeSingle
+		if ask.Type == "" {
+			if q.Options != nil {
+				ask.Type = TypeSingle
 			} else {
-				q.Type = TypeFreeText
+				ask.Type = TypeFreeText
 			}
 		}
-		if !slices.Contains(questionTypes, q.Type) {
+		if !slices.Contains(questionTypes, ask.Type) {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be single_choice, multi_choice or free_text", i+1)), nil
 		}
-		if q.Type == TypeFreeText {
-			qs = append(qs, q)
+		if ask.Type == TypeFreeText {
+			qs = append(qs, ask)
 			continue
 		}
-		opts, _ := m["options"].([]any)
-		for j, o := range opts {
-			om, _ := o.(map[string]any)
-			if str(om["label"]) == "" {
+		for j, o := range q.Options {
+			if o.Label == "" {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d, option %d: label is required", i+1, j+1)), nil
 			}
-			label, rec := strings.CutSuffix(str(om["label"]), " (Recommended)")
-			q.Options = append(q.Options, QuestionOption{Label: label, Description: str(om["description"]), Recommended: rec})
+			label, rec := strings.CutSuffix(o.Label, " (Recommended)")
+			ask.Options = append(ask.Options, QuestionOption{Label: label, Description: o.Description, Recommended: rec})
 		}
-		qs = append(qs, q)
+		qs = append(qs, ask)
 	}
 	if p.Question == nil {
 		return fantasy.NewTextResponse("No user is available to answer. Take the option you would recommend, say which assumption you made, and continue."), nil
@@ -390,11 +439,16 @@ func SkillText(s SkillInfo) (string, error) {
 	return "Skill directory: " + s.Path + "\n\n" + body, nil
 }
 
-func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+// skillArgs is the skill tool's input and its schema source.
+type skillArgs struct {
+	Name string `json:"name"`
+}
+
+func runSkill(ctx context.Context, p *Pipeline, in skillArgs) (fantasy.ToolResponse, error) {
 	if p.Skills == nil {
 		return fantasy.NewTextErrorResponse("skills unavailable"), nil
 	}
-	name := str(input["name"])
+	name := in.Name
 	var known []string
 	for _, s := range p.Skills() {
 		known = append(known, s.Name)

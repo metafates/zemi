@@ -741,15 +741,18 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 	return t
 }
 
+// diagnosticsArgs is the diagnostics tool's input and its schema source.
+type diagnosticsArgs struct {
+	Path string `json:"path"`
+}
+
 // All returns the builtin tools bound to a pipeline; nil gives their schemas.
 func All(p *Pipeline) []fantasy.AgentTool {
-	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
+	mk := func(name, desc string, parallel bool, args any,
 		subjects func(*Pipeline, map[string]any) ([]Request, error),
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error),
 	) fantasy.AgentTool {
-		if required == nil {
-			required = []string{} // nil marshals as "required": null, which strict providers refuse
-		}
+		props, required := ArgsOf(args)
 		return &tool{
 			info: fantasy.ToolInfo{
 				Name: name, Description: desc,
@@ -788,72 +791,38 @@ func All(p *Pipeline) []fantasy.AgentTool {
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
 Chain dependent steps with &&.`,
 			false,
-			map[string]any{
-				// "about", not "description": a schema's properties reach the model
-				// sorted by name, and this one has to stream before the command
-				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."},
-				"command":    map[string]any{"type": "string"},
-				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-			},
-			[]string{"command"},
+			shellArgs{},
 			shellRequests,
-			runShell),
+			typed(runShell)),
 
 		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
-			map[string]any{
-				"path":   map[string]any{"type": "string", "description": "relative to the working directory, or absolute"},
-				"offset": map[string]any{"type": "integer", "description": "1-based line to start at"},
-				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"},
-			},
-			[]string{"path"},
+			readArgs{},
 			pathReq(perm.SubjectRead, pathIn, ""),
-			runRead)),
+			typed(runRead))),
 
 		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
-			map[string]any{
-				"path":    map[string]any{"type": "string"},
-				"content": map[string]any{"type": "string"},
-			},
-			[]string{"path", "content"},
+			writeArgs{},
 			changeReq(ToolWrite),
-			runWrite))),
+			typed(runWrite)))),
 
 		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, as written and without read's line-number prefix; once the file is read a difference in whitespace alone still matches and new_string takes the file's indentation. Keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", false,
-			map[string]any{
-				"path":        map[string]any{"type": "string"},
-				"old_string":  map[string]any{"type": "string"},
-				"new_string":  map[string]any{"type": "string"},
-				"replace_all": map[string]any{"type": "boolean"},
-			},
-			[]string{"path", "old_string", "new_string"},
+			editArgs{},
 			changeReq(ToolEdit),
-			runEdit))),
+			typed(runEdit)))),
 
 		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
-			map[string]any{
-				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
-				"path":    map[string]any{"type": "string", "description": "directory to search under; default the working directory"},
-			},
-			[]string{"pattern"},
+			globArgs{},
 			pathReq(perm.SubjectRead, searchRoot, ""),
-			runGlob),
+			typed(runGlob)),
 
 		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
-			map[string]any{
-				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
-				"path":    map[string]any{"type": "string", "description": "file or directory to search; default the working directory"},
-				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
-			},
-			[]string{"pattern"},
+			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot, ""),
-			runGrep),
+			typed(runGrep)),
 
 		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation.",
 			true,
-			map[string]any{
-				"url": map[string]any{"type": "string"},
-			},
-			[]string{"url"},
+			fetchArgs{},
 			func(p *Pipeline, in map[string]any) ([]Request, error) {
 				u, err := ParseNetURL(str(in["url"]))
 				if err != nil {
@@ -862,122 +831,63 @@ Chain dependent steps with &&.`,
 				// the real host, so a redirect hop's check names what runs
 				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}, nil
 			},
-			runFetch),
+			typed(runFetch)),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. Do not repeat the list in your reply.",
 			false,
-			map[string]any{
-				"todos": map[string]any{"type": "array", "items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"content":     map[string]any{"type": "string"},
-						"status":      map[string]any{"type": "string", "enum": store.TodoStatuses},
-						"active_form": map[string]any{"type": "string", "description": "on the in_progress item only: present tense shown while it runs, e.g. Running tests"},
-					},
-					"required": []string{"content", "status"},
-				}},
-			},
+			todosArgs{},
 			nil,
-			nil,
-			runTodos),
+			typed(runTodos)),
 
 		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
 			false,
-			map[string]any{
-				"questions": map[string]any{"type": "array", "items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"type":        map[string]any{"type": "string", "enum": questionTypes, "description": "multi_choice lets the user mark several; free_text is typed; defaults to single_choice with options, free_text without"},
-						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
-						"description": map[string]any{"type": "string", "description": "markdown shown under the question"},
-						"header":      map[string]any{"type": "string", "description": "a 1-3 word label, e.g. Auth method"},
-						"options": map[string]any{"type": "array", "description": "required for single_choice and multi_choice", "items": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"label":       map[string]any{"type": "string"},
-								"description": map[string]any{"type": "string"},
-							},
-							"required": []string{"label"},
-						}},
-					},
-					"required": []string{"question"},
-				}},
-			},
-			[]string{"questions"},
+			questionArgs{},
 			nil,
-			runQuestion),
+			typed(runQuestion)),
 
 		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide.
 
 The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most.`,
 			false,
-			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
-			[]string{"plan"},
+			planArgs{},
 			nil,
-			runPlan),
+			typed(runPlan)),
 
 		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with bash -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
-			map[string]any{
-				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server."},
-				"command": map[string]any{"type": "string"},
-			},
-			[]string{"command"},
+			jobStartArgs{},
 			shellRequests,
-			runJobStart),
+			typed(runJobStart)),
 
 		mk(ToolJobRead, "Read what a background job printed since your last read of it, and whether it is still running.",
 			true,
-			map[string]any{
-				"id":      map[string]any{"type": "string"},
-				"wait_ms": map[string]any{"type": "integer", "description": "wait until the job exits, or goes quiet for 2s after printing, at most this long (max 600000, default 0)"},
-			},
-			[]string{"id"},
+			jobReadArgs{},
 			nil,
-			runJobRead),
+			typed(runJobRead)),
 
 		mk(ToolJobList, "List background jobs with their state.",
 			true,
-			map[string]any{},
+			jobListArgs{},
 			nil,
-			nil,
-			runJobList),
+			typed(runJobList)),
 
 		mk(ToolJobKill, "Stop a background job and everything it started.",
 			false,
-			map[string]any{
-				"id": map[string]any{"type": "string"},
-			},
-			[]string{"id"},
+			jobKillArgs{},
 			nil,
-			runJobKill),
+			typed(runJobKill)),
 
 		mk(ToolMemory, "Keep one durable fact for future sessions: when the user says to remember something, states a preference or corrects you, or you hit a gotcha the code does not say. One sentence under 300 characters as it holds now, naming the file, command or flag it is about (\"the user wants commits made without being asked once checks pass\", \"the goldens are regenerated by make golden\"); never an instruction, a log of this session, a secret, or what a future session re-derives in seconds from AGENTS.md or one file read. A user-scope memory needs quote; a repository procedure is a recipe. Or write a private-partition brain file: path is a freeform .md in the private brain dir, frontmatter carries description and read_if, the body is read lazily (only the catalog injects); a user-partition brain file goes through the file tools instead, and that write asks. Or promote a stored line into a brain file: promote is its id, path the .md file name in that line's brain dir, description and read_if both required frontmatter; a line you did not write, or one in the user brain, waits for approval. Or search: query matches words across both scopes, live and ledger lines, by text or id.",
 			false,
-			map[string]any{
-				"text":        map[string]any{"type": "string"},
-				"scope":       map[string]any{"type": "string", "enum": []store.Scope{store.ScopeProject, store.ScopeUser}, "description": "project (default): this repository only; user: holds in every project"},
-				"quote":       map[string]any{"type": "string", "description": "the user's exact words from this session that this memory rests on"},
-				"replaces":    map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from the ## Memory section"},
-				"path":        map[string]any{"type": "string", "description": "file mode: a freeform .md in the private brain (a bare file name lands there); promote mode: the .md file name in the promoted line's brain dir"},
-				"content":     map[string]any{"type": "string", "description": "file mode: the file's full content, 32 KiB at most"},
-				"promote":     map[string]any{"type": "string", "description": "promote mode: the memory id to move into a brain file"},
-				"description": map[string]any{"type": "string", "description": "promote mode: the catalog line's description (required, one line)"},
-				"read_if":     map[string]any{"type": "string", "description": "promote mode: when to read the file (required, one line)"},
-				"query":       map[string]any{"type": "string", "description": "search mode: words to match against memory text or id, both scopes, live and ledger; the other fields are ignored"},
-			},
-			nil,
+			MemoryCall{},
 			nil,
 			runMemory),
 
 		gated(mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
 			true,
-			map[string]any{
-				"path": map[string]any{"type": "string"},
-			},
-			[]string{"path"},
+			diagnosticsArgs{},
 			pathReq(perm.SubjectRead, pathIn, "read diagnostics"),
-			func(_ context.Context, p *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
+			typed(func(_ context.Context, p *Pipeline, _ diagnosticsArgs) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
 					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
 				}
@@ -986,35 +896,33 @@ The plan is short markdown someone could implement without guessing: the goal, w
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				return fantasy.NewTextResponse(out), nil
-			})),
+			}))),
 
-		gated(mk(ToolLSP, lspToolDesc, false, lspToolProps, []string{"action", "path"}, lspRequests, runLSP)),
+		gated(mk(ToolLSP, lspToolDesc, false, lspArgs{}, lspRequests, typed(runLSP))),
 
 		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone, and not for a skill already loaded.",
 			true,
-			map[string]any{
-				"name": map[string]any{"type": "string"},
-			},
-			[]string{"name"},
+			skillArgs{},
 			nil,
-			runSkill),
+			typed(runSkill)),
 	}
 }
 
 // MemoryCall is the memory tool's parsed input (DESIGN §10.4): text mode when
 // Path and Promote and Query are empty, file mode - a private-partition
 // brain file - on Path, promote mode on Promote, search mode on Query.
+// The json and desc tags are its schema source.
 type MemoryCall struct {
-	Scope       store.Scope
-	Text        string
-	Quote       string
-	Replaces    string
-	Path        string
-	Content     string
-	Promote     string
-	Description string
-	ReadIf      string
-	Query       string
+	Scope       store.Scope `json:"scope,omitempty" desc:"project (default): this repository only; user: holds in every project"`
+	Text        string      `json:"text,omitempty"`
+	Quote       string      `json:"quote,omitempty" desc:"the user's exact words from this session that this memory rests on"`
+	Replaces    string      `json:"replaces,omitempty" desc:"the memory to rewrite, or to drop when text is empty: its id from the ## Memory section"`
+	Path        string      `json:"path,omitempty" desc:"file mode: a freeform .md in the private brain (a bare file name lands there); promote mode: the .md file name in the promoted line's brain dir"`
+	Content     string      `json:"content,omitempty" desc:"file mode: the file's full content, 32 KiB at most"`
+	Promote     string      `json:"promote,omitempty" desc:"promote mode: the memory id to move into a brain file"`
+	Description string      `json:"description,omitempty" desc:"promote mode: the catalog line's description (required, one line)"`
+	ReadIf      string      `json:"read_if,omitempty" desc:"promote mode: when to read the file (required, one line)"`
+	Query       string      `json:"query,omitempty" desc:"search mode: words to match against memory text or id, both scopes, live and ledger; the other fields are ignored"`
 }
 
 func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
@@ -1061,8 +969,9 @@ func ChangeDiff(tool string, in map[string]any) string {
 	case ToolWrite:
 		updated = lf(str(in["content"]))
 	case ToolEdit:
+		all, _ := in["replace_all"].(bool)
 		var msg string
-		if updated, _, _, msg = editText(old, in, workRel(path)); msg != "" {
+		if updated, _, _, msg = editText(old, str(in["old_string"]), str(in["new_string"]), all, workRel(path)); msg != "" {
 			return changePreview(in)
 		}
 	default:

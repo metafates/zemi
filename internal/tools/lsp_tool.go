@@ -32,13 +32,21 @@ const lspToolDesc = `Ask the file's language server about a symbol by name. Unli
 // lspActions are what runLSP answers; the switch there reads the same words.
 var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}
 
-var lspToolProps = map[string]any{
-	"action":    map[string]any{"type": "string", "enum": lspActions},
-	"path":      map[string]any{"type": "string", "description": "a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"},
-	"symbol":    map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
-	"line":      map[string]any{"type": "integer", "description": "1-based line, when the name appears more than once"},
-	"new_name":  map[string]any{"type": "string", "description": "rename only"},
-	"direction": map[string]any{"type": "string", "enum": []string{"incoming", "outgoing"}, "description": "call_hierarchy only; who calls the symbol or what it calls, omitted = both"},
+// lspAction and lspDirection name the lsp tool's enum fields, so the
+// schema generator finds their value lists (schemaEnums in args.go).
+type (
+	lspAction    string
+	lspDirection string
+)
+
+// lspArgs is the lsp tool's input and its schema source.
+type lspArgs struct {
+	Action    lspAction    `json:"action"`
+	Path      string       `json:"path" desc:"a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"`
+	Symbol    string       `json:"symbol,omitempty" desc:"the identifier as written, or the query for workspace_symbols; not for symbols"`
+	Line      int          `json:"line,omitempty" desc:"1-based line, when the name appears more than once"`
+	NewName   string       `json:"new_name,omitempty" desc:"rename only"`
+	Direction lspDirection `json:"direction,omitempty" desc:"call_hierarchy only; who calls the symbol or what it calls, omitted = both"`
 }
 
 func lspRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
@@ -48,11 +56,11 @@ func lspRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
 	return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "lsp " + str(in["action"])}}, nil
 }
 
-func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+func runLSP(ctx context.Context, p *Pipeline, in lspArgs) (fantasy.ToolResponse, error) {
 	if p.LSP == nil {
 		return fantasy.NewTextErrorResponse("no language server support"), nil
 	}
-	action, path, symbol := str(input["action"]), str(input["path"]), str(input["symbol"])
+	action, path, symbol := string(in.Action), in.Path, in.Symbol
 	s, err := p.LSP(ctx, path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -101,8 +109,8 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	line, _ := input["line"].(float64)
-	off, lines, err := findSymbol(string(text), symbol, int(line))
+	line := in.Line
+	off, lines, err := findSymbol(string(text), symbol, line)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -151,7 +159,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			return fantasy.NewTextResponse("no call hierarchy for " + symbol + note), nil
 		}
 		dirs := []string{"incoming", "outgoing"}
-		if d := str(input["direction"]); slices.Contains(dirs, d) {
+		if d := string(in.Direction); slices.Contains(dirs, d) {
 			dirs = []string{d}
 		}
 		for _, dir := range dirs {
@@ -180,7 +188,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		}
 		return fantasy.NewTextResponse(strings.TrimSuffix(b.String(), "\n") + note), nil
 	case "rename":
-		newName := str(input["new_name"])
+		newName := in.NewName
 		if newName == "" {
 			return fantasy.NewTextErrorResponse("new_name is required"), nil
 		}

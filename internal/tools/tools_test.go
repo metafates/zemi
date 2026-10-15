@@ -692,7 +692,7 @@ func TestScratchpad(t *testing.T) {
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)
 	}
-	if res, _ := runShell(t.Context(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
+	if res, _ := runShell(t.Context(), p, shellArgs{Command: `printf %s "$TMPDIR"`}); res.Content != pad {
 		t.Errorf("a shell command's $TMPDIR is %q, want %q", res.Content, pad)
 	}
 }
@@ -732,7 +732,7 @@ func TestReadAndShellShapes(t *testing.T) {
 	p := &Pipeline{Pad: filepath.Join(dir, "pad")}
 	for _, c := range []struct {
 		name      string
-		offset    float64
+		offset    int
 		typ, want string
 	}{
 		{"i.png", 0, "image", ""},
@@ -740,29 +740,29 @@ func TestReadAndShellShapes(t *testing.T) {
 		{"t.txt", 5, "text", "past the end"},
 		{"d", 0, "text", "a/\nb.pem\nc"},
 	} {
-		res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, c.name)), map[string]any{"offset": c.offset})
+		res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, c.name)), readArgs{Offset: c.offset})
 		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {
 			t.Errorf("%s: %+v", c.name, res)
 		}
 	}
-	if res, _ := runRead(ctx, onPath(t, p, os.DevNull), nil); !strings.Contains(res.Content, "not a regular file") {
+	if res, _ := runRead(ctx, onPath(t, p, os.DevNull), readArgs{}); !strings.Contains(res.Content, "not a regular file") {
 		t.Errorf("device: %+v", res)
 	}
 	p.Images = func() bool { return false }
-	if res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, "i.png")), nil); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
+	if res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, "i.png")), readArgs{}); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
 		t.Errorf("text-only model: %+v", res)
 	}
-	if res, _ := runShell(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
+	if res, _ := runShell(ctx, p, shellArgs{Command: "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
 		t.Fatalf("merged output: %q", res.Content)
 	}
 	// just over the cap: the cut marker is longer than what it cuts
-	res, _ := runShell(ctx, p, map[string]any{"command": `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
+	res, _ := runShell(ctx, p, shellArgs{Command: `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
 	_, name, _ := strings.Cut(res.Content, "END\n(output saved to ")
 	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 10002 {
 		t.Fatalf("cut output not saved (%v): %q", err, res.Content[len(res.Content)-100:])
 	}
 	// past the 1 MB buffer the note counts what no spill file holds
-	if res, _ := runShell(ctx, p, map[string]any{"command": "seq 1 300000"}); !strings.Contains(res.Content, "more bytes in the middle were not kept") {
+	if res, _ := runShell(ctx, p, shellArgs{Command: "seq 1 300000"}); !strings.Contains(res.Content, "more bytes in the middle were not kept") {
 		t.Fatalf("buffer drop not counted: %q", res.Content[len(res.Content)-200:])
 	}
 }
@@ -865,11 +865,11 @@ func TestOutputLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
-	res, _ := runRead(ctx, onPath(t, nil, path), nil)
+	res, _ := runRead(ctx, onPath(t, nil, path), readArgs{})
 	if !strings.HasSuffix(res.Content, "... (more lines; continue with offset 2001)\n") {
 		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
 	}
-	res, _ = runRead(ctx, onPath(t, nil, path), map[string]any{"offset": float64(2001)})
+	res, _ = runRead(ctx, onPath(t, nil, path), readArgs{Offset: 2001})
 	if strings.Contains(res.Content, "more lines") || !strings.HasSuffix(res.Content, "line 2005 match\n") {
 		t.Fatalf("last page: %q", res.Content)
 	}
@@ -992,11 +992,11 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	f.Close()
 
 	p := onPath(t, &Pipeline{Seen: &sync.Map{}}, path)
-	res, _ := runRead(t.Context(), p, map[string]any{"offset": float64(100_000)})
+	res, _ := runRead(t.Context(), p, readArgs{Offset: 100_000})
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = runEdit(t.Context(), p, map[string]any{"old_string": "x", "new_string": "y"})
+	res, _ = runEdit(t.Context(), p, editArgs{OldString: "x", NewString: "y"})
 	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}
