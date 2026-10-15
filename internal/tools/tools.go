@@ -881,7 +881,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			false,
 			MemoryCall{},
 			nil,
-			runMemory),
+			typed(runMemory)),
 
 		gated(mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
 			true,
@@ -925,21 +925,9 @@ type MemoryCall struct {
 	Query       string      `json:"query,omitempty" desc:"search mode: words to match against memory text or id, both scopes, live and ledger; the other fields are ignored"`
 }
 
-func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+func runMemory(_ context.Context, p *Pipeline, call MemoryCall) (fantasy.ToolResponse, error) {
 	if p.Remember == nil {
 		return fantasy.NewTextErrorResponse("memory unavailable"), nil
-	}
-	call := MemoryCall{
-		Scope:       store.Scope(str(in["scope"])),
-		Text:        str(in["text"]),
-		Quote:       str(in["quote"]),
-		Replaces:    str(in["replaces"]),
-		Path:        str(in["path"]),
-		Content:     str(in["content"]),
-		Promote:     str(in["promote"]),
-		Description: str(in["description"]),
-		ReadIf:      str(in["read_if"]),
-		Query:       str(in["query"]),
 	}
 	if call.Scope == "" {
 		call.Scope = store.ScopeProject

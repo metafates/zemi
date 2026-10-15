@@ -32,6 +32,9 @@ const lspToolDesc = `Ask the file's language server about a symbol by name. Unli
 // lspActions are what runLSP answers; the switch there reads the same words.
 var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}
 
+// lspDirections are the call_hierarchy directions runLSP walks.
+var lspDirections = []string{"incoming", "outgoing"}
+
 // lspAction and lspDirection name the lsp tool's enum fields, so the
 // schema generator finds their value lists (schemaEnums in args.go).
 type (
@@ -158,7 +161,7 @@ func runLSP(ctx context.Context, p *Pipeline, in lspArgs) (fantasy.ToolResponse,
 		if len(prepared) == 0 {
 			return fantasy.NewTextResponse("no call hierarchy for " + symbol + note), nil
 		}
-		dirs := []string{"incoming", "outgoing"}
+		dirs := lspDirections
 		if d := string(in.Direction); slices.Contains(dirs, d) {
 			dirs = []string{d}
 		}
