@@ -6,11 +6,6 @@ if not question then return "research needs a question: /workflows run research 
 
 local angles = {
 	{
-		"web",
-		"public sources",
-		"Search the web for what is known about it. Read the pages that matter, follow the links they hold, and keep every URL you use. ",
-	},
-	{
 		"explore",
 		"this repository",
 		"Find in this repository what bears on it: the code, the docs and the tests, with file:line for every fact. ",

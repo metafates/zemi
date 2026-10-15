@@ -172,7 +172,7 @@ func hookMatcher(m string) func(string) bool { return hookMatcherFor(m, true) }
 // claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
 // else lowercases.
 var claudeToolAlias = map[string]string{
-	"bash": tools.ToolShell, "webfetch": tools.ToolFetch, "websearch": tools.ToolWebSearch,
+	"bash": tools.ToolShell, "webfetch": tools.ToolFetch,
 	"task": tools.ToolAgent, "todowrite": tools.ToolTodos, "todoread": tools.ToolTodos,
 }
 

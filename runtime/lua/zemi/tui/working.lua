@@ -2,7 +2,7 @@ local fmt = require("zemi.tui.text")
 local snail = require("zemi.tui.snail")
 
 ---@type table<string, boolean>
-local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
+local READS = { read = true, grep = true, glob = true, fetch = true, skill = true }
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot a cell
 -- off the left corner in the state of the turn and, at the right end of the

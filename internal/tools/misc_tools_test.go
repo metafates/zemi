@@ -1,13 +1,12 @@
 // misc_tools_test.go covers the second batch of built-ins: todos, question
 // and skill (misc_tools.go), the job_* family (job_tools.go) and the net
-// helpers behind fetch/web_search (net_tools.go). No test touches the
+// helpers behind fetch (net_tools.go). No test touches the
 // real network: fetch is proven at the URL/permission layer and via a
 // loopback httptest server.
 
 package tools
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -556,51 +555,6 @@ func TestHTMLToTextNoArticle(t *testing.T) {
 	base, _ := url.Parse("https://example.com/")
 	if got := htmlToText(`<html><body><p>Hello &amp; bye</p></body></html>`, base); got != "Hello & bye" {
 		t.Fatalf("htmlToText = %q", got)
-	}
-}
-
-func TestParseDDGLite(t *testing.T) {
-	lite := `<table><tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2Fdoc&amp;rut=x" class='result-link'>The <b>Go</b> docs</a></td></tr>
-<tr><td class='result-snippet'>Learn &amp; build</td></tr>
-<tr><td><a rel="nofollow" href="https://pkg.go.dev/" class='result-link'>pkg.go.dev</a></td></tr></table>`
-	hits, err := parseDDGLite(200, lite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := formatHits(hits, 10); got != "1. The Go docs\n   https://go.dev/doc\n   Learn & build\n2. pkg.go.dev\n   https://pkg.go.dev/\n" {
-		t.Fatalf("lite: %q", got)
-	}
-	if got := formatHits(hits, 1); strings.Contains(got, "pkg.go.dev") {
-		t.Fatalf("limit: %q", got)
-	}
-	for _, c := range []struct {
-		status int
-		page   string
-	}{{202, ""}, {200, `<div class="anomaly-modal__mask">`}} {
-		if _, err := parseDDGLite(c.status, c.page); err == nil || !strings.Contains(err.Error(), "bot check") {
-			t.Fatalf("bot check %d must be an error, got %v", c.status, err)
-		}
-	}
-	if got := formatHits(nil, 10); got != "(no results)" {
-		t.Fatalf("empty: %q", got)
-	}
-}
-
-// TestWebSearchURLReachesRun: web_search's subjects writes the URL the gate
-// approved onto the per-run pipeline the run reads. Run used to copy the
-// pipeline before subjects ran, so the first call answered "empty query" and
-// the next one fetched the previous query's URL.
-func TestWebSearchURLReachesRun(t *testing.T) {
-	p, _ := testPipeline(t, true)
-	ag := *toolNamed(t, ToolWebSearch, p).(*tool)
-	ag.run = func(_ context.Context, run *Pipeline, _ map[string]any) (fantasy.ToolResponse, error) {
-		if run.search == nil {
-			return fantasy.NewTextErrorResponse("no search URL on the per-run pipeline"), nil
-		}
-		return fantasy.NewTextResponse(run.search.Query().Get("q")), nil
-	}
-	if resp := call(t, &ag, `{"query":"go generics"}`); resp.IsError || resp.Content != "go generics" {
-		t.Fatalf("the run read %+v, want the query its subjects built", resp)
 	}
 }
 

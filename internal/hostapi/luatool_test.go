@@ -31,7 +31,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	ctx := t.Context()
 
 	out, err := h.runModelLua(ctx, `print("hi", 1 + 1) leak = 1 return { n = #zemi.agent.list() }`, luaToolChunk)
-	if err != nil || out != "hi\t2\nreturn: {\"n\":5}" {
+	if err != nil || out != "hi\t2\nreturn: {\"n\":4}" {
 		t.Fatalf("lua: %q %v", out, err)
 	}
 	if out, _ := h.runModelLua(ctx, `return leak == nil`, luaToolChunk); out != "return: true" {

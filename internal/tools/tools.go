@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,7 +40,6 @@ const (
 	ToolGlob        = "glob"
 	ToolGrep        = "grep"
 	ToolFetch       = "fetch"
-	ToolWebSearch   = "web_search"
 	ToolTodos       = "todos"
 	ToolQuestion    = "question"
 	ToolPlan        = "plan"
@@ -280,9 +278,6 @@ type Pipeline struct {
 	// per-run copy. The tool opens it, never input["path"]: the string the
 	// gate judged and the file the tool opens stay the same path.
 	Path perm.Path
-	// search is web_search's URL as the gate approved it, set on the per-run
-	// copy by its subjects.
-	search *url.URL
 	// Changes runs before a shell command starts in dir; the func it returns
 	// runs once it ended and reports the files it changed: a line for the
 	// model, a diff for the row (the result's Metadata) and every path. nil = none.
@@ -473,8 +468,8 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	var reqs []Request
 	if t.subjects != nil {
-		// &run, not pipe: a subjects func that writes a field on the pipeline
-		// (web_search's URL) writes the copy the run below gets
+		// &run, not pipe: a subjects func that writes a pipeline field writes
+		// the copy the run below gets
 		if reqs, err = t.subjects(&run, input); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
@@ -920,23 +915,6 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			[]string{"plan"},
 			nil,
 			runPlan),
-
-		mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading.",
-			true,
-			map[string]any{
-				"query":       map[string]any{"type": "string"},
-				"max_results": map[string]any{"type": "integer"},
-			},
-			[]string{"query"},
-			func(p *Pipeline, in map[string]any) ([]Request, error) {
-				query := strings.TrimSpace(str(in["query"]))
-				if query == "" {
-					return nil, errors.New("empty query")
-				}
-				p.search = &url.URL{Scheme: "https", Host: "lite.duckduckgo.com", Path: "/lite/", RawQuery: url.Values{"q": {query}}.Encode()}
-				return []Request{{Subject: "net." + p.search.Hostname(), Arg: p.search.String()}}, nil
-			},
-			runWebSearch),
 
 		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with bash -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,

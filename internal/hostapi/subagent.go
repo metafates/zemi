@@ -58,7 +58,7 @@ const forkAgent = "fork"
 
 // readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolWebSearch, tools.ToolSkill}
+var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolSkill}
 
 var builtinAgents = []AgentDef{
 	{
@@ -81,14 +81,6 @@ var builtinAgents = []AgentDef{
 		// verification rules have to be said again here
 		System: "Carry the task through: change, verify with the narrowest test or build that covers the change, report. Do only what the task asks; do not commit, push or change git state unless it says to.",
 		Source: lua.OriginBuiltin,
-	},
-	{
-		Name:        "web",
-		Description: "Searches the web, reads pages and follows links, answering with its sources. Give it the question, not just a URL.",
-		Tools:       []string{tools.ToolWebSearch, tools.ToolFetch, tools.ToolRead, tools.ToolGrep, tools.ToolGlob},
-		ReadOnly:    true,
-		System:      "Break the question into short, specific searches, fetch the pages that look relevant and follow their links when they hold the answer. A long page is saved to a file the fetch result names: grep and read that file instead of fetching again. Answer only what was asked, quote the exact text when it matters, and end with a Sources list of the URLs that contributed.",
-		Source:      lua.OriginBuiltin,
 	},
 	{
 		// the planner a read-only agent delegates to in a planning session (§6): a
@@ -159,7 +151,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 var zemiToolNames = map[string]bool{
 	tools.ToolShell: true, tools.ToolRead: true, tools.ToolWrite: true,
 	tools.ToolEdit: true, tools.ToolGlob: true, tools.ToolGrep: true,
-	tools.ToolFetch: true, tools.ToolWebSearch: true, tools.ToolTodos: true,
+	tools.ToolFetch: true, tools.ToolTodos: true,
 	tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolSkill: true,
 	tools.ToolJobStart: true, tools.ToolJobRead: true, tools.ToolJobList: true,
 	tools.ToolJobKill: true, tools.ToolMemory: true, tools.ToolDiagnostics: true,
@@ -1015,9 +1007,6 @@ type agentTool struct {
 
 func (h *Host) agentTool(pipe *tools.Pipeline) fantasy.AgentTool {
 	defs := h.agentDefs()
-	if h.webOff() { // it would have only the read tools
-		defs = slices.DeleteFunc(defs, func(d AgentDef) bool { return d.Name == "web" && d.Source == lua.OriginBuiltin })
-	}
 	return &agentTool{h: h, pipe: pipe, defs: defs}
 }
 

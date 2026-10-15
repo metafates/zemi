@@ -355,13 +355,13 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 		skip[tools.ToolLSP], skip[tools.ToolDiagnostics] = true, true
 	}
 	if h.webOff() {
-		skip[tools.ToolFetch], skip[tools.ToolWebSearch] = true, true
+		skip[tools.ToolFetch] = true
 	}
 	return skip
 }
 
-// webOff reports a run whose every fetch and search would be denied: no UI
-// to approve one (the model picks each address), and the mode is ask.
+// webOff reports a headless run: a fetch's address is the model's pick and
+// nothing can approve it.
 func (h *Host) webOff() bool {
 	return h.hooks() == nil && h.PermMode() == config.PermModeAsk
 }

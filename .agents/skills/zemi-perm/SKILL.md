@@ -39,7 +39,7 @@ one at a time under `Host.askMu`, and a waiter is judged again once it holds the
 (`Request.Recheck`), so a switch to allow settles the asks behind it.
 
 Subjects label the asks: `tool.shell`, `tool.lua`, `tool.workflow`, `tool.<name>` of a Lua
-tool, `fs.read`, `fs.write`, `net.<host>` (the model's `fetch` and `web_search`), `mcp.<server>`,
+tool, `fs.read`, `fs.write`, `net.<host>` (the model's `fetch`), `mcp.<server>`,
 `memory.write`, and `lua.<ns.call>` for a host-API call config code makes (`lua.fs.write`,
 `lua.job.start`, `lua.http.<method>`, ...). The overlay offers three answers: y (yes, once),
 n (no), t (no, and tell zemi - denies the waiting asks and stops the turn).

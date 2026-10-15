@@ -925,8 +925,6 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Edit this file?"
 	case req.Subject == perm.SubjectWrite:
 		return "Change this file?"
-	case strings.HasPrefix(req.Subject, "net.") && req.Tool == tools.ToolWebSearch:
-		return "Search the web?"
 	case strings.HasPrefix(req.Subject, "net."):
 		return "Fetch this URL?"
 	case mcp:

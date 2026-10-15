@@ -2235,7 +2235,6 @@ func TestPermTitle(t *testing.T) {
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "file a.go"},
 		{hostapi.PermRequest{Tool: "edit", Subject: "fs.write", Arg: "a.go"}, "Edit this file?", "file a.go"},
 		{hostapi.PermRequest{Tool: "lsp", Subject: "fs.write", Arg: "a.go"}, "Change this file?", "file a.go"},
-		{hostapi.PermRequest{Tool: "web_search", Subject: "net.lite.duckduckgo.com", Arg: "https://lite.duckduckgo.com/lite/?q=zemi"}, "Search the web?", "url https://lite.duckduckgo.com/lite/?q=zemi"},
 		{hostapi.PermRequest{Tool: "fetch", Subject: "net.docs.example.com", Arg: "https://docs.example.com/api"}, "Fetch this URL?", "url https://docs.example.com/api"},
 		{hostapi.PermRequest{Tool: "mcp_github_create_issue", Subject: "mcp.github", Arg: "create_issue"}, "Use create_issue from github?", ""},
 		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},

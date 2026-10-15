@@ -1033,7 +1033,7 @@ role's model replace that name in the background, never waiting for the first
 reply, and a failed or empty answer keeps it. A `zemi run` makes no title call.
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
-definition (builtin `explore`, `general`, `web` and `plan`, plus `agents/*.md`
+definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
@@ -1354,7 +1354,7 @@ handoff, saving the plan and leaving the turn ended until the user says when; a
 read-only run that ends in plain
 text instead of the `question` or `plan` tool is told so once, since a
 question or a report is no plan to approve),
-`web_search` (DuckDuckGo Lite),
+`fetch` (an article in markdown, without navigation),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
@@ -2340,9 +2340,8 @@ rides the `memories.md` line and its ledger entries.
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
   it through; the model reads "no one can approve in a headless run".
-  In ask mode a run with no UI to approve an action ships neither
-  `fetch`, `web_search` nor the `web` agent (`Host.webOff`); allow mode,
-  the default, keeps them.
+  In ask mode a run with no UI to approve an action ships no
+  `fetch` (`Host.webOff`); allow mode, the default, keeps it.
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, every string on a line passes the same sanitize
@@ -2705,7 +2704,7 @@ heuristic exists for), which queues anyway, a replacement of a `user`
 memory or of one in the other scope (a user-scope memory superseded from
 a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
-outside the machine (`fetch`, `web_search`, the `lua` tool, any tool
+outside the machine (`fetch`, the `lua` tool, any tool
 zemi does not ship: MCP and Lua-registered ones, and a plugin's send or
 `tool.post` rewrite, which stores a `plugin:<name>` row; all read from the
 session's `tool_calls`), since injected memories come from there.

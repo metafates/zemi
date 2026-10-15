@@ -562,11 +562,9 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 		{name: "trusted, local tools", tool: "shell", inTool: "read", stored: true},
 		{name: "untrusted project", untrusted: true},
 		{name: "fetch in the session", tool: "fetch"},
-		{name: "web search in a subagent", inTool: "web_search"},
 		{name: "mcp tool", tool: "mcp_github_search"},
 		{name: "lua-registered tool", tool: "jira_lookup"},
 		{name: "forked after a fetch", tool: "fetch", fork: true},
-		{name: "forked after a subagent's web search", tool: "agent", inTool: "web_search", fork: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -574,7 +572,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			h.SetProjectTrusted(!tc.untrusted)
 			sid := seedSession(t, h)
 			child := store.ShortID()
-			if err := h.DB.CreateSession(child, sid, "sub", "web"); err != nil {
+			if err := h.DB.CreateSession(child, sid, "sub", "general"); err != nil {
 				t.Fatal(err)
 			}
 			if tc.tool != "" {

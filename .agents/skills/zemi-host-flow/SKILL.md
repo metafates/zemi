@@ -53,8 +53,7 @@ renders the chat and working widgets over the frame with `UIState.Printed` (`ctx
 and the `follower` turns the same frames into `--json` events, each once (a call by
 `ChatMessage.ID`, which `flushOutput` sets). An ask no UI can answer is denied as
 `tools.ByNobody` and recorded (`Host.HeadlessDenials`, subagents' too). It also drops what
-needs a user (`headlessExcluded`), the web tools and the `web` agent when nothing could allow a
-fetch (`webOff`), the agent tool's `background` and `send_to` (a detached
+needs a user (`headlessExcluded`), fetch when nothing could allow one (`webOff`), the agent tool's `background` and `send_to` (a detached
 report would outlive the run), the workflow tool's `background` and every `action` but
 `status`, `list`, `wait` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
 raises there (nothing would bound its chain of turns). With no UI `Host.Notify` prints a

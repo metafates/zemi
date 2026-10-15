@@ -1574,15 +1574,15 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	if strings.Contains(sys, "question tool") || strings.Contains(sys, "Ask before") || strings.Contains(sys, "ask why") {
 		t.Error("the headless prompt still tells the model to ask")
 	}
-	// in ask mode every fetch and search would be denied: nobody answers one
-	if names()[tools.ToolFetch] || names()[tools.ToolWebSearch] || slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
-		t.Error("the headless toolset ships the web tools nothing can settle")
+	// in ask mode a fetch would be denied: nobody answers one
+	if names()[tools.ToolFetch] {
+		t.Error("the headless toolset ships the fetch nothing can settle")
 	}
 	if err := h.SetPermMode("allow"); err != nil {
 		t.Fatal(err)
 	}
-	if !names()[tools.ToolFetch] || !slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
-		t.Error("allow mode does not bring the web tools back")
+	if !names()[tools.ToolFetch] {
+		t.Error("allow mode does not bring fetch back")
 	}
 
 	h.SetUIHooks(&fakeUI{})

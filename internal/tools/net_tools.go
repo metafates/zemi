@@ -1,6 +1,6 @@
-// net_tools.go ships the network built-ins (DESIGN §6.4): fetch and
-// web_search. Both go through the net.<host> permission subject, accept
-// http/https URLs only and refuse userinfo.
+// net_tools.go ships the fetch built-in (DESIGN §6.4): it goes through the
+// net.<host> permission subject, accepts http/https URLs only and refuses
+// userinfo.
 
 package tools
 
@@ -9,11 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -143,8 +141,6 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 
 // RE2 has no backreferences, so the closing tag is matched by
 // alternation instead of \1.
-var tagRe = regexp.MustCompile(`(?s)<[^>]*>`)
-
 // mdConv renders HTML as markdown. The table plugin is not in the default
 // set, and a docs page's parameter table is half of what it says.
 var mdConv = sync.OnceValue(func() *converter.Converter {
@@ -177,105 +173,4 @@ func htmlToText(s string, base *url.URL) string {
 		return s
 	}
 	return strings.TrimSpace(string(md))
-}
-
-// searchUA is a browser User-Agent: DuckDuckGo serves its bot check to
-// anything else.
-const searchUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	limit := 10
-	if v, ok := input["max_results"].(float64); ok && v >= 1 {
-		limit = int(min(v, 20))
-	}
-	u := p.search
-	if u == nil {
-		return fantasy.NewTextErrorResponse("empty query"), nil
-	}
-	// the gate approved this one URL, so a redirect elsewhere is refused
-	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") })
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	req.Header.Set("User-Agent", searchUA)
-	resp, err := client.Do(req)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	hits, err := parseDDGLite(resp.StatusCode, string(body))
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	return fantasy.NewTextResponse(formatHits(hits, limit)), nil
-}
-
-type searchHit struct{ Title, URL, Snippet string }
-
-var (
-	ddgLinkRe    = regexp.MustCompile(`(?is)<a\b[^>]*class=['"]result-link['"][^>]*>.*?</a>`)
-	ddgHrefRe    = regexp.MustCompile(`(?is)\bhref=['"]([^'"]*)['"]`)
-	ddgSnippetRe = regexp.MustCompile(`(?is)<td\b[^>]*class=['"]result-snippet['"][^>]*>(.*?)</td>`)
-)
-
-// parseDDGLite reads the DuckDuckGo Lite result table: each result-link
-// anchor is followed by its result-snippet cell. The bot check comes back
-// as 202 or as a 200 page with the anomaly modal, and must not read as "no
-// results".
-func parseDDGLite(status int, page string) ([]searchHit, error) {
-	if status == http.StatusAccepted || strings.Contains(page, "anomaly-modal") {
-		return nil, fmt.Errorf("DuckDuckGo answered with its bot check, so this network cannot search it; do not retry. Fetch known URLs directly")
-	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("search: HTTP %d", status)
-	}
-	links := ddgLinkRe.FindAllStringIndex(page, -1)
-	var hits []searchHit
-	for i, loc := range links {
-		a := page[loc[0]:loc[1]]
-		h := searchHit{Title: strings.TrimSpace(html.UnescapeString(tagRe.ReplaceAllString(a, "")))}
-		if m := ddgHrefRe.FindStringSubmatch(a); m != nil {
-			h.URL = ddgTarget(html.UnescapeString(m[1]))
-		}
-		end := len(page)
-		if i+1 < len(links) {
-			end = links[i+1][0]
-		}
-		if m := ddgSnippetRe.FindStringSubmatch(page[loc[1]:end]); m != nil {
-			h.Snippet = strings.TrimSpace(html.UnescapeString(tagRe.ReplaceAllString(m[1], "")))
-		}
-		if h.URL != "" {
-			hits = append(hits, h)
-		}
-	}
-	return hits, nil
-}
-
-// ddgTarget unwraps DuckDuckGo's //duckduckgo.com/l/?uddg=<url> redirect.
-func ddgTarget(href string) string {
-	if u, err := url.Parse(href); err == nil && strings.HasSuffix(u.Host, "duckduckgo.com") {
-		if t := u.Query().Get("uddg"); t != "" {
-			return t
-		}
-	}
-	return href
-}
-
-func formatHits(hits []searchHit, limit int) string {
-	if len(hits) == 0 {
-		return "(no results)"
-	}
-	var b strings.Builder
-	for i, h := range hits[:min(limit, len(hits))] {
-		fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, h.Title, h.URL)
-		if h.Snippet != "" {
-			fmt.Fprintf(&b, "   %s\n", h.Snippet)
-		}
-	}
-	return b.String()
 }
