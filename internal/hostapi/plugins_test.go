@@ -83,7 +83,7 @@ func TestPluginsStep(t *testing.T) {
 				"local/a/.zemi/plugin.json": `{"uses": ["http", "fs.read"]}`,
 			},
 			want: []string{
-				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, model, tool`,
+				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, model, perm, tool`,
 				"health: 1 plugin: 1 failed, 0 ready",
 			},
 			not: []string{"plugin|a ran"},
@@ -603,8 +603,10 @@ func TestPluginCapVocabulary(t *testing.T) {
 			t.Errorf("pluginCap(%q) = %q, want %q", c.subject, got, c.cap)
 		}
 	}
-	// every word the manifest may declare is one a subject maps to
-	mapped := map[string]bool{"job": true}
+	// every word the manifest may declare is one a subject maps to, or one
+	// the gate's other halves check ("perm" gates a permission.request
+	// handler and zemi.perm.ask, not a call subject)
+	mapped := map[string]bool{"job": true, "perm": true}
 	for _, c := range pluginCaps {
 		mapped[c.cap] = true
 	}

@@ -1,7 +1,8 @@
 // eventlog.go keeps what happened for Lua reflection: every host event is
-// counted and the recent ones kept whether or not anything listened
-// (zemi.event.log, zemi.event.stats), and the recent notifications are
-// listed (zemi.notify.list), so a widget can show a session's activity.
+// counted and the recent ones kept (zemi.event.log, zemi.event.stats) - a
+// vetoable event nobody listens to is counted only, so the idle gate does
+// not push the log out - and the recent notifications are listed
+// (zemi.notify.list), so a widget can show a session's activity.
 
 package hostapi
 
@@ -41,9 +42,8 @@ type eventLog struct {
 	notes   []notifyEntry
 }
 
-// recordEvent counts an emission and keeps it; the streaming deltas are
-// counted only, one per token would push everything else out.
-func (h *Host) recordEvent(name, from string, payload map[string]any) {
+// countEvent counts an emission without keeping a recent entry.
+func (h *Host) countEvent(name string) {
 	l := &h.evlog
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -51,6 +51,15 @@ func (h *Host) recordEvent(name, from string, payload map[string]any) {
 		l.counts = map[string]int{}
 	}
 	l.counts[name]++
+}
+
+// recordEvent counts an emission and keeps it; the streaming deltas are
+// counted only, one per token would push everything else out.
+func (h *Host) recordEvent(name, from string, payload map[string]any) {
+	h.countEvent(name)
+	l := &h.evlog
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if strings.HasSuffix(name, "_delta") {
 		return
 	}

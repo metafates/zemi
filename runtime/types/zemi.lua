@@ -621,10 +621,16 @@ function zemi.command.list() end
 ---@field kind "diagnostics"|"tool"
 
 --- What a vetoable handler returns to veto: `decision = "deny"` with a
---- reason. Any other return lets the event through.
+--- reason. Any other return lets the event through; on `permission.request`
+--- a `zemi.PermVeto` may also hand the request to the ask path.
 ---@class zemi.Veto
 ---@field decision "deny"
 ---@field reason? string
+
+--- What a `permission.request` handler returns: "deny" refuses the request,
+--- "ask" runs zemi's ask path (the overlay) for it, nil lets it run.
+---@class zemi.PermVeto: zemi.Veto
+---@field decision "deny"|"ask"
 
 ---@class zemi.EventOpts
 ---@field id? string Name the handler so `zemi.event.off` can drop it.
@@ -636,10 +642,12 @@ zemi.event = {}
 --- Subscribe to an event. Vetoable events (`permission.request`,
 --- `app.quit`, `composer.submit`, `tool.pre`) give the handler 50 ms and
 --- then take their logged default; return `{ decision = "deny", reason = "..." }`
---- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride).
+--- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride),
+--- and on `permission.request` `{ decision = "ask" }` to run zemi's ask path.
 --- A `tool.post` handler runs as a task and may return `{ output = "..." }`
 --- to replace what the model gets.
---- `app.quit` vetoes from project code are ignored.
+--- `app.quit` vetoes from project code are ignored. A plugin needs `perm`
+--- in its `uses` to subscribe to `permission.request`.
 ---
 --- ```lua
 --- zemi.event.on("composer.submit", function(ev)
@@ -660,7 +668,7 @@ zemi.event = {}
 ---@overload fun(name: "agent.step", fn: (fun(ev: zemi.ev.AgentStep): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.post", fn: (fun(ev: zemi.ev.ToolPost): zemi.ToolPostResult?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.denied", fn: (fun(ev: zemi.ev.ToolDenied): any), opts?: zemi.EventOpts): string
----@overload fun(name: "permission.request", fn: (fun(ev: zemi.ev.PermissionRequest): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "permission.request", fn: (fun(ev: zemi.ev.PermissionRequest): zemi.PermVeto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "permission.resolved", fn: (fun(ev: zemi.ev.PermissionResolved): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
@@ -2141,6 +2149,35 @@ function zemi.permission.mode.get() end
 --- Every mode, in /mode order.
 ---@return zemi.PermMode[]
 function zemi.permission.mode.list() end
+
+-- zemi.perm
+
+---@class zemi.PermAskSpec
+---@field subject string What the ask is about, as the overlay titles it: a gate subject like "fs.write" or "net.github.com", or the plugin's own word.
+---@field arg? string What the ask acts on: a path, a URL, a command.
+---@field reason? string Why the plugin asks; the overlay's why row.
+---@field preview? string A diff or code the overlay shows under the ask.
+
+---@class zemi.PermAnswer
+---@field answer "allow"|"deny"|"told" `told`: the user denied and told zemi what to do instead.
+
+---@class zemi.PermAskHandle
+---@field wait fun(self: zemi.PermAskHandle): zemi.PermAnswer|nil, string|nil Suspends the task until the user answers; raises outside a task, like `zemi.JobHandle.wait`.
+
+---@class zemi.perm
+zemi.perm = {}
+
+--- Ask the user through zemi's permission overlay. Plugin origin only, and
+--- only from a task; the manifest's `uses` naming `perm` is the consent. A
+--- headless run answers "deny" and records the ask.
+---
+--- ```lua
+--- local ans = zemi.perm.ask({ subject = "fs.write", arg = path, reason = "cache refresh" }):wait()
+--- if ans.answer ~= "allow" then return nil, "refused" end
+--- ```
+---@param spec zemi.PermAskSpec
+---@return zemi.PermAskHandle
+function zemi.perm.ask(spec) end
 
 -- zemi.tool
 

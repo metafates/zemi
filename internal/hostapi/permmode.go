@@ -7,12 +7,15 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -196,6 +199,75 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("mode", h.modeNamespace(L))
 	return tb
+}
+
+// permNamespace is zemi.perm: the plugin ask surface. The `perm` capability
+// in the manifest's uses is the consent to steer the gate: a plugin that can
+// open the overlay can force it on actions of its choosing.
+func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
+	tb := L.NewTable()
+	tb.RawSetString("ask", L.NewFunction(func(L *glua.LState) int {
+		if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
+			L.RaiseError("zemi.perm.ask: %s code may not ask the user; only a plugin with %q in its uses may", o, "perm")
+		}
+		h.requirePermUse(L, "zemi.perm.ask")
+		lua.CheckWait(L, "zemi.perm.ask")
+		spec := L.CheckTable(1)
+		subject := rawString(L, spec, "subject")
+		if subject == "" {
+			L.RaiseError("zemi.perm.ask: subject is required")
+		}
+		name := h.PluginOf(h.RT.CurrentPath(L))
+		req := tools.Request{
+			Subject: subject,
+			Arg:     rawString(L, spec, "arg"),
+			Reason:  rawString(L, spec, "reason"),
+			Preview: rawString(L, spec, "preview"),
+			Owner:   perm.PluginPrincipal(name),
+		}
+		done := make(chan struct{})
+		var answer string
+		cut := h.askCut.Load()
+		h.GoSafe("zemi.perm.ask", func() {
+			allowed, _ := h.ask(req, false)
+			answer = "deny"
+			switch {
+			case allowed:
+				answer = "allow"
+			case h.askCut.Load() != cut: // the user denied and told zemi what to do instead
+				answer = "told"
+			}
+			close(done)
+		})
+		handle := L.NewTable()
+		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+			return waitHandle(L, "perm:wait", done, time.Hour, nil, func(L *glua.LState, err error) []glua.LValue {
+				if err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+				}
+				return []glua.LValue{lua.FromGo(L, map[string]any{"answer": answer})}
+			})
+		})))
+		lua.GuardFuncs(L, handle, "perm:", h.guardLua)
+		L.Push(handle)
+		return 1
+	}))
+	return tb
+}
+
+// requirePermUse raises unless the calling plugin declared the perm
+// capability: registering a permission.request handler and zemi.perm.ask
+// both steer the gate, so enabling the plugin is the consent. Other origins
+// are the user's own code and pass.
+func (h *Host) requirePermUse(L *glua.LState, api string) {
+	if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
+		return
+	}
+	name := h.PluginOf(h.RT.CurrentPath(L))
+	if h.pluginDeclares(name, "perm") {
+		return
+	}
+	L.RaiseError("%s: plugin %s declares no %q; add %q to uses in %s", api, name, "perm", "perm", plugin.ManifestFile)
 }
 
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {

@@ -3,10 +3,12 @@ package hostapi
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -37,6 +39,52 @@ func TestModeToggle(t *testing.T) {
 	}
 	if err := newTestHostUI(t).SetPermMode("nope"); err == nil {
 		t.Error("an unknown mode name was taken")
+	}
+}
+
+// TestPermAsk: zemi.perm.ask is plugin origin only, needs the manifest's
+// "perm" word, waits only from a task, and a headless run denies and
+// records the ask.
+func TestPermAsk(t *testing.T) {
+	const ask = `zemi.perm.ask({ subject = "fs.write", arg = "x", reason = "why" }):wait()`
+	for _, c := range []struct {
+		name   string
+		origin lua.Origin
+		uses   string
+		err    string
+	}{
+		{name: "user code may not ask", origin: lua.OriginUser, uses: `["perm"]`, err: "user code may not ask the user"},
+		{name: "project code may not ask", origin: lua.OriginProject, uses: `["perm"]`, err: "project code may not ask the user"},
+		{name: "the manifest must declare perm", origin: lua.OriginPlugin, uses: `["job"]`, err: `declares no "perm"`},
+		{name: "a plugin's ask, answered by the user", origin: lua.OriginPlugin, uses: `["perm"]`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHostPlugin(t, c.uses)
+			seedSession(t, h)
+			h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})
+			err := chunkAs(t.Context(), h, r, c.origin, ask)
+			if c.err != "" {
+				if err == nil || !strings.Contains(err.Error(), c.err) {
+					t.Fatalf("err = %v, want %q", err, c.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			ui := h.hooks().(*fakeUI)
+			if len(ui.asked) != 1 || ui.asked[0].Subject != "fs.write" || ui.asked[0].Owner != "plugin:a" {
+				t.Fatalf("the overlay saw %+v, want one fs.write ask from plugin:a", ui.asked)
+			}
+		})
+	}
+	h, r := newTestHostPlugin(t, `["perm"]`)
+	seedSession(t, h)
+	if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, ask); err != nil {
+		t.Fatal(err)
+	}
+	if d := h.HeadlessDenials(); len(d) != 1 || d[0].Subject != "fs.write" {
+		t.Fatalf("headless denials = %+v, want one fs.write ask", d)
 	}
 }
 

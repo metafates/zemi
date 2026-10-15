@@ -1036,6 +1036,9 @@ type VetoResult struct {
 	Denied   bool
 	Reason   string
 	TimedOut bool
+	// Ask is a handler's { decision = "ask" }: the gate runs the ask path
+	// for it. A denial outranks it.
+	Ask bool
 }
 
 // EmitVetoable runs handlers synchronously on the interpreter, each bounded
@@ -1047,16 +1050,24 @@ func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string
 }
 
 func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventHandler, payload map[string]any) VetoResult {
-	h.recordEvent(name, "host", payload)
 	if len(handlers) == 0 {
+		// counted only: the gate's veto event with nobody listening must
+		// not displace the recent log on every model action
+		h.countEvent(name)
 		return VetoResult{}
 	}
+	h.recordEvent(name, "host", payload)
 	type outcome struct {
 		denied bool
+		ask    bool
 		reason string
 		timed  bool
 	}
 	outcomes := make([]outcome, len(handlers))
+	allowed := []string{"deny"}
+	if name == EventPermissionRequest {
+		allowed = append(allowed, "ask")
+	}
 	ev := eventTable(name, "host", payload)
 	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
 		func(L *glua.LState) ([]any, error) {
@@ -1072,7 +1083,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 					if name == EventAppQuit && hd.Origin.Rank() <= lua.OriginProject.Rank() {
 						break
 					}
-					tb, decision, bad := vetoDecision(ret, "deny")
+					tb, decision, bad := vetoDecision(ret, allowed...)
 					switch {
 					case bad != "":
 						h.logHandlerError(hd, errors.New(bad))
@@ -1081,6 +1092,8 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 						outcomes[i] = outcome{denied: name == EventPermissionRequest, reason: bad}
 					case decision == "deny":
 						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
+					case decision == "ask":
+						outcomes[i] = outcome{ask: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					}
 				}
 			}
@@ -1094,14 +1107,20 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}
 	res := VetoResult{}
+	var askReason string
 	for _, o := range outcomes {
 		if o.timed {
 			res.TimedOut = true
 		}
 		if o.denied && !res.Denied {
-			res.Denied = true
-			res.Reason = o.reason
+			res.Denied, res.Reason = true, o.reason
 		}
+		if o.ask && askReason == "" {
+			askReason = o.reason
+		}
+	}
+	if !res.Denied && askReason != "" {
+		res.Ask, res.Reason = true, askReason
 	}
 	if res.Denied {
 		h.Log.Info("vetoable event denied", "origin", "events",
@@ -2060,6 +2079,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.job", h.jobNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
 		{"zemi.permission", h.permissionNamespace(L), nil},
+		{"zemi.perm", h.permNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
 		{"zemi.model", h.modelNamespace(L), nil},
 		{"zemi.classify", h.classifyNamespace(L), nil},
@@ -2083,7 +2103,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.126.0"))
+	api.RawSetString("version", glua.LString("0.127.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

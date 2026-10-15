@@ -65,7 +65,7 @@ func TestManifest(t *testing.T) {
 
 // TestCheckUses pins the vocabulary a manifest's uses draws from.
 func TestCheckUses(t *testing.T) {
-	want := []string{"agent", "fs.write", "http", "job", "model", "tool"}
+	want := []string{"agent", "fs.write", "http", "job", "model", "perm", "tool"}
 	if !slices.Equal(Uses, want) {
 		t.Errorf("the vocabulary is %v, want %v", Uses, want)
 	}

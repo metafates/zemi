@@ -28,6 +28,7 @@ Everything zemi runs or reads as Lua goes under `.zemi/`; the layer dirs stay at
 | `http` | `zemi.http.*`: a request to any URL |
 | `job` | `zemi.job.start`: a command |
 | `fs.write` | a `zemi.fs` write |
+| `perm` | steering the permission gate: a `permission.request` handler and `zemi.perm.ask`. A handler that can deny or force the overlay on actions of its choosing changes how the whole agent is gated, so enabling the plugin is the consent, declared in the manifest like any other capability |
 | `tool` | a tool the plugin registers with `zemi.tool.add`, which the model calls as subject `tool.<name>` |
 
 Reading files needs no declaration, and neither does the plugin's own state or its settings.

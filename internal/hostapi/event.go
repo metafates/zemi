@@ -64,6 +64,9 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		if opts := L.OptTable(3, nil); opts != nil {
 			hd.ID, hd.Once = rawString(L, opts, "id"), rawBool(L, opts, "once")
 		}
+		if name == EventPermissionRequest {
+			h.requirePermUse(L, "zemi.event.on")
+		}
 		added, err := h.Events.Add(hd)
 		if err != nil {
 			L.RaiseError("zemi.event.on: %v", err)

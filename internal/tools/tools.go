@@ -123,10 +123,19 @@ const (
 	ByUser     = "user"
 	ByReadOnly = "read-only agent"
 	// ByPlugin is a call the calling plugin's own manifest declared settled (DESIGN §9)
-	ByPlugin   = "plugin"
+	ByPlugin = "plugin"
+	// ByEvent is a verdict the permission.request veto decided
+	ByEvent    = "event"
 	modePrefix = "mode:"
 	// ByRecheck is an asker's answer that the request's Recheck now settles
 	ByRecheck = "recheck"
+)
+
+// What a Veto hook answers with: deny the request, or run the ask path
+// (the overlay). "" leaves the request to the mode.
+const (
+	VetoDeny = "deny"
+	VetoAsk  = "ask"
 )
 
 // ByMode is a verdict the permission mode name settled.
@@ -194,6 +203,11 @@ type Asker func(req Request) (allowed bool, decidedBy string)
 type Pipeline struct {
 	Pre PreHook // nil = no tool.pre events
 	Ask Asker   // nil = asks fail closed
+	// Veto runs the permission.request event for an action request and
+	// answers "deny", "ask" or "". Fired only when Ask is set: a gate
+	// without an asker (a Lua call from the actor goroutine) cannot
+	// survive the veto's own interpreter round-trip.
+	Veto func(req Request) string
 	// Mode reports the active permission mode ("ask" or "allow"); nil or ""
 	// = allow, the default.
 	Mode func() string
@@ -316,8 +330,9 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 }
 
 // Check decides one request. A read-only agent's actions deny, its writes
-// in the scratchpad aside; the mode settles the rest: allow runs, ask puts
-// the request to the user, and an ask no one can answer fails closed.
+// in the scratchpad aside; the permission.request veto settles next, and
+// the mode settles the rest: allow runs, ask puts the request to the user,
+// and an ask no one can answer fails closed.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
 	req.ReadOnly, req.Script = p.Plan != nil && p.Plan(), p.Script
@@ -331,6 +346,14 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return Verdict{Allowed: true, DecidedBy: ByDefault}
 		}
 		return Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
+	}
+	if p.Ask != nil && p.Veto != nil {
+		switch p.Veto(req) {
+		case VetoDeny:
+			return Verdict{DecidedBy: ByEvent}
+		case VetoAsk:
+			return p.resolveAsk(req)
+		}
 	}
 	if mode := p.mode(); mode != config.PermModeAsk {
 		return Verdict{Allowed: true, DecidedBy: ByMode(mode)}

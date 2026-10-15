@@ -2738,6 +2738,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
 		Pre:         h.toolPreHook(),
 		Ask:         h.askHook(),
+		Veto:        h.vetoHook(),
 		Mode:        h.PermMode,
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.afterWrite,

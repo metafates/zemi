@@ -18,7 +18,9 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -294,6 +296,75 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 				t.Errorf("tool.pre = %q, want deny", d)
 			}
 		})
+	}
+}
+
+// TestVetoAskLeg: a permission.request handler may return { decision =
+// "ask" } to run the ask path; a denial from any handler outranks it.
+func TestVetoAskLeg(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.event.on("permission.request", function(ev)
+			if ev.subject == "tool.shell" then return { decision = "ask", reason = "nervous" } end
+			return nil
+		end)`)
+	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "tool.shell"}); !res.Ask || res.Denied {
+		t.Errorf("= %+v, want ask", res)
+	}
+	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "fs.read"}); res.Ask || res.Denied {
+		t.Errorf("= %+v, want no opinion", res)
+	}
+	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "deny", reason = "no" } end, { id = "denier" })`)
+	res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "tool.shell"})
+	if !res.Denied || res.Ask {
+		t.Errorf("= %+v, want the denial to outrank the ask", res)
+	}
+	if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied || res.Ask {
+		t.Errorf("app.quit = %+v, want proceed", res)
+	}
+}
+
+// TestVetoAtTheGate: the veto runs once per Check, the ask it settles does
+// not run it again, and a host-API call from Lua (no asker) runs it never.
+func TestVetoAtTheGate(t *testing.T) {
+	h, r := newTestHostDB(t)
+	seedSession(t, h)
+	if _, err := h.Settings.SetQuiet("permissions.mode", config.PermModeAsk); err != nil {
+		t.Fatal(err)
+	}
+	runUser(t, r, `
+		zemi.event.on("permission.request", function()
+			zemi.state.set("seen", (zemi.state.get("seen") or 0) + 1)
+			return { decision = "ask" }
+		end)`)
+	v := h.PipelineFor().Check(tools.Request{Tool: tools.ToolShell, Subject: perm.SubjectShell, Arg: "ls"})
+	if v.Allowed || v.DecidedBy != tools.ByNobody {
+		t.Errorf("headless ask = %+v, want ByNobody", v)
+	}
+	runUser(t, r, `assert(zemi.state.get("seen") == 1, "the veto ran " .. zemi.state.get("seen") .. " times")`)
+	runUser(t, r, `
+		local ok, err = pcall(zemi.fs.write, "jail-escapes-nothing", "x")
+		assert(not ok and tostring(err):find("permission ask required"), err)
+		assert(zemi.state.get("seen") == 1, "the Lua gate ran the veto")`)
+}
+
+// TestVetoCountedOnly: the gate's veto event with no handler listening
+// counts but keeps no recent entry, or it would displace the log on every
+// model action for the plugin-free majority.
+func TestVetoCountedOnly(t *testing.T) {
+	h, _ := newTestHost(t)
+	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{}); res.Denied || res.Ask {
+		t.Errorf("= %+v, want silence", res)
+	}
+	h.evlog.mu.Lock()
+	defer h.evlog.mu.Unlock()
+	if h.evlog.counts[EventPermissionRequest] != 1 {
+		t.Errorf("count = %d, want 1", h.evlog.counts[EventPermissionRequest])
+	}
+	for _, e := range h.evlog.entries {
+		if e.name == EventPermissionRequest {
+			t.Fatal("the handlerless veto kept a recent entry")
+		}
 	}
 }
 

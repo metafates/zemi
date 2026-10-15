@@ -98,6 +98,40 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 	return p, &asked
 }
 
+// TestVetoGate pins where the permission.request veto sits in Check: after
+// the read-only deny, before the mode, and only when an asker exists (a
+// gate without one cannot run the veto's interpreter round-trip).
+func TestVetoGate(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		ask        bool
+		veto       string
+		want       Verdict
+		wantVeto   bool
+		wantAskRun bool
+	}{
+		{name: "a veto denies", ask: true, veto: VetoDeny, want: Verdict{DecidedBy: ByEvent}, wantVeto: true},
+		{name: "a veto ask runs the asker", ask: true, veto: VetoAsk, want: Verdict{DecidedBy: "overlay"}, wantVeto: true, wantAskRun: true},
+		{name: "no opinion lets the mode run", ask: true, veto: "", want: Verdict{Allowed: true, DecidedBy: ByMode("")}, wantVeto: true},
+		{name: "no asker skips the veto", veto: VetoDeny, want: Verdict{Allowed: true, DecidedBy: ByMode("")}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := &Pipeline{}
+			ran, asked := false, false
+			if c.ask {
+				p.Ask = func(Request) (bool, string) { asked = true; return false, "overlay" }
+			}
+			p.Veto = func(Request) string { ran = true; return c.veto }
+			if got := p.Check(Request{Subject: perm.SubjectWrite, Arg: "/x"}); got != c.want {
+				t.Fatalf("Check = %+v, want %+v", got, c.want)
+			}
+			if ran != c.wantVeto || asked != c.wantAskRun {
+				t.Fatalf("veto ran = %v, asker ran = %v, want %v/%v", ran, asked, c.wantVeto, c.wantAskRun)
+			}
+		})
+	}
+}
+
 func call(t *testing.T, ag fantasy.AgentTool, input string) fantasy.ToolResponse {
 	t.Helper()
 	resp, err := ag.Run(t.Context(), fantasy.ToolCall{ID: "t1", Name: ag.Info().Name, Input: input})

@@ -81,8 +81,10 @@ type manifest struct {
 }
 
 // Uses is the vocabulary a manifest's "uses" draws from, one word per host
-// capability a plugin may call: what switching the plugin on grants.
-var Uses = []string{"agent", "fs.write", "http", "job", "model", "tool"}
+// capability a plugin may call: what switching the plugin on grants. "perm"
+// is the consent to steer the permission gate (a permission.request handler,
+// zemi.perm.ask).
+var Uses = []string{"agent", "fs.write", "http", "job", "model", "perm", "tool"}
 
 // CheckUses refuses a uses list naming something outside the vocabulary: the
 // plugin does not load, and the error carries the names that would.

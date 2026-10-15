@@ -2415,8 +2415,12 @@ rides the `memories.md` line and its ledger entries.
   then the mode settles: allow runs, ask puts the request to the user
   through the `Ask` hook. No UI (zemi run) fails closed (`ByNobody`) and
   the denial is recorded for the run's summary.
-- The vetoable `permission.request` event runs before the ask; 50 ms,
-  fail-closed (§4). A rewritten tool input re-enters at the gate.
+- The vetoable `permission.request` event runs at the gate, once per
+  action request in both modes; a handler denies, or returns
+  `decision = "ask"` to run the ask path. 50 ms, fail-closed (§4). A
+  rewritten tool input re-enters at the gate. Registering a handler and
+  `zemi.perm.ask` both need the manifest's `perm` word: steering the
+  gate is a declared capability.
 - Asks reach the user one at a time (`Host.askMu`), and a waiter is
   judged again once it holds the lock (`Request.Recheck`), so a switch to
   allow settles the asks behind it. No Lua runs under the ask lock.
