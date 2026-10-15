@@ -114,7 +114,7 @@ func ParseTodos(in map[string]any) ([]store.Todo, int, bool, error) {
 		}
 		var td todoItem
 		if err := remarshal(m, &td); err != nil {
-			return nil, 0, true, fmt.Errorf("todo %d: %v", i+1, err)
+			return nil, 0, true, fmt.Errorf("todo %d: %w", i+1, err)
 		}
 		items = append(items, td)
 	}

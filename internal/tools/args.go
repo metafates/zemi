@@ -39,8 +39,7 @@ func ArgsOf(args any) (props map[string]any, required []string) {
 
 func argsOf(t reflect.Type) (props map[string]any, required []string) {
 	props, required = map[string]any{}, []string{}
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		name := f.Tag.Get("json")
 		if name == "" || name == "-" {
 			continue
@@ -87,6 +86,8 @@ func argSchema(t reflect.Type) map[string]any {
 		if len(ireq) > 0 {
 			prop["required"] = ireq
 		}
+	default:
+		// a kind an args field never holds shows no type
 	}
 	return prop
 }
