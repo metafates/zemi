@@ -171,10 +171,13 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   A reload stops only the servers whose definition it changed or dropped or whose start failed (`lspStopChanged`), like
   the MCP replay, so a write to config or a plugin leaves them warm. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
   so an untrusted project does not carry their schemas every step. A server re-reads a file
-  only when told, so `lspSync` diffs two `git status` listings and sends
-  `workspace/didChangeWatchedFiles` for what changed; it runs before a touch or query only once
-  something other than zemi's own file tools ran (`lspDirty`). A slow or failed server means no
-  diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
+  only when told, so `lspSync` sends `workspace/didChangeWatchedFiles` for what changed: a query
+  syncs every time - in a repository from the diff of two `git status` listings plus, when HEAD
+  moved, the two commits' diff (a checkout's clean swaps) - while the write path syncs only once
+  something other than zemi's own file tools ran (`lspDirty`, marked when the command finishes,
+  not when it starts). Without a repository an mtime walk over the running zemiLua trees stands
+  in for the listing; gitignored files inside one stay invisible (rewind's treeDiff ceiling too).
+  A slow or failed server means no diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send` goes
   through `GoSafe`.
