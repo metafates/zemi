@@ -137,7 +137,8 @@ func TestMCPBridge(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.openMCP(""); err != nil || ui.overlays()[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.overlays()[0].Reload == nil {
+	row := func() map[string]any { return ui.overlays()[0].Items[0].(map[string]any) }
+	if err := h.openMCP(""); err != nil || row()["desc"] != "ready · 2 of 3 tools" || row()["mark"] != "ok" || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
@@ -246,6 +247,14 @@ func TestMCPBridge(t *testing.T) {
 	// the grant is gone now, so a second sign-out has nothing to park
 	if err := h.signOutMCP("fake", true); err == nil || !strings.Contains(err.Error(), "not signed in") {
 		t.Errorf("sign-out with no grant = %v, want a refusal", err)
+	}
+	// waiting in the browser: the row says so and y copies the URL
+	out.mu.Lock()
+	out.signIn = "https://auth.example.com/authorize?client_id=fake"
+	out.mu.Unlock()
+	if row := h.mcpItems()[0].(map[string]any); row["desc"] != "waiting in the browser" || row["mark"] != "wait" ||
+		row["copy"] != "https://auth.example.com/authorize?client_id=fake" {
+		t.Errorf("a waiting row = %v", row)
 	}
 }
 

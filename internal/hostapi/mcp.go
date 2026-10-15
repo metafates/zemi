@@ -753,6 +753,13 @@ func (h *Host) mcpOverlay(refresh bool) Overlay {
 	}
 }
 
+// mcpMarks are the list rows' status marks, the chat's: starting spins and
+// a server waiting for a sign-in waits.
+var mcpMarks = map[ServiceStatus]string{
+	StatusStarting: "spin", StatusReady: "ok", StatusFailed: "err",
+	StatusSignIn: "wait", StatusStopped: "stop", StatusOff: "stop",
+}
+
 func (h *Host) mcpItems() []any {
 	var items []any
 	for _, s := range h.mcp.list() {
@@ -772,6 +779,8 @@ func (h *Host) mcpItems() []any {
 			if len(tools) < all {
 				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
 			}
+		} else if signIn != "" {
+			desc = "waiting in the browser"
 		}
 		where := []string{"command", strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")}
 		if s.spec.URL != "" {
@@ -789,7 +798,13 @@ func (h *Host) mcpItems() []any {
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
 			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
 		}
-		items = append(items, map[string]any{"text": s.name, "desc": desc, "fields": fields, "actions": actions})
+		item := map[string]any{"text": s.name, "desc": desc, "mark": mcpMarks[status], "fields": fields, "actions": actions}
+		if signIn != "" {
+			// the URL is too long for a toast; y copies it when the browser
+			// was blocked
+			item["copy"] = signIn
+		}
+		items = append(items, item)
 	}
 	return items
 }
