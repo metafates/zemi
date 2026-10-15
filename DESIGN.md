@@ -1022,6 +1022,10 @@ message, which the store row, the tab, the exit banner and
 `zemi.session.title()` read at once; `session.auto_title` then has the `titles`
 role's model replace that name in the background, never waiting for the first
 reply, and a failed or empty answer keeps it. A `zemi run` makes no title call.
+Every title surface - the tab, `/sessions`, `/projects`, the splash's recent
+rows and the exit banner - leads the name with the session's marker emoji,
+derived from its id, so it is stable across resume and restart without
+storage; subagent runs, in child sessions, never surface one.
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
@@ -1554,8 +1558,9 @@ UI extensibility contract:
   widget can open nothing a plugin keymap could not. An id without a
   handler draws no hover and does nothing. Ids from model text must not
   become command arguments: use host ids.
-- Terminal title: the tab is named after the session ("<title> · zemi");
-  `zemi.ui.title(text)` from user config replaces it until `title(nil)` or a
+- Terminal title: the tab is named after the session ("<mark> <title> · zemi",
+  the mark the session's id derives); `zemi.ui.title(text)` from
+  user config replaces it until `title(nil)` or a
   reload that does not set it again. Go strips escapes from it, so it cannot
   smuggle a sequence into the terminal. Either way a mark leads it: a braille
   spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on

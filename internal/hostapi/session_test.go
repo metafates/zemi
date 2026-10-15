@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -345,6 +346,50 @@ func TestRenameSession(t *testing.T) {
 	}
 	if o := ui.overlays(); len(o) != 1 || !o[0].Input || o[0].Run != "rename " {
 		t.Fatalf("prompt = %+v", o)
+	}
+}
+
+// TestSessionsRowsCarryTheMarker: every top-level session's picker row leads
+// with the marker its id derives, and an untitled one keeps its placeholder.
+func TestSessionsRowsCarryTheMarker(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	for _, title := range []string{"one", ""} {
+		if err := h.DB.CreateSession(store.ShortID(), "", title, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.OpenSessions(""); err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, item := range ui.overlays()[len(ui.overlays())-1].Items {
+		texts = append(texts, item.(map[string]any)["text"].(string))
+	}
+	sessions, err := h.DB.ListSessions(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sessions {
+		want := SessionMark(s.ID) + " " + cmp.Or(clipRunes(s.Title, 60), "(untitled)")
+		if !slices.Contains(texts, want) {
+			t.Errorf("no row %q in %q", want, texts)
+		}
+	}
+}
+
+// TestTerminalTitleNamesTheSession: the tab title leads with the marker the
+// session's id derives.
+func TestTerminalTitleNamesTheSession(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	if err := h.RenameSession("", "fix the flaky test"); err != nil {
+		t.Fatal(err)
+	}
+	want := SessionMark(sid) + " fix the flaky test · zemi"
+	if got := h.TerminalTitle(); got != want {
+		t.Fatalf("title %q, want %q", got, want)
 	}
 }
 

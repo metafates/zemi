@@ -31,6 +31,8 @@ zemi.ui.widget.add({
 				rows[#rows + 1] = r
 			end
 			if title ~= "" then
+				-- the session's marker leads its title on every surface
+				if ctx.emoji ~= "" then title = ctx.emoji .. " " .. title end
 				rows[#rows + 1] = blank
 				rows[#rows + 1] = { { text = fmt.clip(title, ctx.width - 4), hl = "ExitTitle" } }
 			end

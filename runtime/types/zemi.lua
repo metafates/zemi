@@ -803,7 +803,7 @@ function zemi.event.stats() end
 
 ---@class zemi.RecentSession
 ---@field id string
----@field title string
+---@field title string The session's title, its marker emoji prefixed; "(untitled)" when it has none.
 ---@field ago string "now", "5m ago", "2d ago".
 
 ---@class zemi.RecentProject
@@ -889,6 +889,7 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
+---@field emoji string The session's marker emoji, derived from its id; "" before the first send.
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.

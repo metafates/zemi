@@ -274,7 +274,7 @@ func SessionMark(sid string) string {
 		return ""
 	}
 	var h uint32 = 2166136261
-	for i := 0; i < len(sid); i++ {
+	for i := range len(sid) {
 		h = (h ^ uint32(sid[i])) * 16777619
 	}
 	return sessionEmoji[int(h)%len(sessionEmoji)]
@@ -879,7 +879,7 @@ func (h *Host) TerminalTitle() string {
 		return t.text
 	}
 	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
-		return clipRunes(t, 60) + " · zemi"
+		return SessionMark(h.AgentSessionID()) + " " + clipRunes(t, 60) + " · zemi"
 	}
 	return "zemi"
 }
@@ -1698,6 +1698,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
+	tb.RawSetString("emoji", glua.LString(SessionMark(h.AgentSessionID())))
 	// the tail's render leaves the pending row's inputs out: the rows printed
 	// above it drew it once, and the tail draws it under them
 	tail := printed != nil && printed.Tail
@@ -1804,7 +1805,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			for _, r := range h.recentSessions() {
 				row := L.NewTable()
 				row.RawSetString("id", glua.LString(r.ID))
-				row.RawSetString("title", glua.LString(sanitize.String(r.Title)))
+				title := sanitize.String(r.Title)
+				if title == "" {
+					title = "(untitled)" // as the splash names a session without one
+				}
+				row.RawSetString("title", glua.LString(SessionMark(r.ID)+" "+title))
 				row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
 				recent.Append(row)
 			}

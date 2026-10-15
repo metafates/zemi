@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -398,5 +399,24 @@ func TestInstructionsCached(t *testing.T) {
 		if got := lines[0][0].Text; got != c.want {
 			t.Fatalf("%s: instructions %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestWidgetCtxRecentMarks: the splash's recent rows lead each title with the
+// session's marker, derived from its id.
+func TestWidgetCtxRecentMarks(t *testing.T) {
+	h, r := newTestHostDB(t)
+	sid := store.ShortID()
+	if err := h.DB.CreateSession(sid, "", "named", ""); err != nil {
+		t.Fatal(err)
+	}
+	runUser(t, r, fmt.Sprintf(`
+		zemi.ui.widget.add({ id = "rc", region = "header", render = function(ctx)
+			assert(#ctx.recent == 1, "recent rows")
+			assert(ctx.recent[1].id == %q and ctx.recent[1].title == %q .. " named", ctx.recent[1].title)
+			return {}
+		end })`, sid, SessionMark(sid)))
+	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("rc"), 20, 1, UIState{}); err != nil {
+		t.Fatal(err)
 	}
 }

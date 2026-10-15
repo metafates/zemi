@@ -300,16 +300,17 @@ func TestFarewell(t *testing.T) {
 		cost      float64
 		send      bool
 		booting   bool
+		mark      bool // a named session's title leads with its marker emoji
 		want, not []string
 	}{
-		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, nil, []string{"zemi"}},
+		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, false, nil, []string{"zemi"}},
 		// a quit during the trust prompt: that boot step never returns
-		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"+#%#@%@%%#%#:", "--==-\n\n  Fix the flaky test\n", "cost     $0.42"}, []string{"\x1b"}},
-		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"+#%#@%@%%#%#:", "--==-\n\n  t\n"}, []string{"┗━━ ┗━━ ╹╹╹ ╹"}},
-		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, []string{"fix the build"}, []string{"more", "cost"}},
-		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, []string{"\x1b[1mab\x1b[m"}, []string{"\x1b]52"}},
+		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, false, nil, []string{"zemi"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n", "cost     $0.42"}, []string{"\x1b"}},
+		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, true, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n"}, []string{"┗━━ ┗━━ ╹╹╹ ╹"}},
+		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, false, []string{"fix the build"}, []string{"more", "cost"}},
+		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, false, []string{"ab"}, []string{"\x1b]52"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, c.width, 30)
@@ -329,6 +330,9 @@ func TestFarewell(t *testing.T) {
 				host.AppendMessage("user", "  fix the build\nmore")
 				// whole even where the terminal wraps it
 				c.want = append(c.want, hostapi.ResumeCommand("", sid))
+				if c.mark {
+					c.want = append(c.want, hostapi.SessionMark(sid)+" "+c.title)
+				}
 			}
 			if c.booting {
 				block, reached := make(chan struct{}), make(chan struct{})

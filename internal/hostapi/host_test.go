@@ -15,11 +15,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode"
 
 	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
-	"unicode"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
