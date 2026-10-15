@@ -1,7 +1,7 @@
 // Package perm holds the pieces the permission gate and the file tools
 // share: the subjects a request names, path resolution (RealPath, Path),
-// the pad nothing of the user's depends on, the glob a stub match uses,
-// and the secret-shape matchers.
+// the pad the spill and checkpoint rules key on, the glob a stub match
+// uses, and the secret-shape matchers.
 package perm
 
 import (
@@ -77,40 +77,12 @@ func Under(root, path string) (string, bool) {
 	return rel, true
 }
 
-// FreeZone reports a path nothing of the user's depends on: inside the pad
-// (a request's scratchpad, "" when it has none) or a native temp dir. The
-// file tools read, write and delete there with no ask and no prior read.
-func FreeZone(pad, path string) bool {
-	if InPad(pad, path) {
-		return true
-	}
-	real := CanonPath(path)
-	for _, root := range TempRoots() {
-		if _, ok := Under(root, real); ok {
-			return true
-		}
-	}
-	return false
-}
-
 // InPad reports path inside pad, both resolved, so a symlink in the pad
 // cannot lead out.
 func InPad(pad, path string) bool {
 	real := CanonPath(path)
 	_, ok := Under(CanonPath(pad), real)
 	return ok && real != ""
-}
-
-// TempRoots are the machine's own temp dirs, this process's temp dir and
-// /tmp, deduped and resolved (/tmp is /private/tmp on macOS).
-func TempRoots() []string {
-	var roots []string
-	for _, r := range []string{os.TempDir(), "/tmp"} {
-		if r = CanonPath(r); r != "" && !slices.Contains(roots, r) {
-			roots = append(roots, r)
-		}
-	}
-	return roots
 }
 
 // RealPath makes p absolute and resolves it one component at a time, so

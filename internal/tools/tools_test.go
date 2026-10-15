@@ -11,7 +11,6 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -25,21 +24,6 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
-
-// outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
-// whose point is a path the tools ask about lives here, since t.TempDir(),
-// and so every fixture, is inside a temp root. It sits beside this file, not
-// in the working directory, which a test may have chdir'd into the project.
-func outsideTemp(t *testing.T) string {
-	t.Helper()
-	_, file, _, _ := runtime.Caller(0)
-	dir, err := os.MkdirTemp(filepath.Dir(file), ".zemi-outside-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	return perm.RealPath(dir)
-}
 
 func TestResolveSchemaRefs(t *testing.T) {
 	defs := map[string]any{
@@ -185,7 +169,7 @@ func TestShellGate(t *testing.T) {
 // second depending on the first, apply in call order whichever goroutine
 // runs first.
 func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
-	p, _ := testPipeline(t, false)
+	p, _ := testPipeline(t, true)
 	p.Seen = &sync.Map{}
 	read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
 	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
@@ -316,7 +300,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 }
 
 // TestAskDenialText: a denied ask tells the model who decided and why it
-// asked, not how the rules failed to match, and does not echo the command.
+// asked, and does not echo the command.
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, want string }{
 		{"user", "permission denied (user): tool.shell"},
@@ -392,27 +376,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	data, _ := os.ReadFile(file)
 	if !strings.Contains(string(data), "TWO") || strings.Contains(string(data), "two") {
 		t.Fatalf("edit not applied: %q", data)
-	}
-}
-
-// TestUnsafeHidesNoSecret: a --unsafe pipeline lists and greps a
-// secret-shaped name like any other file, where the same call without the
-// flag keeps it out and says how many it left.
-func TestUnsafeHidesNoSecret(t *testing.T) {
-	dir := perm.RealPath(t.TempDir())
-	for name, body := range map[string]string{"main.go": "package main\n", ".env": "K=secret\n", "cert.pem": "key\n"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	p, _ := testPipeline(t, true)
-	read, grep := toolNamed(t, "read", p), toolNamed(t, "grep", p)
-	list := func() string { return call(t, read, fmt.Sprintf(`{"path":%q,"limit":0}`, dir)).Content }
-	if got := list(); !strings.Contains(got, ".env") || !strings.Contains(got, "cert.pem") || !strings.Contains(got, "main.go") {
-		t.Errorf("a listing: %q", got)
-	}
-	if got := call(t, grep, fmt.Sprintf(`{"pattern":"K=secret","path":%q}`, dir)).Content; !strings.Contains(got, ".env:1") {
-		t.Errorf("a grep: %q", got)
 	}
 }
 
@@ -558,7 +521,7 @@ func TestEditSafety(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	p.Seen = &sync.Map{}
 	read, write, edit := toolNamed(t, "read", p), toolNamed(t, "write", p), toolNamed(t, "edit", p)
-	dir := outsideTemp(t)
+	dir := perm.RealPath(t.TempDir())
 	js := func(m map[string]any) string { b, _ := json.Marshal(m, json.Deterministic(true)); return string(b) }
 	for _, c := range []struct {
 		name, file   string
@@ -660,46 +623,28 @@ func TestEditSafety(t *testing.T) {
 	}
 }
 
-// TestScratchpad: the pad needs no rule, no prior read and no write access
-// to the project, keeps the stale check, stays out of checkpoints and is a
-// command's $TMPDIR whoever allowed it; a secret-shaped name there asks, and
-// a path a shell would expand is refused naming the real one. The machine's
-// temp dirs read and write the same way (perm.FreeZone), a checkpoint aside.
+// TestScratchpad: the pad is a command's $TMPDIR whoever allowed it and is
+// no project a rewind restores, and its writes settle by mode like any
+// other write - ask mode asks, a read-only agent denies, allow mode runs -
+// while a path a shell would expand is refused naming the real one.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
-	free := filepath.Join(perm.TempRoots()[0], "zemi-free-zone")
-	if err := os.MkdirAll(free, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(free) })
+	free := perm.RealPath(t.TempDir())
 	t.Chdir(proj)
 	p, asked := testPipeline(t, false)
 	p.Pad, p.Seen = pad, &sync.Map{}
-	p.Plan = func() bool { return true } // a read-only agent writes only there
 	var checkpoints []string
 	p.Checkpoint = func(path string) { checkpoints = append(checkpoints, path) }
-	for _, f := range []string{"made.txt", "stale.txt"} {
-		os.WriteFile(filepath.Join(pad, f), []byte("a\n"), 0o644)
-	}
+	os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("a\n"), 0o644)
 	for _, c := range []struct {
 		name, tool, input string
 		before            func()
 		want              string
 		asks              bool
 	}{
-		{"write a new file", ToolWrite, `{"path":"PAD/notes/n.md","content":"x"}`, nil, "wrote", false},
-		{"edit what a command made, unread", ToolEdit, `{"path":"PAD/made.txt","old_string":"a","new_string":"b"}`, nil, "edited", false},
+		{"write asks", ToolWrite, `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"write in a temp dir asks", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"read", ToolRead, `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"edit what changed since the read", ToolEdit, `{"path":"PAD/stale.txt","old_string":"b","new_string":"c","replace_all":true}`, func() {
-			later := time.Now().Add(time.Hour)
-			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\nb\n"), 0o644)
-			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
-		}, "not read its current version", false},
-		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "wrote", false},
-		{"write in a temp dir, unread", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "wrote", false},
-		{"edit in a temp dir, unread", ToolEdit, `{"path":"FREE/notes.txt","old_string":"x","new_string":"y"}`, nil, "edited", false},
-		{"read in a temp dir", ToolRead, `{"path":"FREE/notes.txt","limit":0}`, nil, "1\ty", false},
-		{"secret-shaped name in a temp dir", ToolWrite, `{"path":"FREE/cert.pem","content":"x"}`, nil, "wrote", false},
 		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
@@ -710,22 +655,34 @@ func TestScratchpad(t *testing.T) {
 		n := len(*asked)
 		in := strings.ReplaceAll(strings.ReplaceAll(c.input, "PAD", pad), "FREE", free)
 		got := call(t, toolNamed(t, c.tool, p), in).Content
-		if len(*asked) > n {
-			got = (*asked)[n].Reason // what the user and a failed ask read
-		}
 		want := strings.ReplaceAll(strings.ReplaceAll(c.want, "PAD", pad), "FREE", free)
 		if !strings.Contains(got, want) || len(*asked) > n != c.asks {
 			t.Errorf("%s: asked %v, got %q, want %q", c.name, len(*asked) > n, got, want)
 		}
 	}
-	// the pad is no project a rewind restores; a temp file is
-	if len(checkpoints) == 0 {
-		t.Error("no checkpoint: the pad is left out, a temp file is not")
+	// a read-only agent's pad write denies without asking
+	ro, roAsked := testPipeline(t, false)
+	ro.Pad = pad
+	ro.Plan = func() bool { return true }
+	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly || len(*roAsked) != 0 {
+		t.Fatalf("a read-only agent's pad write: %+v, asked %+v", v, *roAsked)
 	}
-	for _, path := range checkpoints {
-		if !strings.HasPrefix(path, free) {
-			t.Errorf("checkpointed %s, want only the temp file %s", path, free)
+	// allow mode writes the pad and a temp dir, and the pad is no project a
+	// rewind restores: the temp write is checkpointed, the pad write is not
+	allow, _ := testPipeline(t, true)
+	allow.Pad, allow.Seen = pad, p.Seen
+	allow.Checkpoint = p.Checkpoint
+	freeNote := filepath.Join(free, "notes.txt")
+	for _, path := range []string{filepath.Join(pad, "made.txt"), freeNote} {
+		if res := call(t, toolNamed(t, ToolWrite, allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
+			t.Errorf("allow-mode write to %s: %q", path, res.Content)
 		}
+	}
+	if res := call(t, toolNamed(t, ToolEdit, allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
+		t.Errorf("allow-mode edit in the pad: %q", res.Content)
+	}
+	if len(checkpoints) != 1 || checkpoints[0] != freeNote {
+		t.Errorf("checkpoints %v, want only %s", checkpoints, freeNote)
 	}
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)
@@ -754,7 +711,7 @@ func TestReadSaysWhatTheModelSees(t *testing.T) {
 }
 
 // TestReadAndShellShapes: read returns images as images, lists a directory
-// without secret-shaped names, and refuses binaries and offsets past the end; shell keeps stdout and stderr in order, strips
+// one level deep, and refuses binaries and offsets past the end; shell keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.
 func TestReadAndShellShapes(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
@@ -1139,6 +1096,3 @@ func trunc(s string, n int) string {
 	}
 	return s
 }
-
-// TestUserRule pins which rule earns the §9 localhost development opt-in: one
-// the user's own config wrote, never a session "always" answer.

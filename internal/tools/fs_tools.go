@@ -95,7 +95,7 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// becomes a job, which outlives the turn.
 	c := proc.ShellCommand(cmd)
 	c.Dir = workdir()
-	c.Env = p.childEnv()
+	c.Env = p.cmdEnv()
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
@@ -364,10 +364,10 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-// childEnv is the environment of a command the model starts: the pad is its
+// cmdEnv is the environment of a command the model starts: the pad is its
 // temp dir, so a file it leaves there is where the prompt says. The touch
 // tells another process's sweep the pad is used.
-func (p *Pipeline) childEnv() []string {
+func (p *Pipeline) cmdEnv() []string {
 	env := append([]string{}, os.Environ()...)
 	env = append(env, proc.NonInteractiveEnv...)
 	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
@@ -586,8 +586,7 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // stale refuses writing a file the model has not read, or one that changed
 // since (a command it ran, the user's editor, a formatter, another agent):
 // writing over it would silently drop those changes. A shell call never updates
-// Seen, so the model re-reads what a command rewrote. A file in the free zone
-// needs no read: its own command made it and nobody else edits there. Nor does an
+// Seen, so the model re-reads what a command rewrote. Nor does an
 // edit: runEdit holds the edit of a file whose current version the model has
 // not read to one exact match, which proves it knows the text it replaces
 // and keeps every other change, and leaves the file unseen. "" when the view
@@ -605,7 +604,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	v, _ := p.Seen.Load(perm.CanonPath(path))
 	t, ok := v.(time.Time) // Seen is written from two packages; a non-time reads as unseen
 	switch {
-	case edit, !ok && perm.FreeZone(p.Pad, path):
+	case edit:
 	case !ok:
 		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.Equal(fi.ModTime()):
@@ -614,18 +613,14 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	return ""
 }
 
-// unseen reports a file whose current version the session has not read:
-// one changed since its read, or one never read outside the free zone.
+// unseen reports a file whose current version the session has not read.
 func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
 	if p.Seen == nil {
 		return false
 	}
 	v, _ := p.Seen.Load(perm.CanonPath(path))
 	t, ok := v.(time.Time)
-	if !ok {
-		return !perm.FreeZone(p.Pad, path)
-	}
-	return !t.Equal(fi.ModTime())
+	return !ok || !t.Equal(fi.ModTime())
 }
 
 var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
@@ -710,7 +705,7 @@ func CallDone(ctx context.Context, ids ...string) {
 func turn(ctx context.Context, id string) func() {
 	c := &callOrder
 	// taking mu first means the waiter is inside Wait when the broadcast lands
-	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })() //nolint:staticcheck // SA2001: the empty section is the ordering
+	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.cond.Broadcast(); c.mu.Unlock() })()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	k := callKey(ctx, id)
@@ -1295,8 +1290,8 @@ func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, l
 // worker's buf. It reads only what a fresh Lstat and the opened file agree
 // is one regular file, so a symbolic link swapped in since the listing is
 // never followed.
-// NOTE: a parent directory swapped for a link still is; perm.Path.Open's
-// openat walk would close that at a syscall per path component.
+// NOTE: a parent directory swapped for a link still redirects the read;
+// only the file itself is checked.
 func grepFile(root, rel string, re, whole *regexp.Regexp, limit int, buf *[]byte) []Hit {
 	path := filepath.Join(root, rel)
 	fi, err := os.Lstat(path)

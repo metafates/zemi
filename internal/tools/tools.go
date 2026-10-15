@@ -114,10 +114,6 @@ func (r Request) Recheck() (Verdict, Request) {
 	return Verdict{DecidedBy: ByNobody, Reason: "still needs the user"}, r.gate.req
 }
 
-// FreeZone reports a file request inside the scratchpad or a native temp dir,
-// where nothing of the user's is at stake.
-func (r Request) FreeZone() bool { return PathSubject(r.Subject) && perm.FreeZone(r.Pad, r.Arg) }
-
 // Verdict is the pipeline outcome for one permission request.
 type Verdict struct {
 	Allowed   bool
@@ -284,8 +280,8 @@ type Pipeline struct {
 	// whole, where a call the model made gets the cut. "" for the model's own.
 	Script string
 	// Path is a file tool's path input as the gate checked it, set on the
-	// per-run copy. NOTE: the tool opens it, never input["path"]: resolving
-	// the string again would follow a symlink swapped in after the check.
+	// per-run copy. The tool opens it, never input["path"]: the string the
+	// gate judged and the file the tool opens stay the same path.
 	Path perm.Path
 	// search is web_search's URL as the gate approved it, set on the per-run
 	// copy by its subjects.
@@ -335,9 +331,6 @@ func (p *Pipeline) Check(req Request) Verdict {
 	req.ReadOnly, req.Pad, req.Script = p.Plan != nil && p.Plan(), p.Pad, p.Script
 	if !req.Action() {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
-	}
-	if req.FreeZone() {
-		return Verdict{Allowed: true, Reason: "the scratchpad and the temp dirs are disposable", DecidedBy: ByDefault}
 	}
 	if req.ReadOnly {
 		return Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
@@ -454,8 +447,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a symbolic link to %s; edit %s instead", str(input["path"]), target, target)), nil
 	}
 	if t.gated {
-		// resolved once: the gate judges and the tool opens the same path, so
-		// a symlink planted later cannot redirect the tool
+		// resolved once: the gate judges and the tool opens the same path
 		path, err := perm.Resolve(str(input["path"]))
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -820,7 +812,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn, ""),
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad or a temp dir, and not changed since. To change part of a file use edit.", false,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -1149,8 +1141,7 @@ func str(v any) string {
 
 // searchRoot is where glob and grep look: path, or the working directory.
 // NOTE: the walk starts from this raw string, not the resolved root the
-// gate judged, so a directory swapped for a symlink after the check is walked;
-// each hit meets the deny and ask read rules (ruledOut), not the jail default.
+// gate judged, so a directory swapped for a symlink after the check is walked.
 func searchRoot(in map[string]any) string {
 	if s := str(in["path"]); s != "" {
 		return s

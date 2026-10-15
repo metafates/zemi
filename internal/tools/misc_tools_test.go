@@ -2,7 +2,7 @@
 // and skill (misc_tools.go), the job_* family (job_tools.go) and the net
 // helpers behind fetch/web_search (net_tools.go). No test touches the
 // real network: fetch is proven at the URL/permission layer and via a
-// loopback httptest server that the SSRF guard must refuse.
+// loopback httptest server.
 
 package tools
 

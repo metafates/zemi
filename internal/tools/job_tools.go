@@ -1,8 +1,8 @@
 // job_tools.go ships the job_* built-ins: background processes the model
 // can start, read, list and kill. Jobs share the Lua job discipline (DESIGN
-// §6.5): the child env is the parent minus secret-shaped names, output
-// lands in capped buffers, and the working directory is the project
-// directory.
+// §6.5): the child env is the full parent environ plus the non-interactive
+// vars and TMPDIR set to the pad, output lands in capped buffers, and the
+// working directory is the project directory.
 
 package tools
 
@@ -288,7 +288,7 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
 	line := str(input["command"])
-	id, err := p.Jobs.Start(workdir(), line, p.childEnv())
+	id, err := p.Jobs.Start(workdir(), line, p.cmdEnv())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

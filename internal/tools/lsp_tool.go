@@ -438,8 +438,8 @@ func workRel(path string) string {
 	return path
 }
 
-// readWhole reads a file the gate resolved: not through a symlink swapped in
-// since the check, and not blocking on a FIFO the model named.
+// readWhole reads a file the gate resolved, not blocking on a FIFO the
+// model named.
 func readWhole(path perm.Path) ([]byte, error) {
 	f, _, err := OpenRegular(path)
 	if err != nil {
