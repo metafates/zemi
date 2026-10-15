@@ -20,7 +20,7 @@ import (
 var goKeys = [][2]string{
 	{"enter", "send the message"},
 	{"shift+enter, alt+enter, ctrl+enter", "newline"},
-	{"esc", "back, or twice to interrupt"},
+	{"esc", "back; twice to interrupt or rewind"},
 	{"ctrl+c", "interrupt, clear the draft, quit"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
@@ -134,7 +134,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 			a.clearComposer()
 			a.composer.snapshot(prev, false)
-		case a.arm(key):
+		case a.arm(key, "quit"):
 			a.Quit()
 		}
 		return nil
@@ -312,15 +312,22 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
 		// transcript, or else interrupts on a second press: esc closes every
-		// box, and one press too many must not kill the turn.
+		// box, and one press too many must not kill the turn. Idle, the
+		// second press opens /rewind instead.
 		if a.host.ViewedAgent() != "" {
 			a.armed = armed{}
 			if back := a.host.LeaveAgentView(); back != "" {
 				a.runCommand(hostapi.SplitCommand(back))
 			}
-		} else if _, busy := a.host.BusyNow(); (a.host.AgentActive() || busy) && a.arm(key) {
-			a.host.CancelBusy()
-			a.interrupt()
+		} else if label, _ := a.host.BusyNow(); a.host.AgentActive() || label != "" {
+			if a.arm(key, "interrupt") {
+				a.host.CancelBusy()
+				a.interrupt()
+			}
+		} else if a.arm(key, "rewind") {
+			if err := a.host.OpenRewind(); err != nil {
+				a.host.CommandFailed("rewind", err)
+			}
 		}
 		return nil
 	default:
@@ -424,17 +431,18 @@ func (a *App) replayKeys(held []string, focus string) tea.Cmd {
 
 type armed struct {
 	key   string
+	what  string // what the second press does: an esc armed to interrupt stays one when the turn ends before the second press
 	until time.Time
 }
 
-// arm reports whether key is armed, disarming it: the second press acts.
-// Otherwise it arms key for 2s.
-func (a *App) arm(key string) bool {
-	if a.isArmed(key) {
+// arm reports whether key is armed for what, disarming it: the second press
+// acts. Otherwise it arms key for 2s.
+func (a *App) arm(key, what string) bool {
+	if a.armed.key == key && a.armed.what == what && a.now().Before(a.armed.until) {
 		a.armed = armed{}
 		return true
 	}
-	a.armed = armed{key: key, until: a.now().Add(2 * time.Second)}
+	a.armed = armed{key: key, what: what, until: a.now().Add(2 * time.Second)}
 	return false
 }
 

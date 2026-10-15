@@ -2190,10 +2190,13 @@ rides the `memories.md` line and its ledger entries.
   row naming it rather than the user's own words, since the whole of it is the
   model's.
 - **Default keymaps** (all rebindable by user config except the
-  Go-reserved cancel and reload triggers, §6.2): `enter` sends, `esc`
-  twice within 2s or `ctrl+c` once interrupts the turn (`esc` in an agent
-  view goes back; idle, `ctrl+c` moves a draft into the history, and on an
-  empty composer twice within 2s quits), `pgup`/`pgdown`,
+  Go-reserved cancel and reload triggers, §6.2; a keymap bound to plain
+  `esc` shadows the esc chords, so they are a default, never a guarantee):
+  `enter` sends, `esc` twice within 2s or `ctrl+c` once interrupts the turn
+  (`esc` in an agent view goes back; the esc chord stops a busy job, and
+  when idle - a draft in the composer included - opens /rewind; `ctrl+c`
+  moves a draft into the history, and on an empty composer twice within 2s
+  quits), `pgup`/`pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or

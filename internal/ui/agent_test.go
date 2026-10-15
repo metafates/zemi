@@ -966,33 +966,43 @@ func TestQueuedFold(t *testing.T) {
 }
 
 // TestInterruptKeys: esc interrupts a running turn on a second press within
-// 2s and an agent view takes it as back; ctrl+c interrupts at once, clears a
-// draft into the history, and on an empty composer arms quit. A held key
-// prefix replays as plain keys when the next key breaks it or it times out,
-// and ctrl+c drops it.
+// 2s, an agent view takes it as back, a busy job's chord cancels the job, and
+// idle the second press opens /rewind, the draft included; an esc armed to
+// interrupt never fires a rewind once the turn ends between presses. ctrl+c
+// interrupts at once, clears a draft into the history, and on an empty
+// composer arms quit. A held key prefix replays as plain keys when the next
+// key breaks it or it times out, and ctrl+c drops it.
 func TestInterruptKeys(t *testing.T) {
 	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
 	ctrlE, x := tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
 	var wait tea.KeyPressMsg          // advances the clock 3s
 	view := tea.KeyPressMsg{Code: -1} // opens an agent view
+	stop := tea.KeyPressMsg{Code: -2} // ends the turn
+	box := tea.KeyPressMsg{Code: -3}  // opens a test overlay
 	for _, c := range []struct {
-		name          string
-		active, view  bool
-		draft         string
-		keys          []tea.KeyPressMsg
-		cancel, armed bool
-		composer, row string
+		name               string
+		active, view, busy bool
+		rewind             bool
+		draft              string
+		keys               []tea.KeyPressMsg
+		cancel, armed      bool
+		composer, row      string
 	}{
-		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
-		{"esc esc interrupts", true, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
-		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
-		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
-		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
-		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
-		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
-		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
-		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
+		{"esc arms", true, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
+		{"esc esc interrupts", true, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
+		{"esc arms again after 3s", true, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
+		{"esc in an agent view goes back and disarms", true, true, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
+		{"idle esc esc opens rewind, the draft kept", false, false, false, true, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", "No prompts to rewind"},
+		{"idle esc arms again after 3s", false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", ""},
+		{"esc armed to interrupt never rewinds after the turn ends", true, false, false, false, "", []tea.KeyPressMsg{esc, stop, esc}, false, false, "", ""},
+		{"esc esc with a busy job cancels it, no rewind", false, false, true, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
+		{"esc in an overlay closes it and never arms rewind", false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
+		{"ctrl+c interrupts at once", true, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
+		{"ctrl+c clears a draft, up restores it", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c on an empty composer arms quit", false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
+		{"a broken prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
+		{"a timed out prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
+		{"ctrl+c drops a held prefix", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 90, 16)
@@ -1000,6 +1010,13 @@ func TestInterruptKeys(t *testing.T) {
 			agentID := store.ShortID()
 			app.now = func() time.Time { return clock }
 			runLua(t, app, `zemi.keymap.set("ctrl+e s", "zemi.ui.help")`)
+			testStore(t, host)
+			var stopped chan struct{}
+			if c.busy {
+				stopped = make(chan struct{})
+				done := host.Busy("signing in", func() { close(stopped) })
+				defer done()
+			}
 			if c.active {
 				host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second})
 				if err := host.AgentSend("also this"); err != nil {
@@ -1007,31 +1024,40 @@ func TestInterruptKeys(t *testing.T) {
 				}
 			}
 			if c.view {
-				db := testStore(t, host)
 				clock = clock.Add(time.Hour)
-				if err := db.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
+				if err := host.DB.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			app.composer.text = c.draft
 			for _, k := range c.keys {
-				if k == view {
+				switch k {
+				case view:
 					if err := host.ViewAgent(agentID); err != nil {
 						t.Fatal(err)
 					}
-					continue
+				case stop:
+					host.SeedStream(hostapi.StreamSnapshot{})
+				case box:
+					runLua(t, app, `zemi.ui.input({ prompt = "Pick" }, function() end)`)
+				default:
+					app.Update(k)
 				}
-				if k == wait {
-					clock = clock.Add(3 * time.Second)
-					app.onFrame()
-					continue
+			}
+			for app.Pump() {
+			}
+			if c.busy {
+				select {
+				case <-stopped:
+				default:
+					t.Fatal("esc esc did not cancel the busy job")
 				}
-				app.Update(k)
 			}
 			app.renderSync(t)
 			frame := ansi.Strip(app.Frame())
-			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != c.armed || len(app.keySeq) > 0 {
-				t.Fatalf("cancelling=%v composer=%q view=%q frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), frame)
+			rewind := len(app.overlays) == 1 && app.overlays[0].o.ID == "rewind"
+			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != c.armed || len(app.keySeq) > 0 || rewind != c.rewind || (len(app.overlays) > 0 && !rewind) {
+				t.Fatalf("cancelling=%v composer=%q view=%q overlays=%d frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), len(app.overlays), frame)
 			}
 		})
 	}
