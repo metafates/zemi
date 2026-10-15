@@ -23,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -1231,8 +1232,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 }
 
 // TestActiveProfileKey: agent.profile picks the profile a send runs as,
-// whatever order config defined things in, an unknown name fails the send,
-// and a reload onto a config without the profile runs the shipped one.
+// whatever order config defined things in; an unknown name fails the send.
 func TestActiveProfileKey(t *testing.T) {
 	for _, c := range []struct {
 		name, src string
@@ -1275,15 +1275,26 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
-// TestPluginProfile: a plugin ships a profile (the read-only planning recipe),
-// project code does not, and the registry's collision rules hold: one plugin
-// cannot replace another's, the user can replace any.
+// TestPluginProfile: a plugin ships a profile at boot (the read-only planning
+// recipe), project code does not, `default` stays the user's, and a plugin
+// cannot swap its profile mid-session.
 func TestPluginProfile(t *testing.T) {
-	h, r := newTestHostPlugin(t, "")
-	h.Providers.Reset(agent.Catalog{}) // the profile's model must resolve
-	root := h.pluginsRoot()
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { read_only = true, model = "a/big" })`, filepath.Join(root, "local", "a", ".zemi", "init.lua"), lua.OriginPlugin, time.Minute, nil); err != nil {
+	log := slog.New(slog.DiscardHandler)
+	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir(), StateHome: t.TempDir()}
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
+	root := filepath.Join(h.pluginsRoot(), "local", "a")
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, plugin.InitFile)), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	init := filepath.Join(root, plugin.InitFile)
+	if err := os.WriteFile(init, []byte(`zemi.agent.profile.add("planner", { read_only = true, model = "a/big" })`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.Providers.Reset(agent.Catalog{}) // the profile's model must resolve
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
+		t.Fatalf("Boot: %v", err)
 	}
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
@@ -1291,8 +1302,8 @@ func TestPluginProfile(t *testing.T) {
 	if !h.readOnly() {
 		t.Fatal("the plugin's profile is not read-only")
 	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", {})`, filepath.Join(root, "local", "b", ".zemi", "init.lua"), lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "is registered by plugin") {
-		t.Errorf("plugin b replaced plugin a's profile: %v", err)
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "while it loads") {
+		t.Errorf("a plugin swapped its profile mid-session: %v", err)
 	}
 	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, "init.lua", lua.OriginUser, time.Minute, nil); err != nil {
 		t.Fatal(err)
@@ -1302,6 +1313,9 @@ func TestPluginProfile(t *testing.T) {
 	}
 	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("proj", {})`, ".agents/init.lua", lua.OriginProject, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "only user config and plugins may define profiles") {
 		t.Errorf("project code defined a profile: %v", err)
+	}
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("default", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "default") {
+		t.Errorf("a plugin redefined the shipped default shape: %v", err)
 	}
 }
 

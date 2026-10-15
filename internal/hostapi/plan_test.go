@@ -213,7 +213,9 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		t.Fatalf("asked %d, nudges %d after the nudged reply ended in text again", ui.planAsked, nudges())
 	}
 	// the second reply follows a notice row, never a bare gap
-	if !slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == "notice" && strings.Contains(m.Text, "Asked the planner") }) {
+	if !slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool {
+		return m.Kind == "notice" && strings.Contains(m.Text, "Asked the read-only agent")
+	}) {
 		t.Fatalf("no nudge notice: %+v", h.Session().Transcript)
 	}
 	// a submit that claimed the agent first is left alone

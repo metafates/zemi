@@ -197,7 +197,7 @@ func TestModelTargetPick(t *testing.T) {
 	}
 }
 
-// TestModelTargetBuiltinKey: a profile re-registers its models.<name> key on
+// TestModelTargetProfileKey: a profile re-registers its models.<name> key on
 // every boot that defines it, re-applying the pick kept for the key; a reload
 // without the profile drops the key with it.
 func TestModelTargetProfileKey(t *testing.T) {

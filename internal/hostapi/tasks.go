@@ -890,7 +890,7 @@ func reportStatus(word string) CallStatus {
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
 // agent.AttachMarker (a joined queue may carry several), the plugins' sends,
-// the loop's runs and the planner's nudge, so a reply that follows no user
+// the loop's runs and the read-only agent's nudge, so a reply that follows no user
 // row says why; none for none of them.
 func reportHeads(tail string) []notice {
 	var heads []notice
@@ -918,7 +918,7 @@ func reportHeads(tail string) []notice {
 		}
 	}
 	if strings.Contains(tail, planNudgeText) {
-		heads = append(heads, notice{Text: "Asked the planner to end with the plan or question tool."})
+		heads = append(heads, notice{Text: "Asked the read-only agent to end with the plan or question tool."})
 	}
 	return heads
 }
