@@ -879,7 +879,7 @@ type stubReply struct {
 
 // reply is the reply of the newest stub matching a gated call, and whether
 // the call is one a stub answers; nil and true is a false reply, which
-// refuses like a missing rule. A call no stub answers raises naming the
+// refuses the call. A call no stub answers raises naming the
 // stub that would.
 // NOTE: a stub answers at once, so a handle's timeout goes untested; a
 // reply that waits for test.advance would reach it.

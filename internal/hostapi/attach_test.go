@@ -221,7 +221,7 @@ func TestImageAttachment(t *testing.T) {
 
 // TestAttachPath: a dropped project file becomes its @reference where an @
 // word reads it back whole, an image from elsewhere a copy that attaches under
-// its own name, a directory or secret its path, and a bare chip name cannot
+// its own name, a directory its path, and a bare chip name cannot
 // climb out of the drops directory.
 func TestAttachPath(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -245,7 +245,7 @@ func TestAttachPath(t *testing.T) {
 		filepath.Join(h.Dirs.ProjectDir, "todo!"):       "[File ./todo!]",
 		shot:                       "[Image Screen Shot 1.png]",
 		out:                        out,
-		filepath.Join(out, ".env"): filepath.Join(out, ".env"),
+		filepath.Join(out, ".env"): "[File env]",
 		elsewhere:                  "[File main-2.go]",
 	} {
 		if got := h.AttachPath(path); got != want {

@@ -626,7 +626,7 @@ func (r *Runtime) moduleInstance(gen *Generation, key, name string, origin Origi
 // exportsGo names the first Go function reachable from a plugin module's
 // value, or "". A Go function handed out as a plain value runs as its
 // caller with no frame of the plugin, so require("p"):setup() with setup =
-// zemi.permission.rule.add would add the module table as a user rule.
+// zemi.state.set would write state as the caller, not the plugin.
 func exportsGo(v glua.LValue, at string, seen map[*glua.LTable]bool) string {
 	switch v := v.(type) {
 	case *glua.LFunction:

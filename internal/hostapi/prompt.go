@@ -486,10 +486,10 @@ func (h *Host) instructionEdits() string {
 }
 
 // instructionFile reports whether a repository instruction file may load.
-// It refuses a symlink out of the repository or a secret-shaped file.
+// It refuses a symlink out of the repository.
 func (h *Host) instructionFile(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode().IsRegular() && !perm.PathIsSecret(p) && h.inJail(p, h.Dirs.RepoRoot())
+	return err == nil && fi.Mode().IsRegular() && h.inJail(p, h.Dirs.RepoRoot())
 }
 
 // scratchUse, scratchWrite, scratchRead and recipesUse are the rules for

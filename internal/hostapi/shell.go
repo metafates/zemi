@@ -23,7 +23,7 @@ const shellTimeout = 2 * time.Minute
 
 // RunShell runs cmd (typed by the user, so no permission gate) without
 // blocking the caller. The model reads its output, so the child starts from
-// zemi's own environment minus the secret-shaped names.
+// zemi's own environment.
 func (h *Host) RunShell(cmd string) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {

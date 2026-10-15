@@ -224,11 +224,6 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		// user config reads its own keys (api_key = zemi.env.get(...));
-		// plugins and projects never see secret-shaped names
-		if o := h.RT.CurrentOrigin(L); perm.EnvIsSecret(name) && o != lua.OriginUser && o != lua.OriginBuiltin {
-			L.RaiseError("zemi.env.get: %q matches the secret denylist", name)
-		}
 		// unset is nil, never "": an empty api_key registers a provider that
 		// fails much later, so `zemi.env.get("X") or error(...)` must work
 		v, ok := os.LookupEnv(name)
@@ -244,18 +239,18 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 
 // zemi.state (persisted kv, global scope)
 
-// principal names the calling code for permission rules and state: its
+// principal names the calling code for state keys and attribution: its
 // origin, and for a plugin which one ("plugin:<name>"). Plugin code with no
 // plugin file on the stack (a user module a plugin required, a load chunk,
 // called from user code) raises: a nameless principal would share one state
-// space and slip past every rule scoped to a plugin.
+// space with every plugin.
 func (h *Host) principal(L *glua.LState) string {
 	if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
 		return string(o)
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
 	if name == "" {
-		L.RaiseError("plugin code running with no file of its plugin on the stack has no principal for rules or state")
+		L.RaiseError("plugin code running with no file of its plugin on the stack has no principal")
 	}
 	return perm.PluginPrincipal(name)
 }
@@ -473,7 +468,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		// as written: the secret shapes match a secret-named symlink's name
 		h.luaGate(L, subject, h.projectAbs(path), func() map[string]any { return map[string]any{"path": path} })
 		return resolved
 	}

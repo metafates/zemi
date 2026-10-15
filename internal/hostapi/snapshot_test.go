@@ -60,33 +60,27 @@ func TestShellChanges(t *testing.T) {
 	h.noteWrite(filepath.Join(dir, "tool.txt"))
 	note, diff, paths := done()
 
-	if note != "files changed: a.txt, api_secret.txt, blob.bin, new.txt" {
+	if note != "files changed: .env, a.txt, api_secret.txt, blob.bin, new.txt" {
 		t.Errorf("note: %q", note)
 	}
 	root := perm.RealPath(dir)
-	if want := []string{filepath.Join(root, "a.txt"), filepath.Join(root, "api_secret.txt"), filepath.Join(root, "blob.bin"), filepath.Join(root, "new.txt")}; !slices.Equal(paths, want) {
+	if want := []string{filepath.Join(root, ".env"), filepath.Join(root, "a.txt"), filepath.Join(root, "api_secret.txt"), filepath.Join(root, "blob.bin"), filepath.Join(root, "new.txt")}; !slices.Equal(paths, want) {
 		t.Errorf("paths = %v, want %v", paths, want)
 	}
-	for _, want := range []string{"A api_secret.txt (content hidden", "M a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO", "A new.txt\n@@ -0,0 +1 @@\n+hi", "A blob.bin\nbinary, no text to show"} {
+	for _, want := range []string{"A .env\n@@ -0,0 +1 @@\n+KEY=hunter2", "A api_secret.txt\n@@ -0,0 +1 @@\n+shh", "M a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO", "A new.txt\n@@ -0,0 +1 @@\n+hi", "A blob.bin\nbinary, no text to show"} {
 		if !strings.Contains(diff, want) {
 			t.Errorf("diff lacks %q:\n%s", want, diff)
 		}
 	}
-	for _, bad := range []string{"hunter2", "shh", "ignored", "tool.txt", "staged.txt", snapOverlap} {
+	for _, bad := range []string{"ignored", "tool.txt", "staged.txt", snapOverlap} {
 		if strings.Contains(diff, bad) {
 			t.Errorf("diff holds %q:\n%s", bad, diff)
 		}
 	}
-	// a snapshot stores a secret-shaped file's name only (its content would
-	// leak), and stays out of the repository's own state
-	_, env, _ := h.snapshot(dir)
-	for _, c := range []struct {
-		env []string
-		bad string
-	}{{env, "hunter2"}, {nil, "shh"}} {
-		if objs, _ := h.gitEnv(dir, c.env, "cat-file", "--batch-all-objects", "--batch"); strings.Contains(objs, c.bad) {
-			t.Errorf("an object store holds %q", c.bad)
-		}
+	// the snapshot keeps its objects out of the repository's own store
+	h.snapshot(dir)
+	if objs, _ := h.git(dir, "cat-file", "--batch-all-objects", "--batch"); strings.Contains(objs, "shh") {
+		t.Errorf("the repository's object store holds %q", "shh")
 	}
 	if now, _ := h.git(dir, "status", "--porcelain"); !strings.Contains(now, "A  staged.txt") || !strings.Contains(now, "?? new.txt") {
 		t.Errorf("the user's index moved: %q", now)

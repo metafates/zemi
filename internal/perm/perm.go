@@ -1,7 +1,7 @@
 // Package perm holds the pieces the permission gate and the file tools
 // share: the subjects a request names, path resolution (RealPath, Path),
-// the pad the spill and checkpoint rules key on, the glob a stub match
-// uses, and the secret-shape matchers.
+// the pad the spill and checkpoint rules key on, and the glob a stub match
+// uses.
 package perm
 
 import (
@@ -230,37 +230,3 @@ func Match(pattern, s string) bool {
 	}
 	return regexp.MustCompile(b.String()).MatchString(s)
 }
-
-// SecretPathShape matches secret-shaped filesystem names. The attach step
-// refuses one, and a diff or a listing may name it rather than print it.
-var SecretPathShape = []string{
-	".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
-	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
-	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf",
-	"*credential*", "*secret*",
-}
-
-// PathIsSecret folds on every OS: a shape that flags one file too many is
-// cheaper than a darwin spelling that slips past.
-func PathIsSecret(p string) bool { return secretShaped(fold(filepath.Base(p)), SecretPathShape) }
-
-// secretShaped takes a folded base name.
-func secretShaped(base string, shapes []string) bool {
-	return slices.ContainsFunc(shapes, func(pat string) bool {
-		ok, _ := filepath.Match(pat, base)
-		// an ssh public key is meant to be shared
-		return ok && !(strings.HasPrefix(pat, "id_") && strings.HasSuffix(base, ".pub"))
-	})
-}
-
-// EnvIsSecret reports whether an env var name looks like it holds a secret
-// (case-insensitive); such variables reach Lua through zemi.env.get for the
-// user's and zemi's own code only. PWD and PASS count only as a suffix
-// after _, so PWD, OLDPWD and COMPASS pass.
-func EnvIsSecret(name string) bool {
-	up := strings.ToUpper(name)
-	return strings.HasSuffix(up, "_PWD") || strings.HasSuffix(up, "_PASS") ||
-		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
-}
-
-var secretEnvShape = []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL"}

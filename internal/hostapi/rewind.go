@@ -492,7 +492,7 @@ func (h *Host) OpenRewind() error {
 			desc += " · " + files
 			restore = ", restores " + files + " to " + Plural(n, "how it was", "how they were") + " before it,"
 		}
-		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository, not ignored and not secret-shaped."
+		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository and not ignored."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,

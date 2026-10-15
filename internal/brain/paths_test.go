@@ -204,17 +204,12 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("file-safety keeps a secret-shaped or out-of-partition file out", func(t *testing.T) {
+	t.Run("file-safety keeps an out-of-partition file out", func(t *testing.T) {
 		p := testPartition(t)
 		if err := os.MkdirAll(p.Dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		body := []byte("---\ndescription: stolen\nread_if: r\n---\n")
-		// secret-shaped by name, and a plain file: the shape is the only bar
-		// it fails
-		if err := os.WriteFile(filepath.Join(p.Dir, ".env.md"), body, 0o600); err != nil {
-			t.Fatal(err)
-		}
 		outside := filepath.Join(t.TempDir(), "outside.md")
 		if err := os.WriteFile(outside, body, 0o600); err != nil {
 			t.Fatal(err)

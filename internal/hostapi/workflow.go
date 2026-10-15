@@ -1057,7 +1057,7 @@ func flowFile(id, ext string) string { return "workflow-" + id + ext }
 
 // padOpen opens name in pad defensively: the pad
 // is a write root, so a link planted at the name or a swapped parent fails
-// the open instead of leading zemi, which runs unconfined, elsewhere.
+// the open instead of leading zemi elsewhere.
 func padOpen(pad, name string, flag int) (*os.File, error) {
 	p, err := perm.Lresolve(filepath.Join(pad, name))
 	if err != nil {
