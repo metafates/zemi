@@ -1,7 +1,7 @@
 // Package perm holds the pieces the permission gate and the file tools
-// share: the subjects a request names, path resolution (RealPath, Path and
-// its openat walk), the pad and temp roots nothing of the user's depends
-// on, the glob a stub match uses, and the secret-shape matchers.
+// share: the subjects a request names, path resolution (RealPath, Path),
+// the pad nothing of the user's depends on, the glob a stub match uses,
+// and the secret-shape matchers.
 package perm
 
 import (
@@ -167,10 +167,10 @@ func RealPath(p string) string {
 	return real
 }
 
-// Path is an absolute path resolved as the kernel resolves it, the proof
-// Open acts on: every directory component is resolved, and the last one too
-// unless Lresolve made it, when Open refuses a link there. Only Resolve and
-// Lresolve make one, and the zero value opens nothing.
+// Path is an absolute path resolved as the kernel resolves it, what the
+// gate judged and the tool opens: every directory component is resolved,
+// and the last one too unless Lresolve made it. Only Resolve and Lresolve
+// make one, and the zero value opens nothing.
 type Path struct{ s string }
 
 // Resolve resolves p with RealPath.
@@ -183,7 +183,8 @@ func Resolve(p string) (Path, error) {
 }
 
 // Lresolve is Resolve leaving the last component as named, like lstat(2):
-// a symlink there is the link itself, which Open refuses and Remove deletes.
+// a symlink there is the link itself, which Remove deletes rather than its
+// target.
 func Lresolve(p string) (Path, error) {
 	sep := string(filepath.Separator)
 	dir, name, ok := strings.CutLast(p, sep)
@@ -201,6 +202,23 @@ func Lresolve(p string) (Path, error) {
 }
 
 func (p Path) String() string { return p.s }
+
+// Open opens the path, making its missing parent directories when flag has
+// os.O_CREATE. The zero value names nothing and fails to open.
+func (p Path) Open(flag int, mode os.FileMode) (*os.File, error) {
+	if flag&os.O_CREATE != 0 {
+		if err := os.MkdirAll(filepath.Dir(p.s), 0o755); err != nil {
+			return nil, err
+		}
+	}
+	return os.OpenFile(p.s, flag, mode)
+}
+
+// MkdirAll makes the directory and its missing parents.
+func (p Path) MkdirAll() error { return os.MkdirAll(p.s, 0o755) }
+
+// Remove deletes one file, symlink or empty directory.
+func (p Path) Remove() error { return os.Remove(p.s) }
 
 // FoldCase folds p on darwin and windows, where the filesystem ignores case.
 func FoldCase(p string) string {
