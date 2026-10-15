@@ -8,36 +8,48 @@
 <style>
 :root {
   color-scheme: dark;
-  --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; --danger: #f17070;
+  --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --danger: #f17070;
 }
 * { box-sizing: border-box; }
+html, body { height: 100%; }
 body {
-  margin: 0; padding: 3.5rem 16px 4rem;
+  margin: 0; overflow: hidden;
   background: var(--bg); color: var(--fg);
   font: 15px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   -webkit-font-smoothing: antialiased;
 }
-main { max-width: 72ch; margin: 0 auto; }
-p { margin: 0 0 1.2em; max-width: 60ch; }
-.dim { color: var(--dim); }
-.accent { color: var(--accent); }
-.knot pre { color: var(--dim); font: 400 8px/1.15 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; margin: 0 0 1.6rem; }
-h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
-.tag { margin-bottom: .6em; }
-.eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.4rem; list-style: none; padding: 0; }
-.eyes li { display: flex; flex-direction: column; }
+/* one screen, never a page scroll: the provider's failure reason scrolls
+   inside its panel instead */
+main {
+  height: 100dvh; max-width: 72ch; margin: 0 auto;
+  padding: clamp(1.5rem, 7vh, 3.5rem) 16px 2rem;
+  display: flex; flex-direction: column;
+}
+.knot { overflow: hidden; margin: 0 0 2.5rem; flex: none; }
+.knot pre { color: var(--dim); font: 400 8px/1.15 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; margin: 0; }
+h1 { font-size: clamp(2.5rem, 8vh, 4.5rem); font-weight: 600; line-height: 1.1; margin: 0 0 .4em; }
+.fail { color: var(--danger); }
+p { margin: 0; max-width: 60ch; }
+.tag { margin-bottom: 1.6rem; }
+.tag .dim { color: var(--dim); }
+.eyes { display: flex; gap: 3ch; margin: 0 0 2rem; padding: 0; list-style: none; }
 .eyes .m { font-weight: 600; }
 .eyes .l { color: var(--dim); }
-.sec { margin: 2.4rem 0 0; }
-h2 { font-size: inherit; font-weight: 400; margin: 0 0 1rem; display: flex; align-items: center; }
-h2::before { content: ""; width: 2ch; border-top: 1px solid var(--rule); margin-right: 1ch; }
-h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left: 1ch; }
-.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel); margin: 0 0 1.1rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.accent { color: var(--accent); }
+.cmd {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel);
+  margin: 0 0 1.5rem; overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.next { margin-top: auto; }
+.dim { color: var(--dim); }
+/* too short to hold the knot: it yields before the page would scroll */
+@media (max-height: 30rem) { .knot { display: none; } }
 </style>
 </head>
 <body>
 <main>
-
+  <div class="knot">
     <pre role="img" aria-label="a trefoil knot drawn in ascii">
                     #%%%%%%%#*
                 #%%%##%%%%##@@@@%*=
@@ -66,23 +78,13 @@ h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left
 
 
                                                             </pre>
-  </section>
+  </div>
 
 {{if .OK}}
 <h1>signed in</h1>
-<p class="tag">zemi is connected to <b>{{.Server}}</b>.</p>
-<ul class="eyes"><li><span class="m"><span class="accent">@</span>^^</span><span class="l">done</span></li></ul>
-{{else}}
-<h1>sign-in failed</h1>
-<p class="tag">zemi could not sign in to <b>{{.Server}}</b>.</p>
-<ul class="eyes"><li><span class="m"><span class="accent">@</span>&gt;&lt;</span><span class="l">error</span></li></ul>
-<div class="cmd">{{.Reason}}</div>
-{{end}}
-
-<section class="sec">
-<h2>next</h2>
-{{if .OK}}
-<p class="dim" id="foot">You can close this tab and go back to your terminal.</p>
+<p class="tag"><span class="dim">zemi is connected to </span><b>{{.Server}}</b>.</p>
+<ul class="eyes"><li><span class="m"><span class="accent">@</span>^^</span> <span class="l">done</span></li></ul>
+<p class="dim next" id="foot">You can close this tab and go back to your terminal.</p>
 <script>
   let n = 3; const foot = document.getElementById("foot");
   const tick = () => { if (n === 0) { window.close(); foot.textContent = "You can close this tab and go back to your terminal."; return; }
@@ -90,10 +92,12 @@ h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left
   tick();
 </script>
 {{else}}
-<p class="dim">Go back to zemi and open /mcp to try again.</p>
+<h1 class="fail">sign-in failed</h1>
+<p class="tag"><span class="dim">zemi could not sign in to </span><b>{{.Server}}</b>.</p>
+<ul class="eyes"><li><span class="m"><span class="fail">@</span>&gt;&lt;</span> <span class="l">error</span></li></ul>
+<div class="cmd">{{.Reason}}</div>
+<p class="dim next">Go back to zemi and open /mcp to try again.</p>
 {{end}}
-</section>
-
 </main>
 </body>
 </html>
