@@ -212,7 +212,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	case err != nil:
 		msg := err.Error()
 		if in.Path != "" {
-			// the chunk keeps its tool name, which the sandbox guard reads;
+			// the chunk keeps its tool name, which the permission ask reads;
 			// the error names the file the model can edit
 			msg = strings.ReplaceAll(msg, rel+":", in.Path+":")
 		}

@@ -217,7 +217,7 @@ func (d Dirs) WorktreesDir() string {
 // WorktreesIgnore writes <WorktreesDir>/.gitignore ignoring everything,
 // itself included, when there is none. It reports whether WorktreesDir is
 // the repository's own directory, no link on the way, and writes only then:
-// zemi runs unconfined, so a symlinked .agents must not steer it elsewhere.
+// a symlinked .agents must not steer it elsewhere.
 func (d Dirs) WorktreesIgnore() (bool, error) {
 	wt := d.WorktreesDir()
 	root, err := filepath.EvalSymlinks(d.RepoRoot())

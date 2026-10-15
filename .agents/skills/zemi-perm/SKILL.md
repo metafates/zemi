@@ -30,9 +30,8 @@ panics; a denied result names who decided and why. Host-implemented tools (`agen
 themselves.
 
 The gate (`Pipeline.Check`), in order: a read-only agent (`Profile.ReadOnly`, the planner
-profile) denies every action - writes, commands, fetches, Lua tools - while its reads and its
-writes in the scratchpad pass; the scratchpad and the temp dirs (`perm.FreeZone`) allow before
-anything else; then the mode settles, `allow` runs and `ask` puts the request to the user. An
+profile) denies every action - writes, commands, fetches, Lua tools - while its reads pass;
+then the mode settles, `allow` runs and `ask` puts the request to the user. An
 ask nobody can answer (no overlay: headless, or a call from Lua) denies fail-closed and is
 recorded (`Host.HeadlessDenials`, which `zemi run` prints and exits on). Asks reach the user
 one at a time under `Host.askMu`, and a waiter is judged again once it holds the lock

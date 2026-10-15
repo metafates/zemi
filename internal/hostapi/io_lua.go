@@ -239,18 +239,18 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 
 // zemi.state (persisted kv, global scope)
 
-// principal names the calling code for permission rules and state: its
+// principal names the calling code for state keys and attribution: its
 // origin, and for a plugin which one ("plugin:<name>"). Plugin code with no
 // plugin file on the stack (a user module a plugin required, a load chunk,
 // called from user code) raises: a nameless principal would share one state
-// space and slip past every rule scoped to a plugin.
+// space with every plugin.
 func (h *Host) principal(L *glua.LState) string {
 	if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
 		return string(o)
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
 	if name == "" {
-		L.RaiseError("plugin code running with no file of its plugin on the stack has no principal for rules or state")
+		L.RaiseError("plugin code running with no file of its plugin on the stack has no principal")
 	}
 	return perm.PluginPrincipal(name)
 }

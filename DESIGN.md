@@ -55,7 +55,7 @@ for TUI output), `aymanbagabas/go-udiff` (edit previews),
 already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` and `golang.org/x/net/html` (the `fetch` tool: the article
 out of a page, as markdown the model can read), `golang.org/x/text`
 (the case folding APFS does, for paths),
-`golang.org/x/sys` (openat), `golang.org/x/mod` (plugin
+`golang.org/x/sys` (file locks), `golang.org/x/mod` (plugin
 release tags and the build's version), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion with values from the project store and an inert boot, `Host.Inert`; kong was weighed and lost on completion). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
 for its embedded provider catalog and its client (§6.3): no network at
@@ -156,7 +156,7 @@ Contracts that make this safe:
   Lua command functions, keymap functions, overlay callbacks (`on_select`,
   `on_action`, `on_close`, `keys`, `reload`), the `on_done`/`on_exit`
   callbacks of jobs, HTTP, model asks, agents, workflows and
-  `zemi.ui.edit`, `tool.post` handlers, a permission mode's `decide`, and
+  `zemi.ui.edit`, `tool.post` handlers, and
   a chunk run through `Runtime.Eval` (the `lua` tool). A handle's `wait()`
   (and `zemi.job.wait`) yields the task: the request running it ends, the
   interpreter serves everything else, and a host goroutine waits on the
@@ -175,7 +175,7 @@ Contracts that make this safe:
   it, so no Lua holding the thread can run the task's rest with a forged
   wait result. A task whose generation was purged or went hot
   ends at once, its wait cancelled with it: a dropped `execute` returns a
-  tool error, a dropped `decide` sends the ask to the user, a dropped
+  tool error, a dropped
   `tool.post` leaves the output as it was. Keymaps and Lua commands run in
   order on the UI's worker per slice: a suspended one lets the next key's
   handler run, and its rest reports its own failure (`zemi run` waits for a
@@ -209,9 +209,7 @@ Contracts that make this safe:
   the accepted cost of no-kill cancellation. Reload purges every
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
-  dropped `LState`. Lua-added permission rules are the exception: they stay
-  in force until the replay succeeds (a failed one keeps the deny and ask
-  ones; then those it did not add again are dropped), and `tool.pre` and `permission.request` vetoes and the mode an ask reads
+  dropped `LState`. `tool.pre` and `permission.request` vetoes and the mode an ask reads
   wait for a running reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
@@ -750,8 +748,7 @@ the binary's API version is `zemi.api.version`.
   returns `nil, err` when the caller's origin may not run the command.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
   `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
-  `zemi.ui.theme`, `zemi.permission.rule`, `zemi.permission.mode`,
-  `zemi.config`), `set`
+  `zemi.ui.theme`, `zemi.config`), `set`
   writes a value, `get` and `list` read back, `del` removes and reports
   whether it did. A new call takes the verb its shape already has, so the
   surface stays guessable without the type annotations open.
@@ -762,7 +759,7 @@ the binary's API version is `zemi.api.version`.
   feeds back into the host.
 - **Never silently accept**: a call that can never do what it says raises
   where it is made, not three turns later in `/errors`. A color outside the
-  palette, a rule subject outside the subject namespaces, a printable key
+  palette, a printable key
   with no `focus`, a watch on a path outside the schema and a tool spec the
   provider would reject are all misuse, not runtime failure. Where the
   wrong shape is a decision zemi must take anyway, it takes the closed one:
@@ -1382,7 +1379,7 @@ same pipeline:
 ```
 model call -> schema validation
            -> tool.pre events (Lua: deny | rewrite | halt)
-           -> permission gate (config rules + session rules; ask = overlay)
+           -> permission gate (mode; ask = overlay)
            -> execute (Go impl or Lua callback on interpreter thread)
            -> tool.post events (Lua: may rewrite the output)
            -> result -> fantasy ToolResponse
@@ -1729,7 +1726,7 @@ those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.permission.mode` (`add` and `del` from user, builtin and plugin config, `set` user config only, §9; `get`, `list`).
+and `zemi.permission.mode` (`set` user config only, §9; `get`, `list`).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
 registration origin: the model can propose, but a
@@ -2406,9 +2403,7 @@ rides the `memories.md` line and its ledger entries.
   `tool.lua`, `tool.workflow`, `net.<host>`, a Lua tool (`tool.<name>`),
   an MCP tool its server does not mark read-only (`Read` on the request),
   `memory.write`. Reads (`fs.read`) settle on their own in every mode.
-  The scratchpad and the temp dirs (`perm.FreeZone`) are free in every
-  mode: the model works there.
-- Subjects label the ask and the `tool.denied` event; they are not rules.
+- Subjects label the ask and the `tool.denied` event.
   A request carries tool, subject, arg, reason, preview, description,
   agent, owner, script; the pipeline fills pad, read-only and the script
   name.
@@ -2429,11 +2424,10 @@ rides the `memories.md` line and its ledger entries.
 - A Lua tool run asks as one action; once approved, its inner `zemi.*`
   calls ride the approval (`luaApproved`), and each `zemi.tool.call` it
   drives gates like the model's own call.
-- Path handling (perm): the file tools resolve once (`perm.Resolve`, an
-  openat walk in `Path.Open`), the gate judges and the tool opens exactly
+- Path handling (perm): the file tools resolve once (`perm.Resolve`),
+  the gate judges and the tool opens exactly
   that path, so a symlink planted later cannot redirect them. A write
   whose last component is a symlink is refused, naming the target.
-  `perm.FreeZone` (pad, temp roots) needs no read before write.
 - read-before-write stays: write refuses a file the session has not read
   unchanged (an edit proves its text with one exact match instead), so a
   command the model ran or the user's editor is never silently dropped.
@@ -2453,7 +2447,7 @@ rides the `memories.md` line and its ledger entries.
    skills live in the config dir (`~/.config/zemi/skills/`) and start
    enabled, tracked by their `skills` row and file; nothing model-written
    is a skill: a repository procedure is a recipe.
-3. **Structure (config)**: profiles, prompt sections, permission rules,
+3. **Structure (config)**: profiles, prompt sections,
    keymaps, widgets. The learning loop proposes none of it: these are
    edits to files in the config dir, made by the user or by the agent
    through the permission-gated file tools (§6.1).
@@ -2667,9 +2661,8 @@ by the next startup sweep, since the session still has unseen messages.
   hit id the result's footer names is actionable. Both modes ride tool
   results, never the pinned prefix (§10.7), and a replace of a promoted id
   proceeds, its result naming the file the text moved into.
-- A recipe (§10.5) is written with the file tools, and every write asks:
-  the dir is under zemi's state, so auto mode never settles it, no
-  "always" is offered, and the ask says when the session read text from
+- A recipe (§10.5) is written with the file tools; in ask mode every write
+  there asks, and the ask says when the session read text from
   outside the machine. A recipe is instructions a later unattended
   session follows, which is worth a look each time. The secret scrub
   runs after the write, on any file in the dir, and redacts it in
@@ -2682,9 +2675,8 @@ by the next startup sweep, since the session still has unseen messages.
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
 - A brain file the file tools write - write, edit, an LSP rename's
-  secondary targets - asks in every mode the same way (the write is under
-  zemi's state, so no rule settles it, no "always" is offered, and the ask
-  carries the outside-text note); Lua's `zemi.fs.write` is refused at jail
+  secondary targets - asks in ask mode like any write outside the project
+  (the ask carries the outside-text note); Lua's `zemi.fs.write` is refused at jail
   resolution, never asked. The reserved `memories.md` carries its own
   reason, "the memory tool owns this file", with the file's open lint
   findings named in the ask. Once approved the write gets the recipe
@@ -2912,7 +2904,8 @@ the user approves.
   script reaches any of them by name, deferred or not, through the same gate,
   and `zemi.tool.list()` names the run's MCP tools beside its own.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
-  its decision's source: rule, hook, user, overlay, or default), decisions
+  its decision's source: the mode, a plugin's declared capability, a hook,
+  the user, or a fail-closed default), decisions
   and memory writes are all logged with IDs, so the reflector and the user
   can audit the loop end to end.
 

@@ -566,7 +566,7 @@ function zemi.command.list() end
 ---@field tool string
 ---@field subject string
 ---@field arg string
----@field by string Who decided, such as "user" or "mode:auto".
+---@field by string Who decided, such as "user" or "mode:allow".
 ---@field reason string
 
 ---@class zemi.ev.PermissionRequest: zemi.Event
@@ -2333,8 +2333,9 @@ function zemi.fs.exists(path) end
 --- `<data>/lua/<name>`, where config code keeps its files: inside the
 --- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
 --- outside the config tree, so a write never reloads the config. Reads
---- settle; writes need a `lua.fs.write` allow rule like any other user
---- config write. Nothing is created: `write` makes the parents, and a job's
+--- settle; in ask mode a write fails closed, and the fix is allow mode (a
+--- plugin's declared `fs.write` settles its own). Nothing is created:
+--- `write` makes the parents, and a job's
 --- `cwd` needs `mkdir` first.
 ---@param name string One directory name, no separators.
 ---@return string path
@@ -2390,7 +2391,7 @@ function zemi.fs.grep(pattern) end
 ---@field error? string
 
 ---@class zemi.HTTPHandle
----@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit, a mode's decide) and under pcall.
+---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit) and under pcall.
 
 --- http and https only, no userinfo. Gated as `lua.http.<method>` with the
 --- URL as the argument. Redirects are not followed: the gate approved one
@@ -2875,7 +2876,7 @@ function zemi.test.neq(got, other) end
 --- Raise unless s holds sub as plain text, the plugin's paths relative.
 ---
 --- ```lua
---- test.contains(row.detail, 'principal = "plugin:demo"')
+--- test.contains(row.detail, 'plugin jira declares no "http"')
 --- ```
 ---@param s string
 ---@param sub string
@@ -2980,8 +2981,8 @@ function zemi.test.overlay() end
 function zemi.test.answer(choice, action) end
 
 --- Answer the calls matching pattern ("*"): reply's fields, a function
---- returning them, or false to refuse the call the way a missing rule does.
---- Stub at the file's top level to answer every case, or inside a case to
+--- returning them, or false to refuse the call the way an unanswered ask
+--- does. Stub at the file's top level to answer every case, or inside a case to
 --- answer only there; the newest match answers. The returned table fills
 --- with the requests it answered as they arrive (`reqs[1].url`).
 --- A reply's fields and defaults: http `{ status = 200, body = "", headers = {} }`,

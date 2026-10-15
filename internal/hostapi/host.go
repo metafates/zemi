@@ -544,7 +544,7 @@ type Host struct {
 
 	// reloadDone is non-nil and open while reloads run; reloadSeq counts
 	// reloads started (see awaitReload). reloadRun keeps one reload's sweep
-	// of staleRules from racing the next one's replay.
+	// of the dead generation's registrations from racing the next one's replay.
 	reloadMu   sync.Mutex
 	reloadRun  sync.Mutex
 	reloads    int
@@ -2165,8 +2165,8 @@ func (h *Host) ReloadIfChanged() string {
 }
 
 // ForceReload replays the boot steps on a fresh generation (DESIGN §4).
-// Until it returns, tool vetoes wait (awaitReload) and the old Lua rules
-// stay in force, so a running turn is never checked against half a config.
+// Until it returns, tool vetoes wait (awaitReload) and the old generation's
+// veto handlers stay in force, so a running turn is never checked against half a config.
 func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	h.reloadMu.Lock()
 	if h.reloads == 0 {

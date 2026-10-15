@@ -187,7 +187,7 @@ func CheckWait(L *glua.LState, api string) {
 	var msg string
 	switch {
 	case genOf(L).tasks[L] == nil:
-		msg = api + ": only a task can wait: a Lua tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit callback, or a mode's decide (pass on_done or on_exit here instead)"
+		msg = api + ": only a task can wait: a Lua tool's execute, a command, a keymap, an overlay callback, or an on_done or on_exit callback (pass on_done or on_exit here instead)"
 	case InGoCall(L):
 		msg = api + ": cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err"
 	default:
