@@ -16,7 +16,7 @@ import (
 // askHook is the tools.Pipeline asker: the Go-owned overlay, behind the
 // veto the gate already ran.
 func (h *Host) askHook() tools.Asker {
-	return func(req tools.Request) (bool, string) { return h.ask(req, false) }
+	return func(req tools.Request) (bool, string) { return h.ask(req) }
 }
 
 // vetoHook is the tools.Pipeline veto: the permission.request event, once
@@ -55,7 +55,7 @@ func (h *Host) resolved(req tools.Request, allowed bool, by string) {
 // NOTE: sync.Mutex hands off in arrival order only once a waiter has
 // waited over 1ms (starvation mode), so prompt order is FIFO in practice,
 // not by guarantee.
-func (h *Host) ask(req tools.Request, held bool) (bool, string) {
+func (h *Host) ask(req tools.Request) (bool, string) {
 	resolved := func(allowed bool, by string) (bool, string) {
 		h.resolved(req, allowed, by)
 		return allowed, by
@@ -69,19 +69,16 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string) {
 		h.modes.noteHeadless(Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(why), Why: DenyApproval})
 		return resolved(false, tools.ByNobody)
 	}
-	if !held {
-		cut := h.askCut.Load()
-		h.asksWaiting.Add(1)
-		h.askMu.Lock()
-		defer func() {
-			h.asksWaiting.Add(-1)
-			h.askMu.Unlock()
-			ui.Refresh() // drops an answered prompt no other ask replaced
-		}()
-		if h.askCut.Load() != cut {
-			return resolved(false, tools.ByUser) // told zemi what to do instead
-		}
-		return h.ask(req, true)
+	cut := h.askCut.Load()
+	h.asksWaiting.Add(1)
+	h.askMu.Lock()
+	defer func() {
+		h.asksWaiting.Add(-1)
+		h.askMu.Unlock()
+		ui.Refresh() // drops an answered prompt no other ask replaced
+	}()
+	if h.askCut.Load() != cut {
+		return resolved(false, tools.ByUser) // told zemi what to do instead
 	}
 	pr := PermRequest{
 		Tool: req.Tool, Subject: req.Subject, Arg: h.shownArg(req),

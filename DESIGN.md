@@ -215,8 +215,9 @@ Contracts that make this safe:
   `composer.submit` handlers must answer without waiting on async work. At
   the 50 ms deadline the host cancels the handler's context (the
   catchable error fails it) and takes the event's default decision,
-  logged: `permission.request` defaults to deny for asks without an
-  overlay leg (fail-closed, §9),
+  logged: `permission.request` takes silence (a timeout, an abandoned
+  handler, or no handler at all) as no veto, so the request runs unless
+  the overlay leg denies it (§9); the timeout is only logged.
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
   must not hold the user's quit or a typed message hostage; a plugin or
   builtin `app.quit` denial is honored every time, and project handlers
@@ -225,22 +226,15 @@ Contracts that make this safe:
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
   `permission.request` and `tool.pre` handlers cannot run, so both deny
-  until `/reload` instead of passing unchecked. The 50 ms leg governs Lua handlers only, arms at
-  handler start, and its meaning depends on the ask's shape. A model
+  until `/reload` instead of passing unchecked. A model
   tool call that needs an ask has a second leg: the Go-owned overlay (§8)
   blocks the agent worker goroutine (never the interpreter) until the
-  user answers, with no deadline; the legs are concurrent (the
-  interpreter is free while the overlay waits). On the model path an
-  explicit veto deny within the deadline is honored and wins over an
-  already-given overlay answer (deny beats allow regardless of order, §9;
-  the overlay stays open until both legs resolve, and a late deny is
-  logged with the decision), but a veto timeout
-  (or no `permission.request` handler registered at all) is
-  no-objection: the overlay alone decides, so the fail-closed default
-  cannot overrule an ask the user is mid-way through answering. The
-  fail-closed default deny is for asks that have no overlay leg:
-  host-API calls from Lua (which raise `permission ask required`, §6.5)
-  and any non-model ask source.
+  user answers, with no deadline; the veto runs first, at the gate, and
+  an explicit veto deny wins over everything after it (§9). The
+  fail-closed rule is for asks that have no overlay leg: an ask nobody
+  can answer (no UI, a Lua call with no asker) denies as ByNobody
+  (§9), and the Lua-call gate settles what a read-only agent may not
+  touch.
 - **Dispatch and staleness.** Go services call into Lua without holding
   the UI hostage: UI-class requests enqueue and return; results come back
   as tea messages and Lua events. While a Lua tool occupies the
@@ -1617,7 +1611,7 @@ UI extensibility contract:
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question and plan prompts) -> the topmost overlay (Lua, or Go-built
-  lists like the mode and model pickers) -> a focused layout node (its scoped keymaps, then the global ones; an
+  lists like the model picker) -> a focused layout node (its scoped keymaps, then the global ones; an
   unbound key does nothing, an unbound esc gives the keys back) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
@@ -2198,9 +2192,9 @@ rides the `memories.md` line and its ledger entries.
   names the scroll keys. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
-  Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
+  Commands are slash commands: `/quit`, `/help`, `/model`,
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
-  `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips between ask and allow),
+  `ctrl+t`/`ctrl+shift+t` cycle the agent),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `r` resumes the selected session, `n` renames it, `x` opens its
   Delete, enter offers both), `/rename [title]` (names the session; without a
@@ -2401,7 +2395,7 @@ rides the `memories.md` line and its ledger entries.
   refuses, an ask decision runs the ask path; what survives runs.
 - The vetoable `permission.request` event runs at the gate, once per
   action request; a handler denies, or returns `decision = "ask"` to
-  run the ask path. 50 ms, fail-closed (§4). A rewritten tool input
+  run the ask path. 50 ms, silence on timeout (§4). A rewritten tool input
   re-enters at the gate. Registering a handler and `zemi.perm.ask` both
   need the manifest's `perm` word: steering the gate is a declared
   capability, and enabling the plugin is the consent. A plugin recipe

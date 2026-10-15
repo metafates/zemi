@@ -80,7 +80,7 @@ Each of these has a failure mode, not a style preference; the skill in brackets 
 - No bare `go func()` in hostapi: start one with `h.GoSafe(where, fn)`, and a turn goroutine also defers `h.endTurnAfterPanic()`. [zemi-lua-runtime]
 - All `ui.App` state mutates on the bubbletea Update goroutine, and nothing `Update` calls may call `program.Send`/`program.Quit` (bubbletea's unbuffered channel makes the loop wait on itself: the `/quit` hang). Blocking hooks run off the UI goroutine only. [zemi-ui]
 - Never keep a pointer into an old generation: every registration is `Gen`-tagged and purged before the replay. [zemi-lua-runtime]
-- A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes a logged default, fail-closed for a permission ask. [zemi-lua-runtime]
+- A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes the event's logged default (for `permission.request`, silence: the request runs unless the overlay denies it; the hot runtime still denies). [zemi-lua-runtime]
 - An ask with no overlay available fails closed, and a rewritten tool input re-enters at the permission gate. [zemi-perm]
 - A child process starts through `internal/proc`, never a plain `exec.Command`. [zemi-perm]
 - The store schema is one `schema` const run on open: a change bumps `schemaVersion` and a store stamped with another one is refused with its path, never migrated. [zemi-host-flow]

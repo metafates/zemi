@@ -45,7 +45,7 @@ type Denial struct {
 type DenialWhy string
 
 const (
-	DenyApproval DenialWhy = "approval" // the mode left it to the user
+	DenyApproval DenialWhy = "approval" // the ask nobody could answer (no UI runs)
 )
 
 func (r *modeReg) noteHeadless(d Denial) {
@@ -159,7 +159,7 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 		var answer string
 		cut := h.askCut.Load()
 		h.GoSafe("zemi.perm.ask", func() {
-			allowed, _ := h.ask(req, false)
+			allowed, _ := h.ask(req)
 			answer = "deny"
 			switch {
 			case allowed:

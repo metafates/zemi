@@ -144,11 +144,10 @@ test("the user's config and skills stay out", function()
 	end
 end)
 
-test("gated calls fail closed, the mode unchanged", function()
-	test.raises(function() zemi.permission.mode.set("yolo") end)
+test("gated calls fail closed, the stub answers first", function()
 	test.eq(
 		test.raises(function() zemi.http.get("https://example.com/") end),
-		'.zemi/tests/pass.lua:150: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
+		'.zemi/tests/pass.lua:149: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
 	)
 end)
 
