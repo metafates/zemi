@@ -250,6 +250,36 @@ var Marks = map[string]Mark{
 // Spinner is the running mark's frames, one per frame tick.
 var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// sessionEmoji pools the emoji a session's marker is picked from. Every entry
+// is one codepoint with no joiner, selector, modifier, regional indicator,
+// keycap or combining mark; emoji presentation, so it renders colored
+// everywhere without VS16; East Asian Width W, so zemi.ui.width and the
+// terminal agree on 2 cells; not a glyph the UI already draws (Marks, the
+// spinner, the hint glyphs, the snail art are all one cell), so a marker
+// never reads as a status; no face, hand, heart, clock, flag, arrow or
+// status-shaped mark; and the silhouettes stay distinct. Curated against
+// Unicode's emoji-variants data.
+var sessionEmoji = []string{
+	"🌊", "💧", "☔", "⛅", "🌈", "🌙", "⭐", "🌍", "🌵", "🌱",
+	"🍀", "🍄", "🌻", "🦋", "🐢", "🐙", "🐳", "🐧", "🐚", "📎",
+	"📌", "🔖", "📚", "📦", "🔑", "🔨", "🧰", "🧩", "🧭", "💡",
+	"💎", "🔮", "🎲", "🎁", "🎨", "🚀", "⚓", "☕", "🍕", "💾",
+}
+
+// SessionMark derives a top-level session's marker emoji from its id: stable
+// across resume and restart, zero storage, and not user-changeable. An empty
+// id (no session yet) has no marker.
+func SessionMark(sid string) string {
+	if sid == "" {
+		return ""
+	}
+	var h uint32 = 2166136261
+	for i := 0; i < len(sid); i++ {
+		h = (h ^ uint32(sid[i])) * 16777619
+	}
+	return sessionEmoji[int(h)%len(sessionEmoji)]
+}
+
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
 // a Go screen's list the command Run. A Danger key acts on its second press,
 // the footer saying so after the first, as a danger row does. A Go screen's

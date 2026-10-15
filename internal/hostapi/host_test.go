@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
+	"unicode"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -951,5 +953,63 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 	}
 	if got := row(34); strings.Contains(got, "reflecting") || !strings.Contains(got, "esc interrupt · 4s") {
 		t.Errorf("the narrow rule lost the key or the clock: %q", got)
+	}
+}
+
+// TestSessionEmojiPool: every marker emoji holds the pool's criteria - one
+// codepoint with no joiner, selector, modifier, regional indicator, keycap or
+// combining mark; emoji presentation, curated from Unicode's emoji-variants
+// data, so it renders colored everywhere without VS16; two cells by zemi's
+// own width function; and no glyph the UI already draws.
+func TestSessionEmojiPool(t *testing.T) {
+	drawn := map[string]bool{}
+	for _, m := range Marks {
+		drawn[m.Glyph] = true
+	}
+	drawn["⚑"], drawn["↻"], drawn["↓"] = true, true, true // the statusline hints
+	drawn["@"], drawn["─"], drawn["…"] = true, true, true // the snail and its rule
+	seen := map[string]bool{}
+	for _, e := range sessionEmoji {
+		if seen[e] {
+			t.Errorf("%q repeats", e)
+		}
+		seen[e] = true
+		rs := []rune(e)
+		if len(rs) != 1 {
+			t.Errorf("%q: %d codepoints", e, len(rs))
+		}
+		for _, r := range rs {
+			if r == 0x200D || r == 0xFE0E || r == 0xFE0F ||
+				r >= 0x1F3FB && r <= 0x1F3FF || // skin tone and hair modifiers
+				r >= 0x1F1E6 && r <= 0x1F1FF || // regional indicators
+				unicode.Is(unicode.Mn, r) { // covers the keycaps' U+20E3 too
+				t.Errorf("%q: forbidden U+%04X", e, r)
+			}
+		}
+		if w := ansi.StringWidth(e); w != 2 {
+			t.Errorf("%q: width %d, want 2", e, w)
+		}
+		if drawn[e] {
+			t.Errorf("%q: a glyph the UI already draws", e)
+		}
+	}
+}
+
+// TestSessionMark: the marker is a pure function of the id, and random ids
+// spread over the pool.
+func TestSessionMark(t *testing.T) {
+	if got := SessionMark(""); got != "" {
+		t.Fatalf("no session drew %q", got)
+	}
+	seen := map[string]bool{}
+	for range 200 {
+		id := store.ShortID()
+		if got := SessionMark(id); got != SessionMark(id) || got == "" {
+			t.Fatalf("%s derives %q", id, got)
+		}
+		seen[SessionMark(id)] = true
+	}
+	if len(seen) < 10 {
+		t.Fatalf("200 ids drew only %d markers", len(seen))
 	}
 }
