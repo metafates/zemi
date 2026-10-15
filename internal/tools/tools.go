@@ -267,8 +267,8 @@ type Pipeline struct {
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
 
-	// Plan reports a read-only agent: actions are denied, reads settle on
-	// their own; nil = never.
+	// Plan reports a read-only agent: actions are denied, its scratchpad
+	// writes and its reads settle on their own; nil = never.
 	Plan func() bool
 
 	// Checkpoint records a file's content before a write tool changes it,
@@ -323,9 +323,9 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 	return v
 }
 
-// Check decides one request. A read-only agent's actions deny; the mode
-// settles the rest: allow runs, ask puts the request to the user, and an
-// ask no one can answer fails closed.
+// Check decides one request. A read-only agent's actions deny, its writes
+// in the scratchpad aside; the mode settles the rest: allow runs, ask puts
+// the request to the user, and an ask no one can answer fails closed.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
 	req.ReadOnly, req.Pad, req.Script = p.Plan != nil && p.Plan(), p.Pad, p.Script
@@ -333,6 +333,11 @@ func (p *Pipeline) Check(req Request) Verdict {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
 	}
 	if req.ReadOnly {
+		// the pad is the read-only agent's working directory, where its
+		// prompt tells it to put its notes
+		if PathSubject(req.Subject) && perm.InPad(p.Pad, req.Arg) {
+			return Verdict{Allowed: true, DecidedBy: ByDefault}
+		}
 		return Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
 	}
 	if mode := p.mode(); mode != config.PermModeAsk {

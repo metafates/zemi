@@ -625,8 +625,9 @@ func TestEditSafety(t *testing.T) {
 
 // TestScratchpad: the pad is a command's $TMPDIR whoever allowed it and is
 // no project a rewind restores, and its writes settle by mode like any
-// other write - ask mode asks, a read-only agent denies, allow mode runs -
-// while a path a shell would expand is refused naming the real one.
+// other write - ask mode asks, allow mode runs - except a read-only agent,
+// whose pad is the one place it may write. A path a shell would expand is
+// refused naming the real one.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	free := perm.RealPath(t.TempDir())
@@ -660,12 +661,16 @@ func TestScratchpad(t *testing.T) {
 			t.Errorf("%s: asked %v, got %q, want %q", c.name, len(*asked) > n, got, want)
 		}
 	}
-	// a read-only agent's pad write denies without asking
+	// the pad is a read-only agent's one writable place; anything else of
+	// theirs denies
 	ro, roAsked := testPipeline(t, false)
 	ro.Pad = pad
 	ro.Plan = func() bool { return true }
-	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly || len(*roAsked) != 0 {
+	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); !v.Allowed || len(*roAsked) != 0 {
 		t.Fatalf("a read-only agent's pad write: %+v, asked %+v", v, *roAsked)
+	}
+	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(proj, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly {
+		t.Fatalf("a read-only agent's project write: %+v", v)
 	}
 	// allow mode writes the pad and a temp dir, and the pad is no project a
 	// rewind restores: the temp write is checkpointed, the pad write is not
