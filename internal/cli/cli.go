@@ -241,7 +241,7 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
 	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
+	f.StringVar(&o.profile, "profile", "", "agent `profile`: default or one init.lua defines")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))

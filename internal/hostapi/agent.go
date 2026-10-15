@@ -224,8 +224,8 @@ type agentHost struct {
 	// turn's planFollowup starts implementation as the restored agent. Cleared
 	// by takePlanApproved.
 	planApproved string
-	// planNudged: the planner was told once this user message that it ended
-	// in plain text; it is not told again until the user speaks
+	// planNudged: a read-only agent was told once this user message that it
+	// ended in plain text; it is not told again until the user speaks
 	planNudged bool
 
 	// goal is the session's goal (/goal), nil for none; goalPending the
@@ -259,8 +259,8 @@ func (h *Host) Effort(modelID string) string {
 }
 
 // resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key. A defined profile wins; else default is the implicit
-// shipped shape (nil) and planner the shipped read-only agent.
+// agent.profile key. A defined profile wins; default with none defined is the
+// implicit shipped shape (nil).
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
@@ -268,11 +268,8 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 	if t, ok := h.target(name); ok && t.Prof != nil {
 		return t.Prof, nil
 	}
-	if name == planner {
-		return &Profile{Name: planner, ReadOnly: true}, nil
-	}
 	if name != "default" {
-		return nil, fmt.Errorf("agent: unknown profile %q", name)
+		return nil, fmt.Errorf("agent: unknown profile %q; /profile lists the agents", name)
 	}
 	return nil, nil
 }
@@ -297,9 +294,9 @@ func (h *Host) currentModelID(p *Profile) string {
 	return h.roleModel(p.Name)
 }
 
-// ConversationTarget is the slot a pick for the conversation writes: the active
-// profile's own, the shipped planner included, else chat. default has no slot
-// of its own, and neither does the shipped shape, so both are chat.
+// ConversationTarget is the slot a pick for the conversation writes: the
+// active profile's own, else chat. default has no slot of its own, and
+// neither does the shipped shape, so both are chat.
 func (h *Host) ConversationTarget() string {
 	p, _ := h.resolveProfile("")
 	if p == nil || p.Name == "default" {
@@ -750,8 +747,8 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
-	// the profile this turn ran as: a switch to the planner mid-turn must not
-	// nudge the reply the replaced agent wrote
+	// the profile this turn ran as: a switch to a read-only agent mid-turn
+	// must not nudge the reply the replaced agent wrote
 	nudge := h.nudgesPlan(p)
 	h.GoSafe("agent turn", func() {
 		h.runTurns(runner, scope, text)
@@ -959,7 +956,7 @@ func (h *Host) appendUserRows(text string) bool {
 // active stays held across the handoff, so a submit in between queues
 // instead of starting a turn out of order. An approved plan (planApproved)
 // is a follow-up too, kept under the same claim, but sent afresh: the
-// restored profile needs its own runner, not the planner's. After a
+// restored profile needs its own runner, not the read-only one's. After a
 // cancelled turn nothing starts: the queue waits for the UI to hand it back
 // to the composer. After a turn that ended cleanly with nothing queued, a
 // set goal is checked under the same claim (continueGoal). err is how the
@@ -2085,9 +2082,6 @@ func (h *Host) modelRoleItems() []any {
 	for _, t := range plain {
 		items = append(items, h.modelSlotRow(t.Name, t.Desc))
 	}
-	if first != planner {
-		items = append(items, h.modelSlotRow(planner, h.profileSlotDesc(planner)))
-	}
 	for _, t := range profiles {
 		if t.Name != first {
 			items = append(items, h.modelSlotRow(t.Name, h.profileSlotDesc(t.Name)))
@@ -2313,12 +2307,12 @@ func (h *Host) setWatched(path string, val any) error {
 	return nil
 }
 
-// ProfileNames lists default, the shipped planner, and the defined profiles.
+// ProfileNames lists default and the defined profiles.
 func (h *Host) ProfileNames() []string {
 	_, profiles := h.registeredTargets()
-	names := []string{"default", planner}
+	names := []string{"default"}
 	for _, t := range profiles {
-		if t.Name != "default" && t.Name != planner {
+		if t.Name != "default" {
 			names = append(names, t.Name)
 		}
 	}
@@ -2343,7 +2337,7 @@ func (h *Host) SetProfile(name string) error {
 }
 
 // cycleProfile steps through the agents (a key binding):
-// default, planner, then profiles in definition order, and back.
+// default, then profiles in definition order, and back.
 func (h *Host) cycleProfile(step int) error {
 	names := h.ProfileNames()
 	n := len(names)
@@ -2474,11 +2468,8 @@ func (h *Host) slotLine(name, desc string) string {
 }
 
 // profileSlotDesc is what /model roles and /profile say a profile is: the
-// shipped planner's read-only note, else the tools it changes.
+// tools it changes.
 func (h *Host) profileSlotDesc(name string) string {
-	if t, ok := h.target(name); name == planner && (!ok || t.Prof == nil) {
-		return plannerDesc
-	}
 	p, _ := h.resolveProfile(name)
 	if p == nil { // the shipped default
 		return "the shipped prompt and every tool"

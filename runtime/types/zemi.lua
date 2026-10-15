@@ -1602,7 +1602,6 @@ function zemi.log.list() end
 ---| "titles"   # session titles
 ---| "compact"  # summaries
 ---| "memory"   # the reflector
----| "planner"  # the shipped read-only planning profile
 ---| string     # a name zemi.model.add or zemi.agent.profile.add registered
 
 ---@class zemi.ModelInfo
@@ -1686,8 +1685,8 @@ function zemi.model.list() end
 --- Register a model slot of its own, for code that runs a model on a job and
 --- not a conversation: `/model roles` lists it among the roles and
 --- `models.<name>` picks its model. User, builtin or plugin origin; a builtin
---- role name, `planner` and `default` are reserved, and so is a name another
---- origin holds. The name is the key, so it is a lowercase word.
+--- role name and `default` are reserved, and so is a name another origin
+--- holds. The name is the key, so it is a lowercase word.
 ---
 --- ```lua
 --- zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })

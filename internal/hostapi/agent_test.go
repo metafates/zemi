@@ -1241,8 +1241,7 @@ func TestActiveProfileKey(t *testing.T) {
 		wantErr   bool
 	}{
 		{name: "unset runs the shipped profile"},
-		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile.add("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
-		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile.add("p", {})`, want: "p"},
+		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile.add("p", { system = "PLAN HARDER" })`, want: "p", system: "PLAN HARDER"},
 		{name: "default resets", src: `zemi.agent.profile.add("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
 	} {
@@ -1258,17 +1257,17 @@ func TestActiveProfileKey(t *testing.T) {
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile.add("p", {}) zemi.agent.profile.add("planner", { model = "x/big" }) zemi.agent.profile.add("default", {})`)
-	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
+	runUser(t, r, `zemi.agent.profile.add("p", {}) zemi.agent.profile.add("q", { model = "x/big" }) zemi.agent.profile.add("default", {})`)
+	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "p", "q"}) {
 		t.Errorf("names %v", names)
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big · every tool" {
-		t.Errorf("the defined planner's picker row %v", ui.opened)
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[2].(map[string]any)["desc"] != "x/big · every tool" {
+		t.Errorf("the defined profile's picker row %v", ui.opened)
 	}
-	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
-		t.Errorf("cycling from planner went to %q", h.Settings.Str("agent.profile"))
+	if h.SetProfile("p") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "q" {
+		t.Errorf("cycling from p went to %q", h.Settings.Str("agent.profile"))
 	}
 	h.PurgeGeneration()
 	if _, err := h.resolveProfile("p"); err == nil {
@@ -1343,7 +1342,7 @@ func TestProfileSwitch(t *testing.T) {
 		do      func() error
 		wantErr string
 	}{
-		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
+		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, cheap, onchat"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
 		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider to `},
 		{"unlisted model under a registered provider is taken and warned about, mid-turn too", func() error {
@@ -1378,7 +1377,6 @@ func TestProfileSwitch(t *testing.T) {
 	for _, c := range []struct{ name, want string }{
 		{"onchat", "a/main · every tool"},
 		{"cheap", "a/main · every tool"},
-		{"planner", "a/small · read-only: plan and present for approval"},
 		{"default", "a/small · the shipped prompt and every tool"},
 	} {
 		if got := h.profileDesc(c.name); got != c.want {

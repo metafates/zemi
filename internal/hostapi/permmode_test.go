@@ -75,7 +75,8 @@ func TestHeadlessDenialNotes(t *testing.T) {
 // dismissal. The restore skips it, the default stands, and the handoff is
 // still recorded.
 func TestPlanApprovalAfterProfileGone(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHost(t)
+	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
 	h.Settings.SetQuiet("agent.profile", "gone") // the agent the read-only pick restored to, gone since

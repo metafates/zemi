@@ -13,14 +13,23 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestPlanMode: a read-only agent (the planner profile) may change nothing
+// plannerProfile defines a read-only profile named planner, the recipe the
+// shipped profile used to be synthesized for (DESIGN §6.3).
+func plannerProfile(t *testing.T, r *lua.Runtime) {
+	t.Helper()
+	runUser(t, r, `zemi.agent.profile.add("planner", { read_only = true })`)
+}
+
+// TestPlanMode: a read-only agent may change nothing
 // and the prompt says so; it works whatever the permission mode.
 func TestPlanMode(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHost(t)
+	plannerProfile(t, r)
 	check := func(subject, arg string) tools.Verdict {
 		pipe := h.PipelineFor()
 		pipe.Ask = nil
@@ -32,7 +41,7 @@ func TestPlanMode(t *testing.T) {
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
-	// the reason says what the planner can do; it cannot pick another agent
+	// the reason names the read-only denial; it cannot pick another agent
 	if v := check("fs.write", "/p/a.go"); v.Allowed || v.DecidedBy != tools.ByReadOnly || !strings.Contains(v.Reason, "may not change anything") {
 		t.Fatalf("read-only write = %+v by %s: %s", v, v.DecidedBy, v.Reason)
 	}
@@ -46,14 +55,15 @@ func TestPlanMode(t *testing.T) {
 // the agent and mode it replaced, is no longer read-only, and records the
 // implementation handoff planFollowup sends.
 func TestPlanApprovalSwitchesBack(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHost(t)
+	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
 	if !h.readOnly() {
-		t.Fatal("planner must be read-only")
+		t.Fatal("the profile must be read-only")
 	}
 	v, ok := h.approvePlan("# The plan")
 	if !ok || !v.Approved || v.Profile != "default" {
@@ -83,10 +93,11 @@ func TestPlanApprovalSwitchesBack(t *testing.T) {
 }
 
 // TestPlanHold: the plan file is written for an approval only, so a dismissal
-// leaves the session's saved plan alone, and a hold puts the planner's
+// leaves the session's saved plan alone, and a hold puts the agent's
 // replacement back without recording the implementation handoff.
 func TestPlanHold(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
+	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
 	sid := seedSession(t, h)
@@ -132,9 +143,10 @@ func TestPlanHold(t *testing.T) {
 }
 
 // TestPlanFeedbackKeepsPlanner: a read-only plan the user asks to change does
-// not switch the agent, so the planner revises and presents again.
+// not switch the agent, so the agent revises and presents again.
 func TestPlanFeedbackKeepsPlanner(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHost(t)
+	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Feedback: "use sqlite"}}
 	h.SetUIHooks(ui)
 	if err := h.SetProfile("planner"); err != nil {
@@ -145,27 +157,28 @@ func TestPlanFeedbackKeepsPlanner(t *testing.T) {
 		t.Fatalf("feedback must not approve: %+v ok=%v", v, ok)
 	}
 	if h.Settings.Str("agent.profile") != "planner" {
-		t.Fatalf("feedback must keep the planner, got %q", h.Settings.Str("agent.profile"))
+		t.Fatalf("feedback must keep the agent, got %q", h.Settings.Str("agent.profile"))
 	}
 	if h.takePlanApproved() != "" {
 		t.Fatal("feedback must not set the implementation handoff")
 	}
 }
 
-// TestPlanFollowupClaims: a planner reply in plain text is presented under a
+// TestPlanFollowupClaims: a read-only reply in plain text is presented under a
 // claim of its own, released after; a submit that claimed the agent first
 // keeps its turn and scope, and no popup opens over it.
 func TestPlanFollowupNudgesOnce(t *testing.T) {
 	runner := &agent.Runner{History: []fantasy.Message{
 		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "which file did you mean?"}}},
 	}}
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
+	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true}
 	h.SetUIHooks(ui)
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
-	planner, _ := h.resolveProfile("")
+	ro, _ := h.resolveProfile("")
 	var mu sync.Mutex
 	var sent []string
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -187,8 +200,8 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		}
 		return n
 	}
-	// a text ending is not a plan to approve: the planner is told once
-	h.planFollowup(runner, h.nudgesPlan(planner))
+	// a text ending is not a plan to approve: the agent is told once
+	h.planFollowup(runner, h.nudgesPlan(ro))
 	waitFor(t, func() error {
 		if n := nudges(); n != 1 {
 			return fmt.Errorf("nudges = %d", n)
@@ -207,13 +220,14 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	h.agents.mu.Lock()
 	scope := h.claim()
 	h.agents.mu.Unlock()
-	h.planFollowup(runner, h.nudgesPlan(planner))
+	h.planFollowup(runner, h.nudgesPlan(ro))
 	h.endScope(scope)
 	if nudges() != 1 {
 		t.Fatal("nudged under another claim")
 	}
 	// headless has no plan tool to present with: the reply is the plan
-	headless, _ := newTestHostDB(t)
+	headless, r := newTestHostDB(t)
+	plannerProfile(t, r)
 	if err := headless.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
@@ -221,11 +235,11 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	headless.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { headlessSent.Add(1); return textParts("text") }}, nil
 	}
-	headlessPlanner, _ := headless.resolveProfile("")
-	headless.planFollowup(runner, headless.nudgesPlan(headlessPlanner))
+	headlessRO, _ := headless.resolveProfile("")
+	headless.planFollowup(runner, headless.nudgesPlan(headlessRO))
 	waitIdle(t, headless)
 	if n := headlessSent.Load(); n != 0 {
-		t.Fatalf("headless planner nudged %d times", n)
+		t.Fatalf("headless agent nudged %d times", n)
 	}
 	// the user's next message re-arms the nudge
 	if err := h.AgentSend("go on"); err != nil {
@@ -240,10 +254,11 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	waitIdle(t, h)
 }
 
-// TestPlanNudgeFollowsTheTurn: picking the planner while the default agent
-// replies does not nudge that reply, which the planner never wrote.
+// TestPlanNudgeFollowsTheTurn: picking a read-only agent while the default
+// agent replies does not nudge that reply, which it never wrote.
 func TestPlanNudgeFollowsTheTurn(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
+	plannerProfile(t, r)
 	h.SetUIHooks(&fakeUI{})
 	var mu sync.Mutex
 	var sent []string
@@ -281,7 +296,7 @@ func TestPlanNudgeFollowsTheTurn(t *testing.T) {
 }
 
 // TestNextTurnHandsOffApprovedPlan: an approved plan is sent to the restored
-// agent under the claim the planner's turn held, so nothing runs in between.
+// agent under the claim the read-only turn held, so nothing runs in between.
 func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
@@ -314,7 +329,7 @@ func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
 }
 
 // TestPlainTextEnd reports whether an idle run ended in a plain-text assistant
-// reply (the planner forgetting the plan tool) rather than a tool call.
+// reply (the agent forgetting the plan tool) rather than a tool call.
 func TestPlainTextEnd(t *testing.T) {
 	plain := &agent.Runner{History: []fantasy.Message{
 		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "# plan\nsteps"}}},
@@ -368,14 +383,15 @@ func TestShellNotes(t *testing.T) {
 	}
 }
 
-// TestPlanApprovalFromConfigPlanner: a planner config picked (no SetProfile,
-// so nothing was recorded) restores the shipped profile.
-func TestPlanApprovalFromConfigPlanner(t *testing.T) {
+// TestPlanApprovalFromConfigPick: a read-only profile picked from config
+// (no SetProfile, so nothing was recorded) restores default on approval.
+func TestPlanApprovalFromConfigPick(t *testing.T) {
 	h, r := newTestHost(t)
+	plannerProfile(t, r)
 	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
 	runUser(t, r, `zemi.config.set("agent.profile", "planner")`)
 	if !h.readOnly() {
-		t.Fatal("planner must be read-only")
+		t.Fatal("the picked profile must be read-only")
 	}
 	if v, ok := h.approvePlan("# The plan"); !ok || !v.Approved || v.Profile != "default" {
 		t.Fatalf("approve: %+v ok=%v", v, ok)

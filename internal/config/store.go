@@ -82,12 +82,11 @@ func (s *Store) defineDefaults() {
 		{Path: "models.titles", Kind: KindString, Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
 		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
 		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
-		{Path: "models.planner", Kind: KindString, Default: "", Desc: "the model the planner profile runs on (provider/model; empty uses the model it was defined with, else models.chat)"},
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
-		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},
+		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
 		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: "session.recap", Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
 		{Path: "agent.context_window", Kind: KindNumber, Default: 0.0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
@@ -157,9 +156,8 @@ func (s *Store) Default(path string) any {
 }
 
 // Builtin reports whether the schema owns path: a key registered later is not
-// one, and neither is a path outside the schema. A registered key may take a
-// builtin one over (a profile named planner registers models.planner), so
-// whatever drops registrations must leave these alone.
+// one, and neither is a path outside the schema. Whatever drops registrations
+// must leave these alone.
 func (s *Store) Builtin(path string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

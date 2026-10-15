@@ -260,7 +260,10 @@ func TestRunHeadless(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, stderr: "✗ run ls -la", denied: 1, deniedTool: "shell"},
-		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
+		{name: "a read-only agent does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
+			if err := h.RT.ExecuteChunk(t.Context(), `zemi.agent.profile.add("planner", { read_only = true })`, "init.lua", lua.OriginUser); err != nil {
+				t.Fatal(err)
+			}
 			if err := h.SetProfile("planner"); err != nil {
 				t.Fatal(err)
 			}

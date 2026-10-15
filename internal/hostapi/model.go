@@ -359,13 +359,6 @@ func roleNames() []string {
 	return names
 }
 
-// planner is the shipped read-only profile: it is a model slot like a defined
-// profile, but nothing registers it, so its shape is synthesized.
-const planner = "planner"
-
-// plannerDesc is what /profile and /model roles say the shipped planner is.
-const plannerDesc = "read-only: plan and present for approval"
-
 // modelTarget is a model slot config registered: the name /model picks by, the
 // model it was registered with, and, for a profile, the shape its name runs as.
 // A slot a plugin added has no shape: it is a model to run a job on, not a
@@ -431,12 +424,12 @@ func (h *Host) registeredTargets() (plain, profiles []*modelTarget) {
 	return plain, profiles
 }
 
-// targetNames is every slot /model sets by name: the builtin roles, the
-// shipped planner, then what config registered, sorted. default is not one: it
-// is the conversation's own slot, set as chat.
+// targetNames is every slot /model sets by name: the builtin roles, then what
+// config registered, sorted. default is not one: it is the conversation's own
+// slot, set as chat.
 func (h *Host) targetNames() []string {
 	plain, profiles := h.registeredTargets()
-	names := append(roleNames(), planner)
+	names := roleNames()
 	for _, t := range append(plain, profiles...) {
 		names = append(names, t.Name)
 	}
@@ -449,7 +442,7 @@ func (h *Host) isTarget(name string) bool {
 	if name == "" || name == "default" {
 		return false
 	}
-	if isRole(name) || name == planner {
+	if isRole(name) {
 		return true
 	}
 	_, ok := h.target(name)
@@ -543,16 +536,16 @@ func (h *Host) delTarget(L *glua.LState, name string) error {
 // word, dashes for readability like an agent file's name.
 var targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
-// checkTargetName refuses a slot name: a builtin role is reserved, as are the
-// shipped planner and default (a profile may take those two: they are shapes,
-// not ids), and so is a name another origin holds.
+// checkTargetName refuses a slot name: a builtin role is reserved, as is
+// default for a plain slot (a profile may take it: it is a shape, not an id),
+// and so is a name another origin holds.
 func (h *Host) checkTargetName(name string, by lua.Origin, byPath string, profile bool) error {
 	switch {
 	case !targetName.MatchString(name):
 		return fmt.Errorf("name %q must be a lowercase letter, then up to 31 lowercase letters, digits, _ and -", name)
 	case isRole(name):
 		return fmt.Errorf("%q is a builtin role", name)
-	case !profile && (name == planner || name == "default"):
+	case !profile && name == "default":
 		return fmt.Errorf("%q is a shipped profile", name)
 	}
 	old, ok := h.target(name)

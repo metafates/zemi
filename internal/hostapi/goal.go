@@ -92,7 +92,7 @@ func (h *Host) SetGoal(args string) error {
 	case !strings.Contains(cond, " "):
 		return Usagef("a goal names an end state you can check: /goal make check is clean; /goal stop drops the current one")
 	case h.readOnly():
-		return Usagef("the planner cannot work toward a goal; ctrl+t switches the agent")
+		return Usagef("a read-only agent cannot work toward a goal; ctrl+t switches the agent")
 	}
 	ag := h.agents
 	ag.mu.Lock()

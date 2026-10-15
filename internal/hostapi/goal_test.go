@@ -23,16 +23,16 @@ import (
 func TestGoalLoop(t *testing.T) {
 	paused := append(slices.Repeat([]string{"Goal not met yet: x"}, goalMaxRuns), "Goal paused: after 20 turns without you; send a message to go on")
 	for _, c := range []struct {
-		name    string
-		verdict func(h *Host, check int) string // the judge's reply to the check-th check, from 0
-		fail    bool                            // every turn fails
-		planner bool                            // the first turn switches to the planner
-		cancel  bool                            // the first turn is interrupted
-		turns   int
-		goal    bool     // left set
-		loopOff bool     // the loop set before it was stopped
-		notices []string // the notice rows, in order
-		saw     string   // what the last turn read
+		name     string
+		verdict  func(h *Host, check int) string // the judge's reply to the check-th check, from 0
+		fail     bool                            // every turn fails
+		readOnly bool                            // the first turn switches to a read-only agent
+		cancel   bool                            // the first turn is interrupted
+		turns    int
+		goal     bool     // left set
+		loopOff  bool     // the loop set before it was stopped
+		notices  []string // the notice rows, in order
+		saw      string   // what the last turn read
 	}{
 		{name: "met after two not yet", verdict: func(_ *Host, n int) string {
 			return []string{"NOT YET: a", "**NOT YET**: b", "Checked.\nMET: done"}[n]
@@ -48,7 +48,7 @@ func TestGoalLoop(t *testing.T) {
 		{name: "the cap pauses", turns: goalMaxRuns + 1, goal: true, notices: paused},
 		{name: "a failed turn is not checked", fail: true, turns: 1, goal: true},
 		{name: "an interrupted turn is not checked", cancel: true, turns: 1, goal: true},
-		{name: "the planner is not checked", planner: true, turns: 1, goal: true},
+		{name: "the planner is not checked", readOnly: true, turns: 1, goal: true},
 		{name: "an interrupted check stops the loop", verdict: func(h *Host, _ int) string {
 			h.AgentCancel()
 			return "NOT YET: a"
@@ -64,7 +64,10 @@ func TestGoalLoop(t *testing.T) {
 		}, turns: 2, notices: []string{"Goal not met yet: a", "Goal met: done"}, saw: "also this"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, _ := newTestHostDB(t)
+			h, r := newTestHostDB(t)
+			if c.readOnly {
+				plannerProfile(t, r)
+			}
 			var turns, checks atomic.Int32
 			var saw atomic.Value
 			h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -81,7 +84,7 @@ func TestGoalLoop(t *testing.T) {
 						return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}}
 					case c.cancel:
 						return nil // waits for the interrupt
-					case c.planner:
+					case c.readOnly:
 						if _, err := h.Settings.SetQuiet("agent.profile", "planner"); err != nil {
 							panic(err)
 						}
@@ -161,7 +164,8 @@ func goalRows(tr []ChatMessage) []string {
 
 // TestSetGoalRefuses: what /goal refuses before anything is sent.
 func TestSetGoalRefuses(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
+	plannerProfile(t, r)
 	for _, c := range []struct{ args, want string }{
 		{"clear", "a goal names an end state"},
 		{"stop", "no goal to stop"},
@@ -181,8 +185,8 @@ func TestSetGoalRefuses(t *testing.T) {
 	if _, err := h.Settings.SetQuiet("agent.profile", "planner"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.SetGoal("the tests pass"); err == nil || !strings.Contains(err.Error(), "the planner cannot") {
-		t.Fatalf("the planner took a goal: %v", err)
+	if err := h.SetGoal("the tests pass"); err == nil || !strings.Contains(err.Error(), "cannot work toward a goal") {
+		t.Fatalf("a read-only agent took a goal: %v", err)
 	}
 }
 

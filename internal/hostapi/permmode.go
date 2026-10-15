@@ -81,8 +81,8 @@ func (h *Host) CheckToolNames() {
 // The plan joins the transcript, then the user approves it, keeps it without
 // starting, types what to change, or dismisses it; the file is written once
 // the verdict is in, so a dismissed plan cannot overwrite the session's own.
-// A read-only agent (planner) remembers what ran before it (prePlan), so any
-// approval returns to that agent and mode; an approval that starts the work
+// A read-only agent remembers what ran before it (prePlan), so any
+// approval returns to that agent; an approval that starts the work
 // records an implementation handoff (planApproved) that the ended turn passes
 // on to planFollowup, and a hold skips that handoff.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {

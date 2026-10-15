@@ -30,27 +30,27 @@ func TestRoleModel(t *testing.T) {
 	}{
 		{
 			name: "nothing set runs the provider default",
-			want: map[string]string{"conversation": "a/big", "chat": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big", "planner": "a/big"},
+			want: map[string]string{"conversation": "a/big", "chat": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big"},
 		},
 		{
 			name:   "unset targets follow chat",
 			config: `zemi.config.set("models.chat", "a/small")`,
-			want:   map[string]string{"conversation": "a/small", "chat": "a/small", "agents": "a/small", "titles": "a/small", "compact": "a/small", "memory": "a/small", "planner": "a/small"},
+			want:   map[string]string{"conversation": "a/small", "chat": "a/small", "agents": "a/small", "titles": "a/small", "compact": "a/small", "memory": "a/small"},
 		},
 		{
 			name:   "a set target wins",
 			config: `zemi.config.set("models.titles", "a/small") zemi.config.set("models.memory", "a/small")`,
-			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/small", "planner": "a/big"},
+			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/small"},
 		},
 		{
 			name:   "a profile's model moves the conversation only",
 			config: `zemi.agent.profile.add("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`,
-			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big", "planner": "a/big", "p": "a/small"},
+			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big", "p": "a/small"},
 		},
 		{
 			name:   "a profile names a target",
 			config: `zemi.config.set("models.titles", "a/small") zemi.agent.profile.add("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`,
-			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/big", "planner": "a/big", "p": "a/small"},
+			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/big", "p": "a/small"},
 		},
 		{
 			name:   "a pick on a profile's own slot beats its model",
@@ -95,9 +95,9 @@ func TestRoleModel(t *testing.T) {
 }
 
 // TestModelTargetNames: what zemi.model.add takes and what it refuses. A
-// builtin role, the shipped planner and default are reserved, a target's own
-// model may name a builtin role or a provider/model id and nothing else, and a
-// name another origin holds is refused until a more trusted one takes it back.
+// builtin role and default are reserved, a target's own model may name a
+// builtin role or a provider/model id and nothing else, and a name another
+// origin holds is refused until a more trusted one takes it back.
 func TestModelTargetNames(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, rolesProvider+`
@@ -108,7 +108,6 @@ func TestModelTargetNames(t *testing.T) {
 	}
 	for _, c := range []struct{ name, src, want string }{
 		{"a builtin role", `zemi.model.add("chat", { desc = "x" })`, `"chat" is a builtin role`},
-		{"the shipped planner", `zemi.model.add("planner", { desc = "x" })`, `"planner" is a shipped profile`},
 		{"default", `zemi.model.add("default", { desc = "x" })`, `"default" is a shipped profile`},
 		{"a dotted name", `zemi.model.add("a.b", { desc = "x" })`, `name "a.b" must be a lowercase letter`},
 		{"no desc", `zemi.model.add("x", { model = "a/big" })`, "desc is what /model roles shows"},
@@ -198,11 +197,10 @@ func TestModelTargetPick(t *testing.T) {
 	}
 }
 
-// TestModelTargetBuiltinKey: a registration that took a key the schema owns
-// over (a profile named planner registers models.planner) must not cost the
-// process that key when a later boot does not register it again: a builtin key
-// stays, settable and in /config.
-func TestModelTargetBuiltinKey(t *testing.T) {
+// TestModelTargetBuiltinKey: a profile re-registers its models.<name> key on
+// every boot that defines it, re-applying the pick kept for the key; a reload
+// without the profile drops the key with it.
+func TestModelTargetProfileKey(t *testing.T) {
 	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
@@ -220,25 +218,22 @@ func TestModelTargetBuiltinKey(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the pick needs KeepPicks, as /model under the TUI has
+	h.KeepPicks.Store(true)
 	reload(rolesProvider + `zemi.agent.profile.add("planner", { model = "a/small" })`)
-	if id := h.roleModel(planner); id != "a/small" {
-		t.Fatalf("the planner runs on %q, want the profile's model", id)
+	if id := h.roleModel("planner"); id != "a/small" {
+		t.Fatalf("the profile runs on %q, want its model", id)
 	}
-	reload(rolesProvider) // the profile is gone; the key is not
-	if !h.Settings.Builtin("models." + planner) {
-		t.Fatal("the replay took models.planner out of the schema")
+	if err := h.SetModel("planner a/big"); err != nil {
+		t.Fatal(err)
 	}
-	if err := h.setWatched("models."+planner, "a/big"); err != nil {
-		t.Fatalf("models.planner is not settable: %v", err)
+	reload(rolesProvider) // the profile is gone; its key goes with it
+	if slices.ContainsFunc(h.Settings.Schema(), func(s config.Setting) bool { return s.Path == "models.planner" }) {
+		t.Error("the dead profile's key stayed in the schema")
 	}
-	if id := h.roleModel(planner); id != "a/big" {
-		t.Errorf("the shipped planner runs on %q, want the pick", id)
-	}
-	if err := h.SetModel(planner + " a/small"); err != nil {
-		t.Errorf("/model under the shipped planner: %v", err)
-	}
-	if !slices.ContainsFunc(h.Settings.Schema(), func(s config.Setting) bool { return s.Path == "models."+planner }) {
-		t.Error("/config lost the row")
+	reload(rolesProvider + `zemi.agent.profile.add("planner", { model = "a/small" })`)
+	if id := h.roleModel("planner"); id != "a/big" {
+		t.Errorf("the re-registered profile runs on %q, want the kept pick", id)
 	}
 }
 
@@ -280,13 +275,13 @@ func TestModelTargetUI(t *testing.T) {
 	for _, it := range rows {
 		got = append(got, it.(map[string]any)["text"].(string))
 	}
-	if want := []string{"chat", "agents", "titles", "compact", "memory", "clf", "planner", "cheap"}; !slices.Equal(got, want) {
+	if want := []string{"chat", "agents", "titles", "compact", "memory", "clf", "cheap"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
 	if row := rows[5].(map[string]any); row["desc"] != "a/small · the classifier" {
 		t.Errorf("clf row %v", row)
 	}
-	if row := rows[7].(map[string]any); row["desc"] != "a/small · every tool" || row["key"] != "a/small" {
+	if row := rows[6].(map[string]any); row["desc"] != "a/small · every tool" || row["key"] != "a/small" {
 		t.Errorf("cheap row %v (its spec model is what the row tags)", row)
 	}
 	// the active profile takes row one, and its own row is not repeated
@@ -415,7 +410,7 @@ func TestSetModelArgs(t *testing.T) {
 		t.Errorf("titles row key %v", k)
 	}
 	for _, c := range []struct{ line, want string }{
-		{"/model ", "roles update chat agents titles compact memory planner a/big a/small"},
+		{"/model ", "roles update chat agents titles compact memory a/big a/small"},
 		{"/model titles ", "chat a/big a/small"},
 		{"/model chat ", "a/big a/small"},
 		{"/model a/big ", ""},
@@ -428,7 +423,7 @@ func TestSetModelArgs(t *testing.T) {
 	}
 	runUser(t, r, `zemi.config.set("models.memory", "a/big")
 		for _, m in ipairs(zemi.model.list()) do
-			local want = m.id == "a/big" and "memory" or "chat,agents,titles,compact,planner"
+			local want = m.id == "a/big" and "memory" or "chat,agents,titles,compact"
 			assert(table.concat(m.roles, ",") == want, m.id .. ": " .. table.concat(m.roles, ","))
 		end`)
 }

@@ -965,7 +965,8 @@ zemi.agent.profile.add("coder", {
 	temperature = 0.2,
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
--- and the pipeline denies writes and confines commands; "planner" ships that way.
+-- and the pipeline denies writes and confines commands; its turn ends in a
+-- plan the user approves, asks changes to, or saves to start later.
 zemi.agent.profile.add("planner", { read_only = true })
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
@@ -997,11 +998,10 @@ h:cancel()
 -- Models are targets: models.chat runs the conversation, and models.agents,
 -- models.titles, models.compact and models.memory (the reflector) follow it
 -- while empty; zemi.config.set sets them. A profile is a target too, its
--- definition's model the slot's default that models.<name> overrides, and
--- planner is one before anyone defines it. zemi.model.add registers a slot
--- with a model of its own, for code that runs a model on a job. Anywhere a
--- model can be named (a profile, an agent definition, a workflow) a target
--- name works too.
+-- definition's model the slot's default that models.<name> overrides.
+-- zemi.model.add registers a slot with a model of its own, for code that runs
+-- a model on a job. Anywhere a model can be named (a profile, an agent
+-- definition, a workflow) a target name works too.
 
 zemi.provider.add({
 	id = "myllm",

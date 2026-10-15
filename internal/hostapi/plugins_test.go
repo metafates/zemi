@@ -744,6 +744,7 @@ func TestPluginUses(t *testing.T) {
 				reflectStub(t, h, "pong")
 			}
 			if c.readOnly {
+				runUser(t, r, `zemi.agent.profile.add("planner", { read_only = true })`)
 				if err := h.SetProfile("planner"); err != nil {
 					t.Fatal(err)
 				}

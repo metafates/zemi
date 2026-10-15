@@ -185,7 +185,7 @@ is refused with its path, to delete (the owner is the only user).
 
 - **Models are targets.** `models.chat` runs the conversation; `models.agents` (subagents with
   no model of their own), `models.titles`, `models.compact`, `models.memory` (the
-  reflector) and `models.planner` each fall back to it while empty (`roleModel`). Nothing falls
+  reflector) and every `models.<profile>` each fall back to it while empty (`roleModel`). Nothing falls
   back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
   `models.*` value is `""` or an id with a `/` (`config.set` refuses a bare word), so targets
   never nest. A profile is a target: its definition's `model` is the slot's default and
@@ -353,7 +353,7 @@ is refused with its path, to delete (the owner is the only user).
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
-- **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
+- **Read-only agents** (`Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a fetch, a
   Lua tool; reads and scratchpad writes pass. Approving the plan returns to the agent that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a

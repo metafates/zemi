@@ -8,7 +8,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 ## Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
-  gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore`, `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
+  gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore`, `general` and `plan` (a read-only architect a planning agent delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1: only the live turn forks). A run is a child session (`parent_id`) named by the run's id;
