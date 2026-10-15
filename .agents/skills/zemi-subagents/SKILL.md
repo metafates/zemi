@@ -102,8 +102,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   heads each phase with its rows' combined mark (`Overlay.Phases`); an agent its run never
   started reads cancelled once the run ended.
 - **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, 8 characters (`store.ShortID`),
-  so a unix socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
-  `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
+  so a unix socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`):
+  `PipelineFor` the live session's, a subagent run its parent session's, so a run
   that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts (`Pipeline.cmdEnv`; the user's

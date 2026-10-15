@@ -2405,9 +2405,10 @@ rides the `memories.md` line and its ledger entries.
   `memory.write`. Reads (`fs.read`) settle on their own in every mode.
 - Subjects label the ask and the `tool.denied` event.
   A request carries tool, subject, arg, reason, preview, description,
-  agent, owner, script; the pipeline fills pad, read-only and the script
+  agent, owner, script; the pipeline fills read-only and the script
   name.
-- The gate (tools.Pipeline.Check): a read-only agent's action denies;
+- The gate (tools.Pipeline.Check): a read-only agent's action denies,
+  except a write in its scratchpad;
   then the mode settles: allow runs, ask puts the request to the user
   through the `Ask` hook. No UI (zemi run) fails closed (`ByNobody`) and
   the denial is recorded for the run's summary.
@@ -2424,10 +2425,11 @@ rides the `memories.md` line and its ledger entries.
 - A Lua tool run asks as one action; once approved, its inner `zemi.*`
   calls ride the approval (`luaApproved`), and each `zemi.tool.call` it
   drives gates like the model's own call.
-- Path handling (perm): the file tools resolve once (`perm.Resolve`),
-  the gate judges and the tool opens exactly
-  that path, so a symlink planted later cannot redirect them. A write
-  whose last component is a symlink is refused, naming the target.
+- Path handling (perm): the file tools resolve once (`perm.Resolve`)
+  and the tool opens that resolved path, never input's again. NOTE: only
+  the file itself is what the check proved; a parent swapped for a link
+  after the resolve still redirects the open (grepFile's NOTE says the
+  same).
 - read-before-write stays: write refuses a file the session has not read
   unchanged (an edit proves its text with one exact match instead), so a
   command the model ran or the user's editor is never silently dropped.

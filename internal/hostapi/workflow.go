@@ -1055,9 +1055,8 @@ func agentKey(def, model string, schema map[string]any, prompt string) string {
 
 func flowFile(id, ext string) string { return "workflow-" + id + ext }
 
-// padOpen opens name in pad defensively: the pad
-// is a write root, so a link planted at the name or a swapped parent fails
-// the open instead of leading zemi elsewhere.
+// padOpen opens name in pad: a create (O_EXCL) fails on anything already
+// at the name, a read follows what is there.
 func padOpen(pad, name string, flag int) (*os.File, error) {
 	p, err := perm.Lresolve(filepath.Join(pad, name))
 	if err != nil {

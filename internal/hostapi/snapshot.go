@@ -104,7 +104,7 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 				os.Remove(warm)
 			}
 		}
-		if _, err = git(root, env, append([]string{"add", "-A"}, "--", ".")...); err == nil {
+		if _, err = git(root, env, "add", "-A", "--", "."); err == nil {
 			out, err = git(root, env, "write-tree")
 		}
 		if err == nil || retry {

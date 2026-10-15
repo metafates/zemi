@@ -80,9 +80,6 @@ type Request struct {
 	// ReadOnly marks a read-only agent's request (Pipeline.Plan); set by the
 	// pipeline
 	ReadOnly bool
-	// Pad is the checking pipeline's scratchpad (Pipeline.Pad); set by the
-	// pipeline
-	Pad string
 	// Agent is the subagent asking, as the prompt names it, "" for the main
 	// agent; set by its pipeline's asker
 	Agent string
@@ -328,7 +325,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // the request to the user, and an ask no one can answer fails closed.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
-	req.ReadOnly, req.Pad, req.Script = p.Plan != nil && p.Plan(), p.Pad, p.Script
+	req.ReadOnly, req.Script = p.Plan != nil && p.Plan(), p.Script
 	if !req.Action() {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
 	}
