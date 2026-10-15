@@ -528,6 +528,42 @@ func TestLSPSyncFromGit(t *testing.T) {
 	if got := refs(); got != "5 references" {
 		t.Fatalf("after the command: %q", got)
 	}
+	// a committed file is clean, out of every listing: deleting and
+	// committing it shows only in HEAD's diff
+	c := filepath.Join(dir, "c.txt")
+	os.WriteFile(c, []byte("Foo()\n"), 0o644)
+	if got := refs(); got != "6 references" {
+		t.Fatalf("c listed: %q", got)
+	}
+	git("add", "c.txt")
+	commit("c")
+	if got := refs(); got != "6 references" {
+		t.Fatalf("c committed: %q", got)
+	}
+	os.Remove(c)
+	git("add", "c.txt")
+	commit("c gone")
+	if got := refs(); got != "5 references" {
+		t.Fatalf("a committed deletion reached the server: %q", got)
+	}
+	// a branch switch swaps clean files no listing mentions; both directions
+	// re-emit what the commits' diff names
+	git("add", "b.txt")
+	commit("b")
+	if got := refs(); got != "5 references" {
+		t.Fatalf("b committed: %q", got)
+	}
+	git("checkout", "-q", "-b", "other")
+	os.WriteFile(b, []byte("Foo()\nFoo()\n"), 0o644)
+	git("add", "b.txt")
+	commit("b twice")
+	if got := refs(); got != "6 references" {
+		t.Fatalf("the branch's version reached the server: %q", got)
+	}
+	git("checkout", "-q", "-")
+	if got := refs(); got != "5 references" {
+		t.Fatalf("back on the first branch: %q", got)
+	}
 }
 
 // TestLSPSyncWithoutRepo: a zemi tree has no repository to ask, so an mtime

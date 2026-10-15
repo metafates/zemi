@@ -109,6 +109,7 @@ type lspReg struct {
 	scan     map[string]lspSig // last git status listing by path
 	scanned  bool              // the baseline exists
 	dirty    atomic.Bool       // something other than zemi's file tools ran
+	head     string            // HEAD at the last listing; its diff names what a checkout swapped
 	user     []lspDef
 	disabled map[string]bool // names zemi.lsp.del dropped
 	running  map[string]*lspProc
@@ -364,11 +365,13 @@ type lspSig struct {
 }
 
 // lspSync tells every running server which files changed on disk since the
-// last call. In a repository that is the diff of two git status listings;
-// elsewhere an mtime walk over the trees the running zemiLua servers are
-// rooted at. A query syncs every time, one listing being cheaper than stale
-// answers; the write path only when something other than zemi's own file
-// tools (which open the document they touch) ran (lspDirty).
+// last call. In a repository that is the diff of two git status listings
+// plus, when HEAD moved, the paths its diff names - a checkout swaps clean
+// files no listing ever mentions; elsewhere an mtime walk over the trees
+// the running zemiLua servers are rooted at. A query syncs every time, one
+// listing being cheaper than stale answers; the write path only when
+// something other than zemi's own file tools (which open the document they
+// touch) ran (lspDirty).
 // NOTE: inside a repository the listing misses gitignored files and the
 // config and plugin trees a zemiLua server is rooted at; both reach the
 // server when the file is next opened. rewind's treeDiff carries the first
@@ -395,7 +398,7 @@ func (h *Host) lspSync(force bool) {
 		}
 	}
 	h.lsp.mu.Unlock()
-	root, repo := h.Dirs.RepoRoot(), false
+	root, head, repo := h.Dirs.RepoRoot(), "", false
 	now := map[string]lspSig{}
 	if root != "" {
 		if out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames"); err == nil {
@@ -413,13 +416,18 @@ func (h *Host) lspSync(force bool) {
 				}
 				now[path] = sig
 			}
+			// the commit the listing was taken at: when it moves, the two
+			// commits' diff names the files it swapped
+			if sha, err := h.git(root, "rev-parse", "HEAD"); err == nil {
+				head = strings.TrimSpace(sha)
+			}
 		}
 	}
 	if !repo {
 		now = lspWalk(trees)
 	}
-	prev := h.lsp.scan
-	h.lsp.scan, h.lsp.scanned = now, true
+	prev, last := h.lsp.scan, h.lsp.head
+	h.lsp.scan, h.lsp.head, h.lsp.scanned = now, head, true
 	if len(clients) == 0 {
 		return
 	}
@@ -447,6 +455,25 @@ func (h *Host) lspSync(force bool) {
 			changes[path] = 2
 		} else if !old.gone {
 			changes[path] = 3
+		}
+	}
+	// HEAD moved: the files it swapped are clean in both trees, out of every
+	// listing, so the two commits' diff names them; with -z each record is
+	// the status letter and the path, NUL separated
+	if last != "" && head != last {
+		out, err := h.git(root, "-c", "core.quotePath=false", "diff", "--name-status", "--no-renames", "-z", last, head)
+		if err == nil {
+			fields := strings.Split(out, "\x00")
+			for i := 0; i+1 < len(fields); i += 2 {
+				typ := 2
+				switch fields[i] {
+				case "A":
+					typ = 1
+				case "D":
+					typ = 3
+				}
+				changes[filepath.Join(root, fields[i+1])] = typ
+			}
 		}
 	}
 	if len(changes) == 0 {
