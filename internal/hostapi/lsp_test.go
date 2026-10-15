@@ -422,9 +422,10 @@ func TestLSPRealLuaLS(t *testing.T) {
 	}
 }
 
-// TestLSPSyncFromGit: files that appear, change or vanish on disk between
-// two server interactions reach the server as watched-file events, found
-// by diffing git status listings.
+// TestLSPSyncFromGit: files that appear, change or vanish on disk reach the
+// server as watched-file events, found by diffing git status listings. A
+// query syncs with nothing marked, and the first sync re-reads the whole
+// listing, so a server's start-time copy does not stand forever.
 func TestLSPSyncFromGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -434,18 +435,25 @@ func TestLSPSyncFromGit(t *testing.T) {
 	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
 	dir := h.Dirs.ProjectDir
-	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"}} {
+	git := func(args ...string) {
+		t.Helper()
 		if out, err := h.git(dir, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
+	commit := func(msg string, flags ...string) {
+		t.Helper()
+		git(append(append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q"}, flags...), "-m", msg)...)
+	}
+	git("init", "-q")
+	commit("init", "--allow-empty")
 	var tool fantasy.AgentTool
 	for _, tl := range tools.All(h.PipelineFor()) {
 		if tl.Info().Name == "lsp" {
 			tool = tl
 		}
 	}
-	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	a := filepath.Join(dir, "a.txt")
 	os.WriteFile(a, []byte("func Foo()\nFoo()\n"), 0o644)
 	refs := func() string {
 		t.Helper()
@@ -453,33 +461,101 @@ func TestLSPSyncFromGit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// paths come back relative to the process working directory, which
+		// is not the temp project here; the tool opens what it resolved
 		return strings.SplitN(resp.Content, "\n", 2)[0]
 	}
-	if got := refs(); got != "2 references" {
-		t.Fatalf("baseline: %q", got)
+	// the server starts here, and a roundtrip puts its watcher registration
+	// ahead of the sync, whose dropped events are never replayed
+	def, ok := h.lspFor(a)
+	if !ok {
+		t.Fatal("no server for a.txt")
 	}
-	// each change is made behind the server's back, as a shell command
-	// would, and marked dirty the way running one does
-	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
-	h.lspDirty()
+	p, err := h.lspClient(t.Context(), def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saves int
+	if err := p.client.Call(t.Context(), "fake/saves", nil, &saves); err != nil {
+		t.Fatal(err)
+	}
+	// the first sync re-reads every listed file
+	d := filepath.Join(dir, "d.txt")
+	os.WriteFile(d, []byte("Foo()\n"), 0o644)
+	h.lspSync(true)
+	var events int
+	if err := p.client.Call(t.Context(), "fake/events", nil, &events); err != nil {
+		t.Fatal(err)
+	}
+	if events == 0 {
+		t.Fatal("the first sync emitted nothing for the listing")
+	}
 	if got := refs(); got != "3 references" {
+		t.Fatalf("first sync: %q", got)
+	}
+	// each change below is made behind the server's back, as a shell command
+	// would make it, and no lspDirty marks it
+	b := filepath.Join(dir, "b.txt")
+	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
+	if got := refs(); got != "4 references" {
 		t.Fatalf("after an untracked file appeared: %q", got)
 	}
 	os.WriteFile(b, []byte("Foo()\nFoo()\n"), 0o644)
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(b, later, later)
-	h.lspDirty()
-	if got := refs(); got != "4 references" {
+	if got := refs(); got != "5 references" {
 		t.Fatalf("after it changed: %q", got)
 	}
 	os.Remove(b)
-	h.lspDirty()
-	if got := refs(); got != "2 references" {
+	if got := refs(); got != "3 references" {
 		t.Fatalf("after it was deleted: %q", got)
 	}
-	// with nothing marked, the sync is skipped entirely
+	// another window's write is one listing away
 	os.WriteFile(b, []byte("Foo()\n"), 0o644)
+	if got := refs(); got != "4 references" {
+		t.Fatalf("a query syncs without a mark: %q", got)
+	}
+}
+
+// TestLSPSyncWithoutRepo: a zemi tree has no repository to ask, so an mtime
+// walk stands in for the listing: a command's write to the config tree
+// reaches the server rooted there, and .git's contents stay out of it.
+func TestLSPSyncWithoutRepo(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), ConfigHome: t.TempDir(), DataHome: t.TempDir()})
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { h.lsp.stopAll()() }()
+	h.SetProjectTrusted(true)
+	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("luals", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "lua" } })`, os.Args[0]))
+	cfg := h.Dirs.ConfigHome
+	os.MkdirAll(filepath.Join(cfg, ".git", "objects"), 0o755)
+	os.WriteFile(filepath.Join(cfg, ".git", "objects", "a.lua"), []byte("Foo()\n"), 0o644)
+	init := filepath.Join(cfg, "init.lua")
+	os.WriteFile(init, []byte("func Foo()\nFoo()\n"), 0o644)
+	var tool fantasy.AgentTool
+	for _, tl := range tools.All(h.PipelineFor()) {
+		if tl.Info().Name == "lsp" {
+			tool = tl
+		}
+	}
+	refs := func() string {
+		t.Helper()
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, init)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.SplitN(resp.Content, "\n", 2)[0]
+	}
+	// the query that starts the server also walks the tree it is rooted at
 	if got := refs(); got != "2 references" {
-		t.Fatalf("with no mark: %q", got)
+		t.Fatalf("the walk skipped .git: %q", got)
+	}
+	// a write behind the server's back, with no listing to find it but the walk
+	os.WriteFile(filepath.Join(cfg, "other.lua"), []byte("Foo()\n"), 0o644)
+	if got := refs(); got != "3 references" {
+		t.Fatalf("after a command's write to the config tree: %q", got)
 	}
 }

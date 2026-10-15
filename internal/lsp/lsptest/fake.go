@@ -23,6 +23,24 @@ import (
 
 var wordRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
+// canon is the URI a document lives under: its resolved path, the way
+// servers that canonicalize their URIs key them; the client may open a file
+// by a spelling a watched-file event spells differently. A path that is
+// gone resolves through its directory.
+func canon(uri string) string {
+	p, ok := strings.CutPrefix(uri, "file://")
+	if !ok {
+		return uri
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return "file://" + r
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+		return "file://" + filepath.Join(dir, filepath.Base(p))
+	}
+	return uri
+}
+
 // wordAt is the identifier covering character on line, "" when none.
 func wordAt(text string, line, char int) string {
 	lines := strings.Split(text, "\n")
@@ -49,7 +67,7 @@ func Serve(in io.Reader, out io.Writer) {
 	seen := map[string]int{}
 	texts := map[string]string{}
 	regressed, hung, loading := false, false, false
-	saves := 0
+	saves, events := 0, 0
 	for {
 		body, err := lsp.ReadMessage(r)
 		if err != nil {
@@ -98,6 +116,11 @@ func Serve(in io.Reader, out io.Writer) {
 		if json.Unmarshal(body, &m) != nil || hung {
 			continue
 		}
+		m.Params.TextDocument.URI = canon(m.Params.TextDocument.URI)
+		for i := range m.Params.Changes {
+			m.Params.Changes[i].URI = canon(m.Params.Changes[i].URI)
+		}
+		m.Params.Item.URI = canon(m.Params.Item.URI)
 		switch m.Method {
 		default:
 			if m.Method != "" && len(m.ID) > 0 {
@@ -109,11 +132,14 @@ func Serve(in io.Reader, out io.Writer) {
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"capabilities": map[string]any{"textDocumentSync": 1}}})
 		case "initialized":
-			// the way gopls does it: ask the client to report .txt changes
+			// the way gopls does it: ask the client to report .txt and .lua changes
 			write(map[string]any{"jsonrpc": "2.0", "id": "reg", "method": "client/registerCapability", "params": map[string]any{"registrations": []any{
-				map[string]any{"id": "w1", "method": "workspace/didChangeWatchedFiles", "registerOptions": map[string]any{"watchers": []any{map[string]any{"globPattern": "**/*.txt"}}}},
+				map[string]any{"id": "w1", "method": "workspace/didChangeWatchedFiles", "registerOptions": map[string]any{"watchers": []any{
+					map[string]any{"globPattern": "**/*.txt"}, map[string]any{"globPattern": "**/*.lua"},
+				}}},
 			}}})
 		case "workspace/didChangeWatchedFiles":
+			events += len(m.Params.Changes)
 			// a file nobody opened is read from disk only when told it changed
 			for _, ch := range m.Params.Changes {
 				p := strings.TrimPrefix(ch.URI, "file://")
@@ -261,6 +287,10 @@ func Serve(in io.Reader, out io.Writer) {
 			saves++
 		case "fake/saves":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": saves})
+		case "fake/events":
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": events})
+		case "fake/keys":
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": slices.Sorted(maps.Keys(texts))})
 		case "textDocument/didOpen", "textDocument/didChange":
 			if loading && m.Method == "textDocument/didChange" {
 				loading = false

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"os"
@@ -361,71 +362,78 @@ type lspSig struct {
 }
 
 // lspSync tells every running server which files changed on disk since the
-// last call, from the diff of two git status listings (a file that left the
-// listing was restored, so it changed too). It runs only after something other
-// than zemi's file tools (which open the document they touch) changed the tree
-// (lspDirty): a git status before every read would cost more than it finds.
-// NOTE: outside a repository only zemi's own writes are seen, so a zemi
-// tree's server (zemiLua) hears of a command's change when the file is next
-// opened; a repository with a slow git status pays for it on every touch.
-func (h *Host) lspSync() {
-	root := h.Dirs.RepoRoot()
-	if root == "" {
-		return
-	}
+// last call. In a repository that is the diff of two git status listings;
+// elsewhere an mtime walk over the trees the running zemiLua servers are
+// rooted at. A query syncs every time, one listing being cheaper than stale
+// answers; the write path only when something other than zemi's own file
+// tools (which open the document they touch) ran (lspDirty).
+// NOTE: inside a repository the listing misses gitignored files and the
+// config and plugin trees a zemiLua server is rooted at; both reach the
+// server when the file is next opened. rewind's treeDiff carries the first
+// ceiling too.
+func (h *Host) lspSync(force bool) {
 	h.lsp.scanMu.Lock()
 	defer h.lsp.scanMu.Unlock()
-	if !h.lsp.dirty.Swap(false) && h.lsp.scanned {
+	if d := h.lsp.dirty.Swap(false); !d && h.lsp.scanned && !force {
 		return
 	}
 	h.lsp.mu.Lock()
 	var clients []*lsp.Client
+	var trees []string // the zemiLua roots, walked where no repository covers them
 	for _, p := range h.lsp.running {
 		select {
 		case <-p.ready:
 			if p.err == nil {
 				clients = append(clients, p.client)
+				if p.def.Root != "" {
+					trees = append(trees, p.def.Root)
+				}
 			}
 		default:
 		}
 	}
 	h.lsp.mu.Unlock()
-	out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames")
-	if err != nil {
-		return // not a repository, or git missing: nothing to compare
-	}
+	root, repo := h.Dirs.RepoRoot(), false
 	now := map[string]lspSig{}
-	for entry := range strings.SplitSeq(out, "\x00") {
-		if len(entry) < 4 {
-			continue
+	if root != "" {
+		if out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames"); err == nil {
+			repo = true
+			for entry := range strings.SplitSeq(out, "\x00") {
+				if len(entry) < 4 {
+					continue
+				}
+				path := filepath.Join(root, entry[3:])
+				sig := lspSig{gone: strings.ContainsRune(entry[:2], 'D'), untracked: entry[:2] == "??"}
+				if fi, err := os.Stat(path); err == nil {
+					sig.mtime, sig.size = fi.ModTime(), fi.Size()
+				} else {
+					sig.gone = true
+				}
+				now[path] = sig
+			}
 		}
-		path := filepath.Join(root, entry[3:])
-		sig := lspSig{gone: strings.ContainsRune(entry[:2], 'D'), untracked: entry[:2] == "??"}
-		if fi, err := os.Stat(path); err == nil {
-			sig.mtime, sig.size = fi.ModTime(), fi.Size()
-		} else {
-			sig.gone = true
-		}
-		now[path] = sig
 	}
-	prev, first := h.lsp.scan, !h.lsp.scanned
+	if !repo {
+		now = lspWalk(trees)
+	}
+	prev := h.lsp.scan
 	h.lsp.scan, h.lsp.scanned = now, true
-	if first || len(clients) == 0 {
+	if len(clients) == 0 {
 		return
 	}
-	var changes []lsp.FileChange
+	changes := map[string]int{} // by path: 1 created, 2 changed, 3 deleted
 	for path, sig := range now {
 		old, seen := prev[path]
 		switch {
 		case sig == old:
 		case sig.gone:
 			if !old.gone {
-				changes = append(changes, lsp.FileChange{Path: path, Type: 3})
+				changes[path] = 3
 			}
 		case (!seen || old.gone) && sig.untracked:
-			changes = append(changes, lsp.FileChange{Path: path, Type: 1})
+			changes[path] = 1
 		default:
-			changes = append(changes, lsp.FileChange{Path: path, Type: 2})
+			changes[path] = 2
 		}
 	}
 	for path, old := range prev {
@@ -434,14 +442,53 @@ func (h *Host) lspSync() {
 		}
 		// back to the index's content, or created and deleted again
 		if _, err := os.Stat(path); err == nil {
-			changes = append(changes, lsp.FileChange{Path: path, Type: 2})
+			changes[path] = 2
 		} else if !old.gone {
-			changes = append(changes, lsp.FileChange{Path: path, Type: 3})
+			changes[path] = 3
 		}
 	}
-	for _, c := range clients {
-		c.NotifyChanged(changes)
+	if len(changes) == 0 {
+		return
 	}
+	events := make([]lsp.FileChange, 0, len(changes))
+	for path, typ := range changes {
+		events = append(events, lsp.FileChange{Path: path, Type: typ})
+	}
+	for _, c := range clients {
+		c.NotifyChanged(events)
+	}
+}
+
+// lspWalkMax bounds one walked tree; a config or plugin tree holds hundreds
+// of files, not thousands.
+const lspWalkMax = 2048
+
+// lspWalk lists the files of roots: the trees a zemiLua server is rooted at
+// have no repository to ask, so an mtime walk stands in for the listing.
+// Symlinks are not followed, and a tree past the bound is listed only in
+// part.
+func lspWalk(roots []string) map[string]lspSig {
+	now := map[string]lspSig{}
+	for _, root := range roots {
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return nil // a tree may vanish mid-walk
+			case len(now) >= lspWalkMax:
+				return fs.SkipAll
+			case d.IsDir():
+				if d.Name() == ".git" {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if fi, err := d.Info(); err == nil {
+				now[path] = lspSig{mtime: fi.ModTime(), size: fi.Size()}
+			}
+			return nil
+		})
+	}
+	return now
 }
 
 // lspClient returns the running server for def, starting it once; a failed
@@ -585,9 +632,9 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 		return "", false
 	}
 	if afterWrite {
-		h.GoSafe("lsp sync", h.lspSync)
+		h.GoSafe("lsp sync", func() { h.lspSync(false) })
 	} else {
-		h.lspSync()
+		h.lspSync(true)
 	}
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
@@ -653,7 +700,7 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 	if err != nil {
 		return tools.LSPSession{}, err
 	}
-	h.lspSync()
+	h.lspSync(true)
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": path, "kind": "tool"})
 	open := func(path string) error { return p.client.Open(path, languageID(path)) }
 	if err := open(path); err != nil {
