@@ -352,7 +352,7 @@ is refused with its path, to delete (the owner is the only user).
   rebuilds the todo list from the kept rows. The cut holds `cutMu`, which a reflector run takes
   to store what it read, so a run whose rows a rewind removed during its model call stores nothing. A shell call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
-  a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
+  a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a fetch, a
@@ -428,5 +428,5 @@ is refused with its path, to delete (the owner is the only user).
   `set` or `watch` of one whose plugin did not load do nothing); only
   user config sets them, and a read of a key outside it panics under `go test`. Providers ship
   none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
-  `zemi.env.get` reads secret-shaped names for user and builtin origin only). Config fields
+  `zemi.env.get` reads any name from any origin). Config fields
   hold values, never names of env vars.

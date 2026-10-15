@@ -118,10 +118,10 @@ func TestJobOf(t *testing.T) {
 	}
 }
 
-// outsideTemp is a directory outside the free zone (perm.TempRoots): a fixture
-// whose point is a path that must still ask lives here, since t.TempDir(), and
-// so every fixture, is inside a temp root. It sits beside this file, not in
-// the working directory, which a test may have chdir'd into the project.
+// outsideTemp is a directory that is none of zemi's roots - not the project,
+// not the pad, not a data dir - for a fixture whose point is a path outside
+// them. t.TempDir() alone would do, except a test may chdir into the project,
+// so it sits beside this file instead of in the working directory.
 func outsideTemp(t *testing.T) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)

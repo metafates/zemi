@@ -693,7 +693,7 @@ func TestScratchpad(t *testing.T) {
 		t.Errorf("a path was taken literally: %v", entries)
 	}
 	if res, _ := runShell(t.Context(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
-		t.Errorf("unconfined $TMPDIR is %q, want %q", res.Content, pad)
+		t.Errorf("a shell command's $TMPDIR is %q, want %q", res.Content, pad)
 	}
 }
 

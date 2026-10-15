@@ -47,8 +47,8 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
-	if !pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Allowed || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Allowed {
-		t.Fatal("writes settle in the scratchpad only")
+	if pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Allowed || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Allowed {
+		t.Fatal("an ask with no overlay fails closed")
 	}
 
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {

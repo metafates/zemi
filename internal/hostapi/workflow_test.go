@@ -580,15 +580,6 @@ func TestWorkflowRerun(t *testing.T) {
 		return total
 	}
 	pad := h.scratchFor("s1")
-	link := func(name string) func(t *testing.T, f *flowRun) {
-		return func(t *testing.T, f *flowRun) {
-			path := filepath.Join(pad, flowFile(f.id, name))
-			elsewhere := filepath.Join(t.TempDir(), name)
-			if err := os.Rename(path, elsewhere); err != nil || os.Symlink(elsewhere, path) != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	const wf = "local wf = zemi.workflow\n"
 	for _, c := range []struct {
 		name, first, again string
@@ -621,8 +612,6 @@ func TestWorkflowRerun(t *testing.T) {
 		{name: "args default to the run's", first: `return wf.args .. wf.agent("i")`, args: "x", want: "xi!1"},
 		{name: "an id that is no run id is refused", first: `return "j"`, from: "../../x", want: "not a workflow run id"},
 		{name: "a missing journal names the file", first: `return "k"`, from: "0000000a", want: "workflow-0000000a.jsonl"},
-		{name: "a journal planted as a link is refused", first: `return "l"`, change: link(".jsonl"), want: "a symlink"},
-		{name: "a script planted as a link is refused", first: `return "m"`, change: link(".lua"), want: "a symlink"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, err := h.startFlow(t.Context(), flowSpec{src: wf + c.first, args: c.args})

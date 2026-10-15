@@ -106,12 +106,12 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
   that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
-  `TEMP` in every command the model starts (`Pipeline.childEnv`; the user's
-  `!command` keeps the user's). The gate allows reads and writes in the pad and the machine's
-  temp dirs (`perm.FreeZone`, `perm.TempRoots`) before anything else, a read-only agent's
-  included; they are not reachable for `zemi.fs` or the Lua tool, which keep the pad alone.
+  `TEMP` in every command the model starts (`Pipeline.cmdEnv`; the user's
+  `!command` keeps the user's). Writes in the pad settle by permission mode like any write,
+  and the read-only agent may write only there; `zemi.fs` and the Lua tool jail it to
+  the pad alone.
   `write`
-  and `edit` need no prior read there (the stale check stays) and a pad write is never
+  and `edit` need a prior read like anywhere else, and a pad write is never
   checkpointed. A file tool path starting with `$`, `~` or
   `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
   system prompt (which runs of one agent share in the provider cache), to keep its files in
