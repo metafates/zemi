@@ -617,7 +617,7 @@ func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, 
 	if err != nil {
 		return nil, err
 	}
-	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
+	return tools.Grep(ctx, root, files, re, math.MaxInt)
 }
 
 // zemi.http

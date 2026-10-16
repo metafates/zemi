@@ -1187,7 +1187,7 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 	}
 	capped := len(files) == ListLimit
 	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) })
-	hits, err := Grep(ctx, root, files, re, grepMaxMatches, nil)
+	hits, err := Grep(ctx, root, files, re, grepMaxMatches)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -1280,9 +1280,8 @@ type Hit struct {
 
 // Grep returns the first limit lines matching re in files, relative to
 // root, in their order. It reads a file only when it is regular, at most
-// grepMaxSize bytes and not binary; show, asked once per file with hits,
-// can leave that file out.
-func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, limit int, show func(rel string) bool) ([]Hit, error) {
+// grepMaxSize bytes and not binary.
+func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, limit int) ([]Hit, error) {
 	whole := wholeFile(re)
 	found, done := make([][]Hit, len(files)), make([]bool, len(files))
 	// the files before prefix are all searched; the hits among them decide
@@ -1306,9 +1305,6 @@ func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, l
 				mu.Lock()
 				found[i], done[i] = hits, true
 				for ; prefix < len(files) && done[prefix]; prefix++ {
-					if len(found[prefix]) > 0 && show != nil && !show(files[prefix]) {
-						found[prefix] = nil
-					}
 					n += len(found[prefix])
 				}
 				stop.Store(n >= limit)
