@@ -1345,28 +1345,36 @@ func (t *workflowTool) list() string {
 		len(flows), Plural(len(flows), "run", "runs"), live, strings.Join(lines, "\n"))
 }
 
+// workflowArgs is the workflow tool's input and its schema source. Every
+// field is optional in the schema: the run code names what a call missed.
+type workflowArgs struct {
+	Script      string `json:"script,omitempty" desc:"Lua source"`
+	Name        string `json:"name,omitempty" desc:"a saved workflow to run"`
+	Args        any    `json:"args,omitempty" desc:"the script's zemi.workflow.args"`
+	Description string `json:"description,omitempty" desc:"3-6 word label shown to the user"`
+	Concurrency int    `json:"concurrency,omitempty"`
+	Background  bool   `json:"background,omitempty" desc:"run detached; the result arrives later as a message"`
+	Run         string `json:"run,omitempty" desc:"id of a workflow run in this session to act on; rerun reruns its edited script file, and finished agent calls answer at once"`
+	Action      string `json:"action,omitempty" desc:"what to do to run"`
+}
+
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	tui := t.h.hooks() != nil
 	var desc strings.Builder
 	desc.WriteString(workflowToolDesc)
 	actions := []string{string(actStatus), "list", string(actWait), "rerun"}
-	params := map[string]any{
-		"script":      map[string]any{"type": "string", "description": "Lua source"},
-		"name":        map[string]any{"type": "string", "description": "a saved workflow to run"},
-		"args":        map[string]any{"description": "the script's zemi.workflow.args"},
-		"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},
-		"concurrency": map[string]any{"type": "integer", "description": fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)},
-		"run":         map[string]any{"type": "string", "description": "id of a workflow run in this session to act on; rerun reruns its edited script file, and finished agent calls answer at once"},
-	}
+	props, required := tools.ArgsOf(workflowArgs{})
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {
 		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 			" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
 			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
 		actions = []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
-		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
+	} else {
+		delete(props, "background")
 	}
-	params["action"] = map[string]any{"type": "string", "enum": actions, "description": "what to do to run"}
+	props["action"].(map[string]any)["enum"] = actions
+	props["concurrency"].(map[string]any)["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
 	if len(t.saved) > 0 {
 		desc.WriteString("\n\nSaved workflows (pass name instead of script):")
 		for _, w := range t.saved {
@@ -1377,23 +1385,14 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name:        tools.ToolWorkflow,
 		Description: desc.String(),
-		Parameters:  params,
-		Required:    []string{},
+		Parameters:  props,
+		Required:    required,
 	}
 }
 
 func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
-	var in struct {
-		Script      string `json:"script"`
-		Name        string `json:"name"`
-		Args        any    `json:"args"`
-		Description string `json:"description"`
-		Concurrency int    `json:"concurrency"`
-		Background  bool   `json:"background"`
-		Run         string `json:"run"`
-		Action      string `json:"action"`
-	}
+	var in workflowArgs
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

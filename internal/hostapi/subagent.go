@@ -1019,6 +1019,19 @@ func (t *agentTool) names() []string {
 	return out
 }
 
+// agentArgs is the agent tool's input and its schema source. Every field is
+// optional in the schema: send_to makes prompt and agent spurious, and what
+// still must be there the descriptions say.
+type agentArgs struct {
+	Description string `json:"description,omitempty" desc:"3-5 word label shown to the user"`
+	Prompt      string `json:"prompt,omitempty" desc:"the full task"`
+	Agent       string `json:"agent,omitempty" desc:"one of the Agents above"`
+	Background  bool   `json:"background,omitempty" desc:"run detached; the report arrives later as a message"`
+	SendTo      string `json:"send_to,omitempty" desc:"id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"`
+	Wait        bool   `json:"wait,omitempty" desc:"with send_to: block until that run ends instead of queueing the prompt, so its report is in the conversation when this call returns; its report arrives as a message either way"`
+	Stop        bool   `json:"stop,omitempty" desc:"with send_to: kill the run; its report never arrives"`
+}
+
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Start a subagent on a self-contained task. It cannot see this conversation, so the prompt carries everything it needs," +
@@ -1042,22 +1055,22 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	if t.h.hooks() != nil {
 		required = "; required unless send_to is set"
 	}
-	params := map[string]any{
-		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
-		"prompt":      map[string]any{"type": "string", "description": "the full task"},
-		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "one of the Agents above" + required},
+	props, req := tools.ArgsOf(agentArgs{})
+	for _, name := range []string{"description", "agent"} {
+		p := props[name].(map[string]any)
+		p["description"] = p["description"].(string) + required
 	}
-	if t.h.hooks() != nil {
-		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
-		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
-		params["wait"] = map[string]any{"type": "boolean", "description": "with send_to: block until that run ends instead of queueing the prompt, so its report is in the conversation when this call returns; its report arrives as a message either way"}
-		params["stop"] = map[string]any{"type": "boolean", "description": "with send_to: kill the run; its report never arrives"}
+	props["agent"].(map[string]any)["enum"] = t.names()
+	if t.h.hooks() == nil {
+		for _, name := range []string{"background", "send_to", "wait", "stop"} {
+			delete(props, name)
+		}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
 		Description: b.String(),
-		Parameters:  params,
-		Required:    []string{},
+		Parameters:  props,
+		Required:    req,
 		Parallel:    true,
 	}
 }
@@ -1067,15 +1080,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 const bgAgentStarted = "Started background agent "
 
 func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	var in struct {
-		Description string `json:"description"`
-		Prompt      string `json:"prompt"`
-		Agent       string `json:"agent"`
-		Background  bool   `json:"background"`
-		SendTo      string `json:"send_to"`
-		Wait        bool   `json:"wait"`
-		Stop        bool   `json:"stop"`
-	}
+	var in agentArgs
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
