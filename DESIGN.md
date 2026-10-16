@@ -332,7 +332,6 @@ Directories (XDG):
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
-  projects/<hash>/permissions  shell commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
   logs/
 ~/.agents/skills/<name>/  user skills other agents read too, body only (§10.5)
@@ -1876,8 +1875,7 @@ rides the `memories.md` line and its ledger entries.
   list 72 cells wide, like text), so moving never resizes the box, and the
   filter matches it (`/config` puts each key's description there),
   an item's `copy` is the row's value, which `y` copies in place of the row
-  (`/model`'s full model id, the init.lua lines of a `/permissions` always
-  answer) and enter copies, keeping the list open, when the row does nothing else,
+  (`/model`'s full model id, `/mcp`'s sign-in URL) and enter copies, keeping the list open, when the row does nothing else,
   an item's `section` starts a header row where it changes, and the filter
   matches it and the value with the row, so a provider name narrows `/model`
   to its group and a full model id finds its row,
@@ -1905,8 +1903,7 @@ rides the `memories.md` line and its ledger entries.
   update or use now, `c` change, and `x` for what cannot be undone (delete,
   or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
   action per check takes its label's initial. An item or action with
-  `danger` (those `x` rows, `/rewind`'s `r`; not the `/permissions` Delete,
-  which the next "always" answer undoes, nor `/memory`'s actions, which `u`
+  `danger` (those `x` rows, `/rewind`'s `r`; not `/memory`'s actions, which `u`
   undoes) draws in the danger color, and its
   first enter or key only arms it: the footer turns to `x again to delete ·
   esc cancel`, the verb in that color and the keys drawn as keys, the same key, enter or space runs it, esc disarms and
@@ -1934,7 +1931,7 @@ rides the `memories.md` line and its ledger entries.
   names no action key, since the keys a row offers move with its state and
   the footer's text would move with them; the detail's buttons name them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A
-  screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
+  screen that manages things (`/skills`, `/mcp`, `/lsp`,
   `/plugins`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
   action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
   and a workflow's view also rebuild in place when a server, a run or a

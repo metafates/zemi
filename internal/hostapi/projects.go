@@ -369,7 +369,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		case p.Missing:
 			item["detail"] = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
-			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes, allowed commands and the trust decision. The project's own files stay."
+			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes and the trust decision. The project's own files stay."
 		}
 		if sel < 0 && !p.Missing {
 			sel = i
