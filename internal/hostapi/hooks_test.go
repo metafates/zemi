@@ -172,7 +172,7 @@ func TestHookMatcher(t *testing.T) {
 		{"invalid[", "shell", false},
 	}
 	for _, c := range cases {
-		m := hookMatcher(c.matcher)
+		m := hookMatcherFor(c.matcher, true)
 		if m == nil {
 			m = func(string) bool { return true }
 		}
