@@ -280,6 +280,38 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	}
 }
 
+// TestProfileContextFilesJailed: a profile's context files are repository
+// content, so one naming a path outside the repository is skipped and one
+// inside rides the prompt.
+func TestProfileContextFilesJailed(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "notes.md"), []byte("project notes"), 0o644)
+	outside := filepath.Join(filepath.Dir(h.Dirs.ProjectDir), "context-out.md")
+	os.WriteFile(outside, []byte("jail-leak-marker"), 0o644)
+	link := filepath.Join(h.Dirs.ProjectDir, "link.md")
+	os.Symlink(outside, link)
+	for _, c := range []struct {
+		name string
+		file string
+		want bool
+	}{
+		{"inside", "notes.md", true},
+		{"dotdot out", "../context-out.md", false},
+		{"symlink out", "link.md", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sys := h.buildSystem(&Profile{ContextFiles: []string{c.file}})
+			if got := strings.Contains(sys, "project notes"); got != c.want {
+				t.Errorf("prompt has the file = %v, want %v", got, c.want)
+			}
+			if strings.Contains(sys, "jail-leak-marker") {
+				t.Error("the outside file's content rode the prompt")
+			}
+		})
+	}
+}
+
 // TestPromptPinned: two sends around a change carry the same system prompt
 // and tools unless the change is a drop point or moves the key, which an
 // agent.assemble counter shows. A hand edit of an instruction file rides

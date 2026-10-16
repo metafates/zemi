@@ -237,10 +237,15 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		tracked, files = h.instructionPaths(), h.instructionFiles()
 	} else {
 		// a copy: these are the profile's own paths, and rewriting them in
-		// place would make the next send join them to the project dir again
-		abs := make([]string, len(files))
-		for i, f := range files {
-			abs[i] = filepath.Join(h.Dirs.ProjectDir, f)
+		// place would make the next send join them to the project dir again.
+		// A profile is authored content: only repository files ride the
+		// prompt, so a "../x" or a symlink out of the repo is skipped.
+		var abs []string
+		for _, f := range files {
+			p := filepath.Join(h.Dirs.ProjectDir, f)
+			if h.inJail(p, h.Dirs.RepoRoot()) {
+				abs = append(abs, p)
+			}
 		}
 		tracked, files = abs, abs
 	}
