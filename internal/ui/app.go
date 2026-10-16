@@ -140,10 +140,11 @@ type App struct {
 	reflectAt time.Time
 
 	bootErr        error
-	bootView       viewport      // the boot-failure box's error text
-	streamPending  atomic.Bool   // a stream agentStreamMsg is queued
-	wake           chan struct{} // a bump while the frame tick sleeps idle
-	refreshPending atomic.Bool   // a Refresh is queued
+	bootView       viewport          // the boot-failure box's error text
+	streamPending  atomic.Bool       // a stream agentStreamMsg is queued
+	wake           chan struct{}     // a bump while the frame tick sleeps idle
+	refreshPending atomic.Bool       // a Refresh is queued
+	lastSel        map[string]string // per overlay id, the selected row's key when it last closed
 
 	// the last composed frame, published for Screenshot: reading a
 	// snapshot is what lets any goroutine ask what the screen says
@@ -193,6 +194,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
 		scrolls:  map[string]*scrollState{},
+		lastSel:  map[string]string{},
 		timeStr:  "--:--",
 		now:      time.Now,
 		focused:  true,

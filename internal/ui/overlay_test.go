@@ -1465,6 +1465,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	} {
 		ran = ""
 		app.overlays = nil
+		clear(app.lastSel) // each case opens the screen fresh, as a new run of it would
 		runLua(t, app, `zemi.ui.overlay.open({ id = "s", items = { `+cmp.Or(c.items, `"current", `+session("1")+`, `+session("2"))+` }, `+c.keys+` })`)
 		pressKeys(app, c.press...)
 		for app.Pump() {
@@ -1476,6 +1477,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	// a Go screen's declared keys: the footer names them on every row, and
 	// on a row without the action the key says why
 	ran, app.overlays = "", nil
+	clear(app.lastSel)
 	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}, {Key: "x", Desc: "delete"}}, Items: []any{
 		map[string]any{"text": "current", "detail": "zemi runs it"},
 		map[string]any{"text": "s1", "actions": []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "res 1"}}},
@@ -1599,6 +1601,54 @@ func TestOverlayCloseRules(t *testing.T) {
 	}
 	if len(app.overlays) != 1 || app.overlays[0].o.ID != "answered" {
 		t.Fatalf("on_close never ran: %+v", app.overlays)
+	}
+}
+
+// TestOverlayReopensOnItsRow: a menu left for a screen that closes it (a
+// run's transcript under a row's run, the palette) reopens with the cursor
+// on the row it was left on, falling back to the first when the list
+// changed under it.
+func TestOverlayReopensOnItsRow(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	items := []any{
+		map[string]any{"text": "first"},
+		map[string]any{"text": "second", "run": "open second"},
+		map[string]any{"text": "third", "run": "open third"},
+	}
+	a.host.Commands.Add(&hostapi.Command{
+		Name: "open", NArgs: hostapi.NArgsAny, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		GoFn: func(h *hostapi.Host, args string) error { // the screen the row opens closes the menu, as /agents view does
+			if ui, err := h.Screen(); err == nil {
+				ui.CloseOverlay("menu", lua.OriginBuiltin)
+				ui.OpenOverlay(hostapi.Overlay{ID: "view:" + args, Title: "View", Origin: lua.OriginBuiltin, Items: []any{"x", "y"}})
+			}
+			return nil
+		},
+	})
+	open := func(list []any) {
+		a.openOverlay(hostapi.Overlay{ID: "menu", Title: "Menu", Origin: lua.OriginBuiltin, Items: list})
+	}
+	for _, want := range []int{1, 2} {
+		open(items)
+		a.overlayKey("down", "")
+		a.overlayKey("enter", "")
+		if len(a.overlays) != 1 || a.overlays[0].o.ID != "view:second" && a.overlays[0].o.ID != "view:third" {
+			t.Fatalf("round %d: overlays=%d", want, len(a.overlays))
+		}
+		a.overlayKey("esc", "")
+		if len(a.overlays) != 0 {
+			t.Fatalf("round %d: the view did not close", want)
+		}
+		open(items) // the back command reopens the screen
+		if a.overlays[0].selected != want {
+			t.Fatalf("round %d: selected=%d, want %d", want, a.overlays[0].selected, want)
+		}
+		a.overlayKey("esc", "")
+	}
+	// a list without the remembered row falls back to its first
+	open([]any{"only"})
+	if a.overlays[0].selected != 0 {
+		t.Fatalf("fallback selected=%d", a.overlays[0].selected)
 	}
 }
 

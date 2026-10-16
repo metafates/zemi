@@ -181,6 +181,13 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		return
 	}
 	st := a.overlayState(o)
+	// a menu reopens on the row it was left on: where the cursor was when it
+	// last closed, when that row is still in the list
+	if sel := a.lastSel[o.ID]; sel != "" {
+		if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
+			st.selected = n
+		}
+	}
 	if n := len(a.overlays); n > 0 && !o.Input { // stacked lists line up, as a detail view does
 		st.size.w = a.overlays[n-1].size.w
 	}
@@ -489,6 +496,11 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 // the rebuild then shows what the closed overlay changed.
 func (a *App) closeOverlayByID(id string) {
 	closes := func(st overlayState) bool { return st.o.ID == id || strings.HasPrefix(st.o.ID, id+"#detail") }
+	for _, st := range a.overlays { // where each closed list sat, so coming back reopens on its row
+		if closes(st) && !st.back && st.selected < len(st.visible) {
+			a.lastSel[st.o.ID] = itemKey(st.o.Items[st.visible[st.selected]])
+		}
+	}
 	top := len(a.overlays) > 0 && closes(a.overlays[len(a.overlays)-1])
 	a.overlays = slices.DeleteFunc(a.overlays, closes)
 	if n := len(a.overlays); top && n > 0 && a.overlays[n-1].o.Reload != nil {
