@@ -41,7 +41,7 @@ Print the one command I should run next.
 - Tools to make cheap models suck less, smart ones do more: subagents, workflows, forks, lsp, parallel tool calls... _yada yada_
 - Fully scriptable with Lua and knows how to modify itself
 - Learns from previous sessions
-- Two permission modes: `ask` prompts before every action, `allow` (the default) just runs - the prompt keeps you aware of what the agent does, it is not isolation
+- Everything runs, and a plugin whose manifest declares `perm` may deny an action or force its ask overlay (`permission.request`); an ask no one can answer fails closed - it keeps you aware of what the agent does, it is not isolation
 
 ## Benchmarks
 
