@@ -530,11 +530,12 @@ local function builder(ctx, width)
 
 	-- The label and click target of the one row that stands for a folded run:
 	-- a notice burst and a rail fold the same way.
-	---@param key integer
+	---@param open boolean?
 	---@param n integer
+	---@param click string
 	---@return string, string
-	local function foldRow(key, n)
-		return whole[key] and "… show the rest" or "… " .. n .. " earlier", "more:" .. key
+	local function foldRow(open, n, click)
+		return open and "… show the rest" or "… " .. n .. " earlier", click
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any
@@ -560,7 +561,7 @@ local function builder(ctx, width)
 		local hidden = last - first + 1 - NOTICES_KEEP
 		-- a printed run lists every row: its fold row would have nothing to click
 		if hidden > 1 and not ctx.headless then
-			local label, click = foldRow(first, hidden)
+			local label, click = foldRow(whole[first], hidden, "more:" .. first)
 			B.lines[#B.lines + 1] = {
 				{ text = "  ", copy = false, hover = false },
 				{ text = label, hl = "Dim", click = click },
@@ -596,7 +597,7 @@ local function builder(ctx, width)
 		local key = o.live and 0 or o.run or first
 		local n = #B.heads - RAIL_KEEP
 		if o.open or ctx.headless or n < 2 then return end
-		local label, click = foldRow(key, n)
+		local label, click = foldRow(whole[key], n, "more:" .. key)
 		if not whole[key] then
 			for _ = at + 1, B.heads[n + 1] - 1 do
 				table.remove(B.lines, at + 1)
@@ -1032,22 +1033,21 @@ zemi.ui.widget.add({
 				if q.notice then notes = notes + 1 end
 			end
 			local fold = notes - NOTICES_KEEP
+			-- a printed run lists every row: its fold row would have nothing to click
+			if ctx.headless then fold = 0 end
 			local seen, note = 0, false
 			for _, q in ipairs(queued) do
 				if q.notice then
 					seen = seen + 1
 					-- the fold row stands where the oldest folded notice was,
 					-- and stays to close what a click opened
-					if seen == 1 and fold > 0 then
+					if seen == 1 and fold > 1 then
 						if not note then B.gap("note") end
 						note = true
+						local label, click = foldRow(queued_open, fold, "moreq:0")
 						B.lines[#B.lines + 1] = {
 							{ text = "  ", copy = false, hover = false },
-							{
-								text = queued_open and "… show the rest" or "… " .. fold .. " earlier",
-								hl = "Dim",
-								click = "moreq:0",
-							},
+							{ text = label, hl = "Dim", click = click },
 						}
 					end
 					if seen > fold or queued_open then
