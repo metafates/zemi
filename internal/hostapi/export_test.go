@@ -113,6 +113,37 @@ func TestCopyReply(t *testing.T) {
 	}
 }
 
+// TestCopyRunReply: with a run's transcript in view, /copy takes the run's
+// last reply, not the session's.
+func TestCopyRunReply(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "pong")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	if err := h.AgentSend("ping"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	run := "a1b2c3d4"
+	h.DB.CreateSession(run, h.AgentSessionID(), "look around", "explore")
+	addText(t, h, run, "user", "find the widget")
+	addText(t, h, run, "assistant", "it is in the corner")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.ViewAgent(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CopyReply("reply"); err != nil || ui.copied != "it is in the corner" {
+		t.Fatalf("run copy = %q, %v", ui.copied, err)
+	}
+	if err := h.ViewAgent(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CopyReply("reply"); err != nil || ui.copied != "pong" {
+		t.Fatalf("session copy = %q, %v", ui.copied, err)
+	}
+}
+
 func TestExportMarkdown(t *testing.T) {
 	user := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleUser, Text: s} }
 	reply := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s} }

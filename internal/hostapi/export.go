@@ -28,25 +28,32 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// CopyReply copies the live session's last reply as the model wrote it (a
-// drag copies rendered, wrapped screen rows). args is "" (a picker when the
-// reply has code blocks), "reply", "code" (every block) or "code <n>".
+// CopyReply copies the viewed run's, else the live session's, last reply as
+// the model wrote it (a drag copies rendered, wrapped screen rows). args is
+// "" (a picker when the reply has code blocks), "reply", "code" (every
+// block) or "code <n>".
 func (h *Host) CopyReply(args string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	sid := h.AgentSessionID()
-	if sid == "" || h.DB == nil {
-		h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
-		return nil
+	var text string
+	if run := h.viewedRun(); run != nil {
+		text = lastReplyText(run.transcript())
+	} else {
+		sid := h.AgentSessionID()
+		if sid == "" || h.DB == nil {
+			h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
+			return nil
+		}
+		rows, err := h.DB.Messages(sid)
+		if err != nil {
+			return err
+		}
+		_, tr := historyFrom(rows)
+		text = lastReplyText(tr)
 	}
-	rows, err := h.DB.Messages(sid)
-	if err != nil {
-		return err
-	}
-	history, _ := historyFrom(rows)
-	text := sanitize.String(lastAssistantText(history))
+	text = sanitize.String(text)
 	if text == "" {
 		h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
 		return nil
@@ -76,6 +83,19 @@ func (h *Host) CopyReply(args string) error {
 		ui.Copy(blocks[n-1].text)
 	}
 	return nil
+}
+
+// lastReplyText is the last non-empty assistant reply of transcript rows,
+// reasoning and tool rows passed over.
+func lastReplyText(tr []ChatMessage) string {
+	for _, m := range slices.Backward(tr) {
+		if m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage {
+			if s := strings.TrimSpace(m.Text); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 // copyPicker lists a reply's code blocks, then all of them and the whole
