@@ -491,7 +491,7 @@ func TestFetchGates(t *testing.T) {
 	})
 	defer srv.Close()
 	// a private address fetches like any other: localhost development is the
-	// point, and ask mode is what gates the URL
+	// point, and the ask gate is what answers the URL
 	for _, raw := range []string{srv.URL + "/x"} {
 		res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, raw))
 		if res.IsError {
@@ -508,13 +508,13 @@ func TestFetchGates(t *testing.T) {
 	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/big")); !strings.Contains(res.Content, "\n(only the first 1 MB of the page was read, of 1048586 bytes)\n") {
 		t.Fatalf("a page past the cap says so: %q", res.Content[:200])
 	}
-	// a redirect hop asks like a first URL in ask mode, and passes in allow mode
+	// a redirect hop asks like a first URL under the ask-everything gate, and passes ungated
 	hops, hopAsks := testPipeline(t, false)
 	if err := netGate(hops, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err == nil || len(*hopAsks) != 1 {
-		t.Fatalf("hop in ask mode: %v, asked %+v", err, *hopAsks)
+		t.Fatalf("hop under the ask gate: %v, asked %+v", err, *hopAsks)
 	}
 	if err := netGate(allowed, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err != nil {
-		t.Fatalf("hop in allow mode: %v", err)
+		t.Fatalf("hop ungated: %v", err)
 	}
 }
 
@@ -591,7 +591,7 @@ func TestDeniedOutsideRun(t *testing.T) {
 	}{
 		{"a refused fetch redirect hop", func(t *testing.T, p *Pipeline) {
 			if err := netGate(p, &url.URL{Scheme: "https", Host: "example.com", Path: "/x"}); err == nil {
-				t.Fatal("a hop ask mode denies must be refused")
+				t.Fatal("a hop the ask gate denies must be refused")
 			}
 		}, ToolFetch},
 	} {

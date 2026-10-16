@@ -94,7 +94,7 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 }
 
 // TestVetoGate pins where the permission.request veto sits in Check: after
-// the read-only deny, before the mode, and only when an asker exists (a
+// the read-only deny, before the ask, and only when an asker exists (a
 // gate without one cannot run the veto's interpreter round-trip).
 func TestVetoGate(t *testing.T) {
 	for _, c := range []struct {
@@ -648,10 +648,10 @@ func TestEditSafety(t *testing.T) {
 }
 
 // TestScratchpad: the pad is a command's $TMPDIR whoever allowed it and is
-// no project a rewind restores, and its writes settle by mode like any
-// other write - ask mode asks, allow mode runs - except a read-only agent,
-// whose pad is the one place it may write. A path a shell would expand is
-// refused naming the real one.
+// no project a rewind restores, and its writes gate like any other write -
+// the ask-everything gate asks, one with no asker runs - except a read-only
+// agent, whose pad is the one place it may write. A path a shell would
+// expand is refused naming the real one.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	free := perm.RealPath(t.TempDir())
@@ -696,19 +696,19 @@ func TestScratchpad(t *testing.T) {
 	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(proj, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly {
 		t.Fatalf("a read-only agent's project write: %+v", v)
 	}
-	// allow mode writes the pad and a temp dir, and the pad is no project a
-	// rewind restores: the temp write is checkpointed, the pad write is not
+	// an ungated pipeline writes the pad and a temp dir, and the pad is no
+	// project a rewind restores: the temp write is checkpointed, the pad write is not
 	allow, _ := testPipeline(t, true)
 	allow.Pad, allow.Seen = pad, p.Seen
 	allow.Checkpoint = p.Checkpoint
 	freeNote := filepath.Join(free, "notes.txt")
 	for _, path := range []string{filepath.Join(pad, "made.txt"), freeNote} {
 		if res := call(t, toolNamed(t, ToolWrite, allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
-			t.Errorf("allow-mode write to %s: %q", path, res.Content)
+			t.Errorf("ungated write to %s: %q", path, res.Content)
 		}
 	}
 	if res := call(t, toolNamed(t, ToolEdit, allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
-		t.Errorf("allow-mode edit in the pad: %q", res.Content)
+		t.Errorf("ungated edit in the pad: %q", res.Content)
 	}
 	if len(checkpoints) != 1 || checkpoints[0] != freeNote {
 		t.Errorf("checkpoints %v, want only %s", checkpoints, freeNote)
