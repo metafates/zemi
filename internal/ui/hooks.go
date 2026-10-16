@@ -91,7 +91,6 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 			".agents: Lua, skills, agents, commands and workflows",
 			"AGENTS.md and CLAUDE.md instructions",
 			"language servers, which can build the project",
-			"the project's own settings, which can change the mode",
 		} {
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: hostapi.ChromeValue}}, width)...)
 		}
