@@ -2206,8 +2206,8 @@ zemi.tool = {}
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
 --- `tool.<name>` with the name as the argument: a plugin's tool settles
---- where its manifest declares `tool`, and in ask mode any other one asks
---- at the prompt before it runs.
+--- where its manifest declares `tool`, and any other one runs unless a
+--- `permission.request` handler denies it or hands it to the ask overlay.
 ---
 --- ```lua
 --- zemi.tool.add({
@@ -2338,8 +2338,9 @@ function zemi.fs.exists(path) end
 --- `<data>/lua/<name>`, where config code keeps its files: inside the
 --- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
 --- outside the config tree, so a write never reloads the config. Reads
---- settle; in ask mode a write fails closed, and the fix is allow mode (a
---- plugin's declared `fs.write` settles its own). Nothing is created:
+--- settle; a write takes the `lua.fs.write` gate, which never opens the
+--- overlay - a plugin's declared `fs.write` settles its own, and a
+--- read-only run's write is denied. Nothing is created:
 --- `write` makes the parents, and a job's
 --- `cwd` needs `mkdir` first.
 ---@param name string One directory name, no separators.
