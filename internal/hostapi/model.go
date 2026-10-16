@@ -635,12 +635,9 @@ func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 		float64(u.CacheReadTokens)*m.CostPer1MCacheRead) / 1e6
 }
 
-// contextWindow: agent.context_window, then the model spec, else 0
-// (unknown: no percent readout, no auto compaction).
+// contextWindow is the model spec's window, 0 when it names none (unknown:
+// no percent readout, no auto compaction).
 func (h *Host) contextWindow(modelID string) int64 {
-	if n := h.Settings.Int("agent.context_window"); n > 0 {
-		return int64(n)
-	}
 	m, _ := h.modelSpec(modelID)
 	return m.ContextWindow
 }

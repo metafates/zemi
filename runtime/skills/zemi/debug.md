@@ -50,7 +50,7 @@
 | `boot failed` on a plain, colorless screen | zemi's own Lua layer did not load (a broken install or a bug; user config, plugins and the project can never cause this: a failure there shows the `errors` pill and zemi boots on); `c` in the box copies the error for a report, the log the box names has the whole traceback |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
-| context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry or set `agent.context_window` |
+| context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry |
 | project `.agents/` config, AGENTS.md or language servers ignored | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root (`/projects` lists them and forgets one); a linked worktree uses its main checkout's |
 | every action denied and no prompt appears | the agent is read-only (`read_only: true` on its profile): it may not change anything. Give the work to an agent that may act |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume`, after ten minutes with no turn in an open zemi and at start for one session idle that long, once one has two new user messages and a tool call or a failed call; `/reflect` runs it now |

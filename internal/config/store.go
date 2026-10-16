@@ -89,7 +89,7 @@ func (s *Store) defineDefaults() {
 		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
 		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: "session.recap", Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
-		{Path: "agent.context_window", Kind: KindNumber, Default: 0.0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
+		{Path: "agent.compact_at", Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
 		{Path: "agent.max_background", Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
 		{Path: "agent.max_steps", Kind: KindNumber, Default: 200.0, Desc: "steps one turn may take before it stops and hands back, its tool calls included; 0 or less keeps 200, and a sent message continues the turn"},
 		{Path: "lsp.auto", Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},

@@ -345,22 +345,44 @@ func TestTailStart(t *testing.T) {
 	}
 }
 
+// TestCompactThreshold: the trigger is agent.compact_at percent of the
+// window, never under half of it, and nothing on an unknown window.
+func TestCompactThreshold(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range []struct {
+		window, at, want int64
+	}{
+		{0, 80, 0},
+		{200_000, 80, 160_000},
+		{128_000, 50, 64_000},
+		{32_000, 20, 16_000}, // never under half the window
+		{200_000, 100, 200_000},
+	} {
+		if _, err := h.Settings.SetQuiet("agent.compact_at", float64(c.at)); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.compactThreshold(c.window); got != c.want {
+			t.Errorf("compactThreshold(%d, %d) = %d, want %d", c.window, c.at, got, c.want)
+		}
+	}
+}
+
 func TestPruneToolOutput(t *testing.T) {
 	for _, c := range []struct {
 		name      string
-		window    int64
+		threshold int64
 		kept      int
 		oldTokens int
 		wantFreed int64
 	}{
 		{"a small saving clears nothing", 0, toolKeepTokens, 10_000, 0},
 		{"old output past the kept 40k is cleared", 0, toolKeepTokens, 30_000, 30_000},
-		{"a 200k window keeps 40k too", 200_000, toolKeepTokens, 10_000, 0},
-		{"a 32k window keeps 4k", 32_000, 4_000, 10_000, 10_000},
-		{"a small window's saving has a floor", 32_000, 4_000, 3_000, 0},
+		{"a 160k threshold keeps 40k too", 160_000, toolKeepTokens, 10_000, 0},
+		{"a 16k threshold keeps 4k", 16_000, 4_000, 10_000, 10_000},
+		{"a small threshold's saving has a floor", 16_000, 4_000, 3_000, 0},
 	} {
 		history := []fantasy.Message{toolResult("old", c.oldTokens), toolResult("new", c.kept)}
-		out, freed := pruneToolOutput(history, c.window, false)
+		out, freed := pruneToolOutput(history, c.threshold, false)
 		if freed != c.wantFreed {
 			t.Errorf("%s: freed %d, want %d", c.name, freed, c.wantFreed)
 		}

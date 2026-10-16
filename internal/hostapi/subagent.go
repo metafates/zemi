@@ -449,7 +449,7 @@ func (h *Host) capRun(runner *agent.Runner, modelID string) {
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	runner.MaxSteps = h.Settings.Int("agent.max_steps")
 	window := h.contextWindow(modelID)
-	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
+	runner.Full = func(used int64) bool { return window > 0 && used >= h.compactThreshold(window) }
 }
 
 // writesFiles reports tools that can change files: the run's task then names the
@@ -664,11 +664,11 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():
 			window := h.contextWindow(modelID)
-			history, freed := pruneToolOutput(runner.History, window, true)
+			history, freed := pruneToolOutput(runner.History, h.compactThreshold(window), true)
 			if freed == 0 {
 				// tailStart never lands on a tool result, so the tail opens
 				// with a message a provider accepts after the task.
-				start := 1 + tailStart(history[1:], tailKeep(compactThreshold(window)))
+				start := 1 + tailStart(history[1:], tailKeep(h.compactThreshold(window)))
 				if dropped > 0 || start == 1 {
 					return own, err // nothing left to drop: the report is what it has
 				}

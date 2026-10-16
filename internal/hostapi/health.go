@@ -316,7 +316,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		unknown = append(unknown, m+": subagents trim their history only after the provider refuses it")
 	}
 	if len(unknown) > 0 {
-		add(HealthWarn, "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry, or agent.context_window")
+		add(HealthWarn, "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry")
 	} else if id != "" {
 		add(HealthOK, "context", "window known, auto compaction on")
 	}

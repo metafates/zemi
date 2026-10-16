@@ -27,7 +27,7 @@ A longer prompt cache is an opt-in `body` entry, never a default since model sup
 
 Model fields besides `id` and `display`:
 
-- `context_window`: without it there is no context percent and no auto compaction, only `/compact` and a provider's too-long refusal. `agent.context_window` overrides it.
+- `context_window`: without it there is no context percent and no auto compaction, only `/compact` and a provider's too-long refusal.
 - `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_cache_write` (tokens written to the prompt cache), `cost_per_1m_cache_read` (tokens read from it). Without the cache pair, cached turns read cheaper than they were.
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
 - `vision = false`: the model takes no images: read's description tells it so, read refuses image files, and images leave its history. Without it zemi learns that from the provider's first refusal, for the process.
@@ -50,7 +50,8 @@ A definition is a target as well: `models.<profile>` overrides the `model` a pro
 - `keymap.leader`: what `<leader>` stands for in keymaps (`ui.md`).
 - `lsp.auto`: under MCP and language servers.
 
-The schema's description covers `agent.max_background`, `agent.max_steps`, `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.progress`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
+- `agent.compact_at`: the percent of the model's context window auto compaction waits for (80, never under half the window); `100` leaves only `/compact` and a provider's too-long refusal. Every model divides by its own `context_window`.
+- `agent.max_background`, `agent.max_steps`, `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.progress`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`: the schema's description covers them.
 
 ## Permissions
 

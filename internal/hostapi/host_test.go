@@ -661,10 +661,10 @@ func TestConfigSet(t *testing.T) {
 		{"agent.effort", "high", "default", `""`, ""},
 		{"agent.effort", "high", "turbo", `"high"`, `config key agent.effort expects low, medium, high or default, not "turbo"`},
 		{"agent.profile", "high", "", `"default"`, ""},
-		{"agent.context_window", 0.0, "1000000", "1000000", ""},
-		{"agent.context_window", 0.0, "84.5", "84.5", ""},
-		{"agent.context_window", 0.0, "abc", "0", "agent.context_window is a number"},
-		{"agent.context_window", 0.0, "NaN", "0", "config key agent.context_window expects number"},
+		{"agent.compact_at", 80.0, "60", "60", ""},
+		{"agent.compact_at", 80.0, "84.5", "84.5", ""},
+		{"agent.compact_at", 80.0, "abc", "80", "agent.compact_at is a number"},
+		{"agent.compact_at", 80.0, "NaN", "80", "config key agent.compact_at expects number"},
 	} {
 		h.Settings.SetQuiet(c.path, c.from)
 		// a refused value is a usage hint, not an error

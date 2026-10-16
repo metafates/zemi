@@ -26,7 +26,6 @@ import (
 
 const (
 	compactReserve  = 20_000 // reply room; claude-code measured p99.99 summaries at ~17k
-	compactBuffer   = 13_000
 	compactMaxFails = 3
 	summaryMaxOut   = compactReserve // the reply room compaction plans for
 	toolKeepTokens  = 40_000         // ceiling on the newest tool output pruning leaves alone
@@ -79,14 +78,15 @@ var errNoSummary = errors.New("compaction returned no usable summary")
 // errNothingToCompact is a history too short to summarize: a warn, never a failure.
 var errNothingToCompact = errors.New("nothing to compact yet")
 
-// compactThreshold is the context size that triggers compaction: room for
-// a reply plus slack, but never below half the window, so small windows are
-// not compacted every turn. 0 when the window is unknown.
-func compactThreshold(window int64) int64 {
+// compactThreshold is the context size that triggers compaction: pct of the
+// window (agent.compact_at), but never below half of it, so small windows
+// are not compacted every turn. 0 when the window is unknown.
+func (h *Host) compactThreshold(window int64) int64 {
 	if window <= 0 {
 		return 0
 	}
-	return max(window-compactReserve-compactBuffer, window/2)
+	pct := min(max(int64(h.Settings.Int("agent.compact_at")), 1), 100)
+	return max(window*pct/100, window/2)
 }
 
 // compactDue reports whether the last step used enough of the context
@@ -97,7 +97,7 @@ func (h *Host) compactDue() bool {
 	h.agents.mu.Lock()
 	fails := h.agents.compactFails
 	h.agents.mu.Unlock()
-	return s.CtxWindow > 0 && fails < compactMaxFails && s.LastIn >= compactThreshold(s.CtxWindow)
+	return s.CtxWindow > 0 && fails < compactMaxFails && s.LastIn >= h.compactThreshold(s.CtxWindow)
 }
 
 // contextFull is the runner's Full: it records the context a step used and
@@ -286,9 +286,9 @@ func (h *Host) setCompacting(on bool) {
 func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus string) error {
 	history := runner.History
 	window := h.AgentStream().CtxWindow
-	threshold := compactThreshold(window)
+	threshold := h.compactThreshold(window)
 	if reason != compactManual {
-		pruned, freed := pruneToolOutput(history, window, false)
+		pruned, freed := pruneToolOutput(history, threshold, false)
 		h.agents.mu.Lock()
 		used := h.agents.lastIn - freed
 		h.agents.mu.Unlock()
@@ -545,10 +545,10 @@ var keptTools = []string{tools.ToolSkill, tools.ToolQuestion, tools.ToolPlan}
 // toolKeepTokens, which an unknown window gets. inTurn also clears what the
 // running turn produced, which only a subagent asks for: its whole run is
 // one turn. The input history is not modified.
-func pruneToolOutput(history []fantasy.Message, window int64, inTurn bool) ([]fantasy.Message, int64) {
+func pruneToolOutput(history []fantasy.Message, threshold int64, inTurn bool) ([]fantasy.Message, int64) {
 	kept := int64(toolKeepTokens)
-	if window > 0 {
-		kept = min(kept, compactThreshold(window)/4)
+	if threshold > 0 {
+		kept = min(kept, threshold/4)
 	}
 	keep := map[string]bool{}
 	for _, m := range history {

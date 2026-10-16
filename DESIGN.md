@@ -2810,8 +2810,8 @@ fork cheap to start. The whole prompt, tool descriptions and the
 context message included, is pinned at session start (§6.3) and rebuilt
 with a fresh environment and brain at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
-included, is within a 20k reply reserve plus 13k of the window but at
-least half of it, never when the window is unknown; once after a
+included, reaches `agent.compact_at` percent of the window, at least half
+of it, never when the window is unknown; once after a
 provider's context-too-long refusal; or by `/compact [focus]`: Go clears
 old tool output and, when that is not enough, summarizes all but a
 verbatim tail (at least the latest user message on, when a turn came

@@ -41,8 +41,7 @@ import (
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
-// the token budget the context percent and auto compaction divide by, which
-// agent.context_window overrides.
+// the token budget the context percent and auto compaction divide by.
 type Model struct {
 	ID            string
 	Display       string
