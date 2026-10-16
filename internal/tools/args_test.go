@@ -17,7 +17,7 @@ type argsTest struct {
 	Kind    QuestionType `json:"kind,omitempty"`
 	Disable bool         `json:"disable,omitempty"`
 	Tags    []string     `json:"tags,omitempty"`
-	Nested  argsNested   `json:"nested,omitempty"`
+	Nested  *argsNested  `json:"nested,omitempty"`
 }
 
 // TestArgsOf pins the schema one args struct generates and the round trip a

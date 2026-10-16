@@ -247,15 +247,6 @@ func confidence(probs []float64) *float64 {
 	return &c
 }
 
-// clip cuts text a user reads to n runes.
-func clip(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "..."
-}
-
 // sortedKeys is a string map's keys, sorted, so a strategy's order is the same
 // on every call.
 func sortedKeys[V any](m map[string]V) []string {
