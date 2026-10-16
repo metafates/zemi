@@ -504,15 +504,15 @@ func TestMemoryGate(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h, _ := newTestHostDB(t)
+			h, r := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
 			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			h.SetProjectTrusted(true)
 			// the ask-everything policy a plugin's veto makes, for the
 			// memory.write case that asks
+			askEverything(t, r)
 			pipe := h.PipelineFor()
-			pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 			sid := seedSession(t, h)
 			replaces := ""
 			if tc.seed != nil {

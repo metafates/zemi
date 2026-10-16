@@ -29,8 +29,8 @@ func TestToolDeniedEvent(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
 		zemi.state.set("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
-	end)
-	zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
+	end)`)
+	askEverything(t, r)
 	for _, tl := range tools.All(h.PipelineFor()) {
 		if tl.Info().Name != "write" {
 			continue
@@ -57,8 +57,8 @@ func TestHostToolEvents(t *testing.T) {
 	end)
 	zemi.event.on("tool.post", function(ev)
 		zemi.state.set("wpost", tostring(ev.ok))
-	end)
-	zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
+	end)`)
+	askEverything(t, r)
 	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {

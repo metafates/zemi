@@ -118,17 +118,11 @@ func TestMCPBridge(t *testing.T) {
 		t.Fatal("project config must not add MCP servers")
 	}
 
-	var list []fantasy.AgentTool
 	// the ask-everything policy a plugin's veto makes, until the restart
 	// section, whose calls run ungated
-	ask := true
+	askEverything(t, r)
+	var list []fantasy.AgentTool
 	pipe := h.PipelineFor()
-	pipe.Veto = func(tools.Request) string {
-		if ask {
-			return tools.VetoAsk
-		}
-		return ""
-	}
 	waitFor(t, func() error {
 		if list = h.mcpFantasyTools(pipe); len(list) == 0 {
 			return fmt.Errorf("server never became ready: %+v", h.mcp.list())
@@ -169,7 +163,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 
 	first, _ := h.mcpServerNamed("fake")
-	ask = false // the restart section's calls run ungated
+	runUser(t, r, askEverythingOff) // the restart section's calls run ungated
 	readd := lua.BootStep{Name: "mcp", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", first.spec) }}
 	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
 		t.Fatal(err)

@@ -633,7 +633,7 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 // it (DESIGN §6.2).
 func TestPipelineForCheck(t *testing.T) {
 	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
+	askEverything(t, r)
 	pipe := h.PipelineFor()
 
 	// No UI: the ask hook fails closed.
@@ -649,7 +649,7 @@ func TestPipelineForCheck(t *testing.T) {
 	}
 
 	// No veto policy: the same call settles on its own.
-	runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
+	runUser(t, r, askEverythingOff)
 	pipe3 := h.PipelineFor()
 	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByDefault {
 		t.Fatalf("allowed shell: %+v by %q", v, v.DecidedBy)

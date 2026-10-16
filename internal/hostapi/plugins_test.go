@@ -798,10 +798,10 @@ func TestPluginToolCall(t *testing.T) {
 			if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
 				t.Fatal(err)
 			}
-			pipe := h.PipelineFor()
 			if c.ask {
-				pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
+				askEverything(t, r)
 			}
+			pipe := h.PipelineFor()
 			if c.readOnly {
 				pipe.ReadOnly = func() bool { return true }
 			}

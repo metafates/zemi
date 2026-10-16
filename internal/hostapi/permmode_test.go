@@ -122,7 +122,7 @@ func TestAskFIFO(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, _ := newTestHost(t)
+			h, r := newTestHost(t)
 			opened := make(chan struct{})
 			ui := &fakeUI{}
 			ui.onAsk = func(PermRequest) (bool, string) {
@@ -142,9 +142,9 @@ func TestAskFIFO(t *testing.T) {
 				return c.by != tools.ByUser, c.by
 			}
 			h.SetUIHooks(ui)
-			pipe := h.PipelineFor()
 			// the ask-everything policy a plugin's veto makes
-			pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
+			askEverything(t, r)
+			pipe := h.PipelineFor()
 			var first tools.Verdict
 			done := make(chan struct{})
 			go func() { first = pipe.Check(c.first); close(done) }()

@@ -735,7 +735,7 @@ func TestWorkflowToolInput(t *testing.T) {
 	ui := &fakeUI{askAllowed: true}
 	h.SetUIHooks(ui)
 	// the ask-everything policy a plugin's veto makes
-	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
+	askEverything(t, r)
 	tool := h.workflowTool(h.PipelineFor())
 	call := func(input string) (string, bool) {
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})

@@ -42,7 +42,7 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
+	askEverything(t, r)
 	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 	input := `{"city":"` + strings.Repeat("a", 400) + `b"}`
 	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: input}); err != nil {

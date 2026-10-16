@@ -374,7 +374,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 			h, r := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
-			runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end)`)
+			askEverything(t, r)
 			runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
 			if err := h.Remember("deploy by hand"); err != nil {
 				t.Fatal(err)

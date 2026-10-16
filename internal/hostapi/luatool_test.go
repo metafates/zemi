@@ -341,7 +341,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	}
 	// the ask-everything policy: the script's own gate and the nested call
 	// each ask
-	runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
+	askEverything(t, r)
 	out := run(`local o, e = zemi.tool.call("shell", { command = "rm -rf build" }):wait() print(e or o)`)
 	if len(ui.asked) != 2 || ui.asked[1].Script != "lua script" || ui.asked[1].Subject != perm.SubjectShell {
 		t.Fatalf("nested ask: %+v", ui.asked)
@@ -349,7 +349,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if !strings.Contains(out, "permission denied") || strings.Contains(out, "rm -rf") {
 		t.Fatalf("denied call: %q", out)
 	}
-	runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
+	runUser(t, r, askEverythingOff)
 	// an unknown tool and unusable arguments come back as nil, err; nothing runs
 	ui.asked = nil
 	if out := run(`local h, e = zemi.tool.call("nope", {}) print(h == nil, e ~= nil)`); out != "true\ttrue" {

@@ -165,6 +165,16 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 	}
 }
 
+// askEverything registers the ask-everything permission policy a plugin's
+// permission.request handler makes: every action routes to the overlay.
+// askEverythingOff turns it off again.
+const askEverythingOff = `zemi.event.off("ask-everything")`
+
+func askEverything(t *testing.T, r *lua.Runtime) {
+	t.Helper()
+	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end, { id = "ask-everything" })`)
+}
+
 // waitFor polls cond until it returns nil and fails the test with its last
 // error after 3s.
 func waitFor(t *testing.T, cond func() error) {
