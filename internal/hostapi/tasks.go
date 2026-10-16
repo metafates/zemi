@@ -717,27 +717,38 @@ func (h *Host) deliverAgent(run *agentRun, text string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	report := text
+	body := text
 	if err != nil {
-		report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
+		body = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
 	}
-	h.deliverReport(run.parent, run.id, run.agent, map[bool]string{true: "finished", false: "failed"}[err == nil], run.description, report, "")
+	h.deliverReport(run.parent, report{
+		id: run.id, agent: run.agent,
+		status:      map[bool]string{true: "finished", false: "failed"}[err == nil],
+		description: run.description,
+		body:        body,
+	}, "")
+}
+
+// report is a run's report identity and text: the tag a report message names
+// them by, and what reportAttrs and reportBody read back.
+type report struct {
+	id, agent, status, description, body string
 }
 
 // deliverReport hands a detached run's report to the session that started
 // it: to the model, attached behind it, when that session is live, else
 // stored there and toasted.
-func (h *Host) deliverReport(parent, id, agentName, status, description, report, attached string) {
+func (h *Host) deliverReport(parent string, r report, attached string) {
 	// the run is over: every count-derived indicator and list moves now, not
 	// at the next frame the user happens to cause
 	h.refresh()
 	if h.AgentSessionID() != parent {
 		// the user moved on; do not drop the report into another conversation
-		h.notifyReport(id, agentName, status, description, report)
+		h.notifyReport(r)
 		return
 	}
-	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report) + attached); err != nil {
-		h.Notify(slog.LevelError, "Could not send the report of "+id, h.friendlyError(err))
+	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), r) + attached); err != nil {
+		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
 	}
 }
 
@@ -751,7 +762,7 @@ const updateStatus = "update"
 // toasted.
 func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	if h.AgentSessionID() != run.parent {
-		h.notifyReport(run.id, run.agent, updateStatus, run.description, text)
+		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil
 	}
 	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
@@ -772,11 +783,11 @@ func (h *Host) updateMessage(pad, id, agentName, text string) string {
 // the run's label, as the chat names it. A workflow's agent attribute is
 // "workflow" or "workflow:<saved name>", and its description names it, since
 // runs of one script differ by no name.
-func reportHead(id, agent, status, description string) string {
-	if workflowAgent(agent) {
-		return fmt.Sprintf("Workflow %s (%s) %s", id, clipLine(description, 60), status)
+func reportHead(r report) string {
+	if workflowAgent(r.agent) {
+		return fmt.Sprintf("Workflow %s (%s) %s", r.id, clipLine(r.description, 60), r.status)
 	}
-	return fmt.Sprintf("Background agent %s (%s) %s", id, clipLine(cmp.Or(description, agent), 60), status)
+	return fmt.Sprintf("Background agent %s (%s) %s", r.id, clipLine(cmp.Or(r.description, r.agent), 60), r.status)
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,
@@ -790,8 +801,8 @@ func workflowAgent(agent string) bool {
 // description is model text); the user gets the head as a notice row where the
 // model reads it (appendUserRows), so it never lands above the rows of the
 // turn it arrives in.
-func (h *Host) reportMessage(pad, id, agentName, status, description, report string) string {
-	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", id, agentName, status, description), h.truncOutput(pad, "agent", report))
+func (h *Host) reportMessage(pad string, r report) string {
+	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", r.id, r.agent, r.status, r.description), h.truncOutput(pad, "agent", r.body))
 }
 
 // reportFailed heads a failed run's report for the model; the toast of one
@@ -801,27 +812,27 @@ const reportFailed = "the agent failed: "
 // notifyReport tells the user of a report the live conversation will not
 // read, and stores it in the session that started the run, where a resume
 // hands it to the model.
-func (h *Host) notifyReport(id, agentName, status, description, report string) {
+func (h *Host) notifyReport(r report) {
 	parent := ""
-	if run := h.tasks.find(id); run != nil {
+	if run := h.tasks.find(r.id); run != nil {
 		parent = run.parent
-	} else if f := h.tasks.flow(id); f != nil {
+	} else if f := h.tasks.flow(r.id); f != nil {
 		parent = f.parent
 	}
 	if parent != "" && h.DB != nil {
-		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)), json.Deterministic(true))
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), r)), json.Deterministic(true))
 		if err == nil {
 			err = h.DB.AddMessage(&store.Message{SessionID: parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}
 		if err != nil {
-			h.Log.Warn("report not stored", "origin", "agents", "run", id, "error", err)
+			h.Log.Warn("report not stored", "origin", "agents", "run", r.id, "error", err)
 		}
 	}
 	level := slog.LevelWarn
-	if status != "failed" {
+	if r.status != "failed" {
 		level = slog.LevelInfo
 	}
-	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
+	h.Notify(level, reportHead(r), r.description+"\n"+clipRunes(strings.TrimPrefix(r.body, reportFailed), 300))
 }
 
 // reportTag is a report's opening tag, its element name up to its closing
@@ -857,9 +868,9 @@ func headLine(body string) string {
 // notifyReports tells the user of the queued reports a closing session drops.
 func (h *Host) notifyReports(queued []string) {
 	for _, m := range queued {
-		for _, r := range reportBody.FindAllStringSubmatch(m, -1) {
-			desc, _ := strconv.Unquote(r[4])
-			h.notifyReport(r[1], r[2], r[3], desc, r[5])
+		for _, g := range reportBody.FindAllStringSubmatch(m, -1) {
+			desc, _ := strconv.Unquote(g[4])
+			h.notifyReport(report{id: g[1], agent: g[2], status: g[3], description: desc, body: g[5]})
 		}
 	}
 }
@@ -900,7 +911,8 @@ func reportHeads(tail string) []notice {
 		if !workflowAgent(m[2]) {
 			run = m[1]
 		}
-		heads = append(heads, notice{Text: reportHead(m[1], m[2], m[3], desc), Status: reportStatus(m[3]), Run: run})
+		r := report{id: m[1], agent: m[2], status: m[3], description: desc}
+		heads = append(heads, notice{Text: reportHead(r), Status: reportStatus(m[3]), Run: run})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		if line := headLine(m[2]); line != "" {

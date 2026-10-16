@@ -1592,8 +1592,8 @@ func (h *Host) deliverFlow(attached string) func(*flowRun) {
 		if errors.Is(f.err, context.Canceled) {
 			return
 		}
-		attr, status, report := f.reportAs()
-		h.deliverReport(f.parent, f.id, attr, status, f.description, report, attached)
+		attr, status, body := f.reportAs()
+		h.deliverReport(f.parent, report{id: f.id, agent: attr, status: status, description: f.description, body: body}, attached)
 	}
 }
 
@@ -1837,8 +1837,8 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 			h.handOff(scope)
 			return
 		}
-		attr, status, report := f.reportAs()
-		msg := h.reportMessage(h.scratchFor(f.parent), f.id, attr, status, f.description, report)
+		attr, status, body := f.reportAs()
+		msg := h.reportMessage(h.scratchFor(f.parent), report{id: f.id, agent: attr, status: status, description: f.description, body: body})
 		if err := h.sendClaimed(scope, line+msg+attached); err != nil {
 			h.Log.Warn("report not sent", "origin", "workflows", "error", err)
 		}
