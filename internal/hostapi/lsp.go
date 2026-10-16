@@ -504,8 +504,9 @@ const lspWalkMax = 2048
 
 // lspWalk lists the files of roots: the trees a zemiLua server is rooted at
 // have no repository to ask, so an mtime walk stands in for the listing.
-// Symlinks are not followed, and a tree past the bound is listed only in
-// part.
+// No index stands behind it, so every file counts as untracked and one
+// first seen reaches the servers as created. Symlinks are not followed, and
+// a tree past the bound is listed only in part.
 func lspWalk(roots []string) map[string]lspSig {
 	now := map[string]lspSig{}
 	for _, root := range roots {
@@ -523,7 +524,7 @@ func lspWalk(roots []string) map[string]lspSig {
 				return nil
 			}
 			if fi, err := d.Info(); err == nil {
-				now[path] = lspSig{mtime: fi.ModTime(), size: fi.Size()}
+				now[path] = lspSig{mtime: fi.ModTime(), size: fi.Size(), untracked: true}
 				n++
 			}
 			return nil
