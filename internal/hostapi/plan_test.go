@@ -201,7 +201,8 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		return n
 	}
 	// a text ending is not a plan to approve: the agent is told once
-	h.planFollowup(runner, h.nudgesPlan(ro))
+	toolset, _ := h.profileTools(ro)
+	h.planFollowup(runner, h.nudgesPlan(ro, toolset))
 	waitFor(t, func() error {
 		if n := nudges(); n != 1 {
 			return fmt.Errorf("nudges = %d", n)
@@ -222,7 +223,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	h.agents.mu.Lock()
 	scope := h.claim()
 	h.agents.mu.Unlock()
-	h.planFollowup(runner, h.nudgesPlan(ro))
+	h.planFollowup(runner, h.nudgesPlan(ro, toolset))
 	h.endScope(scope)
 	if nudges() != 1 {
 		t.Fatal("nudged under another claim")
@@ -238,7 +239,8 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { headlessSent.Add(1); return textParts("text") }}, nil
 	}
 	headlessRO, _ := headless.resolveProfile("")
-	headless.planFollowup(runner, headless.nudgesPlan(headlessRO))
+	headlessTools, _ := headless.profileTools(headlessRO)
+	headless.planFollowup(runner, headless.nudgesPlan(headlessRO, headlessTools))
 	waitIdle(t, headless)
 	if n := headlessSent.Load(); n != 0 {
 		t.Fatalf("headless agent nudged %d times", n)

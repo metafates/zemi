@@ -118,7 +118,7 @@ func TestMaxStepsSetting(t *testing.T) {
 	if _, err := h.Settings.SetQuiet("agent.max_steps", 7.0); err != nil {
 		t.Fatal(err)
 	}
-	runner, err := h.ensureRunner(nil)
+	runner, err := h.ensureRunner(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestProfileTemperatureReachesRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner, err := h.ensureRunner(p)
+	runner, err := h.ensureRunner(p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -413,17 +413,13 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 	}
 }
 
-func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
+func (h *Host) ensureRunner(p *Profile, toolset []fantasy.AgentTool) (*agent.Runner, error) {
 	model, err := h.resolveModel(p)
 	if err != nil {
 		return nil, err
 	}
-	all, err := h.profileTools(p)
-	if err != nil {
-		return nil, err
-	}
 	_, loaded := h.sessionLogs()
-	toolset, active := h.deferMCP(all, loaded)
+	toolset, active := h.deferMCP(toolset, loaded)
 	toolset, sys, ctxMsg, parts := h.pinPrompt(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
 	r.Context, r.ActiveTools = ctxMsg, active
@@ -725,7 +721,11 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	if err := h.ensureSession(p, text); err != nil {
 		return fail(err)
 	}
-	runner, err := h.ensureRunner(p)
+	toolset, err := h.profileTools(p)
+	if err != nil {
+		return fail(err)
+	}
+	runner, err := h.ensureRunner(p, toolset)
 	if err != nil {
 		return fail(err)
 	}
@@ -749,7 +749,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 
 	// the profile this turn ran as: a switch to a read-only agent mid-turn
 	// must not nudge the reply the replaced agent wrote
-	nudge := h.nudgesPlan(p)
+	nudge := h.nudgesPlan(p, toolset)
 	h.GoSafe("agent turn", func() {
 		h.runTurns(runner, scope, text)
 		h.planFollowup(runner, nudge)
@@ -1802,7 +1802,11 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	r, err := h.ensureRunner(p)
+	toolset, err := h.profileTools(p)
+	if err != nil {
+		return "", err
+	}
+	r, err := h.ensureRunner(p, toolset)
 	if err != nil {
 		return "", err
 	}
@@ -2377,12 +2381,8 @@ const planNudgeText = "Your reply ended in plain text, which the user cannot app
 // text: a read-only agent with the plan tool. Headless drops the tool and
 // planHeadless asks for the plan as the reply, so there is nothing to
 // present it with.
-func (h *Host) nudgesPlan(p *Profile) bool {
-	if p == nil || !p.ReadOnly {
-		return false
-	}
-	toolset, _ := h.profileTools(p)
-	return hasTool(toolset, tools.ToolPlan)
+func (h *Host) nudgesPlan(p *Profile, toolset []fantasy.AgentTool) bool {
+	return p != nil && p.ReadOnly && hasTool(toolset, tools.ToolPlan)
 }
 
 // planFollowup runs after a turn goroutine ends. An approved plan left for
