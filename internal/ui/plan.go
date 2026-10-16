@@ -22,7 +22,7 @@ type planAskPrompt struct {
 	sel    int // the highlighted button: approve, then request changes
 	typing bool
 	input  composerState
-	mode   string // "in <mode> mode" when a mode switch follows approval
+	mode   string // the profile the "back to <profile> on approve" badge names
 	size   boxSize
 	text   textRows
 	answer chan planAnswer

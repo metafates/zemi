@@ -126,7 +126,7 @@ function M.empty_chat(ctx)
 end
 
 --- The on_click of a widget whose click ids are a command and its
---- arguments ("resume 3f9c", "mode"), or "fill <text>", which puts the text
+--- arguments ("resume 3f9c", "profile"), or "fill <text>", which puts the text
 --- in the composer for the user to send.
 ---@param ev zemi.WidgetClick
 function M.run_click(ev)
