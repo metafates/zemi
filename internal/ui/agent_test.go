@@ -368,6 +368,66 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 	}
 }
 
+// TestWaitRowGuard: the thinking row opens with the turn 300ms in, before any
+// output, its label breathing; every state that says something else stands it
+// down.
+func TestWaitRowGuard(t *testing.T) {
+	tools := []hostapi.StreamTool{{ID: "t1", Name: "read", Label: "read go.mod", Status: hostapi.CallRun}}
+	cases := []struct {
+		name       string
+		stream     hostapi.StreamSnapshot
+		cancelling bool
+		waiting    hostapi.Waiting
+		want       string // "wait": the breathing row, "think": the reasoning row, "": none
+	}{
+		{"before the guard", hostapi.StreamSnapshot{Active: true, Elapsed: 200 * time.Millisecond}, false, "", ""},
+		{"the wait", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, false, "", "wait"},
+		{"reasoning arrived", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Thinking: true, Reasoning: "hmm"}, false, "", "think"},
+		{"a retry backs off", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Retrying: true}, false, "", ""},
+		{"a call runs", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Tools: tools}, false, "", ""},
+		{"the reply streams", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Text: "hello"}, false, "", ""},
+		{"cancelling", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, true, "", ""},
+		{"an ask holds the turn", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, false, hostapi.WaitAnswer, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 100, 30)
+			host.SeedStream(tc.stream)
+			app.AgentStream()
+			st := app.uiState()
+			st.Cancelling, st.Waiting = tc.cancelling, tc.waiting
+			lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var head []hostapi.Segment
+			for _, l := range lines {
+				if strings.Contains(hostapi.SegsText(l), "thinking") {
+					head = l
+					break
+				}
+			}
+			breathes := slices.ContainsFunc(head, func(s hostapi.Segment) bool { return s.Effect == "shimmer" })
+			switch tc.want {
+			case "":
+				if head != nil {
+					t.Fatalf("%s drew a thinking row: %q", tc.name, hostapi.SegsText(head))
+				}
+			case "wait":
+				if head == nil || !breathes {
+					t.Fatalf("%s: the wait row is %v, want a breathing one", tc.name, head)
+				}
+			case "think":
+				if head == nil || breathes || !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool {
+					return strings.Contains(hostapi.SegsText(l), "hmm")
+				}) {
+					t.Fatalf("%s: the thinking row is %v, want a settled one with its reasoning", tc.name, head)
+				}
+			}
+		})
+	}
+}
+
 // TestWaitingNoticesAreOneBlock: reports waiting for a step boundary draw as
 // one block, as the same rows do once the model has read them.
 func TestWaitingNoticesAreOneBlock(t *testing.T) {
@@ -860,6 +920,21 @@ func TestGoldenModelPicker(t *testing.T) {
 // (DESIGN §6.3): transcript, tool call lines with status marks, dim
 // reasoning, the streaming reply, and the queued messages under the turn: the
 // user's own words, and a background report as a notice waiting its step.
+// TestGoldenWaitRow: the turn's first wait, 300ms in with nothing arrived
+// yet, draws the thinking row where the reply will land, its label breathing.
+func TestGoldenWaitRow(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 22)
+	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active:  true,
+		Elapsed: 500 * time.Millisecond,
+		Model:   "anthropic/claude-sonnet-4-5",
+	})
+	app.AgentStream()
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
 func TestGoldenAgentStream(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 22)
 

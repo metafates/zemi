@@ -291,10 +291,11 @@ local function builder(ctx, width)
 	end
 	-- The model thinking now: drawn outside the rail's own loop, so it frames
 	-- itself as an entry does.
-	---@param tail string? The thinking so far, whose last lines show under it.
-	function B.thinking(tail)
+	---@param tail  string? The thinking so far, whose last lines show under it.
+	---@param breath boolean? The wait before any output: the label breathes until it lands.
+	function B.thinking(tail, breath)
 		frame()
-		push({ bar(), mark("spin"), { text = "thinking", hl = "Dim" } })
+		push({ bar(), mark("spin"), { text = "thinking", hl = "Dim", effect = breath and "shimmer" or nil } })
 		if tail then B.reasoning(tail, 4) end
 		frame()
 	end
@@ -1011,6 +1012,19 @@ zemi.ui.widget.add({
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
+			elseif
+				text == ""
+				and #tools == 0
+				and ag.active
+				and not ag.retry
+				and not ctx.cancelling
+				and ctx.waiting == ""
+				and (ag.elapsed or 0) >= 0.3
+			then
+				-- the wait before any output: the thinking row opens with the turn,
+				-- after the same 300ms that guards the working rule's block
+				B.gap("activity")
+				B.thinking(nil, true)
 			end
 			if #tools > 0 then
 				B.gap("activity")
