@@ -56,6 +56,14 @@ local queued_open = nil
 local RAIL_EDGE = 4
 -- notice rows of one burst kept in view, the older ones behind a fold row
 local NOTICES_KEEP = 3
+
+-- The label and click target of the one row that stands for a folded run:
+-- a notice burst and a rail fold the same way.
+---@param open boolean?
+---@param n integer
+---@param click string
+---@return string, string
+local function foldRow(open, n, click) return open and "… show the rest" or "… " .. n .. " earlier", click end
 -- the transcript those tables belong to: its epoch, or the agent run on screen
 ---@type integer|string
 local opened_in = 0
@@ -526,16 +534,6 @@ local function builder(ctx, width)
 		local at = #B.lines
 		B.rail(list, first, last, {})
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
-	end
-
-	-- The label and click target of the one row that stands for a folded run:
-	-- a notice burst and a rail fold the same way.
-	---@param open boolean?
-	---@param n integer
-	---@param click string
-	---@return string, string
-	local function foldRow(open, n, click)
-		return open and "… show the rest" or "… " .. n .. " earlier", click
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any
@@ -1033,8 +1031,10 @@ zemi.ui.widget.add({
 				if q.notice then notes = notes + 1 end
 			end
 			local fold = notes - NOTICES_KEEP
-			-- a printed run lists every row: its fold row would have nothing to click
-			if ctx.headless then fold = 0 end
+			-- a printed run lists every row, its fold row would have nothing to
+			-- click, and one hidden notice is not worth a row either: nothing
+			-- hides unless the fold row draws
+			if ctx.headless or fold < 2 then fold = 0 end
 			local seen, note = 0, false
 			for _, q in ipairs(queued) do
 				if q.notice then

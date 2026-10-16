@@ -963,6 +963,36 @@ func TestQueuedFold(t *testing.T) {
 	}
 }
 
+// TestQueuedFoldOne: a burst with one notice hidden draws no fold row - the
+// settled bursts fold only what more than one row stands for - and shows the
+// notice instead.
+func TestQueuedFoldOne(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if err := host.AgentSend("a typed line"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 4; i++ {
+		src := fmt.Sprintf("\n<agent-update run=\"a%d\" agent=\"explore\">\nupdate %d\n</agent-update>\n</attached-files>", i, i)
+		if err := host.AgentSend(agent.AttachMarker + src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app.AgentStream()
+	var fold, notes int
+	for _, r := range chatRows(t, app, 78) {
+		switch {
+		case strings.Contains(r, "earlier") || strings.Contains(r, "show the rest"):
+			fold++
+		case strings.Contains(r, " queued Agent a"):
+			notes++
+		}
+	}
+	if fold != 0 || notes != 4 {
+		t.Fatalf("fold=%d notes=%d rows:\n%s", fold, notes, strings.Join(chatRows(t, app, 78), "\n"))
+	}
+}
+
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s, an agent view takes it as back, a busy job's chord cancels the job, and
 // idle the second press opens /rewind, the draft included; an esc armed to
