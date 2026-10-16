@@ -252,8 +252,12 @@ func NotifyArgv(text string) []string {
 // goHealthRows are the Go-side checks, in the order /health shows them.
 func (h *Host) goHealthRows() []HealthRow {
 	var out []HealthRow
-	add := func(level HealthLevel, name, detail string) {
-		out = append(out, HealthRow{Level: level, Name: name, Detail: detail})
+	add := func(level HealthLevel, name, detail string, run ...string) {
+		row := HealthRow{Level: level, Name: name, Detail: detail}
+		if len(run) > 0 {
+			row.Run = run[0]
+		}
+		out = append(out, row)
 	}
 
 	if h.DB == nil || h.GlobalDB == nil {
@@ -347,8 +351,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, Plural(int(mem), "memory", "memories")))
-		out[len(out)-1].Run = "memory"
+		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, Plural(int(mem), "memory", "memories")), "memory")
 	} else {
 		add(HealthOK, "learning", "nothing to review")
 	}
@@ -373,8 +376,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	switch detail := fmt.Sprintf("%d learned, %d yours", learned, yours); {
 	case len(findings) > 0:
 		detail = fmt.Sprintf("%d findings: %s; %s", len(findings), findings[0].Text, detail)
-		add(HealthWarn, "brain", detail)
-		out[len(out)-1].Run = "memory"
+		add(HealthWarn, "brain", detail, "memory")
 	default:
 		add(HealthOK, "brain", detail)
 	}
@@ -421,13 +423,12 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 	switch n := fmt.Sprintf("%d %s", len(loads), Plural(len(loads), "plugin", "plugins")); {
 	case len(loads) == 0:
-		add(HealthOK, "plugins", "none on")
+		add(HealthOK, "plugins", "none on", "plugins")
 	case failed == 0:
-		add(HealthOK, "plugins", n+" ready")
+		add(HealthOK, "plugins", n+" ready", "plugins")
 	default:
-		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed))
+		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed), "plugins")
 	}
-	out[len(out)-1].Run = "plugins"
 
 	h.errs.mu.Lock()
 	nerr := len(h.errs.entries)
@@ -449,18 +450,16 @@ func (h *Host) goHealthRows() []HealthRow {
 		if boot {
 			level = HealthError
 		}
-		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)))
-		out[len(out)-1].Run = "errors"
+		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)), "errors")
 	} else {
 		add(HealthOK, "errors", "none since start")
 	}
 
 	if h.ProjectTrusted() {
-		add(HealthOK, "trust", "trusted: "+perm.TildePath(h.Dirs.TrustRoot()))
+		add(HealthOK, "trust", "trusted: "+perm.TildePath(h.Dirs.TrustRoot()), "trust")
 	} else {
-		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust")
+		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust", "trust")
 	}
-	out[len(out)-1].Run = "trust"
 
 	counts, servers := map[ServiceStatus]int{}, h.mcp.list()
 	for _, s := range servers {
@@ -472,7 +471,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	case len(servers) == 0:
 		add(HealthOK, "mcp", "no servers added")
 	case counts[StatusReady] == len(servers):
-		add(HealthOK, "mcp", fmt.Sprintf("%d %s ready", len(servers), Plural(len(servers), "server", "servers")))
+		add(HealthOK, "mcp", fmt.Sprintf("%d %s ready", len(servers), Plural(len(servers), "server", "servers")), "mcp")
 	default:
 		var parts []string
 		for _, st := range slices.Sorted(maps.Keys(counts)) {
@@ -482,10 +481,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		if counts[StatusReady]+counts[StatusStarting] == len(servers) {
 			level = HealthOK
 		}
-		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), Plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
-	}
-	if len(servers) > 0 {
-		out[len(out)-1].Run = "mcp"
+		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), Plural(len(servers), "server", "servers"), strings.Join(parts, ", ")), "mcp")
 	}
 
 	var lsps []string
