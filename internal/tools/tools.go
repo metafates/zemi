@@ -82,13 +82,6 @@ type Request struct {
 	// Owner is whose code a Lua tool runs, as an overlay badge names it
 	// ("plugin:jira"), "" for the user's and zemi's own
 	Owner string
-	// gate is the pipeline and request as Check got them; set by the pipeline
-	gate *checked
-}
-
-type checked struct {
-	p   *Pipeline
-	req Request
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -104,8 +97,6 @@ const (
 	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
 	ByReadOnly = "read-only agent"
-	// ByPlugin is a call the calling plugin's own manifest declared settled (DESIGN §9)
-	ByPlugin = "plugin"
 	// ByEvent is a verdict the permission.request veto decided
 	ByEvent = "event"
 )
@@ -307,7 +298,6 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // in the scratchpad aside; the permission.request veto settles next (a
 // denial refuses, an ask decision runs the ask path); what survives runs.
 func (p *Pipeline) Check(req Request) Verdict {
-	req.gate = &checked{p, req}
 	req.ReadOnly, req.Script = p.Plan != nil && p.Plan(), p.Script
 	if !req.Action() {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
