@@ -473,12 +473,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"})
 				continue
 			}
-			var tail string
-			s, tail, _ = strings.Cut(s, agent.AttachMarker) // show what was typed
-			if s = strings.TrimSpace(s); s != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s})
+			shown, heads, _ := userRowsFor(s) // show what was typed
+			if shown != "" {
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown})
 			}
-			for _, n := range reportHeads(tail) {
+			for _, n := range heads {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 			}
 			continue

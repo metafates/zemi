@@ -940,12 +940,11 @@ func (h *Host) startTurn(text string) {
 // then the notice row of each background report behind agent.AttachMarker,
 // the same cut a resumed transcript makes. Reports whether anything was typed.
 func (h *Host) appendUserRows(text string) bool {
-	head, tail, _ := strings.Cut(text, agent.AttachMarker)
-	shown := shownText(head)
+	shown, heads, _ := userRowsFor(text)
 	if shown != "" {
 		h.AppendMessage(fantasy.MessageRoleUser, shown)
 	}
-	for _, n := range reportHeads(tail) {
+	for _, n := range heads {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
 	return shown != ""
@@ -970,8 +969,8 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	var waiting []string // reports and plugin sends a cancel left for the next message
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
-			_, tail, _ := strings.Cut(m, agent.AttachMarker)
-			for _, n := range reportHeads(tail) {
+			_, heads, _ := userRowsFor(m)
+			for _, n := range heads {
 				waiting = append(waiting, n.Text)
 			}
 		}
@@ -1127,11 +1126,11 @@ func (h *Host) AgentTakeQueue() []string {
 // the composer, and the model's own, which stay queued for it.
 func takeQueued(msgs []string) (taken, kept []string) {
 	for _, m := range msgs {
-		head, tail, _ := strings.Cut(m, agent.AttachMarker)
-		if len(reportHeads(tail)) > 0 {
+		shown, heads, tail := userRowsFor(m)
+		if len(heads) > 0 {
 			kept = append(kept, agent.AttachMarker+tail)
 		}
-		if shown := shownText(head); shown != "" {
+		if shown != "" {
 			taken = append(taken, shown)
 		}
 	}
@@ -1146,6 +1145,15 @@ func shownText(head string) string {
 		return ""
 	}
 	return head
+}
+
+// userRowsFor splits a user message at agent.AttachMarker into what the user
+// typed (shownText's), the report heads behind it, and the tail the heads
+// came from (takeQueued re-queues it).
+func userRowsFor(text string) (shown string, heads []notice, tail string) {
+	var head string
+	head, tail, _ = strings.Cut(text, agent.AttachMarker)
+	return shownText(head), reportHeads(tail), tail
 }
 
 // Queued is one message waiting in the steering queue, as the chat draws it: a
@@ -1164,12 +1172,12 @@ type Queued struct {
 func queuedRows(msgs []string) []Queued {
 	var out []Queued
 	for _, m := range msgs {
-		head, tail, _ := strings.Cut(m, agent.AttachMarker)
-		if shown := shownText(head); shown != "" {
+		shown, heads, _ := userRowsFor(m)
+		if shown != "" {
 			out = append(out, Queued{Text: shown})
 		}
-		for _, h := range reportHeads(tail) {
-			out = append(out, Queued{Text: h.Text, Notice: true, Run: h.Run})
+		for _, n := range heads {
+			out = append(out, Queued{Text: n.Text, Notice: true, Run: n.Run})
 		}
 	}
 	return out
