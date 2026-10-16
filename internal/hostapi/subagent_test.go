@@ -660,9 +660,12 @@ func TestAgentsList(t *testing.T) {
 		t.Fatal(err)
 	}
 	j, _ := h.jobs.Get(id)
-	for deadline := time.Now().Add(3 * time.Second); j.Output() == "" && time.Now().Before(deadline); {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, func() error {
+		if j.Output() == "" {
+			return errors.New("the job never printed")
+		}
+		return nil
+	})
 	h.Dirs.ConfigHome = t.TempDir()
 	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
 		t.Fatal(err)
@@ -709,12 +712,12 @@ func TestAgentsList(t *testing.T) {
 	if err := agents.GoFn(h, "kill "+id); err != nil {
 		t.Fatal(err)
 	}
-	for deadline := time.Now().Add(3 * time.Second); j.Running() && time.Now().Before(deadline); {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if j.Running() {
-		t.Fatal("job still running after kill")
-	}
+	waitFor(t, func() error {
+		if j.Running() {
+			return errors.New("job still running after kill")
+		}
+		return nil
+	})
 }
 
 // TestUpdateToolReportsAFailedSend: a child whose line never reached the

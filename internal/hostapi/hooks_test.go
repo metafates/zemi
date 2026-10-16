@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
@@ -188,8 +187,10 @@ func TestHookMatcher(t *testing.T) {
 func TestClaudeHookChild(t *testing.T) {
 	dst := t.TempDir()
 	envPath, cwdPath, inPath := filepath.Join(dst, "env"), filepath.Join(dst, "cwd"), filepath.Join(dst, "in")
-	hooks := fmt.Sprintf(`{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":
-		"env | grep ^CLAUDE > %s; pwd > %s; cat > %s"}]}]}}`, envPath, cwdPath, inPath)
+	drainPath := filepath.Join(dst, "drained")
+	hooks := fmt.Sprintf(`{"hooks":{"PostToolUse":[
+		{"matcher":"Bash","hooks":[{"type":"command","command":"env | grep ^CLAUDE > %s; pwd > %s; cat > %s"}]},
+		{"matcher":"Read","hooks":[{"type":"command","command":"echo drained > %s"}]}]}}`, envPath, cwdPath, inPath, drainPath)
 	h, root := claudeFixHost(t, hooks, "{}")
 	sid := "s-hook"
 	h.agents.mu.Lock()
@@ -224,10 +225,11 @@ func TestClaudeHookChild(t *testing.T) {
 		t.Fatal("matched a non-matching tool")
 	}
 
-	// the pipe matcher is aliased: a tool the matcher does not name fires nothing
+	// the pipe matcher is aliased: a tool the matcher does not name fires
+	// nothing. The Read hook firing proves the drain ran past the skipped one.
 	os.Remove(inPath)
 	h.consultHooks("tool.post", map[string]any{"tool_name": tools.ToolRead, "tool_input": nil})
-	time.Sleep(300 * time.Millisecond)
+	waitFile(t, drainPath)
 	if _, err := os.Stat(inPath); err == nil {
 		t.Fatal("fired for a tool outside the matcher")
 	}
@@ -253,7 +255,12 @@ func TestSessionStartCapture(t *testing.T) {
 			if c.name == "a hook the timeout killed" {
 				timeout = `"timeout":1,`
 			}
-			hooks := fmt.Sprintf(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command",%s"command":%q}]}]}}`, timeout, c.command)
+			// a second hook that always fires proves the capture's drain ran
+			// past the quiet one, where a sleep would guess
+			drain := filepath.Join(t.TempDir(), "drained")
+			hooks := fmt.Sprintf(`{"hooks":{"SessionStart":[
+				{"hooks":[{"type":"command",%s"command":%q}]},
+				{"hooks":[{"type":"command","command":"echo drained > %s"}]}]}}`, timeout, c.command, drain)
 			h, _ := claudeFixHost(t, hooks, "{}")
 			h.agents.mu.Lock()
 			h.agents.sessionID = c.sessionID
@@ -262,7 +269,7 @@ func TestSessionStartCapture(t *testing.T) {
 			h.captureSessionContext("s1", "startup")
 			hookText := func() string { h.agents.mu.Lock(); defer h.agents.mu.Unlock(); return h.agents.hookCtx }
 			if c.want == "" {
-				waitQuiet(t, hookText)
+				waitFile(t, drain)
 				if got := hookText(); got != "" {
 					t.Fatalf("hookCtx: %q", got)
 				}
@@ -479,16 +486,6 @@ func waitFile(t *testing.T, path string) {
 		}
 		return nil
 	})
-}
-
-// waitQuiet gives the goroutine its chance and fails only when it produced
-// what it should not have.
-func waitQuiet(t *testing.T, get func() string) {
-	t.Helper()
-	time.Sleep(300 * time.Millisecond)
-	if got := get(); got != "" {
-		t.Fatalf("the empty capture wrote %q", got)
-	}
 }
 
 func readFile(t *testing.T, path string) []byte {
