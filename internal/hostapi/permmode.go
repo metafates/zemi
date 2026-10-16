@@ -19,9 +19,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// modeReg holds the read-only agent's restore point and the asks a headless
+// planReg holds the read-only agent's restore point and the asks a headless
 // run denied.
-type modeReg struct {
+type planReg struct {
 	mu sync.Mutex
 	// prePlanProfile is the agent active before a read-only agent was
 	// picked, restored when its plan is approved
@@ -48,7 +48,7 @@ const (
 	DenyApproval DenialWhy = "approval" // the ask nobody could answer (no UI runs)
 )
 
-func (r *modeReg) noteHeadless(d Denial) {
+func (r *planReg) noteHeadless(d Denial) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.headless = append(r.headless, d)
