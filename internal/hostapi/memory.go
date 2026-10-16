@@ -36,8 +36,8 @@ import (
 // per session (DESIGN §10.4).
 const memoryAutoApplyCap = 20
 
-// The memory tool's refusal of the reserved file, which the ask reason from
-// permmode.go's protectedWhy has to say the same way.
+// The memory tool's refusal of the reserved file, which the ask reason for
+// a file-tool write there has to say the same way.
 const memOwnedReason = "the memory tool owns this file"
 
 // memoryDB returns the store owning a scope: user scope in the global DB,

@@ -1494,7 +1494,7 @@ func toolSummary(tool, input string) string {
 	// the lsp tool names what it does in "action"; without it a row would
 	// read as the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {
-		for _, k := range []string{"cmd", "keys", "title", "symbol", "path", "id"} {
+		for _, k := range []string{"symbol", "path", "id"} {
 			if v, ok := m[k]; ok {
 				if s := fmt.Sprint(v); s != "" {
 					return action + " " + s
@@ -1516,7 +1516,7 @@ func toolSummary(tool, input string) string {
 		prompt, _ := m["prompt"].(string)
 		return strings.TrimSuffix(a+": "+clipLine(prompt, 80), ": ")
 	}
-	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
+	for _, k := range []string{"path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s
 		}
@@ -1903,7 +1903,9 @@ func (h *Host) AgentSessionID() string {
 }
 
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes
-// any open block into the accumulated thought time.
+// any open block into the accumulated thought time. agentRun holds a twin
+// for child runs: both flushes must produce the stream order historyFrom
+// decodes.
 func (ag *agentHost) beginThinking() {
 	if !ag.thinking {
 		ag.thinking = true

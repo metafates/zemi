@@ -71,8 +71,8 @@ const readPrompt = `
 const codemodePrompt = `
 - Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need; it calls any tool in this run, MCP included, and reads files itself with zemi.fs. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
 
-// askingPrompt fills basePrompt's {Asking}. A headless run has no user and
-// no question, plan or ! tool (headlessExcluded), so telling it to ask
+// askingPrompt fills basePrompt's {Asking}. A headless run has no question
+// or plan tool (headlessExcluded), so telling it to ask
 // there only buys a tool call that cannot resolve.
 const askingPrompt = `When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.`
 
