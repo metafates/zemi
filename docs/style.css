@@ -138,9 +138,3 @@ a:focus-visible, .copy:focus-visible {
   .knot { display: none; }
   h1 { font-size: 3rem; }
 }
-@media (max-height: 35rem) {
-  html, body { overflow: auto; }
-  .split { height: auto; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: none; align-content: center; }
-  .knot { display: none; }
-  h1 { font-size: 3rem; }
-}
