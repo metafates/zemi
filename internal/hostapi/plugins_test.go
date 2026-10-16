@@ -803,7 +803,7 @@ func TestPluginToolCall(t *testing.T) {
 				pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
 			}
 			if c.readOnly {
-				pipe.Plan = func() bool { return true }
+				pipe.ReadOnly = func() bool { return true }
 			}
 			resp, err := h.luaFantasyTools(pipe)[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 			if c.denied != "" {

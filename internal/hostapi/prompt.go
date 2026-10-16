@@ -191,7 +191,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for, unless they ask for detail or the change spans many files."
 
 // planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
-// the pipeline enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
+// the pipeline enforces it (Pipeline.ReadOnly), the prompt only saves wasted attempts.
 const planPrompt = `
 
 # Planning

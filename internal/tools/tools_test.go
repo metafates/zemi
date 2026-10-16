@@ -689,7 +689,7 @@ func TestScratchpad(t *testing.T) {
 	// theirs denies
 	ro, roAsked := testPipeline(t, false)
 	ro.Pad = pad
-	ro.Plan = func() bool { return true }
+	ro.ReadOnly = func() bool { return true }
 	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); !v.Allowed || len(*roAsked) != 0 {
 		t.Fatalf("a read-only agent's pad write: %+v, asked %+v", v, *roAsked)
 	}

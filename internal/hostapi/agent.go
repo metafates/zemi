@@ -2725,7 +2725,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Progress:    func(id, line string) { h.setToolDetail(id, sanitize.String(line)) },
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
-		Plan:        func() bool { return readOnly },
+		ReadOnly:    func() bool { return readOnly },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.consultHooks("tool.denied", map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})

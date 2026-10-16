@@ -507,8 +507,8 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 		})
 	}
 	// a run the planner starts is read-only too, whatever its definition says
-	readOnly := def.ReadOnly || pipe.Plan()
-	pipe.Plan = func() bool { return readOnly }
+	readOnly := def.ReadOnly || pipe.ReadOnly()
+	pipe.ReadOnly = func() bool { return readOnly }
 	kept, unknown := childTools(h, pipe, def.Tools)
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))

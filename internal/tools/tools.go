@@ -73,7 +73,7 @@ type Request struct {
 	// Script is the lua tool call this one came from (Pipeline.Script), "" for
 	// a call the model made itself: it labels the ask and keeps the output whole
 	Script string
-	// ReadOnly marks a read-only agent's request (Pipeline.Plan); set by the
+	// ReadOnly marks a read-only agent's request (Pipeline.ReadOnly); set by the
 	// pipeline
 	ReadOnly bool
 	// Agent is the subagent asking, as the prompt names it, "" for the main
@@ -241,9 +241,9 @@ type Pipeline struct {
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
 
-	// Plan reports a read-only agent: actions are denied, its scratchpad
+	// ReadOnly reports a read-only agent: actions are denied, its scratchpad
 	// writes and its reads settle on their own; nil = never.
-	Plan func() bool
+	ReadOnly func() bool
 
 	// Checkpoint records a file's content before a write tool changes it,
 	// so the turn can be rewound; nil = no checkpoints.
@@ -298,7 +298,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // in the scratchpad aside; the permission.request veto settles next (a
 // denial refuses, an ask decision runs the ask path); what survives runs.
 func (p *Pipeline) Check(req Request) Verdict {
-	req.ReadOnly, req.Script = p.Plan != nil && p.Plan(), p.Script
+	req.ReadOnly, req.Script = p.ReadOnly != nil && p.ReadOnly(), p.Script
 	if !req.Action() {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
 	}
