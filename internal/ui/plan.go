@@ -17,15 +17,15 @@ import (
 )
 
 type planAskPrompt struct {
-	plan   string
-	view   viewport
-	sel    int // the highlighted button: approve, then request changes
-	typing bool
-	input  composerState
+	plan    string
+	view    viewport
+	sel     int // the highlighted button: approve, then request changes
+	typing  bool
+	input   composerState
 	profile string // the profile the "back to <profile> on approve" badge names
-	size   boxSize
-	text   textRows
-	answer chan planAnswer
+	size    boxSize
+	text    textRows
+	answer  chan planAnswer
 }
 
 type planAnswer struct {
@@ -49,9 +49,9 @@ func (a *App) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
 	ch := make(chan planAnswer, 1)
 	a.await(func() tea.Cmd {
 		a.planAsk = &planAskPrompt{
-			plan:   sanitize.String(plan),
+			plan:    sanitize.String(plan),
 			profile: implementProfile,
-			answer: ch,
+			answer:  ch,
 		}
 		return a.notifyIfAway("zemi has a plan to review")
 	})

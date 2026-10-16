@@ -42,11 +42,11 @@ func awaitPlan(t *testing.T, app *App, done chan planResult) planResult {
 
 func TestPlanApproval(t *testing.T) {
 	cases := []struct {
-		name  string
+		name    string
 		profile string
-		keys  []string
-		wantV tools.PlanVerdict
-		want  bool
+		keys    []string
+		wantV   tools.PlanVerdict
+		want    bool
 	}{
 		{"enter approves", "auto", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
 		{"a approves outside a read-only turn", "", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
