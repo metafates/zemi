@@ -2,7 +2,7 @@
 // tool shows its plan as a scrollable markdown "Plan" popup the user approves
 // (a), asks to change (e, then type), or dismisses (esc). The agent to return to
 // on approval is remembered when the read-only agent started, so approval
-// never asks which agent or mode.
+// never asks which agent or profile.
 
 package ui
 
@@ -22,7 +22,7 @@ type planAskPrompt struct {
 	sel    int // the highlighted button: approve, then request changes
 	typing bool
 	input  composerState
-	mode   string // the profile the "back to <profile> on approve" badge names
+	profile string // the profile the "back to <profile> on approve" badge names
 	size   boxSize
 	text   textRows
 	answer chan planAnswer
@@ -45,12 +45,12 @@ func (p *planAskPrompt) choices() []promptChoice {
 
 // AskPlan implements hostapi.UIHooks. It blocks the caller (the plan tool on
 // the turn goroutine) until the user approves, types changes, or dismisses.
-func (a *App) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
+func (a *App) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
 	ch := make(chan planAnswer, 1)
 	a.await(func() tea.Cmd {
 		a.planAsk = &planAskPrompt{
 			plan:   sanitize.String(plan),
-			mode:   implementMode,
+			profile: implementProfile,
 			answer: ch,
 		}
 		return a.notifyIfAway("zemi has a plan to review")
@@ -126,8 +126,8 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	})
 	body := scrollChoiceBody(h, inner, nil, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, hints...)
 	badge := ""
-	if p.mode != "" {
-		badge = "back to " + p.mode + " on approve"
+	if p.profile != "" {
+		badge = "back to " + p.profile + " on approve"
 	}
 	return promptBox("Plan", badge, body, w, h, 100, &p.size)
 }

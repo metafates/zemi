@@ -15,11 +15,11 @@ type planResult struct {
 
 // planAsync opens the plan approval from a tool goroutine, as the plan tool
 // does.
-func planAsync(t *testing.T, app *App, plan, mode string) chan planResult {
+func planAsync(t *testing.T, app *App, plan, profile string) chan planResult {
 	t.Helper()
 	done := make(chan planResult, 1)
 	go func() {
-		v, ok := app.AskPlan(plan, mode)
+		v, ok := app.AskPlan(plan, profile)
 		done <- planResult{v, ok}
 	}()
 	waitPrompt(t, app, func() bool { return app.planAsk != nil })
@@ -43,13 +43,13 @@ func awaitPlan(t *testing.T, app *App, done chan planResult) planResult {
 func TestPlanApproval(t *testing.T) {
 	cases := []struct {
 		name  string
-		mode  string
+		profile string
 		keys  []string
 		wantV tools.PlanVerdict
 		want  bool
 	}{
 		{"enter approves", "auto", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
-		{"a approves outside plan mode", "", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
+		{"a approves outside a read-only turn", "", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
 		{"s saves without starting it", "", []string{"s"}, tools.PlanVerdict{Approved: true, Hold: true}, true},
 		{"down down enter opens the changes input", "", []string{"j", "j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
 		{"typing requests changes", "", []string{"e", "u", "s", "e", " ", "s", "q", "l", "enter"}, tools.PlanVerdict{Feedback: "use sql"}, true},
@@ -58,7 +58,7 @@ func TestPlanApproval(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 18)
-			done := planAsync(t, app, "# Plan\n\n- one\n- two", c.mode)
+			done := planAsync(t, app, "# Plan\n\n- one\n- two", c.profile)
 			pressKeys(app, c.keys...)
 			if r := awaitPlan(t, app, done); r.ok != c.want || r.v != c.wantV {
 				t.Fatalf("verdict %+v ok=%v, want %+v ok=%v", r.v, r.ok, c.wantV, c.want)

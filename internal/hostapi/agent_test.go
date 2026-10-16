@@ -762,7 +762,7 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	return answers, f.qOK
 }
 
-func (f *fakeUI) AskPlan(plan, implementMode string) (tools.PlanVerdict, bool) {
+func (f *fakeUI) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
 	f.planAsked++
 	return f.planVerdict, f.planOK
 }
