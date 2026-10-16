@@ -409,7 +409,7 @@ func (h *Host) projectFields(p Project) []any {
 	if p.Latest != nil {
 		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))
 		if t := sanitize.Line(p.Latest.Title); t != "" {
-			sessions += ": " + markedTitle(p.Latest.ID, clipRunes(t, 60)) // as /sessions draws it
+			sessions += ": " + markedTitle(p.Latest.ID, t) // as /sessions draws it
 		}
 	}
 	if p.Memories > 0 {

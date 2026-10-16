@@ -109,6 +109,9 @@ func (h *Host) addMCP(name string, spec mcpSpec) error {
 	return nil
 }
 
+// signInTimeout is how long one sign-in flow may take.
+const signInTimeout = 5 * time.Minute
+
 // keeps reports whether s can serve spec as it is: a failed server restarts,
 // one waiting for a sign-in keeps waiting, since a start would fail the same way.
 func (s *mcpServer) keeps(spec mcpSpec) bool {
@@ -872,7 +875,7 @@ func (h *Host) signInMCP(name string) error {
 		return Usagef("%s runs a local command; only HTTP servers sign in", name)
 	}
 	h.GoSafe("mcp sign-in "+name, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
 		defer cancel()
 		if err := h.authorizeMCP(ctx, s); err == nil {
 			h.signedInMCP(name)
@@ -943,7 +946,7 @@ func (h *Host) signInAllMCP() error {
 			if !idle {
 				continue // signed in since, already waiting, or another flow holds it
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
 			done := h.Busy("Signing in to "+name, cancel)
 			aborted := false
 			func() {

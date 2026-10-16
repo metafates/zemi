@@ -277,9 +277,9 @@ func SessionMark(sid string) string {
 }
 
 // markedTitle is the marker-prefixed title the session surfaces draw: the
-// same shape everywhere a session row names itself.
+// same shape everywhere a session row names itself, clipped as a row shows it.
 func markedTitle(sid, title string) string {
-	return SessionMark(sid) + " " + title
+	return SessionMark(sid) + " " + clipRunes(title, 60)
 }
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
@@ -346,7 +346,7 @@ func rowOutput(tool, out string) string {
 		}
 	case tools.ToolQuestion:
 		if qa := tools.QuestionAnswers(out); qa != nil {
-			line := func(s string) string { return clipRunes(sanitize.Line(s), 300) }
+			line := func(s string) string { return clipLine(s, 300) }
 			rows := make([]string, len(qa))
 			for i, p := range qa {
 				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered") + "\t" + line(p[2])
@@ -881,7 +881,7 @@ func (h *Host) TerminalTitle() string {
 		return t.text
 	}
 	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
-		return markedTitle(h.AgentSessionID(), clipRunes(t, 60)) + " · zemi"
+		return markedTitle(h.AgentSessionID(), t) + " · zemi"
 	}
 	return "zemi"
 }

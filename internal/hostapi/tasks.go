@@ -774,9 +774,9 @@ func (h *Host) updateMessage(pad, id, agentName, text string) string {
 // runs of one script differ by no name.
 func reportHead(id, agent, status, description string) string {
 	if workflowAgent(agent) {
-		return fmt.Sprintf("Workflow %s (%s) %s", id, clipRunes(sanitize.Line(description), 60), status)
+		return fmt.Sprintf("Workflow %s (%s) %s", id, clipLine(description, 60), status)
 	}
-	return fmt.Sprintf("Background agent %s (%s) %s", id, clipRunes(sanitize.Line(cmp.Or(description, agent)), 60), status)
+	return fmt.Sprintf("Background agent %s (%s) %s", id, clipLine(cmp.Or(description, agent), 60), status)
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,

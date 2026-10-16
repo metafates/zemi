@@ -23,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -555,9 +556,10 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
-// clipLine is s on one line, its runs of space made one, cut as clipRunes cuts.
+// clipLine is s safe on one chat row: sanitized, its runs of space made one,
+// cut as clipRunes cuts.
 func clipLine(s string, n int) string {
-	return clipRunes(strings.Join(strings.Fields(s), " "), n)
+	return clipRunes(sanitize.Line(s), n)
 }
 
 // parseReflectProposal extracts the JSON object from the model output

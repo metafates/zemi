@@ -396,7 +396,9 @@ func (r *Registry) Reset(c Catalog) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.specs = slices.Clone(c.Specs)
-	r.keys = maps.Clone(c.Keys)
+	// Collect, not Clone: a nil catalog's keys must become an empty map,
+	// which SetKey writes into
+	r.keys = maps.Collect(maps.All(c.Keys))
 	r.missing = slices.Clone(c.Missing)
 }
 

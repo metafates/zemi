@@ -1801,7 +1801,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 		if err != nil {
 			return "", err
 		}
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipRunes(sanitize.Line(f.description), 60))})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
 		return f.id, nil
 	}
 	ag := h.agents

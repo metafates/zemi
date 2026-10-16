@@ -384,7 +384,7 @@ func (h *Host) luaToolCall(L *glua.LState) int {
 			return
 		}
 		defer leave()
-		h.setToolDetail(s.id, clipRunes(sanitize.Line(name+": "+toolSummary(name, body)), 120))
+		h.setToolDetail(s.id, clipLine(name+": "+toolSummary(name, body), 120))
 		resp, err := tool.Run(callCtx, fantasy.ToolCall{ID: id, Name: name, Input: body})
 		switch {
 		case err != nil:
