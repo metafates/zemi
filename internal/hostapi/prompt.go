@@ -299,8 +299,8 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 // project's own file is never the one with no room left.
 func (h *Host) instructionSections(files []string, budget int) string {
 	texts := make([]string, len(files))
-	for i := len(files) - 1; i >= 0; i-- {
-		b, err := os.ReadFile(files[i])
+	for i, f := range slices.Backward(files) {
+		b, err := os.ReadFile(f)
 		if err != nil || len(b) == 0 {
 			continue
 		}
