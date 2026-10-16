@@ -2078,7 +2078,14 @@ rides the `memories.md` line and its ledger entries.
   click on a row leaves the tail too: a digest opening over its rail or a
   thought unrolling redraws the rows under the reader's place, never
   scrolling them away. Sending a message (or a `!command`) snaps back to the
-  tail, a slash command does not. While a turn's prompt is above the view its first row
+  tail, a slash command does not. While following the tail, the view's top
+  is a ratchet: the live rail growing pushes the history up, the rail
+  collapsing (a thinking block into its thought row, a turn folding into its
+  digest) holds the pushed rows and leaves the freed ones as air that the
+  next streamed rows fill before the history is pushed again, and the
+  widget's tail lines (its render's third result) always stay on screen,
+  so a rail taller than the view never folds into an empty one. While a
+  turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
   and an opened run's digest of that turn (`sticky = "section"`) pins on the

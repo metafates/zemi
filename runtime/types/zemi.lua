@@ -914,13 +914,17 @@ function zemi.event.stats() end
 --- `render` returns a list of lines. A bare string or a single line is taken
 --- as one line; a list of several strings raises, since it could mean one
 --- line or several. It may return true as a second result to render again
---- next frame: return what is ready and do the rest then. Never change a line table after
+--- next frame: return what is ready and do the rest then. It may return a
+--- number as a third: how many trailing lines a scrolled region that follows
+--- its tail keeps on screen however the content above them shrinks - the
+--- live turn's rows while one streams, the last unit's when idle; without it
+--- the view re-pins to the tail on every count change. Never change a line table after
 --- returning it, one seen in the last render is converted only once: build a
 --- new table for a line that changed.
 ---@class zemi.WidgetSpec
 ---@field id string
 ---@field region zemi.Region
----@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?
+---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?, integer?
 ---@field priority? number Within a region lower sits first: top to bottom, and in the statusline from the outer edge inward (`statusline.right` from its right edge leftward), so one above a shipped widget's priority sits just inside it. A short statusline drops the highest first.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.

@@ -98,10 +98,11 @@ func (a *App) renderSync(tb testing.TB) {
 		for more := true; more; {
 			var lines [][]hostapi.Segment
 			var err error
-			if lines, more, err = a.host.RenderWidget(tb.Context(), w.Widget, w.width, w.height, a.uiState()); err != nil {
+			var tail int
+			if lines, more, tail, err = a.host.RenderWidget(tb.Context(), w.Widget, w.width, w.height, a.uiState()); err != nil {
 				tb.Fatalf("render widget %s: %v", w.ID, err)
 			}
-			a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen})
+			a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, tail: tail, width: w.width, height: w.height, gen: gen})
 		}
 	}
 }

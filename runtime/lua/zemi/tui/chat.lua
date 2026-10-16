@@ -732,6 +732,7 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	---@return boolean more
+	---@return integer tail # trailing lines a following view keeps visible: the live turn's rows while one streams, else the last unit's; zero when the render was cut short
 	render = function(ctx)
 		local width = ctx.width or 80
 		local count = ctx.transcript_count or 0
@@ -990,6 +991,9 @@ zemi.ui.widget.add({
 				active = active,
 				replying = replying,
 				block = tr[#tr] and block_of(tr[#tr]),
+				-- the last unit's lines: what a following view keeps visible
+				-- when nothing streams below it
+				unit = shown[1] and #shown[1].lines or 0,
 			}
 			settled = not more and done or nil
 		end
@@ -1137,7 +1141,18 @@ zemi.ui.widget.add({
 			end
 			if last < #todos then fold(#todos - last) end
 		end
-		return lines, more
+		-- What a following view keeps visible: a partial render's list is
+		-- its tail whole, the live turn's rows while one streams below the
+		-- settled ones, else the last unit's lines. The scroll model holds
+		-- the view's pushed rows on a shrink up to this many.
+		local tail
+		if more then
+			tail = #lines
+		else
+			local live = #lines - done.n
+			tail = live > 0 and live or done.unit
+		end
+		return lines, more, tail
 	end,
 })
 

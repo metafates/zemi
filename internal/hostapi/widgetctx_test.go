@@ -54,7 +54,7 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 	}
 	probe := func() string {
 		t.Helper()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
+		lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestViewedRunRevision(t *testing.T) {
 	}
 	probe := func() string {
 		t.Helper()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
+		lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			}
 			w := h.Widgets.Get("m")
 			for b.Loop() {
-				if _, _, err := h.RenderWidget(b.Context(), w, 40, 1, UIState{}); err != nil {
+				if _, _, _, err := h.RenderWidget(b.Context(), w, 40, 1, UIState{}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -191,7 +191,7 @@ func TestPrintedRender(t *testing.T) {
 	chat := func(state UIState) string {
 		var b strings.Builder
 		for _, w := range h.Widgets.InRegion("chat") {
-			lines, _, err := h.RenderWidget(t.Context(), w, 80, 30, state)
+			lines, _, _, err := h.RenderWidget(t.Context(), w, 80, 30, state)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -267,7 +267,7 @@ func TestWidgetCtxLazy(t *testing.T) {
 			assert(kept.transcript ~= nil and kept.agent ~= nil and kept.width == 10, "what render read stays")
 			assert(kept.todos == nil, "the rest reads nil")
 		end)`)
-	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("k"), 10, 1, UIState{}); err != nil {
+	if _, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("k"), 10, 1, UIState{}); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, `assert(zemi.command.run("check"))`)
@@ -392,7 +392,7 @@ func TestInstructionsCached(t *testing.T) {
 		{"a trust change reads again", func() { h.SetProjectTrusted(true) }, "AGENTS.md"},
 	} {
 		c.do()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("inc"), 20, 1, UIState{})
+		lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("inc"), 20, 1, UIState{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -416,7 +416,7 @@ func TestWidgetCtxRecentMarks(t *testing.T) {
 			assert(ctx.recent[1].id == %q and ctx.recent[1].title == %q .. " named", ctx.recent[1].title)
 			return {}
 		end })`, sid, SessionMark(sid)))
-	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("rc"), 20, 1, UIState{}); err != nil {
+	if _, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("rc"), 20, 1, UIState{}); err != nil {
 		t.Fatal(err)
 	}
 }

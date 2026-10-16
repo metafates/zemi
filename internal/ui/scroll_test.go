@@ -338,6 +338,128 @@ func TestChatFoldLeavesTheTail(t *testing.T) {
 	}
 }
 
+// TestChatRatchetHoldsThePush: watching the tail, the thinking block's
+// growth pushes the history up; when the block collapses into the reply the
+// view holds its pushed rows and the freed ones become air, which the reply
+// fills before the push resumes. A submit sticks the view back to the
+// composer, closing the air.
+func TestChatRatchetHoldsThePush(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls["chat"]
+	if !st.follow {
+		t.Fatal("precondition: expected tail follow")
+	}
+
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Thinking: true,
+		Reasoning: "line one of the thought\nline two of the thought\nline three of the thought\nline four of the thought\nline five of the thought\nline six of the thought\n",
+		Elapsed:   2e9,
+	})
+	app.renderSync(t)
+	app.Frame()
+	pushed := st.top
+	if st.top != st.rows-st.viewH || st.top == 0 {
+		t.Fatalf("the thinking block did not push the view: top %d of %d over %d", st.top, st.rows, st.viewH)
+	}
+
+	// the reasoning settles and the reply starts: the block collapses, the
+	// view holds and air opens below the tail
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Text: "the reply arrives.",
+		Elapsed: 6e9,
+	})
+	app.renderSync(t)
+	app.Frame()
+	if st.top != pushed {
+		t.Fatalf("the collapse moved the view from %d to %d, want it held", pushed, st.top)
+	}
+	if st.top+st.viewH <= st.rows {
+		t.Fatalf("the collapse left no air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
+	}
+
+	// the reply streaming into the air keeps the view; past it the push resumes
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Text: strings.Repeat("the reply grows word by word, ", 30),
+		Elapsed: 8e9,
+	})
+	app.renderSync(t)
+	app.Frame()
+	if st.top <= pushed {
+		t.Fatalf("a reply longer than the freed rows did not resume the push: top %d", st.top)
+	}
+
+	// a submit sticks the view back to the composer
+	app.followStage()
+	if st.top != max(st.rows-st.viewH, 0) || !st.follow {
+		t.Fatalf("the submit left top %d of %d over %d", st.top, st.rows, st.viewH)
+	}
+}
+
+// TestChatRatchetKeepsTheTail: however far the content above the tail
+// shrinks - a long turn's rail folding into its digest - the view follows
+// down only far enough to keep the widget's tail lines on screen, so a
+// history pushed off the screen never leaves an empty view behind.
+func TestChatRatchetKeepsTheTail(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 14)
+	app.renderSync(t)
+	app.Frame()
+	var chat shownWidget
+	for _, w := range app.shownWidgets() {
+		if w.Region == app.scrolls["chat"].region {
+			chat = w
+		}
+	}
+	// the splash shares the region; it draws nothing once the chat has rows
+	app.onWidgetRendered(widgetRender{id: "splash", width: chat.width, height: chat.height, gen: app.frameGen})
+	line := func(s string) []hostapi.Segment {
+		return []hostapi.Segment{{Text: s}}
+	}
+	// the tail is the widget's last lines: markers, so a render's tail is
+	// tellable from the rows above it
+	fill := func(n, tail int) {
+		lines := make([][]hostapi.Segment, n)
+		for i := range lines {
+			if i >= n-tail {
+				lines[i] = line(fmt.Sprintf("tail %d", i-(n-tail)))
+			} else {
+				lines[i] = line(fmt.Sprintf("row %d", i))
+			}
+		}
+		app.onWidgetRendered(widgetRender{id: chat.ID, lines: lines, tail: tail, width: chat.width, height: chat.height, gen: app.frameGen})
+		app.Frame()
+	}
+	st := app.scrolls["chat"]
+
+	// watching the tail: 8 tail rows under history, the view pinned to them
+	fill(200, 8)
+	held := st.top
+	if !st.follow || held != st.rows-st.viewH {
+		t.Fatalf("precondition: top %d of %d over %d, follow %v", st.top, st.rows, st.viewH, st.follow)
+	}
+
+	// the tail collapses with the content (a thinking block into a reply
+	// row): the view holds its pushed rows and air opens below the tail
+	fill(194, 2)
+	if st.top != held {
+		t.Fatalf("the collapse moved the view from %d to %d", held, st.top)
+	}
+	if st.top+st.viewH <= st.rows {
+		t.Fatalf("the collapse left no air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
+	}
+
+	// a collapse bigger than the view follows down to the tail lines alone
+	fill(120, 3)
+	if st.top != st.rows-3 {
+		t.Fatalf("the fold left top %d of %d, want the 3 tail rows at %d", st.top, st.rows, st.rows-3)
+	}
+	if got := hostapi.SegsText(app.lastRows[st.rect.Min.Y]); !strings.HasPrefix(got, "tail 0") {
+		t.Fatalf("the view does not open on the tail: %q", got)
+	}
+}
+
 // TestChatScrollAnchorsThroughFill: a long chat fills its latest rows first,
 // and a reader who scrolled up in them keeps their place when the older rows
 // land above, though every reply repeats the same lines.

@@ -53,7 +53,7 @@ func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
 // widgetText draws widget id and returns the text of its rows.
 func widgetText(t *testing.T, h *Host, id string, state UIState) string {
 	t.Helper()
-	lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get(id), 80, 24, state)
+	lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get(id), 80, 24, state)
 	if err != nil {
 		t.Fatal(err)
 	}

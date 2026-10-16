@@ -1282,14 +1282,16 @@ const (
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
 // it and returns sanitized segment lines (DESIGN §6.6, §8). more is render's
 // second result: the lines are what its time allowed and it wants to run
-// again, which is how a long chat draws its latest rows first.
-func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) (lines [][]Segment, more bool, err error) {
+// again, which is how a long chat draws its latest rows first. tail is the
+// third: how many trailing lines a scrolled region must keep visible when it
+// follows its tail, zero when the widget says nothing.
+func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) (lines [][]Segment, more bool, tail int, err error) {
 	return h.renderWidget(ctx, w, width, height, state, nil)
 }
 
 // renderWidget is RenderWidget with over's fields set over the ctx render
 // gets, which is how test.render supplies what a session would.
-func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, state UIState, over *glua.LTable) (lines [][]Segment, more bool, err error) {
+func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, state UIState, over *glua.LTable) (lines [][]Segment, more bool, tail int, err error) {
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		// a frame queued before a reload holds the old generation's function
 		if w.Gen != h.currentGen() {
@@ -1305,29 +1307,32 @@ func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, s
 		if over != nil {
 			over.ForEach(ctxTb.RawSet)
 		}
-		rets, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.Render, 2, ctxTb)
+		rets, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.Render, 3, ctxTb)
 		if err != nil {
 			return nil, err
 		}
 		ret, more := rets[0], rets[1] == glua.LTrue
+		if n, ok := rets[2].(glua.LNumber); ok {
+			tail = max(int(n), 0)
+		}
 		if lines, ok := w.tableSegments(ret); ok {
-			return []any{lines, more}, nil
+			return []any{lines, more, tail}, nil
 		}
 		v, err := lua.ToGo(ret)
 		if err != nil {
 			return nil, err
 		}
-		return []any{v, more}, nil
+		return []any{v, more, tail}, nil
 	})
 	if err != nil || linesAny[0] == nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
-	more = linesAny[1].(bool)
+	more, tail = linesAny[1].(bool), linesAny[2].(int)
 	if lines, ok := linesAny[0].([][]Segment); ok {
-		return lines, more, nil
+		return lines, more, tail, nil
 	}
 	lines, err = convertSegments(linesAny[0], w.ID)
-	return lines, more, err
+	return lines, more, tail, err
 }
 
 // isList reports whether t holds exactly the keys 1..n, the tables ToGo

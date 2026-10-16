@@ -564,7 +564,7 @@ func (t *PluginTest) render(L *glua.LState) int {
 		}
 	}
 	return t.drive(L, "render", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		lines, _, err := t.h.renderWidget(ctx, w, width, height, UIState{Time: t.h.now().Format(ClockLayout)}, over)
+		lines, _, _, err := t.h.renderWidget(ctx, w, width, height, UIState{Time: t.h.now().Format(ClockLayout)}, over)
 		if err != nil {
 			return nil, raiseError("render " + w.ID + ": " + luaErrText(err))
 		}

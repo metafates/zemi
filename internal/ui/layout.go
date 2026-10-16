@@ -441,21 +441,32 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 type viewport struct {
 	top, rows, viewH int
 	follow           bool
+	tail             int                 // trailing rows a widget keeps visible while followed; zero re-pins on every count change
 	pins             [][]hostapi.Segment // drawn in place of the first rows shown
 }
 
+// clamp keeps top on the content. While following a widget that reports a
+// tail, top is a ratchet (DESIGN §8): growth re-pins it to the tail, a
+// shrink holds the pushed rows and leaves the freed ones to the next rows
+// the widget streams, and the tail rows stay on screen however far the
+// content above them shrinks. Otherwise top just re-pins to the tail while
+// following, or stays inside the content.
 func (v *viewport) clamp() {
+	if v.follow && v.tail > 0 {
+		v.top = min(max(v.top, v.rows-v.viewH), v.rows-min(v.tail, v.viewH))
+		return
+	}
 	if v.follow {
 		v.top = v.rows - v.viewH
 	}
 	v.top = max(0, min(v.top, v.rows-v.viewH))
 }
 
-// scroll moves n rows (negative = up) and leaves the tail.
+// scroll moves n rows (negative = up) and leaves the tail. While following,
+// top is current (paintScrolled maintains it), so the move starts where the
+// view is, air a collapse left included.
 func (v *viewport) scroll(n int) {
-	if v.follow {
-		v.top, v.follow = max(v.rows-v.viewH, 0), false
-	}
+	v.follow = false
 	v.top += n
 	v.clamp()
 }
@@ -631,19 +642,26 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	if !st.follow && prevRows > 0 && st.rows != prevRows {
 		st.top = reanchor(lines, st, prevRows)
 	}
+	st.filling = false
+	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
+		c := a.caches[wgt.ID]
+		if c == nil {
+			continue
+		}
+		if c.partial {
+			st.filling = true
+		}
+		if c.tailRows > 0 {
+			st.tail = c.tailRows
+		}
+	}
 	switch a.pendingScroll[n.ID] {
 	case hostapi.ScrollTop:
 		st.top, st.follow = 0, false
 	case hostapi.ScrollBottom:
-		st.top, st.follow = st.rows, st.bottom
+		st.top, st.follow = max(st.rows-st.viewH, 0), st.bottom
 		delete(a.pendingScroll, n.ID)
 	default: // applyScroll holds only the edges
-	}
-	st.filling = false
-	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
-		if c := a.caches[wgt.ID]; c != nil && c.partial {
-			st.filling = true
-		}
 	}
 	st.clamp()
 	st.pinRows(lines, w)

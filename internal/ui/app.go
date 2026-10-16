@@ -168,6 +168,11 @@ type widgetCache struct {
 	seq           int64  // the dispatch the lines came from
 	err           string // last recorded render error; a repeat is not recorded again
 	partial       bool   // lines of a render that asked to run again: older rows are still to come
+	tail          int    // the render's trailing lines a following view keeps visible; zero keeps today's re-pin
+
+	// tailRows is tail in rows at wrapW, kept with the wrap it was counted
+	// from (a wrapped line is several rows)
+	tailRows int
 
 	// wrapped holds the lines re-wrapped for wrapW cells: compose runs
 	// every frame and wrapping the transcript is its biggest cost.
@@ -282,7 +287,7 @@ func (a *App) Farewell() string {
 	defer cancel()
 	width := cmp.Or(a.width, 80)
 	for _, w := range a.host.Widgets.InRegion(hostapi.RegionExit) {
-		lines, _, err := a.host.RenderWidget(ctx, w, width, 0, a.uiState())
+		lines, _, _, err := a.host.RenderWidget(ctx, w, width, 0, a.uiState())
 		if err != nil {
 			a.log.Warn("exit widget failed", "origin", "ui", "widget", w.ID, "error", err)
 			continue
@@ -310,6 +315,7 @@ type widgetRender struct {
 	id            string
 	lines         [][]hostapi.Segment
 	more          bool // the render wants to run again
+	tail          int  // trailing lines a following view keeps visible; zero keeps today's re-pin
 	width, height int
 	gen, seq      int64
 	err           error
@@ -775,7 +781,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		)
 		return
 	}
-	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
+	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more, tail: msg.tail}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
@@ -786,7 +792,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		// A reader scrolled up keeps the last whole render until the new one
 		// is whole: anchoring on partial rows would lose their place.
 		if old != nil && len(old.lines) > 0 && a.scrolledUp(msg.id) {
-			c.lines, c.wrapped, c.partial = old.lines, old.wrapped, old.partial
+			c.lines, c.wrapped, c.partial, c.tail, c.tailRows = old.lines, old.wrapped, old.partial, old.tail, old.tailRows
 		}
 	}
 	a.caches[msg.id] = c
@@ -824,8 +830,8 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 	return func() tea.Msg {
 		out := make(widgetsRenderedMsg, 0, len(stale))
 		for _, w := range stale {
-			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
-			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
+			lines, more, tail, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
+			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, tail: tail, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
 		}
 		return out
 	}
@@ -1247,11 +1253,12 @@ func (a *App) scrollRows(id string, n int) {
 	a.bump()
 }
 
-// followStage pins the default scrolled region back to its tail (a submit).
+// followStage pins the default scrolled region back to its tail (a submit):
+// the view sticks to the composer and any air a collapse left closes.
 func (a *App) followStage() {
 	delete(a.pendingScroll, a.scrollDef)
 	if st := a.scrolls[a.scrollDef]; st != nil && st.bottom {
-		st.follow = true
+		st.top, st.follow = max(st.rows-st.viewH, 0), true
 	}
 }
 
@@ -1317,6 +1324,7 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		}
 		lines := c.lines
 		if !wgt.Wrap {
+			c.tailRows = c.tail // a cut line is one row
 			out = append(out, widgetRows(lines, false, width)...)
 			continue
 		}
@@ -1328,12 +1336,16 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 				c.lineRows = nil
 			}
 			rows := make([][]hostapi.Segment, 0, c.wrapN)
+			tailFrom := 0
 			next := c.spare
 			if next == nil {
 				next = make(map[*hostapi.Segment][][]hostapi.Segment, len(lines))
 			}
 			clear(next)
-			for _, line := range lines {
+			for i, line := range lines {
+				if c.tail > 0 && i == len(lines)-c.tail {
+					tailFrom = len(rows)
+				}
 				if len(line) == 0 {
 					rows = append(rows, hostapi.WrapSegs(line, width)...)
 					continue
@@ -1345,7 +1357,7 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 				next[&line[0]] = wr
 				rows = append(rows, wr...)
 			}
-			c.wrapped, c.wrapW, c.lineRows, c.spare, c.wrapN = rows, width, next, c.lineRows, len(rows)
+			c.wrapped, c.wrapW, c.lineRows, c.spare, c.wrapN, c.tailRows = rows, width, next, c.lineRows, len(rows), len(rows)-tailFrom
 		}
 		// the chat is alone in its region: its rows are not copied per frame
 		if out == nil {
