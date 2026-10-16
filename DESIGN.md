@@ -2132,10 +2132,11 @@ rides the `memories.md` line and its ledger entries.
   thought that ended does not go on spinning over the calls that follow it.
   The row opens with the turn itself, before any output, after the same 300ms
   that guards the working rule's block: its label breathes (the shimmer
-  effect) until the first reasoning, call or reply arrives, which it carries
-  in place - reasoning flows in under it, a first call replaces it, a reply
-  takes its block. A retry's backoff, a cancel winding down and an ask holding
-  the turn say so through the working rule instead, and the row stands down.
+  effect) for as long as the row lives, and the first reasoning, call or reply
+  arrives into it - reasoning flows in under it, a first call replaces it, a
+  reply takes its block. A retry's backoff, a cancel winding down and an ask
+  holding the turn say so through the working rule instead, and the row
+  stands down.
   A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back and closes what was opened in it, with the

@@ -378,7 +378,7 @@ func TestWaitRowGuard(t *testing.T) {
 		stream     hostapi.StreamSnapshot
 		cancelling bool
 		waiting    hostapi.Waiting
-		want       string // "wait": the breathing row, "think": the reasoning row, "": none
+		want       string // "wait": the breathing row alone, "think": it with reasoning under, "": none
 	}{
 		{"before the guard", hostapi.StreamSnapshot{Active: true, Elapsed: 200 * time.Millisecond}, false, "", ""},
 		{"the wait", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, false, "", "wait"},
@@ -418,10 +418,10 @@ func TestWaitRowGuard(t *testing.T) {
 					t.Fatalf("%s: the wait row is %v, want a breathing one", tc.name, head)
 				}
 			case "think":
-				if head == nil || breathes || !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool {
+				if head == nil || !breathes || !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool {
 					return strings.Contains(hostapi.SegsText(l), "hmm")
 				}) {
-					t.Fatalf("%s: the thinking row is %v, want a settled one with its reasoning", tc.name, head)
+					t.Fatalf("%s: the thinking row is %v, want a breathing one with its reasoning", tc.name, head)
 				}
 			}
 		})

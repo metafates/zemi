@@ -290,12 +290,12 @@ local function builder(ctx, width)
 		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
 	end
 	-- The model thinking now: drawn outside the rail's own loop, so it frames
-	-- itself as an entry does.
-	---@param tail  string? The thinking so far, whose last lines show under it.
-	---@param breath boolean? The wait before any output: the label breathes until it lands.
-	function B.thinking(tail, breath)
+	-- itself as an entry does. The label breathes while the row lives; a
+	-- settled thought is a thought row, static.
+	---@param tail string? The thinking so far, whose last lines show under it.
+	function B.thinking(tail)
 		frame()
-		push({ bar(), mark("spin"), { text = "thinking", hl = "Dim", effect = breath and "shimmer" or nil } })
+		push({ bar(), mark("spin"), { text = "thinking", hl = "Dim", effect = "shimmer" } })
 		if tail then B.reasoning(tail, 4) end
 		frame()
 	end
@@ -1024,7 +1024,7 @@ zemi.ui.widget.add({
 				-- the wait before any output: the thinking row opens with the turn,
 				-- after the same 300ms that guards the working rule's block
 				B.gap("activity")
-				B.thinking(nil, true)
+				B.thinking(nil)
 			end
 			if #tools > 0 then
 				B.gap("activity")
