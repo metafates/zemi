@@ -166,9 +166,6 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 	return re.MatchString
 }
 
-// hookMatcher matches a tool event's matcher: the tokens name Claude tools.
-func hookMatcher(m string) func(string) bool { return hookMatcherFor(m, true) }
-
 // claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
 // else lowercases.
 var claudeToolAlias = map[string]string{
