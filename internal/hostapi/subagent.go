@@ -1335,12 +1335,18 @@ func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 }
 
 // decodeInput validates a host tool's input against its schema, so a wrong
-// type is worded as it is for a builtin tool, then decodes it into in.
+// type is worded as it is for a builtin tool, then decodes the validated map
+// (coercions applied) into in.
 func decodeInput(info fantasy.ToolInfo, input string, in any) error {
-	if _, err := tools.ParseInput(info, input, false); err != nil {
+	m, err := tools.ParseInput(info, input, false)
+	if err != nil {
 		return err
 	}
-	return json.Unmarshal([]byte(input), in)
+	b, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, in)
 }
 
 // preCheck runs the tool.pre events for a host-implemented tool: deny

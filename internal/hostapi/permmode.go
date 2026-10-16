@@ -57,9 +57,9 @@ func (r *planReg) noteHeadless(d Denial) {
 // HeadlessDenials is every ask denied so far; zemi run reads the ones past
 // its start.
 func (h *Host) HeadlessDenials() []Denial {
-	h.modes.mu.Lock()
-	defer h.modes.mu.Unlock()
-	return slices.Clip(h.modes.headless)
+	h.plans.mu.Lock()
+	defer h.plans.mu.Unlock()
+	return slices.Clip(h.plans.headless)
 }
 
 // CheckToolNames records a zemi.tool.override no tool answers to, once boot
@@ -94,9 +94,9 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
 	restore := ""
 	if h.readOnly() {
-		h.modes.mu.Lock()
-		restore = h.modes.prePlanProfile
-		h.modes.mu.Unlock()
+		h.plans.mu.Lock()
+		restore = h.plans.prePlanProfile
+		h.plans.mu.Unlock()
 		if restore == "" { // a read-only agent picked from config: the shipped profile
 			restore = "default"
 		}

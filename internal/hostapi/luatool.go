@@ -90,8 +90,6 @@ func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
 	return &luaEvalTool{h: h, pipe: pipe}
 }
 
-// luaAsksAll reports that every script asks, reads included: the model's
-// text is less trusted here, or the user wants nothing changed.
 // luaArgs is the lua tool's input and its schema source.
 type luaArgs struct {
 	About  string `json:"about" desc:"what the script does in 3-6 words, shown to the user"`

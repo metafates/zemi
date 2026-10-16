@@ -2343,9 +2343,9 @@ func (h *Host) SetProfile(name string) error {
 		return Usagef("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
 	if next != nil && next.ReadOnly && !h.readOnly() {
-		h.modes.mu.Lock()
-		h.modes.prePlanProfile = h.Settings.Str("agent.profile")
-		h.modes.mu.Unlock()
+		h.plans.mu.Lock()
+		h.plans.prePlanProfile = h.Settings.Str("agent.profile")
+		h.plans.mu.Unlock()
 	}
 	return h.setWatched("agent.profile", name)
 }

@@ -569,7 +569,7 @@ type Host struct {
 	// compaction, the model and tools.
 	turn atomic.Pointer[turnScope]
 
-	modes planReg // the read-only restore point and headless denials
+	plans planReg // the read-only restore point and headless denials
 
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
@@ -1137,8 +1137,6 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}
 	res := VetoResult{}
-	asked := false
-	var askReason string
 	for _, o := range outcomes {
 		if o.timed {
 			res.TimedOut = true
@@ -1146,12 +1144,12 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		if o.denied && !res.Denied {
 			res.Denied, res.Reason = true, o.reason
 		}
-		if o.ask && !asked {
-			asked, askReason = true, o.reason
+		if o.ask {
+			res.Ask = true
 		}
 	}
-	if asked && !res.Denied {
-		res.Ask, res.Reason = true, askReason
+	if res.Denied {
+		res.Ask = false // deny outranks ask
 	}
 	if res.Denied {
 		h.Log.Info("vetoable event denied", "origin", "events",

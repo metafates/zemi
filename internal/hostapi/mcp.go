@@ -864,6 +864,9 @@ func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {
 	return s, nil
 }
 
+// errAuthorizing marks a server whose sign-in another flow already holds.
+var errAuthorizing = errors.New("a sign-in flow is already running for this server")
+
 // signInMCP runs the browser sign-in in the background and restarts the
 // server once it succeeds.
 func (h *Host) signInMCP(name string) error {
@@ -877,8 +880,11 @@ func (h *Host) signInMCP(name string) error {
 	h.GoSafe("mcp sign-in "+name, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
 		defer cancel()
-		if err := h.authorizeMCP(ctx, s); err == nil {
+		switch err := h.authorizeMCP(ctx, s); {
+		case err == nil:
 			h.signedInMCP(name)
+		case errors.Is(err, errAuthorizing):
+			h.Notify(slog.LevelInfo, "Already signing in to "+name, "one flow is waiting in the browser")
 		}
 	})
 	return nil
@@ -887,11 +893,16 @@ func (h *Host) signInMCP(name string) error {
 // authorizeMCP runs one server's browser sign-in to completion: it parks the
 // URL on the server for /mcp to show, opens the browser, and clears the URL
 // when the flow ends either way. The context bounds the wait for the user.
-// authorizing marks the window before the URL parks, so a second press of
-// the batch key cannot start a second flow for the same server; a failure
-// the user did not cancel reports here, both callers sharing one toast.
+// The claim of authorizing is the same lock section that checks it, so two
+// presses of the batch key (or a row press beside the queue) cannot start a
+// second flow for one server; the loser gets errAuthorizing. A failure the
+// user did not cancel reports here, both callers sharing one toast.
 func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	s.mu.Lock()
+	if s.authorizing {
+		s.mu.Unlock()
+		return errAuthorizing
+	}
 	s.authorizing = true
 	s.mu.Unlock()
 	err := h.mcpAuth(s).Authorize(ctx, func(u string) {
@@ -958,6 +969,9 @@ func (h *Host) signInAllMCP() error {
 			}()
 			if aborted {
 				return // esc-esc stopped the queue; the failure report stays silent
+			}
+			if errors.Is(err, errAuthorizing) {
+				continue // a row press or a second queue took it while we waited
 			}
 			if err != nil {
 				failed = append(failed, name)

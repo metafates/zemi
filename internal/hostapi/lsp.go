@@ -412,7 +412,9 @@ func (h *Host) lspSync(force bool) {
 		out, err := h.git(root, "-c", "core.quotePath=false", "status", "--porcelain", "-z", "-uall", "--no-renames")
 		if err != nil {
 			// a repository whose git failed: storing nothing here would read,
-			// on the next sync, as every listed file restored
+			// on the next sync, as every listed file restored - and the dirty
+			// flag is spent, so the pending changes must stay pending
+			h.lsp.dirty.Store(true)
 			return
 		}
 		for entry := range strings.SplitSeq(out, "\x00") {

@@ -66,7 +66,7 @@ func (h *Host) ask(req tools.Request) (bool, string) {
 		if req.Agent != "" {
 			why = strings.TrimSuffix(req.Agent+": "+why, ": ")
 		}
-		h.modes.noteHeadless(Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(why), Why: DenyApproval})
+		h.plans.noteHeadless(Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(why), Why: DenyApproval})
 		return resolved(false, tools.ByNobody)
 	}
 	cut := h.askCut.Load()
