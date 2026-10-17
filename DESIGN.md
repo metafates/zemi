@@ -2614,13 +2614,16 @@ by the next startup sweep, since the session still has unseen messages.
   memory. Each scope has a 3 KB prompt budget (§10.7), and the write gate
   enforces it by cutting, not refusing: a model write that would push its
   scope past the budget applies with its oldest learned lines cut from
-  `memories.md` into the ledger - the tool result names them, and their ids
-  still resolve for `replaces` and forget - while an overflow
-  whose cut set would reach a user-attested line queues instead. The
-  user's own writes refuse rather than cut: `/memory <note>`, accepting a
-  queued one, a move into that scope and an edit that grows past it refuse
-  and point at the oldest in `/memory`, since the user is there; nothing
-  silently drops a user-attested memory. The `## Memory` header (§10.7)
+  `memories.md` into the ledger - the cut skips user-attested lines, the
+  tool result names what it took, and the ids still resolve for `replaces`
+  and forget. A learned write that cannot fit even then lives in the ledger
+  trail alone (an add and an archive entry, `memories.md` unchanged): query
+  recalls it, the trail group in `/memory` lists it, promote graduates it
+  into a brain file. The user's own writes refuse rather than cut or trail:
+  `/memory <note>`, accepting a user-origin one, a move into that scope and
+  an edit that grows past it refuse and point at the oldest in `/memory`,
+  since the user is there; nothing silently drops a user-attested memory.
+  The `## Memory` header (§10.7)
   tells the model to follow a preference the user stated and to check what
   any other line names before relying on it.
   Residual risk is stated plainly: a learned line can still sway a credulous

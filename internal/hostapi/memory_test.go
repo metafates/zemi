@@ -319,7 +319,7 @@ func TestMemoryGate(t *testing.T) {
 			},
 		},
 		{
-			name: "an overflow that would cut a user line queues", text: "the deploy script lives in bin/deploy",
+			name: "a full scope cuts around a user line", text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				m := &store.Memory{Scope: "project", Text: filler(0), ProvenanceSessionID: "seed", Origin: store.OriginUser, UpdatedAt: 1}
 				seedMemory(t, h, m)
@@ -328,20 +328,19 @@ func TestMemoryGate(t *testing.T) {
 				}
 				return ""
 			},
-			want: "queued for the user's review (project memory is full",
+			want: "saved as ",
 			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
 				live, _ := h.memoryList(false)
-				if len(live) != 11 || !slices.ContainsFunc(live, func(m *store.Memory) bool { return m.Origin == store.OriginUser }) {
-					t.Fatalf("the refused write cut something: %d live", len(live))
+				if !slices.ContainsFunc(live, func(m *store.Memory) bool { return m.Origin == store.OriginUser }) {
+					t.Fatal("the cut took the user's line")
 				}
-				p := h.memoryProposals()
-				if len(p) != 1 || p[0].Text != "the deploy script lives in bin/deploy" {
-					t.Fatalf("the queued write left no proposal: %+v", p)
+				if len(h.memoryTrail(live)) == 0 {
+					t.Fatal("nothing was cut")
 				}
 			},
 		},
 		{
-			name: "accepting into a scope whose cut would take a user line puts it back", autonomy: "ask", text: "the deploy script lives in bin/deploy",
+			name: "accepting into a full scope cuts around the user's line", autonomy: "ask", text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				m := &store.Memory{Scope: "project", Text: filler(0), ProvenanceSessionID: "seed", Origin: store.OriginUser, UpdatedAt: 1}
 				seedMemory(t, h, m)
@@ -353,11 +352,12 @@ func TestMemoryGate(t *testing.T) {
 			want: "queued for the user's review",
 			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
 				p := h.memoryProposals()
-				if _, err := h.acceptProposal(p[0].ID); err == nil || !strings.Contains(err.Error(), "project memory is full") {
+				if _, err := h.acceptProposal(p[0].ID); err != nil {
 					t.Fatalf("accept: %v", err)
 				}
-				if len(h.memoryProposals()) != 1 {
-					t.Fatal("the proposal was not put back")
+				live, _ := h.memoryList(false)
+				if !slices.ContainsFunc(live, func(m *store.Memory) bool { return m.Origin == store.OriginUser }) {
+					t.Fatal("the accept cut the user's line")
 				}
 			},
 		},
@@ -486,19 +486,36 @@ func TestMemoryGate(t *testing.T) {
 			},
 		},
 		{
-			name: "/memory refuses when the cut would take a user line", note: true, text: "the deploy script lives in bin/deploy",
+			name: "/memory refuses when nothing learned can make room", note: true, text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string {
-				m := &store.Memory{Scope: "project", Text: filler(0), ProvenanceSessionID: "seed", Origin: store.OriginUser, UpdatedAt: 1}
-				seedMemory(t, h, m)
-				for i := 1; i < 11; i++ {
-					seedMemory(t, h, &store.Memory{Scope: "project", Text: filler(i), ProvenanceSessionID: "seed", Origin: store.OriginLearned, UpdatedAt: int64(i + 1)})
+				for i := range 11 {
+					seedMemory(t, h, &store.Memory{Scope: "project", Text: filler(i), ProvenanceSessionID: "seed", Origin: store.OriginUser, UpdatedAt: int64(i + 1)})
 				}
-				return m.ID
+				return ""
 			},
 			refused: true, want: "project memory is full; forget one of its oldest in /memory first (its oldest line ",
-			check: func(t *testing.T, h *Host, ui *fakeUI, oldest string) {
+			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
 				if n := len(projectMemories(t, h)); n != 11 {
 					t.Fatalf("stored over budget: %d", n)
+				}
+			},
+		},
+		{
+			name: "a learned write into a scope full of the user's lines lives in the trail", text: "the deploy script lives in bin/deploy",
+			seed: func(t *testing.T, h *Host, sid string) string {
+				for i := range 11 {
+					seedMemory(t, h, &store.Memory{Scope: "project", Text: filler(i), ProvenanceSessionID: "seed", Origin: store.OriginUser, UpdatedAt: int64(i + 1)})
+				}
+				return ""
+			},
+			want: "in the memory trail (the project memory is full)",
+			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
+				live, _ := h.memoryList(false)
+				if len(live) != 11 {
+					t.Fatalf("the trail-only store changed the hot file: %d live", len(live))
+				}
+				if !slices.ContainsFunc(h.memoryTrail(live), func(l brain.Line) bool { return l.Text == "the deploy script lives in bin/deploy" }) {
+					t.Fatal("the trail does not hold the stored line")
 				}
 			},
 		},

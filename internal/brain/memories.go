@@ -150,10 +150,12 @@ func ScopeFull(scope store.Scope) error {
 	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
 }
 
-// UserCutError says a budget cut would reach an origin=user line: nothing
-// was written, the caller queues the write instead (DESIGN §10.4 forbids
-// silently dropping a user-attested memory). ID names the oldest line the
-// cut would have taken, which the refusal and the queue reason carry.
+// UserCutError says a user-origin write cannot fit its scope: every
+// learnable line is already in the ledger and the user-attested ones
+// remain over budget. Nothing was written. ID names the oldest user line,
+// which the refusal carries; the user is present at every caller and makes
+// room in /memory (DESIGN §10.4 forbids silently dropping a user-attested
+// memory).
 type UserCutError struct{ ID string }
 
 func (e UserCutError) Error() string { return "the cut would take user memory " + e.ID }
@@ -162,10 +164,12 @@ func (e UserCutError) Error() string { return "the cut would take user memory " 
 // ledger entries before the file replace (DESIGN §7): the id kept when m.ID is
 // set (a proposal's, so review decisions keep it), else a fresh one; the
 // line replaces names moves out first, its supersede entry trailing the
-// quote; then the budget cut archives the oldest learned lines until the
-// file fits ScopeBudget, the ids returned for the tool result to name. An
-// overflow whose cut set would reach an origin=user line is UserCutError
-// and nothing is written: the caller queues instead (DESIGN §10.4).
+// quote; then the budget cut archives the oldest learned lines, skipping
+// user-attested ones, until the file fits ScopeBudget, the ids returned
+// for the tool result to name. A learned write that cannot fit even then
+// lives in the ledger alone (an add and an archive entry, the hot file
+// unchanged); a user-origin one is UserCutError and nothing is written:
+// the user is there to make room (DESIGN §10.4).
 func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []string, error) {
 	if m.Text == "" || m.Origin == "" {
 		return Line{}, nil, errors.New("brain: memory needs text and origin")
@@ -211,12 +215,16 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 		// zero and never its own cut
 		next := append([]Line{l}, lines...)
 		used := Used(next)
-		i := len(next)
-		for used > ScopeBudget && i > 1 {
-			i--
-			oldest := next[i]
+		from := len(next)
+		var blocked string
+		for used > ScopeBudget && from > 1 {
+			from--
+			oldest := next[from]
 			if oldest.Origin == store.OriginUser {
-				return nil, nil, UserCutError{ID: oldest.ID}
+				if blocked == "" {
+					blocked = oldest.ID
+				}
+				continue
 			}
 			used -= LineSize(oldest.Text)
 			cut = append(cut, oldest.ID)
@@ -225,7 +233,27 @@ func Apply(p Partition, m store.Memory, replaces string, at time.Time) (Line, []
 				Hash: TextHash(oldest.Text), Scope: p.Kind.Scope(), Origin: oldest.Origin, TS: at.UnixMilli(),
 			})
 		}
-		return next[:i:i], ops, nil
+		// the walk skipped user lines below from; they stay in the hot file
+		hot := next[:from:from]
+		for _, line := range next[from:] {
+			if line.Origin == store.OriginUser {
+				hot = append(hot, line)
+			}
+		}
+		if used > ScopeBudget {
+			if m.Origin == store.OriginUser {
+				return nil, nil, UserCutError{ID: blocked}
+			}
+			// nothing learned left to cut: the trail keeps the line, and the
+			// add+archive trail is what a stored-then-cut line already reads as
+			ops = append(ops, &Op{
+				Op: OpArchive, ID: l.ID, Text: m.Text, Quote: m.Quote, SessionID: m.ProvenanceSessionID,
+				Hash: TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin, TS: at.UnixMilli(),
+			})
+			cut = append(cut, l.ID)
+			return hot[1:], ops, nil
+		}
+		return hot, ops, nil
 	})
 	if err != nil {
 		return Line{}, nil, err

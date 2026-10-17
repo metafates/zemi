@@ -174,7 +174,68 @@ func TestMemoriesWritePath(t *testing.T) {
 		}
 	})
 
-	t.Run("an overflow that would cut a user line writes nothing", func(t *testing.T) {
+	t.Run("the cut skips a user line and archives learned ones around it", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		yours, _, err := Apply(p, store.Memory{Text: strings.Repeat("u", 300), ProvenanceSessionID: "s1", Origin: store.OriginUser}, "", at.Add(-8*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cut []string
+		for i := range 6 {
+			_, c, err := Apply(p, mem("s1", strings.Repeat("w", 500)), "", at.Add(-time.Duration(6-i)*time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cut = append(cut, c...)
+		}
+		if slices.Contains(cut, yours.ID) || len(cut) == 0 {
+			t.Fatalf("cut = %v", cut)
+		}
+		lines, _, _ := readMemories(p)
+		if !slices.ContainsFunc(lines, func(l Line) bool { return l.ID == yours.ID }) {
+			t.Fatalf("the user line left the hot file: %+v", lines)
+		}
+		used := 0
+		for _, l := range lines {
+			used += LineSize(l.Text)
+		}
+		if used > ScopeBudget {
+			t.Fatalf("cut left %d bytes over budget", used)
+		}
+	})
+
+	t.Run("a learned write nothing can make room for lives in the trail", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		lg := openLedger(t, p)
+		yours, _, err := Apply(p, store.Memory{Text: strings.Repeat("u", 300), ProvenanceSessionID: "s1", Origin: store.OriginUser}, "", at.Add(-2*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, cut, err := Apply(p, mem("s1", strings.Repeat("w", 2900)), "", later)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(cut, m.ID) {
+			t.Fatalf("cut = %v, want %s trail-only", cut, m.ID)
+		}
+		if lines, _, _ := readMemories(p); len(lines) != 1 || lines[0].ID != yours.ID {
+			t.Fatalf("hot file = %+v", lines)
+		}
+		if line, err := Locate(p, lg, m.ID); err != nil || line.Text != strings.Repeat("w", 2900) {
+			t.Fatalf("locate = (%+v, %v)", line, err)
+		}
+		ops, err := lg.ops()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ops) != 3 || ops[1].Op != OpAdd || ops[2].Op != OpArchive || ops[2].ID != m.ID {
+			t.Fatalf("ops = %+v", ops)
+		}
+	})
+
+	t.Run("a user write a full scope cannot fit writes nothing", func(t *testing.T) {
 		p := testPartition(t)
 		openStore(t, p)
 		lg := openLedger(t, p)
@@ -182,20 +243,16 @@ func TestMemoriesWritePath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, err = Apply(p, mem("s1", strings.Repeat("w", 3200)), "", later)
-		if _, cut := errors.AsType[UserCutError](err); !cut {
+		_, _, err = Apply(p, store.Memory{Text: strings.Repeat("v", 2900), ProvenanceSessionID: "s1", Origin: store.OriginUser}, "", later)
+		uc, cut := errors.AsType[UserCutError](err)
+		if !cut || uc.ID != yours.ID {
 			t.Fatalf("user cut = %v", err)
 		}
-		lines, _, _ := readMemories(p)
-		if len(lines) != 1 || lines[0].ID != yours.ID {
+		if lines, _, _ := readMemories(p); len(lines) != 1 || lines[0].ID != yours.ID {
 			t.Fatalf("the refused write landed: %+v", lines)
 		}
-		ops, err := lg.ops()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(ops) != 1 || ops[0].Op != OpAdd {
-			t.Fatalf("ops = %+v", ops)
+		if ops, err := lg.ops(); err != nil || len(ops) != 1 || ops[0].Op != OpAdd {
+			t.Fatalf("ops = %+v, %v", ops, err)
 		}
 	})
 

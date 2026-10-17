@@ -135,7 +135,13 @@ func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	// a detached reflector stores a closed session's memories; the live
 	// session's budget is not theirs to spend
 	h.spendAutoBudget(res.Memory.ProvenanceSessionID)
-	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+cutNote(cut)+redactNote(res.Scrubbed))
+	note := cutNote(cut)
+	if slices.Contains(cut, res.Memory.ID) {
+		// the budget kept the line out of memories.md; queryHint's tool
+		// syntax is noise in a toast, /memory's trail group shows it
+		note = "; the " + string(res.Memory.Scope) + " memory is full; kept in the memory trail"
+	}
+	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+note+redactNote(res.Scrubbed))
 	return cut, nil
 }
 
@@ -162,9 +168,11 @@ func queryHint(cut []string) string {
 // queued for review (Queued says why, "" for the autonomy setting alone),
 // refused as a near-duplicate of a live or pending one, or dropped because
 // its quote is not in the session. Cut names the learned lines the budget
-// archived to make room.
+// archived to make room; a trail-only store names itself there (the id the
+// budget kept out of memories.md).
 type memoryOutcome struct {
 	ID        string
+	Scope     store.Scope
 	Queued    string
 	Duplicate *store.Memory
 	DupQueued bool // Duplicate is a pending proposal, which replaces cannot name
@@ -176,6 +184,11 @@ type memoryOutcome struct {
 func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
+		if slices.Contains(o.Cut, o.ID) {
+			// a full scope kept the line in the ledger trail; it never
+			// shows in the prompt on its own
+			return "saved as " + o.ID + " in the memory trail (the " + string(o.Scope) + " memory is full)" + queryHint([]string{o.ID}) + "; promote puts it in a brain file"
+		}
 		return "saved as " + o.ID + cutNote(o.Cut) + queryHint(o.Cut) + "; shows from the next session"
 	case o.Duplicate != nil && o.DupQueued:
 		return fmt.Sprintf("already queued for the user's review as %s: %q", o.Duplicate.ID, o.Duplicate.Text)
@@ -707,8 +720,8 @@ func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 	} else if p.Path != "" {
 		err = h.acceptFileProposal(p)
 	} else {
-		// the budget cuts learned lines to make room; a cut that
-		// would take a user line puts the proposal back
+		// the budget cuts learned lines to make room; a scope that cannot
+		// fit a user-origin line puts the proposal back
 		_, err = h.storeProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes})
 	}
 	if err != nil {
@@ -1789,8 +1802,8 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 
 // gateMemory is the autonomy gate (DESIGN §10.4): a near-duplicate is
 // refused, a quote the user never wrote drops the memory, and what
-// memoryReview finds no reason to hold is stored, the rest queued. A cut
-// that would take a line the user saved queues instead.
+// memoryReview finds no reason to hold is stored - a write a full scope
+// cannot fit lives in the ledger trail (DESIGN §10.4).
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
 	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
@@ -1804,23 +1817,17 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	if !review {
 		cut, err := h.applyProposal(res)
 		if err != nil {
-			if uc, ok := errors.AsType[brain.UserCutError](err); ok {
-				// the write queues instead, so the proposal is not
-				// dropped while the user makes room; the model's own way
-				// out of the jam is promoting the line, which asks first
-				return memoryOutcome{Queued: userCutFull(m.Scope, uc).Error() + "; promoting it into a brain file asks first"}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
-			}
 			return memoryOutcome{}, err
 		}
-		return memoryOutcome{ID: m.ID, Cut: cut}, nil
+		return memoryOutcome{ID: m.ID, Scope: m.Scope, Cut: cut}, nil
 	}
 	return memoryOutcome{Queued: reason}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 }
 
 // memoryReview says why res waits for the user, or that it may be stored
 // at once. The budget is not a reason: the apply cuts the oldest learned
-// lines to the ledger (DESIGN §10.4), and a cut that would take a user line
-// queues from the apply's refusal.
+// lines to the ledger, and what still cannot fit lives in the trail
+// (DESIGN §10.4).
 func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	m := &res.Memory
 	switch {
