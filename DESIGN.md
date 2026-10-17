@@ -2084,7 +2084,9 @@ rides the `memories.md` line and its ledger entries.
   digest) holds the pushed rows and leaves the freed ones as air that the
   next streamed rows fill before the history is pushed again, and the
   widget's tail lines (its render's third result) always stay on screen,
-  so a rail taller than the view never folds into an empty one. While a
+  so a rail taller than the view never folds into an empty one. Scrolling
+  up through that air consumes it a row per tick instead of skipping it,
+  and scrolling back to the held rows re-sticks the view. While a
   turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,

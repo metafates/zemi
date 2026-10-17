@@ -380,6 +380,17 @@ func TestChatRatchetHoldsThePush(t *testing.T) {
 		t.Fatalf("the collapse left no air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
 	}
 
+	// one tick of scroll consumes one row of the air, not all of it
+	app.scrollRows("chat", -1)
+	app.renderSync(t)
+	app.Frame()
+	if st.top != pushed-1 {
+		t.Fatalf("one tick moved the view from %d to %d, want %d", pushed, st.top, pushed-1)
+	}
+	app.scrollRows("chat", 1)
+	app.renderSync(t)
+	app.Frame()
+
 	// the reply streaming into the air keeps the view; past it the push resumes
 	host.SeedStream(hostapi.StreamSnapshot{
 		Active: true, Text: strings.Repeat("the reply grows word by word, ", 30),
@@ -448,6 +459,39 @@ func TestChatRatchetKeepsTheTail(t *testing.T) {
 	}
 	if st.top+st.viewH <= st.rows {
 		t.Fatalf("the collapse left no air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
+	}
+
+	// scrolling up consumes the air a row per tick instead of skipping it
+	app.scrollRows("chat", -1)
+	app.Frame()
+	if st.top != held-1 {
+		t.Fatalf("one tick moved the view from %d to %d, want %d", held, st.top, held-1)
+	}
+	if st.follow {
+		t.Fatal("one tick left the view following")
+	}
+	app.scrollRows("chat", -1)
+	app.Frame()
+	if st.top != held-2 {
+		t.Fatalf("two ticks left the view at %d, want %d", st.top, held-2)
+	}
+
+	// scrolling back down re-sticks at the held rows; below them a further
+	// tick is nothing, as there is nothing below the tail
+	app.scrollRows("chat", 1)
+	app.Frame()
+	if st.follow || st.top != held-1 {
+		t.Fatalf("the tick down left top %d follow %v, want %d unanchored", st.top, st.follow, held-1)
+	}
+	app.scrollRows("chat", 1)
+	app.Frame()
+	if !st.follow || st.top != held {
+		t.Fatalf("back at the held rows: top %d follow %v", st.top, st.follow)
+	}
+	app.scrollRows("chat", 1)
+	app.Frame()
+	if st.top != held {
+		t.Fatalf("a tick at the tail moved the view to %d", st.top)
 	}
 
 	// a collapse bigger than the view follows down to the tail lines alone

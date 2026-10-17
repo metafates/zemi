@@ -442,6 +442,7 @@ type viewport struct {
 	top, rows, viewH int
 	follow           bool
 	tail             int                 // trailing rows a widget keeps visible while followed; zero re-pins on every count change
+	held             int                 // the top the last tail-following clamp held: how far past the tail a scrolled view may rest while the air lasts
 	pins             [][]hostapi.Segment // drawn in place of the first rows shown
 }
 
@@ -449,17 +450,25 @@ type viewport struct {
 // tail, top is a ratchet (DESIGN §8): growth re-pins it to the tail, a
 // shrink holds the pushed rows and leaves the freed ones to the next rows
 // the widget streams, and the tail rows stay on screen however far the
-// content above them shrinks. Otherwise top just re-pins to the tail while
-// following, or stays inside the content.
+// content above them shrinks. Once the reader scrolls, top may keep resting
+// in that freed air and consume it a row per tick, but never past the tail
+// bound and never past where the hold had put it. Otherwise top just
+// re-pins to the tail while following, or stays inside the content.
 func (v *viewport) clamp() {
-	if v.follow && v.tail > 0 {
-		v.top = min(max(v.top, v.rows-v.viewH), v.rows-min(v.tail, v.viewH))
+	if v.follow {
+		if v.tail > 0 {
+			v.top = min(max(v.top, v.rows-v.viewH), v.rows-min(v.tail, v.viewH))
+			v.held = v.top
+			return
+		}
+		v.top = max(0, v.rows-v.viewH)
 		return
 	}
-	if v.follow {
-		v.top = v.rows - v.viewH
+	cap := v.rows - v.viewH
+	if v.tail > 0 {
+		cap = max(cap, min(v.held, v.rows-min(v.tail, v.viewH)))
 	}
-	v.top = max(0, min(v.top, v.rows-v.viewH))
+	v.top = max(0, min(v.top, cap))
 }
 
 // scroll moves n rows (negative = up) and leaves the tail. While following,
