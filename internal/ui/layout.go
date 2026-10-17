@@ -460,7 +460,9 @@ func (v *viewport) clamp() {
 	if v.follow {
 		if v.tail > 0 {
 			bottom := max(v.rows-v.viewH, 0)
-			v.top = min(max(v.top, bottom), v.rows-min(v.tail, v.viewH), bottom+v.viewH/2)
+			// a tail taller than the content (a stale tail over rows that
+			// emptied) cannot pull top below the first row
+			v.top = max(0, min(max(v.top, bottom), v.rows-min(v.tail, v.viewH), bottom+v.viewH/2))
 			v.held = v.top
 			return
 		}
