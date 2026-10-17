@@ -67,10 +67,18 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		local running = fmt.running(ctx)
-		if not running then return {} end
-		local cmd = (ctx.workflows_running or 0) > 0 and "workflows" or "agents"
-		return { fmt.hint("⧗ " .. running, "/" .. cmd) }
+		local flows, ours = ctx.workflows_running or 0, (ctx.agents_running or 0) + (ctx.jobs_running or 0)
+		if flows == 0 and ours == 0 then return {} end
+		-- jobs count as agents: /agents lists them under Background jobs
+		---@type zemi.Line
+		local line = fmt.hint("⧗ " .. (flows > 0 and flows or ours), flows > 0 and "/workflows" or "/agents")
+		if flows > 0 and ours > 0 then
+			line[#line + 1] = { text = " · ", hl = "Dim" }
+			for _, seg in ipairs(fmt.hint(tostring(ours), "/agents")) do
+				line[#line + 1] = seg
+			end
+		end
+		return { line }
 	end,
 })
 
@@ -85,7 +93,7 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local n = ctx.pending_memory or 0
 		if n == 0 then return {} end
-		return { fmt.hint(fmt.count(n, "memory", "memories") .. " to review", "/memory") }
+		return { fmt.hint(tostring(n), "/memory") }
 	end,
 })
 
