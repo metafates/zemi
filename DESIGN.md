@@ -52,8 +52,7 @@ formatter that marks glamour's own margins), `charmbracelet/openai-go` (the SDK 
 for TUI output), `aymanbagabas/go-udiff` (edit previews),
 `sahilm/fuzzy` (the one list filter, §6.6),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
-already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` and `golang.org/x/net/html` (the `fetch` tool: the article
-out of a page, as markdown the model can read), `golang.org/x/text`
+already pulled in by `x/ansi`), `golang.org/x/text`
 (the case folding APFS does, for paths),
 `golang.org/x/sys` (file locks), `golang.org/x/mod` (plugin
 release tags and the build's version), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion with values from the project store and an inert boot, `Host.Inert`; kong was weighed and lost on completion). Tool input validation is a small hand-written
@@ -1333,8 +1332,6 @@ one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
 `glob`, `grep` (both over `git ls-files` with a Go walker fallback, §2),
-`fetch` (readability picks the article out of the
-page, converted to markdown),
 `todos` (a list the user watches: an item left `in_progress` when the claim ends
 goes back to `pending`, so nothing reads as running while the agent is idle), `question` (1-4 questions in one overlay, options or a typed
 answer, and a note the user may add to a pick; the result is one JSON
@@ -1348,7 +1345,6 @@ handoff, saving the plan and leaving the turn ended until the user says when; a
 read-only run that ends in plain
 text instead of the `question` or `plan` tool is told so once, since a
 question or a report is no plan to approve),
-`fetch` (an article in markdown, without navigation),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
@@ -2107,7 +2103,7 @@ rides the `memories.md` line and its ledger entries.
   it, its thinking, and the edits, failures, questions, plans, background jobs
   and commands with a diff it holds are a click
   away, drawn as they drew live. The digest exists only when the run holds a
-  call a family counts (a read, a search, a fetch, a command that changed
+  call a family counts (a read, a search, a command that changed
   nothing, gone well, an agent run, a workflow, a script, an MCP call under its
   server) or a thought to name: a run with neither keeps
   its whole rail. A run a reply has closed folds this
@@ -2276,8 +2272,8 @@ rides the `memories.md` line and its ledger entries.
   the pipeline. Concurrent ask-needing calls wait in the host: one overlay
   at a time, in arrival order; the answered box stays drawn until the next
   replaces it in place. The title asks what the call would do, built from the
-  request's typed fields ("Run this command?", "Write this file?", "Fetch
-  this URL?", "Use <tool> from <server>?"). The badge names the subagent asking (`explore agent`, a
+  request's typed fields ("Run this command?", "Write this file?",
+  "Use <tool> from <server>?"). The badge names the subagent asking (`explore agent`, a
   workflow's by its run id, never the model's descriptions), whose code a
   Lua tool runs (`plugin:<name>`) and the queue ("1 of 3"), in what the
   title leaves. Under the title a facts table,
@@ -2353,7 +2349,6 @@ rides the `memories.md` line and its ledger entries.
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
   it through; the model reads "no one can approve in a headless run".
-  `fetch` ships in headless runs like anywhere else.
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, every string on a line passes the same sanitize
@@ -2724,7 +2719,7 @@ heuristic exists for), which queues anyway, a replacement of a `user`
 memory or of one in the other scope (a user-scope memory superseded from
 a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
-outside the machine (`fetch`, the `lua` tool, any tool
+outside the machine (the `lua` tool, any tool
 zemi does not ship: MCP and Lua-registered ones, and a plugin's send or
 `tool.post` rewrite, which stores a `plugin:<name>` row; all read from the
 session's `tool_calls`), since injected memories come from there.

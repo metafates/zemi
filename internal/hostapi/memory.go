@@ -1906,9 +1906,8 @@ func (h *Host) markNotLocal(sid, who string) {
 }
 
 // sessionLocalOnly reports that neither session sid nor one of its subagents
-// read text from outside the machine (fetch, a Lua or MCP tool,
-// any tool zemi does not ship, a plugin's text), where injected text would
-// come from.
+// read text from outside the machine (a Lua or MCP tool, any tool zemi does
+// not ship, a plugin's text), where injected text would come from.
 // NOTE: a shell command the user approved can fetch too and is not seen here.
 func (h *Host) sessionLocalOnly(sid string) bool {
 	if h.DB == nil {
@@ -1929,7 +1928,7 @@ func (h *Host) sessionLocalOnly(sid string) bool {
 			return false
 		}
 		for _, s := range stats {
-			if s.Tool == tools.ToolFetch || s.Tool == tools.ToolLua || !slices.Contains(local, s.Tool) {
+			if s.Tool == tools.ToolLua || !slices.Contains(local, s.Tool) {
 				return false
 			}
 		}

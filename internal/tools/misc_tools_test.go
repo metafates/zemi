@@ -1,23 +1,16 @@
 // misc_tools_test.go covers the second batch of built-ins: todos, question
-// and skill (misc_tools.go), the job_* family (job_tools.go) and the net
-// helpers behind fetch (net_tools.go). No test touches the
-// real network: fetch is proven at the URL/permission layer and via a
-// loopback httptest server.
+// and skill (misc_tools.go), the job_* family (job_tools.go) and the URL
+// gate behind zemi.http (net_tools.go). No test touches the real network.
 
 package tools
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -450,116 +443,6 @@ func TestParseNetURL(t *testing.T) {
 	}
 }
 
-func TestFetchGates(t *testing.T) {
-	p, asked := testPipeline(t, false)
-	fetch := toolNamed(t, "fetch", p)
-	resp := call(t, fetch, `{"url":"https://example.com/"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "permission denied") {
-		t.Fatalf("denied net gate must stop fetch before dialing: %+v", resp)
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("one ask: %+v", *asked)
-	}
-
-	// a URL the tool cannot fetch is its own error, never an ask
-	past, pastAsked := testPipeline(t, true)
-	for _, raw := range []string{"ftp://example.com/", "http://user:pass@example.com/", "not a url"} {
-		res := call(t, toolNamed(t, "fetch", past), fmt.Sprintf(`{"url":%q}`, raw))
-		if !res.IsError || strings.Contains(res.Content, "permission") || len(*pastAsked) != 0 {
-			t.Fatalf("fetch(%q) must refuse before the gate: %+v asked %+v", raw, res, *pastAsked)
-		}
-	}
-
-	allowed, _ := testPipeline(t, true)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/x", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, "<p>hi</p>")
-	})
-	mux.HandleFunc("/j", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusTeapot)
-		io.WriteString(w, "{}")
-	})
-	mux.HandleFunc("/big", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", strconv.Itoa(fetchMax+10))
-		io.WriteString(w, strings.Repeat("x\n", fetchMax/2+5))
-	})
-	srv := httptest.NewServer(mux)
-	mux.HandleFunc("/r", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)+"/x", http.StatusFound)
-	})
-	defer srv.Close()
-	// a private address fetches like any other: localhost development is the
-	// point, and the ask gate is what answers the URL
-	for _, raw := range []string{srv.URL + "/x"} {
-		res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, raw))
-		if res.IsError {
-			t.Fatalf("%s: %+v", raw, res)
-		}
-	}
-	// a 200 html page is just its text; a status or type worth saying heads the body
-	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x")); res.Content != "hi" {
-		t.Fatalf("html body = %q", res.Content)
-	}
-	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
-		t.Fatalf("json body = %q", res.Content)
-	}
-	if res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/big")); !strings.Contains(res.Content, "\n(only the first 1 MB of the page was read, of 1048586 bytes)\n") {
-		t.Fatalf("a page past the cap says so: %q", res.Content[:200])
-	}
-	// a redirect hop asks like a first URL under the ask-everything gate, and passes ungated
-	hops, hopAsks := testPipeline(t, false)
-	if err := netGate(hops, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err == nil || len(*hopAsks) != 1 {
-		t.Fatalf("hop under the ask gate: %v, asked %+v", err, *hopAsks)
-	}
-	if err := netGate(allowed, &url.URL{Scheme: "https", Host: "example.com", Path: "/next"}); err != nil {
-		t.Fatalf("hop ungated: %v", err)
-	}
-}
-
-// TestHTMLToText: readability picks the article out of a page, and what it
-// keeps reads as markdown: heading, a parameter table as rows, a code
-// fence, bullets and absolute links.
-func TestHTMLToText(t *testing.T) {
-	in := `<html><head><title>hidden</title></head><body>
-<nav><a href="/menu">Menu</a></nav><script>alert("x")</script><style>.c{}</style>
-<article><h1>Widget API</h1>
-<p>The widget API creates <b>widgets</b>. ` + strings.Repeat("Prose that carries the article past readability's content threshold. ", 10) + `</p>
-<h2>Options</h2>
-<table><thead><tr><th>Name</th><th>Type</th></tr></thead>
-<tbody><tr><td>size</td><td>int</td></tr></tbody></table>
-<pre><code><span class="k">w</span> := widget.New()
-</code></pre>
-<ul><li>first</li><li>second <a class="x" href="../docs?a=1&amp;b=2">point</a></li></ul>
-</article><footer>&copy; 2020</footer></body></html>`
-	base, _ := url.Parse("https://example.com/api/page")
-	out := htmlToText(in, base)
-	for _, bad := range []string{"script", "hidden", "alert", ".c{}", "<b>", "Menu", "2020"} {
-		if strings.Contains(out, bad) {
-			t.Fatalf("htmlToText kept %q: %q", bad, out)
-		}
-	}
-	for _, want := range []string{
-		"Widget API", "creates **widgets**", "## Options",
-		"| Name | Type |", "| size |", "```\nw := widget.New()", "- first",
-		"[point](https://example.com/docs?a=1&b=2)",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("htmlToText lost %q:\n%s", want, out)
-		}
-	}
-}
-
-// TestHTMLToTextNoArticle: a page readability finds no article in still
-// converts whole, so a short answer page is not returned empty.
-func TestHTMLToTextNoArticle(t *testing.T) {
-	base, _ := url.Parse("https://example.com/")
-	if got := htmlToText(`<html><body><p>Hello &amp; bye</p></body></html>`, base); got != "Hello & bye" {
-		t.Fatalf("htmlToText = %q", got)
-	}
-}
-
 // TestMemoryExamplesStore: every example the memory tool's description
 // quotes is stored under auto, not queued as instruction-shaped.
 func TestMemoryExamplesStore(t *testing.T) {
@@ -577,32 +460,5 @@ func TestMemoryExamplesStore(t *testing.T) {
 		if learn.InstructionShaped(m[1]) {
 			t.Errorf("example reads as instruction: %q", m[1])
 		}
-	}
-}
-
-// TestDeniedOutsideRun: the tools that gate themselves fire the same
-// tool.denied notification Run gives a gated one, so a handler sees every
-// refusal (DESIGN §6.2).
-func TestDeniedOutsideRun(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		run  func(t *testing.T, p *Pipeline)
-		want string
-	}{
-		{"a refused fetch redirect hop", func(t *testing.T, p *Pipeline) {
-			if err := netGate(p, &url.URL{Scheme: "https", Host: "example.com", Path: "/x"}); err == nil {
-				t.Fatal("a hop the ask gate denies must be refused")
-			}
-		}, ToolFetch},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			p, _ := testPipeline(t, false)
-			var tools []string
-			p.Denied = func(tool string, _ Request, _ Verdict) { tools = append(tools, tool) }
-			c.run(t, p)
-			if !slices.Equal(tools, []string{c.want}) {
-				t.Fatalf("tool.denied for %v, want %q", tools, c.want)
-			}
-		})
 	}
 }

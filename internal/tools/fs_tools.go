@@ -287,13 +287,13 @@ func boxScale(src image.Image, w, h int) *image.RGBA {
 // sniffBytes is how much of a body looksBinary reads.
 const sniffBytes = 8000
 
-// looksBinary is the sniff read, fetch and command output share: a NUL near
+// looksBinary is the sniff read and command output share: a NUL near
 // the start, as git decides.
 func looksBinary[T string | []byte](b T) bool {
 	return strings.IndexByte(string(b[:min(len(b), sniffBytes)]), 0) >= 0
 }
 
-// cmdText is command output as the model reads it: like read and fetch,
+// cmdText is command output as the model reads it: like read,
 // binary is named instead of sent as control bytes the model cannot use.
 func cmdText(raw string) string {
 	if looksBinary(raw) {
@@ -318,7 +318,7 @@ func lastFrames(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// resultMaxOut is what a tool result may carry of a command's or a fetch's
+// resultMaxOut is what a tool result may carry of a command's
 // output; the rest is spilled to the scratchpad. A skill body has its own cap.
 const resultMaxOut = 10_000
 
@@ -335,9 +335,6 @@ func Cut(dir, name, s string, n int, whole bool) string {
 	}
 	return s
 }
-
-// cut is Cut for this run.
-func (p *Pipeline) cut(name, s string, n int) string { return Cut(p.Pad, name, s, n, p.Script != "") }
 
 // CmdOut is a command's output as a result carries it: cmdText cut to
 // resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer

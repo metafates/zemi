@@ -356,7 +356,7 @@ is refused with its path, to delete (the owner is the only user).
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (`Profile.ReadOnly`) are enforced in
-  `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a fetch, a
+  `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a
   Lua tool; reads and scratchpad writes pass. Approving the plan returns to the agent that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the

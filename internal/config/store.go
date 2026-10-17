@@ -102,7 +102,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.composer.history", Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
 		{Path: "ui.completion.max_items", Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},
-		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto also queues in an untrusted project or after fetch, lua or a non-builtin tool"},
+		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto also queues in an untrusted project or after lua or a non-builtin tool"},
 	}
 	for _, def := range defaults {
 		def.builtin = true

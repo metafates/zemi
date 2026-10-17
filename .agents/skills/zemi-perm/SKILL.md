@@ -29,7 +29,7 @@ panics; a denied result names who decided and why. Host-implemented tools (`agen
 `workflow`, `lua`, MCP and Lua tools) run the events through `preCheck` and call the gate
 themselves.
 
-The gate (`Pipeline.Check`), in order: a read-only agent (`Profile.ReadOnly`) denies every action - writes, commands, fetches, Lua tools - while its reads and
+The gate (`Pipeline.Check`), in order: a read-only agent (`Profile.ReadOnly`) denies every action - writes, commands, Lua tools - while its reads and
 its pad writes pass; then the veto (`Pipeline.Veto`, only when an asker exists - a gate
 without one cannot survive the veto's interpreter round-trip); then the ask path for an ask
 decision, and everything else runs.
@@ -39,7 +39,7 @@ An ask nobody can answer (no UI: `zemi run`) denies fail-closed and is recorded
 time under `Host.askMu`; no Lua runs under the lock.
 
 Subjects label the asks: `tool.shell`, `tool.lua`, `tool.workflow`, `tool.<name>` of a Lua
-tool, `fs.read`, `fs.write`, `net.<host>` (the model's `fetch`), `mcp.<server>`,
+tool, `fs.read`, `fs.write`, `mcp.<server>`,
 `memory.write`, and `lua.<ns.call>` for a host-API call config code makes (`lua.fs.write`,
 `lua.job.start`, `lua.http.<method>`, ...). The overlay offers three answers: y (yes, once),
 n (no), t (no, and tell zemi - denies the waiting asks and stops the turn).

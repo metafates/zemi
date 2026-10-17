@@ -10,7 +10,6 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"math"
-	"net/url"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -925,8 +924,6 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Edit this file?"
 	case req.Subject == perm.SubjectWrite:
 		return "Change this file?"
-	case strings.HasPrefix(req.Subject, "net."):
-		return "Fetch this URL?"
 	case mcp:
 		return "Use " + req.Arg + " from " + server + "?"
 	case req.Subject == perm.SubjectLua:
@@ -990,13 +987,6 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 			arg = rel
 		}
 		return "file", parts(arg)
-	case strings.HasPrefix(req.Subject, "net."):
-		// the host is what a look-alike hides behind
-		if u, err := url.Parse(arg); err == nil && u.Host != "" {
-			before, after, _ := strings.Cut(arg, u.Host)
-			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: hostapi.ChromeValue}, {Text: u.Host, HL: hostapi.ChromeBold}}, parts(after))
-		}
-		return "url", parts(arg)
 	case req.Subject == perm.SubjectWorkflow && arg != "script":
 		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
 	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == "memory.write", arg == "script":

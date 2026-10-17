@@ -58,7 +58,7 @@ const forkAgent = "fork"
 
 // readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolFetch, tools.ToolSkill}
+var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolSkill}
 
 var builtinAgents = []AgentDef{
 	{
@@ -151,7 +151,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 var zemiToolNames = map[string]bool{
 	tools.ToolShell: true, tools.ToolRead: true, tools.ToolWrite: true,
 	tools.ToolEdit: true, tools.ToolGlob: true, tools.ToolGrep: true,
-	tools.ToolFetch: true, tools.ToolTodos: true,
+	tools.ToolTodos:    true,
 	tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolSkill: true,
 	tools.ToolJobStart: true, tools.ToolJobRead: true, tools.ToolJobList: true,
 	tools.ToolJobKill: true, tools.ToolMemory: true, tools.ToolDiagnostics: true,

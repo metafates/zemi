@@ -152,7 +152,7 @@ func (h *Host) truncOutput(pad, name, s string) string {
 
 // truncScriptOutput is truncOutput for a call a lua script drove: the script
 // reads the whole output and says what of it the model gets, which is how a
-// script's own shell, read and fetch calls are already treated.
+// script's own shell and read calls are already treated.
 func (h *Host) truncScriptOutput(p *tools.Pipeline, name, s string) string {
 	return tools.Cut(p.Pad, name, s, hostResultMax, p.Script != "")
 }

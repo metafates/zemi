@@ -37,7 +37,6 @@ const (
 	ToolEdit        = "edit"
 	ToolGlob        = "glob"
 	ToolGrep        = "grep"
-	ToolFetch       = "fetch"
 	ToolTodos       = "todos"
 	ToolQuestion    = "question"
 	ToolPlan        = "plan"
@@ -786,19 +785,6 @@ Chain dependent steps with &&.`,
 			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot, ""),
 			typed(runGrep)),
-
-		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation.",
-			true,
-			fetchArgs{},
-			func(p *Pipeline, in map[string]any) ([]Request, error) {
-				u, err := ParseNetURL(str(in["url"]))
-				if err != nil {
-					return nil, err
-				}
-				// the real host, so a redirect hop's check names what runs
-				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}, nil
-			},
-			typed(runFetch)),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. Do not repeat the list in your reply.",
 			false,
