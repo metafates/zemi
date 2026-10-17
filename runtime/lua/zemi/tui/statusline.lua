@@ -5,8 +5,17 @@
 -- goes sits inner, where it moves nothing.
 local fmt = require("zemi.tui.text")
 
--- The project: its path when short, else its name (the splash has the whole
--- path), and whether it is untrusted. A click on the path opens /projects.
+-- fish's prompt_pwd: every directory but the last down to a cell, a leading
+-- dot kept
+---@param p string
+---@return string
+local function short_path(p)
+	return (p:gsub("([^/]+)/", function(dir) return dir:sub(1, dir:sub(1, 1) == "." and 2 or 1) .. "/" end))
+end
+
+-- The project, short_path'd, the name alone when even that outgrows a quarter
+-- of the row (the splash has the whole path), and whether it is untrusted. A
+-- click on it opens /projects.
 zemi.ui.widget.add({
 	id = "statusline.cwd",
 	region = "statusline.left",
@@ -15,7 +24,7 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		local p = ctx.project or ctx.cwd or ""
+		local p = short_path(ctx.project or ctx.cwd or "")
 		if zemi.ui.width(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
 		---@type zemi.Line
 		local line = { { text = p, hl = "Dim", click = "projects" } }

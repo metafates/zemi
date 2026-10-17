@@ -74,8 +74,9 @@ func TestGoldenMemory(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	ctx := t.Context()
 	// the private partition keys on the repository, so the golden seeds one;
-	// a fixed basename keeps the statusline's project label stable
-	repo := filepath.Join(t.TempDir(), "repo")
+	// a fixed basename keeps the statusline's project label stable, and a long
+	// one keeps it the name: a shortened temp path varies by machine
+	repo := filepath.Join(t.TempDir(), "memory-golden-repo")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
