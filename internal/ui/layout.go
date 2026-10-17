@@ -449,15 +449,18 @@ type viewport struct {
 // clamp keeps top on the content. While following a widget that reports a
 // tail, top is a ratchet (DESIGN §8): growth re-pins it to the tail, a
 // shrink holds the pushed rows and leaves the freed ones to the next rows
-// the widget streams, and the tail rows stay on screen however far the
-// content above them shrinks. Once the reader scrolls, top may keep resting
-// in that freed air and consume it a row per tick, but never past the tail
-// bound and never past where the hold had put it. Otherwise top just
-// re-pins to the tail while following, or stays inside the content.
+// the widget streams - never more than half the view of them, a bigger
+// collapse falls back to the half line - and the tail rows stay on screen
+// however far the content above them shrinks. Once the reader scrolls, top
+// may keep resting in that freed air and consume it a row per tick, but
+// never past the tail bound and never past where the hold had put it.
+// Otherwise top just re-pins to the tail while following, or stays inside
+// the content.
 func (v *viewport) clamp() {
 	if v.follow {
 		if v.tail > 0 {
-			v.top = min(max(v.top, v.rows-v.viewH), v.rows-min(v.tail, v.viewH))
+			bottom := max(v.rows-v.viewH, 0)
+			v.top = min(max(v.top, bottom), v.rows-min(v.tail, v.viewH), bottom+v.viewH/2)
 			v.held = v.top
 			return
 		}

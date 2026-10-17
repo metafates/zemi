@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // fillChat appends 30 user/reply pairs to the transcript.
@@ -452,14 +454,16 @@ func TestChatRatchetKeepsTheTail(t *testing.T) {
 	}
 
 	// the tail collapses with the content (a thinking block into a reply
-	// row): the view holds its pushed rows and air opens below the tail
+	// row): the view holds its pushed rows and air opens below the tail,
+	// never more than half the view
 	fill(194, 2)
-	if st.top != held {
-		t.Fatalf("the collapse moved the view from %d to %d", held, st.top)
+	if st.top != st.rows-st.viewH+st.viewH/2 {
+		t.Fatalf("the collapse left top %d of %d over %d, want the half line", st.top, st.rows, st.viewH)
 	}
 	if st.top+st.viewH <= st.rows {
 		t.Fatalf("the collapse left no air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
 	}
+	held = st.top
 
 	// scrolling up consumes the air a row per tick instead of skipping it
 	app.scrollRows("chat", -1)
@@ -494,13 +498,80 @@ func TestChatRatchetKeepsTheTail(t *testing.T) {
 		t.Fatalf("a tick at the tail moved the view to %d", st.top)
 	}
 
-	// a collapse bigger than the view follows down to the tail lines alone
+	// a collapse bigger than the view falls back to the half line, the tail
+	// rows still on screen
 	fill(120, 3)
-	if st.top != st.rows-3 {
-		t.Fatalf("the fold left top %d of %d, want the 3 tail rows at %d", st.top, st.rows, st.rows-3)
+	if st.top != st.rows-st.viewH+st.viewH/2 {
+		t.Fatalf("the fold left top %d of %d over %d, want the half line", st.top, st.rows, st.viewH)
 	}
-	if got := hostapi.SegsText(app.lastRows[st.rect.Min.Y]); !strings.HasPrefix(got, "tail 0") {
-		t.Fatalf("the view does not open on the tail: %q", got)
+	if got := hostapi.SegsText(app.lastRows[st.rect.Min.Y+st.rows-1-st.top]); !strings.HasPrefix(got, "tail 2") {
+		t.Fatalf("the tail rows are not on screen: %q", got)
+	}
+}
+
+// TestAgentViewLandsFresh: opening a run view lands at its tail with no air
+// carried in, however much the main chat was holding, and coming back to the
+// session re-pins it the same way - empty space belongs to collapses watched
+// in the view that showed them.
+func TestAgentViewLandsFresh(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls["chat"]
+
+	// the main chat holds air from a collapse it watched
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Thinking: true,
+		Reasoning: "line one\nline two\nline three\nline four\nline five\nline six\n",
+		Elapsed:   2e9,
+	})
+	app.renderSync(t)
+	app.Frame()
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Text: "the reply arrives.",
+		Elapsed: 6e9,
+	})
+	app.renderSync(t)
+	app.Frame()
+	if st.top+st.viewH <= st.rows {
+		t.Fatalf("precondition: no air in the main chat: top %d, %d rows over %d", st.top, st.rows, st.viewH)
+	}
+
+	// the run's transcript, taller than the view
+	db := testStore(t, host)
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 8 {
+		addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.ReasoningPart{Text: fmt.Sprintf("thought %d about the work, long enough to wrap once\n", i)},
+		}})
+		addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: fmt.Sprintf("step %d done", i)},
+		}})
+	}
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if st.top != max(st.rows-st.viewH, 0) {
+		t.Fatalf("the run view opened at top %d of %d over %d, want the tail", st.top, st.rows, st.viewH)
+	}
+	if st.top+st.viewH > st.rows {
+		t.Fatalf("the run view opened with air: top %d, %d rows over %d", st.top, st.rows, st.viewH)
+	}
+
+	// back to the session: re-pinned, no air either
+	if err := host.ViewAgent(""); err != nil {
+		t.Fatal(err)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if st.top != max(st.rows-st.viewH, 0) || st.top+st.viewH > st.rows {
+		t.Fatalf("the session reopened at top %d of %d over %d, want the tail", st.top, st.rows, st.viewH)
 	}
 }
 

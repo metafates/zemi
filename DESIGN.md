@@ -2082,9 +2082,14 @@ rides the `memories.md` line and its ledger entries.
   is a ratchet: the live rail growing pushes the history up, the rail
   collapsing (a thinking block into its thought row, a turn folding into its
   digest) holds the pushed rows and leaves the freed ones as air that the
-  next streamed rows fill before the history is pushed again, and the
-  widget's tail lines (its render's third result) always stay on screen,
-  so a rail taller than the view never folds into an empty one. Scrolling
+  next streamed rows fill before the history is pushed again - never more
+  than half the view of it, a bigger collapse falls back to the half line -
+  and the widget's tail lines (its render's third result) always stay on
+  screen, so a rail taller than the view never folds into an empty one. A
+  render whose content changed identity (a run view opened or left, a
+  resumed session, a compaction) reports no tail, so the swap lands at the
+  tail and carries no air in: only collapses watched in the view that drew
+  them leave air behind. Scrolling
   up through that air consumes it a row per tick instead of skipping it,
   and scrolling back to the held rows re-sticks the view. While a
   turn's prompt is above the view its first row
