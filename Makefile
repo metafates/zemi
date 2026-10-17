@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run test race vet lint fmt golden luals stylua check install clean reset-db
+.PHONY: all build run site first-run mcp-auth test race vet lint fmt golden luals stylua check install clean reset-db
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -26,6 +26,11 @@ og:
 	"$(CHROME)" --headless=new --disable-gpu --hide-scrollbars --window-size=1200,630 \
 		--virtual-time-budget=3600 --screenshot=docs/og.png http://localhost:1315/; \
 	kill $$pid
+
+# the MCP sign-in callback page (internal/mcp/callback.html) in a browser,
+# ok and failed states, no provider; /fail?reason=... tries other reasons
+mcp-auth:
+	go run ./internal/mcp/callback_preview.go
 
 # zemi as a newcomer sees it: a fresh HOME (no ~/.agents/skills, no zemi
 # dirs) and a new git repo, or DIR. Provider keys pass through unless
