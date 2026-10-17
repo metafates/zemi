@@ -247,25 +247,12 @@ func TestCallbackPageEscapes(t *testing.T) {
 	}
 }
 
-// TestCallbackPageMatchesLanding: callback.html copies the landing's palette
-// and knot, since go:embed cannot reach docs/.
+// TestCallbackPageMatchesLanding: callback.html copies the landing's palette,
+// since go:embed cannot reach docs/.
 func TestCallbackPageMatchesLanding(t *testing.T) {
-	landing, err := os.ReadFile("../../docs/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
 	style, err := os.ReadFile("../../docs/style.css")
 	if err != nil {
 		t.Fatal(err)
-	}
-	for _, c := range []struct{ name, from, to string }{
-		{"knot", `<pre role="img" aria-label="a trefoil knot drawn in ascii">`, "</pre>"},
-	} {
-		_, rest, ok := strings.Cut(string(landing), c.from)
-		block, _, found := strings.Cut(rest, c.to)
-		if !ok || !found || !strings.Contains(callbackHTML, c.from+block+c.to) {
-			t.Errorf("%s: callback.html no longer matches the landing", c.name)
-		}
 	}
 	// every color token the landing's palette defines and the callback
 	// carries is the same: var/value pairs from docs/style.css's :root
