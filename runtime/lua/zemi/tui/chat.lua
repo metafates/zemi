@@ -533,7 +533,8 @@ local function builder(ctx, width)
 		})
 		if not opened then return end
 		local at = #B.lines
-		B.rail(list, first, last, {})
+		-- a lone thought opens as its text: the digest above it already says how long it thought
+		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil })
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
@@ -583,7 +584,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer? } o.open draws every row and thought of the run starting at run, whose rows a click leaves.
+	---@param o { open: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.open draws every row and thought of the run starting at run, whose rows a click leaves; o.unroll draws a thought as its text.
 	function B.rail(list, first, last, o)
 		frame()
 		local at = #B.lines
@@ -615,7 +616,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer? }
+	---@param o { open: boolean?, live: boolean?, run: integer?, unroll: boolean? }
 	function B.steps(list, first, last, o)
 		local fold = o.open and o.run and "turn:" .. o.run or nil
 		---@param t zemi.tui.Tool
@@ -636,7 +637,12 @@ local function builder(ctx, width)
 			prev, prev_fail = kind, fail
 			head()
 			if t.kind == "reasoning" then
-				B.thought(t.thought or 0, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
+				local click = fold or ("thought:" .. idx)
+				if o.unroll and (t.text or "") ~= "" then
+					B.reasoning(t.text, nil, click)
+				else
+					B.thought(t.thought or 0, click, (o.open or unrolled[idx]) and t.text or nil)
+				end
 				i = i + 1
 			elseif grouped(t) and not lone then
 				---@type zemi.tui.Tool[]

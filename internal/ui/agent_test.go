@@ -613,6 +613,35 @@ func TestChatExpandSettledRow(t *testing.T) {
 	}
 }
 
+// TestLoneThoughtDigestOpensItsText: a run of one thought opens from its
+// digest as the text alone, the digest already naming the thought.
+func TestLoneThoughtDigestOpensItsText(t *testing.T) {
+	app, host := bootAgentApp(t, 140, 30)
+	host.AppendMessage("user", "plan it")
+	appendReasoning(host, "hmm, the user asked to plan\nthen build", hostapi.TurnStat{ThoughtMS: 4400})
+	rows := func() []string { return chatRows(t, app, 138) }
+	click := func(id string) []string {
+		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
+			t.Fatal(err)
+		}
+		return rows()
+	}
+	const digest = "· thought 4.4s"
+	closed := rows()
+	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+		t.Fatalf("the lone thought does not fold into its digest:\n%s", strings.Join(closed, "\n"))
+	}
+	open := click("turn:2")
+	rail := []string{"│", "│   hmm, the user asked to plan", "│   then build", "│"}
+	at := slices.Index(open, digest)
+	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
+		t.Fatalf("the opened lone thought:\n%s", strings.Join(open, "\n"))
+	}
+	if folded := click("turn:2"); !slices.Equal(folded, closed) {
+		t.Fatalf("a second click does not fold the run:\n%s", strings.Join(folded, "\n"))
+	}
+}
+
 // TestTurnStats: the readout rides only the reply that ends the exchange, and
 // each call counts its own diff.
 func TestTurnStats(t *testing.T) {

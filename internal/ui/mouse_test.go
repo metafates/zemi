@@ -71,13 +71,10 @@ func TestMouseClicks(t *testing.T) {
 		t.Fatalf("a settled thought shows its text before a click:\n%s", frame)
 	}
 	x, y := findCell(t, app, "· thought 1.0s")
-	clickAt(app, x+2, y) // the digest opens the run's rail
-	app.renderSync(t)
-	x, y = findCell(t, app, "│ ✻ thought 1.0s")
-	clickAt(app, x+4, y)
+	clickAt(app, x+2, y) // the digest opens the lone thought as its text
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") {
-		t.Fatalf("clicking the thought should unroll its text:\n%s", frame)
+		t.Fatalf("clicking the digest should unroll the lone thought:\n%s", frame)
 	}
 
 	ran := make(chan string, 1)

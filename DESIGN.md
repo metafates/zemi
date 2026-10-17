@@ -2154,7 +2154,8 @@ rides the `memories.md` line and its ledger entries.
   A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back and closes what was opened in it, with the
-  rest of the transcript untouched. A
+  rest of the transcript untouched; a run of one thought opens as its text,
+  the digest above it already naming the thought. A
   thought row's click unrolls its text at most 80 cells wide, a bar-only row
   above and below text of two or more lines; a step row's opens its calls
   nested two cells under it,
