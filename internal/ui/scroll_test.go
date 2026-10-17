@@ -465,14 +465,12 @@ func TestChatRatchetKeepsTheTail(t *testing.T) {
 	}
 	held = st.top
 
-	// scrolling up consumes the air a row per tick instead of skipping it
+	// scrolling up consumes the air a row per tick instead of skipping it,
+	// and each tick deletes its line: the hold shrinks with the view
 	app.scrollRows("chat", -1)
 	app.Frame()
-	if st.top != held-1 {
-		t.Fatalf("one tick moved the view from %d to %d, want %d", held, st.top, held-1)
-	}
-	if st.follow {
-		t.Fatal("one tick left the view following")
+	if st.top != held-1 || st.follow {
+		t.Fatalf("one tick left top %d follow %v, want %d unanchored", st.top, st.follow, held-1)
 	}
 	app.scrollRows("chat", -1)
 	app.Frame()
@@ -480,22 +478,27 @@ func TestChatRatchetKeepsTheTail(t *testing.T) {
 		t.Fatalf("two ticks left the view at %d, want %d", st.top, held-2)
 	}
 
-	// scrolling back down re-sticks at the held rows; below them a further
-	// tick is nothing, as there is nothing below the tail
+	// scrolling back down re-sticks at the shrunken hold: the rows scrolled
+	// past stay deleted, so the tick down cannot re-enter them
 	app.scrollRows("chat", 1)
 	app.Frame()
-	if st.follow || st.top != held-1 {
-		t.Fatalf("the tick down left top %d follow %v, want %d unanchored", st.top, st.follow, held-1)
+	if !st.follow || st.top != held-2 {
+		t.Fatalf("the tick down left top %d follow %v, want %d re-stuck", st.top, st.follow, held-2)
 	}
 	app.scrollRows("chat", 1)
 	app.Frame()
-	if !st.follow || st.top != held {
-		t.Fatalf("back at the held rows: top %d follow %v", st.top, st.follow)
+	if st.top != held-2 {
+		t.Fatalf("a further tick moved the view to %d, want %d", st.top, held-2)
 	}
-	app.scrollRows("chat", 1)
+
+	// scrolling up past the rest of the air deletes it with the lines: the
+	// scroll's bottom is the tail on the composer, no air
+	app.scrollRows("chat", -st.rows)
 	app.Frame()
-	if st.top != held {
-		t.Fatalf("a tick at the tail moved the view to %d", st.top)
+	app.scrollRows("chat", st.rows)
+	app.Frame()
+	if st.top != st.rows-st.viewH || st.top+st.viewH != st.rows {
+		t.Fatalf("the bottom after the consumption: top %d of %d over %d", st.top, st.rows, st.viewH)
 	}
 
 	// a collapse bigger than the view falls back to the half line, the tail

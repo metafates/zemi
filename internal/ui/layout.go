@@ -476,10 +476,15 @@ func (v *viewport) clamp() {
 
 // scroll moves n rows (negative = up) and leaves the tail. While following,
 // top is current (paintScrolled maintains it), so the move starts where the
-// view is, air a collapse left included.
+// view is, air a collapse left included. Scrolling up past that air deletes
+// its lines with them: the hold shrinks by the rows scrolled past, so
+// scrolling back down stops at the tail instead of at air that was there.
 func (v *viewport) scroll(n int) {
 	v.follow = false
 	v.top += n
+	if n < 0 {
+		v.held = max(v.held+n, v.rows-v.viewH, 0)
+	}
 	v.clamp()
 }
 

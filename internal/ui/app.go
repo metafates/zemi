@@ -1242,16 +1242,21 @@ func (a *App) scrollAt(x, y int) string {
 // scrollRows moves a scrolled region's viewport by n rows (negative =
 // older). Scrolling down re-arms tail follow at the bottom of a "bottom"
 // region - with air a collapse left, at the rows the hold had put the view
-// on, the deepest the scroll can go - and while scrolled up the view stays
-// anchored as new lines arrive.
+// on, the deepest the scroll can go - while a scroll that moved the view up
+// leaves it anchored to read, and one that moved nothing changes nothing.
 func (a *App) scrollRows(id string, n int) {
 	delete(a.pendingScroll, id)
 	st := a.scrolls[id]
 	if st == nil || n > 0 && st.follow {
 		return
 	}
+	before := st.top
 	st.scroll(n)
-	st.follow = st.bottom && st.top >= max(st.rows-st.viewH, st.held)
+	if n < 0 && st.top != before {
+		st.follow = false
+	} else {
+		st.follow = st.bottom && st.top >= max(st.rows-st.viewH, st.held)
+	}
 	a.bump()
 }
 
