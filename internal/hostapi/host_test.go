@@ -607,7 +607,7 @@ func TestConfigSetGating(t *testing.T) {
 }
 
 // TestThemeCommand: /theme <name> sets a theme and refuses one nothing
-// added; bare, it lists the families, each light twin in its row, and the
+// added; bare, it lists every theme, the light twins included, and the
 // list stays open over a pick with the current row moved.
 func TestThemeCommand(t *testing.T) {
 	h := newTestHostUI(t)
@@ -636,7 +636,7 @@ func TestThemeCommand(t *testing.T) {
 		return items[i].(map[string]any)
 	}
 	items := opened[0].Items
-	if row(items, "catppuccin-light") != nil || row(items, "catppuccin")["desc"] != "light: catppuccin-light" || row(items, "nord")["key"] != "current" {
+	if row(items, "catppuccin-light") == nil || row(items, "nord")["key"] != "current" {
 		t.Fatalf("rows: %v", items)
 	}
 	if err := h.configCommand("set ui.theme dracula"); err != nil {
@@ -644,6 +644,12 @@ func TestThemeCommand(t *testing.T) {
 	}
 	if items, _ := opened[0].Reload(); row(items, "dracula")["key"] != "current" || row(items, "nord")["key"] != nil {
 		t.Fatalf("after a pick: %v", items)
+	}
+	if err := h.configCommand("set ui.theme catppuccin-light"); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := opened[0].Reload(); row(items, "catppuccin-light")["key"] != "current" {
+		t.Fatalf("after a light pick: %v", items)
 	}
 }
 

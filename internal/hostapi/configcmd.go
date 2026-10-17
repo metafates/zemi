@@ -235,10 +235,7 @@ func (h *Host) configChoices(path string) []string {
 	case "ui.theme":
 		var names []string
 		for _, t := range h.Themes.List() {
-			// a light twin draws by itself on a light terminal
-			if base := h.Themes.Get(strings.TrimSuffix(t.Name, "-light")); base == nil || h.Themes.Light(base) != t {
-				names = append(names, t.Name)
-			}
+			names = append(names, t.Name)
 		}
 		return names
 	}
@@ -286,11 +283,6 @@ func (h *Host) pickItems(path string) (items []any, sel int) {
 		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + path + " " + c, "verb": "pick"}
 		if c == cur {
 			item["key"], sel = "current", i
-		}
-		if t := h.Themes.Get(c); path == "ui.theme" && t != nil {
-			if light := h.Themes.Light(t); light != nil {
-				item["desc"] = "light: " + light.Name
-			}
 		}
 		items = append(items, item)
 	}
