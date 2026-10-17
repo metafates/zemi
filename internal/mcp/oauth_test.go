@@ -125,7 +125,7 @@ func TestOAuthSignIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
-	if p := <-page; !strings.Contains(p, "<h1>signed in</h1>") || !strings.Contains(p, "<b>fake</b>") {
+	if p := <-page; !strings.Contains(p, "<h1>zemi @^^</h1>") || !strings.Contains(p, "<b>fake</b>") {
 		t.Fatalf("callback page:\n%s", p)
 	}
 	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {

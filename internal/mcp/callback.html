@@ -3,53 +3,128 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#17181e">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2317181e'/%3E%3Ctext%20x='16'%20y='24'%20text-anchor='middle'%20font-family='ui-monospace,%20Menlo,%20monospace'%20font-size='26'%20fill='%23a2adfd'%3E@%3C/text%3E%3C/svg%3E">
 <title>{{if .OK}}signed in{{else}}sign-in failed{{end}} - zemi</title>
-<!-- the landing page's palette and knot (docs/index.html, docs/style.css); a sign-in page loads nothing remote -->
+<!-- the landing page's layout, palette and knot (docs/index.html, docs/style.css); a sign-in page loads nothing remote -->
 <style>
 :root {
   color-scheme: dark;
-  --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --danger: #f17070;
+  --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --panel: #202128; --danger: #f17070;
+  --mono: "Paper Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --art: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
   margin: 0; overflow: hidden;
   background: var(--bg); color: var(--fg);
-  font: 15px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  font: 400 0.9375rem/1.6 var(--mono);
   -webkit-font-smoothing: antialiased;
 }
-/* one screen, never a page scroll: the provider's failure reason scrolls
-   inside its panel instead */
-main {
-  height: 100dvh; max-width: 72ch; margin: 0 auto;
-  padding: clamp(1.5rem, 7vh, 3.5rem) 16px 2rem;
+::selection { background: var(--fg); color: var(--bg); }
+
+/* the landing's split: words left, the knot filling the rest */
+.split {
+  height: 100dvh;
+  max-width: 96rem;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: clamp(2rem, 5vw, 5rem);
+  padding-inline: clamp(1.25rem, 4vw, 4rem);
+}
+.intro {
+  max-width: 60ch; min-width: 0; max-height: 100dvh;
   display: flex; flex-direction: column;
 }
-.knot { overflow: hidden; margin: 0 0 2.5rem; flex: none; }
-.knot pre { color: var(--dim); font: 400 8px/1.15 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; margin: 0; }
-h1 { font-size: clamp(2.5rem, 8vh, 4.5rem); font-weight: 600; line-height: 1.1; margin: 0 0 .4em; }
-.fail { color: var(--danger); }
-p { margin: 0; max-width: 60ch; }
-.tag { margin-bottom: 1.6rem; }
-.tag .dim { color: var(--dim); }
-.eyes { display: flex; gap: 3ch; margin: 0 0 2rem; padding: 0; list-style: none; }
-.eyes .m { font-weight: 600; }
-.eyes .l { color: var(--dim); }
-.accent { color: var(--accent); }
-.cmd {
-  flex: 1 1 auto; min-height: 0; overflow: auto;
-  padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel);
-  margin: 0 0 1.5rem; overflow-wrap: anywhere; white-space: pre-wrap;
+h1 {
+  font-size: clamp(3.5rem, 8vh, 6rem);
+  font-weight: 600;
+  line-height: 1;
+  margin: 0 0 0.75rem;
 }
-.next { margin-top: auto; }
+blockquote { color: var(--dim); margin: 0 0 1.25rem; overflow-wrap: anywhere; }
+blockquote::before { content: "> "; }
+blockquote b { color: var(--fg); font-weight: 600; }
+blockquote.fail, blockquote.fail b { color: var(--danger); }
 .dim { color: var(--dim); }
-/* too short to hold the knot: it yields before the page would scroll */
-@media (max-height: 30rem) { .knot { display: none; } }
+/* the provider's failure reason sits in the well, like the landing's install
+   command, and scrolls inside itself: the page never scrolls */
+.well {
+  background: var(--panel);
+  padding: 0.7rem 1ch;
+  margin: 0 0 0.9rem;
+  overflow-wrap: anywhere; white-space: pre-wrap;
+  overflow: auto; flex: 0 1 auto; min-height: 0;
+}
+.next { margin: 0; }
+
+/* the landing's knot sizing: 60 columns of art at font-size f span 36f, and
+   the letter-spacing holds any mono face to the 0.6em advance */
+.knot {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
+}
+.knot pre {
+  margin: 0;
+  color: var(--dim);
+  font-family: var(--art);
+  font-size: calc(min(100cqw, 100cqh * 60 / 56) / 36);
+  line-height: 1.2;
+  letter-spacing: calc(0.6em - 1ch);
+  white-space: pre;
+}
+
+@media (max-width: 860px) {
+  .split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    align-content: center;
+    gap: 2rem;
+    padding-block: 2rem;
+  }
+  .intro { max-width: none; }
+}
+
+@media (max-width: 860px) and (max-height: 42rem) {
+  /* too narrow and too short for the knot to be anything but noise */
+  .knot { display: none; }
+  .split { grid-template-rows: auto; align-content: center; justify-items: center; }
+  html, body { overflow: auto; }
+  .intro { max-height: none; }
+}
+
+/* too short to hold the split: the knot yields, the page may scroll */
+@media (max-height: 35rem) {
+  html, body { overflow: auto; }
+  .split { height: auto; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: none; align-content: center; justify-items: center; }
+  .knot { display: none; }
+  h1 { font-size: 3rem; }
+  .intro { max-height: none; }
+}
 </style>
 </head>
 <body>
-<main>
-  <div class="knot">
+<main class="split">
+  <section class="intro">
+    <h1>zemi @{{if .OK}}^^{{else}}&gt;&lt;{{end}}</h1>
+{{if .OK}}
+    <blockquote>signed in to <b>{{.Server}}</b></blockquote>
+    <p class="dim next" id="foot">You can close this tab and go back to your terminal.</p>
+{{else}}
+    <blockquote class="fail">could not sign in to <b>{{.Server}}</b></blockquote>
+    <p class="well">{{.Reason}}</p>
+    <p class="dim next">Go back to zemi and open /mcp to try again.</p>
+{{end}}
+  </section>
+  <section class="knot">
     <pre role="img" aria-label="a trefoil knot drawn in ascii">
                     #%%%%%%%#*
                 #%%%##%%%%##@@@@%*=
@@ -78,26 +153,15 @@ p { margin: 0; max-width: 60ch; }
 
 
                                                             </pre>
-  </div>
-
+  </section>
+</main>
 {{if .OK}}
-<h1>signed in</h1>
-<p class="tag"><span class="dim">zemi is connected to </span><b>{{.Server}}</b>.</p>
-<ul class="eyes"><li><span class="m"><span class="accent">@</span>^^</span> <span class="l">done</span></li></ul>
-<p class="dim next" id="foot">You can close this tab and go back to your terminal.</p>
 <script>
   let n = 3; const foot = document.getElementById("foot");
   const tick = () => { if (n === 0) { window.close(); foot.textContent = "You can close this tab and go back to your terminal."; return; }
     foot.textContent = "This tab closes in " + n + "s."; n--; setTimeout(tick, 1000); };
   tick();
 </script>
-{{else}}
-<h1 class="fail">sign-in failed</h1>
-<p class="tag"><span class="dim">zemi could not sign in to </span><b>{{.Server}}</b>.</p>
-<ul class="eyes"><li><span class="m"><span class="fail">@</span>&gt;&lt;</span> <span class="l">error</span></li></ul>
-<div class="cmd">{{.Reason}}</div>
-<p class="dim next">Go back to zemi and open /mcp to try again.</p>
 {{end}}
-</main>
 </body>
 </html>
