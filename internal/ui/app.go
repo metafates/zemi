@@ -392,6 +392,22 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		// Stream state lives in the host; just invalidate the frame.
 		a.bump()
 		a.streamPending.Store(false)
+		// The agent replying is the chat's home: the air a collapse held is
+		// released and a following view re-pins, so the reply streams on the
+		// composer. Every update while the reply is live re-applies it, since
+		// the collapsed render lands a frame after the reply starts. A view
+		// scrolled away to read stays put, but its next scroll to the bottom
+		// lands on the tail.
+		if a.host != nil {
+			if s := a.host.LiveStream(); s.Active && s.Text != "" {
+				if st := a.scrolls[a.scrollDef]; st != nil {
+					st.held = max(st.rows-st.viewH, 0)
+					if st.follow {
+						st.top = st.held
+					}
+				}
+			}
+		}
 	case turnDoneMsg:
 		// onFrame applies it once the agent reads idle, so a chain of turns
 		// (a queued follow-up, a goal) ends once, the way its last turn did

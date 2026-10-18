@@ -393,15 +393,39 @@ func TestChatRatchetHoldsThePush(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	// the reply streaming into the air keeps the view; past it the push resumes
+	// the reply streaming is the chat's home: a stream update re-sticks the
+	// view to the composer and releases the air the collapse held
 	host.SeedStream(hostapi.StreamSnapshot{
 		Active: true, Text: strings.Repeat("the reply grows word by word, ", 30),
 		Elapsed: 8e9,
 	})
+	app.Update(agentStreamMsg{})
 	app.renderSync(t)
 	app.Frame()
-	if st.top <= pushed {
-		t.Fatalf("a reply longer than the freed rows did not resume the push: top %d", st.top)
+	if !st.follow || st.top != max(st.rows-st.viewH, 0) || st.top+st.viewH != st.rows {
+		t.Fatalf("the reply did not restick the view: top %d of %d over %d follow %v", st.top, st.rows, st.viewH, st.follow)
+	}
+
+	// a view scrolled away to read does not move, but the spacer is gone:
+	// its next scroll to the bottom lands on the tail
+	app.scrollRows("chat", -3)
+	app.renderSync(t)
+	app.Frame()
+	away := st.top
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active: true, Text: strings.Repeat("the reply grows word by word, ", 40),
+		Elapsed: 9e9,
+	})
+	app.Update(agentStreamMsg{})
+	app.renderSync(t)
+	app.Frame()
+	if st.top != away || st.follow {
+		t.Fatalf("the reply moved a scrolled-away view: top %d follow %v, want %d anchored", st.top, st.follow, away)
+	}
+	app.scrollRows("chat", st.rows)
+	app.Frame()
+	if st.top != max(st.rows-st.viewH, 0) || !st.follow {
+		t.Fatalf("the scroll to the bottom landed at top %d of %d over %d follow %v", st.top, st.rows, st.viewH, st.follow)
 	}
 
 	// a submit sticks the view back to the composer

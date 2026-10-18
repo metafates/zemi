@@ -2085,7 +2085,10 @@ rides the `memories.md` line and its ledger entries.
   render whose content changed identity (a run view opened or left, a
   resumed session, a compaction) reports no tail, so the swap lands at the
   tail and carries no air in: only collapses watched in the view that drew
-  them leave air behind. Scrolling
+  them leave air behind. The agent replying is the chat's home: while reply
+  text is live every stream update releases the air and re-pins a following
+  view, so the reply streams on the composer; a view scrolled away to read
+  stays put, and its next scroll to the bottom lands on the tail. Scrolling
   up through that air consumes it a row per tick instead of skipping it,
   and scrolling back to the held rows re-sticks the view. While a
   turn's prompt is above the view its first row

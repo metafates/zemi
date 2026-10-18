@@ -336,6 +336,16 @@ func (h *Host) AgentStream() StreamSnapshot {
 	return h.streamLocked()
 }
 
+// LiveStream is the stream snapshot the chat renders: the session's turn, or
+// a viewed agent run's own state while one is shown.
+func (h *Host) LiveStream() StreamSnapshot {
+	_, stream := h.liveView()
+	if run := h.viewedRun(); run != nil {
+		_, _, stream, _ = run.view(stream)
+	}
+	return stream
+}
+
 // liveView is the transcript and the live turn read together, as
 // flushOutput changes them.
 func (h *Host) liveView() (Session, StreamSnapshot) {
