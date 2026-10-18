@@ -159,22 +159,25 @@ func TestFrameClock(t *testing.T) {
 	})
 }
 
-// TestComposerGrowResizesSplash: newlines typed faster than the tick
-// re-render the splash at the chat's new height at once, a render in flight
-// for the old height included, so no frame draws it a row too tall.
+// TestComposerGrowResizesSplash: the frames drawn between the composer
+// growing and the splash's re-render at the chat's new height draw the stale
+// splash cut to the region, no scrollbar, and the re-render lands at the new
+// height.
 func TestComposerGrowResizesSplash(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
 	app.screen(t)
-	var cmds []tea.Cmd
-	for range 2 {
-		_, cmd := app.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-		cmds = append(cmds, cmd)
-	}
-	for _, cmd := range cmds {
-		for _, msg := range runCmd(cmd) {
-			if r, ok := msg.(widgetsRenderedMsg); ok {
-				app.Update(r)
+	_, cmd := app.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	// the stale frame, drawn before the re-render at the new height lands
+	for _, row := range app.lastRows {
+		for _, seg := range row {
+			if seg.Bar {
+				t.Fatalf("a scrollbar is painted before the splash re-renders:\n%s", ansi.Strip(app.Frame()))
 			}
+		}
+	}
+	for _, msg := range runCmd(cmd) {
+		if r, ok := msg.(widgetsRenderedMsg); ok {
+			app.Update(r)
 		}
 	}
 	app.Frame()
@@ -184,13 +187,6 @@ func TestComposerGrowResizesSplash(t *testing.T) {
 	}
 	if w, c := app.shownWidgets()[i], app.caches["splash"]; c.height != w.height {
 		t.Fatalf("splash rendered for %d rows, the chat has %d", c.height, w.height)
-	}
-	for _, row := range app.lastRows {
-		for _, seg := range row {
-			if seg.Bar {
-				t.Fatalf("a scrollbar is painted:\n%s", ansi.Strip(app.Frame()))
-			}
-		}
 	}
 }
 

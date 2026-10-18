@@ -285,7 +285,7 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 	switch n.Kind {
 	case hostapi.LayoutRegion:
-		return len(a.regionLines(n.Region, regionWidth(n, width)))
+		return len(a.regionLines(n.Region, regionWidth(n, width), 0))
 	case hostapi.LayoutComposer:
 		if n.Frame {
 			return len(a.composerRows(frameInner(width), n.Placeholder)) + 2
@@ -410,7 +410,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutRegion && n.Scroll != "":
 		rows = a.paintScrolled(n, l.rect)
 	case n.Kind == hostapi.LayoutRegion:
-		rows = a.regionLines(n.Region, w)
+		rows = a.regionLines(n.Region, w, 0)
 		for i, row := range rows {
 			if hostapi.SegsWidth(row) == 0 {
 				rows[i] = padSegs(row, w) // a blank line is a blank row
@@ -624,7 +624,7 @@ const anchorRows = 3
 func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
 	w, h := r.Dx(), r.Dy()
 	st := a.scrollOf(n)
-	lines := a.regionLines(n.Region, regionWidth(n, w))
+	lines := a.regionLines(n.Region, regionWidth(n, w), h)
 	prevRows := st.rows
 	st.rows, st.viewH, st.rect, st.region = len(lines), h, r, n.Region
 	a.scrollIDs = append(a.scrollIDs, n.ID)
@@ -887,7 +887,7 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 	}
 	for _, pf := range s.floats {
 		f := pf.f
-		lines := a.regionLines(f.Region, pf.width)
+		lines := a.regionLines(f.Region, pf.width, 0)
 		fw, fh := pf.width, pf.height
 		if f.Width.Kind == hostapi.SizeContent {
 			fw = 0

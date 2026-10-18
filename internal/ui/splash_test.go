@@ -207,7 +207,7 @@ func TestSplashTakesBootWork(t *testing.T) {
 				t.Fatal("no splash is shown")
 			}
 			w := app.shownWidgets()[i]
-			if rows := app.regionLines("chat", w.width); len(rows) > w.height {
+			if rows := app.regionLines("chat", w.width, w.height); len(rows) > w.height {
 				t.Fatalf("the chat's widgets draw %d rows into %d:\n%s", len(rows), w.height, frame)
 			}
 			if !c.logo {

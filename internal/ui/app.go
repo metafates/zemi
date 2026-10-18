@@ -1308,7 +1308,7 @@ func headerAt(lines [][]hostapi.Segment, i int) bool {
 	return (p == hostapi.PinTurn || p == hostapi.PinSection) && (i == 0 || pinOf(lines[i-1]) != p)
 }
 
-func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
+func (a *App) regionLines(region string, width, clip int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
 	for _, wgt := range a.host.Widgets.InRegion(region) {
 		c := a.caches[wgt.ID]
@@ -1317,7 +1317,14 @@ func (a *App) regionLines(region string, width int) [][]hostapi.Segment {
 		}
 		lines := c.lines
 		if !wgt.Wrap {
-			out = append(out, widgetRows(lines, false, width)...)
+			rows := widgetRows(lines, false, width)
+			// a widget that pads to its region height (the splash) holds rows
+			// laid out for an older, taller one until its re-render lands: cut
+			// them, so the stale rows are not overflow for the view to scroll
+			if clip > 0 && c.height > clip && len(rows) == c.height {
+				rows = rows[:clip]
+			}
+			out = append(out, rows...)
 			continue
 		}
 		// Word-wrap instead of truncating; the transcript shows the
