@@ -467,14 +467,14 @@ func spaced(segs []hostapi.Segment) []hostapi.Segment {
 }
 
 // inputRow is a one-line text field at least 40 cells wide: "> " and the
-// text with its cursor, scrolled so the cursor stays inside width cells
-// (one is left for the ellipsis hostBox puts on a longer row).
+// text with its cursor, scrolled so the cursor stays inside width cells and
+// cut to them, so typing never widens the box drawn around it.
 func (c *composerState) inputRow(width int) []hostapi.Segment {
 	segs := cursorSegs([]rune(c.text), c.cursor, "")
 	if over := 2 + hostapi.SegsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}
-	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Dim", NoCopy: true}}, segs...), 40)
+	return padSegs(ellipsizeSegs(append([]hostapi.Segment{{Text: "> ", HL: "Dim", NoCopy: true}}, segs...), width), 40)
 }
 
 // cursorSegs draws r with a block cursor on the rune at cursor, or on a

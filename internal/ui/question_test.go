@@ -53,6 +53,7 @@ func pressKeys(app *App, keys ...string) {
 	named := map[string]tea.KeyPressMsg{
 		"enter": {Code: tea.KeyEnter}, "esc": {Code: tea.KeyEscape}, "space": {Code: tea.KeySpace, Text: " "},
 		"backspace": {Code: tea.KeyBackspace}, "shift+down": {Code: tea.KeyDown, Mod: uv.ModShift},
+		"left": {Code: tea.KeyLeft},
 	}
 	for _, k := range keys {
 		msg, ok := named[k]
@@ -123,6 +124,40 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[{[skip]  only in this repo} {[tests lint]  }]" {
 		t.Fatalf("answers %+v ok=%v", r.answers, r.ok)
 	}
+}
+
+// TestQuestionTypingKeepsBox: typing past the field, a cursor moved into
+// the text and a kept note cut to the field never widen the question's box.
+func TestQuestionTypingKeepsBox(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 18)
+	done := askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}, {Label: "no"}}})
+	width := func() int {
+		app.renderSync(t)
+		f := ansi.Strip(app.Frame())
+		top := strings.Index(f, "┌ Question")
+		if top < 0 {
+			t.Fatalf("no question box:\n%s", f)
+		}
+		return ansi.StringWidth(strings.Split(f[top:], "\n")[0])
+	}
+	want := width()
+	pressKeys(app, "j", "j", "enter") // the typed-answer row, focused
+	for i := range 3 {
+		pressKeys(app, strings.Repeat("0123456789", 4))
+		if got := width(); got != want {
+			t.Fatalf("typing %d chars widened the box from %d to %d", (i+1)*40, want, got)
+		}
+	}
+	pressKeys(app, "left", "left", "left", "left", "left", "x", "y", "z")
+	if got := width(); got != want {
+		t.Fatalf("typing at a moved cursor widened the box from %d to %d", want, got)
+	}
+	pressKeys(app, "esc") // the draft is kept and shown on the field row
+	if got := width(); got != want {
+		t.Fatalf("a kept note widened the box from %d to %d", want, got)
+	}
+	pressKeys(app, "enter", "enter")
+	awaitAnswer(t, app, done)
 }
 
 func TestQuestionAnswers(t *testing.T) {

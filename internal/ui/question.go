@@ -422,25 +422,27 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 
 // field is the row under the options holding the question's one text: a
 // note on the picks, or the typed answer while the highlight is on the last
-// row. It is always drawn behind a fixed label column, so focusing it or
-// moving the highlight shifts nothing.
+// row. It is always drawn behind a fixed label column and cut to the field's
+// width, so focusing it, moving the highlight or typing shifts nothing.
 func (st *qState) field(q tools.Question, w int) []hostapi.Segment {
-	name, text := "Note", hostapi.Segment{Text: "add a note", HL: hostapi.ChromeHint}
+	name, text := "Note", []hostapi.Segment{{Text: "add a note", HL: hostapi.ChromeHint}}
 	tail := st.sel == len(q.Options)
 	if tail {
-		name, text = "Answer", hostapi.Segment{Text: "type to answer", HL: hostapi.ChromeHint}
+		name, text = "Answer", []hostapi.Segment{{Text: "type to answer", HL: hostapi.ChromeHint}}
 	}
 	if s := strings.Join(strings.Fields(st.input.text), " "); s != "" {
-		text = hostapi.Segment{Text: s, HL: hostapi.ChromeValue}
+		text = []hostapi.Segment{{Text: s, HL: hostapi.ChromeValue}}
 	}
+	text = ellipsizeSegs(text, w-12)
 	row := []hostapi.Segment{{Text: fmt.Sprintf("%-8s", name), HL: hostapi.ChromeHint}}
 	switch {
 	case st.typing:
 		row = append(row, st.input.inputRow(w-8)...)
 	case tail:
-		row = append(row, text)
+		row = append(row, text...)
 	default:
-		row = append(row, hostapi.Segment{Text: "[", HL: hostapi.ChromeHint}, hostapi.Segment{Text: "n", HL: hostapi.ChromeHintKey}, hostapi.Segment{Text: "] ", HL: hostapi.ChromeHint}, text)
+		row = append(row, hostapi.Segment{Text: "[", HL: hostapi.ChromeHint}, hostapi.Segment{Text: "n", HL: hostapi.ChromeHintKey}, hostapi.Segment{Text: "] ", HL: hostapi.ChromeHint})
+		row = append(row, text...)
 	}
 	for i := range row {
 		row[i].Hit = q.ListRows() + 1

@@ -137,14 +137,15 @@ func (f *listFilter) set(query string) {
 const filterMin = 5
 
 // filterRow is the query line above a list, a hint while no query is open
-// so opening one adds no row.
-func (f *listFilter) filterRow() []hostapi.Segment {
+// so opening one adds no row. It is cut to the box's inner width, so a long
+// query widens nothing: an active one keeps its end, the cursor included.
+func (f *listFilter) filterRow(w int) []hostapi.Segment {
 	slash := hostapi.Segment{Text: "/ ", HL: hostapi.ChromeHintKey}
 	switch r := []rune(f.query); {
 	case f.active:
-		return append([]hostapi.Segment{slash}, cursorSegs(r, len(r), hostapi.ChromeBold)...)
+		return tailSegs(append([]hostapi.Segment{slash}, cursorSegs(r, len(r), hostapi.ChromeBold)...), w)
 	case f.query != "":
-		return []hostapi.Segment{slash, {Text: f.query, HL: hostapi.ChromeValue}}
+		return ellipsizeSegs([]hostapi.Segment{slash, {Text: f.query, HL: hostapi.ChromeValue}}, w)
 	}
 	return []hostapi.Segment{{Text: "/", HL: hostapi.ChromeHintKey}, {Text: " filter", HL: hostapi.ChromeHint}}
 }
@@ -823,7 +824,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		case st.back && len(st.o.Items) > 0:
 		case len(st.o.Items) > 0:
 			if st.filterable {
-				head = [][]hostapi.Segment{st.filterRow()}
+				head = [][]hostapi.Segment{st.filterRow(bodyW)}
 			}
 			if len(st.visible) == 0 {
 				listPH, fixed = nil, emptyRows(noMatches, inner)

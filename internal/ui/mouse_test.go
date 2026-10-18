@@ -196,6 +196,21 @@ func TestFilterKeys(t *testing.T) {
 	}
 }
 
+// TestFilterRowWidth: a long query is cut to the box's width, the active
+// one keeping its end and cursor, so filtering widens no box.
+func TestFilterRowWidth(t *testing.T) {
+	const w = 30
+	f := listFilter{query: strings.Repeat("x", 60), labels: []string{"a"}}
+	f.active = true
+	if row := f.filterRow(w); hostapi.SegsWidth(row) != w || row[len(row)-1].HL != hostapi.ChromeCursor {
+		t.Errorf("active query not cut to %d with its cursor kept: %q", w, hostapi.SegsText(row))
+	}
+	f.active = false
+	if row := f.filterRow(w); hostapi.SegsWidth(row) > w {
+		t.Errorf("kept query wider than %d: %q", w, hostapi.SegsText(row))
+	}
+}
+
 // TestHoverTargets: hover and click act on whole items, and only with the
 // pointer over the item's own cells.
 func TestHoverTargets(t *testing.T) {
