@@ -1,7 +1,6 @@
 // intake.go applies the §10.4 memory intake policy host-side, whatever the
 // autonomy mode: sanitize and cap the text and the quote, scrub secrets,
-// require provenance and origin, and flag instruction-shaped text for the
-// review queue.
+// and require provenance and origin.
 
 package learn
 
@@ -15,13 +14,11 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// Result is a policy-clean memory ready to store, plus the flags the
-// autonomy gate needs.
+// Result is a policy-clean memory ready to store.
 type Result struct {
-	Memory            store.Memory
-	Scrubbed          bool   // a secret span of the quote was redacted
-	InstructionShaped bool   // routes to the review queue even under auto
-	Supersedes        string // id of the memory this one replaces, linked when stored
+	Memory     store.Memory
+	Scrubbed   bool   // a secret span of the quote was redacted
+	Supersedes string // id of the memory this one replaces, linked when stored
 }
 
 // Intake validates and cleans one memory (DESIGN §10.4). Errors are
@@ -54,8 +51,7 @@ func Intake(scope store.Scope, origin store.Origin, text, quote, provenance stri
 			ProvenanceSessionID: provenance,
 			Origin:              origin,
 		},
-		Scrubbed:          qs,
-		InstructionShaped: InstructionShaped(clean),
+		Scrubbed: qs,
 	}, nil
 }
 

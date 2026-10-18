@@ -21,7 +21,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -558,13 +557,6 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 			h.Log.Warn("tool.post rewrite ignored", "origin", "tools", "tool", name, "from", string(hd.Origin))
 		default:
 			out = *rewrite
-			if hd.Origin == lua.OriginPlugin {
-				sid, ok := ctx.Value(runSessionKey{}).(string)
-				if !ok {
-					sid = h.AgentSessionID()
-				}
-				h.markNotLocal(sid, perm.PluginPrincipal(h.PluginOf(hd.Path)))
-			}
 		}
 	}
 	return h.postOutput(pad, name, output, out)

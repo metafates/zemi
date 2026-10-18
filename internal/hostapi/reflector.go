@@ -55,8 +55,8 @@ What a memory is
 - Never secrets, credentials, tokens or key material; short identifiers at most, and an env var by name.
 
 The index
-- The index below is every memory the prompt of every session carries, as [id scope origin age], with each scope's budget use. Do not repeat one, or a memory awaiting review, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id (the first field) and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. The user reviews every retirement.
-- A scope the index marks full is near its budget: a new memory there cuts that scope's oldest learned lines, and when the cut would reach a line the user saved nothing is written and the memory waits for review. So merging is preferred: set replaces to one id and write the merged sentence, then retire the other with replaces and empty text.
+- The index below is every memory the prompt of every session carries, as [id scope origin age], with each scope's budget use. Do not repeat one, or a memory awaiting review, in other words or from another angle. When this session refines one, replace it: set "replaces" to its id (the first field) and write the merged sentence. When the session shows one is no longer true and nothing replaces it, retire it: "replaces" with its id and "text" empty. A retirement applies at once; a memory the user saved is never retired by you.
+- A scope the index marks full is near its budget: a new memory there cuts that scope's oldest learned lines to the ledger, and what still cannot fit lives in the memory trail. So merging is preferred: set replaces to one id and write the merged sentence, then retire the other with replaces and empty text.
 
 Answer with a JSON object and nothing else, no code fences:
 {"memories":[{"scope":"project","text":"...","quote":"","replaces":""}]}
@@ -604,6 +604,14 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			continue
 		}
 		if strings.TrimSpace(pm.Text) == "" && pm.Replaces != "" {
+			if h.memoryAuto() {
+				if h.retireMemory(sid, pm.Replaces) {
+					stored++
+				} else {
+					skipped++
+				}
+				continue
+			}
 			if added, err := h.queueForget(sid, pm.Replaces); err != nil {
 				skipped++
 				h.Log.Debug("retirement skipped", "origin", "reflector", "id", pm.Replaces, "error", err)
@@ -626,13 +634,6 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 				continue
 			}
 			res.Supersedes = old.ID
-		}
-		if stored >= memoryAutoApplyCap {
-			// the run carries its own budget: it stores for a closed session
-			if h.queueProposal(res) {
-				queued++
-			}
-			continue
 		}
 		if busy[scope] {
 			// a store another zemi held queued the batch: the rest waits for
@@ -671,6 +672,26 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		}
 	}
 	return stored, queued, superseded, skipped
+}
+
+// retireMemory drops the memory id at once, the auto form of the forget
+// proposal the ask path queues: a memory the user saved is never retired
+// here, the user drops their own lines.
+func (h *Host) retireMemory(sid, id string) bool {
+	p, m, err := h.locateMemory(id)
+	if err != nil {
+		h.Log.Debug("retirement skipped", "origin", "reflector", "id", id, "error", err)
+		return false
+	}
+	if m.Origin == store.OriginUser {
+		h.Log.Debug("retirement skipped: the user saved it", "origin", "reflector", "id", id)
+		return false
+	}
+	if err := brain.Forget(p, sid, m.ID, h.now()); err != nil {
+		h.Log.Debug("retirement skipped", "origin", "reflector", "id", id, "error", err)
+		return false
+	}
+	return true
 }
 
 // reflectorCommands is /reflect.

@@ -232,25 +232,14 @@ func TestMemoryGate(t *testing.T) {
 		scope       store.Scope
 		text, quote string
 		note        bool   // /memory <note> instead of the tool
-		closed      bool   // written by a session that is not the live one
 		refused     bool   // nothing was stored, so the answer is an error
 		want        string // in the answer or the error
 		check       func(t *testing.T, h *Host, ui *fakeUI, replaces string)
 	}{
 		{name: "project fact stores", text: "the deploy script lives in bin/deploy", want: "saved as "},
 		{name: "ask queues", autonomy: "ask", text: "the deploy script lives in bin/deploy", want: "queued for the user's review"},
-		{name: "instruction shape queues", text: "always run make check before a commit", want: "(instruction-shaped text)"},
-		{
-			name: "spent auto budget queues", text: "the deploy script lives in bin/deploy",
-			seed: func(t *testing.T, h *Host, sid string) string { h.agents.memAuto = memoryAutoApplyCap; return "" },
-			want: "(this session's auto budget is spent)",
-		},
-		{
-			name: "a closed session skips the live budget", closed: true, text: "the deploy script lives in bin/deploy",
-			seed: func(t *testing.T, h *Host, sid string) string { h.agents.memAuto = memoryAutoApplyCap; return "" },
-			want: "saved as ",
-		},
-		{name: "user fact without a quote queues", scope: "user", text: "the user wants short replies", want: "(a memory about the user needs a quote)"},
+		{name: "instruction shape stores", text: "always run make check before a commit", want: "saved as "},
+		{name: "user fact without a quote stores", scope: "user", text: "the user wants short replies", want: "saved as "},
 		{
 			name: "quote in a user row stores", scope: "user", text: "the user wants short replies",
 			seed: func(t *testing.T, h *Host, sid string) string {
@@ -415,14 +404,19 @@ func TestMemoryGate(t *testing.T) {
 			},
 		},
 		{
-			name: "replacing the user's memory queues", text: "the deploy script lives in bin/deploy",
+			name: "replacing the user's memory stores", text: "the deploy script lives in bin/deploy",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				if err := h.Remember("deploy by hand"); err != nil {
 					t.Fatal(err)
 				}
 				return projectMemories(t, h)[0].ID
 			},
-			want: "(replaces a memory the user saved",
+			want: "saved as ",
+			check: func(t *testing.T, h *Host, ui *fakeUI, replaces string) {
+				if supersededBy(t, h, replaces) == "" {
+					t.Fatal("the replaced memory is still live")
+				}
+			},
 		},
 		{
 			name: "empty text forgets a learned memory", text: "",
@@ -535,10 +529,6 @@ func TestMemoryGate(t *testing.T) {
 			if tc.seed != nil {
 				replaces = tc.seed(t, h, sid)
 			}
-			if tc.closed {
-				sid = seedSession(t, h) // the run's own session; another one is live now
-				seedSession(t, h)
-			}
 			var msg string
 			var err error
 			if tc.note {
@@ -562,51 +552,6 @@ func TestMemoryGate(t *testing.T) {
 			}
 			if tc.check != nil {
 				tc.check(t, h, ui, replaces)
-			}
-		})
-	}
-}
-
-// TestMemoryAutoQueuesOutsideText: auto autonomy still queues in an
-// untrusted project and in a session that it or a subagent fed text from
-// outside the machine.
-func TestMemoryAutoQueuesOutsideText(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		untrusted    bool
-		tool, inTool string // a tool the session called, one its subagent called
-		stored, fork bool
-	}{
-		{name: "trusted, local tools", tool: "shell", inTool: "read", stored: true},
-		{name: "untrusted project", untrusted: true},
-		{name: "fetch in the session", tool: "fetch"},
-		{name: "mcp tool", tool: "mcp_github_search"},
-		{name: "lua-registered tool", tool: "jira_lookup"},
-		{name: "forked after a fetch", tool: "fetch", fork: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h, _ := newTestHostDB(t)
-			h.Settings.SetQuiet("memory.autonomy", "auto")
-			h.SetProjectTrusted(!tc.untrusted)
-			sid := seedSession(t, h)
-			child := store.ShortID()
-			if err := h.DB.CreateSession(child, sid, "sub", "general"); err != nil {
-				t.Fatal(err)
-			}
-			if tc.tool != "" {
-				h.recordToolCall(sid, StreamTool{ID: "c1", Name: tc.tool}, true)
-			}
-			if tc.inTool != "" {
-				h.recordToolCall(child, StreamTool{ID: "c2", Name: tc.inTool}, true)
-			}
-			if tc.fork {
-				if _, err := h.ForkSession(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			out, err := h.proposeMemory(h.AgentSessionID(), store.OriginLearned, "project", "the build uses make", "", "")
-			if err != nil || (out.ID != "") != tc.stored {
-				t.Fatalf("stored = %+v, want %v (%v)", out, tc.stored, err)
 			}
 		})
 	}
@@ -847,6 +792,7 @@ func TestMemoryFileMode(t *testing.T) {
 	const fm = "---\ndescription: repo map\nread_if: before code changes\n---\nbody\n"
 	for _, tc := range []struct {
 		name, path, content string
+		autonomy            string
 		seed                func(t *testing.T, h *Host)
 		want                string
 		check               func(t *testing.T, h *Host, sid string)
@@ -854,9 +800,6 @@ func TestMemoryFileMode(t *testing.T) {
 		{
 			name: "a creation applies", path: "map.md", content: fm, want: "wrote map.md",
 			check: func(t *testing.T, h *Host, sid string) {
-				if h.agents.memAuto != 1 {
-					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
-				}
 				_, private := h.brainParts()
 				b, err := os.ReadFile(filepath.Join(private.Dir, "map.md"))
 				if err != nil || !strings.Contains(string(b), "repo map") {
@@ -871,24 +814,6 @@ func TestMemoryFileMode(t *testing.T) {
 			},
 		},
 		{
-			name: "the spent auto budget queues", path: "map.md", content: fm,
-			seed: func(t *testing.T, h *Host) { h.agents.memAuto = memoryAutoApplyCap },
-			want: "queued for the user's review (this session's auto budget is spent)",
-		},
-		{
-			name: "an overwrite of a foreign file queues", path: "map.md", content: fm,
-			seed: func(t *testing.T, h *Host) {
-				_, private := h.brainParts()
-				if err := os.MkdirAll(private.Dir, 0o700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(private.Dir, "map.md"), []byte("foreign"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			want: "queued for the user's review (the file was not written by this session",
-		},
-		{
 			name: "the reserved name refuses", path: "memories.md", content: fm,
 			want: "the memory tool owns this file",
 		},
@@ -897,18 +822,23 @@ func TestMemoryFileMode(t *testing.T) {
 			want: "the memory tool writes files in its private brain",
 		},
 		{
-			name: "multi-line frontmatter queues", path: "map.md",
+			name: "multi-line frontmatter queues under ask", path: "map.md", autonomy: "ask",
 			content: "---\ndescription: |\n  two lines\nread_if: before code\n---\nbody", want: "queued for the user's review (multi-line frontmatter)",
 		},
 		{
-			name: "oversized frontmatter queues", path: "map.md",
+			name: "oversized frontmatter queues under ask", path: "map.md", autonomy: "ask",
 			content: "---\ndescription: " + strings.Repeat("d ", 150) + "\nread_if: before code\n---\nbody",
 			want:    "queued for the user's review (the description or read_if is over 200 characters)",
 		},
 		{
-			name: "instruction-shaped frontmatter queues", path: "map.md",
+			name: "instruction-shaped frontmatter queues under ask", path: "map.md", autonomy: "ask",
 			content: "---\ndescription: always run make check first\nread_if: before code\n---\nbody",
 			want:    "queued for the user's review (instruction-shaped frontmatter)",
+		},
+		{
+			name: "instruction-shaped frontmatter applies under auto", path: "map.md",
+			content: "---\ndescription: always run make check first\nread_if: before code\n---\nbody",
+			want:    "wrote map.md",
 		},
 		{name: "missing frontmatter applies", path: "map.md", content: "just a body", want: "wrote map.md"},
 		{
@@ -924,7 +854,7 @@ func TestMemoryFileMode(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.SetProjectTrusted(true)
 			sid := seedSession(t, h)
-			h.Settings.SetQuiet("memory.autonomy", "auto")
+			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			if tc.seed != nil {
 				tc.seed(t, h)
 			}
@@ -949,11 +879,11 @@ func TestMemoryFileMode(t *testing.T) {
 		})
 	}
 
-	t.Run("the overwrite gate queues a foreign file and a stale one", func(t *testing.T) {
+	t.Run("under ask the overwrite gate names a foreign file and a stale one", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
-		h.Settings.SetQuiet("memory.autonomy", "auto")
+		h.Settings.SetQuiet("memory.autonomy", "ask")
 		_, private := h.brainParts()
 		if err := os.MkdirAll(private.Dir, 0o700); err != nil {
 			t.Fatal(err)
@@ -962,12 +892,15 @@ func TestMemoryFileMode(t *testing.T) {
 			t.Cleanup(func() { _ = db.Close() })
 		}
 		path := filepath.Join(private.Dir, "map.md")
-		if _, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil {
+		// a file this session did not write: the overwrite queues naming it
+		if err := os.WriteFile(path, []byte("foreign"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		// the session's own write, unchanged, applies again
-		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm + "more\n"}); err != nil || !strings.Contains(msg, "wrote map.md") {
-			t.Fatalf("own overwrite: %q, %v", msg, err)
+		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil || !strings.Contains(msg, "queued for the user's review (the file was not written by this session") {
+			t.Fatalf("foreign overwrite: %q, %v", msg, err)
+		}
+		if err := h.acceptFileProposal(&h.memoryProposals()[0]); err != nil {
+			t.Fatal(err)
 		}
 		// a foreign edit breaks the write set's hash: the next write queues
 		if err := os.WriteFile(path, []byte(fm+"edited by a window\n"), 0o600); err != nil {
@@ -976,12 +909,12 @@ func TestMemoryFileMode(t *testing.T) {
 		msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm})
 		if err != nil || !strings.Contains(msg, "queued for the user's review (the file changed since this session wrote it") {
 			t.Fatalf("stale overwrite: %q, %v", msg, err)
-		} // the queued proposal's accept writes the file and joins the write set
-		p := h.memoryProposals()[0]
-		if err := h.acceptFileProposal(&p); err != nil {
+		}
+		if err := h.acceptFileProposal(&h.memoryProposals()[0]); err != nil {
 			t.Fatal(err)
 		}
-		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil || !strings.Contains(msg, "wrote map.md") {
+		// the accept joined the write set: the gate passes an unchanged file on
+		if msg, err := h.memoryTool(h.PipelineFor(), sid, tools.MemoryCall{Path: path, Content: fm}); err != nil || !strings.Contains(msg, "queued for the user's review (memory.autonomy is not auto)") {
 			t.Fatalf("write after accept: %q, %v", msg, err)
 		}
 	})
@@ -1075,27 +1008,35 @@ func TestPromoteMemory(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                string
+		autonomy            string
 		seed                func(t *testing.T, h *Host) store.Memory
 		path, want          string
 		description, readIf string
 		check               func(t *testing.T, h *Host, m store.Memory)
 	}{
 		{
-			name: "a user line queues", path: "d.md", description: "d", readIf: "r",
+			name: "a user line queues under ask", autonomy: "ask", path: "d.md", description: "d", readIf: "r",
 			seed: func(t *testing.T, h *Host) store.Memory {
 				return seedLine(t, h, "project", store.OriginUser, "deploy by hand")
 			},
 			want: "queued for the user's review (it moves a memory you saved)",
 		},
 		{
-			name: "a learned line in the user scope queues", path: "d.md", description: "d", readIf: "r",
+			name: "a user line applies under auto", path: "d.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginUser, "deploy by hand")
+			},
+			want: "promoted ",
+		},
+		{
+			name: "a learned line in the user scope queues under ask", autonomy: "ask", path: "d.md", description: "d", readIf: "r",
 			seed: func(t *testing.T, h *Host) store.Memory {
 				return seedLine(t, h, "user", store.OriginLearned, "short replies everywhere")
 			},
 			want: "(it writes into the brain every project sees)",
 		},
 		{
-			name: "instruction-shaped frontmatter queues", path: "d.md", description: "always run make check first", readIf: "r",
+			name: "instruction-shaped frontmatter queues under ask", autonomy: "ask", path: "d.md", description: "always run make check first", readIf: "r",
 			seed: func(t *testing.T, h *Host) store.Memory {
 				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
 			},
@@ -1182,9 +1123,6 @@ func TestPromoteMemory(t *testing.T) {
 				if hash, ours := h.brainWriteOf(filepath.Join(private.Dir, "d.md")); !ours || hash == "" {
 					t.Fatal("the write set does not name the file")
 				}
-				if h.agents.memAuto != 1 {
-					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
-				}
 			},
 		},
 		{
@@ -1198,14 +1136,12 @@ func TestPromoteMemory(t *testing.T) {
 				if slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
 					t.Fatal("the archived line came back live")
 				}
-				if h.agents.memAuto != 1 {
-					t.Fatalf("the apply spent no auto budget: %d", h.agents.memAuto)
-				}
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, sid, _ := setup(t)
+			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			m := tc.seed(t, h)
 			msg, err := call(h, sid, m.ID, tc.path, tc.description, tc.readIf)
 			if err != nil {

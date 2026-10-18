@@ -20,9 +20,6 @@ func TestIntakeCleansAndFlags(t *testing.T) {
 	if res.Memory.Origin != "learned" {
 		t.Fatalf("meta = %+v", res.Memory)
 	}
-	if res.InstructionShaped {
-		t.Fatal("fact flagged as instruction")
-	}
 }
 
 func TestIntakeScrubsSecrets(t *testing.T) {

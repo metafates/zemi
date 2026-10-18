@@ -133,11 +133,10 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `gateMemory`, as the reflector's entries do: `learn.Similar` refuses a near-duplicate, a
   learned user-scope memory's `quote` is checked against the typed part of the session's user
   rows (`quoteInSession`, cut at `agent.AttachMarker`), and an apply that would push its
-  scope past `brain.ScopeBudget` cuts its oldest learned lines to the ledger, a cut that
-  would take a user line queueing instead. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write`),
-  and a learned one goes at once only when `memoryAuto` holds; `subagentHooks`
-  and `markNotLocal` record what makes a session not local-only, once per session and in a
-  subagent run's own. A plugin's send reaches the model behind
+  scope past `brain.ScopeBudget` cuts its oldest learned lines to the ledger. Under
+  `memory.autonomy = auto` (the default) everything applies or retires at once, a memory the
+  user saved never among them; `ask` queues for /memory instead. A forget (`forgetMemory`) of
+  a memory the user saved asks (`memory.write`). A plugin's send reaches the model behind
   `agent.Attached("plugin:<name>")`, so no quote comes from it.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and

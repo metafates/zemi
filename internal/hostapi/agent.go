@@ -189,13 +189,11 @@ type agentHost struct {
 
 	// brain is the # Brain section, pinned at session open (DESIGN §10.7) and rebuilt
 	// at compaction and a mid-session trust flip, brainGlobs the pointer
-	// table built with it; memAuto counts auto-applied memories against the
-	// session cap (memory proposals persist in the store). hookCtx is what
+	// table built with it. hookCtx is what
 	// the plugins' SessionStart hooks captured for this session.
 	brain      string
 	brainGlobs []brainGlob
 	hookCtx    string
-	memAuto    int
 	// brainWrites are the brain files this session wrote, keyed by their
 	// resolved path with the hash each write saw: a later file-mode write
 	// applies only while the file still matches (DESIGN §10.4's overwrite gate).
@@ -1716,7 +1714,6 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	}
 	ag.sessionID = sid
 	ag.env = ""
-	ag.memAuto = 0
 	ag.brain, ag.brainGlobs = brain, globs
 	ag.mu.Unlock()
 	// the tab, the exit banner and zemi.session.title() read the first
@@ -2559,10 +2556,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// interpreter (DESIGN §4), so what it reports here is what can be known
 	// before it starts; later failures reach the transcript.
 	// A plugin's text goes to the model behind agent.Attached, so it is never
-	// the user's words, and it marks the session not local-only (DESIGN §6.3).
+	// the user's words (DESIGN §6.3).
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
-		plugin := ""
 		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 			if h.hooks() == nil {
 				// nothing bounds a chain of turns, and zemi run exits after its own
@@ -2572,8 +2568,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}
-			plugin = h.principal(L)
-			text = agent.Attached(plugin, text)
+			text = agent.Attached(h.principal(L), text)
 		} else {
 			h.refuseBelowUser(L, "agent.send")
 		}
@@ -2585,16 +2580,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {
-			if plugin != "" {
-				h.markNotLocal(h.AgentSessionID(), plugin) // before the turn could write a memory
-			}
-			err := h.AgentSend(text)
-			switch {
-			case err != nil:
+			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("zemi.agent.send failed", "origin", "agent", "error", err)
 				h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
-			case plugin != "":
-				h.markNotLocal(h.AgentSessionID(), plugin) // a fresh session exists only now
 			}
 		})
 		L.Push(glua.LTrue)

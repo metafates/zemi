@@ -223,10 +223,10 @@ func learnedMemory(t *testing.T, h *Host, scope store.Scope, text, quote string)
 
 // TestReflectApply pins what becomes of a proposal: it is parsed out of
 // prose, scrubbed and gated like a live memory (stored under auto, queued
-// under ask or when instruction-shaped, a user memory needs a quote the
-// user wrote, a replaced memory is superseded, a retirement waits for
-// review, a near-duplicate and a skills key do nothing), provenance is the
-// read session's, whose budget and ledger it uses, and only what the
+// under ask, a quote the user wrote or no memory, a replaced memory is
+// superseded, a learned retirement applies and a user-saved one is skipped,
+// a near-duplicate and a skills key do nothing), provenance is the
+// read session's, whose ledger it uses, and only what the
 // prompt held is marked seen.
 func TestReflectApply(t *testing.T) {
 	const fact = "the deploy script requires the labels sequence bumped first"
@@ -254,7 +254,7 @@ func TestReflectApply(t *testing.T) {
 			},
 		},
 		{name: "a user preference with the user's words stores", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"Short replies please"}]}`, stored: 1},
-		{name: "a user preference without a quote queues", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, queued: 1},
+		{name: "a user preference without a quote stores", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, stored: 1},
 		{name: "a quote the user never wrote drops the memory", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"long replies please"}]}`},
 		{
 			name: "replaces by the index's id supersedes the old memory, near-duplicate or not",
@@ -304,7 +304,23 @@ func TestReflectApply(t *testing.T) {
 			},
 		},
 		{
-			name: "replaces with empty text queues a forget",
+			name: "a retirement applies at once and a user-saved memory is kept",
+			seed: func(t *testing.T, h *Host, sid string) string {
+				if err := h.Remember("deploy by hand"); err != nil {
+					t.Fatal(err)
+				}
+				return learnedMemory(t, h, "project", "the deploy script needs a vault token", "")
+			},
+			doc: `{"memories":[{"text":"","replaces":"OLD"}]}`, stored: 1,
+			check: func(t *testing.T, h *Host, sid string) {
+				live := projectMemories(t, h)
+				if len(live) != 1 || live[0].Origin != store.OriginUser {
+					t.Fatalf("want only the user's memory left: %+v", live)
+				}
+			},
+		},
+		{
+			name: "a retirement under ask queues a forget", autonomy: "ask",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				return learnedMemory(t, h, "project", "deploy by hand", "")
 			},
@@ -320,7 +336,7 @@ func TestReflectApply(t *testing.T) {
 			seed: func(t *testing.T, h *Host, sid string) string { return learnedMemory(t, h, "project", fact, "") },
 			doc:  `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped"}]}`,
 		},
-		{name: "instruction-shaped text queues", doc: `{"memories":[{"scope":"project","text":"always run the deploy before reviews"}]}`, queued: 1},
+		{name: "instruction-shaped text stores", doc: `{"memories":[{"scope":"project","text":"always run the deploy before reviews"}]}`, stored: 1},
 		{
 			name: "a secret is refused", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`,
 			check: func(t *testing.T, h *Host, sid string) {
@@ -359,9 +375,6 @@ func TestReflectApply(t *testing.T) {
 			}
 			if queued := len(h.memoryProposals()); stored != c.stored || queued != c.queued {
 				t.Fatalf("stored %d queued %d, want %d and %d", stored, queued, c.stored, c.queued)
-			}
-			if h.agents.memAuto != 0 {
-				t.Fatalf("closed session spent the live budget: memAuto=%d", h.agents.memAuto)
 			}
 			if c.check != nil {
 				c.check(t, h, sid)
@@ -500,15 +513,15 @@ func TestReflectPrompt(t *testing.T) {
 	}
 }
 
-// TestReflectForgetThroughReview: an empty text with replaces retires a
-// memory only through review, even under auto, once per memory; accepting
+// TestReflectForgetThroughReview: under ask, an empty text with replaces
+// retires a memory only through review, once per memory; accepting
 // deletes it, rejecting keeps it, accepting after a rewrite keeps the
 // rewrite, accepting after a move deletes it where it went, and a pending
 // forget does not block saving its text again.
 func TestReflectForgetThroughReview(t *testing.T) {
 	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "merged", "deleted"} {
 		h, r := newTestHostDB(t)
-		h.Settings.SetQuiet("memory.autonomy", "auto")
+		h.Settings.SetQuiet("memory.autonomy", "ask")
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
 		seedTranscript(t, h, sid)

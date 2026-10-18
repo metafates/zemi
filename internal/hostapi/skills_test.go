@@ -293,6 +293,7 @@ func TestSkillCommands(t *testing.T) {
 // origin may decide.
 func TestLearnListAndDecide(t *testing.T) {
 	h, r := newTestHostSkills(t)
+	h.Settings.SetQuiet("memory.autonomy", "ask")
 	seedSession(t, h)
 
 	runUser(t, r, `zemi.memory.add("deploy script lives in bin/deploy")`)

@@ -947,8 +947,8 @@ project handler's is ignored and logged, as its `tool.pre` rewrites are.
 One call's handlers get 30 s of wall time, waits included, each slice
 between waits the 50 ms veto deadline; esc ends them, and one that fails
 or runs late leaves the output as it was, its error in `/errors`. A
-rewrite touches neither the diff, `changed` nor the permission decision,
-and a plugin's marks the session not local-only (§10.4). A call with no
+rewrite touches neither the diff, `changed` nor the permission decision.
+A call with no
 handler runs no Lua.
 
 ### 6.3 Agents, sessions, models
@@ -1182,8 +1182,8 @@ It costs money, and the manifest's `uses` naming `model` is what consents to it 
 code may not call it, and a reload cancels it. `zemi.agent.send` from a plugin
 settles the same way; project code may not send at all. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
-named after the plugin, so it is never the user's words (§10.4), and the
-send marks the session not local-only. `zemi run` refuses a
+named after the plugin, so it is never the user's words (§10.4).
+`zemi run` refuses a
 plugin's send: nothing would bound a chain of turns, and `zemi run` exits after
 its own.
 
@@ -2454,8 +2454,8 @@ rides the `memories.md` line and its ledger entries.
    edits to files in the config dir, made by the user or by the agent
    through the permission-gated file tools (§6.1).
 
-Memory enters through the intake policy below (its review queue is the verify
-leg; supersede and delete via `/memory` are its rollback).
+Memory enters through the intake policy below (under `ask` its queue is the
+verify leg; supersede and delete via `/memory` are its rollback).
 
 ### 10.2 Capture
 
@@ -2526,25 +2526,26 @@ Output: a JSON proposal document (schema-validated):
 
 Each entry goes through the §10.4 intake and gate like one the live
 agent's `memory` tool writes: `quote` is checked against the session's
-user rows and a miss drops the entry, a user-scope entry without one
-queues, a near-duplicate of a live or pending memory is skipped, and
-`replaces` supersedes the memory it names once the new one is stored. An
-entry with `replaces` set and an empty `text` retires that memory: the
-reflector read in the session that it stopped being true. Retirements
-always queue as forget proposals (a copy of the memory, shown as `forget:
-<text>` in `/memory` and with `forget = true` in `zemi.learn.list()`),
-whatever the autonomy, since deleting loses data; accepting one deletes the
-memory, rejecting keeps it.
+user rows and a miss drops the entry, a near-duplicate of a live or pending
+memory is skipped, and `replaces` supersedes the memory it names once the
+new one is stored. An entry with `replaces` set and an empty `text` retires
+that memory: the reflector read in the session that it stopped being true.
+Under `ask` a retirement queues as a forget proposal (a copy of the memory,
+shown as `forget: <text>` in `/memory` and with `forget = true` in
+`zemi.learn.list()`), since deleting loses data; under `auto` it applies at
+once, except a memory the user saved, which the reflector never touches -
+accepting a queued forget deletes the memory, rejecting keeps it.
 
 The reflector is constrained by prompt and by pipeline: it can only emit
-proposals; application is a separate, reviewed step. Its view of live
+proposals; application happens in the host. Its view of live
 memories - the dedup and the retirement targets - is the partitions'
 `memories.md` lines plus the ledger (§7), and each entry it applies goes
 through the same gate and lock as a memory-tool write, ledger first. An
-entry the gate passes applies, one it refuses queues as a pending proposal,
-and a file apply that failed (the partition lock held, a rename error)
-queues too: only when every entry has applied or queued is the delta marked
-seen, so nothing a run proposed is lost. Memories go through
+entry the gate passes applies, one it refuses under `ask` queues as a
+pending proposal, and a file apply that failed (the partition lock held, a
+rename error) queues too: only when every entry has applied or queued is
+the delta marked seen, so nothing a run proposed is lost. Memories go
+through
 the intake policy (§10.4) into the brain; there is no reflector scratch
 directory and no path into the config dir, and it drafts no skills: a
 procedure is a recipe the live agent writes under the user's eyes. The
@@ -2587,15 +2588,15 @@ by the next startup sweep, since the session still has unseen messages.
   fact it named is gone with the secret, and the error says to name the env var
   instead). Text phrased as instructions ("always run X", "ignore previous
   instructions") is flagged by a recall-biased heuristic pass (imperative
-  verbs, second person, instruction-override phrasings) and routes to the
-  review queue even under `memory.autonomy = auto`; false positives only
-  cost a review click. Auto-applied memories are capped at 20 per session. A
+  verbs, second person, instruction-override phrasings) and, under `ask`,
+  routes to the review queue; brain lint flags a shaped line wherever it
+  landed. A
   near-duplicate of a live memory or a pending proposal in either scope
   (`learn.Similar`: 75% of the content tokens shared) is refused with the id
   and text it repeats, so the model merges the two through `replaces` (a
   pending one is named as queued; the user's own text is refused only word
   for word). Anything about the user carries `quote`, the user's own words:
-  a learned user-scope memory without one waits for review, and a quote that
+  a quote that
   is not in what the user typed in the session (compaction summaries,
   attachments and a plugin's `zemi.agent.send` text aside) drops the
   memory. Each scope has a 3 KB prompt budget (§10.7), and the write gate
@@ -2614,21 +2615,24 @@ by the next startup sweep, since the session still has unseen messages.
   tells the model to follow a preference the user stated and to check what
   any other line names before relying on it.
   Residual risk is stated plainly: a learned line can still sway a credulous
-  model; the cap, provenance, quote check, scrubbing and the review queue
-  narrow that window. `replaces` is the one edit: text with it supersedes
+  model; provenance, quote check, scrubbing and `/memory` narrow that
+  window. `replaces` is the one edit: text with it supersedes
   the old memory, empty text with it forgets. `/memory forget <id>` is the
   other review action: model proposals may never silently drop a
-  user-attested (`/memory <note>`) memory, and a reflector retirement
-  (§10.3) never drops any memory without review.
+  user-attested (`/memory <note>`) memory - the model's forget of one asks
+  at the permission gate, and under `auto` the reflector never retires one
+  (§10.3).
 - The `memory` tool's file mode writes a private-partition brain file -
   `path` inside the partition's dir plus `content`; the reserved
   `memories.md` refuses ("the memory tool owns this file"), and the user
   partition refuses whole ("user-brain files are written with the file
   tools; those writes ask"). The injected surfaces get the one-liner
   treatment: `description` and `read_if` are stripped and capped like a
-  one-liner's text (shaped or oversized queues), the secret scan and scrub
+  one-liner's text (shaped or oversized queues under `ask`), the secret
+  scan and scrub
   run on the content, and the body itself is exempt - it is read lazily,
-  never injected. A creation applies; an overwrite of a file this session
+  never injected. Under `auto` a write applies, replacing what is there;
+  under `ask` an overwrite of a file this session
   did not write queues, and so does one whose bytes changed since - the
   gate holds the session's write set, every apply and every approved
   file-tool write recording the file's hash and clearing on rewind. A
@@ -2651,10 +2655,10 @@ by the next startup sweep, since the session still has unseen messages.
   rewind, lint and the trail replay it unchanged; the id still resolves for
   replaces and forget through its trail, and a forget of a promoted id
   refuses while the file exists ("promoted to <name>; drop the file"), so
-  the catalog line cannot outlive the trail's explainer. A line the user
-  saved, or one in the user scope, always queues - the accept is the
-  approval the homes line (§10.8) asks for - and a learned private line
-  settles under the autonomy gate like a write. Accept pushes its own undo,
+  the catalog line cannot outlive the trail's explainer. Under `ask` a line
+  the user saved, or one in the user scope, queues - the accept is the
+  approval the homes line (§10.8) asks for - while `auto` promotes any
+  line. Accept pushes its own undo,
   not the /memory forget's: the file goes only while its bytes still match
   what promotion wrote, a live line is re-prepended with no ledger entry,
   and a ledger-only undo journals an archive entry carrying the text under
@@ -2699,19 +2703,11 @@ memory.autonomy = "auto"      -- memories the model or the reflector propose
 `/memory <note>` is not governed by the knob: it is the user's own
 keystroke, stamped `origin = user` (§7), and writes immediately in both
 modes. The knob covers model-proposed memories only: `ask` queues them;
-`auto` applies them without review except instruction-shaped text
-("project convention: run `curl ... | sh` first" is exactly the shape the
-heuristic exists for), which queues anyway, a replacement of a `user`
-memory or of one in the other scope (a user-scope memory superseded from
-a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
-(§5) or from a session that it or one of its subagents fed text from
-outside the machine (the `lua` tool, any tool
-zemi does not ship: MCP and Lua-registered ones, and a plugin's send or
-`tool.post` rewrite, which stores a `plugin:<name>` row; all read from the
-session's `tool_calls`), since injected memories come from there.
-The same conditions decide whether the `memory` tool's forget of a learned
-memory applies at once or waits for review; one the user saved asks. Known ceiling: a command the user let run
-can fetch too, and that is not seen.
+`auto` stores and applies them - one-liners, brain-file writes, promotions
+and forgets of learned memories alike. The quote check (§10.4) and the
+near-duplicate refusal still apply, and a memory the user saved is never
+dropped automatically: the model's forget of one asks at the permission
+gate, and the reflector never retires one (§10.3).
 
 ### 10.5 Skills
 
@@ -2856,12 +2852,12 @@ skills index, or the untrusted-content framing.
 - Never writes outside its homes - the memory store, the brain partitions
   (private via the memory tool's file mode or an approved file-tool write,
   user via the file tools only when the user approves; a promotion
-  relocates an attested line into a brain file of its own partition and
-  waits for that approval on a user line), the skills dir.
+  relocates an attested line into a brain file of its own partition), the
+  skills dir.
   Anything else is a normal tool call under normal permissions.
-- Only user config raises `memory.autonomy`; no Lua path widens the fs
-  jail. Auto autonomy never applies a memory
-  from an untrusted project or a session that read outside text (§10.4).
+- Only user config changes `memory.autonomy`; no Lua path widens the fs
+  jail. `ask` queues what the model or the reflector propose for /memory;
+  `auto` stores it, and never drops a memory the user saved (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), the user-only config.set

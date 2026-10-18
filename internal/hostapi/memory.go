@@ -32,10 +32,6 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// memoryAutoApplyCap bounds model-proposed memories stored without review
-// per session (DESIGN §10.4).
-const memoryAutoApplyCap = 20
-
 // The memory tool's refusal of the reserved file, which the ask reason for
 // a file-tool write there has to say the same way.
 const memOwnedReason = "the memory tool owns this file"
@@ -106,8 +102,8 @@ func (h *Host) addProposal(p memoryProposal) error {
 }
 
 // queueForget proposes deleting a stored memory, for the reflector to retire
-// one that stopped being true. Deleting loses data, so it always waits for
-// review, whatever the autonomy.
+// one that stopped being true under ask autonomy (auto retires learned ones
+// at once); accept deletes it.
 func (h *Host) queueForget(sid, id string) (added bool, err error) {
 	_, old, err := h.locateMemory(id)
 	if err != nil {
@@ -132,9 +128,6 @@ func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// a detached reflector stores a closed session's memories; the live
-	// session's budget is not theirs to spend
-	h.spendAutoBudget(res.Memory.ProvenanceSessionID)
 	note := cutNote(cut)
 	if slices.Contains(cut, res.Memory.ID) {
 		// the budget kept the line out of memories.md; queryHint's tool
@@ -1232,9 +1225,8 @@ func (h *Host) memoryTool(p *tools.Pipeline, sid string, call tools.MemoryCall) 
 
 // memoryFileTool is the memory tool's file mode (DESIGN §10.4): a freeform file in
 // the private partition only, its frontmatter through the injected-surface
-// intake, the overwrite gated on the session's write set, settling under
-// memory.autonomy like a learned one-liner; everything else queues as a
-// proposal whose accept writes the file.
+// intake. Auto writes the file outright; ask queues it as a proposal whose
+// accept writes it.
 func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	user, private := h.brainParts()
 	if private.Zero() {
@@ -1270,36 +1262,28 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	if _, scrubbed := learn.ScrubSecrets(content); scrubbed {
 		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
 	}
-	// injected-surface intake (DESIGN §10.4): the frontmatter fields get what a
-	// one-liner's text gets, the lazy-read body exempt
-	fm, ferr := brain.ParseFrontmatter(content)
-	reason := "the frontmatter does not parse"
-	if ferr == nil {
-		reason = h.frontmatterReason(fm.Description, fm.ReadIf)
-	}
-	if reason == "" {
-		var want *string
-		reason, want = h.overwriteGate(private, abs, name)
-		if reason == "" && !h.memoryAuto(sid) {
-			reason = "memory.autonomy is not auto"
-		}
-		if reason == "" && !h.autoApplyBudgetLeft(sid) {
-			reason = "this session's auto budget is spent"
-		}
-		if reason != "" {
-			return h.queueFileProposal(sid, private, name, content, reason)
-		}
-		if err := brain.WriteFile(private, sid, name, []byte(content), want, h.now()); err != nil {
-			if errors.Is(err, brain.ErrStale) {
-				return h.queueFileProposal(sid, private, name, content, "the file changed while the write waited")
-			}
+	if h.memoryAuto() {
+		// auto replaces the file outright; the write entry keeps the prior
+		// bytes for rewind
+		if err := brain.WriteFile(private, sid, name, []byte(content), h.now()); err != nil {
 			return "", err
 		}
 	} else {
+		// injected-surface intake (DESIGN §10.4): the frontmatter fields get
+		// what a one-liner's text gets, the lazy-read body exempt
+		fm, ferr := brain.ParseFrontmatter(content)
+		reason := "the frontmatter does not parse"
+		if ferr == nil {
+			reason = h.frontmatterReason(fm.Description, fm.ReadIf)
+		}
+		if reason == "" {
+			if reason = h.overwriteGate(private, abs, name); reason == "" {
+				reason = "memory.autonomy is not auto"
+			}
+		}
 		return h.queueFileProposal(sid, private, name, content, reason)
 	}
 	h.markBrainWrite(abs, []byte(content))
-	h.spendAutoBudget(sid)
 	out := "wrote " + name + "; injects from the next session"
 	if note := h.brainLintNote(private, name); note != "" {
 		out += "; " + note
@@ -1324,38 +1308,25 @@ func (h *Host) underBrainDir(dir, abs string) bool {
 	return ok && rel != "." && !strings.Contains(rel, string(filepath.Separator))
 }
 
-// overwriteGate is the row-15 gate in one read: why an overwrite queues
-// ("" when the session may apply) and the hash the apply's write expects,
-// the write-set entry for an overwrite, "" for a creation (DESIGN §10.4).
-func (h *Host) overwriteGate(private brain.Partition, abs, name string) (string, *string) {
-	empty := ""
+// overwriteGate is why an overwrite queues under ask, "" when the session
+// may apply it: the file must be one this session wrote and unchanged since
+// (DESIGN §10.4).
+func (h *Host) overwriteGate(private brain.Partition, abs, name string) string {
 	prior, err := os.ReadFile(filepath.Join(private.Dir, name))
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", &empty
+		return ""
 	}
 	if err != nil {
-		return err.Error(), &empty
+		return err.Error()
 	}
 	entry, ours := h.brainWriteOf(abs)
 	switch {
 	case !ours:
-		return "the file was not written by this session; an overwrite asks", &empty
+		return "the file was not written by this session; an overwrite asks"
 	case entry != brain.FileHash(prior):
-		return "the file changed since this session wrote it; an overwrite asks", &empty
+		return "the file changed since this session wrote it; an overwrite asks"
 	}
-	return "", &entry
-}
-
-// spendAutoBudget charges the session's auto-apply budget (DESIGN §10.4); a
-// detached reflector stores nothing of its own, so only the live session
-// spends.
-func (h *Host) spendAutoBudget(sid string) {
-	ag := h.agents
-	ag.mu.Lock()
-	if sid == ag.sessionID {
-		ag.memAuto++
-	}
-	ag.mu.Unlock()
+	return ""
 }
 
 // acceptFileProposal writes the file-mode proposal the user accepted: the
@@ -1364,7 +1335,7 @@ func (h *Host) spendAutoBudget(sid string) {
 func (h *Host) acceptFileProposal(p *memoryProposal) error {
 	private := h.partition(p.Scope)
 	name := filepath.Base(p.Path)
-	if err := brain.WriteFile(private, cmp.Or(h.AgentSessionID(), "user"), name, []byte(p.Content), nil, h.now()); err != nil {
+	if err := brain.WriteFile(private, cmp.Or(h.AgentSessionID(), "user"), name, []byte(p.Content), h.now()); err != nil {
 		return err
 	}
 	h.markBrainWrite(p.Path, []byte(p.Content))
@@ -1398,11 +1369,10 @@ func (h *Host) frontmatterReason(description, readIf string) string {
 
 // promoteMemory is the memory tool's promote mode (DESIGN §10.4): an existing
 // line moves into a brain file in its own partition, the body its text
-// byte-for-byte, the frontmatter the description and read_if given. A line
-// the user saved, or one in the user scope, always queues - the accept is
-// the approval the hard line asks for; a learned private line settles under
-// the autonomy gate like a write. The trail, collision and catalog checks
-// refuse before anything queues or applies.
+// byte-for-byte, the frontmatter the description and read_if given. Auto
+// promotes any line; under ask one queues, a user-saved line, a user-scope
+// line or a frontmatter that fails intake. The trail, collision and catalog
+// checks refuse before anything queues or applies.
 func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) {
 	if strings.TrimSpace(call.Path) == "" {
 		return "", errors.New("a promotion needs path, the .md file name in the line's brain dir")
@@ -1418,21 +1388,18 @@ func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) 
 	if _, scrubbed := learn.ScrubSecrets(string(brain.ComposeFile(call.Description, call.ReadIf, m.Text))); scrubbed {
 		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
 	}
-	if reason := h.frontmatterReason(call.Description, call.ReadIf); reason != "" {
-		return h.queuePromoteProposal(sid, m, call, reason)
-	}
 	if err := brain.CheckPromote(h.partition(m.Scope), m.ID, call.Path, call.Description, call.ReadIf); err != nil {
 		return "", err
 	}
-	switch {
-	case m.Origin == store.OriginUser:
-		return h.queuePromoteProposal(sid, m, call, "it moves a memory you saved")
-	case m.Scope == store.ScopeUser:
-		return h.queuePromoteProposal(sid, m, call, "it writes into the brain every project sees")
-	case !h.memoryAuto(sid):
-		return h.queuePromoteProposal(sid, m, call, "")
-	case !h.autoApplyBudgetLeft(sid):
-		return h.queuePromoteProposal(sid, m, call, "this session's auto budget is spent")
+	if !h.memoryAuto() {
+		reason := h.frontmatterReason(call.Description, call.ReadIf)
+		if reason == "" && m.Origin == store.OriginUser {
+			reason = "it moves a memory you saved"
+		}
+		if reason == "" && m.Scope == store.ScopeUser {
+			reason = "it writes into the brain every project sees"
+		}
+		return h.queuePromoteProposal(sid, m, call, reason)
 	}
 	partition := h.partition(m.Scope)
 	composed, err := brain.Promote(partition, sid, m.ID, call.Path, call.Description, call.ReadIf, h.now())
@@ -1442,7 +1409,6 @@ func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) 
 	if partition.Kind == brain.Private {
 		h.markBrainWrite(filepath.Join(partition.Dir, call.Path), composed)
 	}
-	h.spendAutoBudget(sid)
 	out := "promoted " + m.ID + " to " + call.Path + "; the catalog picks it up from the next session"
 	if note := h.brainLintNote(partition, call.Path); note != "" {
 		out += "; " + note
@@ -1773,10 +1739,9 @@ func (h *Host) scrubMemories(p brain.Partition, path string, prior, clean []byte
 	return redactedNote(string(clean)), true
 }
 
-// forgetMemory drops a memory for the model: one the user saved asks,
-// a learned one goes at once under auto autonomy and is proposed for review
-// otherwise. The ask goes through
-// p, so it names the agent that asked.
+// forgetMemory drops a memory for the model: one the user saved asks, a
+// learned one goes at once under auto autonomy and queues under ask. The
+// ask goes through p, so it names the agent that asked.
 func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	db, m, err := h.locateMemory(id)
 	if err != nil {
@@ -1788,7 +1753,7 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 		if v := p.CheckDenied(req); !v.Allowed {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, m.ID)
 		}
-	case !h.memoryAuto(sid):
+	case !h.memoryAuto():
 		if _, err := h.queueForget(sid, m.ID); err != nil {
 			return "", err
 		}
@@ -1801,9 +1766,9 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 }
 
 // gateMemory is the autonomy gate (DESIGN §10.4): a near-duplicate is
-// refused, a quote the user never wrote drops the memory, and what
-// memoryReview finds no reason to hold is stored - a write a full scope
-// cannot fit lives in the ledger trail (DESIGN §10.4).
+// refused, a quote the user never wrote drops the memory, auto stores the
+// rest - a write a full scope cannot fit lives in the ledger trail
+// (DESIGN §10.4) - and ask queues.
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
 	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
@@ -1813,36 +1778,14 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 		h.Log.Info("dropped: quote not in the session", "origin", "memory", "text", m.Text, "quote", m.Quote)
 		return memoryOutcome{Dropped: true}, nil
 	}
-	reason, review := h.memoryReview(res)
-	if !review {
-		cut, err := h.applyProposal(res)
-		if err != nil {
-			return memoryOutcome{}, err
-		}
-		return memoryOutcome{ID: m.ID, Scope: m.Scope, Cut: cut}, nil
+	if !h.memoryAuto() {
+		return memoryOutcome{Queued: ""}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
 	}
-	return memoryOutcome{Queued: reason}, h.addProposal(memoryProposal{Memory: *m, Supersedes: res.Supersedes})
-}
-
-// memoryReview says why res waits for the user, or that it may be stored
-// at once. The budget is not a reason: the apply cuts the oldest learned
-// lines to the ledger, and what still cannot fit lives in the trail
-// (DESIGN §10.4).
-func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
-	m := &res.Memory
-	switch {
-	case m.Origin == store.OriginLearned && m.Scope == store.ScopeUser && m.Quote == "":
-		return "a memory about the user needs a quote", true
-	case !h.memoryAuto(m.ProvenanceSessionID):
-		return "", true
-	case res.InstructionShaped:
-		return "instruction-shaped text", true
-	case h.replacementNeedsReview(res):
-		return "replaces a memory the user saved or one of the other scope", true
-	case !h.autoApplyBudgetLeft(m.ProvenanceSessionID):
-		return "this session's auto budget is spent", true
+	cut, err := h.applyProposal(res)
+	if err != nil {
+		return memoryOutcome{}, err
 	}
-	return "", false
+	return memoryOutcome{ID: m.ID, Scope: m.Scope, Cut: cut}, nil
 }
 
 // userCutFull refuses what would cut a line the user saved (DESIGN §10.4):
@@ -1884,74 +1827,8 @@ func (h *Host) quoteInSession(sid, quote string) bool {
 
 func foldSpace(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
 
-// memoryAuto reports whether auto autonomy may skip review for what session
-// sid wrote. It may not in an untrusted project, or when the session is not
-// local only.
-func (h *Host) memoryAuto(sid string) bool {
-	return h.Settings.Str("memory.autonomy") == "auto" && h.ProjectTrusted() && h.sessionLocalOnly(sid)
-}
-
-// markNotLocal records that plugin code fed session sid text, a sent
-// message or a rewritten tool result, as a telemetry row sessionLocalOnly
-// reads like a tool zemi does not ship: the plugin may relay any text. One
-// row per plugin, read from the store, so a rewind that drops it re-marks.
-func (h *Host) markNotLocal(sid, who string) {
-	if h.DB == nil || sid == "" {
-		return
-	}
-	stats, _ := h.DB.ToolCallStats(sid, "")
-	if !slices.ContainsFunc(stats, func(s store.ToolStat) bool { return s.Tool == who }) {
-		h.recordToolCall(sid, StreamTool{Name: who}, true)
-	}
-}
-
-// sessionLocalOnly reports that neither session sid nor one of its subagents
-// read text from outside the machine (a Lua or MCP tool, any tool zemi does
-// not ship, a plugin's text), where injected text would come from.
-// NOTE: a shell command the user approved can fetch too and is not seen here.
-func (h *Host) sessionLocalOnly(sid string) bool {
-	if h.DB == nil {
-		return false
-	}
-	sids := []string{sid}
-	children, err := h.DB.ChildSessions(sid)
-	if err != nil {
-		return false
-	}
-	for _, c := range children {
-		sids = append(sids, c.ID)
-	}
-	local := h.builtinToolNames()
-	for _, id := range sids {
-		stats, err := h.DB.ToolCallStats(id, "")
-		if err != nil {
-			return false
-		}
-		for _, s := range stats {
-			if s.Tool == tools.ToolLua || !slices.Contains(local, s.Tool) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// replacementNeedsReview reports whether res supersedes a user-attested
-// memory, or one in the other scope: a user-scope memory superseded from a
-// project is hidden in every project (DESIGN §10.4).
-func (h *Host) replacementNeedsReview(res *learn.Result) bool {
-	if res.Supersedes == "" {
-		return false
-	}
-	_, old, err := h.locateMemory(res.Supersedes)
-	return err == nil && (old.Origin == store.OriginUser || old.Scope != res.Memory.Scope)
-}
-
-// autoApplyBudgetLeft caps what the live session stores without review;
-// a closed session's writes (a detached reflector) are not counted.
-func (h *Host) autoApplyBudgetLeft(sid string) bool {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return sid != ag.sessionID || ag.memAuto < memoryAutoApplyCap
+// memoryAuto reports whether auto autonomy applies what the model or the
+// reflector proposes without review; ask queues everything.
+func (h *Host) memoryAuto() bool {
+	return h.Settings.Str("memory.autonomy") == "auto"
 }

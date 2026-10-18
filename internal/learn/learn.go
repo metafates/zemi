@@ -1,6 +1,6 @@
 // Package learn is the learning core (DESIGN §10): memory intake with
-// the §10.4 policy (length caps, provenance, secret scrubbing,
-// instruction-shaped flagging) and the near-duplicate check. Autonomy
+// the §10.4 policy (length caps, provenance, secret scrubbing) and the
+// near-duplicate check. Autonomy
 // gating, the review queue and the injected render live above it, in
 // hostapi and brain.
 package learn

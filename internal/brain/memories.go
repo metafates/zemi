@@ -664,10 +664,6 @@ func removeLine(p Partition, op *Op, raw []byte, lines []Line, i int) error {
 	return writeMemories(p, raw, slices.Delete(slices.Clone(lines), i, i+1))
 }
 
-// ErrStale is the overwrite gate (DESIGN §10.4): the file's current bytes no longer
-// match what the caller saw, so nothing was written and the write queues.
-var ErrStale = errors.New("brain: the file changed under the write")
-
 // FileHash is the sha256 the file-mode overwrite gate compares (DESIGN §10.4) and a
 // write-set entry records.
 func FileHash(b []byte) string {
@@ -678,10 +674,8 @@ func FileHash(b []byte) string {
 // WriteFile replaces one freeform brain file under the partition lock, its
 // write entry in the ledger first (DESIGN §7): the entry carries the replaced
 // file's prior bytes, ContentCap-capped with the truncation and existed
-// flags, so rewind restores them. want, when given, is the hash the caller
-// believes the file holds ("" when it should not exist): a mismatch is
-// ErrStale. The accepted-proposal write passes nil - the user approved it.
-func WriteFile(p Partition, sid, name string, content []byte, want *string, at time.Time) error {
+// flags, so rewind restores them.
+func WriteFile(p Partition, sid, name string, content []byte, at time.Time) error {
 	unlock, err := Lock(p)
 	if err != nil {
 		return err
@@ -692,15 +686,6 @@ func WriteFile(p Partition, sid, name string, content []byte, want *string, at t
 	existed := rerr == nil
 	if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
 		return rerr
-	}
-	if want != nil {
-		now := ""
-		if existed {
-			now = FileHash(prior)
-		}
-		if now != *want {
-			return ErrStale
-		}
 	}
 	op := &Op{Op: OpWrite, ID: name, SessionID: sid, Scope: p.Kind.Scope(), TS: at.UnixMilli(), Existed: existed}
 	if existed {

@@ -859,8 +859,6 @@ func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
-	// memoryAuto reads the child's tools: a child whose tools are not
-	// builtins has no transcript to learn from
 	s.h.recordToolCall(s.sid, StreamTool{ID: id, Name: name, Diff: diff}, ok)
 }
 

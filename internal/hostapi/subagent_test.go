@@ -615,14 +615,12 @@ func TestSubagentModelChoice(t *testing.T) {
 }
 
 // TestSubagentMemoryKeepsItsSession: a memory a run writes after the user
-// moved to another session is judged by the run's own session, which read
-// outside text, so auto autonomy still queues it.
+// moved to another session carries the run's own session as provenance.
 func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Settings.SetQuiet("memory.autonomy", "auto")
 	h.SetProjectTrusted(true)
 	sid := seedSession(t, h)
-	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 			if toolResult {
@@ -639,9 +637,9 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	if _, _, err := h.runSubagent(t.Context(), def, "d", "look"); err != nil {
 		t.Fatal(err)
 	}
-	props := h.memoryProposals()
-	if len(props) != 1 || props[0].ProvenanceSessionID != sid || len(projectMemories(t, h)) != 0 {
-		t.Fatalf("want one proposal from %s, nothing stored: %+v", sid, props)
+	live := projectMemories(t, h)
+	if len(live) != 1 || live[0].ProvenanceSessionID != sid || len(h.memoryProposals()) != 0 {
+		t.Fatalf("want one memory from %s, nothing queued: %+v", sid, live)
 	}
 }
 
