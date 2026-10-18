@@ -539,8 +539,7 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 }
 
 // TestEditSafety: write tools refuse files the model has not seen as they
-// are, keep CRLF endings, move a whitespace-tolerant replacement to the
-// file's indentation, and point a failed match at where it diverges.
+// are, keep CRLF endings, and point a failed match at where it diverges.
 func TestEditSafety(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	p.Seen = &sync.Map{}
@@ -554,20 +553,12 @@ func TestEditSafety(t *testing.T) {
 		want, result string
 	}{
 		{"unread, one exact match", "a\n", true, map[string]any{"old_string": "a", "new_string": "b"}, "edited", "b\n"},
-		{"unread, replace all", "x\nx\n", true, map[string]any{"old_string": "x", "new_string": "y", "replace_all": true}, "read ", "x\nx\n"},
-		{"unread, whitespace differs", "\tif x {\n\t}\n", true, map[string]any{"old_string": "if x {\n}", "new_string": "if y {\n}"}, "read ", "\tif x {\n\t}\n"},
 		{"crlf", "one\r\ntwo\r\n", false, map[string]any{"old_string": "one\ntwo", "new_string": "1\n2"}, "edited", "1\r\n2\r\n"},
 		{"mostly crlf", "one\r\ntwo\r\nthree\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\r\ntwo\r\nthree\r\n"},
 		{"mostly lf", "one\ntwo\nthree\r\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\ntwo\nthree\n"},
-		{
-			"reindent", "\tif x {\n\t\treturn\n\t}\n", false,
-			map[string]any{"old_string": "if x {\n    return\n}", "new_string": "if x {\n    return 1\n}"},
-			"Written as:\n     1\t\tif x {\n     2\t\t\treturn 1\n     3\t\t}", "\tif x {\n\t\treturn 1\n\t}\n",
-		},
 		{"same text", "a\n", false, map[string]any{"old_string": "a", "new_string": "a"}, "are the same; nothing to change", "a\n"},
 		{"ambiguous", "x = 1\nx = 1\n", false, map[string]any{"old_string": "x = 1", "new_string": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
 		{"empty old_string", "x\n", false, map[string]any{"old_string": "", "new_string": "y"}, "empty", "x\n"},
-		{"replace all", "x = 1\nx = 1\n", false, map[string]any{"old_string": "x = 1", "new_string": "x = 2", "replace_all": true}, "2 replacements", "x = 2\nx = 2\n"},
 		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
 		{"diverges at a common line", "}\na\n}\n}\n}\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches lines 1, 3, 4, ..., so a later line differs: read", "}\na\n}\n}\n}\n"},
 		{"whole line beats a partial one", "return nil, err\nreturn nil\nx\nreturn nil, err\n", false, map[string]any{"old_string": "return nil\nX", "new_string": "y"}, "     2\treturn nil\n     3\tx", "return nil, err\nreturn nil\nx\nreturn nil, err\n"},
@@ -614,7 +605,7 @@ func TestEditSafety(t *testing.T) {
 		in   map[string]any
 		want string
 	}{
-		{edit, map[string]any{"old_string": "y", "new_string": "z", "replace_all": true}, "not read its current version"},
+		{edit, map[string]any{"old_string": "y", "new_string": "z"}, "matches 2 places"},
 		{edit, map[string]any{"old_string": "u", "new_string": "v"}, "edited"},
 		{write, map[string]any{"content": "x\n"}, "changed since you read it"},
 	} {

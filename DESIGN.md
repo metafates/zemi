@@ -1330,7 +1330,7 @@ Built-ins ship in Go, modeled on crush's set (crush also ships `ls` and
 names it `view`; it returns images as image content, lists a directory
 one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
-`write`, `edit` (incl. whitespace-tolerant variant),
+`write`, `edit`,
 `glob`, `grep` (both over `git ls-files` with a Go walker fallback, §2),
 `todos` (a list the user watches: an item left `in_progress` when the claim ends
 goes back to `pending`, so nothing reads as running while the agent is idle), `question` (1-4 questions in one overlay, options or a typed

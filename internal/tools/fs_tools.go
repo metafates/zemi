@@ -786,10 +786,9 @@ func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) e
 
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
-	Path       string `json:"path"`
-	OldString  string `json:"old_string"`
-	NewString  string `json:"new_string"`
-	ReplaceAll bool   `json:"replace_all,omitempty"`
+	Path      string `json:"path"`
+	OldString string `json:"old_string"`
+	NewString string `json:"new_string"`
 }
 
 // runEdit applies an edit to a file under its lock. Matching runs on LF
@@ -809,14 +808,11 @@ func runEdit(ctx context.Context, p *Pipeline, in editArgs) (fantasy.ToolRespons
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	rel := workRel(path)
-	out, n, tolerant, msg := editText(lf(string(data)), in.OldString, in.NewString, in.ReplaceAll, rel)
+	out, msg := editText(lf(string(data)), in.OldString, in.NewString, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	unseen := p.unseen(path, fi)
-	if unseen && (n != 1 || tolerant.count > 0) {
-		return fantasy.NewTextErrorResponse("read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read its current version, so old_string must match exactly once as written."), nil
-	}
 	// a mixed file takes its majority ending, so a stray line of the other
 	// kind never rewrites every line
 	if n := bytes.Count(data, []byte("\r\n")); 2*n > bytes.Count(data, []byte("\n")) {
@@ -825,12 +821,7 @@ func runEdit(ctx context.Context, p *Pipeline, in editArgs) (fantasy.ToolRespons
 	if err := p.writeThrough(p.Path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
-	res := fmt.Sprintf("edited %s (%d replacement%s)", rel, n, plural(n))
-	if tolerant.count > 0 {
-		// the model never re-reads after a success, so what its text became
-		// under the file's indentation has to be in the result
-		res += "; matched ignoring whitespace and moved new_string to the file's indentation. Written as:" + numbered(strings.Split(out, "\n"), tolerant.at, tolerant.count)
-	}
+	res := "edited " + rel
 	if unseen {
 		// the match proves only the replaced text: a write must still read first
 		return fantasy.NewTextResponse(res + p.afterWrite(path)), nil
@@ -922,45 +913,37 @@ func relErr(err error) error {
 
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
-// region is where a whitespace-tolerant edit put its new lines.
-type region struct{ at, count int }
-
 // editText applies an edit's old_string and new_string to LF text; msg
 // explains why it does not apply, and then out is to be ignored.
-func editText(src, old, new string, all bool, where string) (out string, n int, tolerant region, msg string) {
+func editText(src, old, new, where string) (out, msg string) {
 	old, new = lf(old), lf(new)
-	out, n = applyEdit(src, old, new, all)
-	if n == 0 && old != "" {
-		var at int
-		if out, n, at = applyTolerant(src, old, new, all); n > 0 {
-			tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
-		}
-	}
-	msg = editError(src, old, n, all, where)
+	var n int
+	out, n = applyEdit(src, old, new)
+	msg = editError(src, old, n, where)
 	if old != "" && old == new {
 		msg = "old_string and new_string are the same; nothing to change"
 	}
-	return out, n, tolerant, msg
+	return out, msg
 }
 
 // applyEdit replaces old with new in s and returns the match count. With
-// several matches and !all nothing changes: guessing which one was meant
-// edits the wrong place silently.
-func applyEdit(s, old, new string, all bool) (string, int) {
+// several matches nothing changes: guessing which one was meant edits the
+// wrong place silently.
+func applyEdit(s, old, new string) (string, int) {
 	n := strings.Count(s, old)
-	if n == 0 || (n > 1 && !all) {
+	if n != 1 {
 		return s, n
 	}
 	return strings.ReplaceAll(s, old, new), n
 }
 
 // editError explains a failed match, or returns "" when the edit applied.
-func editError(src, old string, n int, all bool, where string) string {
+func editError(src, old string, n int, where string) string {
 	switch {
 	case old == "":
 		return "old_string is empty; use write to create a file"
-	case n > 1 && !all:
-		return fmt.Sprintf("old_string matches %d places in %s; add surrounding lines to make it unique, or set replace_all", n, where)
+	case n > 1:
+		return fmt.Sprintf("old_string matches %d places in %s; add surrounding lines to make it unique", n, where)
 	case n > 0:
 		return ""
 	}
@@ -1001,59 +984,6 @@ func editError(src, old string, n int, all bool, where string) string {
 		}
 	}
 	return "old_string not found in " + where + "; read the file again and copy the text exactly"
-}
-
-// applyTolerant matches whole lines ignoring whitespace runs, and moves
-// new_string to the file's indentation: the indent old_string used on each
-// matched line maps to the indent the file has there. first is the line
-// the first match's new text starts on.
-func applyTolerant(src, old, new string, all bool) (out string, count, first int) {
-	simp := func(s string) string { return strings.Join(strings.Fields(s), " ") }
-	lead := func(s string) string { return s[:len(s)-len(strings.TrimLeft(s, " \t"))] }
-	srcLines := strings.Split(src, "\n")
-	oldLines := strings.Split(strings.Trim(old, "\n"), "\n")
-	var newLines []string
-	if t := strings.Trim(new, "\n"); t != "" {
-		newLines = strings.Split(t, "\n")
-	}
-	m := len(oldLines)
-	var b []string
-	at := 0
-	for i := 0; i+m <= len(srcLines); i++ {
-		if !slices.EqualFunc(srcLines[i:i+m], oldLines, func(s, o string) bool { return simp(s) == simp(o) }) {
-			continue
-		}
-		indent := map[string]string{}
-		for j, o := range oldLines {
-			if strings.TrimSpace(o) != "" {
-				indent[lead(o)] = lead(srcLines[i+j])
-			}
-		}
-		if count == 0 {
-			first = i
-		}
-		b = append(b, srcLines[at:i]...)
-		for _, l := range newLines {
-			from := ""
-			for o := range indent {
-				if len(o) > len(from) && strings.HasPrefix(l, o) {
-					from = o
-				}
-			}
-			to, ok := indent[from]
-			if !ok {
-				to = from
-			}
-			b = append(b, to+l[len(from):])
-		}
-		count++
-		at = i + m
-		i += m - 1
-	}
-	if count == 0 || (count > 1 && !all) {
-		return src, count, 0
-	}
-	return strings.Join(append(b, srcLines[at:]...), "\n"), count, first
 }
 
 func plural(n int) string {

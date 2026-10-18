@@ -771,7 +771,7 @@ Chain dependent steps with &&.`,
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once unless replace_all is set, as written and without read's line-number prefix; once the file is read a difference in whitespace alone still matches and new_string takes the file's indentation. Keep it as small as still unique. A rename within a file is one call with replace_all; several edits to one file sent together apply in order.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; several edits to one file sent together apply in order.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
@@ -910,9 +910,9 @@ func ChangeDiff(tool string, in map[string]any) string {
 	case ToolWrite:
 		updated = lf(str(in["content"]))
 	case ToolEdit:
-		all, _ := in["replace_all"].(bool)
 		var msg string
-		if updated, _, _, msg = editText(old, str(in["old_string"]), str(in["new_string"]), all, workRel(path)); msg != "" {
+		updated, msg = editText(old, str(in["old_string"]), str(in["new_string"]), workRel(path))
+		if msg != "" {
 			return changePreview(in)
 		}
 	default:
