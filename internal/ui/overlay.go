@@ -762,7 +762,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
+		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w)), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list with previews reads as text; a detail view widens to its

@@ -238,8 +238,8 @@ var questionTypes = []QuestionType{TypeSingle, TypeMulti, TypeFreeText}
 
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
 // single_choice picks one option, multi_choice marks several, free_text
-// answers on a typed row. Options may carry a short Description shown
-// beside their label.
+// answers on a typed row. Options may carry a short Description, shown
+// under the options for the selected one.
 type Question struct {
 	Type        QuestionType
 	Question    string

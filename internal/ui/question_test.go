@@ -86,12 +86,12 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
-	// every tab, the field focused and the Submit tab draw in the one box: its top row and height
+	// every tab, the field focused and the Submit tab draw in the one box: its top row, height and width
 	box := func() string {
 		app.renderSync(t)
 		f := ansi.Strip(app.Frame())
 		top := strings.Index(f, "┌ Questions")
-		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"))
+		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"), ansi.StringWidth(strings.Split(f[top:], "\n")[0]))
 	}
 	want := box()
 	// focusing the field and scrolling the summary keep the footer's keys in place
@@ -251,26 +251,54 @@ func TestQuestionBoxScrolls(t *testing.T) {
 	pressKeys(app, "esc")
 }
 
-// TestQuestionOptionsWrap: a long option wraps in its column, and every
-// description starts at one x, beside its own label.
+// TestQuestionOptionsWrap: an option draws as one full-width row and the
+// selected option's description shows in the pane under the options, where
+// moving the selection swaps it without shifting a row.
 func TestQuestionOptionsWrap(t *testing.T) {
-	app, _ := bootAgentApp(t, 60, 20)
+	app, _ := bootAgentApp(t, 100, 20)
 	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
 		{Label: "SQLite with write-ahead logging and a busy timeout", Description: "one file, no server", Recommended: true},
-		{Label: "Postgres", Description: "a server to run"},
+		{Label: "Postgres", Description: "a server to run and back up"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	x := func(desc string) int {
-		for l := range strings.SplitSeq(frame, "\n") {
-			if before, _, ok := strings.Cut(l, desc); ok {
-				return ansi.StringWidth(before)
-			}
-		}
-		return -1
+	if !regexp.MustCompile(`\[1\] SQLite with write-ahead logging and a busy timeout`).MatchString(frame) ||
+		!strings.Contains(frame, "recommended · one file, no server") || strings.Contains(frame, "a server to run") {
+		t.Fatalf("the selected option's description is not alone in the pane:\n%s", frame)
 	}
-	if x("recommended") < 0 || x("recommended") != x("a server to run") || !regexp.MustCompile(`\[2\] Postgres +a server to run`).MatchString(frame) {
-		t.Fatalf("descriptions are lost or out of their column:\n%s", frame)
+	rows := func() (h, w int) {
+		app.renderSync(t)
+		f := ansi.Strip(app.Frame())
+		top := strings.Index(f, "┌ Question")
+		return strings.Count(f[:top], "\n"), ansi.StringWidth(strings.Split(f[top:], "\n")[0])
+	}
+	h0, w0 := rows()
+	h, w := func() (int, int) { pressKeys(app, "j"); return rows() }()
+	if h != h0 || w != w0 {
+		t.Fatalf("moving the selection moved the box:\n%s", ansi.Strip(app.Frame()))
+	}
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a server to run and back up") || strings.Contains(frame, "one file, no server") {
+		t.Fatalf("the pane does not follow the selection:\n%s", frame)
 	}
 	pressKeys(app, "esc")
+}
+
+// TestQuestionNoteStays: a note typed past the box's width never widens it.
+func TestQuestionNoteStays(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 24)
+	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{
+		{Label: "yes"}, {Label: "no", Description: "stop and wait"},
+	}})
+	app.renderSync(t)
+	f := ansi.Strip(app.Frame())
+	top := strings.Index(f, "┌ Question")
+	w0 := ansi.StringWidth(strings.Split(f[top:], "\n")[0])
+	pressKeys(app, "n", strings.Repeat("x", 120))
+	app.renderSync(t)
+	f = ansi.Strip(app.Frame())
+	top = strings.Index(f, "┌ Question")
+	if w := ansi.StringWidth(strings.Split(f[top:], "\n")[0]); w != w0 {
+		t.Fatalf("typing a long note widened the box from %d to %d:\n%s", w0, w, f)
+	}
+	pressKeys(app, "esc", "esc")
 }

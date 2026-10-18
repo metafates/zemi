@@ -82,6 +82,23 @@ func TestPlanEditKeys(t *testing.T) {
 	}
 }
 
+// TestPlanEditStays: the popup opens at its full width and a change typed
+// past it never widens the box.
+func TestPlanEditStays(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 18)
+	done := planAsync(t, app, "# Plan", "")
+	app.renderSync(t)
+	w0 := app.planAsk.size.w
+	pressKeys(app, "e", strings.Repeat("change this line ", 12))
+	if w := app.planAsk.size.w; w != w0 {
+		t.Fatalf("typing a long change widened the box from %d to %d", w0, w)
+	}
+	pressKeys(app, "enter")
+	if r := awaitPlan(t, app, done); !r.ok || !strings.HasPrefix(r.v.Feedback, "change this line") {
+		t.Fatalf("the typed change should be the feedback, got %+v ok=%v", r.v, r.ok)
+	}
+}
+
 // TestPlanScroll: the plan's text scrolls a line on shift+arrows and half
 // the view on ctrl+d/u, the list keys move the buttons, and while a change
 // is typed neither half-page key scrolls and esc then e keeps the draft. top

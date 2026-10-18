@@ -352,12 +352,8 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var choices []promptChoice
 	if q.Type != tools.TypeFreeText {
 		for i, opt := range q.Options {
-			desc := opt.Description
-			if opt.Recommended {
-				desc = strings.TrimSuffix("recommended · "+desc, " · ")
-			}
-			items = append(items, listItem{label: opt.Label, desc: desc, key: switchSeg(st.picked[i], false)})
-			choices = append(choices, promptChoice{key: optionKey(i), label: opt.Label, desc: desc})
+			items = append(items, listItem{label: opt.Label, key: switchSeg(st.picked[i], false)})
+			choices = append(choices, promptChoice{key: optionKey(i), label: opt.Label})
 		}
 		items = append(items, listItem{label: "Type your own answer"})
 		choices = append(choices, promptChoice{key: optionKey(len(q.Options)), label: "Type your own answer"})
@@ -371,6 +367,22 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		return ask
 	})
 	askN := len(askText(inner))
+	// the options' descriptions, shown in a pane under the list for the
+	// selected option as /config shows a row's preview; paneN reserves the
+	// most rows any one takes, so moving the selection never shifts a row
+	paneWrapped := make([][][]hostapi.Segment, len(q.Options))
+	paneN := 0
+	for i, opt := range q.Options {
+		if opt.Description == "" && !opt.Recommended {
+			continue
+		}
+		desc := opt.Description
+		if opt.Recommended {
+			desc = strings.TrimSuffix("recommended · "+desc, " · ")
+		}
+		paneWrapped[i] = wrapText(desc, hostapi.ChromeHint, inner)
+		paneN = max(paneN, min(len(paneWrapped[i]), 4))
+	}
 	var hints []hintPair
 	switch {
 	case st.typing:
@@ -380,13 +392,18 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	default:
 		hints = slices.Concat(moves, []hintPair{pickHint, {"esc", "dismiss"}})
 	}
-	field := [][]hostapi.Segment{st.field(q, inner)}
+	field := [][]hostapi.Segment{st.field(q, min(inner, qp.size.w))}
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		optsPH := oneRow[:min(len(items), 1)]
+		paneRows := map[bool]int{true: 1, false: paneN}[level > 1]
+		pane := make([][]hostapi.Segment, paneRows)
+		if st.sel < len(paneWrapped) {
+			copy(pane, capRows(paneWrapped[st.sel], paneRows, inner))
+		}
 		// what is asked scrolls when it would push the first options off
 		// screen; the rest goes to the options
-		room := h - 2 - len(stack(tight, tabs, oneRow, optsPH, field, oneRow)) + 1 + len(optsPH)
+		room := h - 2 - len(stack(tight, tabs, oneRow, optsPH, pane, field, oneRow)) + 1 + len(optsPH)
 		st.ask.viewH = max(room-min(len(items), 4), 1)
 		ask := st.ask.window(askText(inner), inner, boxFade)
 		var opts [][]hostapi.Segment
@@ -398,7 +415,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			opts = choiceView(choices, st.sel, &st.view, inner, level > 1)
 		}
 		views := []viewport{st.ask, st.view} // the half-page pair scrolls a typed line's text too
-		body := stack(tight, tabs, ask, opts, field, [][]hostapi.Segment{hint(inner, slices.Concat(hints, scrolls(views...))...)})
+		body := stack(tight, tabs, ask, opts, pane, field, [][]hostapi.Segment{hint(inner, slices.Concat(hints, scrolls(views...))...)})
 		return body, st.ask.viewH < min(askN, 3) || len(items) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})
 }
