@@ -142,6 +142,38 @@ func TestPlanHold(t *testing.T) {
 	}
 }
 
+// TestResumeShowsPlan: a resumed session draws the plan as a message above
+// its call's row, as the live turn did; the row alone keeps only the verdict.
+func TestResumeShowsPlan(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts("done")
+			}
+			return toolCallParts("c1", "plan", `{"plan":"# The plan\nstep one"}`)
+		}}, nil
+	}
+	if err := h.AgentSend("plan it"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	rows, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tr := historyFrom(rows)
+	body := slices.IndexFunc(tr, func(m ChatMessage) bool { return m.Text == "# The plan\nstep one" })
+	if body < 1 {
+		t.Fatalf("no plan message: %+v", tr)
+	}
+	row := tr[body+1]
+	if row.Kind != RowTool || row.Tool != "plan" || !strings.Contains(row.Output, "approved") {
+		t.Fatalf("plan message not above its row: %+v", row)
+	}
+}
+
 // TestPlanFeedbackKeepsPlanner: a read-only plan the user asks to change does
 // not switch the agent, so the agent revises and presents again.
 func TestPlanFeedbackKeepsPlanner(t *testing.T) {

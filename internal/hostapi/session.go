@@ -455,6 +455,12 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				}
 			case fantasy.ToolCallPart:
 				replyText()
+				if p.ToolName == tools.ToolPlan {
+					// the plan shows as a message above its row, as the live turn drew it
+					if plan := strings.TrimSpace(planArg(p.Input)); plan != "" {
+						tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
+					}
+				}
 				toolRow[p.ToolCallID] = len(tr)
 				tc := pending[p.ToolCallID]
 				delete(pending, p.ToolCallID)
@@ -488,6 +494,17 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 	}
 	return history, tr
+}
+
+// planArg is the plan markdown in a plan call's input, "" when absent.
+func planArg(input string) string {
+	var in struct {
+		Plan string `json:"plan"`
+	}
+	if json.Unmarshal([]byte(input), &in) != nil {
+		return ""
+	}
+	return in.Plan
 }
 
 const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
