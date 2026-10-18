@@ -518,14 +518,14 @@ func TestRenderAllowlist(t *testing.T) {
 		widgets[w.ID] = w
 	}
 	for i, c := range cases {
-		_, _, _, err := h.RenderWidget(t.Context(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
+		_, _, err := h.RenderWidget(t.Context(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
 		if want := "zemi." + c.refused + " is not allowed during widget render"; c.refused == "" && err != nil ||
 			c.refused != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 			t.Errorf("%s: err = %v", c.call, err)
 		}
 	}
 
-	lines, _, _, err := h.RenderWidget(t.Context(), widgets["clean"], 40, 10, UIState{})
+	lines, _, err := h.RenderWidget(t.Context(), widgets["clean"], 40, 10, UIState{})
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
@@ -874,7 +874,7 @@ func TestClickWidget(t *testing.T) {
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}
-			lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
+			lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -958,7 +958,7 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 	// the rule keeps its block away for the first 300ms of a job
 	clock.set(clock.Now().Add(4 * time.Second))
 	row := func(w int) string {
-		lines, _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), w, 3, UIState{})
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), w, 3, UIState{})
 		if err != nil {
 			t.Fatal(err)
 		}

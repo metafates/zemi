@@ -738,7 +738,6 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	---@return boolean more
-	---@return integer tail # trailing lines a following view keeps visible: the live turn's rows while one streams, else the last unit's; zero when the render was cut short
 	render = function(ctx)
 		local width = ctx.width or 80
 		local count = ctx.transcript_count or 0
@@ -757,8 +756,7 @@ zemi.ui.widget.add({
 		-- rows are keyed by transcript index, and an agent view reports epoch 0
 		-- for whichever run it shows: that run is the identity instead
 		local ident = ctx.view and ctx.view.id or epoch
-		local fresh = ident ~= opened_in
-		if fresh then
+		if ident ~= opened_in then
 			expanded, steps, unrolled, unfolded, whole, queued_open, opened_in = {}, {}, {}, {}, {}, nil, ident
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
@@ -998,9 +996,6 @@ zemi.ui.widget.add({
 				active = active,
 				replying = replying,
 				block = tr[#tr] and block_of(tr[#tr]),
-				-- the last unit's lines: what a following view keeps visible
-				-- when nothing streams below it
-				unit = shown[1] and #shown[1].lines or 0,
 			}
 			settled = not more and done or nil
 		end
@@ -1148,22 +1143,7 @@ zemi.ui.widget.add({
 			end
 			if last < #todos then fold(#todos - last) end
 		end
-		-- What a following view keeps visible: a render the content's identity
-		-- changed in says 0, so a swap - a run view opened or left, a resumed
-		-- session, a compaction - re-pins the view and carries no air in; a
-		-- partial render's list is its tail whole; the live turn's rows while
-		-- one streams below the settled ones, else the last unit's lines. The
-		-- scroll model holds the view's pushed rows on a shrink up to this many.
-		local tail
-		if fresh then
-			tail = 0
-		elseif more then
-			tail = #lines
-		else
-			local live = #lines - done.n
-			tail = live > 0 and live or done.unit
-		end
-		return lines, more, tail
+		return lines, more
 	end,
 })
 

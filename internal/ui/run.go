@@ -309,7 +309,7 @@ func (v *RunView) region(region string, width, height int, state hostapi.UIState
 	defer cancel()
 	var out [][]hostapi.Segment
 	for _, w := range v.h.Widgets.InRegion(region) {
-		lines, _, _, err := v.h.RenderWidget(ctx, w, width, height, state)
+		lines, _, err := v.h.RenderWidget(ctx, w, width, height, state)
 		if err != nil {
 			return nil, fmt.Errorf("widget %s: %w", w.ID, err)
 		}

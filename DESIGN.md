@@ -2074,24 +2074,7 @@ rides the `memories.md` line and its ledger entries.
   click on a row leaves the tail too: a digest opening over its rail or a
   thought unrolling redraws the rows under the reader's place, never
   scrolling them away. Sending a message (or a `!command`) snaps back to the
-  tail, a slash command does not. While following the tail, the view's top
-  is a ratchet: the live rail growing pushes the history up, the rail
-  collapsing (a thinking block into its thought row, a turn folding into its
-  digest) holds the pushed rows and leaves the freed ones as air that the
-  next streamed rows fill before the history is pushed again - never more
-  than half the view of it, a bigger collapse falls back to the half line -
-  and the widget's tail lines (its render's third result) always stay on
-  screen, so a rail taller than the view never folds into an empty one. A
-  render whose content changed identity (a run view opened or left, a
-  resumed session, a compaction) reports no tail, so the swap lands at the
-  tail and carries no air in: only collapses watched in the view that drew
-  them leave air behind. The agent replying is the chat's home: while reply
-  text is live every stream update releases the air and re-pins a following
-  view, so the reply streams on the composer; a view scrolled away to read
-  stays put, and its next scroll to the bottom lands on the tail. Scrolling
-  up through that air consumes it a row per tick instead of skipping it,
-  and scrolling back to the held rows re-sticks the view. While a
-  turn's prompt is above the view its first row
+  tail, a slash command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
   and an opened run's digest of that turn (`sticky = "section"`) pins on the

@@ -98,7 +98,7 @@ func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Hos
 // test's assertion reads them.
 func chatRows(t testing.TB, app *App, w int) []string {
 	t.Helper()
-	lines, _, _, err := app.host.RenderWidget(t.Context(), app.host.Widgets.Get("chat"), w, 20, app.uiState())
+	lines, _, err := app.host.RenderWidget(t.Context(), app.host.Widgets.Get("chat"), w, 20, app.uiState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func BenchmarkColdChatRender(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		// the theme is part of the units cache key: flipping it renders every unit again
 		host.SetLightTerminal(i%2 == 0)
-		if _, _, _, err := host.RenderWidget(b.Context(), chat, 138, 30, app.uiState()); err != nil {
+		if _, _, err := host.RenderWidget(b.Context(), chat, 138, 30, app.uiState()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -228,7 +228,7 @@ func TestColdChatRender(t *testing.T) {
 			}
 			for n, more := 0, true; more; n++ {
 				var err error
-				if lines, more, _, err = host.RenderWidget(t.Context(), chat, 138, c.height, app.uiState()); err != nil {
+				if lines, more, err = host.RenderWidget(t.Context(), chat, 138, c.height, app.uiState()); err != nil {
 					t.Fatal(err)
 				}
 				if len(lines) == 0 || n == 0 && !more || n > 500 {
@@ -261,11 +261,10 @@ func TestColdChatRender(t *testing.T) {
 	for more := true; more; app.Frame() {
 		var lines [][]hostapi.Segment
 		var err error
-		var tail int
-		if lines, more, tail, err = host.RenderWidget(t.Context(), host.Widgets.Get("chat"), st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
+		if lines, more, err = host.RenderWidget(t.Context(), host.Widgets.Get("chat"), st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
 			t.Fatal(err)
 		}
-		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, tail: tail, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
+		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
 	}
 	if st.top != top || !slices.Equal(st.anchor, anchor) {
 		t.Fatalf("view moved from row %d %q to row %d %q", top, anchor, st.top, st.anchor)
@@ -354,7 +353,7 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 	appendReply(host, "done", hostapi.TurnStat{Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "Background agent a1 (explore) finished"})
 	app.AgentStream()
-	lines, _, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +396,7 @@ func TestWaitRowGuard(t *testing.T) {
 			app.AgentStream()
 			st := app.uiState()
 			st.Cancelling, st.Waiting = tc.cancelling, tc.waiting
-			lines, _, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
+			lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -442,7 +441,7 @@ func TestWaitingNoticesAreOneBlock(t *testing.T) {
 		}
 	}
 	app.AgentStream()
-	lines, _, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +465,7 @@ func TestPrintedRunFoldsNoNotice(t *testing.T) {
 	}
 	st := app.uiState()
 	st.Printed = &hostapi.Printed{Rows: rows}
-	lines, _, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1563,7 +1562,7 @@ func printedLines(t *testing.T, host *hostapi.Host, width int) [][]hostapi.Segme
 	t.Helper()
 	live := host.AgentStream()
 	st := hostapi.UIState{Printed: &hostapi.Printed{Rows: host.Session().Transcript, Live: &live, Reasoning: true}}
-	lines, _, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), width, 0, st)
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), width, 0, st)
 	if err != nil {
 		t.Fatal(err)
 	}
