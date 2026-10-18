@@ -95,8 +95,13 @@ function M.pending(ctx)
 		local running = M.running(ctx)
 		if running then parts[#parts + 1] = running end
 	end
-	for _, job in ipairs(ctx.busy or {}) do
-		parts[#parts + 1] = M.lower(job.label)
+	local busy = ctx.busy or {}
+	if #busy > 0 then
+		-- one part however many run: the oldest's label, which a new job
+		-- joining does not move, and the rest of the fleet counted
+		local label = M.lower(busy[#busy].label)
+		if #busy > 1 then label = label .. ", and " .. (#busy - 1) .. " more" end
+		parts[#parts + 1] = label
 	end
 	if (ctx.agent or {}).compacting then parts[#parts + 1] = "compacting the conversation" end
 	if #parts == 0 then return nil end

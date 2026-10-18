@@ -112,7 +112,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
   (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start,
   the idle recap, a compaction round) holds a `Host.Busy` entry: `ctx.busy` is the list of
-  them, newest first, the chat's pending row names every one, the working rule draws
+  them, newest first, the chat's pending row names the oldest as one part (`and N more`
+  when more run), the working rule draws
   `ctx.busy[1]`, and the same double esc
   (`CancelBusy`, never `zemi.agent.cancel`) cancels every entry that has a cancel func.
   An empty session has one such row and no chat rows: `zemi.tui.text.empty_chat` is the

@@ -213,8 +213,8 @@ func TestSplashTakesBootWork(t *testing.T) {
 			if !c.logo {
 				return
 			}
-			if !strings.Contains(frame, "starting mcp_github") {
-				t.Fatalf("the boot work is not drawn in the chat:\n%s", frame)
+			if !strings.Contains(frame, "starting mcp_filesystem, and 1 more") {
+				t.Fatalf("the boot work is not drawn collapsed in the chat:\n%s", frame)
 			}
 			if nx, ny := findCell(t, app, "+#%#@%@%%#%#:"); nx != x || ny != y {
 				t.Fatalf("the logo moved from %d,%d to %d,%d", x, y, nx, ny)

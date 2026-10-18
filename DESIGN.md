@@ -2151,8 +2151,9 @@ rides the `memories.md` line and its ledger entries.
   call counts its own change on its row (`+4 -1`).
   Under the transcript the chat draws what is still pending as one static row,
   with no spinner and no clock, so an hour-long job never costs a frame. It
-  names every handed-off agent and workflow, background job and `Host.Busy`
-  entry (a compaction, the idle recap, a plugin install). An empty transcript
+  names every handed-off agent and workflow and background job, and the
+  `Host.Busy` entries (a compaction, the idle recap, a plugin install, a boot's
+  MCP starts) as one part: the oldest's label, `, and N more` when more run. An empty transcript
   has no chat rows at all: the splash draws that row, on the row its block
   reserves for it. The todo block
   follows it, in the order the items were written: the header's meter and a
