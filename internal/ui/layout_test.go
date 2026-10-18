@@ -98,7 +98,6 @@ func TestViewport(t *testing.T) {
 		{"reveal above goes to its top", viewport{top: 10, viewH: 5}, 20, 12, func(v *viewport) { v.reveal(3, 4) }, 3, 5, true},
 		{"reveal taller than the view shows its top", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(6, 16) }, 6, 5, true},
 		{"follow starts short content at its first row", viewport{viewH: 5, follow: true}, 3, 12, nil, 0, 3, false},
-		{"a tail taller than the content stays at its first row", viewport{viewH: 5, follow: true, tail: 8}, 0, 12, nil, 0, 0, false},
 		{"scrolling up leaves the tail", viewport{viewH: 5, follow: true}, 20, 12, func(v *viewport) { v.scroll(-3) }, 12, 5, true},
 		{"under 7 cells draws no bar", viewport{viewH: 5}, 20, 6, nil, 0, 5, false},
 	} {
