@@ -313,11 +313,15 @@ func (h *Host) projectOnlySkills() []skill.Skill {
 	})
 }
 
+// skillDescMax caps one skill index line: one marketplace skill's prose
+// rides every prompt of every session, and the body loads whole on demand.
+const skillDescMax = 240
+
 // skillsIndexPrompt renders the §10.7 skills index: one line per skill the
-// model may load, description capped: the prompt carries the index only,
-// bodies load on demand through the skill tool. The project's skills and
-// recipes go in project, for the context message, so the system prompt
-// stays the same in every project.
+// model may load, description capped at skillDescMax: the prompt carries the
+// index only, bodies load on demand through the skill tool. The project's
+// skills and recipes go in project, for the context message, so the system
+// prompt stays the same in every project.
 func (h *Host) skillsIndexPrompt() (mine, project string) {
 	var lines [2]strings.Builder
 	for _, s := range h.modelSkills() {
@@ -330,6 +334,7 @@ func (h *Host) skillsIndexPrompt() (mine, project string) {
 			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
 			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
 		}
+		desc = truncRunes(desc, skillDescMax)
 		lines[i].WriteString("- " + s.Name + ": " + desc + "\n")
 	}
 	rule := "A description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n"

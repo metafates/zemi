@@ -19,12 +19,10 @@ import (
 // brainLoop is the loop text every project's # Brain opens with (DESIGN §10.7);
 // it carries the seeding instruction, so it renders where no partition
 // exists yet.
-const brainLoop = `- The maps below are derived from file frontmatter; bodies are not injected.
-  Read a brain file when its Read If matches; zemi also points at one when
-  a file you read or edit matches its paths. Consult the brain before you
-  build, update it after. When a codebase's shape took real work to learn,
-  write or update a private map file for it via the memory tool, so the next
-  session starts oriented.
+const brainLoop = `- The maps below are derived from frontmatter; bodies are not injected. Read one
+  when its Read If matches, or when a file you read or edit matches its paths.
+  Consult the brain before you build, update it after; when a codebase's shape
+  took real work to learn, write or update a private map via the memory tool.
 - Keep frontmatter honest; a wrong Read If hides the file it names. Never
   hand-edit memories.md.`
 
