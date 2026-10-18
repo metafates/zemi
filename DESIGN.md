@@ -1850,11 +1850,11 @@ rides the `memories.md` line and its ledger entries.
   exists at all: the whole screen left is Go's, and the boot box states the
   error, the log that holds the whole traceback, and the two keys that work
   there, `c` to copy the error and `q` to quit. The
-  shipped right widgets (`statusline.profile`, `model`, `context`, `percent`,
-  `cost`, `hints`) show the model, the session token tally, the
+  shipped right widgets (`statusline.profile`, `model`, `effort`,
+  `context`, `cost`, `hints`) show the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`),
-  the context-window percent, warning colors past 80%/95%, and, innermost
+  the reasoning effort, and, innermost
   until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: over the statusline, the border in line with the

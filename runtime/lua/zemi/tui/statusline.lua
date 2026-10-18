@@ -167,13 +167,13 @@ zemi.event.on("reflector.done", function(ev)
 	zemi.notify({ title = "Memories learned", body = table.concat(parts, ", ") })
 end)
 
--- Statusline right, read left to right: "$0.12 · 45% · 24.5k/200k ctx
--- · profile · model"; the lowest priority (model) sits at the right edge. The
--- context meter falls back to the session token total when the model's
--- context window is unknown. The percent colors by threshold:
--- muted, warn at 80%, err at 95%. A click on the model opens the model
--- picker, on the profile the profile picker, on the rest /usage. One widget
--- per part, so config can replace or delete any of them.
+-- Statusline right, read left to right: "$0.12 · 24.5k/200k ctx
+-- · profile · effort · model"; the lowest priority (model) sits at the right
+-- edge. The context meter falls back to the session token total when the
+-- model's context window is unknown. A click on the model opens the model
+-- picker, on the effort the effort picker, on the profile the profile
+-- picker, on the rest /usage. One widget per part, so config can replace or
+-- delete any of them.
 ---@type { [1]: string, [2]: integer, [3]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
 local right = {
 	{
@@ -181,7 +181,15 @@ local right = {
 		8,
 		function(ctx)
 			if (ctx.model or "") == "" then return end
-			return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Dim", "model"
+			return ctx.model, "Dim", "model"
+		end,
+	},
+	{
+		"effort",
+		9,
+		function(ctx)
+			if (ctx.effort or "") == "" then return end
+			return ctx.effort, "Dim", "effort"
 		end,
 	},
 	-- the shipped profile goes unsaid
@@ -204,19 +212,6 @@ local right = {
 			if window then return used and used .. "/" .. window .. " ctx" end
 			local total = fmt.tokens((ctx.usage or {}).total)
 			return total and total .. " tok"
-		end,
-	},
-	-- inside the meter, so it drops first and never stands without its unit;
-	-- it draws whenever the meter does, 0% included, so it moves nothing
-	{
-		"percent",
-		41,
-		function(ctx)
-			local cx = ctx.context or {}
-			if (cx.tokens or 0) <= 0 or (cx.window or 0) <= 0 then return end
-			local pct = math.floor(tonumber(cx.pct) or 0)
-			return string.format("%d%%", pct),
-				pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
 		end,
 	},
 	{
