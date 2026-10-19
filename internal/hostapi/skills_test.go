@@ -451,7 +451,7 @@ func TestProjectSkills(t *testing.T) {
 }
 
 // TestSymlinkedSkillsDir: <config>/skills may be a link into a dotfiles
-// tree. Its files must stay inside the read jail and classify as user
+// tree. Its files must stay inside a user tree and classify as user
 // origin, or every skill body asks and every hook is refused.
 func TestSymlinkedSkillsDir(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
@@ -466,8 +466,8 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 	}
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes}), log, config.NewStore(), dirs)
 	writeSkill(t, h.userSkillsDir(), "demo", "demo skill", "return {}")
-	if !h.inJail(filepath.Join(h.userSkillsDir(), "demo", "SKILL.md"), h.readJails()...) {
-		t.Error("a symlinked skills dir is outside the read jail")
+	if !h.inRoots(filepath.Join(h.userSkillsDir(), "demo", "SKILL.md"), h.Dirs.UserTrees()...) {
+		t.Error("a symlinked skills dir is outside the user trees")
 	}
 	hook, err := filepath.EvalSymlinks(filepath.Join(real, "demo", "zemi-skill.lua"))
 	if err != nil {

@@ -170,7 +170,7 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 	if d, ok := h.zemiLua(path); ok {
 		return d, true
 	}
-	if !h.inJail(path, h.Dirs.RepoRoot()) {
+	if !h.inRoots(path, h.Dirs.RepoRoot()) {
 		return lspDef{}, false
 	}
 	ext := strings.ToLower(filepath.Ext(path))
@@ -198,7 +198,7 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 	real := perm.RealPath(path) // as pluginsRoot is
 	root, label := h.localPluginDir(real), "plugin "+h.PluginOf(real)
 	if root == "" {
-		if h.Dirs.ConfigHome == "" || !h.inJail(path, h.Dirs.ConfigHome) {
+		if h.Dirs.ConfigHome == "" || !h.inRoots(path, h.Dirs.ConfigHome) {
 			return lspDef{}, false
 		}
 		root, label = h.Dirs.ConfigHome, "config"

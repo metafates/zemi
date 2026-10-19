@@ -243,7 +243,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		var abs []string
 		for _, f := range files {
 			p := filepath.Join(h.Dirs.ProjectDir, f)
-			if h.inJail(p, h.Dirs.RepoRoot()) {
+			if h.inRoots(p, h.Dirs.RepoRoot()) {
 				abs = append(abs, p)
 			}
 		}
@@ -490,7 +490,7 @@ func (h *Host) instructionEdits() string {
 // It refuses a symlink out of the repository.
 func (h *Host) instructionFile(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode().IsRegular() && h.inJail(p, h.Dirs.RepoRoot())
+	return err == nil && fi.Mode().IsRegular() && h.inRoots(p, h.Dirs.RepoRoot())
 }
 
 // scratchUse, scratchWrite, scratchRead and recipesUse are the rules for

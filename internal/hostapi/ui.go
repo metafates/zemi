@@ -260,21 +260,15 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
-	// edit(path, opts, on_done): the user's editor on a project file, then
+	// edit(path, opts, on_done): the user's editor on a file, then
 	// on_done() once it closes, or on_done(err). Never blocks the
 	// interpreter. The gate is a read: the writing is the user's own.
 	tb.RawSetString("edit", L.NewFunction(func(L *glua.LState) int {
 		path := L.CheckString(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
-		roots := h.luaJails(L, true)
-		if h.ProjectTrusted() {
-			// the editor is the user's own hands, and zemi.project.root() is
-			// where a job's paths are relative to
-			roots = append(roots, h.Dirs.RepoRoot())
-		}
 		// the editor opens the path by name and follows symlinks anyway
-		p, err := h.resolveJailed(path, roots, false)
+		p, err := h.projectResolve(path, false)
 		if err != nil {
 			L.RaiseError("zemi.ui.edit: %v", err)
 		}

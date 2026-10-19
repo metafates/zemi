@@ -366,8 +366,7 @@ func installID(d config.Dirs, name, dir string) string {
 }
 
 // localPlugins holds the plugins the user develops in place: the prompt
-// names it. It is no read jail, which would let every plugin's
-// and a trusted project's zemi.fs.read reach them all.
+// names it.
 func (h *Host) localPlugins() string {
 	return filepath.Join(h.Dirs.PluginsRoot(), "local")
 }

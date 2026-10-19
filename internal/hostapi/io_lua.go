@@ -38,8 +38,8 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// inJail reports whether path, resolved, is inside one of the jail roots.
-func (h *Host) inJail(path string, roots ...string) bool {
+// inRoots reports whether path, resolved, is inside one of roots.
+func (h *Host) inRoots(path string, roots ...string) bool {
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).
 	real := perm.CanonPath(path)
@@ -54,35 +54,6 @@ func (h *Host) inJail(path string, roots ...string) bool {
 	return false
 }
 
-// shippedDirs are the data dirs every tool and command may read: the builtin
-// skills and the types (API annotations, shipped Lua UI), rewritten from the
-// embedded runtime every start and holding nothing of the user's. The rest of
-// the data dir is not: MCP and LSP server stderr is logged as written and may
-// carry tokens.
-func (h *Host) shippedDirs() []string {
-	return []string{h.builtinSkillsDir(), h.TypesDir()}
-}
-
-func (h *Host) readJails() []string {
-	user, private := h.brainParts()
-	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
-	// outside the config home, so it needs its own root.
-	roots := slices.Concat([]string{
-		h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(), h.ScratchDir(),
-		user.Dir,
-	}, h.shippedDirs(), h.Dirs.UserTrees())
-	if h.ProjectTrusted() {
-		// the decision covers the repository, so starting in a subdirectory
-		// must not ask for every sibling package the task reaches
-		roots = append(roots, h.Dirs.RepoRoot(), h.recipesDir(), private.Dir)
-	}
-	return roots
-}
-
-func (h *Host) writeJails() []string {
-	return []string{h.Dirs.ProjectDir}
-}
-
 // luaDataRoot holds the zemi.fs.data_dir dirs. It sits outside the config
 // tree, so a write there never reloads the config.
 func (h *Host) luaDataRoot() string {
@@ -90,21 +61,6 @@ func (h *Host) luaDataRoot() string {
 		return ""
 	}
 	return filepath.Join(h.Dirs.DataHome, "lua")
-}
-
-// luaJails are the roots a zemi.fs call resolves in: the tools' jails, plus
-// the data root for user and builtin code only, so the model's file tools,
-// its unapproved Lua tool scripts and less trusted Lua never reach it.
-func (h *Host) luaJails(L *glua.LState, write bool) []string {
-	roots := h.readJails()
-	if write {
-		roots = h.writeJails()
-	}
-	tool, approved := h.modelLuaRun(L)
-	if o := h.RT.CurrentOrigin(L); (o == lua.OriginUser || o == lua.OriginBuiltin) && (!tool || approved) {
-		roots = append(roots, h.luaDataRoot())
-	}
-	return roots
 }
 
 // luaGate runs one Lua-boundary permission check. The gate settles every
@@ -428,8 +384,9 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 
 // zemi.fs
 
-// fsNamespace is zemi.fs. Paths resolve inside the jails, reads pass the
-// lua.fs.read gate and changes lua.fs.write; runtime failures return nil, err.
+// fsNamespace is zemi.fs. Paths resolve against the project dir and are not
+// confined: reads pass the lua.fs.read gate and changes lua.fs.write; runtime
+// failures return nil, err.
 func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// link: the call means a symlink itself, not what it points at
@@ -439,7 +396,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			subject = "lua.fs.write"
 		}
 		path := L.CheckString(1)
-		resolved, err := h.resolveJailed(path, h.luaJails(L, write), link)
+		resolved, err := h.projectResolve(path, link)
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
@@ -539,7 +496,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
 		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir, nil)
-		matches, err := h.jailedGlob(cmp.Or(L.Context(), context.Background()), pattern)
+		matches, err := h.projectGlob(cmp.Or(L.Context(), context.Background()), pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
 		}
@@ -554,7 +511,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
-		hits, err := h.jailedGrep(cmp.Or(L.Context(), context.Background()), re)
+		hits, err := h.projectGrep(cmp.Or(L.Context(), context.Background()), re)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
@@ -569,10 +526,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// resolveJailed resolves path against the project dir and enforces the
-// jail (no escaping the roots, no symlinks out). With link the last
+// projectResolve resolves path against the project dir. With link the last
 // component stays as named (perm.Lresolve).
-func (h *Host) resolveJailed(path string, roots []string, link bool) (perm.Path, error) {
+func (h *Host) projectResolve(path string, link bool) (perm.Path, error) {
 	if path == "" {
 		return perm.Path{}, errors.New("empty path")
 	}
@@ -580,14 +536,7 @@ func (h *Host) resolveJailed(path string, roots []string, link bool) (perm.Path,
 	if link {
 		resolve = perm.Lresolve
 	}
-	resolved, err := resolve(h.projectAbs(path))
-	if err != nil {
-		return perm.Path{}, err
-	}
-	if !h.inJail(resolved.String(), roots...) {
-		return perm.Path{}, fmt.Errorf("%s is outside the jail", path)
-	}
-	return resolved, nil
+	return resolve(h.projectAbs(path))
 }
 
 // projectAbs is path made absolute against the project dir; not Join,
@@ -599,9 +548,9 @@ func (h *Host) projectAbs(path string) string {
 	return h.Dirs.ProjectDir + string(filepath.Separator) + path
 }
 
-// jailedGlob matches project-relative paths in the glob tool's dialect,
+// projectGlob matches project-relative paths in the glob tool's dialect,
 // anchored at the root so "*.go" stays in the top directory.
-func (h *Host) jailedGlob(ctx context.Context, pattern string) ([]string, error) {
+func (h *Host) projectGlob(ctx context.Context, pattern string) ([]string, error) {
 	match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
 	if err != nil {
 		return nil, err
@@ -610,8 +559,8 @@ func (h *Host) jailedGlob(ctx context.Context, pattern string) ([]string, error)
 	return slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) }), err
 }
 
-// jailedGrep searches the project's files.
-func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, error) {
+// projectGrep searches the project's files.
+func (h *Host) projectGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, error) {
 	root := h.Dirs.ProjectDir
 	files, _, err := tools.ListFiles(ctx, root, tools.ListLimit)
 	if err != nil {
@@ -1028,7 +977,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		if cwd := rawString(L, spec, "cwd"); cwd != "" {
-			dir, err := h.resolveJailed(cwd, h.luaJails(L, false), false)
+			dir, err := h.projectResolve(cwd, false)
 			if err != nil {
 				L.RaiseError("zemi.job.start: cwd: %v", err)
 			}

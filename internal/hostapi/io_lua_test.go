@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -34,8 +33,8 @@ func TestJobHandleColonCalls(t *testing.T) {
 	`)
 }
 
-// TestJobCwd: a job's cwd resolves in the read jail, so no job starts
-// outside it.
+// TestJobCwd: a job's cwd resolves against the project dir, and one outside
+// the project starts like any other.
 func TestJobCwd(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
@@ -46,14 +45,15 @@ func TestJobCwd(t *testing.T) {
 		local outside = "`+outside+`"
 		local res = assert(zemi.job.wait({ cmd = "pwd", cwd = "sub" }))
 		assert(res.stdout:match("/sub\n$"), res.stdout)
-		assert(not pcall(zemi.job.wait, { cmd = "pwd", cwd = outside }), "cwd outside the jail")
+		res = assert(zemi.job.wait({ cmd = "pwd", cwd = outside }))
+		assert(res.stdout:find(outside, 1, true) == 1, res.stdout)
 		local h, err = zemi.job.start({ cmd = "pwd", cwd = "gone" })
 		assert(not h and err:find("cwd: .*gone"), err)
 	`)
 }
 
 // TestFsDataDir: user code reads and writes its data dir and may hand it to
-// the editor; plugin code gets neither the path nor the jail.
+// the editor; plugin code gets no path to it.
 func TestFsDataDir(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
@@ -71,102 +71,62 @@ func TestFsDataDir(t *testing.T) {
 	if _, err := os.Stat(file); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := h.runModelLua(t.Context(), `return zemi.fs.read(zemi.fs.data_dir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
-		t.Fatalf("an unapproved Lua tool script read the data dir: %q %v", out, err)
-	}
 	err := r.ExecuteChunk(t.Context(), `
-		assert(not pcall(zemi.fs.data_dir, "notes"), "data_dir")
-		for _, call in ipairs({ "read", "write" }) do
-			local ok, err = pcall(zemi.fs[call], "`+file+`", "x")
-			assert(not ok and tostring(err):find("outside the jail"), call .. ": " .. tostring(err))
-		end
-	`, "p.lua", lua.OriginPlugin)
+		assert(not pcall(zemi.fs.data_dir, "notes"), "data_dir")`,
+		"p.lua", lua.OriginPlugin)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-// TestEditRepoRoot: started in a subdirectory of a trusted repository,
-// zemi.ui.edit reaches the root and zemi.fs.write stays in the launch dir.
-func TestEditRepoRoot(t *testing.T) {
-	h, r := newTestHost(t)
-	root := h.Dirs.ProjectDir
-	h.Dirs.ProjectDir = filepath.Join(root, "sub")
-	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(h.Dirs.ProjectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, trusted := range []string{"false", "true"} {
-		h.SetProjectTrusted(trusted == "true")
-		runUser(t, r, `
-			local file = "`+root+`/a.txt"
-			assert(not pcall(zemi.fs.write, file, "x"), "write")
-			assert(pcall(zemi.ui.edit, file, {}, function() end) == `+trusted+`, "edit, trusted `+trusted+`")`)
-	}
-}
-
-// TestBrainReadJails: the user brain's reads resolve in every project, and a
-// trusted project's private brain reads too (DESIGN §9); a write there dies
-// at jail resolution in TestLuaFsWriteBrainRefused.
-func TestBrainReadJails(t *testing.T) {
-	h, r := newTestHostDB(t)
-	h.Dirs.DataHome = t.TempDir()
-	user, private := h.brainParts()
-	userPath, privatePath := filepath.Join(user.Dir, "style.md"), filepath.Join(private.Dir, "repo-map.md")
-	if err := os.MkdirAll(user.Dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(userPath, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(privatePath, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		name       string
-		trusted    bool
-		target     string
-		wantJailed bool
-	}{
-		{"user brain read, untrusted", false, userPath, false},
-		{"user brain read, trusted", true, userPath, false},
-		{"private brain read, untrusted", false, privatePath, true},
-		{"private brain read, trusted", true, privatePath, false},
+// TestUiEditNoRoots: zemi.ui.edit resolves a relative path against the
+// project dir and opens one outside it, with the read gate still running.
+func TestUiEditNoRoots(t *testing.T) {
+	_, r := newTestHost(t)
+	outside := filepath.Join(outsideTemp(t), "a.txt")
+	for _, c := range []struct{ name, path string }{
+		{"relative", "a.txt"},
+		{"outside the project", outside},
 	} {
-		t.Run(c.name, func(t *testing.T) {
-			h.SetProjectTrusted(c.trusted)
-			err := runChunk(t, r, fmt.Sprintf(`
-				local ok, v = pcall(zemi.fs.read, %q)
-				if not ok and tostring(v):find("outside the jail", 1, true) then error("jailed") end
-				assert(ok and v == "x", v)`, c.target))
-			if (err != nil) != c.wantJailed {
-				t.Fatalf("err = %v, wantJailed %v", err, c.wantJailed)
-			}
-		})
+		runUser(t, r, fmt.Sprintf(`assert(pcall(zemi.ui.edit, %q, {}, function() end), %q)`, c.path, c.name))
 	}
 }
 
-// TestLuaFsWriteBrainRefused: a brain path is in no write jail, so a Lua
-// write dies at jail resolution and is never asked (DESIGN §9).
-func TestLuaFsWriteBrainRefused(t *testing.T) {
+// TestLuaFsOutsideTheProject: a path outside the project and the config home
+// is no longer refused at resolution, and the lua.fs.write gate still runs.
+func TestLuaFsOutsideTheProject(t *testing.T) {
+	h, r := newTestHost(t)
+	file := filepath.Join(outsideTemp(t), "notes.txt")
+	// an inert boot refuses every gated call but a read, so the refusal is
+	// what shows the write reached the gate
+	h.Inert = true
+	if err := runChunk(t, r, fmt.Sprintf(`zemi.fs.write(%q, "x")`, file)); err == nil || !strings.Contains(err.Error(), "lua.fs.write") {
+		t.Fatalf("the gate missed the write: %v", err)
+	}
+	h.Inert = false
+	runUser(t, r, fmt.Sprintf(`assert(zemi.fs.write(%q, "x"), "write")`, file))
+	if b, err := os.ReadFile(file); err != nil || string(b) != "x" {
+		t.Fatalf("read back = %q, %v", b, err)
+	}
+}
+
+// TestBrainFilesFromLua: a brain file is in no root of its own, so Lua reads
+// and writes one like any other file, through the gates (DESIGN §10.8).
+func TestBrainFilesFromLua(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
 	user, private := h.brainParts()
-	mem := filepath.Join(user.Dir, brain.MemFile)
-	runUser(t, r, `
-		for _, file in ipairs({ "`+mem+`", "`+private.Dir+`/repo-map.md" }) do
-			local ok, err = pcall(zemi.fs.write, file, "x")
-			assert(not ok and tostring(err):find("outside the jail"), file .. ": " .. tostring(err))
-		end
-	`)
-	if len(ui.asked) != 0 {
-		t.Errorf("a brain write reached the user: %+v", ui.asked)
+	for _, dir := range []string{user.Dir, private.Dir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ name, path string }{
+		{"user brain", filepath.Join(user.Dir, "style.md")},
+		{"private brain", filepath.Join(private.Dir, "repo-map.md")},
+	} {
+		runUser(t, r, fmt.Sprintf(`
+			assert(zemi.fs.write(%q, "x"), "write")
+			assert(zemi.fs.read(%q) == "x", "read")`, c.path, c.path))
 	}
 }

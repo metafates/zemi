@@ -725,8 +725,8 @@ func TestPluginUses(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// the plugin root sits inside the project, as it does for `zemi run`
-			// in $HOME, so a write to its own code reaches the write jail and it
-			// is the gate that refuses it
+			// in $HOME, so a write to its own code is not refused at
+			// resolution and it is the gate that refuses it
 			dir := t.TempDir()
 			dirs := config.Dirs{ProjectDir: dir, DataHome: filepath.Join(dir, "data"), StateHome: filepath.Join(dir, "state")}
 			log := slog.New(slog.DiscardHandler)

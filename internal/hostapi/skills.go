@@ -239,7 +239,7 @@ func (h *Host) discoverRecipes() []skill.Skill {
 // it lies. After the write, not before: the session already holds the text,
 // and the ask showed the user the diff the model made.
 func (h *Host) recipeAfterWrite(path string) string {
-	if !h.inJail(path, h.recipesDir()) {
+	if !h.inRoots(path, h.recipesDir()) {
 		return ""
 	}
 	data, err := os.ReadFile(path)

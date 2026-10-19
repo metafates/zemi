@@ -25,8 +25,8 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("warn", L.NewFunction(h.logFn(slog.LevelWarn)))
 	tb.RawSetString("error", L.NewFunction(h.logFn(slog.LevelError)))
 
-	// list() is the /messages ring: the log file is per launch and outside
-	// the read jails, so a widget reads the recent lines from here.
+	// list() is the /messages ring: a widget reads the recent lines from
+	// here, never the per-launch log file.
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		var rows []any
 		for _, e := range slices.Backward(h.messages()) {

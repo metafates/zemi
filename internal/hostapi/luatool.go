@@ -128,7 +128,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	src := in.Script
 	if in.Path != "" {
 		// the file is read like the read tool reads it: a Lua error echoes
-		// tokens of what it ran, so a secret or a file outside the jail asks
+		// tokens of what it ran, so a secret or a file outside the project asks
 		if filepath.Ext(in.Path) != ".lua" {
 			return fantasy.NewTextErrorResponse(in.Path + ": not a .lua file"), nil
 		}

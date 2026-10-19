@@ -335,7 +335,7 @@ func TestVetoAtTheGate(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.state.get("seen") == 1, "the veto ran " .. zemi.state.get("seen") .. " times")`)
 	runUser(t, r, `
-		assert(zemi.fs.write("jail-escapes-nothing", "x"), "the Lua gate runs")
+		assert(zemi.fs.write("gate-runs.txt", "x"), "the Lua gate runs")
 		assert(zemi.state.get("seen") == 1, "the Lua gate ran the veto")`)
 }
 

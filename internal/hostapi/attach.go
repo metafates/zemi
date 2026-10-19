@@ -83,7 +83,6 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			name = strings.TrimRight(m[1], ".,;:!?)")
 		}
 		var path perm.Path
-		var err error
 		drop := false
 		if chip && dropName(name) && h.dropsDir() != "" {
 			if p, err := perm.Resolve(filepath.Join(h.dropsDir(), name)); err == nil {
@@ -91,10 +90,13 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			}
 		}
 		if !drop {
-			path, err = h.resolveJailed(name, []string{h.Dirs.ProjectDir}, false)
-			if err != nil {
+			// an @ names a project file: one outside the project, by ".." or
+			// a symlink, attaches nothing
+			p, err := perm.Resolve(h.projectAbs(name))
+			if err != nil || !h.inRoots(p.String(), h.Dirs.ProjectDir) {
 				continue
 			}
+			path = p
 		}
 		abs := path.String()
 		if seen[abs] {
@@ -242,7 +244,7 @@ func (h *Host) AttachPath(path string) string {
 	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
 	// either token names the project's own file, so only a name neither
 	// carries is copied in
-	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inJail(path, h.Dirs.ProjectDir) &&
+	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inRoots(path, h.Dirs.ProjectDir) &&
 		(canRef(rel) || canCarry(rel)) {
 		if fi.IsDir() {
 			return rel + string(filepath.Separator)

@@ -168,7 +168,7 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 
 // Code reports whether an entry of a plugin's root holds what zemi loads or
 // its tests read: CodeDir, and the dirs a plugin layers over the user's. The
-// copier and the read jail take these entries whole.
+// copier takes these entries whole.
 func Code(name string) bool {
 	return slices.Contains([]string{CodeDir, "skills", "agents", "commands"}, name)
 }

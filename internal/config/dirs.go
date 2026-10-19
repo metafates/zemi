@@ -239,8 +239,8 @@ func (d Dirs) WorktreesIgnore() (bool, error) {
 
 // UserTrees are the directories zemi loads user files from: the config
 // subdirectories and ~/.agents/skills. They are named apart from ConfigHome
-// because a symlinked one resolves outside it, and both origin
-// classification and the read jail work on resolved paths.
+// because a symlinked one resolves outside it, and origin classification
+// works on resolved paths.
 func (d Dirs) UserTrees() []string {
 	if d.ConfigHome == "" {
 		return nil
