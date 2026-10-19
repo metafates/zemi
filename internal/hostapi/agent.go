@@ -2462,6 +2462,44 @@ func (h *Host) OpenProfilePicker() error {
 	return nil
 }
 
+// OpenEffortPicker lists the reasoning levels and the model's own, each with
+// what it sends on the conversation's model; enter sets the pick.
+func (h *Host) OpenEffortPicker() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	pick, model := h.Settings.Str("agent.effort"), h.AgentStream().Model
+	items := make([]any, 0, len(agent.Efforts)+1)
+	sel := 0
+	for _, level := range append(strs(agent.Efforts), "") {
+		name := cmp.Or(level, "default")
+		item := map[string]any{"text": name, "run": "effort " + name, "desc": h.effortDesc(model, level)}
+		if level == pick {
+			item["key"], sel = "current", len(items)
+		}
+		items = append(items, item)
+	}
+	ui.OpenOverlay(Overlay{ID: "effort", Title: "Effort", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomRight, Verb: "pick"})
+	return nil
+}
+
+// effortDesc is what level sends on model: the pick itself, the level a
+// catalog model lists nearest it, or none at all.
+func (h *Host) effortDesc(model, level string) string {
+	if model == "" {
+		return ""
+	}
+	sent := h.Providers.Effort(model, agent.Effort(level))
+	switch {
+	case sent == "":
+		return "the model takes no reasoning effort"
+	case level == "":
+		return "the model's own: " + sent
+	}
+	return "sent as " + sent
+}
+
 // profileDesc is a /profile row: the model the profile runs on and what it
 // changes.
 func (h *Host) profileDesc(name string) string {

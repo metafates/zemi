@@ -1859,9 +1859,9 @@ rides the `memories.md` line and its ledger entries.
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: over the statusline, the border in line with the
   composer frame on the side of the pill that opened it: a Lua picker
-  left, `/profile`, `/model` and `/usage` right; the box stands on the frame,
-  whose top rule is its bottom border, the label that rule carries giving
-  way to it cell for cell). A Lua overlay has
+  left, `/profile`, `/model`, `/effort` and `/usage` right; the box stands on
+  the frame, whose top rule is its bottom border, the label that rule carries
+  giving way to it cell for cell). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,

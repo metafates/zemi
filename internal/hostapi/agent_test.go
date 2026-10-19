@@ -1233,6 +1233,44 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 	}
 }
 
+// TestEffortPicker: /effort lists the levels and the model's own, keys the
+// stored pick, and says what each sends on the conversation's model.
+func TestEffortPicker(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Providers.Reset(agent.Catalog{Specs: []agent.Spec{{
+		ID: "a", Kind: agent.KindOpenAI, Builtin: true,
+		Models: []agent.Model{{ID: "big", Efforts: []string{"low", "high"}, Effort: "high"}},
+	}}})
+	if err := h.SetModel("a/big"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetConfig("agent.effort", "medium"); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.OpenEffortPicker(); err != nil {
+		t.Fatal(err)
+	}
+	o := ui.opened[0]
+	want := []struct{ text, desc, run, key string }{
+		{"low", "sent as low", "effort low", ""},
+		{"medium", "sent as low", "effort medium", "current"}, // the model lists no medium
+		{"high", "sent as high", "effort high", ""},
+		{"default", "the model's own: high", "effort default", ""},
+	}
+	if len(o.Items) != len(want) || o.Selected != 1 || o.Anchor != OverlayBottomRight {
+		t.Fatalf("picker %+v", o)
+	}
+	for i, w := range want {
+		row := o.Items[i].(map[string]any)
+		key, _ := row["key"].(string)
+		if row["text"] != w.text || row["desc"] != w.desc || row["run"] != w.run || key != w.key {
+			t.Errorf("row %d %v, want %+v", i, row, w)
+		}
+	}
+}
+
 // TestActiveProfileKey: agent.profile picks the profile a send runs as,
 // whatever order config defined things in; an unknown name fails the send.
 func TestActiveProfileKey(t *testing.T) {

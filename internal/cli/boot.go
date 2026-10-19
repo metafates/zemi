@@ -4,7 +4,6 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -481,17 +480,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "effort", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
-				// the readout is a toast, which a headless run drops
-				if _, err := h.Screen(); err != nil {
-					return err
-				}
-				pick := h.Settings.Str("agent.effort")
-				cur := cmp.Or(pick, "default")
-				if eff := h.Effort(h.AgentStream().Model); eff != pick {
-					cur += " (" + cmp.Or(eff, "none") + " on this model)"
-				}
-				h.Notify(slog.LevelInfo, "Reasoning effort is "+cur, "/effort "+config.OrList(efforts)+" sets it")
-				return nil
+				return h.OpenEffortPicker()
 			}
 			return h.SetConfig("agent.effort", args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return efforts }},
