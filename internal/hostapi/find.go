@@ -181,7 +181,7 @@ func snippet(text, role string, words []string) string {
 	if role == string(fantasy.MessageRoleUser) {
 		text, _ = agent.CutAttached(text)
 	}
-	line := sanitize.Line(strings.Join(strings.Fields(text), " "))
+	line := sanitize.Line(text)
 	runes := []rune(line)
 	if len(runes) <= snippetLen {
 		return line
@@ -245,13 +245,17 @@ func (h *Host) OpenFindSessions(query string) error {
 	// the result replaces it; NOTE: no statusline job for a scan that short
 	ui.OpenOverlay(h.findOverlay(Found{}, query, true))
 	h.GoSafe("sessions search", func() {
-		res := FindSessions(h.Dirs, query)
-		if h.findSeq.Load() != seq {
-			return
-		}
-		ui.OpenOverlay(h.findOverlay(res, query, false))
+		h.landFind(seq, ui, h.findOverlay(FindSessions(h.Dirs, query), query, false))
 	})
 	return nil
+}
+
+// landFind shows a finished search unless a newer one started since tag, so
+// an older answer never replaces the box a newer query opened.
+func (h *Host) landFind(tag int64, ui UIHooks, o Overlay) {
+	if h.findSeq.Load() == tag {
+		ui.OpenOverlay(o)
+	}
 }
 
 // findOverlay is the search on screen: the words being looked for, then one
@@ -296,7 +300,7 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		if s.ID == current {
 			item["key"] = "current"
 		} else {
-			item["actions"] = []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "sessions open " + s.ID}}
+			item["actions"] = []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "sessions open " + s.ID + " " + s.Root}}
 		}
 		items = append(items, item)
 	}
@@ -318,18 +322,27 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 // OpenFoundSession reopens a session a search listed, restarting zemi in its
 // project when that is another one: every project fact is bound at start.
 func (h *Host) OpenFoundSession(root, id string) error {
-	if root == "" {
-		return Usagef("sessions open takes the project a search listed")
+	if root == "" || id == "" {
+		return Usagef("sessions open takes a session id and the project a search listed")
 	}
 	if id == h.AgentSessionID() {
 		return nil
 	}
-	if perm.CanonPath(root) == perm.CanonPath(h.trustRoot()) {
-		return h.ResumeSession(id)
-	}
 	ui, err := h.Screen()
 	if err != nil {
 		return err
+	}
+	root = filepath.Clean(perm.ExpandHome(root))
+	if !filepath.IsAbs(root) {
+		return Usagef("%s is not an absolute path", perm.TildePath(root))
+	}
+	// the box may have sat open while the session was deleted, and a restart
+	// cannot take that back
+	if err := h.foundSession(root, id); err != nil {
+		return err
+	}
+	if perm.CanonPath(root) == perm.CanonPath(h.trustRoot()) {
+		return h.ResumeSession(id)
 	}
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
 		return Usagef("%s is not a directory", perm.TildePath(root))
@@ -341,5 +354,22 @@ func (h *Host) OpenFoundSession(root, id string) error {
 		return err
 	}
 	ui.Relaunch(root, id)
+	return nil
+}
+
+// foundSession checks a row's project still holds the session it names.
+func (h *Host) foundSession(root, id string) error {
+	db, err := store.OpenRead(store.ProjectDBPath(h.Dirs.StateHome, root))
+	if errors.Is(err, fs.ErrNotExist) {
+		return Usagef("no session %q in %s", id, perm.TildePath(root))
+	} else if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.GetSession(id); errors.Is(err, store.ErrNotFound) {
+		return Usagef("no session %q in %s", id, perm.TildePath(root))
+	} else if err != nil {
+		return err
+	}
 	return nil
 }

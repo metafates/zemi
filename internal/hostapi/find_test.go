@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
@@ -212,7 +211,7 @@ func TestOpenFindSessions(t *testing.T) {
 	if len(actions) != 1 {
 		t.Fatalf("actions = %v", actions)
 	}
-	if got := actions[0].(map[string]any)["run"]; got != "sessions open "+f.plain {
+	if got := actions[0].(map[string]any)["run"]; got != "sessions open "+f.plain+" "+f.dirs.TrustRoot() {
 		t.Errorf("action run = %v", got)
 	}
 
@@ -225,18 +224,17 @@ func TestOpenFindSessions(t *testing.T) {
 		t.Errorf("empty = %q", got)
 	}
 
-	// a scan still running when the next query is typed lands nowhere
+	// a scan still running when the next search starts lands nowhere
 	fake = &fakeUI{}
-	f.h.SetUIHooks(fake)
-	if err := f.h.OpenFindSessions("postgres"); err != nil {
-		t.Fatal(err)
+	tag := f.h.findSeq.Add(1)
+	f.h.findSeq.Add(1)
+	f.h.landFind(tag, fake, Overlay{ID: findID})
+	if got := fake.overlays(); len(got) != 0 {
+		t.Errorf("overlays = %+v, want the stale result dropped", got)
 	}
-	if err := f.h.OpenFindSessions(""); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(50 * time.Millisecond) // the fixture's scan takes a few ms
-	if got := fake.overlays(); !got[len(got)-1].Input {
-		t.Errorf("overlays = %+v, want the stale scan's result dropped", got)
+	f.h.landFind(f.h.findSeq.Load(), fake, Overlay{ID: findID})
+	if got := fake.overlays(); len(got) != 1 {
+		t.Errorf("overlays = %+v, want the fresh result", got)
 	}
 }
 

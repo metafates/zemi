@@ -10,7 +10,7 @@ zemi keeps one SQLite store per project, `<state>/projects/<hash of the trust ro
 ## Find
 
 - `zemi sessions -a` lists every project's sessions, grouped by project, newest first; `--json` adds `project`.
-- `zemi sessions search <words>` finds sessions by what was said in them, across every project: every word must appear in a prompt or a reply, case-insensitive, anywhere. It prints the session, its hit count and the newest matching line (`--json` adds `hits` and `match`), and exits 1 when nothing matches. It searches text only, never tool output; a common word returns a lot, so narrow the search with more words.
+- `zemi sessions search <words>` finds sessions by what was said in them, across every project: every word must appear in a prompt or a reply, case-insensitive, anywhere. It prints the session, its hit count and the newest matching line (`title` and no line when only the title matched; `--json` adds `hits` and `match`), and exits 1 when nothing matches. It searches text only, never tool output; a common word returns a lot, so narrow the search with more words.
 - Titles match fuzzily, so a half-remembered one lands; messages match on whole words only.
 - Search returns lines, not conversations: search, then export the session that looks right, then answer from that.
 
