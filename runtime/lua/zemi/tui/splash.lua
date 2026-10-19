@@ -56,6 +56,18 @@ local function flow(segs, room, indent)
 	return rows
 end
 
+-- Discovery tips for a first session, one per hour. The pick happens when
+-- the module loads, so the splash's row never changes between renders.
+local TIPS = {
+	{ "!git status", "fill !git status", " runs in your shell; the output rides your next prompt" },
+	{ "@", "fill @", " attaches a project file to the prompt" },
+	{ "/btw ", "fill /btw ", " asks a side question the session does not keep" },
+	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
+	{ "/review", "fill /review", " has several agents review your changes" },
+	{ "alt+m", nil, " jumps to an earlier message" },
+}
+local TIP = TIPS[math.floor(os.time() / 3600) % #TIPS + 1]
+
 --- The one tip the splash ends with: the first that applies of a failed
 --- init.lua, no model, an untrusted repository, no instruction file, a
 --- first session, else how to go on.
@@ -64,7 +76,7 @@ end
 ---@return zemi.Segment[]
 local function tip(ctx, listed)
 	---@param text string
-	---@param click string
+	---@param click string?
 	---@return zemi.Segment
 	local function key(text, click) return { text = text, hl = "SplashKey", click = click } end
 	---@param text string
@@ -80,12 +92,7 @@ local function tip(ctx, listed)
 	elseif ctx.instructions and #ctx.instructions == 0 then
 		return { key("/init", "fill /init"), dim(" writes an AGENTS.md, so zemi knows this project") }
 	elseif not listed then
-		-- zemi is configured by asking it, which no other screen says
-		return {
-			dim("try "),
-			key('"make the knot green"', "fill make the knot green"),
-			dim(": zemi configures itself"),
-		}
+		return { key(TIP[1], TIP[2]), dim(TIP[3]) }
 	elseif ctx.projects then
 		return { key("/projects", "projects"), dim(" switches to one, or type to stay here") }
 	end

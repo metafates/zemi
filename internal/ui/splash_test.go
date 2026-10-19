@@ -18,11 +18,20 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// tipClock pins the Lua clock so the hourly tip pick is the first one.
+var tipClock = fixedClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+
+type fixedClock struct{ now time.Time }
+
+func (c fixedClock) Now() time.Time { return c.now }
+
+func (c fixedClock) AfterFunc(time.Duration, func()) func() bool { return func() bool { return false } }
+
 // TestSplashExtends: user config can wrap the default splash through
 // require("zemi.tui").splash (the zemi skill's ui.md example), and a
 // replaced tip leaves nothing of a default one that wrapped.
 func TestSplashExtends(t *testing.T) {
-	app, _ := bootAgentApp(t, 44, 30)
+	app, _ := bootAgentAppOn(t, 44, 30, tipClock)
 	after := func() string {
 		app.renderSync(t)
 		lines := strings.Split(ansi.Strip(app.Frame()), "\n")
@@ -87,7 +96,7 @@ func TestSplashFitsShortChat(t *testing.T) {
 		{19, []string{"+#%#@%@%%#%#:", "● Tip"}, []string{"v1"}},
 		{17, []string{"zemi", "● Tip"}, []string{"+#%#@%@%%#%#:"}},
 	} {
-		app, _ := bootAgentApp(t, 80, c.h)
+		app, _ := bootAgentAppOn(t, 80, c.h, tipClock)
 		runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
@@ -131,10 +140,10 @@ func TestSplashTip(t *testing.T) {
 		{"at home", `trusted = false, trustable = false`, "● Tip  /resume picks up the latest session", "", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
-		{"a first session", `recent = {}`, `● Tip  try "make the knot green": zemi configures itself`, "make the knot green", true},
+		{"a first session", `recent = {}`, `● Tip  !git status runs in your shell; the output rides your next prompt`, "!git status", true},
 	}
 	for _, h := range []int{30, 22} {
-		app, _ := bootAgentApp(t, 100, h)
+		app, _ := bootAgentAppOn(t, 100, h, tipClock)
 		logo := [2]int{-1, -1}
 		for _, c := range cases {
 			runLua(t, app, `
