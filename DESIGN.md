@@ -293,7 +293,8 @@ which is what makes those terminate.
 
 ## 5. Lua runtime and plugin layout
 
-Directories (XDG):
+Directories (XDG; Windows keeps the same roots under the user's home,
+`%USERPROFILE%\.config\zemi`, not `%APPDATA%`):
 
 ```
 ~/.config/zemi/           config
@@ -1455,7 +1456,9 @@ Lua-supplied values only, never looked up from the parent by name) as
 given; model `job_start` takes
 none, since its shell line sets them (`FOO=1 cmd`); jobs never inherit the
 controlling tty (each runs in its own session through `internal/proc`;
-stdin is closed unless the job asks for a pipe with `stdin = true`).
+stdin is closed unless the job asks for a pipe with `stdin = true`). Windows
+has no process groups here: a killed shell only kills itself, and its own
+children keep running until a job object is used.
 
 ### 6.6 UI
 
@@ -3029,5 +3032,3 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 ## 13. Open questions
 
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
-- Platform support statement: the doc assumes Unix throughout (XDG
-  paths, termios); Windows support is undecided.

@@ -53,6 +53,7 @@ race:
 
 vet:
 	go vet ./...
+	GOOS=windows go vet ./...
 
 # golangci-lint with .golangci.yml; skipped without the binary
 lint:

@@ -24,6 +24,10 @@ export DEEPSEEK_API_KEY=...
 zemi
 ```
 
+zemi runs on macOS, Linux and Windows. On Windows its `shell` tool and jobs run
+through Git for Windows' bash when it is installed and `cmd` otherwise, so
+POSIX-only command lines need Git Bash.
+
 If you prefer your other agent setup zemi for you, here's a prompt:
 
 ```markdown

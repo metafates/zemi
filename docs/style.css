@@ -59,7 +59,8 @@ blockquote::before { content: "> "; }
   margin: 0;
   overflow-wrap: anywhere;
 }
-.well .dim { color: var(--dim); user-select: none; }
+.dim { color: var(--dim); }
+.well .dim { user-select: none; }
 
 a, .copy {
   color: var(--fg);
