@@ -77,8 +77,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `Body`, which stays what `y` copies. A list with `Overlay.Follow` moves the stage's scrolled
   region to the unit its selected item names by `OverlayItem.Anchor`, the number the chat stamps on
   every row of a unit (`Segment.Anchor`, `unitAt`, `jumpTop`: centered when the message fits, else
-  its first row under the pins), and bands that message with `FillBand` (`bandMessage`) while
-  keeping it out of the modal fade (`fadeRows`); it opens on the item the reader is at
+  its first row under the pins), and bands that message with `FillBand` (`bandMessage`, the
+  scrollbar cell aside) while keeping it out of the modal fade (`fadeRows`); `anchorAt` takes the
+  first anchored row at or below the view's top, so a blank line there picks the message under it;
+  it opens on the item the reader is at
   (`followRow`), `syncFollow` in `compose` carries a selection change out before the paint, enter
   closes keeping the place, and `cancelOverlay` puts the chat back on the mark its state took when
   it opened (`followMark`).

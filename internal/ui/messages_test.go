@@ -46,6 +46,87 @@ func bandedChatRows(app *App) []string {
 	return out
 }
 
+// TestMessagesOpenAtGap: with the chat at its top, or with the view's first
+// row the blank line between two messages, the picker opens on the message
+// the reader sees, never on the one already scrolled out of view above.
+func TestMessagesOpenAtGap(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	open := func() {
+		t.Helper()
+		if err := host.OpenMessages(); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+		if len(app.overlays) != 1 {
+			t.Fatalf("%d overlays", len(app.overlays))
+		}
+		from, to := unitRows(chat.lines, app.overlays[0].selectedAnchor())
+		if from < chat.top || from >= chat.top+chat.viewH {
+			t.Fatalf("the picked message is off screen: rows %d..%d, view %d..%d", from, to, chat.top, chat.top+chat.viewH)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+		app.Frame()
+	}
+
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	app.Frame()
+	if chat.top != 0 {
+		t.Fatalf("not at the top: %d", chat.top)
+	}
+	open()
+
+	// a blank row between two messages at the view's top, the message above
+	// it ends before the view starts
+	delete(app.pendingScroll, "chat")
+	for top := chat.rows - chat.viewH; top > 0; top-- {
+		chat.top = top
+		if rowAnchor(chat.lines[top]) == 0 && rowAnchor(chat.lines[top+1]) > 0 {
+			break
+		}
+	}
+	app.Frame()
+	if chat.top == 0 || rowAnchor(chat.lines[chat.top]) != 0 || rowAnchor(chat.lines[chat.top+1]) == 0 {
+		t.Fatalf("no gap at the top: top %d", chat.top)
+	}
+	open()
+}
+
+// TestMessagesBandKeepsScrollbar: the scrollbar is not part of the message a
+// picker bands, so its own cell keeps the canvas under the band.
+func TestMessagesBandKeepsScrollbar(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	host.AppendMessage("user", "long one")
+	var b strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&b, "line %d\n\n", i)
+	}
+	appendReply(host, b.String(), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
+	app.Frame()
+	chat := app.scrolls["chat"]
+	if !chat.overflows() {
+		t.Fatal("the chat should scroll")
+	}
+	from, _ := unitRows(chat.lines, app.overlays[0].selectedAnchor())
+	cell := dropCells(app.lastRows[chat.rect.Min.Y+from-chat.top], chat.rect.Max.X-1)[0]
+	if !cell.Bar || cell.Fill == hostapi.FillBand {
+		t.Fatalf("the scrollbar took the band: %+v", cell)
+	}
+}
+
 // TestMessagesTallJump: a message taller than the view starts just under the
 // pinned header above it, instead of being drawn over by it.
 func TestMessagesTallJump(t *testing.T) {

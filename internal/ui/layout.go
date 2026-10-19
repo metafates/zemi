@@ -661,6 +661,13 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		draw = bandMessage(lines, a.highlight, w-1)
 	}
 	rows := st.window(draw, w-1, n.Fade) // the bar keeps the region's last column
+	// the scrollbar keeps its own ground: the banded message runs to it and no
+	// further, so the bar reads the same over a picked row as over any other
+	for _, row := range rows {
+		if k := len(row); k > 0 && row[k-1].Bar && row[k-1].Fill == hostapi.FillBand {
+			row[k-1].Fill = hostapi.FillAuto
+		}
+	}
 	st.anchor, st.anchorOff = nil, 0
 	for i := st.top; i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
@@ -708,15 +715,11 @@ func rowAnchor(row []hostapi.Segment) int {
 	return 0
 }
 
-// anchorAt is the anchor of the row at the top of a scrolled region, else
-// the nearest one above it, else the first below: what the reader is at.
+// anchorAt is the anchor of the first unit the view shows, the row at the top
+// or the first one under it that carries an anchor: a gap row between two
+// messages belongs to the one below, the message above it being out of view.
 func anchorAt(st *scrollState) int {
-	for i := min(st.top, len(st.lines)-1); i >= 0; i-- {
-		if n := rowAnchor(st.lines[i]); n > 0 {
-			return n
-		}
-	}
-	for i := st.top + 1; i < len(st.lines); i++ {
+	for i := max(st.top, 0); i < len(st.lines); i++ {
 		if n := rowAnchor(st.lines[i]); n > 0 {
 			return n
 		}
