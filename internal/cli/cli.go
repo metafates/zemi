@@ -617,7 +617,7 @@ func searchCommand(o *options) *cobra.Command {
 				for _, s := range byRoot[root] {
 					match := ""
 					if len(s.Hits) > 0 {
-						match = s.Hits[0].Text
+						match = s.Hits[0]
 					}
 					updated := time.UnixMilli(s.UpdatedAt)
 					if *asJSON {
@@ -631,7 +631,10 @@ func searchCommand(o *options) *cobra.Command {
 						}{ID: s.ID, Title: sanitize.Line(s.Title), Updated: updated, Project: root, Hits: s.Count, Match: match})
 						continue
 					}
-					hits := fmt.Sprintf("%d %s", s.Count, hostapi.Plural(s.Count, "hit", "hits"))
+					hits := "title" // no message matched, the title did
+					if s.Count > 0 {
+						hits = fmt.Sprintf("%d %s", s.Count, hostapi.Plural(s.Count, "hit", "hits"))
+					}
 					fmt.Fprintf(out, "%s  %s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), hits, ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
 					if match != "" {
 						fmt.Fprintf(out, "      %s\n", match)

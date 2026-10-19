@@ -456,8 +456,9 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "search"); ok && (rest == "" || rest[0] == ' ') {
 				return h.OpenFindSessions(rest)
 			}
-			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "open "); ok {
-				return h.OpenFoundSession(strings.TrimSpace(id))
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "open "); ok {
+				id, root, _ := strings.Cut(strings.TrimSpace(rest), " ")
+				return h.OpenFoundSession(strings.TrimSpace(root), id)
 			}
 			err := h.OpenSessions("")
 			if errors.Is(err, hostapi.ErrNeedsTUI) {

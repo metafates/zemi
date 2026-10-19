@@ -1413,8 +1413,8 @@ a `ToolResultOutputContentError`-style message so the model can recover.
 ### 6.5 I/O for Lua
 
 ```lua
-zemi.fs.read("src/main.go")                  -- relative to the project dir;
-zemi.fs.write("notes.md", "...")             -- any path, the gate on each (§9)
+zemi.fs.read("src/main.go")                  -- relative to the project dir
+zemi.fs.write("notes.md", "...")             -- any path; both gated (§9)
 zemi.fs.glob("**/*_test.go"); zemi.fs.grep("pattern")
 local h = zemi.http.get("https://example.com")    -- returns a handle now
 local res = h:wait()                              -- suspends the task until done
@@ -2865,12 +2865,12 @@ skills index, or the untrusted-content framing.
   `ask` queues what the model or the reflector propose for /memory;
   `auto` stores it, and never drops a memory the user saved (§10.4).
 
-Each line is enforced in code, not by prompt: the intake policy (§10.4),
+Most lines are enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), the user-only config.set
-(§6.1), and the reflector's tool-less model call (§10.3). The homes line is
-the memory tool's own channel and its instructions: a brain write is the
-file mode or an approved file-tool write, and the AfterWrite hook
-scrubs what the user approves.
+(§6.1), and the reflector's tool-less model call (§10.3). The homes line
+rests on the memory tool's channel plus the model's instructions: a brain
+write is the memory tool's file mode or an approved file-tool write, and
+the AfterWrite hook scrubs what the user approves.
 
 ## 11. Error handling and observability
 

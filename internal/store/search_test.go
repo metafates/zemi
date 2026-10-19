@@ -121,9 +121,6 @@ func TestSearchMessages(t *testing.T) {
 			if len(hits) > 0 && !strings.Contains(hits[0].Text, c.first) {
 				t.Fatalf("first text = %q, want %q in it", hits[0].Text, c.first)
 			}
-			if len(hits) > 0 && (hits[0].Title == "" || hits[0].UpdatedAt == 0) {
-				t.Fatalf("row without a title or an age: %+v", hits[0])
-			}
 		})
 	}
 }

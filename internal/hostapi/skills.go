@@ -180,7 +180,7 @@ var zemiCLI = func() string {
 	if err != nil {
 		return ""
 	}
-	return "\n\nThis zemi runs from " + exe + ": use that path for its CLI (plugins test), since another zemi on PATH may be older."
+	return "\n\nThis zemi runs from " + exe + ": use that path for its CLI, since another zemi on PATH may be older."
 }()
 
 // skillNote is what only this process knows, put after a skill's body: a

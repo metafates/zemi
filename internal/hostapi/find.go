@@ -25,14 +25,9 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
-
-// FoundHit is one text part a search matched.
-type FoundHit struct {
-	Role, Text string
-	At         int64
-}
 
 // FoundSession is a session a search matched, by its text or its title.
 type FoundSession struct {
@@ -41,7 +36,7 @@ type FoundSession struct {
 	Count           int
 	TitleHit        bool
 	Missing         bool
-	Hits            []FoundHit
+	Hits            []string // snippets, newest first
 }
 
 // Found is what one search over every project answered.
@@ -101,13 +96,13 @@ func FindSessions(dirs config.Dirs, query string) Found {
 			out.Skipped = append(out.Skipped, root)
 			continue
 		}
-		out.Projects++ // a store read, not a root that has none
 		rows, err := searchStore(db, root, query, words)
 		db.Close()
 		if err != nil {
 			out.Skipped = append(out.Skipped, root)
 			continue
 		}
+		out.Projects++ // a store that answered, not a root that has none
 		out.Sessions = append(out.Sessions, rows...)
 	}
 	slices.SortFunc(out.Sessions, func(a, b FoundSession) int {
@@ -155,7 +150,7 @@ func searchStore(db *store.DB, root, query string, words []string) ([]FoundSessi
 			continue
 		}
 		rows[i].Count = h.Count
-		rows[i].Hits = append(rows[i].Hits, FoundHit{Role: h.Role, Text: snippet(h.Text, h.Role, words[0]), At: h.At})
+		rows[i].Hits = append(rows[i].Hits, snippet(h.Text, h.Role, words))
 		matched[i] = true
 	}
 	// the one subsequence pass: a half-remembered title, not every message
@@ -182,18 +177,24 @@ const snippetLen = 180
 
 // snippet is one hit's text as a result shows it: the user's own words, on
 // one line, a window around the first match.
-func snippet(text, role, word string) string {
+func snippet(text, role string, words []string) string {
 	if role == string(fantasy.MessageRoleUser) {
 		text, _ = agent.CutAttached(text)
 	}
-	line := strings.Join(strings.Fields(text), " ")
+	line := sanitize.Line(strings.Join(strings.Fields(text), " "))
 	runes := []rune(line)
 	if len(runes) <= snippetLen {
 		return line
 	}
+	at := -1 // the earliest of the query's words in the text
+	for _, w := range words {
+		if i, _ := foldIndex(line, w); i >= 0 && (at < 0 || i < at) {
+			at = i
+		}
+	}
 	start := 0
-	if i, _ := foldIndex(line, word); i >= 0 {
-		start = min(max(len([]rune(line[:i]))-snippetLen/2, 0), len(runes)-snippetLen)
+	if at >= 0 {
+		start = min(max(len([]rune(line[:at]))-snippetLen/2, 0), len(runes)-snippetLen)
 	}
 	cut := string(runes[start : start+snippetLen])
 	if start > 0 {
@@ -224,27 +225,6 @@ func ListAllSessions(dirs config.Dirs) []ProjectSessions {
 	return out
 }
 
-// FindSession finds a session by id in this project's store, then in every
-// other, for the picker's cross-project open. A store it cannot read is
-// skipped: one bad file must not hide a session another project's store has.
-func FindSession(dirs config.Dirs, id string) (string, *store.Session, error) {
-	for _, root := range projectRoots(dirs) {
-		db, err := store.OpenRead(store.ProjectDBPath(dirs.StateHome, root))
-		if err != nil {
-			continue
-		}
-		sess, err := db.GetSession(id)
-		db.Close()
-		if err == nil {
-			return root, sess, nil
-		}
-		if !errors.Is(err, store.ErrNotFound) {
-			continue
-		}
-	}
-	return "", nil, store.ErrNotFound
-}
-
 // findID is the one screen a session search opens: the input, the searching
 // box and the result are the same overlay.
 const findID = "sessions search"
@@ -256,6 +236,7 @@ func (h *Host) OpenFindSessions(query string) error {
 	if err != nil {
 		return err
 	}
+	seq := h.findSeq.Add(1) // any scan still running is stale now
 	if query = strings.TrimSpace(query); query == "" {
 		ui.OpenOverlay(Overlay{ID: findID, Title: "Search sessions", Origin: lua.OriginBuiltin, Input: true, Run: "sessions search "})
 		return nil
@@ -264,7 +245,11 @@ func (h *Host) OpenFindSessions(query string) error {
 	// the result replaces it; NOTE: no statusline job for a scan that short
 	ui.OpenOverlay(h.findOverlay(Found{}, query, true))
 	h.GoSafe("sessions search", func() {
-		ui.OpenOverlay(h.findOverlay(FindSessions(h.Dirs, query), query, false))
+		res := FindSessions(h.Dirs, query)
+		if h.findSeq.Load() != seq {
+			return
+		}
+		ui.OpenOverlay(h.findOverlay(res, query, false))
 	})
 	return nil
 }
@@ -286,8 +271,8 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		if s.Count > 0 {
 			desc = append(desc, fmt.Sprintf("%d %s", s.Count, Plural(s.Count, "hit", "hits")))
 		}
-		if s.TitleHit {
-			desc = append(desc, "title")
+		if s.TitleHit && s.Count == 0 {
+			desc = append(desc, "title") // why a session with no matches is here
 		}
 		item := map[string]any{
 			"text":   markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")),
@@ -295,7 +280,7 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 			"fields": fieldList("project", perm.TildePath(s.Root), "updated", ago(s.UpdatedAt), "hits", strconv.Itoa(s.Count)),
 		}
 		if len(s.Hits) > 0 {
-			item["preview"] = s.Hits[0].Text
+			item["preview"] = s.Hits[0]
 		}
 		detail := make([]string, 0, len(s.Hits)+1)
 		switch {
@@ -305,7 +290,7 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 			detail = append(detail, "zemi runs this session: /new leaves it, and then it can be found and resumed here.")
 		}
 		for _, hit := range s.Hits {
-			detail = append(detail, "· "+hit.Text)
+			detail = append(detail, "· "+hit)
 		}
 		item["detail"] = strings.Join(detail, "\n\n")
 		if s.ID == current {
@@ -316,25 +301,25 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		items = append(items, item)
 	}
 	o.Items = items
-	o.Body = fmt.Sprintf("%d %s in %d %s · %d %s searched", hits, Plural(hits, "hit", "hits"),
-		len(res.Sessions), Plural(len(res.Sessions), "session", "sessions"), res.Projects, Plural(res.Projects, "project", "projects"))
+	unreadable := ""
 	if len(res.Skipped) > 0 {
-		o.Body += fmt.Sprintf(" · %d unreadable", len(res.Skipped))
+		unreadable = fmt.Sprintf(" · %d unreadable", len(res.Skipped))
 	}
-	o.Empty = fmt.Sprintf("No match for %q in %d projects.", query, res.Projects)
+	if len(res.Sessions) == 0 {
+		o.Empty = fmt.Sprintf("No match for %q in %d %s%s.", query, res.Projects, Plural(res.Projects, "project", "projects"), unreadable)
+	} else {
+		o.Body = fmt.Sprintf("%d %s in %d %s · %d %s searched%s", hits, Plural(hits, "hit", "hits"),
+			len(res.Sessions), Plural(len(res.Sessions), "session", "sessions"), res.Projects, Plural(res.Projects, "project", "projects"), unreadable)
+	}
 	o.Keys = []OverlayKey{{Key: "r", Desc: "resume"}}
 	return o
 }
 
 // OpenFoundSession reopens a session a search listed, restarting zemi in its
 // project when that is another one: every project fact is bound at start.
-func (h *Host) OpenFoundSession(id string) error {
-	root, _, err := FindSession(h.Dirs, id)
-	if errors.Is(err, store.ErrNotFound) {
-		return Usagef("no session %q in any project", id)
-	}
-	if err != nil {
-		return err
+func (h *Host) OpenFoundSession(root, id string) error {
+	if root == "" {
+		return Usagef("sessions open takes the project a search listed")
 	}
 	if id == h.AgentSessionID() {
 		return nil

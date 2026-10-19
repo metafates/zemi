@@ -25,9 +25,8 @@ func init() {
 
 // MessageHit is one text part a search matched.
 type MessageHit struct {
-	SessionID, Title, Role, Text string
-	UpdatedAt, At                int64
-	Count                        int
+	SessionID, Role, Text string
+	Count                 int
 }
 
 // SearchMessages returns the newest matches of every word, at most perSession
@@ -44,9 +43,9 @@ func (s *DB) SearchMessages(words []string, perSession, maxRows int) ([]MessageH
 	}
 	args = append(args, perSession, maxRows)
 	rows, err := s.db.Query(fmt.Sprintf(`
-		SELECT id, title, updated_at, role, at, text, total FROM (
-			SELECT s.id AS id, s.title AS title, s.updated_at AS updated_at, m.role AS role,
-				m.created_at AS at, json_extract(p.value, '$.data.text') AS text,
+		SELECT id, role, text, total FROM (
+			SELECT s.id AS id, s.updated_at AS updated_at, m.role AS role,
+				json_extract(p.value, '$.data.text') AS text,
 				COUNT(*) OVER (PARTITION BY s.id) AS total,
 				ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY m.rowid DESC) AS rn
 			FROM messages m
@@ -58,7 +57,7 @@ func (s *DB) SearchMessages(words []string, perSession, maxRows int) ([]MessageH
 		strings.Join(conds, " AND ")), args...)
 	return collect(rows, err, func(r scanner) (MessageHit, error) {
 		var h MessageHit
-		err := r.Scan(&h.SessionID, &h.Title, &h.UpdatedAt, &h.Role, &h.At, &h.Text, &h.Count)
+		err := r.Scan(&h.SessionID, &h.Role, &h.Text, &h.Count)
 		return h, err
 	})
 }

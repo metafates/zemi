@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -66,7 +66,7 @@ func newFindFixture(t *testing.T) findFixture {
 	}
 	addTo(t, h.DB, f.plain, "user", "Why does Postgres pick a seq scan?")
 	addTo(t, h.DB, f.plain, "assistant", "Postgres planner estimates rows badly.")
-	long := strings.Repeat("filler ", 40) + "Postgres again" + agent.Attached("file", "<html>noise</html>")
+	long := strings.Repeat("filler ", 40) + "Postgres again \x1b[31mred\x1b[0m" + agent.Attached("file", "<html>noise</html>")
 	addTo(t, h.DB, f.plain, "user", long)
 
 	var db *store.DB
@@ -119,13 +119,13 @@ func TestFindSessions(t *testing.T) {
 	if plain.Count != 3 || len(plain.Hits) != 3 || plain.Title != "Postgres tuning" || plain.Root != f.dirs.TrustRoot() {
 		t.Errorf("plain session = %+v, want 3 hits of this project's session", plain)
 	}
-	newest := plain.Hits[0].Text
-	if !strings.Contains(newest, "Postgres again") || !strings.Contains(newest, "…") || strings.Contains(newest, "attached-files") {
-		t.Errorf("newest snippet = %q, want a window around the match without what zemi attached", newest)
+	newest := plain.Hits[0]
+	if !strings.Contains(newest, "Postgres again") || !strings.Contains(newest, "…") || strings.Contains(newest, "attached-files") || strings.Contains(newest, "\x1b") {
+		t.Errorf("newest snippet = %q, want a scrubbed window around the match without what zemi attached", newest)
 	}
 	for _, h := range f.hits(t, found, f.deep) {
-		if !strings.Contains(h.Text, "kubelet") {
-			t.Errorf("deep snippet = %q, want the match in it", h.Text)
+		if !strings.Contains(h, "kubelet") {
+			t.Errorf("deep snippet = %q, want the match in it", h)
 		}
 	}
 
@@ -139,7 +139,7 @@ func TestFindSessions(t *testing.T) {
 }
 
 // hits is a found session's hits, or a failure when the search missed it.
-func (f findFixture) hits(t *testing.T, found Found, id string) []FoundHit {
+func (f findFixture) hits(t *testing.T, found Found, id string) []string {
 	t.Helper()
 	for _, s := range found.Sessions {
 		if s.ID == id {
@@ -169,30 +169,6 @@ func TestListAllSessions(t *testing.T) {
 	}
 	if got := ids(groups[1]); len(got) != 2 || !slices.Contains(got, f.deep) || !slices.Contains(got, f.titled) {
 		t.Errorf("the other project's sessions = %v, want %s and %s", got, f.deep, f.titled)
-	}
-}
-
-// TestFindSession: an id is looked up here first, then everywhere else, and
-// a store that cannot be read does not stop the search.
-func TestFindSession(t *testing.T) {
-	f := newFindFixture(t)
-	for _, c := range []struct {
-		name, id, root string
-		err            error
-	}{
-		{"this project's session", f.plain, f.dirs.TrustRoot(), nil},
-		{"another project's session", f.deep, f.root, nil},
-		{"no such session", "missing1", "", store.ErrNotFound},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			root, sess, err := FindSession(f.dirs, c.id)
-			if !errors.Is(err, c.err) {
-				t.Fatalf("FindSession(%q) error = %v, want %v", c.id, err, c.err)
-			}
-			if root != c.root || err == nil && sess.ID != c.id {
-				t.Fatalf("FindSession(%q) = %q, %+v, want root %q", c.id, root, sess, c.root)
-			}
-		})
 	}
 }
 
@@ -245,8 +221,22 @@ func TestOpenFindSessions(t *testing.T) {
 	if err := f.h.OpenFindSessions("zzznothing"); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.waitOverlays(t, fake)[1].Empty; !strings.Contains(got, `No match for "zzznothing" in 2 projects.`) {
+	if got := f.waitOverlays(t, fake)[1].Empty; !strings.Contains(got, `No match for "zzznothing"`) || !strings.Contains(got, "1 unreadable") {
 		t.Errorf("empty = %q", got)
+	}
+
+	// a scan still running when the next query is typed lands nowhere
+	fake = &fakeUI{}
+	f.h.SetUIHooks(fake)
+	if err := f.h.OpenFindSessions("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.h.OpenFindSessions(""); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // the fixture's scan takes a few ms
+	if got := fake.overlays(); !got[len(got)-1].Input {
+		t.Errorf("overlays = %+v, want the stale scan's result dropped", got)
 	}
 }
 
@@ -269,13 +259,13 @@ func TestOpenFoundSession(t *testing.T) {
 	f := newFindFixture(t)
 	fake := &fakeUI{}
 	f.h.SetUIHooks(fake)
-	if err := f.h.OpenFoundSession(f.deep); err != nil {
+	if err := f.h.OpenFoundSession(f.root, f.deep); err != nil {
 		t.Fatalf("OpenFoundSession: %v", err)
 	}
 	if fake.relaunched != f.root || fake.resumed != f.deep {
 		t.Errorf("relaunched to %q resuming %q, want %q and %q", fake.relaunched, fake.resumed, f.root, f.deep)
 	}
-	if err := f.h.OpenFoundSession("missing1"); err == nil || !strings.Contains(err.Error(), `no session "missing1"`) {
-		t.Errorf("an unknown id = %v, want a usage error", err)
+	if err := f.h.OpenFoundSession("", f.deep); err == nil {
+		t.Error("a row with no project = nil, want a usage error")
 	}
 }
