@@ -411,3 +411,41 @@ func TestMessagesReopenAll(t *testing.T) {
 		t.Fatalf("reopened on an off-screen message: row %d, view %d..%d", from, chat.top, chat.top+chat.viewH)
 	}
 }
+
+// TestMessagesBottomDropsPlace: scrolling to the bottom drops where a jump
+// put the view, even when the chat is already pinned to its tail and the
+// scroll moves nothing: the picker then opens on the last message.
+func TestMessagesBottomDropsPlace(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	open := func() *overlayState {
+		t.Helper()
+		if err := host.OpenMessages(); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+		return &app.overlays[0]
+	}
+	ov := open()
+	// a message whose jump lands on the tail: it follows, and keeps its place
+	ov.selected = 58 // message 30, the second to last
+	app.Frame()
+	if !chat.follow || chat.focus != 59 {
+		t.Fatalf("follow %v, focus %d", chat.follow, chat.focus)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Frame()
+	// the chat is already at its tail: this scroll moves nothing
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd, Mod: tea.ModCtrl})
+	app.Frame()
+	if chat.focus != 0 {
+		t.Fatalf("a scroll to the bottom kept the place: focus %d", chat.focus)
+	}
+	if got := open().selectedAnchor(); got != 60 {
+		t.Fatalf("opened on %d, want the last message 60", got)
+	}
+}

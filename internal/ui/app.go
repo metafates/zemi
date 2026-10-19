@@ -1259,10 +1259,16 @@ func (a *App) scrollAt(x, y int) string {
 func (a *App) scrollRows(id string, n int) {
 	delete(a.pendingScroll, id)
 	st := a.scrolls[id]
-	if st == nil || n > 0 && st.follow {
+	if st == nil {
 		return
 	}
-	st.focus = 0 // the reader moved the view: the place it was put at is no more
+	// the reader took the view in hand: the place a jump left it at is no
+	// more, even when the scroll moves nothing because the region is already
+	// pinned to its tail
+	st.focus = 0
+	if n > 0 && st.follow {
+		return
+	}
 	st.scroll(n)
 	st.follow = st.bottom && st.top+st.viewH >= st.rows
 	a.bump()

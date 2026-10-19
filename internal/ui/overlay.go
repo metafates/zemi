@@ -257,7 +257,9 @@ func (a *App) followRow(st *overlayState) int {
 		}
 		chat.focus = 0 // no message carries it, or the view no longer shows it
 	}
-	if chat.follow {
+	// the view shows the end of the transcript: the reader is at the newest
+	// message, whichever way the region got there
+	if chat.follow || chat.top+chat.viewH >= chat.rows {
 		return n - 1
 	}
 	// the message the top row shows, else the first one under it: a run of
