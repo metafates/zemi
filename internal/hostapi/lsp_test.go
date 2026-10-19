@@ -129,9 +129,6 @@ func TestLSPTool(t *testing.T) {
 		{fmt.Sprintf(`{"action":"implementation","path":%q,"symbol":"Foo","line":2}`, a), "a.txt:1:6: func Foo()"},
 		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Ba"}`, b), "function Bar  a.txt:3"},
 		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Nope"}`, b), "no symbol matching Nope"},
-		{fmt.Sprintf(`{"action":"call_hierarchy","path":%q,"symbol":"Foo","line":1}`, a), "callers of Foo:\n  b.txt:1: Foo\ncallees of Foo:\n  a.txt:3: Bar"},
-		{fmt.Sprintf(`{"action":"call_hierarchy","path":%q,"symbol":"Foo","line":1,"direction":"incoming"}`, a), "callers of Foo:\n  b.txt:1: Foo"},
-		{fmt.Sprintf(`{"action":"call_hierarchy","path":%q,"symbol":"Foo","line":1,"direction":"outgoing"}`, a), "callees of Foo:\n  a.txt:3: Bar"},
 		{fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Foo","new_name":"Baz"}`, b), "renamed Foo to Baz in 2 files, 3 places"},
 	} {
 		if got := run(c.input); !strings.Contains(got, c.want) {

@@ -16,15 +16,14 @@ import (
 )
 
 // schemaEnums is the enum a named arg type shows in the schema. TodoStatuses,
-// questionTypes, lspActions and lspDirections are the vars the run code
-// validates against, so the words are written once; the scope words' order
-// here is the schema's, not store.Scopes'.
+// questionTypes and lspActions are the vars the run code validates against,
+// so the words are written once; the scope words' order here is the schema's,
+// not store.Scopes'.
 var schemaEnums = map[reflect.Type]any{
 	reflect.TypeFor[store.TodoStatus](): store.TodoStatuses,
 	reflect.TypeFor[QuestionType]():     questionTypes,
 	reflect.TypeFor[store.Scope]():      []store.Scope{store.ScopeProject, store.ScopeUser},
 	reflect.TypeFor[lspAction]():        lspActions,
-	reflect.TypeFor[lspDirection]():     lspDirections,
 }
 
 // ArgsOf returns an args struct's properties and required list, the shape

@@ -100,17 +100,6 @@ func Serve(in io.Reader, out io.Writer) {
 					URI  string `json:"uri"`
 					Type int    `json:"type"`
 				} `json:"changes"`
-				Item struct {
-					URI   string `json:"uri"`
-					Name  string `json:"name"`
-					Range struct {
-						Start struct {
-							Line      int `json:"line"`
-							Character int `json:"character"`
-						} `json:"start"`
-					} `json:"range"`
-					SelectionRange jsontext.Value `json:"selectionRange"`
-				} `json:"item"`
 			} `json:"params"`
 		}
 		if json.Unmarshal(body, &m) != nil || hung {
@@ -120,7 +109,6 @@ func Serve(in io.Reader, out io.Writer) {
 		for i := range m.Params.Changes {
 			m.Params.Changes[i].URI = canon(m.Params.Changes[i].URI)
 		}
-		m.Params.Item.URI = canon(m.Params.Item.URI)
 		switch m.Method {
 		default:
 			if m.Method != "" && len(m.ID) > 0 {
@@ -201,59 +189,6 @@ func Serve(in io.Reader, out io.Writer) {
 				result = map[string]any{"changes": changes}
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
-		case "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls":
-			res := func(result any) { write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}) }
-			itemJSON := func(name, u string, r lsp.Range) map[string]any {
-				rng := map[string]any{
-					"start": map[string]any{"line": r.Start.Line, "character": r.Start.Character},
-					"end":   map[string]any{"line": r.End.Line, "character": r.End.Character},
-				}
-				return map[string]any{"name": name, "kind": 12, "uri": u, "range": rng, "selectionRange": rng}
-			}
-			// rust-analyzer refuses an item sent back without the field
-			if m.Method != "textDocument/prepareCallHierarchy" && m.Params.Item.SelectionRange == nil {
-				write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32602, "message": "missing field selectionRange"}})
-				break
-			}
-			switch m.Method {
-			case "textDocument/prepareCallHierarchy":
-				uri := m.Params.TextDocument.URI
-				word := wordAt(texts[uri], m.Params.Position.Line, m.Params.Position.Character)
-				if word == "" {
-					res([]any{})
-					break
-				}
-				line := strings.Split(texts[uri], "\n")[m.Params.Position.Line]
-				start := strings.Index(line, word)
-				res([]any{itemJSON(word, uri, lsp.Range{Start: lsp.Position{Line: m.Params.Position.Line, Character: start}, End: lsp.Position{Line: m.Params.Position.Line, Character: start + len(word)}})})
-			case "callHierarchy/incomingCalls":
-				// callers: uses of the name in other open documents, skipping a definition
-				var result []any
-				for u, t := range texts {
-					if u == m.Params.Item.URI {
-						continue
-					}
-					for i, line := range strings.Split(t, "\n") {
-						for _, r := range wordRe.FindAllStringIndex(line, -1) {
-							if line[r[0]:r[1]] == m.Params.Item.Name && !strings.HasPrefix(line, "func ") {
-								result = append(result, map[string]any{"from": itemJSON(m.Params.Item.Name, u, lsp.Range{Start: lsp.Position{Line: i, Character: r[0]}, End: lsp.Position{Line: i, Character: r[1]}})})
-							}
-						}
-					}
-				}
-				res(result)
-			case "callHierarchy/outgoingCalls":
-				// callees: the other function declarations in the same document
-				var result []any
-				for i, line := range strings.Split(texts[m.Params.Item.URI], "\n") {
-					if name, ok := strings.CutPrefix(line, "func "); ok {
-						if name, _, _ = strings.Cut(name, "("); name != m.Params.Item.Name {
-							result = append(result, map[string]any{"to": itemJSON(name, m.Params.Item.URI, lsp.Range{Start: lsp.Position{Line: i, Character: 5}, End: lsp.Position{Line: i, Character: 5 + len(name)}})})
-						}
-					}
-				}
-				res(result)
-			}
 		case "workspace/symbol":
 			var syms []any
 			for _, u := range slices.Sorted(maps.Keys(texts)) {

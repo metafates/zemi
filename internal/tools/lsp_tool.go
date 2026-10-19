@@ -20,30 +20,23 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-const lspToolDesc = `Ask the file's language server about a symbol by name: definition, implementation, references, rename (edits every file, and the changed files count as read), symbols (a file's outline without reading it), workspace_symbols (a declaration by name when its file is unknown), call_hierarchy (who calls it and what it calls).
+const lspToolDesc = `Ask the file's language server about a symbol by name: definition, implementation, references, rename (edits every file, and the changed files count as read), symbols (a file's outline without reading it), workspace_symbols (a declaration by name when its file is unknown).
 Unlike grep it resolves scopes, so it skips comments, strings and other identifiers with the same name.`
 
 // lspActions are what runLSP answers; the switch there reads the same words.
-var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}
+var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols"}
 
-// lspDirections are the call_hierarchy directions runLSP walks.
-var lspDirections = []string{"incoming", "outgoing"}
-
-// lspAction and lspDirection name the lsp tool's enum fields, so the
-// schema generator finds their value lists (schemaEnums in args.go).
-type (
-	lspAction    string
-	lspDirection string
-)
+// lspAction names the lsp tool's enum field, so the schema generator finds
+// its value list (schemaEnums in args.go).
+type lspAction string
 
 // lspArgs is the lsp tool's input and its schema source.
 type lspArgs struct {
-	Action    lspAction    `json:"action"`
-	Path      string       `json:"path" desc:"a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"`
-	Symbol    string       `json:"symbol,omitempty" desc:"the identifier as written, or the query for workspace_symbols; not for symbols"`
-	Line      int          `json:"line,omitempty" desc:"1-based line, when the name appears more than once"`
-	NewName   string       `json:"new_name,omitempty" desc:"rename only"`
-	Direction lspDirection `json:"direction,omitempty" desc:"call_hierarchy only; who calls the symbol or what it calls, omitted = both"`
+	Action  lspAction `json:"action"`
+	Path    string    `json:"path" desc:"a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"`
+	Symbol  string    `json:"symbol,omitempty" desc:"the identifier as written, or the query for workspace_symbols; not for symbols"`
+	Line    int       `json:"line,omitempty" desc:"1-based line, when the name appears more than once"`
+	NewName string    `json:"new_name,omitempty" desc:"rename only"`
 }
 
 func lspRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
@@ -143,47 +136,6 @@ func runLSP(ctx context.Context, p *Pipeline, in lspArgs) (fantasy.ToolResponse,
 			note = ""
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("%d references\n%s%s", len(locs), formatLocations(locs, 100), note)), nil
-	case "call_hierarchy":
-		// the server re-resolves incoming/outgoing from the prepared item
-		// (its data field is opaque, selectionRange required), so round-trip
-		// it untouched
-		var b strings.Builder
-		var prepared []jsontext.Value
-		if err := c.Call(ctx, "textDocument/prepareCallHierarchy", params, &prepared); err != nil {
-			return fail(err)
-		}
-		if len(prepared) == 0 {
-			return fantasy.NewTextResponse("no call hierarchy for " + symbol + note), nil
-		}
-		dirs := lspDirections
-		if d := string(in.Direction); slices.Contains(dirs, d) {
-			dirs = []string{d}
-		}
-		for _, dir := range dirs {
-			var res []struct {
-				From callHierarchyItem `json:"from"`
-				To   callHierarchyItem `json:"to"`
-			}
-			if err := c.Call(ctx, "callHierarchy/"+dir+"Calls", map[string]any{"item": prepared[0]}, &res); err != nil {
-				return fail(err)
-			}
-			title := "callees"
-			if dir == "incoming" {
-				title = "callers"
-			}
-			fmt.Fprintf(&b, "%s of %s:\n", title, symbol)
-			if len(res) == 0 {
-				b.WriteString("  none\n")
-			}
-			for _, r := range res {
-				it := r.To
-				if dir == "incoming" {
-					it = r.From
-				}
-				fmt.Fprintf(&b, "  %s:%d: %s\n", workRel(lsp.Location{URI: it.URI}.Path()), it.Range.Start.Line+1, it.Name)
-			}
-		}
-		return fantasy.NewTextResponse(strings.TrimSuffix(b.String(), "\n") + note), nil
 	case "rename":
 		newName := in.NewName
 		if newName == "" {
@@ -372,13 +324,6 @@ func formatLocations(locs []lsp.Location, limit int) string {
 		fmt.Fprintf(&b, "%s:%d:%d: %s\n", workRel(path), l.Range.Start.Line+1, l.Range.Start.Character+1, src)
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-// callHierarchyItem is what the tool prints of an LSP CallHierarchyItem.
-type callHierarchyItem struct {
-	Name  string    `json:"name"`
-	URI   string    `json:"uri"`
-	Range lsp.Range `json:"range"`
 }
 
 // symbolKind names an LSP SymbolKind value.

@@ -1349,8 +1349,8 @@ question or a report is no plan to approve),
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
 server errors and warnings for any file), `lsp` (definition, implementation,
-references, rename, file symbols, project-wide symbol search by name and
-call hierarchy), `skill` (loads a SKILL.md body on demand), plus the
+references, rename, file symbols, project-wide symbol search by name),
+`skill` (loads a SKILL.md body on demand), plus the
 five the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
 and pause, resume or stop a background one), `lua` (run Lua inside zemi, main agent only, as user origin:
