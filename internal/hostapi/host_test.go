@@ -20,6 +20,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
+	"golang.org/x/text/width"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -976,7 +977,8 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 // codepoint with no joiner, selector, modifier, regional indicator, keycap or
 // combining mark; emoji presentation, curated from Unicode's emoji-variants
 // data, so it renders colored everywhere without VS16; two cells by zemi's
-// own width function; and no glyph the UI already draws.
+// own width function and East Asian Wide by UAX #11; and no glyph the UI
+// already draws.
 func TestSessionEmojiPool(t *testing.T) {
 	drawn := map[string]bool{}
 	for _, m := range Marks {
@@ -1004,6 +1006,9 @@ func TestSessionEmojiPool(t *testing.T) {
 		}
 		if w := ansi.StringWidth(e); w != 2 {
 			t.Errorf("%q: width %d, want 2", e, w)
+		}
+		if k := width.LookupRune(rs[0]).Kind(); k != width.EastAsianWide {
+			t.Errorf("%q: UAX #11 kind %v, want wide", e, k)
 		}
 		if drawn[e] {
 			t.Errorf("%q: a glyph the UI already draws", e)

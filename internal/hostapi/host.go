@@ -252,14 +252,20 @@ var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "
 
 // sessionEmoji pools the emoji a session's marker is picked from: one
 // codepoint, emoji presentation (colored without VS16), East Asian Width W
-// (so zemi.ui.width and the terminal agree on 2 cells), and none a glyph the
-// UI already draws. The pool test pins the rest of the criteria; the entries
-// were curated against Unicode's emoji-variants data.
+// by UAX #11 (so zemi.ui.width and the terminal agree on 2 cells), Emoji 11.0
+// or older so every font that ships emoji has them, and distinct and
+// neutral: no faces, hands, people, flags or symbols the UI draws. The pool
+// test pins the rest; the entries were curated against Unicode's
+// emoji-variants data.
 var sessionEmoji = []string{
 	"🌊", "💧", "☔", "⛅", "🌈", "🌙", "⭐", "🌍", "🌵", "🌱",
 	"🍀", "🍄", "🌻", "🦋", "🐢", "🐙", "🐳", "🐧", "🐚", "📎",
 	"📌", "🔖", "📚", "📦", "🔑", "🔨", "🧰", "🧩", "🧭", "💡",
 	"💎", "🔮", "🎲", "🎁", "🎨", "🚀", "⚓", "☕", "🍕", "💾",
+	"🦊", "🦉", "🐝", "🐬", "🦀", "🦑", "🦎", "🦕", "🐘", "🦔",
+	"🦜", "🐠", "🌲", "🌳", "🍁", "🌷", "🌹", "🌸", "🌺", "🍒",
+	"🍋", "🥑", "🥕", "🍞", "🧀", "🍩", "🍿", "🔭", "🔬", "🧪",
+	"🧬", "🧲", "🛸", "🎸", "🧸", "🧵", "🎯", "🗻", "🏰", "🎡",
 }
 
 // SessionMark derives a top-level session's marker emoji from its id: stable

@@ -1022,8 +1022,9 @@ role's model replace that name in the background, never waiting for the first
 reply, and a failed or empty answer keeps it. A `zemi run` makes no title call.
 Every title surface - the tab, `/sessions`, `/projects`, the splash's recent
 rows and the exit banner - leads the name with the session's marker emoji,
-derived from its id, so it is stable across resume and restart without
-storage; subagent runs, in child sessions, never surface one.
+derived from its id and picked from a pool of one-codepoint, East Asian Wide
+glyphs of Emoji 11.0 or older, so it is stable across resume and restart
+without storage; subagent runs, in child sessions, never surface one.
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
