@@ -5,7 +5,7 @@ description: "Use when one query answers the whole question across many files: e
 
 # codescan
 
-A scan is one lua script: `zemi.fs.grep(pattern, { path = "dir", include = "*.go" })` answers what a shell grep plus a pile of reads would, and `print` decides what the step costs. Put the whole question in that one script: filter, read and count together, not one script per sub-question.
+A scan is one lua script: `zemi.fs.grep(pattern, { path = "dir", include = "*.go" })` answers what a shell grep plus a pile of reads would, and `print` decides what the step costs. Put the whole question in that one script: filter, read and count together, not one script per sub-question. A long list is the one thing that costs as much as the reads it replaced, so print a count, or the first fifty, and only the fields the answer needs. Patterns are Go regular expressions, not Lua ones: `\d` and `(a|b)`, never `%d`.
 
 ```lua
 for _, h in ipairs(zemi.fs.grep("loadConfig\\(", { include = "*.go" })) do
