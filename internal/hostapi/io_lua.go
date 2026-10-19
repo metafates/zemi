@@ -429,7 +429,13 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
 		path := resolve(L, "write", true, false)
-		return luaResult(L, tools.WriteFile(path, []byte(L.CheckString(2)), 0o644))
+		data := []byte(L.CheckString(2))
+		// the model's own script writes on a write call's terms; user and
+		// plugin code keeps writing raw, as its own code does
+		if h.modelLuaScript(L) != "" {
+			return luaResult(L, h.PipelineFor().ScriptWrite(path, data, 0o644))
+		}
+		return luaResult(L, tools.WriteFile(path, data, 0o644))
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {

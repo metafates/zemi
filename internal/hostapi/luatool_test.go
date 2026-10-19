@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -326,6 +327,22 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if out := run(`zemi.tool.call("read", { path = ` + read + ` }):wait()`); out != "(no output)" {
 		t.Fatalf("unprinted output reached the model: %q", out)
 	}
+	// a script's write takes a write call's terms: an unread file is refused,
+	// a read one is written, and the write leaves it read for the next edit
+	w := filepath.Join(h.Dirs.ProjectDir, "w.txt")
+	os.WriteFile(w, []byte("one\ntwo\n"), 0o600)
+	if out := run(`print(select(2, zemi.fs.write(` + strconv.Quote(w) + `, "x")))`); !strings.Contains(out, "read ") {
+		t.Fatalf("a script overwrote an unread file: %q", out)
+	}
+	run(`zemi.tool.call("read", { path = ` + strconv.Quote(w) + ` }):wait()`)
+	if out := run(`local ok, err = zemi.fs.write(` + strconv.Quote(w) + `, "x") print(ok, err) print(zemi.fs.read(` + strconv.Quote(w) + `))`); !strings.HasPrefix(out, "true\tnil\nx") {
+		t.Fatalf("a read file refused the script's write: %q", out)
+	}
+	edit := `local o, e = zemi.tool.call("edit", { path = ` + strconv.Quote(w) + `, old_string = "x", new_string = "y" }):wait() print(e or o)`
+	if out := run(edit); !strings.Contains(out, "edited") {
+		t.Fatalf("the edit after a script's write read stale: %q", out)
+	}
+
 	// a shell command runs, and its output comes back whole
 	if out := run(`local o, e = zemi.tool.call("shell", { command = "cat ` + file + `" }):wait() print(e or o)`); !strings.Contains(out, "hello") || len(ui.asked) != 0 {
 		t.Fatalf("shell through a script: %q, asked %+v", out, ui.asked)

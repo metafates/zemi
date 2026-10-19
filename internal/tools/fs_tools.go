@@ -784,6 +784,25 @@ func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) e
 	return WriteFile(path, data, mode)
 }
 
+// ScriptWrite writes a file a model's Lua script changed, on the terms a
+// write call takes: a file this session has not read, or one that changed
+// since, is refused rather than overwritten, the old bytes are checkpointed
+// for rewind, and the afterWrite hooks run. A user or plugin script writes
+// raw, as its own code does.
+func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) error {
+	defer lockFile(path.String())()
+	if fi, err := os.Stat(path.String()); err == nil {
+		if msg := p.stale(path.String(), fi, false); msg != "" {
+			return errors.New(msg)
+		}
+	}
+	if err := p.writeThrough(path, data, mode); err != nil {
+		return err
+	}
+	p.wrote(path.String())
+	return nil
+}
+
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
 	Path      string `json:"path"`
