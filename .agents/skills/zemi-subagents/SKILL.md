@@ -107,8 +107,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts (`Pipeline.cmdEnv`; the user's
   `!command` keeps the user's). Writes in the pad settle like any write,
-  and the read-only agent may write only there; `zemi.fs` and the Lua tool jail it to
-  the pad alone.
+  and the read-only agent may write only there; the allowance is the pipeline's (`perm.InPad`),
+  so `zemi.fs` follows it too.
   `write`
   and `edit` need a prior read like anywhere else, and a pad write is never
   checkpointed. A file tool path starting with `$`, `~` or

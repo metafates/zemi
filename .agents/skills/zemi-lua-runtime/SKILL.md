@@ -67,8 +67,8 @@ inside an enabled plugin, so a symlink or `..` cannot run a disabled one.
 so neither can be forged.
 
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus each
-subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a symlinked
-`skills` or `lua` still resolves inside) > `builtin` (embedded runtime/) > `plugin`
+subdirectory of it in `Dirs.UserTrees`, so a symlinked
+`skills` or `lua` still resolves as user) > `builtin` (embedded runtime/) > `plugin`
 (`<data>/plugins`) > `project` (<repo>/.agents). The code a call runs as
 (`Runtime.CurrentOrigin`, `CurrentPath`) is the least trusted of the frame the host entry pushed
 and every Lua function on the stack, resumers included, builtin ones transparent: a plugin's

@@ -641,7 +641,7 @@ skills, agents and workflows are not exercised.
 Sandbox (what userland gets):
 
 - Kept: `base` minus `dofile`/`loadfile` (they read and execute raw files,
-  bypassing both the jail and `zemi.fs`); `load`/`loadstring` kept (Lua
+  bypassing the `zemi.fs` gate); `load`/`loadstring` kept (Lua
   source only; gopher-lua has no bytecode loader at all, which makes the
   classic bytecode-execution hole a non-issue); `table`, `string`, `math`,
   `coroutine`, minimal `debug` (`traceback` only, with frames from other
@@ -650,7 +650,7 @@ Sandbox (what userland gets):
 - Removed: `io`, `os.execute`, `os.remove`/`rename`/`exit`, `os.getenv`
   (use `zemi.env.get`), `os.setenv` (env mutation subverts the §9 env
   gates),
-  `os.tmpname` (bypasses the jail), the `package` library, `setfenv`/`getfenv`
+  `os.tmpname` (creates files past every gate), the `package` library, `setfenv`/`getfenv`
   (environment swapping is how freezes get dodged), and the `channel`
   library (`channel.receive` would block the interpreter outside the
   watchdog's reach).
@@ -666,7 +666,7 @@ Sandbox (what userland gets):
   the `zemi` binding).
 - `print` routes to the log and, when called from a handler, to `zemi.log`.
 - All filesystem/net/subprocess access is via `zemi.fs` / `zemi.http` /
-  `zemi.job`, each permissioned and rooted (see §9).
+  `zemi.job`, each permissioned at its call (see §9).
 - Origin is per call, not per file: chunks created by `load`/`loadstring`
   inherit the origin and the environment of the loading chunk (the same
   raising `__newindex` and `__index` chain; they never receive the
@@ -1412,9 +1412,8 @@ a `ToolResultOutputContentError`-style message so the model can recover.
 ### 6.5 I/O for Lua
 
 ```lua
-zemi.fs.read("src/main.go")                  -- jailed to project roots + config
-zemi.fs.write("notes.md", "...")             -- jailed to project roots only;
-                                             -- permission-gated on top (§9)
+zemi.fs.read("src/main.go")                  -- relative to the project dir;
+zemi.fs.write("notes.md", "...")             -- any path, the gate on each (§9)
 zemi.fs.glob("**/*_test.go"); zemi.fs.grep("pattern")
 local h = zemi.http.get("https://example.com")    -- returns a handle now
 local res = h:wait()                              -- suspends the task until done
@@ -2683,9 +2682,9 @@ by the next startup sweep, since the session still has unseen messages.
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
 - A brain file the file tools write - write, edit, an LSP rename's
-  secondary targets - is an ordinary write; Lua's `zemi.fs.write` is
-  refused at jail resolution, never asked. The reserved `memories.md` carries its own
-  reason, "the memory tool owns this file", with the file's open lint
+  secondary targets - is an ordinary write, and so is Lua's
+  `zemi.fs.write`: both pass the same gates. The reserved `memories.md`
+  carries its own reason, "the memory tool owns this file", with the file's open lint
   findings named in the ask. Once approved the write gets the recipe
   treatment: the secret scrub runs after the write, the instruction-shape
   check is a lint finding, not a rewrite (dropping content the user
@@ -2856,15 +2855,15 @@ skills index, or the untrusted-content framing.
   relocates an attested line into a brain file of its own partition), the
   skills dir.
   Anything else is a normal tool call under normal permissions.
-- Only user config changes `memory.autonomy`; no Lua path widens the fs
-  jail. `ask` queues what the model or the reflector propose for /memory;
+- Only user config changes `memory.autonomy`; no Lua path skips a gate.
+  `ask` queues what the model or the reflector propose for /memory;
   `auto` stores it, and never drops a memory the user saved (§10.4).
 
 Each line is enforced in code, not by prompt: the intake policy (§10.4),
 the host-only proposal channel (§10.3), the user-only config.set
 (§6.1), and the reflector's tool-less model call (§10.3). The homes line is
-the jail layer: the brain roots sit in the
-read jails (`readJails`) and out of the write jails, and the AfterWrite hook
+the memory tool's own channel and its instructions: a brain write is the
+file mode or an approved file-tool write, and the AfterWrite hook
 scrubs what the user approves.
 
 ## 11. Error handling and observability

@@ -280,15 +280,15 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	}
 }
 
-// TestProfileContextFilesJailed: a profile's context files are repository
+// TestProfileContextFilesInRepo: a profile's context files are repository
 // content, so one naming a path outside the repository is skipped and one
 // inside rides the prompt.
-func TestProfileContextFilesJailed(t *testing.T) {
+func TestProfileContextFilesInRepo(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "notes.md"), []byte("project notes"), 0o644)
 	outside := filepath.Join(filepath.Dir(h.Dirs.ProjectDir), "context-out.md")
-	os.WriteFile(outside, []byte("jail-leak-marker"), 0o644)
+	os.WriteFile(outside, []byte("outside-leak-marker"), 0o644)
 	link := filepath.Join(h.Dirs.ProjectDir, "link.md")
 	os.Symlink(outside, link)
 	for _, c := range []struct {
@@ -305,7 +305,7 @@ func TestProfileContextFilesJailed(t *testing.T) {
 			if got := strings.Contains(sys, "project notes"); got != c.want {
 				t.Errorf("prompt has the file = %v, want %v", got, c.want)
 			}
-			if strings.Contains(sys, "jail-leak-marker") {
+			if strings.Contains(sys, "outside-leak-marker") {
 				t.Error("the outside file's content rode the prompt")
 			}
 		})

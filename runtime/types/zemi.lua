@@ -2302,11 +2302,10 @@ function zemi.tool.describe(name) end
 ---@field line integer
 ---@field text string
 
---- Paths resolve against the project directory and must stay inside the
---- jail; reads pass the `lua.fs.read` gate and changes `lua.fs.write`.
---- Writes reach the project directory and, for user and builtin code,
---- `zemi.fs.data_dir`; a plugin's own write settles where its manifest
---- declares `fs.write`, and a read-only run's write is denied.
+--- Paths resolve against the project directory and are not confined: reads
+--- pass the `lua.fs.read` gate and changes `lua.fs.write`, which never opens
+--- the overlay. A plugin's own write settles where its manifest declares
+--- `fs.write`, and a read-only run's write is denied.
 ---@class zemi.fs
 zemi.fs = {}
 
@@ -2335,9 +2334,9 @@ function zemi.fs.stat(path) end
 ---@return boolean
 function zemi.fs.exists(path) end
 
---- `<data>/lua/<name>`, where config code keeps its files: inside the
---- `zemi.fs` jail and accepted by `zemi.ui.edit` for user config only, and
---- outside the config tree, so a write never reloads the config. Reads
+--- `<data>/lua/<name>`, where config code keeps its files: accepted by
+--- `zemi.ui.edit` for user config only, and outside the config tree, so a
+--- write never reloads the config. Reads
 --- settle; a write takes the `lua.fs.write` gate, which never opens the
 --- overlay - a plugin's declared `fs.write` settles its own, and a
 --- read-only run's write is denied. Nothing is created:

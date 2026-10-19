@@ -162,8 +162,8 @@ leave the old decision in force) under the watcher's lock, so the watcher does n
 for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
 commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
-project skills, every project language server, the Lua tool's ask, and the read jail reaching past
-the launch dir to `Dirs.RepoRoot()`. `Host.git` and
+project skills, every project language server, the Lua tool's ask, and the private brain
+partition. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
 smudging, log's signature checks (`gpg.program`), every transport but https, ssh and file, and repo-local filter drivers (a plugin
@@ -340,8 +340,8 @@ is refused with its path, to delete (the owner is the only user).
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
-- **Jail.** `inJail` resolves symlinks on both the path and the roots; `fsDefault`,
-  `resolveJailed` and `@file` attachments all rely on it.
+- **Roots.** `inRoots` resolves symlinks on both the path and the roots; `@file` attachments,
+  instruction files, project LSP servers and recipe scrubbing all rely on it.
 
 ## Rewind, read-only agents, prompts, composer bridge
 
