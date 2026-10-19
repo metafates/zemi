@@ -409,11 +409,11 @@ func (h *Host) OpenUsage() error {
 	s := h.AgentStream()
 	var rows [][]Segment
 	text := func(hl, t string) Segment { return Segment{Text: t, HL: hl} }
-	section := func(title, note string) {
+	section := func(title string, note ...Segment) {
 		if len(rows) > 0 {
 			rows = append(rows, []Segment{})
 		}
-		rows = append(rows, []Segment{text(ChromeTitle, title), text(ChromeHint, note)})
+		rows = append(rows, append([]Segment{text(ChromeTitle, title)}, note...))
 	}
 	// bar is a meter of w cells, part/whole of it filled
 	bar := func(part, whole int64, w int, hl string) []Segment {
@@ -431,12 +431,12 @@ func (h *Host) OpenUsage() error {
 		} else if pct >= 80 {
 			hl = ChromeWarn
 		}
-		section("Context", "")
+		section("Context")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
 			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), int(pct)))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
-		section("Prompt", "  "+fmtTokens(total)+" sent with every request")
+		section("Prompt", text(ChromeValue, "  "+fmtTokens(total)), text(ChromeHint, " sent with every request"))
 		parts = slices.Clone(parts)
 		slices.SortStableFunc(parts, func(a, b promptPart) int { return cmp.Compare(b.chars, a.chars) })
 		sum := 0
@@ -478,11 +478,20 @@ func (h *Host) OpenUsage() error {
 	id := h.sessionModelID()
 	spec, _ := h.modelSpec(id)
 	priced := spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 || s.SessionCost > 0 || windows[len(windows)-1].u.Cost > 0
+	// the live session's cache share, when there is one: a broken prefix has
+	// no other symptom than the bill, and an unlabelled column reads as one
+	cached := ""
+	if s.CacheBilled > 0 {
+		cached = fmt.Sprintf("%.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
+	}
 	head := fmt.Sprintf("%18s%9s%10s", "in", "out", "sessions") // over the rows' columns, past the 6 cells of the title
 	if priced {
 		head += "      cost"
 	}
-	section("Tokens", head)
+	if cached != "" {
+		head += fmt.Sprintf("%11s", "cached")
+	}
+	section("Tokens", text(ChromeHint, head))
 	for i, w := range windows {
 		count := ""
 		if w.u.Sessions > 0 {
@@ -492,11 +501,12 @@ func (h *Host) OpenUsage() error {
 		if priced {
 			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmtCost(w.u.Cost))))
 		}
-		// a broken cache prefix (a per-turn system section, a model switch) has
-		// no other symptom than the bill
-		if i == 0 && s.CacheBilled > 0 { // the live session
-			share := float64(s.CacheRead) * 100 / float64(s.CacheBilled)
-			row = append(row, text(ChromeHint, fmt.Sprintf("   %.1f%% cached", share)))
+		if cached != "" {
+			share := "" // only the live session answers it
+			if i == 0 {
+				share = cached
+			}
+			row = append(row, text(ChromeValue, fmt.Sprintf("%11s", share)))
 		}
 		rows = append(rows, row)
 	}

@@ -411,7 +411,8 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 	if err := h.OpenUsage(); err != nil {
 		t.Fatal(err)
 	}
-	if body := ui.opened[1].Body; !strings.Contains(body, "99.9% cached") {
+	// the share sits in its own labelled column, on the live session's row
+	if body := ui.opened[1].Body; !strings.Contains(body, "cached") || !strings.Contains(body, "99.9%") {
 		t.Fatalf("no cache share in the usage body:\n%s", body)
 	}
 }
