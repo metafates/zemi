@@ -2207,8 +2207,9 @@ rides the `memories.md` line and its ledger entries.
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
   `ctrl+t`/`ctrl+shift+t` cycle the agent),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
-  (list; `r` resumes the selected session, `n` renames it, `x` opens its
-  Delete, enter offers both), `/rename [title]` (names the session; without a
+  (list; `search <words>` finds them in every project, `r` resumes the
+  selected session, `n` renames it, `x` opens its Delete, enter offers both),
+  `/rename [title]` (names the session; without a
   title, the same one-line input the picker's `n` opens), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/goal <condition>` (work until
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
@@ -2359,12 +2360,14 @@ rides the `memories.md` line and its ledger entries.
   (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`),
   `compactions`, `denied` (each `tool`, `subject`, `arg`, `reason`, `why`) and
   `tools` (`id`, `tool`, `input`, `status` and `error` per call that ended).
-  `zemi sessions`, `zemi projects`, `zemi plugins` and `zemi health` take
-  `--json` too, one object per row:
+  `zemi sessions` (`-a` for every project, `search <words>` across all of
+  them), `zemi projects`, `zemi plugins` and `zemi health` take `--json` too,
+  one object per row:
 
   | command | fields per row |
   |---|---|
-  | `zemi sessions` | `id`, `title`, `updated`, `cost_usd` |
+  | `zemi sessions` | `id`, `title`, `updated`, `cost_usd`; `-a` adds `project` |
+  | `zemi sessions search` | `id`, `title`, `updated`, `project`, `hits`, `match` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
   | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |

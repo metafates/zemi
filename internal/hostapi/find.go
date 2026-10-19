@@ -75,7 +75,7 @@ func projectRoots(dirs config.Dirs) []string {
 // edge is cut, since it never matches, and a word left empty dropped.
 func searchWords(query string) []string {
 	var words []string
-	for _, w := range strings.Fields(query) {
+	for w := range strings.FieldsSeq(query) {
 		w = strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 		if w != "" {
 			words = append(words, w)
