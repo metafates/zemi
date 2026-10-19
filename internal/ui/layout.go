@@ -721,18 +721,6 @@ func rowAnchor(row []hostapi.Segment) int {
 	return 0
 }
 
-// anchorAt is the anchor of the first unit the view shows, the row at the top
-// or the first one under it that carries an anchor: a gap row between two
-// messages belongs to the one below, the message above it being out of view.
-func anchorAt(st *scrollState) int {
-	for i := max(st.top, 0); i < len(st.lines); i++ {
-		if n := rowAnchor(st.lines[i]); n > 0 {
-			return n
-		}
-	}
-	return 0
-}
-
 // unitAt is the anchor of the unit a transcript row is drawn in: the row's
 // own when a row carries it, else the nearest anchor before it, which is how
 // a notice inside a folded burst or a call inside its run's digest finds the

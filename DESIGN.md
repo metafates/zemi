@@ -2181,17 +2181,20 @@ rides the `memories.md` line and its ledger entries.
   a run's row opening that run. Prompt and reply rows lead with the speaker's
   kind glyph, `▌` in the accent and `◆` in dim, and the state rows keep their
   marks. It follows the chat: moving the selection scrolls the transcript to
-  the row the item names, centers the message in the view when the whole of
-  it fits (else its first row just under the pinned header) and bands every
-  row of it, the scrollbar column aside; `enter` closes the list keeping that
-  place, `y` copies the row, and `esc` puts the chat back where it was found,
-  the way muffin's popup cancels. A jump records the row it placed the view
-  at, because the viewport alone cannot say which message it is when a
-  centered placement clamps at the top or the tail and many share one top row:
-  the list opens on that row again, any move the reader makes by hand drops
-  it, and a stale one the view no longer shows. So entering on a message and
-  opening the list again lands on it, while the list itself remembers
-  nothing.
+  the row the item names, centers the message in the view when the whole of it
+  fits (else its first row just under the pinned header) and bands every row
+  of it, the scrollbar column and a reply's readout aside; `enter` closes the
+  list keeping that place, `y` copies the row, and `esc` puts the chat back
+  where it was found, the way muffin's popup cancels. A jump records the row
+  it placed the view at, because the viewport alone cannot say which message
+  it is when a centered placement clamps at the top or the tail and many share
+  one top row: the list opens on that row again, any move the reader makes by
+  hand drops it, and a stale one the view no longer shows. So entering on a
+  message and opening the list again lands on it, while the list itself
+  remembers nothing. Without such a place it opens on the message whose rows
+  hold the view's top row, else the first one under it: a blank line or a run
+  of calls is no message, and hands over to the one below rather than back to
+  the one above.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.

@@ -776,11 +776,14 @@ zemi.ui.widget.add({
 		local B = builder(ctx, width)
 		-- Every drawn row of a unit carries its first transcript index, which a
 		-- following list (the messages picker) names to scroll the chat here and
-		-- to band the whole message. Go reads the anchor and never draws it.
+		-- to band the whole message. The rows from upto on are meta (a reply's
+		-- readout), outside the message. Go reads the anchor and never draws it.
 		---@param lines zemi.Line[]
 		---@param first integer
-		local function anchored(lines, first)
-			for _, row in ipairs(lines) do
+		---@param upto integer?
+		local function anchored(lines, first, upto)
+			for i = 1, upto or #lines do
+				local row = lines[i]
 				if row[1] and fmt.cells(row) > 0 then row[1].anchor = first end
 			end
 		end
@@ -792,6 +795,7 @@ zemi.ui.widget.add({
 		---@return zemi.tui.ChatUnit
 		local function unit(tr, first, last, mode)
 			local m = tr[first]
+			local content = nil -- where the message ends and meta begins
 			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or prev_block(ctx)
 			if mode == "fold" or mode == "unfold" then
 				B.gap("activity")
@@ -863,6 +867,7 @@ zemi.ui.widget.add({
 					if tout then stat(tout .. " out") end
 					if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
 				end
+				content = #B.lines
 				if #stats > 0 then
 					B.gap("stats")
 					local row = { { text = "  ", copy = false } }
@@ -872,7 +877,7 @@ zemi.ui.widget.add({
 					B.lines[#B.lines + 1] = row
 				end
 			end
-			anchored(B.lines, first)
+			anchored(B.lines, first, content)
 			return { lines = B.lines, next = last + 1, mode = mode }
 		end
 

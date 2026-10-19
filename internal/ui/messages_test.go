@@ -96,6 +96,52 @@ func TestMessagesOpenAtGap(t *testing.T) {
 	open()
 }
 
+// TestMessagesOpenOnRun: a run of calls is no message the list names, so a
+// view whose top row is the run's digest hands over to the message under it,
+// never back to the reply above, which may be many rows away.
+func TestMessagesOpenOnRun(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 12)
+	host.AppendMessage("user", "one")
+	var long strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&long, "line %d\n\n", i)
+	}
+	appendReply(host, long.String(), hostapi.TurnStat{})
+	for _, tool := range []struct{ name, text, label string }{
+		{"read", "a.go", "read a"}, {"glob", "*.go", "find files"}, {"shell", "go test", "run the tests"},
+	} {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool.name, Text: tool.text, Label: tool.label, Status: "ok"})
+	}
+	appendReply(host, "reply two", hostapi.TurnStat{})
+	// a long tail, so the run's digest can stand at the view's top
+	host.AppendMessage("user", "three")
+	appendReply(host, long.String(), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	digest := -1
+	for i, row := range chat.lines {
+		if strings.HasPrefix(hostapi.SegsText(row), "· ") {
+			digest = i
+		}
+	}
+	if digest < 0 || chat.rows <= chat.viewH {
+		t.Fatalf("no digest row to scroll to, or the chat does not scroll: %d, %d rows", digest, chat.rows)
+	}
+	delete(app.pendingScroll, "chat")
+	chat.top, chat.focus, chat.follow = digest, 0, false
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	ov := &app.overlays[0]
+	if got := ov.items[ov.visible[ov.selected]].label; !strings.Contains(got, "reply two") {
+		t.Fatalf("opened on %q, want the message under the run", got)
+	}
+}
+
 // TestMessagesBandKeepsScrollbar: the scrollbar is not part of the message a
 // picker bands, so its own cell keeps the canvas under the band.
 func TestMessagesBandKeepsScrollbar(t *testing.T) {
@@ -231,7 +277,7 @@ func TestMessagesFollow(t *testing.T) {
 	if mid := (chat.viewH - (to - from + 1)) / 2; from-chat.top != mid {
 		t.Fatalf("the message starts at view row %d, want it centered at %d", from-chat.top, mid)
 	}
-	if got := bandedChatRows(app); len(got) != 3 || !strings.Contains(got[0], "reply 21") {
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "reply 21") {
 		t.Fatalf("banded rows %q", got)
 	}
 
@@ -240,8 +286,8 @@ func TestMessagesFollow(t *testing.T) {
 	if !chat.follow || chat.top != chat.rows-chat.viewH {
 		t.Fatal("the last row should hand the chat back to its tail")
 	}
-	// the reply, the gap under it and its readout are one banded block
-	if got := bandedChatRows(app); len(got) != 3 || !strings.Contains(got[0], "reply 30") || !strings.Contains(got[2], "100 out") {
+	// the readout under the reply is meta: never banded
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "reply 30") || strings.Contains(got[0], "out") {
 		t.Fatalf("banded rows %q", got)
 	}
 	// a row already in the tail's view keeps the chat on the tail

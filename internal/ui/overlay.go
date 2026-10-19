@@ -230,13 +230,13 @@ func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
 }
 
 // followRow is the row a following list opens on: the message the view was
-// placed at, if it still is; else the one at the view's top, or the last while
-// the region follows its tail.
+// placed at, if it still is; else the one the view's top row shows, or the
+// next one under it, or the last at the tail.
 //
-// A viewport cannot tell those messages apart by itself - centering clamps at
-// the top and the tail, where many messages share one top row - so the chat
+// A viewport cannot say which message it is when a centered placement clamps
+// at the top or the tail, where many messages share one top row, so the chat
 // keeps the row it was placed at (scrollState.focus). The list remembers
-// nothing; any move the reader makes by hand drops that place.
+// nothing: any move the reader makes by hand drops that place.
 func (a *App) followRow(st *overlayState) int {
 	n := len(st.visible)
 	if n == 0 {
@@ -260,16 +260,24 @@ func (a *App) followRow(st *overlayState) int {
 	if chat.follow {
 		return n - 1
 	}
-	target, sel := anchorAt(chat), 0
+	// the message the top row shows, else the first one under it: a run of
+	// calls is no message the list names, so it hands over to the message
+	// below it rather than back to the one above
+	next := -1
 	for k, idx := range st.visible {
-		switch at := st.items[idx].row.Anchor; {
-		case at == target:
+		from, to := unitRows(chat.lines, unitAt(chat.lines, st.items[idx].row.Anchor))
+		switch {
+		case from < 0:
+		case from <= chat.top && chat.top <= to:
 			return k
-		case at > 0 && at < target:
-			sel = k
+		case from >= chat.top && next < 0:
+			next = k
 		}
 	}
-	return sel
+	if next >= 0 {
+		return next
+	}
+	return n - 1
 }
 
 // selectedAnchor is the transcript row the selected item stands for, 0 when
