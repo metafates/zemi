@@ -102,8 +102,8 @@ func newFindFixture(t *testing.T) findFixture {
 func TestFindSessions(t *testing.T) {
 	f := newFindFixture(t)
 	found := FindSessions(f.dirs, "postgres")
-	if found.Projects != 3 {
-		t.Errorf("projects searched = %d, want 3", found.Projects)
+	if found.Projects != 2 {
+		t.Errorf("projects searched = %d, want the 2 stores it read", found.Projects)
 	}
 	if !slices.Equal(found.Skipped, []string{f.garbage}) {
 		t.Errorf("skipped = %v, want the unreadable store %s", found.Skipped, f.garbage)
@@ -213,7 +213,7 @@ func TestOpenFindSessions(t *testing.T) {
 	if !res.Refresh || !res.Wide || res.ID != "sessions search" || res.Title != "Search sessions" {
 		t.Errorf("result overlay = %+v", res)
 	}
-	if want := "4 hits in 2 sessions · 3 projects searched · 1 unreadable"; res.Body != want {
+	if want := "4 hits in 2 sessions · 2 projects searched · 1 unreadable"; res.Body != want {
 		t.Errorf("body = %q, want %q", res.Body, want)
 	}
 	if len(res.Items) != 2 {
@@ -245,7 +245,7 @@ func TestOpenFindSessions(t *testing.T) {
 	if err := f.h.OpenFindSessions("zzznothing"); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.waitOverlays(t, fake)[1].Empty; !strings.Contains(got, `No match for "zzznothing" in 3 projects.`) {
+	if got := f.waitOverlays(t, fake)[1].Empty; !strings.Contains(got, `No match for "zzznothing" in 2 projects.`) {
 		t.Errorf("empty = %q", got)
 	}
 }

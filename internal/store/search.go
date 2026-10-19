@@ -54,7 +54,7 @@ func (s *DB) SearchMessages(words []string, perSession, maxRows int) ([]MessageH
 			JOIN json_each(m.parts_json, '$.content') p
 			WHERE COALESCE(s.parent_id, '') = '' AND m.role IN ('user', 'assistant')
 				AND json_extract(p.value, '$.type') = 'text' AND %s
-		) WHERE rn <= ? ORDER BY total DESC, updated_at DESC LIMIT ?`,
+		) WHERE rn <= ? ORDER BY total DESC, updated_at DESC, id, rn LIMIT ?`,
 		strings.Join(conds, " AND ")), args...)
 	return collect(rows, err, func(r scanner) (MessageHit, error) {
 		var h MessageHit

@@ -93,7 +93,6 @@ func FindSessions(dirs config.Dirs, query string) Found {
 		return out
 	}
 	for _, root := range projectRoots(dirs) {
-		out.Projects++
 		db, err := store.OpenRead(store.ProjectDBPath(dirs.StateHome, root))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -102,6 +101,7 @@ func FindSessions(dirs config.Dirs, query string) Found {
 			out.Skipped = append(out.Skipped, root)
 			continue
 		}
+		out.Projects++ // a store read, not a root that has none
 		rows, err := searchStore(db, root, query, words)
 		db.Close()
 		if err != nil {
