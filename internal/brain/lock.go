@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/metafates/zemi/internal/filelock"
 )
 
 // LockTimeout is how long a writer waits for the partition lock before
@@ -28,25 +30,14 @@ func Lock(p Partition) (unlock func(), err error) {
 	if err := os.MkdirAll(p.Dir, 0o700); err != nil {
 		return nil, fmt.Errorf("brain: create %s: %w", p.Dir, err)
 	}
-	f, err := os.OpenFile(filepath.Join(p.Dir, "memories.lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("brain: open the lock: %w", err)
+	unlock, err = filelock.Lock(filepath.Join(p.Dir, "memories.lock"), LockTimeout)
+	switch {
+	case errors.Is(err, filelock.ErrLocked):
+		return nil, fmt.Errorf("%w: %s", ErrLocked, p.Dir)
+	case err != nil:
+		return nil, fmt.Errorf("brain: lock: %w", err)
 	}
-	deadline := time.Now().Add(LockTimeout)
-	for {
-		err = lockFile(f)
-		if err == nil {
-			return func() {
-				_ = unlockFile(f)
-				_ = f.Close()
-			}, nil
-		}
-		if !time.Now().Before(deadline) {
-			_ = f.Close()
-			return nil, fmt.Errorf("%w: %s", ErrLocked, p.Dir)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	return unlock, nil
 }
 
 // LockAll takes several partitions' locks in the design's fixed order,

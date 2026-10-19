@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race vet lint fmt golden luals stylua check install clean reset-db
+.PHONY: all build run site first-run mcp-auth test race vet lint fmt golden luals stylua check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -87,12 +87,6 @@ check: vet test luals stylua lint
 
 install:
 	go install .
-
-# a schema bump refuses the old stores; there are no migrations before the
-# first release, so this drops them (sessions, memories, reflector state)
-ZEMI_STATE ?= $(or $(ZEMI_STATE_HOME),$(or $(XDG_STATE_HOME),$(HOME)/.local/state)/zemi)
-reset-db:
-	rm -f $(ZEMI_STATE)/zemi.db* $(ZEMI_STATE)/projects/*/zemi.db*
 
 clean:
 	rm -rf bin

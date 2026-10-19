@@ -1,6 +1,6 @@
 //go:build windows
 
-package brain
+package filelock
 
 import (
 	"os"

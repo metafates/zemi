@@ -79,10 +79,10 @@ func (p Partition) OpenLedger() (*Ledger, error) {
 		return nil, fmt.Errorf("brain: open %s: %w", p.DB, err)
 	}
 	d.SetMaxOpenConns(1)
-	// the store's schema holds memory_ops; a query answers whether this handle
-	// opened a database at all, which a garbage file is not
-	var version int
-	if err := d.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+	// the store's schema holds memory_ops; a sqlite_master query answers whether
+	// this handle opened a database at all, which a garbage file is not
+	var table string
+	if err := d.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_ops'`).Scan(&table); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("brain: ledger in %s: %w", p.DB, err)
 	}

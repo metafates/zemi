@@ -1,6 +1,6 @@
 //go:build unix
 
-package brain
+package filelock
 
 import (
 	"os"

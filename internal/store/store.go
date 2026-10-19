@@ -2,9 +2,11 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"embed"
 	"encoding/base32"
 	"encoding/hex"
 	"encoding/json/v2"
@@ -19,8 +21,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+
+	"github.com/metafates/zemi/internal/filelock"
 )
 
 // DB is one SQLite database handle. All methods are safe for concurrent
@@ -82,17 +87,7 @@ func OpenRead(path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	s := &DB{db: d, path: path}
-	var version int
-	if err := d.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		d.Close()
-		return nil, fmt.Errorf("store: read user_version: %w", err)
-	}
-	if err := s.checkVersion(version); err != nil {
-		d.Close()
-		return nil, err
-	}
-	return s, nil
+	return &DB{db: d, path: path}, nil
 }
 
 // ErrInUse is a store another connection holds open: another zemi.
@@ -143,165 +138,36 @@ func (s *DB) SessionCount() (int, error) {
 	return n, err
 }
 
-func (s *DB) checkVersion(version int) error {
-	if version != schemaVersion {
-		return fmt.Errorf("store: %s has schema %d, this zemi needs %d: delete the file (zemi keeps no migrations yet)", s.path, version, schemaVersion)
-	}
-	return nil
-}
-
 func (s *DB) Close() error { return s.db.Close() }
 
-const schema = `
-CREATE TABLE IF NOT EXISTS sessions (
-	id TEXT PRIMARY KEY,
-	parent_id TEXT,
-	title TEXT NOT NULL DEFAULT '',
-	profile TEXT NOT NULL DEFAULT '',
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL,
-	prompt_tokens INTEGER NOT NULL DEFAULT 0,
-	completion_tokens INTEGER NOT NULL DEFAULT 0,
-	cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-	cache_billed_tokens INTEGER NOT NULL DEFAULT 0,
-	cost REAL NOT NULL DEFAULT 0,
-	-- the context the latest step used: only the provider counts it, so a
-	-- resume reads it back instead of estimating
-	last_in INTEGER NOT NULL DEFAULT 0,
-	run_status TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
--- the picker and the splash order by recency on every render
-CREATE INDEX IF NOT EXISTS sessions_updated ON sessions(updated_at);
+//go:embed migrations/*.sql
+var migrations embed.FS
 
-CREATE TABLE IF NOT EXISTS messages (
-	id TEXT PRIMARY KEY,
-	session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-	role TEXT NOT NULL,
-	parts_json TEXT NOT NULL,
-	created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id);
+// migrateLockWait is how long an open waits for another zemi's migration.
+const migrateLockWait = 5 * time.Second
 
-CREATE TABLE IF NOT EXISTS todos (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-	content TEXT NOT NULL,
-	status TEXT NOT NULL,
-	active_form TEXT NOT NULL DEFAULT '',
-	ord INTEGER NOT NULL,
-	created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS todos_session ON todos(session_id);
-
-CREATE TABLE IF NOT EXISTS tool_calls (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-	tool TEXT NOT NULL,
-	ok INTEGER NOT NULL,
-	created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS tool_calls_message ON tool_calls(message_id, created_at);
-
-CREATE TABLE IF NOT EXISTS checkpoints (
-	message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-	session_id TEXT NOT NULL,
-	path TEXT NOT NULL,
-	existed INTEGER NOT NULL,
-	link INTEGER NOT NULL DEFAULT 0,
-	content BLOB,
-	created_at INTEGER NOT NULL,
-	PRIMARY KEY (message_id, path)
-);
-CREATE INDEX IF NOT EXISTS checkpoints_session ON checkpoints(session_id);
-
-CREATE TABLE IF NOT EXISTS skills (
-	name TEXT PRIMARY KEY,
-	path TEXT NOT NULL,
-	source TEXT NOT NULL,
-	enabled INTEGER NOT NULL,
-	created_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS kv (
-	key TEXT PRIMARY KEY,
-	value_json TEXT NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS proposals (
-	id TEXT PRIMARY KEY,
-	payload TEXT NOT NULL,
-	created_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS memory (
-	id TEXT PRIMARY KEY,
-	scope TEXT NOT NULL,
-	text TEXT NOT NULL,
-	quote TEXT NOT NULL DEFAULT '',
-	provenance_session_id TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL,
-	superseded_by TEXT,
-	origin TEXT NOT NULL
-);
--- the trail group and /memory's merged list order by recency within a scope
-CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
-
-CREATE TABLE IF NOT EXISTS memory_ops (
-	op TEXT NOT NULL,
-	id TEXT NOT NULL,
-	ts INTEGER NOT NULL,
-	text TEXT NOT NULL DEFAULT '',
-	prior_text TEXT NOT NULL DEFAULT '',
-	quote TEXT NOT NULL DEFAULT '',
-	session_id TEXT NOT NULL DEFAULT '',
-	hash TEXT NOT NULL DEFAULT '',
-	superseded_by TEXT NOT NULL DEFAULT '',
-	scope TEXT NOT NULL DEFAULT '',
-	origin TEXT NOT NULL DEFAULT '',
-	prior_bytes BLOB,
-	prior_truncated INTEGER NOT NULL DEFAULT 0,
-	prior_existed INTEGER NOT NULL DEFAULT 0,
-	created_at INTEGER NOT NULL DEFAULT 0,
-	updated_at INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS memory_ops_id ON memory_ops(id);
-`
-
-// schemaVersion stamps every store. zemi keeps no migrations before its
-// first release: a schema change bumps this, and a store another version made
-// is refused with its path, for the developer to delete.
-const schemaVersion = 8
-
+// migrate applies the embedded migrations, one goose transaction each, under
+// a file lock so two zemis opening one store never run one twice. A store
+// made before goose has no version table: the baseline migration is all
+// CREATE ... IF NOT EXISTS, so it only stamps the schema already there.
 func (s *DB) migrate() error {
-	// one transaction, so a second process opening the same file waits and
-	// then reads the version this one stamped
-	tx, err := s.db.Begin()
+	files, err := fs.Sub(migrations, "migrations")
 	if err != nil {
-		return fmt.Errorf("store: open schema: %w", err)
+		return fmt.Errorf("store: migrations: %w", err)
 	}
-	defer tx.Rollback()
-	var name string
-	fresh := errors.Is(tx.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
-	if !fresh {
-		var version int
-		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-			return fmt.Errorf("store: read user_version: %w", err)
-		}
-		if err := s.checkVersion(version); err != nil {
-			return err
-		}
+	p, err := goose.NewProvider(goose.DialectSQLite3, s.db, files, goose.WithLogger(goose.NopLogger()))
+	if err != nil {
+		return fmt.Errorf("store: %s: %w", s.path, err)
 	}
-	if _, err := tx.Exec(schema); err != nil {
-		return fmt.Errorf("store: schema: %w", err)
+	unlock, err := filelock.Lock(s.path+".lock", migrateLockWait)
+	if err != nil {
+		return fmt.Errorf("store: migrate %s: %w", s.path, err)
 	}
-	// PRAGMA takes no placeholder
-	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
-		return fmt.Errorf("store: set user_version: %w", err)
+	defer unlock()
+	if _, err := p.Up(context.Background()); err != nil {
+		return fmt.Errorf("store: migrate %s: %w", s.path, err)
 	}
-	return tx.Commit()
+	return nil
 }
 
 // CheckpointTTL is how long a checkpoint, a whole file each, is kept. The

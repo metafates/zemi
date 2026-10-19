@@ -177,10 +177,11 @@ The store (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
 `MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under
 `<state>/projects/<hash of Dirs.TrustRoot()>/`, whose `root` file names it (`store.ProjectRoot`
 reads it only when it hashes to the dir), so a subdirectory and a worktree share the
-repository's sessions and memories. Schema is one `schema` const of `CREATE TABLE IF NOT
-EXISTS` run on open - add tables and columns there. There are no migrations before the
-first release: a schema change bumps `schemaVersion`, and a store stamped with another one
-is refused with its path, to delete (the owner is the only user).
+repository's sessions and memories. The schema is goose migrations embedded from
+`internal/store/migrations` and applied on open, under a `zemi.db.lock` file lock so two
+zemis never run one twice; a change is a new numbered file there, never an edit of an
+applied one. A store made before goose only gains its version table: the baseline is all
+`CREATE ... IF NOT EXISTS`.
 
 ## Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 

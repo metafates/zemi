@@ -83,7 +83,7 @@ Each of these has a failure mode, not a style preference; the skill in brackets 
 - A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes the event's logged default (for `permission.request`, silence: the request runs unless the overlay denies it; the hot runtime still denies). [zemi-lua-runtime]
 - An ask with no overlay available fails closed, and a rewritten tool input re-enters at the permission gate. [zemi-perm]
 - A child process starts through `internal/proc`, never a plain `exec.Command`. [zemi-perm]
-- The store schema is one `schema` const run on open: a change bumps `schemaVersion` and a store stamped with another one is refused with its path, never migrated. [zemi-host-flow]
+- The store schema is embedded goose migrations run on open: a change is a new numbered file under `internal/store/migrations`, applied at the next boot, and no version refusal. [zemi-host-flow]
 
 ## Commands
 
@@ -103,7 +103,6 @@ make test               # full suite (~20s, pure Go, no CGO; network only for on
 make race               # go test -race ./...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # golangci-lint fmt over the Go files (gofmt without the binary), and stylua over the runtime/ and testdata/ Lua
-make reset-db           # delete the stores a schema bump refuses (ZEMI_STATE=<dir> for another tree)
 ```
 
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,

@@ -44,9 +44,8 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 | `github.com/goccy/go-yaml` | SKILL.md and `agents/*.md` frontmatter parsing |
 
 Also: `modernc.org/sqlite` (pure-Go SQLite, keeps
-`CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
-EXISTS` stamped with `PRAGMA user_version`; no migrations before the
-first release, so no migration library came with it), `charm.land/glamour/v2`
+`CGO_ENABLED=0`), `github.com/pressly/goose/v3` (the embedded SQL
+migrations applied on open, §7), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/openai-go` (the SDK options an `OPENAI` provider's `body` sets, §6.3), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews),
@@ -115,9 +114,9 @@ Layers and ownership:
   lives in `internal/brain`; the reflector and the skill manager in
   `internal/hostapi`.
 - **Store** (`internal/store`): SQLite (sessions, messages, todos, tool-call
-  telemetry, checkpoints, memory, proposals, skills, kv; §7), one schema
-  const; a schema change bumps `schemaVersion` and an older store is
-  refused, to delete.
+  telemetry, checkpoints, memory, proposals, skills, kv; §7), an embedded
+  goose migration set applied on open; a schema change is a new numbered
+  file, never a version refusal.
 
 ## 4. Concurrency model
 
@@ -1743,8 +1742,8 @@ memory(id, scope, text, quote, provenance_session_id,
 memory_ops(op, id, ts, text, prior_text, quote, session_id, hash,
            superseded_by, scope, origin, prior_bytes,
            prior_truncated, prior_existed, created_at, updated_at)
-                                                               -- the audit ledger: one per scope's DB, part of the
-                                                               -- store's schema the version stamp covers
+                                                               -- the ledger: one per scope's DB, part of the
+                                                               -- store's schema and migrations
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, payload, created_at)                              -- pending, until reviewed
@@ -1785,6 +1784,13 @@ Indexes: `messages(session_id)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,
 `sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`.
 
+The schema is embedded goose migrations under `internal/store/migrations`,
+one transaction each, applied on open under a `zemi.db.lock` file lock so
+two zemis never run one twice. A change is a new numbered file: it reaches
+every store at its next open, with no version stamp and no reset to do.
+The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
+goose only gets the version table and keeps its rows.
+
 The memory store itself is not a table but Markdown on disk, entirely
 inside zemi's own state, in two partitions:
 `~/.local/state/zemi/projects/<hash of trust root>/brain/` beside the
@@ -1812,8 +1818,8 @@ memory tool's file mode - carries the replaced file's prior bytes, capped at
 permanent tombstones: the marker that keeps a deleted or rewound-away line
 from re-importing.
 
-The `memory` table froze at the swap: never written again, never dropped, no
-schema bump. Its superseded rows keep their text, quote and provenance
+The `memory` table froze at the swap: never written again, no migration
+drops it. Its superseded rows keep their text, quote and provenance
 forever, its live rows compose into `memories.md` by the reconcile-on-open
 migration, and the read path stays as the trail resolver -
 `/memory`'s merged list and collapsed trail group, and the ids a stored
@@ -2986,10 +2992,11 @@ internal/learn/             memory intake policy: caps, scrubber, near-duplicate
 internal/brain/             the memory store: partitions, memories.md, the ops ledger,
                             render, lint, lock, migration
 internal/skill/             SKILL.md discovery and parsing
-internal/store/             sqlite schema, its version stamp and queries
+internal/store/             goose migrations (embedded SQL) and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group) and hardened git
+internal/filelock/          exclusive advisory file locks: brain writes, store migrations
 internal/plugin/            plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools, LSP and brain paths
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler quotes)

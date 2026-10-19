@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -38,24 +39,43 @@ func openTest(t *testing.T) *DB {
 	return db
 }
 
-// TestSchemaVersion: a new store carries schemaVersion, and one another
-// version made is refused, naming the file to delete.
-func TestSchemaVersion(t *testing.T) {
+// TestMigrationKeepsData: a store an older zemi stamped with user_version and
+// no goose table opens, keeps its rows and gets the baseline migration, which
+// a second open does not run again.
+func TestMigrationKeepsData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var version int
-	if err := db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
-		t.Fatalf("user_version = %d, %v; want %d", version, err, schemaVersion)
-	}
-	if _, err := db.db.Exec(`PRAGMA user_version = 2`); err != nil {
+	sid := ShortID()
+	if err := db.CreateSession(sid, "", "a session", ""); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "delete the file") {
-		t.Fatalf("a store of another schema must be refused, got %v", err)
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{`DROP TABLE goose_db_version`, `PRAGMA user_version = 8`} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw.Close()
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatalf("a pre-goose store must open: %v", err)
+	}
+	defer db.Close()
+	if n, err := db.SessionCount(); err != nil || n != 1 {
+		t.Fatalf("sessions = %d, %v", n, err)
+	}
+	var version int
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("goose version = %d, %v; want 1", version, err)
 	}
 }
 
