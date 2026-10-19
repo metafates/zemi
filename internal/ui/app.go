@@ -154,7 +154,7 @@ type App struct {
 	rects     map[string]hostapi.Rect
 
 	program   *tea.Program
-	relaunch  atomic.Pointer[string] // RelaunchDir
+	relaunch  atomic.Pointer[relaunchTarget] // RelaunchDir
 	hooks     chan tea.Msg
 	testQueue chan tea.Msg // CaptureHooks (tests): hooks wait here for Pump
 }
@@ -225,31 +225,36 @@ func (a *App) SignalBoot(err error) {
 	})
 }
 
+// relaunchTarget is where main starts zemi again after a Relaunch: a
+// directory, and the session to resume there, "" for none.
+type relaunchTarget struct{ dir, resume string }
+
 // Quit asks the program to exit (/quit).
-func (a *App) Quit() { a.quitTo("") }
+func (a *App) Quit() { a.quitTo("", "") }
 
-// Relaunch leaves like Quit, then main starts zemi again in dir.
-func (a *App) Relaunch(dir string) { a.quitTo(dir) }
+// Relaunch leaves like Quit, then main starts zemi again in dir, resuming
+// session resume unless it is "".
+func (a *App) Relaunch(dir, resume string) { a.quitTo(dir, resume) }
 
-// RelaunchDir is the dir of a Relaunch that got past the quit veto, "" for
-// none.
-func (a *App) RelaunchDir() string {
-	if dir := a.relaunch.Load(); dir != nil {
-		return *dir
+// RelaunchDir is where a Relaunch that got past the quit veto restarts zemi:
+// the directory and the session to resume, both "" for none.
+func (a *App) RelaunchDir() (dir, resume string) {
+	if t := a.relaunch.Load(); t != nil {
+		return t.dir, t.resume
 	}
-	return ""
+	return "", ""
 }
 
-// quitTo quits, then main starts zemi in dir unless it is "". The veto waits
-// on the interpreter and program.Quit must not run inside Update, so both run
-// on a goroutine.
-func (a *App) quitTo(dir string) {
+// quitTo quits, then main starts zemi in dir unless it is "", resuming
+// session resume. The veto waits on the interpreter and program.Quit must not
+// run inside Update, so both run on a goroutine.
+func (a *App) quitTo(dir, resume string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), hostapi.EventAppQuit, map[string]any{}); res.Denied {
 			a.Notify(slog.LevelWarn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
 			return
 		}
-		a.relaunch.Store(&dir)
+		a.relaunch.Store(&relaunchTarget{dir, resume})
 		a.leave()
 	}
 	if a.program != nil {

@@ -250,7 +250,7 @@ func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
 	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
 		return err
 	}
-	ui.Relaunch(dir)
+	ui.Relaunch(dir, "")
 	return nil
 }
 

@@ -3,6 +3,7 @@ package hostapi
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -47,6 +48,7 @@ func otherStore(t *testing.T, stateHome string) (string, *store.DB) {
 }
 
 type findFixture struct {
+	h       *Host
 	dirs    config.Dirs
 	plain   string // this project's session, three text matches
 	root    string // the other project
@@ -58,7 +60,7 @@ type findFixture struct {
 func newFindFixture(t *testing.T) findFixture {
 	t.Helper()
 	h, _ := newTestHostDB(t)
-	f := findFixture{dirs: h.Dirs, plain: store.ShortID()}
+	f := findFixture{h: h, dirs: h.Dirs, plain: store.ShortID()}
 	if err := h.DB.CreateSession(f.plain, "", "Postgres tuning", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +193,89 @@ func TestFindSession(t *testing.T) {
 				t.Fatalf("FindSession(%q) = %q, %+v, want root %q", c.id, root, sess, c.root)
 			}
 		})
+	}
+}
+
+// TestOpenFindSessions: the box opens at once, the result replaces it with one
+// row per session, and a query nothing matched says so.
+func TestOpenFindSessions(t *testing.T) {
+	f := newFindFixture(t)
+	fake := &fakeUI{}
+	f.h.SetUIHooks(fake)
+	if err := f.h.OpenFindSessions("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	open := f.waitOverlays(t, fake)
+	if want := `Searching every project for "postgres"`; !strings.Contains(open[0].Empty, want) {
+		t.Errorf("the searching box says %q, want %q", open[0].Empty, want)
+	}
+	res := open[1]
+	if !res.Refresh || !res.Wide || res.ID != "sessions search" || res.Title != "Search sessions" {
+		t.Errorf("result overlay = %+v", res)
+	}
+	if want := "4 hits in 2 sessions · 3 projects searched · 1 unreadable"; res.Body != want {
+		t.Errorf("body = %q, want %q", res.Body, want)
+	}
+	if len(res.Items) != 2 {
+		t.Fatalf("%d rows, want 2", len(res.Items))
+	}
+	row, ok := res.Items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("row = %T, want a map", res.Items[0])
+	}
+	if row["text"] != markedTitle(f.plain, "Postgres tuning") {
+		t.Errorf("text = %v", row["text"])
+	}
+	if desc, _ := row["desc"].(string); !strings.Contains(desc, filepath.Base(f.dirs.TrustRoot())) || !strings.Contains(desc, "3 hits") {
+		t.Errorf("desc = %q, want the project and the hit count", desc)
+	}
+	if detail, _ := row["detail"].(string); !strings.Contains(detail, "· ") {
+		t.Errorf("detail = %q, want the hits in it", detail)
+	}
+	actions, _ := row["actions"].([]any)
+	if len(actions) != 1 {
+		t.Fatalf("actions = %v", actions)
+	}
+	if got := actions[0].(map[string]any)["run"]; got != "sessions open "+f.plain {
+		t.Errorf("action run = %v", got)
+	}
+
+	fake = &fakeUI{}
+	f.h.SetUIHooks(fake)
+	if err := f.h.OpenFindSessions("zzznothing"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.waitOverlays(t, fake)[1].Empty; !strings.Contains(got, `No match for "zzznothing" in 3 projects.`) {
+		t.Errorf("empty = %q", got)
+	}
+}
+
+// waitOverlays waits for the search's two boxes: the one it opens and the one
+// it replaces it with.
+func (f findFixture) waitOverlays(t *testing.T, fake *fakeUI) []Overlay {
+	t.Helper()
+	waitFor(t, func() error {
+		if n := len(fake.overlays()); n != 2 {
+			return fmt.Errorf("%d overlays, want 2", n)
+		}
+		return nil
+	})
+	return fake.overlays()
+}
+
+// TestOpenFoundSession: a row of another project's store restarts zemi there,
+// resuming that session; an id nowhere is a usage error.
+func TestOpenFoundSession(t *testing.T) {
+	f := newFindFixture(t)
+	fake := &fakeUI{}
+	f.h.SetUIHooks(fake)
+	if err := f.h.OpenFoundSession(f.deep); err != nil {
+		t.Fatalf("OpenFoundSession: %v", err)
+	}
+	if fake.relaunched != f.root || fake.resumed != f.deep {
+		t.Errorf("relaunched to %q resuming %q, want %q and %q", fake.relaunched, fake.resumed, f.root, f.deep)
+	}
+	if err := f.h.OpenFoundSession("missing1"); err == nil || !strings.Contains(err.Error(), `no session "missing1"`) {
+		t.Errorf("an unknown id = %v, want a usage error", err)
 	}
 }

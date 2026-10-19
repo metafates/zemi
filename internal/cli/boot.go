@@ -173,25 +173,30 @@ func launch(o options) int {
 	if bootErr := app.BootError(); bootErr != nil {
 		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())
 	}
-	if dir := app.RelaunchDir(); dir != "" {
+	if dir, resume := app.RelaunchDir(); dir != "" {
 		closeLog() // an exec runs no defers
-		return fail(relaunch(dir))
+		return fail(relaunch(dir, resume))
 	}
 	return 0
 }
 
-// relaunch replaces this process with zemi -C dir, flags left behind. Every
+// relaunch replaces this process with zemi -C dir, resuming session resume
+// unless it is "", flags left behind. Every
 // project fact (trust, origins, stores) is bound at start, so a
 // switch is a restart, never a change in place; an exec keeps the PID, so the
 // shell's wait and the terminal's foreground group do not change. The one
 // start of a program outside internal/proc besides the editor
 // probes: the children are reaped (proc.Reaped) and the terminal restored.
 // NOTE: Windows has no exec; there it names the command to run instead.
-func relaunch(dir string) error {
+func relaunch(dir, resume string) error {
+	args := []string{os.Args[0], "-C", dir}
+	if resume != "" {
+		args = append(args, "-r", resume)
+	}
 	proc.Reaped()
 	exe, err := os.Executable()
 	if err == nil {
-		err = syscall.Exec(exe, []string{os.Args[0], "-C", dir}, os.Environ())
+		err = syscall.Exec(exe, args, os.Environ())
 	}
 	return fmt.Errorf("could not start zemi in %s (%w): run zemi -C %s", dir, err, tools.ShellQuote(dir))
 }
@@ -430,7 +435,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.NewSession()
 		}},
-		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "resume or delete an earlier session", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "search every project's sessions, resume or delete one", GoFn: func(h *hostapi.Host, args string) error {
 			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
 				id, yes := strings.CutSuffix(strings.TrimSpace(id), " --yes")
 				return h.DeleteSession(id, yes)
@@ -447,12 +452,19 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				}
 				return nil
 			}
+			// the search box's own line, and the row action it runs
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "search"); ok && (rest == "" || rest[0] == ' ') {
+				return h.OpenFindSessions(rest)
+			}
+			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "open "); ok {
+				return h.OpenFoundSession(strings.TrimSpace(id))
+			}
 			err := h.OpenSessions("")
 			if errors.Is(err, hostapi.ErrNeedsTUI) {
 				err = fmt.Errorf("%w; zemi sessions lists them", err)
 			}
 			return err
-		}},
+		}, GoComplete: hostapi.SubcommandCompleter([]string{"search"}, nil)},
 		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))
 		}},

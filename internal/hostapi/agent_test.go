@@ -690,25 +690,25 @@ func TestStoreBackedState(t *testing.T) {
 
 // fakeUI is a UIHooks stub driving the host-side overlay paths in tests.
 type fakeUI struct {
-	askAllowed  bool
-	askBy       string
-	onAsk       func(PermRequest) (bool, string) // answers in place of askAllowed and askBy
-	asked       []PermRequest
-	qAsked      []tools.Question
-	qAnswer     string
-	qOK         bool
-	planVerdict tools.PlanVerdict
-	planOK      bool
-	planAsked   int
-	mu          sync.Mutex // guards opened: a status change opens off the test goroutine
-	opened      []Overlay
-	closed      []string
-	closedLua   int
-	turnsDone   atomic.Int32
-	screenshot  string
-	copied      string
-	edit        func(path string) // what the user does in the editor
-	relaunched  string
+	askAllowed          bool
+	askBy               string
+	onAsk               func(PermRequest) (bool, string) // answers in place of askAllowed and askBy
+	asked               []PermRequest
+	qAsked              []tools.Question
+	qAnswer             string
+	qOK                 bool
+	planVerdict         tools.PlanVerdict
+	planOK              bool
+	planAsked           int
+	mu                  sync.Mutex // guards opened: a status change opens off the test goroutine
+	opened              []Overlay
+	closed              []string
+	closedLua           int
+	turnsDone           atomic.Int32
+	screenshot          string
+	copied              string
+	edit                func(path string) // what the user does in the editor
+	relaunched, resumed string
 }
 
 func (f *fakeUI) Notify(slog.Level, string, string) {}
@@ -740,8 +740,8 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	}
 	return nil
 }
-func (f *fakeUI) Copy(text string)    { f.copied = text }
-func (f *fakeUI) Relaunch(dir string) { f.relaunched = dir }
+func (f *fakeUI) Copy(text string)            { f.copied = text }
+func (f *fakeUI) Relaunch(dir, resume string) { f.relaunched, f.resumed = dir, resume }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)

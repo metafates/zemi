@@ -9,9 +9,12 @@ package hostapi
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -20,6 +23,8 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -238,4 +243,118 @@ func FindSession(dirs config.Dirs, id string) (string, *store.Session, error) {
 		}
 	}
 	return "", nil, store.ErrNotFound
+}
+
+// findID is the one screen a session search opens: the input, the searching
+// box and the result are the same overlay.
+const findID = "sessions search"
+
+// OpenFindSessions lists the sessions every project's store matched for
+// query; an empty query opens the input that takes the words.
+func (h *Host) OpenFindSessions(query string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if query = strings.TrimSpace(query); query == "" {
+		ui.OpenOverlay(Overlay{ID: findID, Title: "Search sessions", Origin: lua.OriginBuiltin, Input: true, Run: "sessions search "})
+		return nil
+	}
+	// the scan takes a second on a big state dir, so its box opens at once and
+	// the result replaces it; NOTE: no statusline job for a scan that short
+	ui.OpenOverlay(h.findOverlay(Found{}, query, true))
+	h.GoSafe("sessions search", func() {
+		ui.OpenOverlay(h.findOverlay(FindSessions(h.Dirs, query), query, false))
+	})
+	return nil
+}
+
+// findOverlay is the search on screen: the words being looked for, then one
+// row per session that matched, its newest match under the selected one.
+func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
+	o := Overlay{ID: findID, Title: "Search sessions", Origin: lua.OriginBuiltin, Wide: true, Refresh: !searching}
+	if searching {
+		o.Empty = fmt.Sprintf("Searching every project for %q…", query)
+		return o
+	}
+	current := h.AgentSessionID()
+	hits := 0
+	items := make([]any, 0, len(res.Sessions))
+	for _, s := range res.Sessions {
+		hits += s.Count
+		desc := []string{filepath.Base(s.Root) + " · " + ago(s.UpdatedAt)}
+		if s.Count > 0 {
+			desc = append(desc, fmt.Sprintf("%d %s", s.Count, Plural(s.Count, "hit", "hits")))
+		}
+		if s.TitleHit {
+			desc = append(desc, "title")
+		}
+		item := map[string]any{
+			"text":   markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")),
+			"desc":   strings.Join(desc, " · "),
+			"fields": fieldList("project", perm.TildePath(s.Root), "updated", ago(s.UpdatedAt), "hits", strconv.Itoa(s.Count)),
+		}
+		if len(s.Hits) > 0 {
+			item["preview"] = s.Hits[0].Text
+		}
+		detail := make([]string, 0, len(s.Hits)+1)
+		switch {
+		case s.Missing:
+			detail = append(detail, fmt.Sprintf("%s no longer exists, so this conversation cannot be opened; /projects delete drops it from the list.", perm.TildePath(s.Root)))
+		case s.ID == current:
+			detail = append(detail, "zemi runs this session: /new leaves it, and then it can be found and resumed here.")
+		}
+		for _, hit := range s.Hits {
+			detail = append(detail, "· "+hit.Text)
+		}
+		item["detail"] = strings.Join(detail, "\n\n")
+		if s.ID == current {
+			item["key"] = "current"
+		} else {
+			item["actions"] = []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "sessions open " + s.ID}}
+		}
+		items = append(items, item)
+	}
+	o.Items = items
+	o.Body = fmt.Sprintf("%d %s in %d %s · %d %s searched", hits, Plural(hits, "hit", "hits"),
+		len(res.Sessions), Plural(len(res.Sessions), "session", "sessions"), res.Projects, Plural(res.Projects, "project", "projects"))
+	if len(res.Skipped) > 0 {
+		o.Body += fmt.Sprintf(" · %d unreadable", len(res.Skipped))
+	}
+	o.Empty = fmt.Sprintf("No match for %q in %d projects.", query, res.Projects)
+	o.Keys = []OverlayKey{{Key: "r", Desc: "resume"}}
+	return o
+}
+
+// OpenFoundSession reopens a session a search listed, restarting zemi in its
+// project when that is another one: every project fact is bound at start.
+func (h *Host) OpenFoundSession(id string) error {
+	root, _, err := FindSession(h.Dirs, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return Usagef("no session %q in any project", id)
+	}
+	if err != nil {
+		return err
+	}
+	if id == h.AgentSessionID() {
+		return nil
+	}
+	if perm.CanonPath(root) == perm.CanonPath(h.trustRoot()) {
+		return h.ResumeSession(id)
+	}
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		return Usagef("%s is not a directory", perm.TildePath(root))
+	}
+	if h.AgentActive() {
+		return errTurnRunning
+	}
+	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
+		return err
+	}
+	ui.Relaunch(root, id)
+	return nil
 }
