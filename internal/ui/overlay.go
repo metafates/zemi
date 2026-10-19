@@ -194,7 +194,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		st.selected = a.followRow(&st)
 		st.followed = st.selectedAnchor()
 		if chat := a.scrolls[a.scrollDef]; chat != nil {
-			st.restore = &followMark{top: chat.top, follow: chat.follow}
+			st.restore = &followMark{top: chat.top, focus: chat.focus, follow: chat.follow}
 		}
 	} else if sel := a.lastSel[o.ID]; sel != "" {
 		if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
@@ -229,30 +229,36 @@ func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
 	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
 }
 
-// followRow is the row a following list opens on: the message whose own jump
-// would put the view exactly where it is now. The open reads the placement
-// backwards, the way the jump computed it, so a jump, an enter and the next
-// open agree without remembering anything; a view no jump made (a wheel, a
-// resize) opens on the message at its top.
+// followRow is the row a following list opens on: the message the view was
+// placed at, if it still is; else the one at the view's top, or the last while
+// the region follows its tail.
+//
+// A viewport cannot tell those messages apart by itself - centering clamps at
+// the top and the tail, where many messages share one top row - so the chat
+// keeps the row it was placed at (scrollState.focus). The list remembers
+// nothing; any move the reader makes by hand drops that place.
 func (a *App) followRow(st *overlayState) int {
 	n := len(st.visible)
 	if n == 0 {
 		return 0
 	}
 	chat := a.scrolls[a.scrollDef]
-	if chat == nil || chat.follow {
+	if chat == nil {
 		return n - 1
 	}
-	spans := unitSpans(chat.lines)
-	for k, idx := range st.visible {
-		at := st.items[idx].row.Anchor
-		u := -1
-		for u+1 < len(spans) && spans[u+1].anchor <= at {
-			u++
+	if chat.focus > 0 {
+		from, to := unitRows(chat.lines, unitAt(chat.lines, chat.focus))
+		if from >= 0 && from < chat.top+chat.viewH && to >= chat.top {
+			for k, idx := range st.visible {
+				if st.items[idx].row.Anchor == chat.focus {
+					return k
+				}
+			}
 		}
-		if u >= 0 && jumpTop(chat.lines, spans[u].from, spans[u].to, chat.viewH) == chat.top {
-			return k
-		}
+		chat.focus = 0 // no message carries it, or the view no longer shows it
+	}
+	if chat.follow {
+		return n - 1
 	}
 	target, sel := anchorAt(chat), 0
 	for k, idx := range st.visible {
@@ -825,6 +831,7 @@ func (a *App) cancelOverlay(o hostapi.Overlay) {
 // closes without committing.
 type followMark struct {
 	top    int
+	focus  int
 	follow bool
 }
 
@@ -840,7 +847,7 @@ func (a *App) unfollow(st overlayState) {
 	}
 	// rows 0 skips the re-anchor the next paint would do: this place is kept
 	// as it was, not re-anchored on what the jump left behind
-	chat.top, chat.follow, chat.rows = st.restore.top, st.restore.follow, 0
+	chat.top, chat.focus, chat.follow, chat.rows = st.restore.top, st.restore.focus, st.restore.follow, 0
 	delete(a.pendingAnchor, a.scrollDef)
 }
 

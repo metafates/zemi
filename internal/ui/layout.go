@@ -604,6 +604,9 @@ type scrollState struct {
 	lines  [][]hostapi.Segment
 	pin    []int    // the header rows drawn over the first rows shown (pinned)
 	pinned []pinKey // what each of pins was copied from, so an unchanged pin allocates nothing
+	// focus is the transcript row a following list placed the view at, so the
+	// list opens there again; a move the reader makes by hand clears it
+	focus int
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -640,12 +643,15 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	default: // applyScroll holds only the edges
 	}
 	// a following list's jump outranks a parked edge, and leaves none behind
-	if at := unitAt(lines, a.pendingAnchor[n.ID]); at > 0 {
-		from, to := unitRows(lines, at)
-		st.top = jumpTop(lines, from, to, st.viewH)
-		st.follow = st.bottom && st.top >= st.rows-st.viewH
-		delete(a.pendingAnchor, n.ID)
-		delete(a.pendingScroll, n.ID)
+	if at, ok := a.pendingAnchor[n.ID]; ok {
+		if unit := unitAt(lines, at); unit > 0 {
+			from, to := unitRows(lines, unit)
+			st.top = jumpTop(lines, from, to, st.viewH)
+			st.follow = st.bottom && st.top >= st.rows-st.viewH
+			st.focus = at
+			delete(a.pendingAnchor, n.ID)
+			delete(a.pendingScroll, n.ID)
+		}
 	}
 	st.filling = false
 	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
@@ -713,27 +719,6 @@ func rowAnchor(row []hostapi.Segment) int {
 		}
 	}
 	return 0
-}
-
-// unitSpan is one drawn unit: the anchor its rows carry and their first and
-// last row.
-type unitSpan struct{ anchor, from, to int }
-
-// unitSpans is every drawn unit in order, counted once so a message finds its
-// rows without a scan of the transcript per row.
-func unitSpans(lines [][]hostapi.Segment) []unitSpan {
-	var out []unitSpan
-	for i, row := range lines {
-		at := rowAnchor(row)
-		switch {
-		case at == 0:
-		case len(out) > 0 && out[len(out)-1].anchor == at:
-			out[len(out)-1].to = i
-		default:
-			out = append(out, unitSpan{anchor: at, from: i, to: i})
-		}
-	}
-	return out
 }
 
 // anchorAt is the anchor of the first unit the view shows, the row at the top

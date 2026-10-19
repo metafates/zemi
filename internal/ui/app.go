@@ -1230,7 +1230,7 @@ func (a *App) leaveTail(widget string) {
 	if w := a.host.Widgets.Get(widget); w != nil {
 		for _, st := range a.scrolls {
 			if st.region == w.Region {
-				st.follow = false
+				st.follow, st.focus = false, 0
 			}
 		}
 	}
@@ -1262,6 +1262,7 @@ func (a *App) scrollRows(id string, n int) {
 	if st == nil || n > 0 && st.follow {
 		return
 	}
+	st.focus = 0 // the reader moved the view: the place it was put at is no more
 	st.scroll(n)
 	st.follow = st.bottom && st.top+st.viewH >= st.rows
 	a.bump()
@@ -1271,7 +1272,7 @@ func (a *App) scrollRows(id string, n int) {
 func (a *App) followStage() {
 	delete(a.pendingScroll, a.scrollDef)
 	if st := a.scrolls[a.scrollDef]; st != nil && st.bottom {
-		st.follow = true
+		st.follow, st.focus = true, 0
 	}
 }
 

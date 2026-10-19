@@ -307,11 +307,12 @@ func TestMessagesFollow(t *testing.T) {
 	}
 }
 
-// TestMessagesReopen: closing the picker with enter and opening it again picks
-// the same message, because the open reads the placement its jump made
-// backwards, not a memory of the last pick.
-func TestMessagesReopen(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 14)
+// TestMessagesReopenAll: every message, entered on and reopened, comes back
+// on the same message. The viewport alone cannot say which one - centering
+// clamps at the top and the tail, where many messages share one top row - so
+// the chat keeps the row it was placed at until the reader moves it by hand.
+func TestMessagesReopenAll(t *testing.T) {
+	app, host := bootAgentApp(t, 120, 46)
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
@@ -328,30 +329,39 @@ func TestMessagesReopen(t *testing.T) {
 		}
 		return &app.overlays[0]
 	}
-	for _, c := range []struct {
-		name string
-		pick func(ov *overlayState)
-	}{
-		{"the first message", func(*overlayState) { press(t, app, tea.KeyPressMsg{Code: tea.KeyHome}) }},
-		{"a centered one", func(ov *overlayState) { ov.selected = 41 }}, // reply 21
-		{"the last one", func(*overlayState) { press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd}) }},
-	} {
+	for k := range 60 {
 		ov := open()
-		c.pick(ov)
+		ov.selected = 0 // away first, so picking k always moves the view
+		app.Frame()
+		ov.selected = k
 		app.Frame()
 		want := ov.selectedAnchor()
-		if want == 0 {
-			t.Fatalf("%s: nothing selected", c.name)
-		}
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 		app.Frame()
-		if len(app.overlays) != 0 {
-			t.Fatalf("%s: %d overlays after enter", c.name, len(app.overlays))
-		}
 		if got := open().selectedAnchor(); got != want {
-			t.Fatalf("%s: reopened on %d, want %d (top %d of %d)", c.name, got, want, chat.top, chat.rows)
+			t.Errorf("message %d: reopened on %d, want %d (top %d of %d, follow %v)", k, got, want, chat.top, chat.rows, chat.follow)
 		}
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 		app.Frame()
+	}
+
+	// a move of the reader's own drops the place: the view decides again
+	ov := open()
+	ov.selected = 41
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Frame()
+	if chat.focus == 0 {
+		t.Fatal("a committed jump should keep its place")
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	app.Frame()
+	if chat.focus != 0 {
+		t.Fatal("scrolling by hand should drop it")
+	}
+	ov = open()
+	from, _ := unitRows(chat.lines, ov.selectedAnchor())
+	if from < chat.top || from >= chat.top+chat.viewH {
+		t.Fatalf("reopened on an off-screen message: row %d, view %d..%d", from, chat.top, chat.top+chat.viewH)
 	}
 }
