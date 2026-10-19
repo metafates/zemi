@@ -201,7 +201,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	out, err := h.runModelLua(ctx, src, rel)
 	switch {
 	case err != nil:
-		msg := err.Error()
+		msg := luaNilHint(err.Error())
 		if in.Path != "" {
 			// the chunk keeps its tool name, which the permission ask reads;
 			// the error names the file the model can edit
@@ -214,6 +214,15 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	reply = fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(note+"\n"+out)))
 	reply.IsError = err != nil
 	return reply, nil
+}
+
+// luaNilHint names the fix for the error a script hits when it skips a
+// zemi.fs check: the raw message says nothing was nil or why.
+func luaNilHint(msg string) string {
+	if !strings.Contains(msg, "non-table object(nil)") && !strings.Contains(msg, "non-function object") {
+		return msg
+	}
+	return msg + "\n(a zemi.fs call answers nil, err when the path is a directory or gone; check the value before indexing or calling it)"
 }
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do

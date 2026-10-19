@@ -197,6 +197,7 @@ func TestLuaToolCeiling(t *testing.T) {
 	}{
 		{"while true do end", "error: stopped after its 50ms ceiling", 50 * time.Millisecond, false},
 		{"error({ code = 1 })", `: {"code":1}`, old, true},
+		{"local s = zemi.fs.read('.'); print(s:upper())", "check the value before indexing", old, true},
 	} {
 		luaToolCeiling = c.ceiling
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script}, json.Deterministic(true))
