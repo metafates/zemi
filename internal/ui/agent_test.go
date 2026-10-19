@@ -58,11 +58,23 @@ func reloadUI(t testing.TB, host *hostapi.Host, extra ...lua.BootStep) {
 	}
 }
 
+// tipClock pins the Lua clock so the hourly splash tip is the first one and
+// tests never depend on wall time.
+var tipClock = fixedClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+
+type fixedClock struct{ now time.Time }
+
+func (c fixedClock) Now() time.Time { return c.now }
+
+func (c fixedClock) AfterFunc(d time.Duration, f func()) func() bool {
+	return time.AfterFunc(d, f).Stop
+}
+
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
-	return bootAgentAppOn(t, w, h, nil)
+	return bootAgentAppOn(t, w, h, tipClock)
 }
 
 // bootAgentAppOn is bootAgentApp on clock, nil for the wall clock.
@@ -906,7 +918,7 @@ func TestPermissionBoxFits(t *testing.T) {
 // TestGoldenModelPicker pins the model picker: zemi.model.pick returns at
 // once, so the interpreter stays free while it is open, and enter runs /model <id>.
 func TestGoldenModelPicker(t *testing.T) {
-	app, host := bootAgentAppOn(t, 70, 20, tipClock)
+	app, host := bootAgentApp(t, 70, 20)
 	runLua(t, app, `
 		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })

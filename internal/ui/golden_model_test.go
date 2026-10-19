@@ -14,7 +14,7 @@ import (
 // to a profile with a model of its own: the conversation's model is the
 // profile's slot, not models.chat.
 func TestGoldenModelProfileSwitch(t *testing.T) {
-	app, host := bootAgentAppOn(t, 80, 16, tipClock)
+	app, host := bootAgentApp(t, 80, 16)
 	runLua(t, app, `
 		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5" }, { id = "claude-haiku-4-5" } } })
