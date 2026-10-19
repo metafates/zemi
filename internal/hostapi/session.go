@@ -124,8 +124,30 @@ func (h *Host) ResumeSession(id string) error {
 	// a list left in progress settles here: nothing runs on a resumed session
 	h.settleTodos()
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
+	// a resumed session pins its environment and the prompt a send would show,
+	// so /prompt reads it before the first message, which then reuses it. The
+	// prompt builds off this goroutine: a Lua caller resumes on the interpreter
+	h.environmentPrompt()
 	h.captureSessionContext(id, "resume")
+	h.GoSafe("resume prompt", h.pinResumed)
 	return nil
+}
+
+// pinResumed builds the pin a send would build: the system prompt as the user
+// has it now, over the context message the session stored. A model that does
+// not resolve leaves it empty; the send is where that error is reported.
+func (h *Host) pinResumed() {
+	p, err := h.resolveProfile("")
+	if err != nil {
+		return
+	}
+	toolset, err := h.profileTools(p)
+	if err != nil {
+		return
+	}
+	if _, err := h.ensureRunner(p, toolset); err != nil {
+		h.Log.Debug("prompt not pinned", "origin", "agent", "error", err)
+	}
 }
 
 // OpenSessions lists recent sessions; enter on a row resumes it. confirm

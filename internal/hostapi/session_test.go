@@ -200,6 +200,54 @@ func TestResumeParity(t *testing.T) {
 	}
 }
 
+// TestResumePinsThePrompt: a resumed session carries the prompt a send would,
+// so /prompt reads it before the first message instead of saying nothing was
+// assembled, and the context it shows is the one the session stored.
+func TestResumePinsThePrompt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return textParts("done")
+		}}, nil
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.AgentSend("one"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	sid := h.AgentSessionID()
+	if h.SystemPrompt() == "" {
+		t.Fatal("the live session has no prompt")
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if h.SystemPrompt() == "" {
+			return errors.New("no prompt pinned on resume")
+		}
+		return nil
+	})
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := contextIn(rows).Text
+	got := h.SystemPrompt()
+	if !strings.Contains(got, "# Environment") || stored == "" || !strings.HasSuffix(got, stored) {
+		t.Fatalf("resumed prompt:\n%s", got)
+	}
+	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 1 || ui.opened[0].Body != got {
+		t.Fatalf("prompt: %v %+v", err, ui.opened)
+	}
+}
+
 // TestSessionLifecycle: /new starts clean, /resume rebuilds the transcript
 // and the model history from the store, in order, and a stored session
 // can be deleted.

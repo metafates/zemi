@@ -144,9 +144,12 @@ type agentHost struct {
 	promptTokens int64
 	promptParts  []promptPart
 	// pin is the main agent's fixed prefix (DESIGN §6.3), sent verbatim
-	// until its key moves or a drop point clears it; pinDrops counts drops.
+	// until its key moves or a drop point clears it; pinDrops counts drops,
+	// and pinMu holds one build at a time, since a resume's build and a
+	// send's would both run the assemble handlers.
 	pin      promptPin
 	pinDrops int
+	pinMu    sync.Mutex
 	// ctx is the context message the live session last stored: a resume
 	// loads it, a drop point clears it
 	ctx contextRow
@@ -529,6 +532,8 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	}
 	k := strings.Join(key, "\x00")
 	ag := h.agents
+	ag.pinMu.Lock()
+	defer ag.pinMu.Unlock()
 	ag.mu.Lock()
 	pin, drops, brainText, hookText := ag.pin, ag.pinDrops, ag.brain, ag.hookCtx
 	ag.mu.Unlock()
@@ -608,10 +613,11 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	}
 }
 
-// SystemPrompt is the pinned system prompt and context message the last
-// send carried, "" before the first one. /usage measures it; this is the
-// text, so a profile, an assemble handler or an instruction file the budget
-// cut can be read instead of guessed at. It is never rebuilt here: assembling it runs Lua
+// SystemPrompt is the pinned system prompt and context message the last send
+// carried, "" before the first one and briefly after a resume, whose pin
+// builds in the background. /usage measures it; this is the text, so a
+// profile, an assemble handler or an instruction file the budget cut can be
+// read instead of guessed at. It is never rebuilt here: assembling it runs Lua
 // handlers on the interpreter, which a Lua caller would deadlock on.
 func (h *Host) SystemPrompt() string {
 	ag := h.agents
@@ -2610,8 +2616,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// prompt() is the pinned system prompt and context message the last send carried, "" before the
-	// first one; it is never rebuilt here (see SystemPrompt).
+	// prompt() is the pinned system prompt and context message the last send
+	// carried, "" before the first one and while a resume's pin builds; it is
+	// never rebuilt here (see SystemPrompt).
 	tb.RawSetString("prompt", L.NewFunction(func(L *glua.LState) int {
 		L.Push(glua.LString(h.SystemPrompt()))
 		return 1
