@@ -208,6 +208,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
 	ag.goal, ag.goalRuns = goalIn(rows[:cut]), 0
 	ag.mu.Unlock()
+	h.keepLastIn()
 	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)
 	if ui := h.hooks(); ui != nil {

@@ -832,6 +832,32 @@ func (h *Host) persistTurnStat(sid string, stat TurnStat) {
 	}
 }
 
+// chatRole marks a stored transcript row that no model message holds: a
+// notice, a failed turn, a !command. The live turn draws it as it happens,
+// and only the row itself can bring it back on a resume.
+const chatRole = "chat"
+
+// AppendStoredChat draws a chat row and keeps it, so a resumed session shows
+// the chat the user saw.
+func (h *Host) AppendStoredChat(m ChatMessage) {
+	h.storeChatRow(h.AgentSessionID(), m)
+	h.AppendChat(m)
+}
+
+// storeChatRow keeps a transcript row no model message holds.
+func (h *Host) storeChatRow(sid string, m ChatMessage) {
+	if h.DB == nil || sid == "" {
+		return
+	}
+	parts, err := json.Marshal(m, json.Deterministic(true))
+	if err != nil {
+		return
+	}
+	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: chatRole, PartsJSON: string(parts)}); err != nil {
+		h.Log.Warn("row not kept", "origin", "agent", "error", err)
+	}
+}
+
 // release lets the agent go idle (ag.mu held).
 func (h *Host) release() {
 	h.agents.active = false
@@ -1885,6 +1911,9 @@ func (h *Host) recap(ctx context.Context) {
 		h.session.Transcript = append(h.session.Transcript, row)
 	}
 	h.tMu.Unlock()
+	if added {
+		h.storeChatRow(sid, row)
+	}
 	if added && row.Detail != "" {
 		_ = h.GlobalDB.SetKV("recap.hinted", "true")
 	}

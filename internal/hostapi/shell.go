@@ -51,7 +51,7 @@ func (h *Host) RunShell(cmd string) {
 		}
 		// the model reads the output as a shell call's, through shellNotes; the
 		// row keeps its head and its tail, where the failure is
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
+		h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
 		ag.mu.Lock()
 		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<shell command=%q status=%q>\n%s\n</shell>", cmd, status, text))

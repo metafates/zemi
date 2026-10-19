@@ -257,7 +257,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
 		}
-		h.AppendChat(row)
+		h.AppendStoredChat(row)
 	} else {
 		payload := map[string]any{"session": sid, "model": model, "usage": map[string]any{
 			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,

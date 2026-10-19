@@ -40,6 +40,10 @@ const (
 	compactTailRole = "tail"
 
 	clearedOutput = "[old tool output cleared]"
+
+	// compactedRow is the transcript row a compaction draws, live and resumed
+	// alike: the resume path has the summary row and no count to draw.
+	compactedRow = "Compacted earlier messages"
 )
 
 const (
@@ -110,6 +114,7 @@ func (h *Host) contextFull(used int64) bool {
 	judge := ag.compacted
 	ag.compacted = false
 	ag.mu.Unlock()
+	h.keepLastIn()
 	if judge {
 		if h.compactDue() {
 			h.compactFailed("the context was still full after compacting")
@@ -295,7 +300,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 		if freed > 0 && reason == compactAuto && used < threshold {
 			runner.History = pruned
 			h.compactDone(used, false)
-			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Cleared %dk tokens of old tool output", freed/1000)})
+			h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Cleared %dk tokens of old tool output", freed/1000)})
 			return nil
 		}
 		history = pruned
@@ -367,7 +372,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
 	h.agents.mu.Unlock()
 	h.compactDone(estTokens(runner.History...)+overhead, reason == compactManual)
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Compacted %d messages", len(head))})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactedRow})
 	return nil
 }
 
@@ -387,6 +392,22 @@ func (h *Host) compactDone(used int64, manual bool) {
 		ag.compactFails = 0
 	}
 	ag.mu.Unlock()
+	h.keepLastIn()
+}
+
+// keepLastIn records the context the live session now holds: it is the one
+// number a resume cannot recompute, since only the provider counts tokens.
+func (h *Host) keepLastIn() {
+	ag := h.agents
+	ag.mu.Lock()
+	sid, n := ag.sessionID, ag.lastIn
+	ag.mu.Unlock()
+	if h.DB == nil || sid == "" {
+		return
+	}
+	if err := h.DB.SetSessionLastIn(sid, n); err != nil {
+		h.Log.Warn("context size not kept", "origin", "agent", "error", err)
+	}
 }
 
 // storeCompaction stores the summary and copies of the verbatim tail in one

@@ -1727,9 +1727,11 @@ origins that may not register.
 ```
 sessions(id, parent_id, title, profile, created_at, updated_at,
          prompt_tokens, completion_tokens, cache_read_tokens,
-         cache_billed_tokens, cost, run_status)                    -- run_status: how the session's last run ended
+         cache_billed_tokens, cost, last_in, run_status)           -- run_status: how the session's last run ended;
+                                                                  -- last_in: the context its latest step used
 messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool and turn telemetry,
-                                                                -- compaction tails, goal events
+                                                                -- compaction tails, goal events and chat rows
+                                                                -- (role "chat": a notice, an error, a !command)
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, text, quote, provenance_session_id,
@@ -1765,6 +1767,15 @@ proposals, and the reflector's kv marks. Opening a store sweeps checkpoints olde
 days; sessions are never swept (zemi deletes a
 session only when the user says to: Delete in `/sessions` removes it and its subagent
 runs, then VACUUMs and truncates the WAL so the text leaves the disk).
+
+A resume rebuilds the session from the store alone and must read exactly as
+the session did when it was left: the transcript rows a model message does
+not hold (a notice, a failed turn, a `!command`) are stored rows of their
+own, `role = "chat"`, and the context the latest step used is the session's
+`last_in`, since only the provider counts tokens and an estimate at 4 bytes
+each would read low. A loop is the one thing that does not come back: it is
+a running process, not session state (`/loop`).
+
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,

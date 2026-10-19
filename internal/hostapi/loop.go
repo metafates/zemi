@@ -240,7 +240,7 @@ func (h *Host) stopLoop(l *Loop, why string) error {
 	}
 	ag.loop, ag.loopStop = nil, nil
 	ag.mu.Unlock()
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: why})
+	h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: why})
 	return nil
 }
 

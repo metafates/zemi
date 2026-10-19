@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -109,6 +110,93 @@ func TestResumeKeepsTurnStats(t *testing.T) {
 	}
 	if *got.Stat != *last.Stat {
 		t.Fatalf("resumed stat = %+v, live %+v", got.Stat, last.Stat)
+	}
+}
+
+// TestResumeParity: after /new and a resume the session reads as it did when
+// it was left - the rows a model message does not hold (a !command, a failed
+// turn), the session's counts and the context the last step used, which only
+// the provider counts.
+func TestResumeParity(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	fail := false
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			if fail {
+				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("provider down")}}
+			}
+			parts := textParts("done")
+			parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 1000, OutputTokens: 200, CacheReadTokens: 300}
+			return parts
+		}}, nil
+	}
+	send := func(text string) {
+		t.Helper()
+		if err := h.AgentSend(text); err != nil {
+			t.Fatalf("send %q: %v", text, err)
+		}
+		waitIdle(t, h)
+	}
+	send("one")
+	sid := h.AgentSessionID()
+	h.RunShell("echo hi")
+	waitFor(t, func() error {
+		if !slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == RowShell }) {
+			return errors.New("the shell row did not land")
+		}
+		return nil
+	})
+	fail = true
+	send("two")
+	live, before := h.Session().Transcript, h.AgentStream()
+	if !slices.ContainsFunc(live, func(m ChatMessage) bool { return m.Kind == RowError }) {
+		t.Fatalf("no error row live: %+v", live)
+	}
+	if before.LastIn == 0 {
+		t.Fatal("live context is 0")
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	got := h.Session().Transcript
+	norm := func(tr []ChatMessage) []ChatMessage {
+		out := slices.Clone(tr)
+		for i := range out {
+			out[i].SentAt = 0 // the send's clock, and the stored row's, differ by a millisecond
+		}
+		return out
+	}
+	if want := norm(live); !reflect.DeepEqual(want, norm(got)) {
+		t.Fatalf("resumed rows differ\n live: %+v\nresumed: %+v", live, got)
+	}
+	for i, m := range got {
+		if m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage && m.SentAt == 0 {
+			t.Fatalf("row %d lost its send time", i)
+		}
+	}
+	after := h.AgentStream()
+	for _, f := range []struct {
+		name     string
+		live, re int64
+	}{
+		{"last in", before.LastIn, after.LastIn},
+		{"session in", before.SessionIn, after.SessionIn},
+		{"session out", before.SessionOut, after.SessionOut},
+		{"cache read", before.CacheRead, after.CacheRead},
+		{"cache billed", before.CacheBilled, after.CacheBilled},
+		{"context window", before.CtxWindow, after.CtxWindow},
+	} {
+		if f.live != f.re {
+			t.Errorf("%s: live %d, resumed %d", f.name, f.live, f.re)
+		}
+	}
+	if before.SessionCost != after.SessionCost {
+		t.Errorf("cost: live %v, resumed %v", before.SessionCost, after.SessionCost)
 	}
 }
 

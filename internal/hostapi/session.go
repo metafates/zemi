@@ -105,10 +105,12 @@ func (h *Host) ResumeSession(id string) error {
 		ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
 		ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
 		ag.cacheRead, ag.cacheBilled = sess.CacheRead, sess.CacheBilled
-		// lastIn is the current-context estimate; seed it from the history and
-		// the prompt so the context readout and compactDue see the window it
-		// had until the next step reports a real count.
-		ag.lastIn = estTokens(history...) + ag.promptTokens
+		// lastIn is the current context; it comes from the store, since only
+		// the provider counted it, and a fork copies messages but no count
+		ag.lastIn = sess.LastIn
+		if ag.lastIn == 0 {
+			ag.lastIn = estTokens(history...) + ag.promptTokens
+		}
 		ag.brain, ag.brainGlobs, ag.env, ag.ctx = brain, globs, "", contextIn(rows)
 		ag.goal = goalIn(rows)
 	})
@@ -392,6 +394,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		if row.Role == contextRole {
 			continue
 		}
+		if row.Role == chatRole {
+			var m ChatMessage
+			if json.Unmarshal([]byte(row.PartsJSON), &m) == nil {
+				tr = append(tr, m)
+			}
+			continue
+		}
 		if row.Role == goalRole {
 			var g goalRow
 			if json.Unmarshal([]byte(row.PartsJSON), &g) == nil {
@@ -476,7 +485,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
 			if _, ok := summaryOf(m); ok {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactedRow})
 				continue
 			}
 			shown, heads, _ := userRowsFor(s) // show what was typed

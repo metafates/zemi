@@ -108,6 +108,19 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		if err != nil {
 			return err
 		}
+		// a resume id may name a session of another project, which zemi then
+		// starts in: every project fact is bound at start. An explicit -C is
+		// the user's own answer and is never overridden.
+		if o.resume != "" && o.dir == "" {
+			if root, found := hostapi.SessionProject(dirs, o.resume); found && perm.CanonPath(root) != perm.CanonPath(dirs.TrustRoot()) {
+				if err := enterDir(root); err != nil {
+					return fmt.Errorf("session %s is in %s, which is gone (%w)", o.resume, perm.TildePath(root), err)
+				}
+				if dirs, err = config.ResolveDirs(); err != nil {
+					return err
+				}
+			}
+		}
 		o.dirs = dirs
 		return nil
 	}
@@ -239,7 +252,7 @@ and stderr lists them at the end.`,
 func turnFlags(c *cobra.Command, o *options) {
 	f := c.Flags()
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
-	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`")
+	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`, of any project")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default or one init.lua defines")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
@@ -277,12 +290,27 @@ func completionDirs(c *cobra.Command) (config.Dirs, error) {
 	return config.ResolveDirs()
 }
 
-// completeSessions offers this project's session ids, titled.
+// completeSessions offers session ids: this project's for export, and for -r
+// every project's, a row of another one naming it.
 func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	var out []cobra.Completion
 	dirs, err := completionDirs(c)
 	if err != nil || c.Name() == "export" && len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	if c.Flags().Lookup("resume") != nil {
+		root := dirs.TrustRoot()
+		for _, g := range hostapi.ListAllSessions(dirs) {
+			where := ""
+			if perm.CanonPath(g.Root) != perm.CanonPath(root) {
+				where = filepath.Base(g.Root) + ": "
+			}
+			for _, s := range g.Sessions {
+				title := []rune(sanitize.Line(s.Title))
+				out = append(out, cobra.CompletionWithDesc(s.ID, where+string(title[:min(len(title), 60)])))
+			}
+		}
+		return out, cobra.ShellCompDirectiveNoFileComp
 	}
 	db, err := projectStore(dirs)
 	if err != nil {

@@ -126,7 +126,7 @@ func TestCLI(t *testing.T) {
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
 		{name: "complete a session id", args: []string{"__complete", "-r", ""}, stdout: sid + "\tfix the failing test\n"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugins", "enable", ""}, stdout: "rub\n"},
-		{name: "complete no session without a store", args: []string{"__complete", "-C", dir, "-r", ""}, notStdout: sid},
+		{name: "complete a session of another project", args: []string{"__complete", "-C", dir, "-r", ""}, stdout: sid + "\t"},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 2, stderr: "zemi: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir, "run", "hi"}, want: &options{run: true, prompt: "hi", dir: dir}},
 	} {
@@ -573,6 +573,7 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		args           []string
 		code           int
 		stdout, stderr string
+		root           string // the project the run must start in, "" for any
 	}{
 		{name: "-a lists another project's session", args: []string{"sessions", "-a"}, stdout: theirs + "  "},
 		{name: "-a names the project first", args: []string{"sessions", "-a"}, stdout: perm.TildePath(other) + "\n"},
@@ -583,11 +584,23 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "search shows the match", args: []string{"sessions", "search", "kubelet"}, stdout: "\n      the kubelet gave up on the node\n"},
 		{name: "search as JSON", args: []string{"sessions", "search", "--json", "kubelet"}, stdout: `"hits":1,"match":"the kubelet gave up on the node"`},
 		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
+		// -r takes any session id: this project's, or one another project holds
+		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},
+		{name: "-r keeps this project", args: []string{"-r", ids[base]}, root: base},
+		{name: "-r leaves an explicit -C alone", args: []string{"-C", base, "-r", theirs}, root: base},
 	} {
 		var out, errOut strings.Builder
-		if code := execute(c.args, &out, &errOut, func(options) int { return 0 }); code != c.code ||
-			!strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) {
+		var got options
+		code := execute(c.args, &out, &errOut, func(o options) int {
+			got = o
+			return 0
+		})
+		if code != c.code || !strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) {
 			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
+			continue
+		}
+		if c.root != "" && perm.CanonPath(got.dirs.TrustRoot()) != perm.CanonPath(c.root) {
+			t.Errorf("%s: started in %q, want %q", c.name, got.dirs.TrustRoot(), c.root)
 		}
 	}
 }

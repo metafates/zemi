@@ -206,6 +206,27 @@ func snippet(text, role string, words []string) string {
 	return cut
 }
 
+// SessionProject is the project root whose store holds session id: the
+// current one first, then the others last used first, false for none. A
+// store that cannot be read is skipped, as it is by a search.
+func SessionProject(dirs config.Dirs, id string) (root string, ok bool) {
+	if id == "" {
+		return "", false
+	}
+	for _, r := range projectRoots(dirs) {
+		db, err := store.OpenRead(store.ProjectDBPath(dirs.StateHome, r))
+		if err != nil {
+			continue
+		}
+		_, err = db.GetSession(id)
+		db.Close()
+		if err == nil {
+			return r, true
+		}
+	}
+	return "", false
+}
+
 // ListAllSessions groups every project's top-level sessions, last used first.
 // A store it cannot read is left out: the list is a convenience, not a report.
 func ListAllSessions(dirs config.Dirs) []ProjectSessions {

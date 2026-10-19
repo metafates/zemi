@@ -25,6 +25,8 @@ type Session struct {
 	// cache, over the input billed alongside them
 	CacheRead   int64
 	CacheBilled int64
+	// LastIn is the context the latest step used, as the provider counted it
+	LastIn int64
 	// RunStatus is a subagent run's outcome, written where it ends: the run
 	// rows and a restart read it back instead of assuming the run finished
 	RunStatus string
@@ -43,17 +45,22 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 }
 
 const sessionCols = `id, COALESCE(parent_id, ''), title, profile, created_at, updated_at,
-	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, run_status`
+	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, last_in, run_status`
 
 func scanSession(row scanner) (*Session, error) {
 	var s Session
 	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Profile,
 		&s.CreatedAt, &s.UpdatedAt,
 		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
-		&s.CacheRead, &s.CacheBilled, &s.RunStatus); err != nil {
+		&s.CacheRead, &s.CacheBilled, &s.LastIn, &s.RunStatus); err != nil {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// SetSessionLastIn records the context the session's latest step used.
+func (s *DB) SetSessionLastIn(id string, n int64) error {
+	return s.execOne("set last in", `UPDATE sessions SET last_in = ? WHERE id = ?`, n, id)
 }
 
 // SetSessionRunStatus records how a run ended. It leaves updated_at alone: a
