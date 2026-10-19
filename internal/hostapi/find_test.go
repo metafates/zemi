@@ -33,7 +33,11 @@ func addTo(t *testing.T, db *store.DB, sid, role, text string) {
 // makes ListProjects find it.
 func otherStore(t *testing.T, stateHome string) (string, *store.DB) {
 	t.Helper()
-	root := t.TempDir()
+	// a real trust root is symlink-resolved, and the store is keyed by it
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := store.ProjectDBPath(stateHome, root)
 	db, err := store.Open(path)
 	if err != nil {
@@ -226,15 +230,20 @@ func TestOpenFindSessions(t *testing.T) {
 
 	// a scan still running when the next search starts lands nowhere
 	fake = &fakeUI{}
-	tag := f.h.findSeq.Add(1)
+	f.h.SetUIHooks(fake)
+	before := f.h.findSeq.Load()
+	if err := f.h.OpenFindSessions("parser"); err != nil {
+		t.Fatal(err)
+	}
+	if f.h.findSeq.Load() == before {
+		t.Error("a search did not invalidate the scan still running")
+	}
+	f.waitOverlays(t, fake)
+	tag := f.h.findSeq.Load()
 	f.h.findSeq.Add(1)
 	f.h.landFind(tag, fake, Overlay{ID: findID})
-	if got := fake.overlays(); len(got) != 0 {
+	if got := fake.overlays(); len(got) != 2 {
 		t.Errorf("overlays = %+v, want the stale result dropped", got)
-	}
-	f.h.landFind(f.h.findSeq.Load(), fake, Overlay{ID: findID})
-	if got := fake.overlays(); len(got) != 1 {
-		t.Errorf("overlays = %+v, want the fresh result", got)
 	}
 }
 
@@ -265,5 +274,14 @@ func TestOpenFoundSession(t *testing.T) {
 	}
 	if err := f.h.OpenFoundSession("", f.deep); err == nil {
 		t.Error("a row with no project = nil, want a usage error")
+	}
+
+	// this project's row resumes in place, with no restart
+	f.h.SetUIHooks(&fakeUI{})
+	if err := f.h.OpenFoundSession(f.dirs.TrustRoot(), f.plain); err != nil {
+		t.Fatalf("OpenFoundSession here: %v", err)
+	}
+	if got := f.h.AgentSessionID(); got != f.plain {
+		t.Errorf("live session = %q, want %q resumed in place", got, f.plain)
 	}
 }

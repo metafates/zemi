@@ -328,24 +328,26 @@ func (h *Host) OpenFoundSession(root, id string) error {
 	if id == h.AgentSessionID() {
 		return nil
 	}
-	ui, err := h.Screen()
-	if err != nil {
-		return err
-	}
 	root = filepath.Clean(perm.ExpandHome(root))
 	if !filepath.IsAbs(root) {
 		return Usagef("%s is not an absolute path", perm.TildePath(root))
 	}
-	// the box may have sat open while the session was deleted, and a restart
-	// cannot take that back
-	if err := h.foundSession(root, id); err != nil {
+	if perm.CanonPath(root) == perm.CanonPath(h.trustRoot()) {
+		return h.ResumeSession(id) // its own wording for a session that is gone
+	}
+	ui, err := h.Screen()
+	if err != nil {
 		return err
 	}
-	if perm.CanonPath(root) == perm.CanonPath(h.trustRoot()) {
-		return h.ResumeSession(id)
-	}
-	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+	p, err := perm.Resolve(root)
+	if err != nil {
 		return Usagef("%s is not a directory", perm.TildePath(root))
+	}
+	root = p.String()
+	// a row can sit open while its session is deleted, and a restart cannot
+	// take that back
+	if err := h.foundSession(root, id); err != nil {
+		return err
 	}
 	if h.AgentActive() {
 		return errTurnRunning
@@ -360,16 +362,12 @@ func (h *Host) OpenFoundSession(root, id string) error {
 // foundSession checks a row's project still holds the session it names.
 func (h *Host) foundSession(root, id string) error {
 	db, err := store.OpenRead(store.ProjectDBPath(h.Dirs.StateHome, root))
-	if errors.Is(err, fs.ErrNotExist) {
-		return Usagef("no session %q in %s", id, perm.TildePath(root))
-	} else if err != nil {
-		return err
+	if err == nil {
+		defer db.Close()
+		_, err = db.GetSession(id)
 	}
-	defer db.Close()
-	if _, err := db.GetSession(id); errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
 		return Usagef("no session %q in %s", id, perm.TildePath(root))
-	} else if err != nil {
-		return err
 	}
-	return nil
+	return err
 }
