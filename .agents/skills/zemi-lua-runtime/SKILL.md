@@ -103,9 +103,11 @@ registry, follow `internal/hostapi/registry.go`.
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
 since installers write there; the config dir wins a name clash), builtin (zemi's
-self-knowledge, one `zemi` skill in `runtime/skills/zemi` whose SKILL.md routes to reference
-files the model reads on demand, each fitting one `read` page (`TestBuiltinSkillFilesFitOneRead`)
-and each named in SKILL.md (`TestBuiltinSkillReferences`), embedded and rewritten to `<data>/builtin-skills/` on
+self-knowledge, one skill per directory in `runtime/skills`: `zemi`, whose SKILL.md routes to
+reference files the model reads on demand, and `sessions`, finding, reading and resuming a past
+conversation; each reference file fits the skill tool's cap (`TestBuiltinSkillsFitTheSkillTool`)
+and is named in its own SKILL.md (`TestBuiltinSkillReferences`), and every builtin body ends with
+this binary's path (`skillNote`); embedded and rewritten to `<data>/builtin-skills/` on
 every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body only), all in the
 table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
