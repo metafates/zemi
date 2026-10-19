@@ -252,14 +252,17 @@ func TestWaitMCP(t *testing.T) {
 	<-done
 }
 
-// TestNotifyStyle: auto sends OSC 9 only where a terminal draws it, a native
-// notification only on this machine, and a bell otherwise.
+// TestNotifyStyle: auto sends OSC 9 only where a terminal draws it, the
+// native notifier where one shows (macOS first, since a terminal's own banner
+// is dropped when it was focused), and a bell otherwise.
 func TestNotifyStyle(t *testing.T) {
 	for _, c := range []struct {
 		name, setting, goos, env, tools, want string
 	}{
-		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "osc"},
+		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "native"},
+		{"ghostty without a notifier", "auto", "darwin", "TERM_PROGRAM=ghostty", "", "osc"},
 		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc"},
+		{"kitty on linux", "auto", "linux", "TERM=xterm-kitty", "notify-send", "osc"},
 		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native"},
 		{"screen on a mac", "auto", "darwin", "TERM_PROGRAM=ghostty TERM=screen STY=1.pts-0", "osascript", "native"},
 		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell"},

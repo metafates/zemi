@@ -213,6 +213,15 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	default:
 		return setting, "set in config"
 	}
+	// macOS has a notifier that shows whether or not the terminal draws OSC 9,
+	// while a terminal's own banner is dropped when the window was focused as
+	// the sequence arrived: there the notifier goes first. Elsewhere a
+	// terminal that draws OSC 9 is the more native banner, and notify-send
+	// may not be installed at all.
+	native := tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool)
+	if native && goos == "darwin" {
+		return config.NotifyNative, "auto: via " + tool
+	}
 	// tmux, GNU screen and zellij drop OSC 9 unless it is passed through
 	if env("TMUX") == "" && env("STY") == "" && env("ZELLIJ") == "" {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
@@ -221,8 +230,7 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 			}
 		}
 	}
-	// over ssh a native notification would show on the remote machine
-	if tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool) {
+	if native {
 		return config.NotifyNative, "auto: via " + tool
 	}
 	return config.NotifyBell, "auto: no OSC 9 terminal or local notifier found"
