@@ -767,10 +767,13 @@ func (h *Host) lspDiagnostics(path string) (string, error) {
 	if out, ok := h.lspCheck(path, false); ok {
 		return out, nil
 	}
-	if _, ok := h.lspFor(path); !ok {
+	def, ok := h.lspFor(path)
+	if !ok {
 		return "", h.noLSP(path)
 	}
-	return "", errors.New("the language server did not answer in time")
+	// a server that just started indexes before it publishes anything: the
+	// next call finds the diagnostics, a shell sleep only spends a turn
+	return "", fmt.Errorf("%s has published nothing for %s yet: a server that just started indexes the project first, so ask again in a few seconds instead of waiting in a shell command", def.Name, path)
 }
 
 // noLSP says why path (or, when "", the project) has no language server.
