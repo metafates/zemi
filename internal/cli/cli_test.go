@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -522,6 +523,71 @@ func TestPaint(t *testing.T) {
 	} {
 		if got := pad(c.p, c.role, "on", 4); got != c.want {
 			t.Errorf("%v %s: %q, want %q", c.p, c.role, got, c.want)
+		}
+	}
+}
+
+// TestSessionsAcrossProjects: -a and search reach the other projects' stores,
+// grouped by project, and a search that finds nothing exits 1, as grep does.
+func TestSessionsAcrossProjects(t *testing.T) {
+	home := t.TempDir()
+	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
+		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
+	}
+	base, other := t.TempDir(), t.TempDir()
+	t.Chdir(base)
+	t.Setenv("PWD", base)
+	dirs, err := config.ResolveDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm.CanonPath(dirs.TrustRoot()) != perm.CanonPath(base) {
+		t.Fatalf("this project is %q, want %q", dirs.TrustRoot(), base)
+	}
+	ids := map[string]string{}
+	for _, p := range []struct{ root, title, text string }{
+		{dirs.TrustRoot(), "local notes", ""},
+		{other, "deploy the kubelet", "the kubelet gave up on the node"},
+	} {
+		global, db, err := store.OpenForDirs(dirs.StateHome, p.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		global.Close()
+		sid := store.ShortID()
+		if err := db.CreateSession(sid, "", p.title, ""); err != nil {
+			t.Fatal(err)
+		}
+		if p.text != "" {
+			parts := `{"role":"user","content":[{"type":"text","data":{"text":"` + p.text + `"}}]}`
+			if err := db.AddMessage(&store.Message{SessionID: sid, Role: "user", PartsJSON: parts}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		db.Close()
+		ids[p.root] = sid
+	}
+	theirs := ids[other]
+	for _, c := range []struct {
+		name           string
+		args           []string
+		code           int
+		stdout, stderr string
+	}{
+		{name: "-a lists another project's session", args: []string{"sessions", "-a"}, stdout: theirs + "  "},
+		{name: "-a names the project first", args: []string{"sessions", "-a"}, stdout: perm.TildePath(other) + "\n"},
+		{name: "-a as JSON carries the project", args: []string{"sessions", "-a", "--json"}, stdout: `"id":"` + theirs + `"`},
+		{name: "-a as JSON names its root", args: []string{"sessions", "-a", "--json"}, stdout: `"project":"` + other + `"`},
+		{name: "search finds a word", args: []string{"sessions", "search", "kubelet"}, stdout: theirs + "  "},
+		{name: "search shows the hit count", args: []string{"sessions", "search", "kubelet"}, stdout: "1 hit  "},
+		{name: "search shows the match", args: []string{"sessions", "search", "kubelet"}, stdout: "\n      the kubelet gave up on the node\n"},
+		{name: "search as JSON", args: []string{"sessions", "search", "--json", "kubelet"}, stdout: `"hits":1,"match":"the kubelet gave up on the node"`},
+		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
+	} {
+		var out, errOut strings.Builder
+		if code := execute(c.args, &out, &errOut, func(options) int { return 0 }); code != c.code ||
+			!strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) {
+			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
 		}
 	}
 }
