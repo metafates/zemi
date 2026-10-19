@@ -76,6 +76,9 @@ type App struct {
 	// paint, for a following list: the rows a jump was issued for may still
 	// be filling in above.
 	pendingAnchor map[string]int
+	// highlight is the transcript row the open messages picker selects, whose
+	// rows the paint bands; 0 when nothing follows.
+	highlight int
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
@@ -1031,7 +1034,7 @@ func (a *App) compose(w, h int) string {
 		if i == len(modals)-1 {
 			// the backdrop joins before it fades, so no faded line joins the top box
 			a.join(rows, w)
-			fadeRows(rows)
+			a.fadeRows(rows)
 		}
 		place()
 	}
@@ -1128,15 +1131,21 @@ const modalFade = 0.7
 // stepping, and nothing that acts or joins, so no backdrop row answers the
 // box's prompt, no backdrop line joins its border and no backdrop bar takes a
 // drag. A row a box drew on its panel sinks to the canvas with the rest: the
-// backdrop is one surface.
-func fadeRows(rows [][]hostapi.Segment) {
-	mapRows(rows, func(s hostapi.Segment) hostapi.Segment {
-		return hostapi.Segment{
-			Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
-			NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
-			Fill: s.Fill, Fade: max(s.Fade, modalFade),
+// backdrop is one surface. The message a following list picked stays lit: the
+// map dims the chat around what it is looking at, which is why it can be seen.
+func (a *App) fadeRows(rows [][]hostapi.Segment) {
+	for i, row := range rows {
+		if a.highlight > 0 && rowAnchor(row) == a.highlight {
+			continue
 		}
-	})
+		for k, s := range row {
+			rows[i][k] = hostapi.Segment{
+				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
+				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
+				Fill: s.Fill, Fade: max(s.Fade, modalFade),
+			}
+		}
+	}
 }
 
 // floatPopup draws the open composer popup, the palette or the completion

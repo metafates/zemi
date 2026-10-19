@@ -39,6 +39,9 @@ type overlayState struct {
 	// followed is the anchor this following list last moved the region to,
 	// so a frame that moved nothing moves it again
 	followed int
+	// restore is where a following list found the chat, put back when it
+	// closes without committing
+	restore *followMark
 	// the preview pane's rows at paneW cells: the most any item's preview
 	// wraps to, 4 at most, so moving or filtering never resizes the box
 	paneW, paneN int
@@ -190,6 +193,9 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	if o.Follow {
 		st.selected = a.followRow(&st)
 		st.followed = st.selectedAnchor()
+		if chat := a.scrolls[a.scrollDef]; chat != nil {
+			st.restore = &followMark{top: chat.top, follow: chat.follow}
+		}
 	} else if sel := a.lastSel[o.ID]; sel != "" {
 		if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
 			st.selected = n
@@ -258,16 +264,21 @@ func (st *overlayState) selectedAnchor() int {
 
 // syncFollow moves the stage's scrolled region to the row the top following
 // list's selection names, once per selection change: keys, clicks and the
-// wheel all land here, and the paint carries it out.
+// wheel all land here, and the paint carries it out. Its selection is also
+// the message the paint bands.
 func (a *App) syncFollow() {
+	a.highlight = 0
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].o.Follow {
 		return
 	}
 	st := &a.overlays[i]
-	if n := st.selectedAnchor(); n != 0 && n != st.followed {
-		st.followed = n
-		a.pendingAnchor[a.scrollDef] = n
+	if a.highlight = st.selectedAnchor(); a.highlight == 0 {
+		return
+	}
+	if a.highlight != st.followed {
+		st.followed = a.highlight
+		a.pendingAnchor[a.scrollDef] = a.highlight
 	}
 }
 
@@ -299,7 +310,7 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 		st.selected = n
 	}
 	st.armed = old.armed && sameDanger(was, st.selectedRow())
-	st.followed = old.followed
+	st.followed, st.restore = old.followed, old.restore
 	// the same danger key running the same command keeps its press
 	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger && slices.Contains(old.o.Keys, st.o.Keys[k]) {
 		st.keyArmed = old.keyArmed
@@ -455,6 +466,11 @@ func (st *overlayState) enterVerb(idx int) string {
 	case r.Fill != "":
 		return cmp.Or(r.Verb, "fill")
 	case r.Copy != "":
+		if st.o.Follow {
+			// the list already scrolled the chat there: enter keeps it, and y
+			// is what copies
+			return "close"
+		}
 		return "copy"
 	case st.back:
 		return "back"
@@ -780,11 +796,39 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 // cancelOverlay closes o and runs its on_close. The overlay's Lua
 // callbacks run on the background worker: the key loop never waits on Lua.
 func (a *App) cancelOverlay(o hostapi.Overlay) {
+	// esc cancels a browse: a following list puts the chat back where it
+	// found it, while enter closes and keeps the place
+	if i := a.overlayIndex(o.ID); i >= 0 {
+		a.unfollow(a.overlays[i])
+	}
 	if o.OnClose != nil {
 		a.background(func() { a.host.CancelOverlay(context.Background(), o) })
 	}
 	a.closeOverlayByID(o.ID)
 	a.bump()
+}
+
+// followMark is where a following list found the chat, put back when it
+// closes without committing.
+type followMark struct {
+	top    int
+	follow bool
+}
+
+// unfollow puts the chat back where a following list found it: esc and a
+// click outside cancel the browse, never the reader's place.
+func (a *App) unfollow(st overlayState) {
+	if !st.o.Follow || st.restore == nil {
+		return
+	}
+	chat := a.scrolls[a.scrollDef]
+	if chat == nil {
+		return
+	}
+	// rows 0 skips the re-anchor the next paint would do: this place is kept
+	// as it was, not re-anchored on what the jump left behind
+	chat.top, chat.follow, chat.rows = st.restore.top, st.restore.follow, 0
+	delete(a.pendingAnchor, a.scrollDef)
 }
 
 // cancelMenu cancels the top overlay's whole menu, not only a detail view
@@ -962,7 +1006,13 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if scroll == nil && st.o.Reload != nil {
 			scroll = []hintPair{scrollGap}
 		}
-		hints = st.filterHints(append(hints, scroll...), map[bool]string{true: "back", false: "close"}[st.back])
+		// a following list's esc cancels the browse: it is not closing, it
+		// is putting the chat back
+		esc := map[bool]string{true: "back", false: "close"}[st.back]
+		if st.o.Follow {
+			esc = "back"
+		}
+		hints = st.filterHints(append(hints, scroll...), esc)
 		foot := hint(inner, hints...)
 		if st.armed {
 			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)

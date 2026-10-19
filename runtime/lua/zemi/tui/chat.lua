@@ -774,17 +774,14 @@ zemi.ui.widget.add({
 		live_tools = ntools
 		local active = ctx.agent_active or false
 		local B = builder(ctx, width)
-		-- A unit's first drawn row carries its first transcript index, which a
-		-- following list (the messages picker) names to scroll the chat here.
-		-- Go reads the anchor and never draws it.
+		-- Every drawn row of a unit carries its first transcript index, which a
+		-- following list (the messages picker) names to scroll the chat here and
+		-- to band the whole message. Go reads the anchor and never draws it.
 		---@param lines zemi.Line[]
 		---@param first integer
 		local function anchored(lines, first)
 			for _, row in ipairs(lines) do
-				if row[1] and fmt.cells(row) > 0 then
-					row[1].anchor = first
-					return
-				end
+				if row[1] and fmt.cells(row) > 0 then row[1].anchor = first end
 			end
 		end
 		-- The messages first..last as one unit: a run of activity rows, else one.

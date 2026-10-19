@@ -59,6 +59,28 @@ func TestMessagesPicker(t *testing.T) {
 			t.Errorf("row %d section = %v, want %q", i+1, it["section"], section)
 		}
 	}
+	// the speaker's kind glyph leads the label, the rows that only copy or
+	// open a run stay plain
+	if len(o.ItemText) != len(o.Items) {
+		t.Fatalf("%d labels for %d rows", len(o.ItemText), len(o.Items))
+	}
+	for _, c := range []struct {
+		i         int
+		glyph, hl string
+	}{
+		{0, "▌ ", "UserMsg"}, // the prompt
+		{1, "◆ ", "Dim"},     // the reply
+	} {
+		segs := o.ItemText[c.i]
+		if len(segs) != 2 || segs[0].Text != c.glyph || segs[0].HL != c.hl || segs[1].Text != o.Items[c.i].(map[string]any)["text"] {
+			t.Errorf("row %d label = %+v", c.i+1, segs)
+		}
+	}
+	for _, i := range []int{2, 3, 4, 5, 6} {
+		if o.ItemText[i] != nil {
+			t.Errorf("row %d has a speaker label: %+v", i+1, o.ItemText[i])
+		}
+	}
 }
 
 // str is an optional item string.

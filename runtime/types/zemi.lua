@@ -221,8 +221,8 @@ function debug.traceback(msg) end
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
 ---@field fade? number 0 to 1: how far the segment's colors sink toward the surface it sits on (the canvas, or a box's panel). A scrolled view fades its own edge rows; a widget sets this where it clips a block itself, as the chat does to a thinking tail rolling up.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
+---@field anchor? integer On every row of a unit: the transcript row the unit starts at, counted as `ctx.transcript` is (1-based). A list with `follow` set scrolls the chat to the row its selected item names and bands every row sharing it.
 ---@field sticky? boolean|"section"|"end" On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first rows as chrome, in the `Pinned` group on the panel across the view's width, and a click on it scrolls back there. `true` heads a turn and starts the pinned stack anew, `"section"` heads a part of that turn and pins under it, and `"end"` marks the section's last row, where its pin ends. Example: `{ text = "> ", sticky = true }`.
----@field anchor? integer On a row's first segment: the transcript row the row draws, counted as `ctx.transcript` is (1-based). A list with `follow` set scrolls the chat to the row its selected item names.
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
@@ -1044,7 +1044,7 @@ function zemi.event.stats() end
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? zemi.OverlayAnchor In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
----@field follow? boolean Moving the selection scrolls the chat to the row the selected item names by its `anchor`, the row it stands for; the list opens on the item the reader is at.
+---@field follow? boolean Moving the selection scrolls the chat to the row the selected item names by its `anchor`, and bands that message's rows while the list is open; the list opens on the item the reader is at, enter closes it keeping that place, and esc puts the chat back where it was.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
 ---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise; a row's hotkey wins, and this wins over a row's action keys): a second verb on the selected item, which closes or rebuilds the list like on_action.

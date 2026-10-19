@@ -130,7 +130,9 @@ type Overlay struct {
 	// running, waiting, stopped or done
 	Phases bool
 	// Follow makes the list move the stage's scrolled region to the
-	// transcript row each item names by its anchor, as the selection moves
+	// transcript row each item names by its anchor, as the selection moves,
+	// and band that message's rows while it is open: enter keeps the place,
+	// esc puts the region back where it found it
 	Follow bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that

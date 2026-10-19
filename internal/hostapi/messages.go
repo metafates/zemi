@@ -49,9 +49,11 @@ func messagesPicker(tr []ChatMessage) Overlay {
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
 	}
 	section, turn := "", 0
-	add := func(item map[string]any) {
+	var texts [][]Segment
+	add := func(item map[string]any, segs []Segment) {
 		item["section"] = section
 		o.Items = append(o.Items, item)
+		texts = append(texts, segs)
 	}
 	for i, m := range tr {
 		n := i + 1 // the chat's own row number, as its anchors carry it
@@ -70,7 +72,7 @@ func messagesPicker(tr []ChatMessage) Overlay {
 			if c := lineCount(text); c > 1 {
 				desc = append(desc, pluralCount(c, "line", "lines"))
 			}
-			add(messageItem(n, text, strings.Join(desc, " · ")))
+			add(messageItem(n, text, strings.Join(desc, " · "), "▌", "UserMsg"))
 		case m.Kind == RowMessage:
 			if text == "" {
 				continue
@@ -83,57 +85,64 @@ func messagesPicker(tr []ChatMessage) Overlay {
 			if len(blocks) > 0 {
 				desc = append(desc, pluralCount(len(blocks), "code block", "code blocks"))
 			}
-			add(messageItem(n, text, strings.Join(desc, " · ")))
+			add(messageItem(n, text, strings.Join(desc, " · "), "◆", "Dim"))
 			for _, b := range blocks {
 				lang := cmp.Or(b.lang, "text")
-				item := messageItem(n, "⎿ "+lang+" · "+pluralCount(lineCount(b.text), "line", "lines"), firstLine(b.text))
+				item, segs := messageItem(n, "⎿ "+lang+" · "+pluralCount(lineCount(b.text), "line", "lines"), firstLine(b.text), "", "")
 				item["copy"] = b.text
-				add(item)
+				add(item, segs)
 			}
 		case m.Kind == RowNotice, m.Kind == RowCompact:
 			if text == "" {
 				continue
 			}
-			item := messageItem(n, text, "")
+			item, segs := messageItem(n, text, "", "", "")
 			item["mark"] = "note"
-			add(item)
+			add(item, segs)
 		case m.Kind == RowError:
-			item := messageItem(n, text, "")
+			item, segs := messageItem(n, text, "", "", "")
 			switch m.Status {
 			case CallCancelled:
 				item["mark"] = "stop"
 			default:
 				item["mark"] = "err"
 			}
-			add(item)
+			add(item, segs)
 		case m.Kind == RowShell:
-			item := messageItem(n, m.Text, "")
+			item, segs := messageItem(n, m.Text, "", "", "")
 			item["text"] = "$ " + firstLine(m.Text)
-			add(item)
+			add(item, segs)
 		case m.Kind == RowTool && m.Run != "":
 			view, what := "agents view ", "agent run"
 			if m.Tool == "workflow" {
 				view, what = "workflows view ", "workflow run"
 			}
-			item := messageItem(n, cmp.Or(m.Label, text), what)
+			item, segs := messageItem(n, cmp.Or(m.Label, text), what, "", "")
 			item["run"] = view + m.Run
-			add(item)
+			add(item, segs)
 		}
 	}
+	o.ItemText = texts
 	return o
 }
 
 // messageItem is a list row for transcript row n: its head line as the
-// label, desc after it, and its whole text as what enter and y copy.
-func messageItem(n int, text, desc string) map[string]any {
-	item := map[string]any{"anchor": n, "text": clipRunes(messageHead(text), 60)}
-	if text = strings.TrimSpace(text); text != "" {
-		item["copy"] = text
+// label, desc after it and its whole text as what y copies. A glyph and its
+// theme group lead the label as the speaker's kind mark, and the row's
+// segments come back for the overlay's ItemText.
+func messageItem(n int, text, desc, glyph, hl string) (map[string]any, []Segment) {
+	head := clipRunes(messageHead(text), 60)
+	item := map[string]any{"anchor": n, "text": head}
+	if body := strings.TrimSpace(text); body != "" {
+		item["copy"] = body
 	}
 	if desc != "" {
 		item["desc"] = desc
 	}
-	return item
+	if glyph == "" {
+		return item, nil
+	}
+	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
 }
 
 // messageHead is the line a message reads by: its first non-blank one, a

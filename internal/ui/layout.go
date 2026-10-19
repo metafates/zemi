@@ -655,7 +655,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	}
 	st.clamp()
 	st.pinRows(lines, w)
-	rows := st.window(lines, w-1, n.Fade) // the bar keeps the region's last column
+	// the picker's message is banded under the pins, which stay chrome
+	draw := lines
+	if n.ID == a.scrollDef && a.highlight > 0 {
+		draw = bandMessage(lines, a.highlight, w-1)
+	}
+	rows := st.window(draw, w-1, n.Fade) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
 	for i := st.top; i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
@@ -734,6 +739,37 @@ func anchorAt(st *scrollState) int {
 		}
 	}
 	return 0
+}
+
+// bandMessage is lines with the rows of anchor banded to width cells: the
+// tint a picked list row gets (FillBand, which every text role is clamped
+// to read on), over the whole message. Untouched rows are shared, not copied.
+func bandMessage(lines [][]hostapi.Segment, anchor, width int) [][]hostapi.Segment {
+	from, to := -1, -1
+	for i, row := range lines {
+		if rowAnchor(row) != anchor {
+			continue
+		}
+		if from < 0 {
+			from = i
+		}
+		to = i
+	}
+	if from < 0 {
+		return lines
+	}
+	out := slices.Clone(lines)
+	for i := from; i <= to; i++ {
+		row := slices.Clone(lines[i])
+		for k := range row {
+			row[k].Fill = hostapi.FillBand
+		}
+		if pad := width - hostapi.SegsWidth(row); pad > 0 {
+			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal", Fill: hostapi.FillBand})
+		}
+		out[i] = row
+	}
+	return out
 }
 
 // pinned is dst holding the header rows a view scrolled to top draws over

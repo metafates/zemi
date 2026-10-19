@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -32,9 +33,23 @@ func TestAnchorRow(t *testing.T) {
 	}
 }
 
+// bandedChatRows is the text of the chat rows the picker's message is banded
+// on, as the last frame drew them.
+func bandedChatRows(app *App) []string {
+	chat := app.scrolls["chat"]
+	var out []string
+	for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
+		if row := app.lastRows[y]; len(row) > 0 && row[0].Fill == hostapi.FillBand {
+			out = append(out, strings.TrimSpace(hostapi.SegsText(row)))
+		}
+	}
+	return out
+}
+
 // TestMessagesFollow: the messages picker opens on the row the reader is at,
 // moving its selection brings that message's first row to the top of the
-// chat, and a row in view at the tail leaves the chat following it.
+// chat and bands it, and a row in view at the tail leaves the chat following
+// it.
 func TestMessagesFollow(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
@@ -72,11 +87,18 @@ func TestMessagesFollow(t *testing.T) {
 	if got, want := rowAnchor(chat.lines[chat.top]), ov.selectedAnchor(); got != want || got != 1 {
 		t.Fatalf("top row anchor %d, selection %d", got, want)
 	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "message 1") {
+		t.Fatalf("banded rows %q", got)
+	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd})
 	app.Frame()
 	if !chat.follow || chat.top != chat.rows-chat.viewH {
 		t.Fatal("the last row should hand the chat back to its tail")
+	}
+	// the reply, the gap under it and its readout are one banded block
+	if got := bandedChatRows(app); len(got) != 3 || !strings.Contains(got[0], "reply 30") || !strings.Contains(got[2], "100 out") {
+		t.Fatalf("banded rows %q", got)
 	}
 	// a row already in the tail's view keeps the chat on the tail
 	press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"})
@@ -84,10 +106,14 @@ func TestMessagesFollow(t *testing.T) {
 	if !chat.follow {
 		t.Fatal("a row in view at the tail should keep following it")
 	}
-
-	// scrolled up, the picker opens on the message the top row belongs to
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 	app.Frame()
+	if !chat.follow || chat.top != chat.rows-chat.viewH {
+		t.Fatalf("esc should put a following chat back on its tail: top %d of %d", chat.top, chat.rows)
+	}
+
+	// scrolled up, the picker opens on the message the top row belongs to and
+	// esc puts the chat back where it was
 	for range 3 {
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	}
@@ -100,5 +126,38 @@ func TestMessagesFollow(t *testing.T) {
 	app.Frame()
 	if chat.top != top {
 		t.Fatalf("opening moved the chat: %d -> %d", top, chat.top)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
+	app.Frame()
+	if chat.top == top {
+		t.Fatal("a jump should move the chat")
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "message 1") {
+		t.Fatalf("banded rows %q", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	app.Frame()
+	if chat.top != top || len(app.overlays) != 0 {
+		t.Fatalf("esc should cancel: top %d, want %d, %d overlays", chat.top, top, len(app.overlays))
+	}
+	if got := bandedChatRows(app); len(got) != 0 {
+		t.Fatalf("banded rows after esc: %q", got)
+	}
+
+	// enter keeps the place instead
+	open()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
+	app.Frame()
+	jumped := chat.top
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Frame()
+	if len(app.overlays) != 0 {
+		t.Fatalf("%d overlays after enter", len(app.overlays))
+	}
+	if chat.top != jumped || chat.top == top {
+		t.Fatalf("enter should keep the jump: top %d, jumped %d, was %d", chat.top, jumped, top)
+	}
+	if got := bandedChatRows(app); len(got) != 0 {
+		t.Fatalf("banded rows after enter: %q", got)
 	}
 }

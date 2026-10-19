@@ -1864,8 +1864,9 @@ rides the `memories.md` line and its ledger entries.
   giving way to it cell for cell). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, `follow` and an
   item's `anchor`: moving the selection then scrolls the chat to the
-  transcript row the item names, opening on the row the reader is at; a
-  `body` of styled lines or `markdown`, `render_item`
+  transcript row the item names and bands that message, opening on the row
+  the reader is at, with enter keeping that place and esc putting the chat
+  back; a `body` of styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row while no filter types,
   an item's `preview` shows whole in a pane under the list while its row is
@@ -1944,7 +1945,9 @@ rides the `memories.md` line and its ledger entries.
   Enter's hint names its act in one word shared by every list: `open` a
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
   `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
-  list's row, `fill` the composer, `copy`; a prompt's footer says `pick`
+  list's row, `fill` the composer, `copy`, and `close` for a following list,
+  whose enter keeps the place it scrolled the chat to while its esc says
+  `back` and puts the chat where it was; a prompt's footer says `pick`
   for its buttons, whichever is highlighted, and `send` for typed text
   (`zemi.ui.input`, a typed answer or note, a multi-select's picks, a plan's
   changes, a question batch's Submit tab, whose digits `change` a question):
@@ -2033,6 +2036,8 @@ rides the `memories.md` line and its ledger entries.
   modal the backdrop joins before it fades toward the canvas, and a faded line joins
   nothing placed over it, so the top box's border meets only its own lines - and the rule
   it stands on, whose cells under it become that border whatever the rule carried there.
+  The rows of the message a following list picked keep their color through that fade:
+  the map dims the chat around what it is looking at, so the band reads.
   Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink. A widget that pads to the whole region, the splash,
@@ -2084,11 +2089,12 @@ rides the `memories.md` line and its ledger entries.
   (`sticky = "end"`) reaches it: the pins stack as one header block, a turn at
   a time, and the next prompt starts the stack anew. A click on a pin scrolls
   back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
-  move between prompts and opened runs. A unit's first row also carries its
+  move between prompts and opened runs. Every row of a unit also carries its
   transcript index as an `anchor`, which nothing draws: `/messages` names the
   same numbers, so the picker's selection scrolls the chat to that unit's
-  first row (`Overlay.Follow`), and the picker opens on the unit the reader is
-  at.
+  first row and bands all of its rows (`Overlay.Follow`), while the picker
+  opens on the unit the reader is at. A banded message is the one thing a
+  picker leaves undimmed: the map sinks the chat around what it looks at.
   A settled turn folds each run of activity into one dim digest row, `· 6
   files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
   and nothing else: the rail of steps under
@@ -2172,9 +2178,12 @@ rides the `memories.md` line and its ledger entries.
   so no widget can hide what the model actually received. `/messages` is the
   map of it (`alt+m`): a builtin list, a section per turn, a row per prompt,
   reply, notice, error or command, a reply's code blocks hanging under it and
-  a run's row opening that run. It follows the chat: moving the selection
-  scrolls the transcript to the row the item names, so `esc` leaves the
-  reader at the message, and `enter` or `y` copies it.
+  a run's row opening that run. Prompt and reply rows lead with the speaker's
+  kind glyph, `▌` in the accent and `◆` in dim, and the state rows keep their
+  marks. It follows the chat: moving the selection scrolls the transcript to
+  the row the item names and bands that whole message, `enter` closes the
+  list keeping that place, `y` copies the row, and `esc` puts the chat back
+  where it was found, the way muffin's popup cancels.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
