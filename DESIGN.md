@@ -2181,9 +2181,11 @@ rides the `memories.md` line and its ledger entries.
   a run's row opening that run. Prompt and reply rows lead with the speaker's
   kind glyph, `▌` in the accent and `◆` in dim, and the state rows keep their
   marks. It follows the chat: moving the selection scrolls the transcript to
-  the row the item names and bands that whole message, `enter` closes the
-  list keeping that place, `y` copies the row, and `esc` puts the chat back
-  where it was found, the way muffin's popup cancels.
+  the row the item names, centers the message in the view when the whole of
+  it fits (else its first row just under the pinned header) and bands every
+  row of it; `enter` closes the list keeping that place, `y` copies the row,
+  and `esc` puts the chat back where it was found, the way muffin's popup
+  cancels.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.

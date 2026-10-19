@@ -640,12 +640,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	default: // applyScroll holds only the edges
 	}
 	// a following list's jump outranks a parked edge, and leaves none behind
-	if at, ok := a.pendingAnchor[n.ID]; ok {
-		if row := anchorRow(lines, at); row >= 0 {
-			st.top, st.follow = row, st.bottom && row >= st.rows-st.viewH
-			delete(a.pendingAnchor, n.ID)
-			delete(a.pendingScroll, n.ID)
-		}
+	if at := unitAt(lines, a.pendingAnchor[n.ID]); at > 0 {
+		from, to := unitRows(lines, at)
+		st.top = jumpTop(lines, from, to, st.viewH)
+		st.follow = st.bottom && st.top >= st.rows-st.viewH
+		delete(a.pendingAnchor, n.ID)
+		delete(a.pendingScroll, n.ID)
 	}
 	st.filling = false
 	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
@@ -708,23 +708,6 @@ func rowAnchor(row []hostapi.Segment) int {
 	return 0
 }
 
-// anchorRow is where a following list lands for anchor n: the first row
-// carrying it, else the first row of the nearest anchor at or before it, -1
-// while nothing at or before it is drawn (a region still filling).
-func anchorRow(lines [][]hostapi.Segment, n int) int {
-	best := -1
-	for i, row := range lines {
-		at := rowAnchor(row)
-		switch {
-		case at > 0 && at == n:
-			return i
-		case at > 0 && at < n && (i == 0 || rowAnchor(lines[i-1]) != at):
-			best = i
-		}
-	}
-	return best
-}
-
 // anchorAt is the anchor of the row at the top of a scrolled region, else
 // the nearest one above it, else the first below: what the reader is at.
 func anchorAt(st *scrollState) int {
@@ -741,11 +724,27 @@ func anchorAt(st *scrollState) int {
 	return 0
 }
 
-// bandMessage is lines with the rows of anchor banded to width cells: the
-// tint a picked list row gets (FillBand, which every text role is clamped
-// to read on), over the whole message. Untouched rows are shared, not copied.
-func bandMessage(lines [][]hostapi.Segment, anchor, width int) [][]hostapi.Segment {
-	from, to := -1, -1
+// unitAt is the anchor of the unit a transcript row is drawn in: the row's
+// own when a row carries it, else the nearest anchor before it, which is how
+// a notice inside a folded burst or a call inside its run's digest finds the
+// one block that draws it. 0 when nothing at or before it is drawn.
+func unitAt(lines [][]hostapi.Segment, n int) int {
+	if from, _ := unitRows(lines, n); from >= 0 {
+		return n
+	}
+	best := 0
+	for _, row := range lines {
+		if at := rowAnchor(row); at > 0 && at < n {
+			best = at
+		}
+	}
+	return best
+}
+
+// unitRows is the rows an anchor covers, first to last, or -1 when no row
+// carries it.
+func unitRows(lines [][]hostapi.Segment, anchor int) (from, to int) {
+	from, to = -1, -1
 	for i, row := range lines {
 		if rowAnchor(row) != anchor {
 			continue
@@ -755,6 +754,33 @@ func bandMessage(lines [][]hostapi.Segment, anchor, width int) [][]hostapi.Segme
 		}
 		to = i
 	}
+	return from, to
+}
+
+// jumpTop is where a following list puts the view for a unit's rows: the
+// middle of the view when the whole message fits, else its first row, which
+// then has to stand below the pinned headers that draw over the view's start.
+func jumpTop(lines [][]hostapi.Segment, from, to, viewH int) int {
+	top := from
+	if height := to - from + 1; height < viewH {
+		top = from - (viewH-height)/2
+	}
+	top = max(top, 0)
+	// the header a top pins may reach further up than the last one, so the
+	// first row is placed clear of it twice over
+	for range 2 {
+		if n := len(pinned(nil, lines, top)); from-top < n {
+			top = max(from-n, 0)
+		}
+	}
+	return top
+}
+
+// bandMessage is lines with the rows of anchor banded to width cells: the
+// tint a picked list row gets (FillBand, which every text role is clamped
+// to read on), over the whole message. Untouched rows are shared, not copied.
+func bandMessage(lines [][]hostapi.Segment, anchor, width int) [][]hostapi.Segment {
+	from, to := unitRows(lines, unitAt(lines, anchor))
 	if from < 0 {
 		return lines
 	}

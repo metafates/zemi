@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,27 +10,26 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// TestAnchorRow: a jump lands on the first row carrying the anchor, else on
-// the first row of the nearest one before it (a message folded into a burst,
-// a call inside a run's digest), and nowhere while the rows above it are
-// still to be drawn.
-func TestAnchorRow(t *testing.T) {
+// TestUnitAt: a row whose own anchor is not drawn belongs to the nearest unit
+// before it (a notice folded into its burst, a call inside a run's digest),
+// and a row above every unit belongs to none.
+func TestUnitAt(t *testing.T) {
 	lines := [][]hostapi.Segment{
 		{{Text: ""}},
 		{{Text: "a", Anchor: 1}},
-		{{Text: "a", Anchor: 1}}, // a wrapped continuation carries it again
+		{{Text: "a", Anchor: 1}}, // a wrapped row carries it again
 		{{Text: ""}},
 		{{Text: "b", Anchor: 4}},
 	}
 	for _, c := range []struct{ at, want int }{
-		{1, 1}, {2, 1}, {3, 1}, {4, 4}, {5, 4}, {0, -1},
+		{1, 1}, {2, 1}, {3, 1}, {4, 4}, {5, 4}, {0, 0},
 	} {
-		if got := anchorRow(lines, c.at); got != c.want {
-			t.Errorf("anchor %d: row %d, want %d", c.at, got, c.want)
+		if got := unitAt(lines, c.at); got != c.want {
+			t.Errorf("anchor %d: unit %d, want %d", c.at, got, c.want)
 		}
 	}
-	if got := anchorRow(nil, 3); got != -1 {
-		t.Fatalf("nothing drawn: row %d", got)
+	if got := unitAt(nil, 3); got != 0 {
+		t.Fatalf("nothing drawn: unit %d", got)
 	}
 }
 
@@ -44,6 +44,43 @@ func bandedChatRows(app *App) []string {
 		}
 	}
 	return out
+}
+
+// TestMessagesTallJump: a message taller than the view starts just under the
+// pinned header above it, instead of being drawn over by it.
+func TestMessagesTallJump(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	host.AppendMessage("user", "long one")
+	var b strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&b, "line %d\n\n", i)
+	}
+	appendReply(host, b.String(), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.Frame()
+	chat := app.scrolls["chat"]
+	ov := &app.overlays[0]
+	// away and back: the tail opens on the last row without moving, so the
+	// jump to this message is what the second key makes
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd})
+	app.Frame()
+	from, to := unitRows(chat.lines, ov.selectedAnchor())
+	if from < 0 || to-from < chat.viewH {
+		t.Fatalf("the picked message is not taller than the view: %d..%d", from, to)
+	}
+	pins := len(pinned(nil, chat.lines, chat.top))
+	if from != chat.top+pins {
+		t.Fatalf("the message starts at view row %d, %d pins over it", from-chat.top, pins)
+	}
 }
 
 // TestMessagesFollow: the messages picker opens on the row the reader is at,
@@ -84,10 +121,24 @@ func TestMessagesFollow(t *testing.T) {
 	if chat.follow {
 		t.Fatal("a selection above the tail should leave it")
 	}
-	if got, want := rowAnchor(chat.lines[chat.top]), ov.selectedAnchor(); got != want || got != 1 {
-		t.Fatalf("top row anchor %d, selection %d", got, want)
+	if chat.top != 0 { // the whole chat is under the first message already
+		t.Fatalf("the first message should keep top 0, got %d", chat.top)
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "message 1") {
+		t.Fatalf("banded rows %q", got)
+	}
+
+	// a message well inside the chat lands in the middle of the view
+	ov.selected = 41 // reply 21
+	app.Frame()
+	from, to := unitRows(chat.lines, ov.selectedAnchor())
+	if from < chat.top || to >= chat.top+chat.viewH {
+		t.Fatalf("the message is off screen: rows %d..%d, view %d..%d", from, to, chat.top, chat.top+chat.viewH)
+	}
+	if mid := (chat.viewH - (to - from + 1)) / 2; from-chat.top != mid {
+		t.Fatalf("the message starts at view row %d, want it centered at %d", from-chat.top, mid)
+	}
+	if got := bandedChatRows(app); len(got) != 3 || !strings.Contains(got[0], "reply 21") {
 		t.Fatalf("banded rows %q", got)
 	}
 
