@@ -512,12 +512,38 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("grep", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir, nil)
+		dir, include, unknown := "", "", ""
+		if opts := L.OptTable(2, nil); opts != nil {
+			opts.ForEach(func(k, v glua.LValue) {
+				switch k.String() {
+				case "path":
+					dir = v.String()
+				case "include":
+					include = v.String()
+				default:
+					unknown = k.String()
+				}
+			})
+		}
+		if unknown != "" {
+			// silently ignoring an option reads as a filter that ran
+			L.RaiseError("zemi.fs.grep: unknown option %q (path, include)", unknown)
+		}
+		root, rel := h.Dirs.ProjectDir, ""
+		if dir != "" {
+			p, err := h.projectResolve(dir, true)
+			if err != nil {
+				L.RaiseError("zemi.fs.grep: %v", err)
+			}
+			root = p.String()
+			rel, _ = filepath.Rel(h.Dirs.ProjectDir, root)
+		}
+		h.luaGate(L, "lua.fs.read", root, nil)
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
-		hits, err := h.projectGrep(cmp.Or(L.Context(), context.Background()), re)
+		hits, err := h.projectGrep(cmp.Or(L.Context(), context.Background()), re, rel, include)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
@@ -565,13 +591,28 @@ func (h *Host) projectGlob(ctx context.Context, pattern string) ([]string, error
 	return slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) }), err
 }
 
-// projectGrep searches the project's files.
-func (h *Host) projectGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, error) {
+// projectGrep searches the project's files, under dir and in the files the
+// include glob names (both optional), and answers paths project-relative.
+func (h *Host) projectGrep(ctx context.Context, re *regexp.Regexp, dir, include string) ([]tools.Hit, error) {
 	root := h.Dirs.ProjectDir
+	match := func(string) bool { return true }
+	var err error
+	if include != "" {
+		if match, err = glob.Match(include); err != nil {
+			return nil, err
+		}
+	}
+	dir = strings.Trim(filepath.ToSlash(dir), "/")
+	if dir == "." {
+		dir = ""
+	}
 	files, _, err := tools.ListFiles(ctx, root, tools.ListLimit)
 	if err != nil {
 		return nil, err
 	}
+	files = slices.DeleteFunc(files, func(rel string) bool {
+		return !match(rel) || dir != "" && rel != dir && !strings.HasPrefix(rel, dir+"/")
+	})
 	return tools.Grep(ctx, root, files, re, math.MaxInt)
 }
 

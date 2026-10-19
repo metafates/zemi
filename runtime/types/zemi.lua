@@ -2370,11 +2370,14 @@ function zemi.fs.remove(path) end
 function zemi.fs.glob(pattern) end
 
 --- Search the project's files for a Go regular expression, in path order,
---- skipping binary and over 4 MB files.
+--- skipping binary and over 4 MB files. `opts.path` searches under one
+--- directory or file, and `opts.include` is a glob limiting which files are
+--- searched, like the grep tool's; any other key raises.
 --- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
 ---@param pattern string
+---@param opts? { path?: string, include?: string }
 ---@return zemi.GrepHit[]
-function zemi.fs.grep(pattern) end
+function zemi.fs.grep(pattern, opts) end
 
 -- zemi.http
 
