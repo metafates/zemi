@@ -129,6 +129,9 @@ type Overlay struct {
 	// Phases heads each section with its rows' combined mark: failed,
 	// running, waiting, stopped or done
 	Phases bool
+	// Follow makes the list move the stage's scrolled region to the
+	// transcript row each item names by its anchor, as the selection moves
+	Follow bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text. A Go screen's prompt
@@ -316,6 +319,7 @@ type ChatMessage struct {
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
 	ID     string // the live turn's tool rows: the call id, so zemi run reports a call once
+	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
 }
 
 // Plural is one when n is 1, else many.
@@ -1250,7 +1254,10 @@ type Segment struct {
 	// Pin on a row's first segment is its part in the header stack a
 	// scrolled region pins over its first rows (Lua's sticky)
 	Pin Pin
-	Bar bool // Go only: a viewport's scrollbar cell, drawn in the viewport's right border, a separator column behind it standing down
+	// Anchor is the transcript row a rendered row draws: a following
+	// overlay's row names the same number to scroll the region here
+	Anchor int
+	Bar    bool // Go only: a viewport's scrollbar cell, drawn in the viewport's right border, a separator column behind it standing down
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
 	Fill Fill
@@ -1429,6 +1436,9 @@ func segment(field func(string) any, widget string) Segment {
 	seg.NoCopy = field("copy") == false
 	seg.NoHover = field("hover") == false
 	seg.Soft = field("soft_wrap") == true
+	if n, ok := field("anchor").(float64); ok {
+		seg.Anchor = int(n)
+	}
 	switch field("sticky") {
 	case true:
 		seg.Pin = PinTurn

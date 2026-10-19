@@ -519,7 +519,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"enter on a copy list's row runs the form it names, not the hint's word",
+			"a verb only names the hint: a row's run still runs",
 			hostapi.Overlay{ID: "copy", Origin: lua.OriginBuiltin, Verb: "copy", Items: []any{map[string]any{"text": "Whole reply", "run": "copy reply"}}},
 			nil,
 			func(a *App) string {

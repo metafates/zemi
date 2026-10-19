@@ -78,8 +78,8 @@ func TestExportAndFork(t *testing.T) {
 }
 
 // TestCopyReply: the direct forms copy a block, every block or the reply,
-// bad ones fail, and a bare /copy or /copy list opens the picker over the
-// session's messages.
+// bad ones fail, and a bare /copy over a reply with code blocks opens the
+// messages picker, where one block can be picked.
 func TestCopyReply(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	reply := "Two:\n\n```go\nx := 1\n```\n\n~~~\ny\n~~~"
@@ -97,37 +97,14 @@ func TestCopyReply(t *testing.T) {
 			t.Errorf("/copy %s = %q, %v", args, ui.copied, err)
 		}
 	}
-	for _, args := range []string{"code 3", "code x", "code 1 2", "nope"} {
+	for _, args := range []string{"code 3", "code x", "code 1 2", "nope", "list"} {
 		if h.CopyReply(args) == nil {
 			t.Errorf("/copy %s should fail", args)
 		}
 	}
-	for _, args := range []string{"", "list"} {
-		ui.opened = nil
-		if err := h.CopyReply(args); err != nil || len(ui.opened) != 1 {
-			t.Fatalf("/copy %s: %v, %d opened", args, err, len(ui.opened))
-		}
-	}
-	o := ui.opened[0]
-	if o.ID != "copy" || o.Verb != "copy" || o.Empty != "Nothing to copy yet." {
-		t.Fatalf("picker: %s %q %q", o.ID, o.Verb, o.Empty)
-	}
-	type row struct{ text, desc, copy, hotkey string }
-	want := []row{
-		{"Two:", "Reply · now · 9 lines · 2 code blocks", reply, ""},
-		{"1  go", "code · 1 line · x := 1", "x := 1\n", "1"},
-		{"2  text", "code · 1 line · y", "y\n", "2"},
-		{"ping", "You · now · 1 line", "ping", ""},
-	}
-	if len(o.Items) != len(want) {
-		t.Fatalf("%d rows, want %d: %v", len(o.Items), len(want), o.Items)
-	}
-	for i, w := range want {
-		it := o.Items[i].(map[string]any)
-		hotkey, _ := it["hotkey"].(string)
-		if it["text"] != w.text || it["desc"] != w.desc || it["copy"] != w.copy || hotkey != w.hotkey {
-			t.Errorf("row %d = %v, want %+v", i+1, it, w)
-		}
+	ui.opened = nil
+	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "messages" {
+		t.Fatalf("/copy: %v, %v", err, ui.opened)
 	}
 }
 

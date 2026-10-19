@@ -1508,7 +1508,7 @@ UI extensibility contract:
   `composer.change`/`composer.submit`, reads and edits the draft through
   `zemi.composer` (§6.7), and registers decoration widgets around it,
   but cannot replace it.
-- Widgets return lines of `{ text, hl, click, effect, copy, soft_wrap }` segments; Go measures, wraps
+- Widgets return lines of `{ text, hl, click, effect, copy, soft_wrap, anchor }` segments; Go measures, wraps
   (opt-in per widget), styles, and diffs via bubbletea v2. `copy = false`
   marks decoration (gutter bars, bullets, borders, line numbers): a
   selection neither lights nor copies those cells. Wrapping ends a row that
@@ -1862,8 +1862,10 @@ rides the `memories.md` line and its ledger entries.
   left, `/profile`, `/model`, `/effort` and `/usage` right; the box stands on
   the frame, whose top rule is its bottom border, the label that rule carries
   giving way to it cell for cell). A Lua overlay has
-  every field a Go-built menu uses (`anchor`, `selected`, a `body` of
-  styled lines or `markdown`, `render_item`
+  every field a Go-built menu uses (`anchor`, `selected`, `follow` and an
+  item's `anchor`: moving the selection then scrolls the chat to the
+  transcript row the item names, opening on the row the reader is at; a
+  `body` of styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row while no filter types,
   an item's `preview` shows whole in a pane under the list while its row is
@@ -2082,7 +2084,11 @@ rides the `memories.md` line and its ledger entries.
   (`sticky = "end"`) reaches it: the pins stack as one header block, a turn at
   a time, and the next prompt starts the stack anew. A click on a pin scrolls
   back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
-  move between prompts and opened runs.
+  move between prompts and opened runs. A unit's first row also carries its
+  transcript index as an `anchor`, which nothing draws: `/messages` names the
+  same numbers, so the picker's selection scrolls the chat to that unit's
+  first row (`Overlay.Follow`), and the picker opens on the unit the reader is
+  at.
   A settled turn folds each run of activity into one dim digest row, `· 6
   files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
   and nothing else: the rail of steps under
@@ -2162,10 +2168,13 @@ rides the `memories.md` line and its ledger entries.
   starts past it.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
-  `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
-  `/copy list` a builtin picker over the session's stored messages, newest
-  first, each row copying its text and a reply's code blocks under it), so
-  no widget can hide what the model actually received.
+  `zemi.session.messages` and `/copy` (the last reply as the model wrote it),
+  so no widget can hide what the model actually received. `/messages` is the
+  map of it (`alt+m`): a builtin list, a section per turn, a row per prompt,
+  reply, notice, error or command, a reply's code blocks hanging under it and
+  a run's row opening that run. It follows the chat: moving the selection
+  scrolls the transcript to the row the item names, so `esc` leaves the
+  reader at the message, and `enter` or `y` copies it.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
@@ -2194,7 +2203,8 @@ rides the `memories.md` line and its ledger entries.
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
-  next prompt or opened run; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
+  next prompt or opened run; `alt+m` opens `/messages`, the map of the
+  conversation, which scrolls the chat as its selection moves; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
   a list moves on them and a box's text takes as it overflows, which the footer
   names as `ctrl+d/u scroll`. The pair is never the typed line's, so a prompt's
   line keeps its text and the pair scrolls the text above it, the draft under a
@@ -2215,7 +2225,9 @@ rides the `memories.md` line and its ledger entries.
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
   answered in an overlay, on stdout in `zemi run`, from the conversation so far,
-  never stored), `/health` (one row per check, problems first: store,
+  never stored), `/copy [reply|code [n]]` (the last reply or its code blocks as
+  written), `/messages` (the map of the conversation, `alt+m`), `/logs` (recent
+  `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   project trust, skills, plugins, MCP servers, language servers, reflector,
   pending reviews, recent errors, layout, Lua runtime, and the rows Lua adds),

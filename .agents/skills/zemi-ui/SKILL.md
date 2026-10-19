@@ -74,7 +74,11 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   stepping, and drops what acts or joins (`Hit`, `Click`, `Widget`, `Line`, `Bar`), so the backdrop
   joins before it fades and no line of it reaches the top box. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
-  `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
+  `Body`, which stays what `y` copies. A list with `Overlay.Follow` moves the stage's scrolled
+  region to the transcript row its selected item names by `OverlayItem.Anchor`, the number the chat
+  stamps on a unit's first row (`Segment.Anchor`, `anchorRow`); it opens on the item the reader is
+  at (`followRow`), and `syncFollow` in `compose` carries a selection change out before the paint.
+  Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
   screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only; a

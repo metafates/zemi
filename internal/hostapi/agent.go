@@ -940,7 +940,7 @@ func (h *Host) startTurn(text string) {
 func (h *Host) appendUserRows(text string) bool {
 	shown, heads, _ := userRowsFor(text)
 	if shown != "" {
-		h.AppendMessage(fantasy.MessageRoleUser, shown)
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: h.now().UnixMilli()})
 	}
 	for _, n := range heads {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})

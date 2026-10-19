@@ -83,9 +83,8 @@ func (h *Host) messages() []msgEntry {
 	return slices.Clone(l.entries)
 }
 
-// OpenMessages runs /messages: the recent print and zemi.log lines,
-// newest first.
-func (h *Host) OpenMessages() error {
+// OpenLogs runs /logs: the recent print and zemi.log lines, newest first.
+func (h *Host) OpenLogs() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
@@ -94,7 +93,7 @@ func (h *Host) OpenMessages() error {
 	for _, e := range slices.Backward(h.messages()) {
 		b.WriteString(e.at.Format(time.TimeOnly) + " " + e.source + "  " + e.text + "\n")
 	}
-	o := Overlay{ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin, Body: strings.TrimRight(b.String(), "\n")}
+	o := Overlay{ID: "logs", Title: "Logs", Origin: lua.OriginBuiltin, Body: strings.TrimRight(b.String(), "\n")}
 	if o.Body == "" {
 		o.Empty = "Nothing printed since zemi started."
 	}

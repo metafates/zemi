@@ -72,6 +72,10 @@ type App struct {
 	// rows a scroll was issued for may not have arrived yet: "top" stays
 	// parked there until the region is scrolled again, "bottom" applies once.
 	pendingScroll map[string]hostapi.ScrollAction
+	// pendingAnchor is the transcript row a region goes to at its next
+	// paint, for a following list: the rows a jump was issued for may still
+	// be filling in above.
+	pendingAnchor map[string]int
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
@@ -201,6 +205,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		hooks:    make(chan tea.Msg, hookQueueSize),
 
 		pendingScroll: map[string]hostapi.ScrollAction{},
+		pendingAnchor: map[string]int{},
 	}
 }
 
@@ -952,6 +957,7 @@ func (a *App) compose(w, h int) string {
 	lay := a.layout(w, h)
 	stage := lay.stage
 	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
+	a.syncFollow()
 	rows := a.paint(lay.root)
 	a.paintFloats(rows, &lay, w, h)
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })

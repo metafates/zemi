@@ -639,6 +639,14 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		delete(a.pendingScroll, n.ID)
 	default: // applyScroll holds only the edges
 	}
+	// a following list's jump outranks a parked edge, and leaves none behind
+	if at, ok := a.pendingAnchor[n.ID]; ok {
+		if row := anchorRow(lines, at); row >= 0 {
+			st.top, st.follow = row, st.bottom && row >= st.rows-st.viewH
+			delete(a.pendingAnchor, n.ID)
+			delete(a.pendingScroll, n.ID)
+		}
+	}
 	st.filling = false
 	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
 		if c := a.caches[wgt.ID]; c != nil && c.partial {
@@ -683,6 +691,49 @@ func pinOf(row []hostapi.Segment) hostapi.Pin {
 		return hostapi.PinNone
 	}
 	return row[0].Pin
+}
+
+// rowAnchor is the transcript row a drawn row carries, 0 for none.
+func rowAnchor(row []hostapi.Segment) int {
+	for _, s := range row {
+		if s.Anchor > 0 {
+			return s.Anchor
+		}
+	}
+	return 0
+}
+
+// anchorRow is where a following list lands for anchor n: the first row
+// carrying it, else the first row of the nearest anchor at or before it, -1
+// while nothing at or before it is drawn (a region still filling).
+func anchorRow(lines [][]hostapi.Segment, n int) int {
+	best := -1
+	for i, row := range lines {
+		at := rowAnchor(row)
+		switch {
+		case at > 0 && at == n:
+			return i
+		case at > 0 && at < n && (i == 0 || rowAnchor(lines[i-1]) != at):
+			best = i
+		}
+	}
+	return best
+}
+
+// anchorAt is the anchor of the row at the top of a scrolled region, else
+// the nearest one above it, else the first below: what the reader is at.
+func anchorAt(st *scrollState) int {
+	for i := min(st.top, len(st.lines)-1); i >= 0; i-- {
+		if n := rowAnchor(st.lines[i]); n > 0 {
+			return n
+		}
+	}
+	for i := st.top + 1; i < len(st.lines); i++ {
+		if n := rowAnchor(st.lines[i]); n > 0 {
+			return n
+		}
+	}
+	return 0
 }
 
 // pinned is dst holding the header rows a view scrolled to top draws over

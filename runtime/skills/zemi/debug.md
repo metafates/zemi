@@ -30,7 +30,7 @@
    ```
 
    It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's widget is checked by `test.render` in its tests instead, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed, and `/health` names widgets whose region the layout does not draw (`exit` aside: it prints on quit).
-5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first. Headless (`zemi run`, `zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
+5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Headless (`zemi run`, `zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
 6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
    ```sh

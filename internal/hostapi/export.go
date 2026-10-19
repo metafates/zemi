@@ -1,14 +1,13 @@
 // export.go is what a session can be copied out of: /export writes the
-// conversation as markdown, /copy puts a reply, a code block or an earlier
-// message on the clipboard, /fork continues it in a new session so the
-// original stays as it was, and /usage reports what it cost. It also caches
-// the todo list the chat widget shows.
+// conversation as markdown, /copy puts a reply or a code block on the
+// clipboard, /fork continues it in a new session so the original stays as it
+// was, and /usage reports what it cost. It also caches the todo list the chat
+// widget shows.
 
 package hostapi
 
 import (
 	"cmp"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,17 +30,15 @@ import (
 
 // CopyReply copies the viewed run's, else the live session's, last reply as
 // the model wrote it (a drag copies rendered, wrapped screen rows). args is
-// "" (the whole reply at once, or the picker when it has code blocks),
-// "list" (the picker), "reply", "code" (every block) or "code <n>".
+// "" (the whole reply at once, or the messages picker when it has code
+// blocks, so one can be picked), "reply", "code" (every block) or
+// "code <n>".
 func (h *Host) CopyReply(args string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	f := strings.Fields(args)
-	if len(f) == 1 && f[0] == "list" {
-		return h.copyList(ui)
-	}
 	text, err := h.lastReply()
 	if err != nil {
 		return err
@@ -56,9 +53,9 @@ func (h *Host) CopyReply(args string) error {
 	case len(f) == 0 && len(blocks) == 0, len(f) == 1 && f[0] == "reply":
 		ui.Copy(text)
 	case len(f) == 0:
-		return h.copyList(ui)
+		return h.OpenMessages()
 	case f[0] != "code" || len(f) > 2:
-		return Usagef("usage: /copy [list | reply | code [n]]")
+		return Usagef("usage: /copy [reply | code [n]]")
 	case len(blocks) == 0:
 		return Usagef("the last reply has no code blocks")
 	case len(f) == 1:
@@ -95,24 +92,6 @@ func (h *Host) lastReply() (string, error) {
 	return lastReplyText(tr), nil
 }
 
-// copyList opens the picker over the source session's stored messages: the
-// viewed run's, else the live session's.
-func (h *Host) copyList(ui UIHooks) error {
-	sid := h.AgentSessionID()
-	if run := h.viewedRun(); run != nil {
-		sid = run.sessionID
-	}
-	var rows []*store.Message
-	if sid != "" && h.DB != nil {
-		var err error
-		if rows, err = h.DB.Messages(sid); err != nil {
-			return err
-		}
-	}
-	ui.OpenOverlay(copyPicker(rows))
-	return nil
-}
-
 // lastReplyText is the last non-empty assistant reply of transcript rows,
 // reasoning and tool rows passed over.
 func lastReplyText(tr []ChatMessage) string {
@@ -124,68 +103,6 @@ func lastReplyText(tr []ChatMessage) string {
 		}
 	}
 	return ""
-}
-
-// copyPicker lists the source session's stored messages, newest first, each
-// row copying its whole text and a reply's code blocks under it, numbered
-// across the list so 1-9 still pick blocks at once.
-func copyPicker(rows []*store.Message) Overlay {
-	var items []any
-	blocks := 0
-	for _, row := range slices.Backward(rows) {
-		text, ok := messageText(row)
-		if !ok {
-			continue
-		}
-		who := "Reply"
-		if row.Role == string(fantasy.MessageRoleUser) {
-			who = "You"
-		}
-		bs := codeBlocks(text)
-		n := lineCount(text)
-		desc := fmt.Sprintf("%s · %s · %d %s", who, ago(row.CreatedAt), n, Plural(n, "line", "lines"))
-		if len(bs) > 0 {
-			desc += fmt.Sprintf(" · %d %s", len(bs), Plural(len(bs), "code block", "code blocks"))
-		}
-		first, _, _ := strings.Cut(text, "\n")
-		items = append(items, map[string]any{"text": clipRunes(first, 44), "desc": desc, "copy": text})
-		for _, b := range bs {
-			blocks++
-			n := lineCount(b.text)
-			var desc strings.Builder
-			fmt.Fprintf(&desc, "code · %d %s", n, Plural(n, "line", "lines"))
-			for l := range strings.Lines(b.text) {
-				if first := strings.TrimSpace(l); first != "" {
-					desc.WriteString(" · " + clipRunes(first, 60))
-					break
-				}
-			}
-			item := map[string]any{"text": fmt.Sprintf("%d  %s", blocks, cmp.Or(b.lang, "text")), "desc": desc.String(), "copy": b.text}
-			if blocks <= 9 {
-				item["hotkey"] = strconv.Itoa(blocks)
-			}
-			items = append(items, item)
-		}
-	}
-	return Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Items: items, Verb: "copy", Empty: "Nothing to copy yet."}
-}
-
-// messageText is a stored row's text as the user reads it: what was typed,
-// the attach marker and all cut, or a reply's text parts joined. Other rows
-// carry none.
-func messageText(row *store.Message) (string, bool) {
-	if row.Role == string(fantasy.MessageRoleUser) {
-		return userText(row)
-	}
-	if row.Role != string(fantasy.MessageRoleAssistant) {
-		return "", false
-	}
-	var m fantasy.Message
-	if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
-		return "", false
-	}
-	s := strings.TrimSpace(concatText(m.Content))
-	return s, s != ""
 }
 
 // lineCount counts a text's lines, a closing newline not starting another.

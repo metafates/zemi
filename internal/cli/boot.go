@@ -496,8 +496,11 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenPrompt()
 		}},
-		{Name: "messages", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "messages", Desc: "find, read or copy an earlier message", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenMessages()
+		}},
+		{Name: "logs", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
+			return h.OpenLogs()
 		}},
 		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()
@@ -509,7 +512,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply, a code block, or an earlier message", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CopyReply(args)
-		}, GoComplete: hostapi.SubcommandCompleter([]string{"list", "reply", "code"}, nil)},
+		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},
 		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			_, err := h.ForkSession()
 			return err

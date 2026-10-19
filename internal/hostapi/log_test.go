@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestMessagesRing: print and zemi.log lines land in the ring /messages
-// shows and zemi.log.list reads back, newest first.
-func TestMessagesRing(t *testing.T) {
+// TestLogsRing: print and zemi.log lines land in the ring /logs shows and
+// zemi.log.list reads back, newest first.
+func TestLogsRing(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -30,12 +30,12 @@ func TestMessagesRing(t *testing.T) {
 	h2, _ := newTestHost(t)
 	ui2 := &fakeUI{}
 	h2.SetUIHooks(ui2)
-	if err := h2.OpenMessages(); err != nil || ui2.opened[0].Body != "" || ui2.opened[0].Empty == "" {
-		t.Fatalf("empty messages: %v %+v", err, ui2.opened)
+	if err := h2.OpenLogs(); err != nil || ui2.opened[0].Body != "" || ui2.opened[0].Empty == "" {
+		t.Fatalf("empty logs: %v %+v", err, ui2.opened)
 	}
 	h.RecordMessage("user", "printed line")
-	if err := h.OpenMessages(); err != nil || len(ui.opened) != 1 {
-		t.Fatalf("messages: %v %+v", err, ui.opened)
+	if err := h.OpenLogs(); err != nil || len(ui.opened) != 1 {
+		t.Fatalf("logs: %v %+v", err, ui.opened)
 	}
 	body := ui.opened[0].Body
 	if ui.opened[0].Empty != "" || !strings.Contains(body, "printed line") || strings.Index(body, "printed line") > strings.Index(body, "first note") {

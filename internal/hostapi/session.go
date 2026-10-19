@@ -481,7 +481,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 			shown, heads, _ := userRowsFor(s) // show what was typed
 			if shown != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: row.CreatedAt})
 			}
 			for _, n := range heads {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})

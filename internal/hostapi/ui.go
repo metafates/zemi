@@ -120,6 +120,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 			Anchor: OverlayAnchor(rawString(L, tb, "anchor")),
+			Follow: rawBool(L, tb, "follow"),
 		}
 		if o.Anchor != "" && !slices.Contains(overlayAnchors, o.Anchor) {
 			L.RaiseError("zemi.ui.overlay.open: anchor must be one of %s or nil, got %q", strings.Join(strs(overlayAnchors), ", "), o.Anchor)
@@ -557,6 +558,7 @@ type OverlayItem struct {
 	Switch, On, Locked                                                           bool    // Switch: on is set, so the row draws the switch
 	Danger                                                                       bool    // cannot be undone: drawn in Danger, and its first enter or key only arms it
 	Tail                                                                         bool    // a text too wide is cut from the left: a path's name is at its end
+	Anchor                                                                       int     // a following list's row: the transcript row it stands for, 0 for none
 	Actions                                                                      []any   // a detail view's items; nil when it has none
 	Fields                                                                       []Field // the detail view's facts, set above Detail
 }
@@ -636,6 +638,15 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 		}
 	}
 	_, p.Switch = m["on"].(bool)
+	switch v := m["anchor"].(type) {
+	case nil:
+	case float64:
+		p.Anchor = int(v)
+	case int:
+		p.Anchor = v
+	default:
+		bad("anchor", "a number", v)
+	}
 	fields, ok := luaList(m["fields"])
 	for _, f := range fields {
 		pair, _ := f.([]any)

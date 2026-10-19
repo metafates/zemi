@@ -222,6 +222,7 @@ function debug.traceback(msg) end
 ---@field fade? number 0 to 1: how far the segment's colors sink toward the surface it sits on (the canvas, or a box's panel). A scrolled view fades its own edge rows; a widget sets this where it clips a block itself, as the chat does to a thinking tail rolling up.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
 ---@field sticky? boolean|"section"|"end" On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first rows as chrome, in the `Pinned` group on the panel across the view's width, and a click on it scrolls back there. `true` heads a turn and starts the pinned stack anew, `"section"` heads a part of that turn and pins under it, and `"end"` marks the section's last row, where its pin ends. Example: `{ text = "> ", sticky = true }`.
+---@field anchor? integer On a row's first segment: the transcript row the row draws, counted as `ctx.transcript` is (1-based). A list with `follow` set scrolls the chat to the row its selected item names.
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
@@ -1004,6 +1005,7 @@ function zemi.event.stats() end
 ---@field hotkey? string one character that acts like enter on this row (not while a filter types; j, k, /, y and Y are the list's and raise)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
 ---@field verb? string enter's action in the hint where the default would say another: zemi's lists use "open" (another screen), "pick" (a value), "run" (a command), "toggle" and "fill"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
+---@field anchor? integer The transcript row this one stands for, counted as `ctx.transcript` is (1-based); a list with `follow` set scrolls the chat here when the row is selected.
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
@@ -1042,6 +1044,7 @@ function zemi.event.stats() end
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? zemi.OverlayAnchor In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
+---@field follow? boolean Moving the selection scrolls the chat to the row the selected item names by its `anchor`, the row it stands for; the list opens on the item the reader is at.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
 ---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise; a row's hotkey wins, and this wins over a row's action keys): a second verb on the selected item, which closes or rebuilds the list like on_action.
@@ -1539,7 +1542,7 @@ function zemi.log.error(message, fields) end
 ---@field message string
 
 --- Recent print() and zemi.log lines, newest first (the last 100), the
---- same list `/messages` shows.
+--- same list `/logs` shows.
 ---@return zemi.LogEntry[]
 function zemi.log.list() end
 

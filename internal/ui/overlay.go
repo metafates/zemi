@@ -36,6 +36,9 @@ type overlayState struct {
 	armed bool
 	// the danger list key that waits for its second press, "" for none
 	keyArmed string
+	// followed is the anchor this following list last moved the region to,
+	// so a frame that moved nothing moves it again
+	followed int
 	// the preview pane's rows at paneW cells: the most any item's preview
 	// wraps to, 4 at most, so moving or filtering never resizes the box
 	paneW, paneN int
@@ -182,9 +185,12 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		return
 	}
 	st := a.overlayState(o)
-	// a menu reopens on the row it was left on: where the cursor was when it
-	// last closed, when that row is still in the list
-	if sel := a.lastSel[o.ID]; sel != "" {
+	// a following list opens where the reader is, not on its first row; any
+	// other menu reopens on the row it was left on
+	if o.Follow {
+		st.selected = a.followRow(&st)
+		st.followed = st.selectedAnchor()
+	} else if sel := a.lastSel[o.ID]; sel != "" {
 		if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
 			st.selected = n
 		}
@@ -217,6 +223,54 @@ func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
 	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
 }
 
+// followRow is the row a following list opens on: the one the reader is at,
+// the last while the region follows its tail, or the first before any row
+// carries an anchor.
+func (a *App) followRow(st *overlayState) int {
+	n := len(st.visible)
+	if n == 0 {
+		return 0
+	}
+	chat := a.scrolls[a.scrollDef]
+	if chat == nil || chat.follow {
+		return n - 1
+	}
+	target, sel := anchorAt(chat), 0
+	for k, idx := range st.visible {
+		switch at := st.items[idx].row.Anchor; {
+		case at == target: // the first row standing for it: a reply, not its blocks
+			return k
+		case at > 0 && at < target:
+			sel = k
+		}
+	}
+	return sel
+}
+
+// selectedAnchor is the transcript row the selected item stands for, 0 when
+// it names none.
+func (st *overlayState) selectedAnchor() int {
+	if st.selected >= len(st.visible) {
+		return 0
+	}
+	return st.items[st.visible[st.selected]].row.Anchor
+}
+
+// syncFollow moves the stage's scrolled region to the row the top following
+// list's selection names, once per selection change: keys, clicks and the
+// wheel all land here, and the paint carries it out.
+func (a *App) syncFollow() {
+	i := len(a.overlays) - 1
+	if i < 0 || !a.overlays[i].o.Follow {
+		return
+	}
+	st := &a.overlays[i]
+	if n := st.selectedAnchor(); n != 0 && n != st.followed {
+		st.followed = n
+		a.pendingAnchor[a.scrollDef] = n
+	}
+}
+
 // overlayIndex is the stack index of the open list or view with id, -1 when
 // none is open.
 func (a *App) overlayIndex(id string) int {
@@ -245,6 +299,7 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 		st.selected = n
 	}
 	st.armed = old.armed && sameDanger(was, st.selectedRow())
+	st.followed = old.followed
 	// the same danger key running the same command keeps its press
 	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger && slices.Contains(old.o.Keys, st.o.Keys[k]) {
 		st.keyArmed = old.keyArmed
@@ -606,8 +661,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			// nothing a stray key hits: it is the confirmation
 			st.armed = true
 		case verb == "copy" && r.Copy != "":
-			// a verb only names the hint: a copy list's rows run a command
-			// that copies for them
+			// a copy row's value goes to the clipboard and the list stays open
 			return a.copied(st.value(idx))
 		case st.back:
 			a.detailAction(idx)
