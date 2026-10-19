@@ -679,3 +679,29 @@ func TestSelectionStaysInItsPane(t *testing.T) {
 		})
 	}
 }
+
+// TestLinkClickOpens: a click on text a reply shows as a link opens it, and
+// the row is drawn as a terminal hyperlink so the terminal shows it is one.
+func TestLinkClickOpens(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 16)
+	url := "https://example.com/docs"
+	row := []hostapi.Segment{{Text: "see "}, {Text: "the docs", Link: url}}
+	app.lastRows = [][]hostapi.Segment{row}
+	var got string
+	was := openURL
+	openURL = func(u string) error { got = u; return nil }
+	defer func() { openURL = was }()
+	clickAt(app, 6, 0)
+	if got != url {
+		t.Fatalf("click opened %q, want %q", got, url)
+	}
+	out := app.renderSegs(row, 40)
+	if !strings.Contains(out, ansi.SetHyperlink(url)+"the docs"+ansi.ResetHyperlink()) {
+		t.Fatalf("row is not a hyperlink: %q", out)
+	}
+	// a row cut to fit closes the sequence it opened
+	tight := app.renderSegs([]hostapi.Segment{{Text: "abcdefgh", Link: url}}, 3)
+	if !strings.Contains(tight, ansi.SetHyperlink(url)+"abc"+ansi.ResetHyperlink()) {
+		t.Fatalf("cut row: %q", tight)
+	}
+}

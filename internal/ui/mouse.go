@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -521,6 +522,11 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 				a.scrollRows(pinID, st.pin[pinK]-pinK-st.top)
 			}
 		}, true
+	case top == noModal && under.Link != "":
+		// a link is the terminal's own thing: no widget, no command, just the
+		// URL under the click
+		spans, ok := at(func(s hostapi.Segment) bool { return s.Link == under.Link })
+		return firstRow(spans), func() { a.openLink(under.Link) }, ok
 	case top == noModal && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command
@@ -647,6 +653,27 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		default:
 			a.host.RecordError("click "+s.Widget, err.Error())
 			a.Notify(slog.LevelError, "Could not handle the click on "+s.Widget, err.Error())
+		}
+	})
+}
+
+// openURL is where a clicked link goes; a test swaps it.
+var openURL = func(url string) error {
+	opener := map[string]string{"darwin": "open", "linux": "xdg-open"}[runtime.GOOS]
+	if opener == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return proc.Run(proc.CommandContext(ctx, opener, url))
+}
+
+// openLink hands a link to the system's browser off the UI goroutine, since
+// the opener can take a moment to start.
+func (a *App) openLink(url string) {
+	a.background(func() {
+		if err := openURL(url); err != nil {
+			a.Notify(slog.LevelError, "Could not open the link", err.Error())
 		}
 	})
 }

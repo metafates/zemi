@@ -858,6 +858,9 @@ func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {
 			if s.Click != "" {
 				seg.RawSetString("click", glua.LString(s.Click))
 			}
+			if s.Link != "" {
+				seg.RawSetString("link", glua.LString(s.Link))
+			}
 			row.Append(seg)
 		}
 		out.Append(row)

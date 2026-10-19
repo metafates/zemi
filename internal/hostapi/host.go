@@ -1242,6 +1242,9 @@ type Segment struct {
 	// statusline pill sets it with no Widget
 	Click  string
 	Widget string
+	// Link is the URL the text stands for, drawn as a terminal hyperlink and
+	// opened by a click: a markdown link or a bare URL, and nothing else
+	Link   string
 	Effect string // "shimmer": the UI animates the text, blending hl toward Normal; "spin": its first glyph steps through Spinner
 	Over   string // Go only: a hover group drawn over HL
 	// NoCopy marks decoration (gutters, bullets, borders): a selection
@@ -1451,6 +1454,9 @@ func segment(field func(string) any, widget string) Segment {
 	}
 	if id, ok := field("click").(string); ok && id != "" {
 		seg.Click, seg.Widget = id, widget
+	}
+	if l, ok := field("link").(string); ok {
+		seg.Link = linkOf(l)
 	}
 	return seg
 }

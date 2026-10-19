@@ -40,6 +40,42 @@ func TestMarkdown(t *testing.T) {
 
 // TestMarkdownSplitRender: a long reply renders its settled prefix from the
 // cache and only the tail anew, with the same text as one whole render.
+// TestMarkdownLinks: a markdown link and a bare URL both carry the URL a
+// click opens, and a scheme zemi does not open never does.
+func TestMarkdownLinks(t *testing.T) {
+	h, _ := newTestHost(t)
+	links := func(text string) map[string]string {
+		got := map[string]string{}
+		for _, row := range h.Markdown(text, 80) {
+			for _, s := range row {
+				if s.Link != "" {
+					got[s.Text] = s.Link
+				}
+			}
+		}
+		return got
+	}
+	if got := links("see [the docs](https://example.com/docs?a=1) and https://example.com/bare."); got["the docs"] != "https://example.com/docs?a=1" || got["https://example.com/bare"] != "https://example.com/bare" {
+		t.Fatalf("links: %q", got)
+	}
+	// the trailing period is punctuation, not the URL
+	for _, text := range []string{"[x](javascript:alert(1))", "[x](file:///etc/passwd)", "mailto a person: [x](mailto:a@b.c)"} {
+		got := links(text)
+		if text == "mailto a person: [x](mailto:a@b.c)" {
+			if got["x"] != "mailto:a@b.c" {
+				t.Fatalf("mailto link: %q", got)
+			}
+			continue
+		}
+		if len(got) != 0 {
+			t.Fatalf("%s kept a link: %q", text, got)
+		}
+	}
+	if out := linkOf("https://example.com/\x1b]8;;evil"); out != "" {
+		t.Fatalf("a control byte survived: %q", out)
+	}
+}
+
 func TestMarkdownSplitRender(t *testing.T) {
 	h, _ := newTestHost(t)
 	var b strings.Builder

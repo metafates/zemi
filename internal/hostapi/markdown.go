@@ -531,11 +531,11 @@ func styledLines(s string) [][]Segment {
 			case !c.Style.IsZero():
 				hl = SGRPrefix + strings.TrimSuffix(strings.TrimPrefix(c.Style.String(), "\x1b["), "m")
 			}
-			cells = append(cells, Segment{Text: c.Content, HL: hl, NoCopy: open})
+			cells = append(cells, Segment{Text: c.Content, HL: hl, NoCopy: open, Link: linkOf(c.Link.URL)})
 		}
 		row := []Segment{}
 		for _, c := range cells {
-			if n := len(row); n > 0 && row[n-1].HL == c.HL && row[n-1].NoCopy == c.NoCopy {
+			if n := len(row); n > 0 && row[n-1].HL == c.HL && row[n-1].NoCopy == c.NoCopy && row[n-1].Link == c.Link {
 				row[n-1].Text += c.Text
 				continue
 			}
@@ -551,6 +551,18 @@ func styledLines(s string) [][]Segment {
 		out = out[:len(out)-1]
 	}
 	return out
+}
+
+// linkOf is the URL a rendered cell stands for, when zemi opens it: a web or
+// mail link, never a file, javascript or data URL the model wrote. A control
+// byte drops it too: it would end the terminal's escape sequence early.
+func linkOf(url string) string {
+	u := strings.ToLower(url)
+	ok := strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "mailto:")
+	if !ok || strings.IndexFunc(url, unicode.IsControl) >= 0 {
+		return ""
+	}
+	return url
 }
 
 // A hex color, #rgb or #rrggbb. The short form needs a letter, or "#123"

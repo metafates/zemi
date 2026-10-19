@@ -1666,25 +1666,31 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	segs, spun := segEffects(a.thm, a.host.Settings.Bool("ui.animations"), a.frame(), segs)
 	a.spun = a.spun || spun
+	// truncated before styling, so a link never leaves its escape sequence open
+	if hostapi.SegsWidth(segs) > w {
+		segs = truncateSegs(segs, w)
+	}
 	var b strings.Builder
 	for _, s := range segs {
 		if s.Text == "" {
 			continue
 		}
 		p := a.sgrPrefix(s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
-		if p == "" {
-			b.WriteString(s.Text)
-			continue
+		if p != "" {
+			b.WriteString(p)
 		}
-		b.WriteString(p)
+		if s.Link != "" {
+			b.WriteString(ansi.SetHyperlink(s.Link))
+		}
 		b.WriteString(s.Text)
-		b.WriteString(ansi.ResetStyle)
+		if s.Link != "" {
+			b.WriteString(ansi.ResetHyperlink())
+		}
+		if p != "" {
+			b.WriteString(ansi.ResetStyle)
+		}
 	}
-	out := b.String()
-	if ansi.StringWidth(out) > w {
-		out = ansi.Truncate(out, w, "")
-	}
-	return out
+	return b.String()
 }
 
 func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {

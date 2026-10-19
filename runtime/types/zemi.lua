@@ -216,6 +216,7 @@ function debug.traceback(msg) end
 ---@field text string
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
+---@field link? string The URL the text stands for: drawn as a terminal hyperlink and opened by a click. Only `http`, `https` and `mailto` are kept; a markdown link and a bare URL in a reply set it.
 ---@field effect? "shimmer"|"spin" `shimmer`: a bright band sweeps across the text every frame, blending `hl` toward Normal. `spin`: the first glyph steps through the running spinner, `zemi.ui.marks.spin`'s. Both static with ui.animations off.
 ---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
