@@ -341,7 +341,9 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	f := old.listFilter
 	f.labels, f.texts = st.labels, st.texts
 	st.listFilter, st.size = f, old.size
-	if st.o.Body == old.o.Body {
+	// a live body moves under the reader as its work writes: the view stays
+	// where they scrolled, and on its tail while they did not
+	if st.o.Live || st.o.Body == old.o.Body && slices.Equal(st.o.Parts, old.o.Parts) {
 		st.body = old.body
 	}
 	st.apply()
@@ -465,6 +467,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 	}
 	st.selected = o.Selected
+	st.body.follow = o.Live // a live body opens on its tail
 	st.apply()
 	return st
 }
@@ -709,7 +712,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		sel := func() { a.host.SelectOverlay(context.Background(), o, idx) }
 		switch {
 		case key == "space" && !confirmed && (o.Reload == nil || r.Verb != ""):
-		case key == "enter" && hasDetail(r):
+		case key == "enter" && hasDetail(r) && !(r.Verb == "open" && r.Run != ""):
+			// a row that says it opens a screen opens it; its actions keep
+			// their own keys
 			a.openDetail(st, idx, 0)
 		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
 			// a detail view whose only action it is states the effect and holds
@@ -931,10 +936,17 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 	}
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
-		if rows = fieldRows(fields, st.o.Mark, w); rows != nil && st.o.Body != "" {
+		if rows = fieldRows(fields, st.o.Mark, w); rows != nil && (st.o.Body != "" || len(st.o.Parts) > 0) {
 			rows = append(rows, nil)
 		}
 		switch {
+		case len(st.o.Parts) > 0:
+			for i, p := range st.o.Parts {
+				if i > 0 {
+					rows = append(rows, nil)
+				}
+				rows = append(rows, a.bodyPart(p, w)...)
+			}
 		case st.o.BodySegs != nil:
 			for _, row := range st.o.BodySegs {
 				rows = append(rows, hostapi.WrapSegs(row, w)...)
@@ -948,7 +960,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		return rows
 	})
 	bodyN := 0
-	if st.o.Body != "" || st.o.Fields != nil {
+	if st.o.Body != "" || len(st.o.Parts) > 0 || st.o.Fields != nil {
 		bodyN = len(buildBody(bodyW))
 	}
 	tail := 1 // the rows the box's padding goes above: the footer, and a preview pane
@@ -1069,6 +1081,21 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body = slices.Insert(body, len(body)-tail, make([][]hostapi.Segment, n)...)
 	}
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
+}
+
+// bodyPart draws one part of a view's body in the form its text is written
+// in, wrapped to w: a command reads as a well of the canvas, as the prompt's
+// preview does, while a diff and markdown bring their own surfaces.
+func (a *App) bodyPart(p hostapi.BodyPart, w int) [][]hostapi.Segment {
+	switch p.Lang {
+	case "markdown":
+		return a.host.Markdown(strings.TrimRight(p.Text, "\n"), w)
+	case "diff":
+		return hostapi.DiffRows(p.Text, w)
+	case "":
+		return wrapText(p.Text, "", w)
+	}
+	return a.codePanel(p.Text, p.Lang, w)
 }
 
 // pressArmed is key on a screen whose selected danger button may be armed:

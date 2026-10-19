@@ -76,18 +76,32 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		local flows, ours = ctx.workflows_running or 0, (ctx.agents_running or 0) + (ctx.jobs_running or 0)
-		if flows == 0 and ours == 0 then return {} end
-		-- jobs count as agents: /agents lists them under Background jobs
+		local flows, agents = ctx.workflows_running or 0, ctx.agents_running or 0
+		if flows == 0 and agents == 0 then return {} end
 		---@type zemi.Line
-		local line = fmt.hint("⧗ " .. (flows > 0 and flows or ours), flows > 0 and "/workflows" or "/agents")
-		if flows > 0 and ours > 0 then
+		local line = fmt.hint("⧗ " .. (flows > 0 and flows or agents), flows > 0 and "/workflows" or "/agents")
+		if flows > 0 and agents > 0 then
 			line[#line + 1] = { text = " · ", hl = "Dim" }
-			for _, seg in ipairs(fmt.hint(tostring(ours), "/agents")) do
+			for _, seg in ipairs(fmt.hint(tostring(agents), "/agents")) do
 				line[#line + 1] = seg
 			end
 		end
 		return { line }
+	end,
+})
+
+-- Background processes the model started: their own screen, apart from the
+-- agents one.
+zemi.ui.widget.add({
+	id = "statusline.jobs",
+	region = "statusline.left",
+	priority = 26,
+	on_click = fmt.run_click,
+	---@param ctx zemi.WidgetCtx
+	---@return zemi.Line[]
+	render = function(ctx)
+		if (ctx.jobs_running or 0) == 0 then return {} end
+		return { fmt.hint("⚙ " .. ctx.jobs_running, "/jobs") }
 	end,
 })
 

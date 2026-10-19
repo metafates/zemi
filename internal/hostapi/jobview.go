@@ -1,0 +1,191 @@
+// jobview.go ships /jobs: the background processes the model starts, as a
+// list with a live output view under it. Jobs belong to the host, so one a
+// server started in an earlier session shows too.
+
+package hostapi
+
+import (
+	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
+)
+
+// jobViewLines is how much of a job's output its view holds: the buffer
+// keeps a megabyte, and the view wraps it again every second.
+const jobViewLines = 200
+
+func (h *Host) jobsCommands() []*Command {
+	return []*Command{{
+		Name: "jobs", NArgs: NArgsAny, Desc: "see the background processes, read their output or stop them",
+		GoFn: func(h *Host, args string) error {
+			sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
+			switch sub, id = strings.TrimSpace(sub), strings.TrimSpace(id); sub {
+			case "":
+				return h.openJobs()
+			case "view":
+				return h.openJob(id)
+			case "stop":
+				return h.stopJobs(id)
+			}
+			return Usagef("unknown /jobs subcommand %q (view <id>, stop <id>|all)", sub)
+		},
+		GoComplete: SubcommandCompleter([]string{"view", "stop"}, func(h *Host, sub string) []string {
+			if sub == "stop" {
+				return []string{"all"}
+			}
+			var ids []string
+			for _, j := range h.jobs.List() {
+				ids = append(ids, j.ID)
+			}
+			return ids
+		}),
+	}}
+}
+
+// stopJobs stops one job, or every running one at once for "all", which the
+// list's stop-all key names.
+func (h *Host) stopJobs(id string) error {
+	if id == "" {
+		return Usagef("/jobs stop <id>|all")
+	}
+	if id == "all" {
+		if n := h.jobs.KillAll(); n > 0 {
+			h.Notify(slog.LevelInfo, fmt.Sprintf("Stopped %d %s", n, Plural(n, "job", "jobs")), "")
+		}
+		return nil
+	}
+	if err := h.jobs.Kill(id); err != nil {
+		return Usagef("%v", err)
+	}
+	return nil
+}
+
+func (h *Host) openJobs() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	ui.OpenOverlay(h.jobsOverlay())
+	h.watchJobs()
+	return nil
+}
+
+// openJob opens a job's output view: its tail, followed as it runs.
+func (h *Host) openJob(id string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		return Usagef("/jobs view <id> (ids are in /jobs)")
+	}
+	j, err := h.jobs.Get(id)
+	if err != nil {
+		return Usagef("%v", err)
+	}
+	ui.OpenOverlay(h.jobOverlay(j))
+	h.watchJobs()
+	return nil
+}
+
+// jobsOverlay is /jobs: what runs now, then what has ended, newest first.
+// Stop keeps the list open, so jobs go one by one, and the last of them
+// stops the whole lot.
+func (h *Host) jobsOverlay() Overlay {
+	var running, ended []any
+	all := h.jobs.List()
+	slices.Reverse(all)
+	for _, j := range all {
+		item := map[string]any{
+			"id":      j.ID,
+			"text":    j.Name,
+			"desc":    statusCol(j.Status()) + " · " + fmtDuration(j.Elapsed()) + " · " + j.ID,
+			"mark":    j.Mark(),
+			"section": map[bool]string{true: "Running", false: "Ended"}[j.Running()],
+			"run":     "jobs view " + j.ID, "verb": "open",
+		}
+		if j.Running() {
+			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "jobs stop " + j.ID}}
+			running = append(running, item)
+			continue
+		}
+		ended = append(ended, item)
+	}
+	o := Overlay{
+		ID: "jobs", Title: "Jobs", Origin: lua.OriginBuiltin, Items: slices.Concat(running, ended),
+		Empty:  "No background processes.",
+		Reload: func() ([]any, [][]Segment) { return h.jobsOverlay().Items, nil },
+	}
+	if h.jobs.Running() > 0 {
+		o.Keys = []OverlayKey{{Key: "x", Desc: "stop all", Run: "jobs stop all", Danger: true}}
+	}
+	return o
+}
+
+// jobOverlay is one job's view: its facts, then the tail of its output, which
+// follows as it runs unless the reader scrolls up.
+func (h *Host) jobOverlay(j *tools.Job) Overlay {
+	status, elapsed := j.Status(), fmtDuration(j.Elapsed())
+	out := jobTail(j.Output())
+	o := Overlay{
+		ID: "job:" + j.ID, Title: "Jobs / " + clipLine(j.Name, 50), Origin: lua.OriginBuiltin,
+		Live: true, Body: out, Mark: j.Mark(),
+		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}, {Name: "command", Value: j.Name}},
+	}
+	if out == "" {
+		o.Empty = "(no output yet)"
+	}
+	if j.Running() {
+		o.Keys = []OverlayKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID}}
+	}
+	return o
+}
+
+// jobTail is the last jobViewLines lines of a job's output, naming what it
+// left above them.
+func jobTail(out string) string {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) <= jobViewLines {
+		return strings.TrimRight(out, "\n")
+	}
+	return strings.Join(append([]string{MoreLines(len(lines) - jobViewLines)}, lines[len(lines)-jobViewLines:]...), "\n")
+}
+
+// watchJobs runs the one ticker that keeps /jobs and the job views current
+// while a job lives. A start or an exit asks for it, and the loop gives the
+// claim back before its last refresh, so a job starting then finds a new
+// one; an idle zemi runs no ticker.
+func (h *Host) watchJobs() {
+	if h.hooks() == nil || !h.jobs.ClaimWatch() {
+		return
+	}
+	h.GoSafe("job views", func() {
+		for range time.Tick(time.Second) {
+			last := h.jobs.ReleaseWatch()
+			h.refreshJobs()
+			if last {
+				return
+			}
+			if !h.jobs.ClaimWatch() {
+				return
+			}
+		}
+	})
+}
+
+// refreshJobs rebuilds /jobs and the job views that are open.
+func (h *Host) refreshJobs() {
+	ui := h.hooks()
+	if ui == nil {
+		return
+	}
+	ui.RefreshOverlay("jobs", h.jobsOverlay)
+	for _, j := range h.jobs.List() {
+		ui.RefreshOverlay("job:"+j.ID, func() Overlay { return h.jobOverlay(j) })
+	}
+}

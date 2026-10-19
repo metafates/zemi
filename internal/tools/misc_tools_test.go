@@ -317,8 +317,8 @@ func TestJobToolsLifecycle(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	t.Chdir(dir)
 	p.Jobs = NewJobs()
-	exited := make(chan struct{}, 8)
-	p.Jobs.OnExit = func() { exited <- struct{}{} }
+	changed := make(chan struct{}, 8)
+	p.Jobs.OnChange = func() { changed <- struct{}{} }
 	start := toolNamed(t, "job_start", p)
 	read := toolNamed(t, "job_read", p)
 	list := toolNamed(t, "job_list", p)
@@ -329,16 +329,22 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("start echo: %+v", resp)
 	}
 	j := p.Jobs.List()[0]
-	// the exit hook fires once the job is done: the statusline redraws on it
+	// the change hook fires at the start and at the exit: the statusline and
+	// the job screens redraw on it
 	select {
-	case <-exited:
+	case <-changed:
 	case <-time.After(5 * time.Second):
-		t.Fatal("OnExit did not run")
+		t.Fatal("OnChange did not run at the start")
+	}
+	deadline := time.After(5 * time.Second)
+	for p.Jobs.Running() > 0 {
+		select {
+		case <-changed:
+		case <-deadline:
+			t.Fatal("OnChange did not run at the exit")
+		}
 	}
 	waitJobDone(t, j)
-	if p.Jobs.Running() != 0 {
-		t.Fatal("OnExit ran before the exit was recorded")
-	}
 	resp = call(t, read, `{"id":"`+j.ID+`"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "exited (0)") || !strings.Contains(resp.Content, "hello-job") {
 		t.Fatalf("read echo: %+v", resp)

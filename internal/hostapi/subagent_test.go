@@ -649,9 +649,9 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	}
 }
 
-// TestAgentsList: /agents leads with New agent, shows a model's background
-// job with its output and stops it through the [s] Stop action's command,
-// and details each agent, the user's first, opening the ones that are files.
+// TestAgentsList: /agents leads with New agent and details each agent, the
+// user's first, opening the ones that are files. A background job is no
+// agent: /jobs has it.
 func TestAgentsList(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
@@ -670,6 +670,7 @@ func TestAgentsList(t *testing.T) {
 		}
 		return nil
 	})
+	defer h.jobs.KillAll()
 	h.Dirs.ConfigHome = t.TempDir()
 	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
 		t.Fatal(err)
@@ -689,15 +690,17 @@ func TestAgentsList(t *testing.T) {
 	if first := fmt.Sprint(ui.opened[0].Items[0]); !strings.Contains(first, "fill:/agents new ") || !strings.Contains(first, "text:New agent") {
 		t.Errorf("first row = %s", first)
 	}
-	if s := ui.opened[0].Items[2].(map[string]any)["section"]; s != "User agents" { // under the job
+	if s := ui.opened[0].Items[1].(map[string]any)["section"]; s != "User agents" {
 		t.Errorf("first agent section %v, want User agents", s)
+	}
+	if _, listed := rows[id]; listed {
+		t.Errorf("job %s is listed in /agents: %s", id, rows[id])
 	}
 	for _, c := range []struct {
 		row  string
 		want []string
 		not  []string
 	}{
-		{id, []string{"up", "hotkey:s run:agents kill " + id}, nil},
 		{"reviewer", []string{"[path ", "reviewer.md]", "[access read only]", "run:agents open reviewer"}, nil},
 		{"general", []string{"[access can change files]"}, []string{"[path ", "actions:"}},
 		{"explore", []string{"[access read only]"}, []string{"actions:"}},
@@ -713,12 +716,12 @@ func TestAgentsList(t *testing.T) {
 			}
 		}
 	}
-	if err := agents.GoFn(h, "kill "+id); err != nil {
+	if err := h.Commands.Lookup("jobs").GoFn(h, "stop "+id); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
 		if j.Running() {
-			return errors.New("job still running after kill")
+			return errors.New("job still running after stop")
 		}
 		return nil
 	})

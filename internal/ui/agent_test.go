@@ -524,7 +524,7 @@ func TestNoticeBurst(t *testing.T) {
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "more:2"}); err != nil {
 		t.Fatal(err)
 	}
-	if got = rows(); !slices.Contains(got, "◦ Background agent a0 (explore) finished") || !slices.Contains(got, "  … show the rest") {
+	if got = rows(); !slices.Contains(got, "◦ Background agent a0 (explore) finished") || !slices.Contains(got, "  … collapse") {
 		t.Fatalf("the fold does not open:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -553,7 +553,7 @@ func TestRailWindow(t *testing.T) {
 	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "✓ list dir 3") || !slices.Contains(got, "│ ✓ list dir 4") || !slices.Contains(got, "│ ✓ list dir 9") {
 		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
 	}
-	if got = click("more:2"); !slices.Contains(got, "│ … show the rest") || !slices.Contains(got, "│ ✓ list dir 0") {
+	if got = click("more:2"); !slices.Contains(got, "│ … collapse") || !slices.Contains(got, "│ ✓ list dir 0") {
 		t.Fatalf("the window does not open:\n%s", strings.Join(got, "\n"))
 	}
 	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
@@ -564,12 +564,11 @@ func TestRailWindow(t *testing.T) {
 	}
 }
 
-// TestChatExpandSettledRow: a click on a settled turn's digest row opens the
+// TestChatFoldOpensItsRun: a click on a settled turn's digest row opens the
 // run's rail under it, the rest of the transcript coming from the chat's
-// cache. A thought row's click unrolls its text at the prose measure with a
-// bar-only row above and below, and the digest's second click folds the run
-// again.
-func TestChatExpandSettledRow(t *testing.T) {
+// cache, and the digest's second click folds it again. The rows of the
+// opened run carry their own view's id: only folds happen in the rail.
+func TestChatFoldOpensItsRun(t *testing.T) {
 	app, host := bootAgentApp(t, 140, 30)
 	host.AppendMessage("user", "run it")
 	appendReasoning(host, strings.Repeat("plan it word by word ", 8)+"\n\nthen build", hostapi.TurnStat{ThoughtMS: 6000})
@@ -583,42 +582,39 @@ func TestChatExpandSettledRow(t *testing.T) {
 		}
 		return rows()
 	}
+	clickIDs := func() map[string]string {
+		app.renderSync(t)
+		_ = app.Frame() // compose fills lastRows
+		out := map[string]string{}
+		for _, row := range app.lastRows {
+			text := strings.Join(strings.Fields(hostapi.SegsText(row)), " ")
+			for _, s := range row {
+				if s.Click != "" {
+					out[text] = s.Click
+				}
+			}
+		}
+		return out
+	}
 	const digest = "· 1 command · thought 6.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
-	// the digest stays as the run's header over a rail whose thought rows are
-	// framed above and below, running or done
+	// the digest stays as the run's header over a rail whose rows are framed
+	// once each, running or done
 	open := click("turn:2")
 	at := slices.Index(open, digest)
 	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ ✓ run make", "│", "│ ✻ thought 0.4s", "│"}
 	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
 	}
-	// a thought's click unrolls its text between the air framing it, at the
-	// prose measure
-	text := click("thought:2")
-	var body []string
-	for _, r := range text[at+3:] {
-		if r == "│" && len(body) > 0 {
-			break
-		}
-		body = append(body, r)
-	}
-	if len(body) < 3 {
-		t.Fatalf("the thought's text is not unrolled:\n%s", strings.Join(text, "\n"))
-	}
-	for _, r := range body[1:] {
-		if r != "│" && (!strings.HasPrefix(r, "│   ") || ansi.StringWidth(r) > 4+80) {
-			t.Fatalf("a thought row off the rail or past the measure: %q", r)
-		}
+	if ids := clickIDs(); ids["│ ✻ thought 6.0s"] != "call:2" || ids["│ ✓ run make"] != "call:3" {
+		t.Fatalf("the opened run's rows = %v, want their own views", ids)
 	}
 	if folded := click("turn:2"); !slices.Equal(folded, closed) {
 		t.Fatalf("a second click does not fold the run:\n%s", strings.Join(folded, "\n"))
 	}
-	// what was opened in the run has no row left to close it by, so folding
-	// closed it
 	if reopened := click("turn:2"); !slices.Equal(reopened, open) {
 		t.Fatalf("the run reopens as it first opened:\n%s", strings.Join(reopened, "\n"))
 	}
@@ -1044,11 +1040,11 @@ func TestQueuedFold(t *testing.T) {
 	rows := func() (fold, notes, typed int) {
 		for _, r := range chatRows(t, app, 78) {
 			switch {
-			case strings.Contains(r, "earlier") || strings.Contains(r, "show the rest"):
+			case strings.Contains(r, "earlier") || strings.Contains(r, "collapse"):
 				fold++
 			case strings.Contains(r, " queued Agent a"):
 				notes++
-			case strings.Contains(r, " queued a typed line"):
+			case strings.Contains(r, " a typed line"):
 				typed++
 			}
 		}
@@ -1072,7 +1068,7 @@ func TestQueuedFold(t *testing.T) {
 	}
 	// and closes it again
 	app.renderSync(t)
-	x, y = findCell(t, app, "… show the rest")
+	x, y = findCell(t, app, "… collapse")
 	clickAt(app, x+2, y)
 	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
 		t.Fatalf("closed fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
@@ -1098,7 +1094,7 @@ func TestQueuedFoldOne(t *testing.T) {
 	var fold, notes int
 	for _, r := range chatRows(t, app, 78) {
 		switch {
-		case strings.Contains(r, "earlier") || strings.Contains(r, "show the rest"):
+		case strings.Contains(r, "earlier") || strings.Contains(r, "collapse"):
 			fold++
 		case strings.Contains(r, " queued Agent a"):
 			notes++
@@ -2022,10 +2018,10 @@ func TestPermissionChoices(t *testing.T) {
 	}
 }
 
-// TestFileRowClickIDs: an opened edit's rows, its diff rows included, carry
-// the id that folds it, and a step's grouped row carries the step's, which
-// opens one row per call, each carrying its own.
-func TestFileRowClickIDs(t *testing.T) {
+// TestCallRowClickIDs: a call's row and a thought's carry the id of their own
+// view, a step's the id that opens its calls, each of those its own, and a
+// digest's the run it folds.
+func TestCallRowClickIDs(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look first")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
@@ -2036,27 +2032,9 @@ func TestFileRowClickIDs(t *testing.T) {
 		{Name: "edit", Input: "/w/a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7,2 +7,2 @@\n-old\n+new\n keep"},
 		{Name: "read", Input: "c.go", Status: "ok", Output: "1\tpackage c"},
 		{Name: "read", Input: "d.go", Status: "ok"},
+		{Name: "shell", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
 	}})
-	for _, c := range []struct {
-		open string
-		want map[string]string
-	}{
-		{"edit /w/a.go", map[string]string{
-			"· 1 file":               "turn:2",
-			"│ ✻ thought 6.0s":       "thought:5",
-			"│ ✓ edit /w/a.go +1 -1": "tool:-1",
-			"│ 7 - old":              "tool:-1",
-			"│ 7 + new":              "tool:-1",
-			"│ 8 keep":               "tool:-1",
-			"│ ✓ read 2 files":       "step:-2",
-		}},
-		{"read 2 files", map[string]string{"│ ├ read c.go": "tool:-2", "│ └ read d.go": "tool:-3"}},
-		// a nested call's own rows keep the line under its branch mark
-		{"read c.go", map[string]string{"│ ├ read c.go": "tool:-2", "│ │ ⎿ 1 package c": "tool:-2"}},
-	} {
-		app.renderSync(t)
-		x, y := findCell(t, app, c.open)
-		clickAt(app, x, y)
+	ids := func() map[string]string {
 		app.renderSync(t)
 		_ = app.Frame() // compose fills lastRows
 		click := map[string]string{}
@@ -2068,17 +2046,32 @@ func TestFileRowClickIDs(t *testing.T) {
 				}
 			}
 		}
-		for text, want := range c.want {
-			if click[text] != want {
-				t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
-			}
+		return click
+	}
+	for text, want := range map[string]string{
+		"· 1 file":               "turn:2",
+		"│ ✻ thought 6.0s":       "call:5",
+		"│ ✓ edit /w/a.go +1 -1": "call:-1",
+		"│ ✓ read 2 files":       "step:-2",
+		"│ running as job-1":     "job:job-1",
+	} {
+		if got := ids()[text]; got != want {
+			t.Errorf("%q = %q, want %q (rows %v)", text, got, want, ids())
 		}
 	}
-	// the step is open from its own case: its second click closes the calls
-	app.renderSync(t)
 	x, y := findCell(t, app, "read 2 files")
 	clickAt(app, x, y)
-	for app.Pump() { // the click reaches the widget through Lua
+	for text, want := range map[string]string{
+		"│ ├ read c.go": "call:-2",
+		"│ └ read d.go": "call:-3",
+	} {
+		if got := ids()[text]; got != want {
+			t.Errorf("%q = %q, want %q", text, got, want)
+		}
+	}
+	// the step's row closes its calls again from its other cells too
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "step:-2"}); err != nil {
+		t.Fatal(err)
 	}
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "├ read c.go") || !strings.Contains(frame, "│ ✓ read 2 files") {

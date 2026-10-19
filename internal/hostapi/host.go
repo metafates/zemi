@@ -113,6 +113,7 @@ type Overlay struct {
 	// enter does to a row, when the list's default word does not say it.
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
+	Parts    []BodyPart  // draw Body's place in parts, each in the form it is written in
 	Fields   []Field     // set as a table above Body
 	Mark     string      // a Marks key ahead of the "status" field's value
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
@@ -126,6 +127,10 @@ type Overlay struct {
 	// Wide boxes take the widest a screen shows whatever opened them, so a
 	// screen reached from a list or a command draws at one width
 	Wide bool
+	// Live marks a body its work rewrites while the view is open: a refresh
+	// keeps where the reader scrolled, and one who did not moves with the
+	// tail
+	Live bool
 	// Phases heads each section with its rows' combined mark: failed,
 	// running, waiting, stopped or done
 	Phases bool
@@ -720,7 +725,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.Builtin.Store(&agent.Catalog{})
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
-	h.jobs.OnExit = h.refresh
+	h.jobs.OnChange = func() {
+		h.refresh()
+		h.watchJobs()
+	}
 	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })

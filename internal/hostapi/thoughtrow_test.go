@@ -67,9 +67,9 @@ func widgetText(t *testing.T, h *Host, id string, state UIState) string {
 
 // TestThoughtRowGrowsInPlace: a reasoning chunk that lands after the call
 // below it started grows the thought's row where it stands, so the epoch the
-// chat widget drops the reader's opened rows by must not move: the row the
-// reader opened keeps its place and draws the grown text. A row landing before
-// the next render must not hide the chunk either.
+// chat widget drops its cached units by must not move, while the edit counter
+// makes it draw the grown row. A row landing before the next render must not
+// hide the chunk either.
 func TestThoughtRowGrowsInPlace(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -84,16 +84,8 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 			hk.ReasoningDelta("ponder")
 			hk.ToolCallPending("t1", "grep")
 			// the first render settles the widget's cache
-			widgetText(t, h, "chat", UIState{})
-			// the reader opens the thought row while the call runs, in the two
-			// clicks the rail's rows take: its run, then the row itself
-			for _, id := range []string{"turn:1", "thought:1"} {
-				if err := h.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-					t.Fatalf("click %s: %v", id, err)
-				}
-			}
-			if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "ponder") {
-				t.Fatalf("the opened thought draws no text:\n%s", got)
+			if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "thought") {
+				t.Fatalf("the thought's row is not drawn:\n%s", got)
 			}
 			epoch, edit := h.trEpoch.Load(), h.trEdit.Load()
 			hk.ReasoningDelta("ing.")
@@ -114,10 +106,34 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 			if h.trEdit.Load() == edit {
 				t.Error("the joined chunk left the edit counter, so the widget draws the grown row from its cache")
 			}
-			if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "pondering.") {
-				t.Fatalf("the joined chunk is not drawn:\n%s", got)
-			}
 		})
+	}
+}
+
+// TestViewedRunDrawsNoPendingRow: a run's own rows say what it is doing, so
+// the chat draws none of the session turn's pending "thinking" row there -
+// it would stand at the bottom of every running run.
+func TestViewedRunDrawsNoPendingRow(t *testing.T) {
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{})
+	def := AgentDef{Name: "explore"}
+	run, _ := h.newRun(t.Context(), def, "look around", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	hk := &subagentHooks{h: h, def: def, run: run}
+	hk.ToolCallStart("c1", "read", `{"path":"a.go"}`)
+	hk.ToolCallEnd("c1", "read", out("package a"), "")
+	// the run works on with nothing streaming, long enough for the turn's own
+	// pending row to open
+	run.mu.Lock()
+	run.started = time.Now().Add(-2 * time.Second)
+	run.mu.Unlock()
+	if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "read a.go") || strings.Contains(got, "thinking") {
+		t.Fatalf("the run's view draws a pending row over its own rows:\n%s", got)
 	}
 }
 

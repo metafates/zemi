@@ -74,7 +74,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   stepping, and drops what acts or joins (`Hit`, `Click`, `Widget`, `Line`, `Bar`), so the backdrop
   joins before it fades and no line of it reaches the top box. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
-  `Body`, which stays what `y` copies. A list with `Overlay.Follow` moves the stage's scrolled
+  `Body`, which stays what `y` copies, and a Go view's `Parts` draw each block the way its text
+  is written (markdown, `diff`, a chroma language in a canvas well) at the width the box takes. A list with `Overlay.Follow` moves the stage's scrolled
   region to the unit its selected item names by `OverlayItem.Anchor`, the number the chat stamps on
   every row of a unit (`Segment.Anchor`, `unitAt`, `jumpTop`: centered when the message fits, else
   its first row under the pins), and bands that message with `FillBand` (`bandMessage`, the

@@ -1999,7 +1999,11 @@ rides the `memories.md` line and its ledger entries.
   types on), and esc clears it, then closes. A detail view opens with its
   item's `fields` set as a table (names in a dim column, a field with no value
   left out), then its `detail` prose, then the actions; `y` copies the fields
-  as `name: value` lines above the prose. A `status` field colors the status
+  as `name: value` lines above the prose. A Go screen's body may come in
+  parts, each drawn the way its text is written - markdown, a unified diff,
+  or a language to highlight it as, a command's in a well of the canvas -
+  and a body its work rewrites (`Live`) keeps the reader's place, or follows
+  its tail while they never scrolled. A `status` field colors the status
   words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
@@ -2099,8 +2103,8 @@ rides the `memories.md` line and its ledger entries.
   than the view leaves the blank under it. Scrollback (the scroll keys in Default
   keymaps below, and the mouse wheel) moves the viewport off the tail;
   a scrolled view stays anchored while new lines fill underneath, and a
-  click on a row leaves the tail too: a digest opening over its rail or a
-  thought unrolling redraws the rows under the reader's place, never
+  click on a row leaves the tail too: a digest opening over its rail
+  redraws the rows under the reader's place, never
   scrolling them away. Sending a message (or a `!command`) snaps back to the
   tail, a slash command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
@@ -2168,17 +2172,23 @@ rides the `memories.md` line and its ledger entries.
   stands down.
   A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
-  whose second click folds it back and closes what was opened in it, with the
+  whose second click folds it back, with the
   rest of the transcript untouched; a run of one thought opens as its text,
-  the digest above it already naming the thought. A
-  thought row's click unrolls its text at most 80 cells wide, a bar-only row
-  above and below text of two or more lines; a step row's opens its calls
+  the digest above it already naming the thought. A step row's click opens
+  its calls
   nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of eight or
   more rows keeps its last six and folds the earlier ones behind one dim
   row, `… 2 earlier`, whose click shows the whole run and then folds it back
-  (a printed run lists everything). A click on any
-  other row opens that one row, command, diff and output. The reply that ends an
+  (a printed run lists everything). A call's and a thought's row never expand
+  in the rail: a click opens a view of that row alone, over the chat -
+  `/call <row>`, which the row's id names - a box with the call's mark and
+  facts (its state, how long it has run, the file or pattern it was given)
+  over its content in the form it is written: a command highlighted as bash
+  with what it answered apart under it, a file change as the numbered diff,
+  a thought as markdown, a question as the answers it got. `o` opens the job
+  a command went on as, `y` copies the whole view, and one of a call that
+  still runs refreshes as it runs. The reply that ends an
   exchange carries its readout: how long its turn ran, its tokens out and the
   clock; a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).
@@ -2230,7 +2240,8 @@ rides the `memories.md` line and its ledger entries.
   a turn: a submit while the turn runs queues as steering (§4) instead of
   spawning a second turn, and hands off any foreground agent or workflow call
   waiting on its run, so the turn reads the message instead of waiting for it.
-  The queued messages the user typed show above it.
+  The queued messages the user typed show above it, dim and without a tag,
+  where a sent one carries the accent bar: the bar says what went.
   A background report or a plugin send waiting in that queue draws a notice
   row naming it rather than the user's own words, since the whole of it is the
   model's.
@@ -2275,9 +2286,16 @@ rides the `memories.md` line and its ledger entries.
   pending reviews, recent errors, layout, Lua runtime, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
-  `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
+  `/skills`, `/reflect`, `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
   `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for; switch restarts zemi there))
-  and `/trust` (§5). Enter on a help command row runs it, or
+  and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
+  its own click opens, listed in /help and out of the palette's default list.
+  `/jobs` is the background processes on a screen of their own, apart from
+  `/agents`: running first, each row its state and the clock it has run, `s`
+  stopping the selected one without closing the list (so they go one at a
+  time) and `x` stopping every one on its second press; enter opens the job's
+  output, which follows the tail while it runs unless the reader scrolled up.
+  Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
@@ -2292,14 +2310,15 @@ rides the `memories.md` line and its ledger entries.
   `tui/statusline.lua`: the profile opens its
   picker, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
-  running agents `/agents`. The chat widget marks a digest (`turn:<first
+  running agents `/agents`, running jobs `/jobs`. The chat widget marks a
+  digest (`turn:<first
   index>`, opens or folds the run under it), a rail's or a notice burst's fold
-  row (`more:<first index>`, shows what it hides and folds it back), a rail's
-  step and thought rows (`step:<idx>`,
-  `thought:<idx>`; an opened step's rows are each `tool:<idx>`), an agent tool
+  row (`more:<first index>`, shows what it hides and folds it back), a step row
+  (`step:<idx>`, opens its calls), a call's or a thought's row (`call:<idx>`,
+  opens a view of that row alone), an agent tool
   row (`agent:<run id>`, from the row's `run` field, opens that run's
-  transcript) and a tool row
-  (`tool:<idx>`, expands that row); the splash's rows resume a session or
+  transcript), a workflow row (`workflow:<run id>`, its view) and the job a
+  call handed off to (`job:<id>`, its output); the splash's rows resume a session or
   switch to a project, and its tip's keys run their command or fill the composer (a `fill
   <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The stuck
   and errors pills stay Go-drawn, since they report a broken

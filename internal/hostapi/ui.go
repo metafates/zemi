@@ -566,6 +566,14 @@ type OverlayItem struct {
 // Field is a name and value a detail view sets as a table above its text.
 type Field struct{ Name, Value string }
 
+// BodyPart is one part of a view's body, drawn in the form its text is
+// written in: markdown, a unified diff ("diff"), a language to highlight it
+// as, or "" for plain text.
+type BodyPart struct {
+	Text string
+	Lang string
+}
+
 // fieldList is an item's "fields" from name, value pairs, in the shape a Lua
 // list marshals to, so Go items stay plain Lua data.
 func fieldList(kv ...string) []any {

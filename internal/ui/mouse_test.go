@@ -485,8 +485,13 @@ func TestMouseQuestion(t *testing.T) {
 // TestToolRowClickExpands: in auto mode the command a tool ran is only on
 // its clipped row, so a click opens that one row (whole command plus the
 // output) without expanding the rest of the transcript.
-func TestToolRowClickExpands(t *testing.T) {
+// TestToolRowClickOpens: in auto mode the command a tool ran is only on its
+// clipped row, so a click opens a view of that one row: the command whole,
+// its output under it, and the transcript around it untouched. A thought's
+// row opens its own text the same way.
+func TestToolRowClickOpens(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
+	reloadUI(t, host) // the chat's rows run commands, so the boot has to have them
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	long := "go test ./internal/hostapi -run TestSomethingWithAVeryLongName -count=1 -race"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
@@ -495,32 +500,31 @@ func TestToolRowClickExpands(t *testing.T) {
 		{ID: "3", Name: "read", Input: "b.go", Status: "ok"},
 	}})
 	app.renderSync(t)
-	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
+	frame := func() string { return ansi.Strip(app.Frame()) }
+	if strings.Contains(frame(), "-race") {
 		t.Fatal("the collapsed row should not show the command")
 	}
 	x, y := findCell(t, app, "run the hostapi tests")
 	clickAt(app, x+1, y)
+	waitPrompt(t, app, func() bool { return strings.Contains(frame(), "┌ Command") })
+	if got := frame(); !strings.Contains(got, "-race") || !strings.Contains(got, "ok  github.com/metafates") {
+		t.Fatalf("the view should hold the whole command and its output:\n%s", got)
+	}
+	// the row under the box kept its line: nothing expanded in the rail
+	if rows := strings.Join(chatRows(t, app, 78), "\n"); !strings.Contains(rows, "run the hostapi tests") || strings.Contains(rows, "-race") {
+		t.Fatalf("the row expanded in the rail:\n%s", rows)
+	}
+	// esc goes back, and a thought's row opens its own text
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "-race") || !strings.Contains(frame, "ok  github.com/metafates") {
-		t.Fatalf("clicking a tool row should show its command and output:\n%s", frame)
-	}
-	if strings.Contains(frame, "first idea") {
-		t.Fatalf("one row expanded the whole transcript:\n%s", frame)
-	}
-	x, y = findCell(t, app, "run the hostapi tests")
-	clickAt(app, x+1, y)
-	app.renderSync(t)
-	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
-		t.Fatal("a second click should collapse the row again")
-	}
-	// a thought row opens its own text alone
 	x, y = findCell(t, app, "thought 1.0s")
 	clickAt(app, x+1, y)
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") || strings.Contains(frame, "-race") {
-		t.Fatalf("clicking a thought row should unroll its text alone:\n%s", frame)
+	waitPrompt(t, app, func() bool { return strings.Contains(frame(), "┌ Thought") })
+	if got := frame(); !strings.Contains(got, "first idea") || strings.Contains(got, "-race") {
+		t.Fatalf("the thought's view should hold its text alone:\n%s", got)
 	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	app.renderSync(t)
 	// an opened step's calls are rows of their own: hovering one lights it alone
 	x, y = findCell(t, app, "read 2 files")
 	clickAt(app, x+1, y)

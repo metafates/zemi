@@ -1412,12 +1412,10 @@ func (h *Host) agentsCommands() []*Command {
 				return h.ViewAgent(id)
 			case "stop":
 				return h.stopRun(id)
-			case "kill":
-				return h.jobs.Kill(id)
 			}
-			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, view <id>, stop [id], kill <job id>)", sub)
+			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, view <id>, stop [id])", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"new", "open", "view", "stop", "kill"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "open", "view", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {
 				return nil
 			}
@@ -1466,21 +1464,6 @@ func (h *Host) openAgents() error {
 		sel = 1
 	}
 	items := append([]any{map[string]any{"text": "New agent", "verb": "fill", "fill": "/agents new "}}, runs...)
-	// jobs belong to the host, so a server started in an earlier session shows too
-	for _, j := range h.jobs.List() {
-		item := map[string]any{
-			"text":    j.ID,
-			"desc":    j.Status() + " · " + j.Name,
-			"section": "Background jobs (all sessions)",
-			"fields":  fieldList("name", j.Name, "status", j.Status()),
-			"mark":    j.Mark(),
-			"detail":  cmp.Or(shortOutput(j.Output()), "(no output)"),
-		}
-		if j.Running() {
-			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "agents kill " + j.ID}}
-		}
-		items = append(items, item)
-	}
 	for _, d := range defs {
 		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
 		if d.Tools != nil {

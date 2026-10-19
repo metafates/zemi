@@ -59,17 +59,19 @@ const jobSettle = 2 * time.Second
 
 // Job is one managed background process.
 type Job struct {
-	ID     string
-	Name   string
-	stdout *proc.Buffer
-	stderr *proc.Buffer
-	cmd    *exec.Cmd
-	done   chan struct{}
-	code   int
-	err    string
-	werr   error    // what Wait returned
-	sent   [2]int64 // bytes of stdout/stderr already read, see since
-	mu     sync.Mutex
+	ID       string
+	Name     string
+	Started  time.Time
+	stdout   *proc.Buffer
+	stderr   *proc.Buffer
+	cmd      *exec.Cmd
+	done     chan struct{}
+	code     int
+	err      string
+	werr     error    // what Wait returned
+	sent     [2]int64 // bytes of stdout/stderr already read, see since
+	finished time.Time
+	mu       sync.Mutex
 }
 
 func (j *Job) Running() bool {
@@ -79,6 +81,20 @@ func (j *Job) Running() bool {
 	default:
 		return true
 	}
+}
+
+// Elapsed is how long the job has run: to now while it runs, else to its end.
+func (j *Job) Elapsed() time.Duration {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.elapsed()
+}
+
+func (j *Job) elapsed() time.Duration {
+	if j.Running() {
+		return time.Since(j.Started)
+	}
+	return j.finished.Sub(j.Started)
 }
 
 // unread counts the bytes written since the last read without taking them.
@@ -162,12 +178,13 @@ type chunk struct {
 
 // Jobs owns every model-started job for one host.
 type Jobs struct {
-	mu   sync.Mutex
-	seq  int
-	jobs map[string]*Job
-	// OnExit runs after a job's exit is recorded: the statusline's job
-	// count has nothing else to redraw it.
-	OnExit func()
+	mu       sync.Mutex
+	seq      int
+	jobs     map[string]*Job
+	watching bool // the screens' one ticker runs
+	// OnChange runs after a job starts or its exit is recorded: the screens
+	// that list them have nothing else to redraw or re-time them.
+	OnChange func()
 }
 
 func NewJobs() *Jobs {
@@ -185,7 +202,7 @@ func (m *Jobs) Start(dir, line string, env []string) (string, error) {
 	cmd.Dir = dir
 	cmd.Env = env
 	j := &Job{
-		Name: line, cmd: cmd, done: make(chan struct{}),
+		Name: line, Started: time.Now(), cmd: cmd, done: make(chan struct{}),
 		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20},
 	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
@@ -198,11 +215,11 @@ func (m *Jobs) Start(dir, line string, env []string) (string, error) {
 }
 
 // Adopt registers a command that is already running, with the buffer it
-// writes to, the byte count the caller already delivered from it and a
-// channel carrying its Wait: a shell call past its timeout keeps going as a
-// job instead of losing the work done so far.
-func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error) string {
-	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
+// writes to, the byte count the caller already delivered from it, when it
+// started and a channel carrying its Wait: a shell call past its timeout
+// keeps going as a job instead of losing the work done so far.
+func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, started time.Time, wait <-chan error) string {
+	j := &Job{Name: name, Started: started, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }
@@ -214,10 +231,14 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	j.ID = fmt.Sprintf("job-%d", m.seq)
 	m.jobs[j.ID] = j
 	m.mu.Unlock()
+	if m.OnChange != nil {
+		m.OnChange()
+	}
 	go func() {
 		err := <-wait
 		j.mu.Lock()
 		j.werr = err
+		j.finished = time.Now()
 		switch exit, ok := errors.AsType[*exec.ExitError](err); {
 		case ok:
 			j.code = exit.ExitCode()
@@ -226,8 +247,8 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
-		if m.OnExit != nil {
-			m.OnExit()
+		if m.OnChange != nil {
+			m.OnChange()
 		}
 	}()
 	return j.ID
@@ -260,6 +281,11 @@ func (m *Jobs) List() []*Job {
 func (m *Jobs) Running() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.runningLocked()
+}
+
+// runningLocked is Running with m.mu held.
+func (m *Jobs) runningLocked() int {
 	n := 0
 	for _, j := range m.jobs {
 		if j.Running() {
@@ -267,6 +293,27 @@ func (m *Jobs) Running() int {
 		}
 	}
 	return n
+}
+
+// ClaimWatch gives the caller the one ticker that keeps the job screens
+// current: false while another holds it or no job runs to refresh.
+func (m *Jobs) ClaimWatch() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.watching || m.runningLocked() == 0 {
+		return false
+	}
+	m.watching = true
+	return true
+}
+
+// ReleaseWatch gives the ticker back and reports whether no job runs now, so
+// the caller stops; a start that came first claims a new one.
+func (m *Jobs) ReleaseWatch() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.watching = false
+	return m.runningLocked() == 0
 }
 
 func (m *Jobs) Kill(id string) error {
@@ -281,6 +328,17 @@ func (m *Jobs) Kill(id string) error {
 	proc.Kill(j.cmd)
 	j.mu.Unlock()
 	return nil
+}
+
+// KillAll stops every job still running and returns how many it stopped.
+func (m *Jobs) KillAll() int {
+	stopped := 0
+	for _, j := range m.List() {
+		if j.Running() && m.Kill(j.ID) == nil {
+			stopped++
+		}
+	}
+	return stopped
 }
 
 // jobStartArgs is the job_start tool's input and its schema source.
