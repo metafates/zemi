@@ -246,38 +246,48 @@ func (a *App) followRow(st *overlayState) int {
 	if chat == nil {
 		return n - 1
 	}
-	if chat.focus > 0 {
-		from, to := unitRows(chat.lines, unitAt(chat.lines, chat.focus))
-		if from >= 0 && from < chat.top+chat.viewH && to >= chat.top {
-			for k, idx := range st.visible {
-				if st.items[idx].row.Anchor == chat.focus {
-					return k
-				}
+	// the place a jump left holds only while the view sits where it left it:
+	// any scroll moves the top, and the view's middle names the message then,
+	// so a message the reader scrolled away from the middle stops being the
+	// pick
+	if chat.focus > 0 && chat.top == chat.placed {
+		for k, idx := range st.visible {
+			if st.items[idx].row.Anchor == chat.focus {
+				return k
 			}
 		}
-		chat.focus = 0 // no message carries it, or the view no longer shows it
 	}
 	// the view shows the end of the transcript: the reader is at the newest
 	// message, whichever way the region got there
 	if chat.follow || chat.top+chat.viewH >= chat.rows {
 		return n - 1
 	}
-	// the message the top row shows, else the first one under it: a run of
-	// calls is no message the list names, so it hands over to the message
-	// below it rather than back to the one above
-	next := -1
+	// the message over the middle of the view, else the last one above it: a
+	// blank line or a run of calls is no message the list names, and one the
+	// pick centered still holds after a wheel line or two
+	mid := chat.top
+	if chat.viewH > 0 {
+		mid += (chat.viewH - 1) / 2
+	}
+	above := -1
 	for k, idx := range st.visible {
 		from, to := unitRows(chat.lines, unitAt(chat.lines, st.items[idx].row.Anchor))
 		switch {
 		case from < 0:
-		case from <= chat.top && chat.top <= to:
+		case from > mid:
+			// no later message can cover the middle
+			if above < 0 {
+				return k
+			}
+			return above
+		case to >= mid:
 			return k
-		case from >= chat.top && next < 0:
-			next = k
+		default:
+			above = k
 		}
 	}
-	if next >= 0 {
-		return next
+	if above >= 0 {
+		return above
 	}
 	return n - 1
 }

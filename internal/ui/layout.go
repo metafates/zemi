@@ -604,10 +604,12 @@ type scrollState struct {
 	lines  [][]hostapi.Segment
 	pin    []int    // the header rows drawn over the first rows shown (pinned)
 	pinned []pinKey // what each of pins was copied from, so an unchanged pin allocates nothing
-	// focus is the transcript row a following list placed the view at, so the
-	// list opens there again while the message is on screen; reaching the
-	// transcript's end drops it, and so does a submit or a click
-	focus int
+	// focus is the transcript row a following list placed the view at, placed
+	// the top its jump left, so the list opens there again only while the view
+	// still sits where the jump put it; reaching the transcript's end drops
+	// it, and so does a submit or a click
+	focus  int
+	placed int
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -644,12 +646,13 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	default: // applyScroll holds only the edges
 	}
 	// a following list's jump outranks a parked edge, and leaves none behind
+	jumped := 0
 	if at, ok := a.pendingAnchor[n.ID]; ok {
 		if unit := unitAt(lines, at); unit > 0 {
 			from, to := unitRows(lines, unit)
 			st.top = jumpTop(lines, from, to, st.viewH)
 			st.follow = st.bottom && st.top >= st.rows-st.viewH
-			st.focus = at
+			st.focus, jumped = at, at
 			delete(a.pendingAnchor, n.ID)
 			delete(a.pendingScroll, n.ID)
 		}
@@ -661,6 +664,9 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 	}
 	st.clamp()
+	if jumped > 0 {
+		st.placed = st.top
+	}
 	st.pinRows(lines, w)
 	// the picker's message is banded under the pins, which stay chrome
 	draw := lines

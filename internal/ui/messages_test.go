@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -450,12 +451,16 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 	}
 }
 
-// TestMessagesWheelKeepsPlace: a wheel line or two moves the chat a little,
-// and the message a jump centered is still on screen; the picker opens on it
-// again, not on the message that context pushed to the view's top.
+// TestMessagesWheelKeepsPlace: the wheel moves the chat a few lines at a time.
+// A line or two leaves the message a jump centered near the middle, so the
+// list opens on it again; scrolled well past it, the list opens on the message
+// the middle now shows.
 func TestMessagesWheelKeepsPlace(t *testing.T) {
 	app, host := bootAgentApp(t, 148, 44)
-	fillChat(host)
+	for i := range 20 {
+		host.AppendMessage("user", fmt.Sprintf("prompt %d", i))
+		appendReply(host, fmt.Sprintf("reply %d at\none\ntwo\nthree\nfour", i), hostapi.TurnStat{})
+	}
 	app.renderSync(t)
 	app.Frame()
 	chat := app.scrolls["chat"]
@@ -469,32 +474,40 @@ func TestMessagesWheelKeepsPlace(t *testing.T) {
 		return &app.overlays[0]
 	}
 	ov := open()
-	ov.selected = 20 // message 11, well inside the chat
+	ov.selected = slices.IndexFunc(ov.visible, func(idx int) bool {
+		return strings.Contains(ov.items[idx].label, "reply 10 at")
+	})
+	if ov.selected < 0 {
+		t.Fatal("no reply 10 in the list")
+	}
 	app.Frame()
 	want := ov.selectedAnchor()
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.Frame()
-	if chat.follow || chat.focus != want {
-		t.Fatalf("follow %v, focus %d, want %d", chat.follow, chat.focus, want)
+	if chat.follow {
+		t.Fatal("the chat should sit off its tail")
 	}
-	for _, c := range []struct {
-		name   string
-		button tea.MouseButton
-	}{
-		{"down", tea.MouseWheelDown},
-		{"up", tea.MouseWheelUp},
-		{"down again", tea.MouseWheelDown},
-		{"down again", tea.MouseWheelDown},
-	} {
-		app.Update(tea.MouseWheelMsg{Button: c.button, X: 40, Y: 10})
+	wheel := func(n int) {
+		for range n {
+			app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 40, Y: 10})
+		}
 		app.Frame()
+	}
+	for range 2 {
+		wheel(1)
 		if got := open().selectedAnchor(); got != want {
-			t.Fatalf("after a wheel %s: opened on %d, want %d (top %d)", c.name, got, want, chat.top)
+			t.Fatalf("a wheel line: opened on %d, want %d", got, want)
 		}
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 		app.Frame()
-		if chat.focus != want {
-			t.Fatalf("after a wheel %s: the place is %d, want %d", c.name, chat.focus, want)
-		}
+	}
+	wheel(8)
+	got := open().selectedAnchor()
+	if got == want {
+		t.Fatalf("scrolled well past it, still on %d", want)
+	}
+	mid := chat.top + (chat.viewH-1)/2
+	if from, to := unitRows(chat.lines, got); from > mid || to < mid {
+		t.Fatalf("opened on rows %d..%d, the view's middle is %d", from, to, mid)
 	}
 }

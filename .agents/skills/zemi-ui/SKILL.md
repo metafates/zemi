@@ -80,12 +80,13 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   its first row under the pins), and bands that message with `FillBand` (`bandMessage`, the
   scrollbar cell aside, and the reply's readout, which `chat.lua` keeps out of the anchor) while
   keeping it out of the modal fade (`fadeRows`); it opens on the item the reader is at (`followRow`:
-  the row the view was placed at, kept in `scrollState.focus` because a clamped centered placement
-  cannot name its message from the viewport alone, and dropped by `scrollRows` only when the scroll
-  lands at the transcript's end (a wheel line or two mid-chat keeps it, since the message is still on
-  screen), `leaveTail` and `followStage`; failing that, the last message when the view reaches the end of the transcript, else the message
-  whose rows hold the view's top row, else the first one under it, so a blank line or a run of calls
-  hands over to the message below, never to the one above), `syncFollow` in `compose` carries a selection change out before the paint, enter closes
+  the row the view was placed at, kept in `scrollState.focus` with the top its jump left in `placed`
+  because a clamped centered placement cannot name its message from the viewport alone, and good only
+  while the view still sits there; `scrollRows` drops it when the scroll lands at the transcript's
+  end, and so do `leaveTail` and `followStage`; failing that, the last message when the view reaches
+  the end of the transcript, else the message whose rows hold the view's middle row, else the last
+  one above it, so a wheel line or two keeps a centered message and scrolling on moves to the ones it
+  passes), `syncFollow` in `compose` carries a selection change out before the paint, enter closes
   keeping the place, and `cancelOverlay` puts the chat back on the mark its state took when it
   opened (`followMark`, focus included).
   Opening the id of an open overlay replaces it in place

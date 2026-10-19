@@ -2188,15 +2188,14 @@ rides the `memories.md` line and its ledger entries.
   where it was found, the way muffin's popup cancels. A jump records the row
   it placed the view at, because the viewport alone cannot say which message
   it is when a centered placement clamps at the top or the tail and many share
-  one top row: the list opens on that row again while its message stays on
-  screen. A scroll drops it only when it lands the view at the transcript's
-  end, which says the reader is at the newest content, and so do a submit, a
-  click and a place the view no longer shows. So entering on a message and
-  opening the list again lands on it, a wheel line or two keeps it, and
-  reaching the bottom moves on to the last message. Without such a place it opens on the message whose rows
-  hold the view's top row, else the first one under it: a blank line or a run
-  of calls is no message, and hands over to the one below rather than back to
-  the one above.
+  one top row: the list opens on that row again while the view still sits
+  where the jump left it. A scroll landing the view at the transcript's end
+  drops it, because the reader is at the newest content then, and so do a
+  submit and a click. Without it the list opens on the message whose rows
+  hold the view's middle row, else the last one above it: a wheel line or two
+  keeps the message a jump centered, scrolling on moves to the message the
+  middle passes, and a blank line or a run of calls hands over to a message
+  still on screen rather than an off-screen one.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
