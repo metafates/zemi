@@ -605,7 +605,8 @@ type scrollState struct {
 	pin    []int    // the header rows drawn over the first rows shown (pinned)
 	pinned []pinKey // what each of pins was copied from, so an unchanged pin allocates nothing
 	// focus is the transcript row a following list placed the view at, so the
-	// list opens there again; a move the reader makes by hand clears it
+	// list opens there again while the message is on screen; reaching the
+	// transcript's end drops it, and so does a submit or a click
 	focus int
 }
 

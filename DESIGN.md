@@ -2188,11 +2188,12 @@ rides the `memories.md` line and its ledger entries.
   where it was found, the way muffin's popup cancels. A jump records the row
   it placed the view at, because the viewport alone cannot say which message
   it is when a centered placement clamps at the top or the tail and many share
-  one top row: the list opens on that row again, any scroll the reader asks
-  for drops it, even one that moves nothing because the view already sits at
-  its tail, and a stale one the view no longer shows. So entering on a
-  message and opening the list again lands on it, while the list itself
-  remembers nothing. Without such a place it opens on the message whose rows
+  one top row: the list opens on that row again while its message stays on
+  screen. A scroll drops it only when it lands the view at the transcript's
+  end, which says the reader is at the newest content, and so do a submit, a
+  click and a place the view no longer shows. So entering on a message and
+  opening the list again lands on it, a wheel line or two keeps it, and
+  reaching the bottom moves on to the last message. Without such a place it opens on the message whose rows
   hold the view's top row, else the first one under it: a blank line or a run
   of calls is no message, and hands over to the one below rather than back to
   the one above.

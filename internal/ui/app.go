@@ -1262,15 +1262,18 @@ func (a *App) scrollRows(id string, n int) {
 	if st == nil {
 		return
 	}
-	// the reader took the view in hand: the place a jump left it at is no
-	// more, even when the scroll moves nothing because the region is already
-	// pinned to its tail
-	st.focus = 0
+	// scrolling to the end says the reader is at the newest content, so the
+	// place a jump left is no more; short of it the place holds while its
+	// message stays on screen, and the list finds it there
 	if n > 0 && st.follow {
+		st.focus = 0
 		return
 	}
 	st.scroll(n)
 	st.follow = st.bottom && st.top+st.viewH >= st.rows
+	if st.follow {
+		st.focus = 0
+	}
 	a.bump()
 }
 

@@ -449,3 +449,52 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 		t.Fatalf("opened on %d, want the last message 60", got)
 	}
 }
+
+// TestMessagesWheelKeepsPlace: a wheel line or two moves the chat a little,
+// and the message a jump centered is still on screen; the picker opens on it
+// again, not on the message that context pushed to the view's top.
+func TestMessagesWheelKeepsPlace(t *testing.T) {
+	app, host := bootAgentApp(t, 148, 44)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	open := func() *overlayState {
+		t.Helper()
+		if err := host.OpenMessages(); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+		return &app.overlays[0]
+	}
+	ov := open()
+	ov.selected = 20 // message 11, well inside the chat
+	app.Frame()
+	want := ov.selectedAnchor()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Frame()
+	if chat.follow || chat.focus != want {
+		t.Fatalf("follow %v, focus %d, want %d", chat.follow, chat.focus, want)
+	}
+	for _, c := range []struct {
+		name   string
+		button tea.MouseButton
+	}{
+		{"down", tea.MouseWheelDown},
+		{"up", tea.MouseWheelUp},
+		{"down again", tea.MouseWheelDown},
+		{"down again", tea.MouseWheelDown},
+	} {
+		app.Update(tea.MouseWheelMsg{Button: c.button, X: 40, Y: 10})
+		app.Frame()
+		if got := open().selectedAnchor(); got != want {
+			t.Fatalf("after a wheel %s: opened on %d, want %d (top %d)", c.name, got, want, chat.top)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+		app.Frame()
+		if chat.focus != want {
+			t.Fatalf("after a wheel %s: the place is %d, want %d", c.name, chat.focus, want)
+		}
+	}
+}
