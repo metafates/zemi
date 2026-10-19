@@ -20,14 +20,8 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-const lspToolDesc = `Ask the file's language server about a symbol by name. Unlike grep it resolves scopes, so it skips comments, strings and other identifiers with the same name.
-- definition: where the symbol is defined, as path:line:col and the line.
-- implementation: what implements an interface or abstract method.
-- references: every use across the project, sorted by file.
-- workspace_symbols: find a declaration by name when you do not know its file.
-- rename: rename it everywhere, imports and other files included; the changed files count as read.
-- symbols: the file's outline, cheaper than reading a large file for its shape.
-- call_hierarchy: who calls the symbol (incoming) and what it calls (outgoing).`
+const lspToolDesc = `Ask the file's language server about a symbol by name: definition, implementation, references, rename (edits every file, and the changed files count as read), symbols (a file's outline without reading it), workspace_symbols (a declaration by name when its file is unknown), call_hierarchy (who calls it and what it calls).
+Unlike grep it resolves scopes, so it skips comments, strings and other identifiers with the same name.`
 
 // lspActions are what runLSP answers; the switch there reads the same words.
 var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}

@@ -69,7 +69,7 @@ const readPrompt = `
 // codemodePrompt fills basePrompt's {Code} for a run that has the lua tool: one
 // script drives the calls a step would, and only what it prints costs context.
 const codemodePrompt = `
-- Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need; it calls any tool in this run, MCP included, and reads files itself with zemi.fs. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
+- Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no question
 // or plan tool (headlessExcluded), so telling it to ask
