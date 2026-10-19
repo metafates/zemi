@@ -80,10 +80,11 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   its first row under the pins), and bands that message with `FillBand` (`bandMessage`, the
   scrollbar cell aside) while keeping it out of the modal fade (`fadeRows`); `anchorAt` takes the
   first anchored row at or below the view's top, so a blank line there picks the message under it;
-  it opens on the item the reader is at
-  (`followRow`), `syncFollow` in `compose` carries a selection change out before the paint, enter
-  closes keeping the place, and `cancelOverlay` puts the chat back on the mark its state took when
-  it opened (`followMark`).
+  it opens on the item the reader is at (`followRow`, which asks each message where its own
+  `jumpTop` would put the view and takes the one landing where it already is, so a jump, an enter
+  and the next open agree), `syncFollow` in `compose` carries a selection change out before the
+  paint, enter closes keeping the place, and `cancelOverlay` puts the chat back on the mark its
+  state took when it opened (`followMark`).
   Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go

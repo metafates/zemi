@@ -2185,7 +2185,10 @@ rides the `memories.md` line and its ledger entries.
   it fits (else its first row just under the pinned header) and bands every
   row of it, the scrollbar column aside; `enter` closes the list keeping that
   place, `y` copies the row, and `esc` puts the chat back where it was found,
-  the way muffin's popup cancels.
+  the way muffin's popup cancels. Opening the list asks that placement
+  backwards - the message whose jump lands the view where it already is - so
+  the row a jump centered is the one the next open picks, with nothing
+  remembered.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.

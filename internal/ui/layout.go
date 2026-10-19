@@ -715,6 +715,27 @@ func rowAnchor(row []hostapi.Segment) int {
 	return 0
 }
 
+// unitSpan is one drawn unit: the anchor its rows carry and their first and
+// last row.
+type unitSpan struct{ anchor, from, to int }
+
+// unitSpans is every drawn unit in order, counted once so a message finds its
+// rows without a scan of the transcript per row.
+func unitSpans(lines [][]hostapi.Segment) []unitSpan {
+	var out []unitSpan
+	for i, row := range lines {
+		at := rowAnchor(row)
+		switch {
+		case at == 0:
+		case len(out) > 0 && out[len(out)-1].anchor == at:
+			out[len(out)-1].to = i
+		default:
+			out = append(out, unitSpan{anchor: at, from: i, to: i})
+		}
+	}
+	return out
+}
+
 // anchorAt is the anchor of the first unit the view shows, the row at the top
 // or the first one under it that carries an anchor: a gap row between two
 // messages belongs to the one below, the message above it being out of view.

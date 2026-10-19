@@ -229,9 +229,11 @@ func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
 	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
 }
 
-// followRow is the row a following list opens on: the one the reader is at,
-// the last while the region follows its tail, or the first before any row
-// carries an anchor.
+// followRow is the row a following list opens on: the message whose own jump
+// would put the view exactly where it is now. The open reads the placement
+// backwards, the way the jump computed it, so a jump, an enter and the next
+// open agree without remembering anything; a view no jump made (a wheel, a
+// resize) opens on the message at its top.
 func (a *App) followRow(st *overlayState) int {
 	n := len(st.visible)
 	if n == 0 {
@@ -241,10 +243,21 @@ func (a *App) followRow(st *overlayState) int {
 	if chat == nil || chat.follow {
 		return n - 1
 	}
+	spans := unitSpans(chat.lines)
+	for k, idx := range st.visible {
+		at := st.items[idx].row.Anchor
+		u := -1
+		for u+1 < len(spans) && spans[u+1].anchor <= at {
+			u++
+		}
+		if u >= 0 && jumpTop(chat.lines, spans[u].from, spans[u].to, chat.viewH) == chat.top {
+			return k
+		}
+	}
 	target, sel := anchorAt(chat), 0
 	for k, idx := range st.visible {
 		switch at := st.items[idx].row.Anchor; {
-		case at == target: // the first row standing for it: a reply, not its blocks
+		case at == target:
 			return k
 		case at > 0 && at < target:
 			sel = k

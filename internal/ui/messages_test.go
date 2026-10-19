@@ -162,6 +162,18 @@ func TestMessagesTallJump(t *testing.T) {
 	if from != chat.top+pins {
 		t.Fatalf("the message starts at view row %d, %d pins over it", from-chat.top, pins)
 	}
+	// the same computation reads the tall message back on the next open
+	want := ov.selectedAnchor()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	if got := app.overlays[0].selectedAnchor(); got != want {
+		t.Fatalf("reopened on %d, want %d", got, want)
+	}
 }
 
 // TestMessagesFollow: the messages picker opens on the row the reader is at,
@@ -252,8 +264,9 @@ func TestMessagesFollow(t *testing.T) {
 	app.Frame()
 	top := chat.top
 	ov = open()
-	if got, want := ov.selectedAnchor(), anchorAt(chat); got != want || got == 0 {
-		t.Fatalf("opened on anchor %d, the chat is at %d", got, want)
+	from, to = unitRows(chat.lines, ov.selectedAnchor())
+	if from < 0 || from >= chat.top+chat.viewH || to < chat.top {
+		t.Fatalf("opened on an off-screen message: rows %d..%d, view %d..%d", from, to, chat.top, chat.top+chat.viewH)
 	}
 	app.Frame()
 	if chat.top != top {
@@ -291,5 +304,54 @@ func TestMessagesFollow(t *testing.T) {
 	}
 	if got := bandedChatRows(app); len(got) != 0 {
 		t.Fatalf("banded rows after enter: %q", got)
+	}
+}
+
+// TestMessagesReopen: closing the picker with enter and opening it again picks
+// the same message, because the open reads the placement its jump made
+// backwards, not a memory of the last pick.
+func TestMessagesReopen(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	open := func() *overlayState {
+		t.Helper()
+		if err := host.OpenMessages(); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+		if len(app.overlays) != 1 {
+			t.Fatalf("%d overlays", len(app.overlays))
+		}
+		return &app.overlays[0]
+	}
+	for _, c := range []struct {
+		name string
+		pick func(ov *overlayState)
+	}{
+		{"the first message", func(*overlayState) { press(t, app, tea.KeyPressMsg{Code: tea.KeyHome}) }},
+		{"a centered one", func(ov *overlayState) { ov.selected = 41 }}, // reply 21
+		{"the last one", func(*overlayState) { press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd}) }},
+	} {
+		ov := open()
+		c.pick(ov)
+		app.Frame()
+		want := ov.selectedAnchor()
+		if want == 0 {
+			t.Fatalf("%s: nothing selected", c.name)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+		app.Frame()
+		if len(app.overlays) != 0 {
+			t.Fatalf("%s: %d overlays after enter", c.name, len(app.overlays))
+		}
+		if got := open().selectedAnchor(); got != want {
+			t.Fatalf("%s: reopened on %d, want %d (top %d of %d)", c.name, got, want, chat.top, chat.rows)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+		app.Frame()
 	}
 }
