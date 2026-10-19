@@ -359,7 +359,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		choices = append(choices, promptChoice{key: optionKey(len(q.Options)), label: "Type your own answer"})
 	}
 	askText := st.text.at(func(w int) [][]hostapi.Segment {
-		ask := hostapi.WrapText(q.Question, w)
+		ask := a.host.Markdown(q.Question, w)
 		if q.Description != "" {
 			ask = append(ask, nil)
 			ask = append(ask, a.host.Markdown(q.Description, w)...)
@@ -380,7 +380,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		if opt.Recommended {
 			desc = strings.TrimSuffix("recommended · "+desc, " · ")
 		}
-		paneWrapped[i] = wrapText(desc, hostapi.ChromeHint, inner)
+		paneWrapped[i] = a.host.Markdown(desc, inner)
 		paneN = max(paneN, min(len(paneWrapped[i]), 4))
 	}
 	var hints []hintPair

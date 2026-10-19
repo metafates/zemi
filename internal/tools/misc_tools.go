@@ -219,8 +219,8 @@ func endTurn(text string) fantasy.ToolResponse {
 
 // QuestionOption is one answer choice for a question ask.
 type QuestionOption struct {
-	Label       string // without the " (Recommended)" the model marks its pick with
-	Description string
+	Label       string // plain text, without the " (Recommended)" the model marks its pick with
+	Description string // markdown, shown under the options for the selected one
 	Recommended bool
 }
 
@@ -242,7 +242,7 @@ var questionTypes = []QuestionType{TypeSingle, TypeMulti, TypeFreeText}
 // under the options for the selected one.
 type Question struct {
 	Type        QuestionType
-	Question    string
+	Question    string // markdown
 	Description string // markdown, shown under the question
 	Header      string // the tab label in a batch
 	Options     []QuestionOption
@@ -280,7 +280,7 @@ type questionArgs struct {
 // options to pick, no options to type.
 type questionAsk struct {
 	Type        QuestionType     `json:"type,omitempty" desc:"multi_choice lets the user mark several; free_text is typed; defaults to single_choice with options, free_text without"`
-	Question    string           `json:"question" desc:"the complete question, ending with a question mark"`
+	Question    string           `json:"question" desc:"the complete question in markdown, ending with a question mark"`
 	Description string           `json:"description,omitempty" desc:"markdown shown under the question"`
 	Header      string           `json:"header,omitempty" desc:"a 1-3 word label, e.g. Auth method"`
 	Options     []questionOption `json:"options,omitempty" desc:"required for single_choice and multi_choice"`
@@ -288,8 +288,8 @@ type questionAsk struct {
 
 // questionOption is one answer choice.
 type questionOption struct {
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
+	Label       string `json:"label" desc:"plain text; put markdown in description"`
+	Description string `json:"description,omitempty" desc:"markdown shown under the option while it is selected"`
 }
 
 func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.ToolResponse, error) {

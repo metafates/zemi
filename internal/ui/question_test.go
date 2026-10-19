@@ -337,3 +337,30 @@ func TestQuestionNoteStays(t *testing.T) {
 	}
 	pressKeys(app, "esc", "esc")
 }
+
+// TestQuestionMarkdown: the question and the selected option's description
+// are model prose, so their backticks render as code instead of showing.
+func TestQuestionMarkdown(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 18)
+	done := askAsync(t, app, tools.Question{
+		Type:        tools.TypeSingle,
+		Question:    "Use `zemi run` here?",
+		Description: "It prints to stdout.",
+		Options: []tools.QuestionOption{
+			{Label: "yes", Description: "keeps `--json` working", Recommended: true},
+			{Label: "no"},
+		},
+	})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if strings.Contains(frame, "`") {
+		t.Fatalf("backticks left in the overlay:\n%s", frame)
+	}
+	for _, want := range []string{"zemi run", "--json", "recommended"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q:\n%s", want, frame)
+		}
+	}
+	pressKeys(app, "esc")
+	awaitAnswer(t, app, done)
+}
