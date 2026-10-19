@@ -82,42 +82,45 @@ func TestBuiltinSkillsFitTheSkillTool(t *testing.T) {
 	}
 }
 
-// TestBuiltinSkillReferences: every reference file the zemi skill or a
-// prompt names exists, and SKILL.md routes to every file beside it.
+// TestBuiltinSkillReferences: every reference file a builtin skill or a
+// prompt names exists in the skill that names it, and every builtin skill's
+// SKILL.md routes to every file beside it.
 func TestBuiltinSkillReferences(t *testing.T) {
 	bodies := builtinSkillBodies(t)
-	named := map[string]bool{}
 	h, _ := newTestHost(t)
 	// the lua tool names its file by the synced path
 	lua := strings.ReplaceAll((&luaEvalTool{h: h}).Info().Description, filepath.Join(h.builtinSkillsDir(), "zemi")+"/", " ")
-	rows := []struct{ name, text string }{
-		{"newPluginPrompt", newPluginPrompt},
-		{"modifyPluginPrompt", modifyPluginPrompt},
-		{"newAgentPrompt", newAgentPrompt},
-		{"newWorkflowPrompt", newWorkflowPrompt},
-		{"errorAskPrompt", errorAskPrompt},
-		{"workflowToolDesc", workflowToolDesc},
-		{"the lua tool", lua},
+	// a ready prompt sends the model to the zemi skill's directory
+	const zemi = "skills/zemi"
+	rows := []struct{ name, text, dir string }{
+		{"newPluginPrompt", newPluginPrompt, zemi},
+		{"modifyPluginPrompt", modifyPluginPrompt, zemi},
+		{"newAgentPrompt", newAgentPrompt, zemi},
+		{"newWorkflowPrompt", newWorkflowPrompt, zemi},
+		{"errorAskPrompt", errorAskPrompt, zemi},
+		{"workflowToolDesc", workflowToolDesc, zemi},
+		{"the lua tool", lua, zemi},
 	}
 	for path, body := range bodies {
-		rows = append(rows, struct{ name, text string }{path, body})
+		rows = append(rows, struct{ name, text, dir string }{path, body, filepath.Dir(path)})
 	}
 	// a bare name: commands/<name>.md is a path, AGENTS.md no reference file
 	ref := regexp.MustCompile("(?:^|[\\s(`])([a-z][a-z0-9-]*\\.md)\\b")
+	routed := map[string]bool{}
 	for _, r := range rows {
 		for _, m := range ref.FindAllStringSubmatch(r.text, -1) {
 			file := m[1]
-			if _, ok := bodies["skills/zemi/"+file]; !ok {
-				t.Errorf("%s names %s, which the zemi skill does not have", r.name, file)
+			if _, ok := bodies[r.dir+"/"+file]; !ok {
+				t.Errorf("%s names %s, which %s does not have", r.name, file, r.dir)
 			}
-			if r.name == "skills/zemi/SKILL.md" {
-				named[file] = true
+			if strings.HasSuffix(r.name, "/SKILL.md") {
+				routed[r.dir+"/"+file] = true
 			}
 		}
 	}
 	for path := range bodies {
-		if file := strings.TrimPrefix(path, "skills/zemi/"); file != "SKILL.md" && !named[file] {
-			t.Errorf("SKILL.md never routes to %s", file)
+		if file := filepath.Base(path); file != "SKILL.md" && !routed[path] {
+			t.Errorf("%s/SKILL.md never routes to %s", filepath.Dir(path), file)
 		}
 	}
 }

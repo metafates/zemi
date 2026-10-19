@@ -172,8 +172,9 @@ func (h *Host) materializeBuiltinSkills() error {
 	return replaceDir(dir, sub)
 }
 
-// zemiCLI names this binary at the end of the zemi skill, read once: replaced
-// in place, Linux would name it "(deleted)". With no path it says nothing.
+// zemiCLI names this binary at the end of every builtin skill, read once:
+// replaced in place, Linux would name it "(deleted)". With no path it says
+// nothing.
 var zemiCLI = func() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -182,9 +183,10 @@ var zemiCLI = func() string {
 	return "\n\nThis zemi runs from " + exe + ": use that path for its CLI (plugins test), since another zemi on PATH may be older."
 }()
 
-// skillNote is what only this process knows, put after a skill's body.
+// skillNote is what only this process knows, put after a skill's body: a
+// builtin skill's steps call the zemi CLI, and another one on PATH may be older.
 func skillNote(s skill.Skill) string {
-	if s.Source == skill.Builtin && s.Name == "zemi" {
+	if s.Source == skill.Builtin {
 		return zemiCLI
 	}
 	return ""
