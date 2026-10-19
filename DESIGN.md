@@ -2782,10 +2782,11 @@ skills/
 Discovery merges three sources, the higher-trust one winning a name
 clash: user (config dir, then `~/.agents/skills`, the dir other agents
 share, whose `zemi-skill.lua` never runs since installers write there)
-over builtin (zemi's own two: `zemi`, whose SKILL.md routes to
-reference files beside it that the model reads on demand, and `sessions`,
+over builtin (zemi's own three: `zemi`, whose SKILL.md routes to
+reference files beside it that the model reads on demand, `sessions`,
 which finds, reads and resumes a past conversation through the `zemi
-sessions` commands; embedded under `runtime/skills/`, rewritten to
+sessions` commands, and `codescan`, the recipes for answering a
+many-file question in one lua script; embedded under `runtime/skills/`, rewritten to
 `<data>/builtin-skills/` on every sync, so `/skills` offers them no
 editor) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
@@ -3002,7 +3003,7 @@ internal/glob/              rg-style glob matching for the file tools, LSP and b
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler quotes)
 internal/logging/           the slog log file, one per launch
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
-runtime/skills/             the builtin skills (zemi, sessions); runtime/workflows/, the builtin ones
+runtime/skills/             the builtin skills (zemi, sessions, codescan); runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 
