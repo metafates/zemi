@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -658,15 +657,7 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 }
 
 // openURL is where a clicked link goes; a test swaps it.
-var openURL = func(url string) error {
-	opener := map[string]string{"darwin": "open", "linux": "xdg-open"}[runtime.GOOS]
-	if opener == "" {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	return proc.Run(proc.CommandContext(ctx, opener, url))
-}
+var openURL = proc.OpenURL
 
 // openLink hands a link to the system's browser off the UI goroutine, since
 // the opener can take a moment to start.

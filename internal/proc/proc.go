@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -116,6 +117,24 @@ func Run(cmd *exec.Cmd) error {
 		return err
 	}
 	return Wait(cmd)
+}
+
+// OpenURL hands u to the desktop's opener: `open` on macOS, `rundll32` on
+// Windows, `xdg-open` elsewhere. The timeout covers the opener, not the
+// browser it starts.
+func OpenURL(u string) error {
+	var argv []string
+	switch runtime.GOOS {
+	case "darwin":
+		argv = []string{"open"}
+	case "windows":
+		argv = []string{"rundll32", "url.dll,FileProtocolHandler"}
+	default:
+		argv = []string{"xdg-open"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return Run(CommandContext(ctx, argv[0], append(argv[1:], u)...))
 }
 
 // Kill stops cmd's whole process group.

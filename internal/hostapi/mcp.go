@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -1037,12 +1036,5 @@ func (h *Host) openBrowser(u string) {
 	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return
 	}
-	argv := map[string][]string{"darwin": {"open"}, "windows": {"rundll32", "url.dll,FileProtocolHandler"}}[runtime.GOOS]
-	if argv == nil {
-		argv = []string{"xdg-open"}
-	}
-	cmd := proc.Command(argv[0], append(argv[1:], u)...)
-	if proc.Start(cmd) == nil {
-		h.GoSafe("open browser", func() { _ = proc.Wait(cmd) })
-	}
+	h.GoSafe("open browser", func() { _ = proc.OpenURL(u) })
 }
