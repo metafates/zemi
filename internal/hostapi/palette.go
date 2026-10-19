@@ -104,13 +104,18 @@ var ansiRoles = [...]struct {
 var mixes = [...]struct {
 	role, from, to string
 	t              float64
+	// cast is how much of a scheme's own grey the role takes: a line of text
+	// carries its tint, a surface fills an area and takes less of it
+	cast float64
 }{
-	{"dim", "fg", "bg", 0.4},
-	{"rule", "bg", "fg", 0.28},
-	{"panel", "bg", "fg", 0.05},
-	{"band", "panel", "accent", 0.16},
-	{"addbg", "bg", "ok", 0.28},
-	{"delbg", "bg", "danger", 0.28},
+	{"dim", "fg", "bg", 0.4, 0.025},
+	{"rule", "bg", "fg", 0.28, 0.025},
+	// a box lifts far enough off the canvas to read as one above a whole
+	// screen of canvas, and no further
+	{"panel", "bg", "fg", 0.07, 0.015},
+	{"band", "panel", "accent", 0.16, 0},
+	{"addbg", "bg", "ok", 0.28, 0},
+	{"delbg", "bg", "danger", 0.28, 0},
 }
 
 // surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
@@ -179,7 +184,7 @@ func parsePalette(spec map[string]any) (Palette, error) {
 			*dst = rgb(slots[a.slot])
 		}
 	}
-	derive(&p)
+	derive(&p, slots)
 	return p, nil
 }
 
@@ -191,8 +196,11 @@ func parseHex(s string) (colorful.Color, error) {
 }
 
 // derive fills the roles p leaves out, keeps the surfaces near bg and
-// clamps every text role to its floor on each surface.
-func derive(p *Palette) {
+// clamps every text role to its floor on each surface. ansi is a scheme's
+// own 16 colors, nil for a hand-written palette: its greys give the neutrals
+// and the boxes the tint of the terminal the theme came from, instead of
+// looking like a mix of two end colors.
+func derive(p *Palette, ansi []colorful.Color) {
 	if p.Literal == nil {
 		// each scheme's own orange: halfway between its red and its yellow
 		l1, c1, h1 := col(p.Danger).OkLch()
@@ -201,8 +209,13 @@ func derive(p *Palette) {
 		p.Literal = inGamut((l1+l2)/2, (c1+c2)/2, math.Mod(h1+d/2+360, 360))
 	}
 	for _, m := range mixes {
-		if dst := p.role(m.role); *dst == nil {
-			*dst = Mix(*p.role(m.from), *p.role(m.to), m.t)
+		dst := p.role(m.role)
+		if *dst != nil {
+			continue
+		}
+		*dst = Mix(*p.role(m.from), *p.role(m.to), m.t)
+		if m.cast > 0 {
+			*dst = cast(*dst, ansi, m.cast)
 		}
 	}
 	lbg, _, _ := col(p.Bg).OkLch()
@@ -215,6 +228,19 @@ func derive(p *Palette) {
 		dst := p.role(f.role)
 		*dst = clampContrast(col(*dst), on, f.min)
 	}
+}
+
+// cast is c at its own lightness in the hue and chroma of a scheme's bright
+// black, the grey its own surfaces and dimmed text are made of: a generated
+// theme keeps its terminal's cast, while the fg/bg ladder sets where the
+// role sits.
+func cast(c color.Color, ansi []colorful.Color, cap float64) color.Color {
+	if len(ansi) < 16 {
+		return c
+	}
+	l, _, _ := col(c).OkLch()
+	_, ch, h := ansi[8].OkLch()
+	return inGamut(l, min(ch, cap), h)
 }
 
 // Mix blends a toward b by t in OkLab, where equal steps look equal.

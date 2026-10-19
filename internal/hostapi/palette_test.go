@@ -45,6 +45,12 @@ func TestPaletteDerive(t *testing.T) {
 	}{
 		{"nord's literal is nord12", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord}, func(p *Palette) color.Color { return p.Literal }, "#d08770", 0},
 		{"ansi blue is the accent", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord}, func(p *Palette) color.Color { return p.Accent }, "#81a1c1", 0},
+		// the scheme's bright black tints what it leaves out, so a generated
+		// theme's boxes and greys belong to the terminal it came from
+		{"nord's panel takes nord's grey", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord}, func(p *Palette) color.Color { return p.Panel }, "#596377", 0},
+		{"nord's rule takes nord's grey", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord}, func(p *Palette) color.Color { return p.Rule }, "#596377", 0},
+		{"nord's dim takes nord's grey", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord}, func(p *Palette) color.Color { return p.Dim }, "#596377", 0},
+		{"an explicit panel keeps its own color", map[string]any{"bg": "#2e3440", "fg": "#d8dee9", "ansi": nord, "panel": "#123456"}, func(p *Palette) color.Color { return p.Panel }, "#123456", 0},
 		{"a warn on bg is clamped", map[string]any{"bg": "#fafafc", "fg": "#202127", "accent": "#5458c8", "ok": "#007f52", "warn": "#fafafc", "danger": "#c72d2e"}, func(p *Palette) color.Color { return p.Warn }, "", 3.5},
 		{"a dim given dim is clamped", map[string]any{"bg": "#17181e", "fg": "#e7e7ec", "accent": "#a2adfd", "ok": "#68d7a1", "warn": "#edcf6f", "danger": "#f17070", "dim": "#303030"}, func(p *Palette) color.Color { return p.Dim }, "", 4.5},
 		{"a white panel and band still show fg", white, func(p *Palette) color.Color { return p.Fg }, "", 7},

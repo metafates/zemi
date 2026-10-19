@@ -1567,7 +1567,11 @@ UI extensibility contract:
   terminal's 16 `ansi` colors in their place, and derives the rest once in Go
   (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
   panel toward the accent, the diff tints bg toward ok and danger; the literal
-  the OKLCH midpoint of danger and warn, each scheme's own orange).
+  the OKLCH midpoint of danger and warn, each scheme's own orange; and a
+  palette that came from `ansi` takes the hue and a little of the chroma of
+  the scheme's own bright black into dim, rule and panel, a surface taking
+  less than a line of text, so a generated theme's greys and boxes belong to
+  the terminal it came from).
   `panel` and `band`, a spec's own included, are kept within 0.13 of bg's
   OKLCH lightness, and every text role is then moved along OKLCH lightness,
   hue kept, to a WCAG floor on the least contrasting of bg, panel and band
