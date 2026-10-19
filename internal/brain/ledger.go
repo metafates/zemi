@@ -169,10 +169,13 @@ func (l *Ledger) ops() ([]*Op, error) {
 }
 
 // Stamp is what display needs about one id (DESIGN §7): First is the first writing
-// op's ts (the line's age), Quote the latest quote the trail carried,
-// Session the first writer's provenance.
+// op's ts (the line's age), Last the latest write to its text with Hash of the
+// text it wrote (both zero when no op wrote it), Quote the latest quote the
+// trail carried, Session the first writer's provenance.
 type Stamp struct {
 	First   int64
+	Last    int64
+	Hash    string
 	Quote   string
 	Session string
 }
@@ -189,6 +192,14 @@ func (l *Ledger) Stamps() (map[string]Stamp, error) {
 		s := out[op.ID]
 		if s.First == 0 && (op.Op == OpAdd || op.Op == OpImport || op.Op == OpMoveIn) {
 			s.First, s.Session = op.TS, op.SessionID
+		}
+		if op.Op == OpAdd || op.Op == OpEdit || op.Op == OpImport {
+			s.Last, s.Hash = op.TS, op.Hash
+			// an import's ts is the migration moment; the frozen row's own stamp is
+			// the write it records
+			if op.UpdatedAt != 0 {
+				s.Last = op.UpdatedAt
+			}
 		}
 		if op.Quote != "" {
 			s.Quote = op.Quote

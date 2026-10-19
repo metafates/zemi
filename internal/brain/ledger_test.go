@@ -76,6 +76,45 @@ func TestLedger(t *testing.T) {
 		}
 	})
 
+	t.Run("stamps fold each id's last write of a text", func(t *testing.T) {
+		p := testPartition(t)
+		openStore(t, p)
+		lg, err := p.OpenLedger()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer lg.Close()
+		for _, op := range []*Op{
+			{Op: OpAdd, ID: "abcd2345", Text: "one", Hash: TextHash("one"), TS: at.UnixMilli()},
+			{Op: OpEdit, ID: "abcd2345", Text: "two", Hash: TextHash("two"), TS: at.Add(time.Hour).UnixMilli()},
+			// an import's ts is the migration moment, the frozen row's own stamp the write
+			{Op: OpImport, ID: "efgh6789", Text: "three", Hash: TextHash("three"), TS: at.UnixMilli(), CreatedAt: 1, UpdatedAt: 2},
+			// a move writes the entry but not the text, so it leaves the age alone
+			{Op: OpMoveIn, ID: "ijkl2345", Text: "four", Hash: TextHash("four"), TS: at.UnixMilli()},
+		} {
+			if err := lg.Insert(op); err != nil {
+				t.Fatal(err)
+			}
+		}
+		stamps, err := lg.Stamps()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range []struct {
+			id   string
+			last int64
+			hash string
+		}{
+			{"abcd2345", at.Add(time.Hour).UnixMilli(), TextHash("two")},
+			{"efgh6789", 2, TextHash("three")},
+			{"ijkl2345", 0, ""},
+		} {
+			if s := stamps[c.id]; s.Last != c.last || s.Hash != c.hash {
+				t.Fatalf("%s stamp = %+v, want last %d hash %q", c.id, s, c.last, c.hash)
+			}
+		}
+	})
+
 	t.Run("no store is an empty ledger and a failed write", func(t *testing.T) {
 		p := testPartition(t)
 		lg, err := p.OpenLedger() // the store was never opened

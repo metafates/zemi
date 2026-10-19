@@ -153,6 +153,28 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	}
 }
 
+// TestMemoryUpdatedAtIsTheWrite: /memory ages a line by the clock its write ran
+// on, not by the day memories.md stores.
+func TestMemoryUpdatedAtIsTheWrite(t *testing.T) {
+	h, clock := newLoopHost(t)
+	at := testEpoch.Add(18 * time.Hour) // the day the line stores is 18h before this
+	clock.set(at)
+	if err := h.Remember("deploy script lives in bin/deploy"); err != nil {
+		t.Fatal(err)
+	}
+	rows := projectMemories(t, h)
+	if len(rows) != 1 || rows[0].UpdatedAt != at.UnixMilli() {
+		t.Fatalf("saved at %s, /memory says %+v", at, rows)
+	}
+	clock.set(at.Add(time.Hour))
+	if _, err := h.rewriteMemory(rows[0].ID, "deploy script lives in bin/deploy, the ship one in bin/ship"); err != nil {
+		t.Fatal(err)
+	}
+	if rows = projectMemories(t, h); len(rows) != 1 || rows[0].UpdatedAt != at.Add(time.Hour).UnixMilli() {
+		t.Fatalf("edited at %s, /memory says %+v", at.Add(time.Hour), rows)
+	}
+}
+
 // TestMemoryAddAutonomyGate drives zemi.memory.add: ask queues, a
 // near-duplicate names the row it repeats, user config before a session
 // writes the user's own memory, and auto stores a plain fact with its id.

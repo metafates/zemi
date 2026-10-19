@@ -841,7 +841,11 @@ func (h *Host) memoryItems() []any {
 		items = append(items, item)
 	}
 	for _, m := range live {
-		desc := map[store.Origin]string{store.OriginUser: "by you", store.OriginLearned: "learned"}[m.Origin] + " · " + ago(m.UpdatedAt)
+		desc := map[store.Origin]string{store.OriginUser: "by you", store.OriginLearned: "learned"}[m.Origin]
+		// a memory no op wrote has no age to show, only its origin
+		if m.UpdatedAt != 0 {
+			desc += " · " + ago(m.UpdatedAt)
+		}
 		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, brain.ScopeBudget/1024)
 		item := memoryItem(*m, m.Text, section, desc, "")
 		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "f", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
@@ -1042,11 +1046,15 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 		}
 		for _, l := range lines {
 			live[l.ID] = true
-			// the line's date is the last write the store holds (DESIGN §7); the
-			// ledger refines quote and provenance beside it
+			// the line carries only the day its last write fell on; the ledger's
+			// exact write replaces that when it wrote this very text, as a move or a
+			// restored line leaves the newest entry describing text it no longer holds
 			m := &store.Memory{ID: l.ID, Scope: scope, Text: l.Text, Origin: l.Origin, UpdatedAt: l.Date.UnixMilli()}
 			if s, ok := stamps[l.ID]; ok {
 				m.Quote, m.CreatedAt, m.ProvenanceSessionID = s.Quote, s.First, s.Session
+				if s.Last != 0 && s.Hash == brain.TextHash(l.Text) {
+					m.UpdatedAt = s.Last
+				}
 			}
 			out = append(out, m)
 		}
