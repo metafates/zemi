@@ -1516,7 +1516,7 @@ UI extensibility contract:
   it paints, so the band moves every 50 ms with no render), blending `hl`
   toward `Normal`, and
   `effect = "spin"` steps a segment's first glyph through the running
-  spinner; `ui.animations = false` keeps both static. The state marks
+  spinner. The state marks
   (`zemi.ui.marks`: running, done, warn, failed, stopped, waiting, ...) are
   one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id and the widget spec

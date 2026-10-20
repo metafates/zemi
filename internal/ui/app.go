@@ -456,9 +456,6 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		text := sanitize.String(msg.text)
-		if !a.multiline() {
-			text = strings.ReplaceAll(text, "\n", " ")
-		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.text = text
 		a.composer.moveEnd()
@@ -483,9 +480,6 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			a.insertAttachments(paths)
 			a.publishComposer()
 			return nil
-		}
-		if !a.multiline() {
-			s = strings.ReplaceAll(s, "\n", " ")
 		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.paste(s)
@@ -524,7 +518,7 @@ func (a *App) View() tea.View {
 // when it changes, so the value (which the indeterminate state never sends)
 // flips every progressInterval.
 func (a *App) progressTick(running bool) {
-	a.progress = running && a.host.Settings.Bool(config.KeyUIProgress)
+	a.progress = running
 	if now := a.now(); a.progress && now.Sub(a.progressAt) >= progressInterval {
 		a.progressAt, a.beat = now, 1-a.beat
 	}
@@ -753,16 +747,13 @@ func (a *App) windowTitle() string {
 }
 
 // frameClock is the frame clock's tick, frameMS each: what the spinner, the
-// eyes and the shimmer step on. Always 0 with animations off.
-func frameClock(h *hostapi.Host, now func() time.Time) int {
-	if !h.Settings.Bool(config.KeyUIAnimations) {
-		return 0
-	}
+// eyes and the shimmer step on.
+func frameClock(now func() time.Time) int {
 	return int(now().UnixMilli() / frameMS)
 }
 
 // frame is the app's tick of the frame clock.
-func (a *App) frame() int { return frameClock(a.host, a.now) }
+func (a *App) frame() int { return frameClock(a.now) }
 
 func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
@@ -1669,7 +1660,7 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
-	segs, spun := segEffects(a.thm, a.host.Settings.Bool(config.KeyUIAnimations), a.frame(), segs)
+	segs, spun := segEffects(a.thm, a.frame(), segs)
 	a.spun = a.spun || spun
 	// truncated before styling, so a link never leaves its escape sequence open
 	if hostapi.SegsWidth(segs) > w {

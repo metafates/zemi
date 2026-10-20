@@ -15,7 +15,7 @@ import (
 
 // TestProgressReport: the view reports OSC 9;4 while a turn runs, changes it
 // after the interval so the renderer resends it, and drops it when the turn
-// ends or with the setting off.
+// ends.
 func TestProgressReport(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 10)
@@ -31,10 +31,6 @@ func TestProgressReport(t *testing.T) {
 	}
 	if app.progressTick(false); app.View().ProgressBar != nil {
 		t.Fatal("the end of a turn should clear the report")
-	}
-	app.host.Settings.SetQuiet("ui.progress", false)
-	if app.progressTick(true); app.View().ProgressBar != nil {
-		t.Fatal("ui.progress off should report nothing")
 	}
 }
 

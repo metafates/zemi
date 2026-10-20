@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -112,7 +113,7 @@ func TestComposerHistory(t *testing.T) {
 		t.Fatalf("an empty history recalled %q", c.text)
 	}
 	for _, s := range []string{"one", "two"} {
-		c.pushHistory(s, 50)
+		c.pushHistory(s)
 	}
 	// past either end a recall stays put
 	for i, step := range []struct {
@@ -125,16 +126,16 @@ func TestComposerHistory(t *testing.T) {
 	}
 	// Cap and duplicate suppression.
 	c2 := &composerState{}
-	c2.pushHistory("same", 2)
-	c2.pushHistory("same", 2)
-	c2.pushHistory("other", 2)
-	if len(c2.history) != 2 || c2.history[0] != "same" {
-		t.Fatalf("cap: %#v", c2.history)
+	c2.pushHistory("same")
+	c2.pushHistory("same")
+	if len(c2.history) != 1 {
+		t.Fatalf("duplicate: %#v", c2.history)
 	}
-	// Zero cap disables.
-	c2.pushHistory("x", 0)
-	if len(c2.history) != 0 {
-		t.Fatalf("disabled: %#v", c2.history)
+	for i := range historyCap {
+		c2.pushHistory(strconv.Itoa(i))
+	}
+	if len(c2.history) != historyCap || c2.history[0] != "0" {
+		t.Fatalf("cap: %d entries from %q", len(c2.history), c2.history[0])
 	}
 }
 
@@ -276,16 +277,6 @@ func TestComposerGutter(t *testing.T) {
 		if got := hostapi.SegsWidth(app.composerRows(40, "")[0]); got != c.want {
 			t.Fatalf("the %s row is %d cells wide, want %d", c.name, got, c.want)
 		}
-	}
-}
-
-func TestComposerKeysMultilineOff(t *testing.T) {
-	app := newTestApp(t, t.TempDir())
-	app.host.Settings.SetQuiet("ui.composer.multiline", false)
-	app.composerKey("h", tea.KeyPressMsg{Code: 'h', Text: "h"})
-	app.composerKey("alt+enter", tea.KeyPressMsg{})
-	if app.composer.text != "h" {
-		t.Fatalf("newline inserted with multiline off: %q", app.composer.text)
 	}
 }
 

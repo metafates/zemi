@@ -130,7 +130,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case !a.composer.empty():
 			// the draft stays one up away, and one ctrl+z
 			a.seedHistory()
-			a.composer.pushHistory(a.composer.text, a.historySize())
+			a.composer.pushHistory(a.composer.text)
 			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 			a.clearComposer()
 			a.composer.snapshot(prev, false)
@@ -268,9 +268,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		a.submitComposer()
 		return nil
 	case "shift+enter", "alt+enter", "ctrl+enter":
-		if !a.multiline() {
-			return nil
-		}
 		c.insert("\n")
 		return a.updateCompletion()
 	case "up":

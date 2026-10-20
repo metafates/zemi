@@ -8,7 +8,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -40,10 +39,7 @@ const scanMaxFiles = 50000
 // whole list, and nobody scrolls past a few hundred paths to find one.
 const listMaxFiles = 200
 
-// completionMax is the rows the popup shows, clamped to what a popup can show.
-func (a *App) completionMax() int {
-	return min(max(a.host.Settings.Int(config.KeyUICompletionMaxItems), 1), 50)
-}
+const completionMaxRows = 10
 
 // updateCompletion recomputes both popups after a composer edit: the
 // palette, and the completion whose token is the text between a trigger
@@ -58,7 +54,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	files := i < cur && r[i] == '@' && a.host.Settings.Bool(config.KeyUICompletionFiles)
+	files := i < cur && r[i] == '@'
 	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
 	if !files && !lua {
 		a.completion.close()
@@ -255,7 +251,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	for _, m := range f.matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, row: hostapi.OverlayItem{Tail: true}})
 	}
-	return listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
+	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
 }
 
 // scanFilesCmd lists the project's files off the UI goroutine.
