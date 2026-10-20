@@ -16,6 +16,7 @@ import (
 // the text is a single line), the next up keeps iterating instead of being
 // trapped inside the recalled text.
 func TestComposerRecallPastMultiline(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 12)
 	app.composer.pushHistory("old", 100)
 	app.composer.pushHistory("a\nb", 100)
@@ -35,6 +36,7 @@ func TestComposerRecallPastMultiline(t *testing.T) {
 }
 
 func TestComposerActions(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 60, 12)
 	app.composer.pushHistory("first", 100)
 	app.composer.pushHistory("second", 100)

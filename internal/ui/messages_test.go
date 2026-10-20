@@ -51,6 +51,7 @@ func bandedChatRows(app *App) []string {
 // row the blank line between two messages, the picker opens on the message
 // the reader sees, never on the one already scrolled out of view above.
 func TestMessagesOpenAtGap(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -101,6 +102,7 @@ func TestMessagesOpenAtGap(t *testing.T) {
 // view whose top row is the run's digest hands over to the message under it,
 // never back to the reply above, which may be many rows away.
 func TestMessagesOpenOnRun(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 12)
 	host.AppendMessage("user", "one")
 	var long strings.Builder
@@ -146,6 +148,7 @@ func TestMessagesOpenOnRun(t *testing.T) {
 // TestMessagesBandKeepsScrollbar: the scrollbar is not part of the message a
 // picker bands, so its own cell keeps the canvas under the band.
 func TestMessagesBandKeepsScrollbar(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "long one")
 	var b strings.Builder
@@ -177,6 +180,7 @@ func TestMessagesBandKeepsScrollbar(t *testing.T) {
 // TestMessagesTallJump: a message taller than the view starts just under the
 // pinned header above it, instead of being drawn over by it.
 func TestMessagesTallJump(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	host.AppendMessage("user", "long one")
@@ -228,6 +232,7 @@ func TestMessagesTallJump(t *testing.T) {
 // chat and bands it, and a row in view at the tail leaves the chat following
 // it.
 func TestMessagesFollow(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -359,6 +364,7 @@ func TestMessagesFollow(t *testing.T) {
 // clamps at the top and the tail, where many messages share one top row - so
 // the chat keeps the row it was placed at until the reader moves it by hand.
 func TestMessagesReopenAll(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 120, 46)
 	fillChat(host)
 	app.renderSync(t)
@@ -417,6 +423,7 @@ func TestMessagesReopenAll(t *testing.T) {
 // put the view, even when the chat is already pinned to its tail and the
 // scroll moves nothing: the picker then opens on the last message.
 func TestMessagesBottomDropsPlace(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	fillChat(host)
 	app.renderSync(t)
@@ -456,6 +463,7 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 // list opens on it again; scrolled well past it, the list opens on the message
 // the middle now shows.
 func TestMessagesWheelKeepsPlace(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 148, 44)
 	for i := range 20 {
 		host.AppendMessage("user", fmt.Sprintf("prompt %d", i))

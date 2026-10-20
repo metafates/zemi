@@ -527,6 +527,7 @@ func TestPaletteComplete(t *testing.T) {
 }
 
 func TestPaletteDispatch(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	ran := "" // the command line that ran
 	for _, name := range []string{"zq", "zqa", "echo", "reloadall"} {

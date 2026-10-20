@@ -47,6 +47,7 @@ zemi.command.add("hello", function() end, { desc = "says hello" })
 // cells, its placeholder cut to them, and a popup over it keeps its bottom
 // border, since there is no frame to stand on.
 func TestUnframedComposer(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `zemi.ui.layout.set({ root = { kind = "box", dir = "row", sep = true, children = {
   { kind = "box", dir = "col", stage = true, size = 40, children = {
@@ -78,6 +79,7 @@ func TestUnframedComposer(t *testing.T) {
 // prompts and windows land over the stage, popups too, in line with the
 // composer, and a narrow screen collapses the sidebar.
 func TestRelayout(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 24)
 	host.AppendMessage("user", "hello from the middle")
 	runLua(t, app, sidebarConfig)
@@ -154,6 +156,7 @@ func TestFloatsOverTheColumn(t *testing.T) {
 		{"the tray hugs the column", 220, false, func(s hostapi.Rect, _ int) int { return s.X + s.Width - 3 }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, c.width, 24)
 			if c.modal {
 				runLua(t, app, `zemi.ui.select({ "alpha", "beta" }, { prompt = "Pick" }, function() end)`)
@@ -179,6 +182,7 @@ func TestFloatsOverTheColumn(t *testing.T) {
 // statusline, completion opens below the composer, a float over the
 // composer leaves it visible, and the alarm pills still show.
 func TestRelayoutComposerOnTop(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	runLua(t, app, `
 zemi.command.add("hello", function() end, { desc = "says hello" })

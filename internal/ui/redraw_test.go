@@ -17,6 +17,7 @@ import (
 // after the interval so the renderer resends it, and drops it when the turn
 // ends or with the setting off.
 func TestProgressReport(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 10)
 	app.progressTick(true)
 	first := app.View().ProgressBar
@@ -41,6 +42,7 @@ func TestProgressReport(t *testing.T) {
 // with no other redraw, zemi.ui.redraw asks for one, and a burst of
 // refreshes waits in the hook queue as one.
 func TestRedrawAfterCallbacks(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 10)
 	runLua(t, app, `
 local n = 0
@@ -77,6 +79,7 @@ zemi.event.on("user.tick", function() zemi.timer.after(0, function() n = 10 end)
 // sits idle, and the animation tick alone never does. A running turn ticks
 // the readouts, and the mascot's done frame comes and goes once each.
 func TestIdleDrawsNothing(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	app.Update(frameTickMsg{}) // the first tick settles the clock and the flags
 	gen := app.frameGen
@@ -114,6 +117,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 // TestBumpWakesIdleTick: a change while the tick sleeps idle wakes it, and
 // every stale widget comes back in one message.
 func TestBumpWakesIdleTick(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	woke := func() bool {
 		select {
@@ -164,6 +168,7 @@ func TestFrameClock(t *testing.T) {
 // splash cut to the region, no scrollbar, and the re-render lands at the new
 // height.
 func TestComposerGrowResizesSplash(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	app.screen(t)
 	_, cmd := app.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})

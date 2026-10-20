@@ -22,6 +22,7 @@ import (
 // require("zemi.tui").splash (the zemi skill's ui.md example), and a
 // replaced tip leaves nothing of a default one that wrapped.
 func TestSplashExtends(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 44, 30)
 	after := func() string {
 		app.renderSync(t)
@@ -61,6 +62,7 @@ zemi.ui.widget.add({
 // TestTUIPluginRequire: plugin code can require zemi.tui (its
 // body must not rerun under the plugin's origin) but cannot write into it.
 func TestTUIPluginRequire(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 30)
 	src := `
 local d = require("zemi.tui")
@@ -191,6 +193,7 @@ func TestSplashTakesBootWork(t *testing.T) {
 		{40, 8, false},
 	} {
 		t.Run(fmt.Sprintf("%dx%d", c.w, c.h), func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, c.w, c.h)
 			app.screen(t)
 			x, y := -1, -1
@@ -233,6 +236,7 @@ func TestSplashTakesBootWork(t *testing.T) {
 // TestSplashProjects: with another project known the splash lists it where
 // recent sessions go, and a click on its path switches there.
 func TestSplashProjects(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	root := t.TempDir()
 	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
@@ -253,6 +257,7 @@ func TestSplashProjects(t *testing.T) {
 // TestSplashWidePath: a project path of wide characters keeps its tail: the
 // cut counts cells, not runes, so the name at the path's end is what is left.
 func TestSplashWidePath(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	const name = "プロジェクトのディレクトリ"
 	root := filepath.Join(t.TempDir(), name)
@@ -275,6 +280,7 @@ func TestSplashWidePath(t *testing.T) {
 // TestFarewellWraps: an exit widget that asks to wrap prints wrapped at the
 // terminal's width, as the run view draws the region, not one over-long row.
 func TestFarewellWraps(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 40, 20)
 	runLua(t, app, `zemi.ui.widget.add({ id = "exit.wide", region = "exit", wrap = true, render = function()
   return { { { text = string.rep("word ", 20) } } }
@@ -313,6 +319,7 @@ func TestFarewell(t *testing.T) {
 		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, false, []string{"ab"}, []string{"\x1b]52"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, c.width, 30)
 			app.colors = c.profile
 			db := testStore(t, host)

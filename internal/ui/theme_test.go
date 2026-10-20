@@ -43,6 +43,7 @@ func TestANSI16(t *testing.T) {
 // tints apart at 256 colors, and the Go chrome draws in the colors of the
 // groups it stands for.
 func TestThemes(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	floors := map[string]float64{"fg": 7, "dim": 4.5, "accent": 4.5, "literal": 4.5, "ok": 4.5, "danger": 4.5, "warn": 3.5}
 	chrome := [][2]string{
@@ -112,6 +113,7 @@ func TestThemes(t *testing.T) {
 // included, unless less trusted code added the twin, a dark one the theme
 // itself, and a name no theme answers to draws whorl and is named in /errors.
 func TestActiveTheme(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
 	whorl, light, nord := host.Themes.Get("whorl"), host.Themes.Get("whorl-light"), host.Themes.Get("nord")

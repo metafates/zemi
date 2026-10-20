@@ -129,6 +129,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 // TestQuestionTypingKeepsBox: typing past the field, a cursor moved into
 // the text and a kept note cut to the field never widen the question's box.
 func TestQuestionTypingKeepsBox(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 18)
 	done := askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}, {Label: "no"}}})
 	width := func() int {
@@ -182,6 +183,7 @@ func TestQuestionAnswers(t *testing.T) {
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 70, 16)
 			done := askAsync(t, app, c.q)
 			pressKeys(app, c.keys...)
@@ -219,6 +221,7 @@ func TestQuestionBatch(t *testing.T) {
 		{"esc on the Submit tab dismisses", []any{"enter", "enter", "esc"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 70, 20)
 			done := askAsync(t, app, qs...)
 			for _, k := range c.keys {
@@ -246,6 +249,7 @@ func TestQuestionBatch(t *testing.T) {
 // TestQuestionBoxShowsTyping: the typed answer shows with its end in view,
 // and a question wider than the box wraps instead of losing its end.
 func TestQuestionBoxShowsTyping(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 16)
 	askAsync(t, app, tools.Question{Type: tools.TypeFreeText, Question: "What should the command be called, now that it replaces both sync and fetch?"})
 	pressKeys(app, "zem")
@@ -267,6 +271,7 @@ func TestQuestionBoxShowsTyping(t *testing.T) {
 // selection and a long question gives way, keeping the typed-answer row
 // and the hints on screen.
 func TestQuestionBoxScrolls(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	var opts []tools.QuestionOption
 	for i := range 20 {
@@ -290,6 +295,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 // selected option's description shows in the pane under the options, where
 // moving the selection swaps it without shifting a row.
 func TestQuestionOptionsWrap(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 100, 20)
 	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
 		{Label: "SQLite with write-ahead logging and a busy timeout", Description: "one file, no server", Recommended: true},
@@ -320,6 +326,7 @@ func TestQuestionOptionsWrap(t *testing.T) {
 
 // TestQuestionNoteStays: a note typed past the box's width never widens it.
 func TestQuestionNoteStays(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 100, 24)
 	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{
 		{Label: "yes"}, {Label: "no", Description: "stop and wait"},
@@ -341,6 +348,7 @@ func TestQuestionNoteStays(t *testing.T) {
 // TestQuestionMarkdown: the question and the selected option's description
 // are model prose, so their backticks render as code instead of showing.
 func TestQuestionMarkdown(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 18)
 	done := askAsync(t, app, tools.Question{
 		Type:        tools.TypeSingle,

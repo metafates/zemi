@@ -49,6 +49,7 @@ func (a *App) screen(t *testing.T) string {
 // toggle rows while typed letters stay out of the composer, esc gives the
 // keys back, ctrl+c and prompts keep priority, and clicks move the focus.
 func TestFocusTodoPanel(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	runLua(t, app, todoConfig)
 	app.screen(t)

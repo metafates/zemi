@@ -223,6 +223,7 @@ func TestToastTray(t *testing.T) {
 // TestToastNotCopied: a drag over a box a toast stands on copies the box's own
 // text, never the toast's words, which would paste two boxes as one.
 func TestToastNotCopied(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	go app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build && go test ./..."})
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })

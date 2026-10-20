@@ -13,6 +13,7 @@ import (
 // argument candidates, and a trigger with nothing to offer leaves enter to
 // the composer.
 func TestCompletionSources(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 14)
 	runLua(t, app, `
 zemi.composer.complete({ id = "issues", trigger = "#", items = function(lead)

@@ -123,6 +123,7 @@ func TestRunView(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			_, h := bootAgentApp(t, 100, 30)
 			db := testStore(t, h)
 			const sid = "7hq2m4xk"

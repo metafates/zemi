@@ -43,6 +43,7 @@ func TestRelaunch(t *testing.T) {
 		{"a relaunch past the veto", `return nil`, "/tmp/other", "s1"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 20)
 			runLua(t, app, `zemi.event.on("app.quit", function() `+c.veto+` end)`)
 			app.Relaunch("/tmp/other", "s1")

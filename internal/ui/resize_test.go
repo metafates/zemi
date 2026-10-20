@@ -83,6 +83,7 @@ func TestGoldenOverlayDetail(t *testing.T) {
 // TestOverlayWidthStableWhileScrolling: a list longer than its window
 // keeps one box width as the selection scrolls past rows of other widths.
 func TestOverlayWidthStableWhileScrolling(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	for i := range 14 {
 		host.Commands.Add(&hostapi.Command{
@@ -116,6 +117,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 // permission box) through degenerate and normal sizes; no row may ever be
 // wider than the terminal.
 func TestResizeSweep(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "show me")
 	appendReply(host, "# Heading\n\nsome **bold** and `code` with a verylongunbreakableidentifierthatneverfits\n\n```go\nfunc main() { println(\"a long line of code that overflows\") }\n```\n\n- item one\n- item two\n", hostapi.TurnStat{Out: 10})
@@ -225,6 +227,7 @@ func TestAnchoredPickerComposerLine(t *testing.T) {
 // working rule's key and clock, and the cells the box covers are its own
 // bottom border: no backdrop text cuts it.
 func TestAnchoredBoxBottomBorder(t *testing.T) {
+	t.Parallel()
 	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
 		app, host := bootAgentApp(t, 100, 20)
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
@@ -255,6 +258,7 @@ func TestAnchoredBoxBottomBorder(t *testing.T) {
 
 // TestProfileSegment: the statusline names a profile other than default.
 func TestProfileSegment(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	runLua(t, app, `zemi.agent.profile.add("terse", {})`)
 	for _, c := range []struct {
@@ -275,6 +279,7 @@ func TestProfileSegment(t *testing.T) {
 // how much it cut and sends the reader to /errors when its caller recorded
 // it there; a toast records nothing itself. A lone title or body sits inside the box.
 func TestToastCap(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	home, _ := os.UserHomeDir()
 	body := "@user:" + home + "/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
@@ -348,6 +353,7 @@ func TestContextMeter(t *testing.T) {
 		{"total in the billions", hostapi.StreamSnapshot{SessionIn: 2000000000}, "2B tok", "ctx"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 100, 12)
 			host.SeedStream(c.s)
 			app.renderSync(t)

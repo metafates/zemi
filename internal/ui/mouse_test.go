@@ -46,6 +46,7 @@ func dragTo(app *App, x0, y0, x1, y1 int) tea.Cmd {
 }
 
 func TestMouseDragCopies(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "hello there, world")
 	app.renderSync(t)
@@ -63,6 +64,7 @@ func TestMouseDragCopies(t *testing.T) {
 }
 
 func TestMouseClicks(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
@@ -106,6 +108,7 @@ func TestMouseClicks(t *testing.T) {
 // TestMouseHover: hovering a choice lights it, moving off clears it, and
 // hovering a palette row then clicking it fills the composer.
 func TestMouseHover(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	done := make(chan bool)
 	go func() {
@@ -144,6 +147,7 @@ func TestMouseHover(t *testing.T) {
 // TestDropPaste: pasted paths in the forms terminals use for drag and drop
 // become attachments; ordinary text stays text.
 func TestDropPaste(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	dir := t.TempDir()
 	shot := filepath.Join(dir, "My Shot.png")
@@ -176,6 +180,7 @@ func TestDropPaste(t *testing.T) {
 }
 
 func TestComposerCursorColumn(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 12)
 	app.composer.text, app.composer.cursor = "hello world", 2
 	if segs := app.composerRows(60, "")[0]; segs[0].Text != "he" || segs[1].Text != "l" || segs[1].HL != "Host:Cursor" {
@@ -307,6 +312,7 @@ func TestHoverTargets(t *testing.T) {
 // TestClickScrolledListOpensSameItem: the first click selects, and the list
 // stays put so the second click opens the same item.
 func TestClickScrolledListOpensSameItem(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 30)
 	var items []any
 	for i := range 30 {
@@ -370,6 +376,7 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 
 // TestHoverStyle: a hover group draws over the text's own style.
 func TestHoverStyle(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	base := uv.Style{Fg: rgb(0x9098a0), Bg: rgb(0x243427), Attrs: uv.AttrBold}
 	for _, c := range []struct {
@@ -417,6 +424,7 @@ func TestHoverStyle(t *testing.T) {
 // user wrote, without the gutter bar, the bullets, the wrap points or the
 // notice's hint.
 func TestSelectionRejoinsWrappedText(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 44, 24)
 	prompt := "please rewrite this helper so it stops allocating a slice on every call"
 	code := "func add(a, b int) int { return a + b + 1000000 }"
@@ -450,6 +458,7 @@ func TestSelectionRejoinsWrappedText(t *testing.T) {
 // focuses it, one on a Submit tab row opens its question, and one on the
 // button submits.
 func TestMouseQuestion(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	opts := func(labels ...string) []tools.QuestionOption {
 		var o []tools.QuestionOption
@@ -490,6 +499,7 @@ func TestMouseQuestion(t *testing.T) {
 // its output under it, and the transcript around it untouched. A thought's
 // row opens its own text the same way.
 func TestToolRowClickOpens(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	reloadUI(t, host) // the chat's rows run commands, so the boot has to have them
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
@@ -569,6 +579,7 @@ func TestScrollbarDrag(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 80, 24)
 			c.open(app, host)
 			for app.Pump() {
@@ -614,6 +625,7 @@ func TestWheelUnderPointer(t *testing.T) {
 		{"beta", 1, 0},
 	} {
 		t.Run(c.over, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 24)
 			var body []string
 			for i := range 12 {
@@ -649,6 +661,7 @@ func TestSelectionStaysInItsPane(t *testing.T) {
 		{"a drag from the chat stops at the composer", false, "chat line 11", "typed draft", 0, "chat line 11 behind the box\n\nchat line 12 behind the box"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 100, 24)
 			for i := range 12 {
 				host.AppendMessage("user", fmt.Sprintf("chat line %d behind the box", i+1))

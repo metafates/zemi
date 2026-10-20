@@ -57,6 +57,7 @@ func TestPlanApproval(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 70, 18)
 			done := planAsync(t, app, "# Plan\n\n- one\n- two", c.profile)
 			pressKeys(app, c.keys...)
@@ -70,6 +71,7 @@ func TestPlanApproval(t *testing.T) {
 // TestPlanEditKeys: e swaps the buttons for the changes input row for row,
 // where j and k type instead of scrolling.
 func TestPlanEditKeys(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 18)
 	done := planAsync(t, app, "# Plan", "")
 	before := len(app.planBox(app.planAsk, 70, 18))
@@ -85,6 +87,7 @@ func TestPlanEditKeys(t *testing.T) {
 // TestPlanEditStays: the popup opens at its full width and a change typed
 // past it never widens the box.
 func TestPlanEditStays(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 100, 18)
 	done := planAsync(t, app, "# Plan", "")
 	app.renderSync(t)
@@ -119,6 +122,7 @@ func TestPlanScroll(t *testing.T) {
 		{"esc then e keeps the draft", []string{"e", "x", "esc", "e", "y"}, 0, 0, 0, "xy"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 70, 18)
 			done := planAsync(t, app, strings.Repeat("# h\n\nline\n", 30), "")
 			app.Frame()
@@ -136,6 +140,7 @@ func TestPlanScroll(t *testing.T) {
 // TestPlanClickButtons: the hit test reads the buttons the rows draw, so a
 // click on the second one opens the changes input.
 func TestPlanClickButtons(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 18)
 	done := planAsync(t, app, "# Plan", "")
 	app.renderSync(t)
@@ -151,6 +156,7 @@ func TestPlanClickButtons(t *testing.T) {
 }
 
 func TestPlanBoxFits(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 70, 18)
 	box := app.planBox(&planAskPrompt{plan: strings.Repeat("line\n", 200)}, 70, 18)
 	if len(box) > 18 {

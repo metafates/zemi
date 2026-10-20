@@ -10,6 +10,7 @@ import (
 // TestScreenshotPlainText: the screen zemi reads back is the frame it drew,
 // without the styling or the padding, and it is empty before the first one.
 func TestScreenshotPlainText(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 60, 12)
 	if got := app.Screenshot(); got != "" {
 		t.Fatalf("no frame drawn yet, got %q", got)

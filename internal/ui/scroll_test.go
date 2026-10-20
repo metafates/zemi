@@ -42,6 +42,7 @@ func press(t *testing.T, app *App, key tea.KeyPressMsg) {
 // a list does, ctrl+home/ctrl+end jump to the ends, and reaching the bottom
 // re-arms tail follow.
 func TestChatScrollKeys(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -112,6 +113,7 @@ func TestChatScrollKeys(t *testing.T) {
 // TestChatScrollWheel pins the mouse wheel path: wheel up scrolls off the
 // tail, wheel down re-arms follow at the bottom.
 func TestChatScrollWheel(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -133,6 +135,7 @@ func TestChatScrollWheel(t *testing.T) {
 // user is scrolled up, new transcript lines must not move the visible
 // window (the tail keeps filling underneath).
 func TestChatScrollStaysAnchored(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -165,6 +168,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 // offset (a fill restarting, a collapsed block) guesses a row above the
 // first line and must land on the content, not panic.
 func TestChatScrollShrinks(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
 	app.renderSync(t)
@@ -196,6 +200,7 @@ func TestChatScrollFollows(t *testing.T) {
 		"new session": func(_ *App, host *hostapi.Host) error { return host.NewSession() },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 80, 14)
 			fillChat(host)
 			app.renderSync(t)
@@ -220,6 +225,7 @@ func TestChatScrollFollows(t *testing.T) {
 // scroll; pgup is a no-op, and the transcript starts one row below the
 // region's own first row, which is the pad above it.
 func TestChatScrollShortContent(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "only one")
 	app.renderSync(t)
@@ -247,6 +253,7 @@ func TestChatScrollShortContent(t *testing.T) {
 // change how many rows sit above it, and it must keep showing the content
 // it showed, not the row number it showed.
 func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
+	t.Parallel()
 	visible := func(frame string) string {
 		t.Helper()
 		for row := range strings.SplitSeq(frame, "\r\n") {
@@ -292,6 +299,7 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 // the reader's place instead of scrolling it away, past the view's own
 // height.
 func TestChatFoldLeavesTheTail(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 30)
 	host.AppendMessage("user", "update @.golangci.yaml so make lint works again")
 	for i := range 6 {
@@ -342,6 +350,7 @@ func TestChatFoldLeavesTheTail(t *testing.T) {
 // and a reader who scrolled up in them keeps their place when the older rows
 // land above, though every reply repeats the same lines.
 func TestChatScrollAnchorsThroughFill(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	for i := 1; i <= 30; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
@@ -379,6 +388,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 // nothing, and a click or alt+up scrolls back to the prompt. A report's
 // notice heads its turn the same way.
 func TestChatStickyPrompt(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	const prompt = "fix the flaky TestResume in internal/store: it fails about one run in twenty on the build machine"
 	host.AppendMessage("user", prompt)
@@ -460,6 +470,7 @@ func TestChatStickyPrompt(t *testing.T) {
 // edge and easing off as the last rows come into view; the pins, the bar and
 // an edge with nothing past it do not.
 func TestChatFade(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24) // a chat over 12 rows fades its full 4
 	host.AppendMessage("user", "look around")
 	for i := range 30 {
@@ -517,6 +528,7 @@ func TestChatFade(t *testing.T) {
 // past toward the panel, the surface it sits on and not the canvas, deepest
 // at the edge; a list keeps its selected row clear of the ramp.
 func TestBoxFade(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	items := make([]any, 30)
 	for i := range items {
@@ -608,6 +620,7 @@ func TestBoxFade(t *testing.T) {
 // TestFadeGround: a faded segment sinks toward the surface it sits on, the
 // canvas or a box's panel.
 func TestFadeGround(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	theme := app.thm.active()
 	if theme == nil {
@@ -645,6 +658,7 @@ func TestScrollbarSurface(t *testing.T) {
 // lines come back; a tail that fits keeps its colors, the rail bar never
 // sinks, and a widget's deeper sink outlives the region's.
 func TestThinkingFade(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "look around")
 	tail := func(reasoning string) []float64 {
@@ -699,6 +713,7 @@ func TestThinkingFade(t *testing.T) {
 }
 
 func TestChatStickyDigest(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "look around")
 	appendReasoning(host, "where", hostapi.TurnStat{ThoughtMS: 8000})
@@ -773,6 +788,7 @@ func TestChatStickyDigest(t *testing.T) {
 // the rows it was meant for arrive, lands on them: "top" stays parked on the
 // first row until the region scrolls again, "bottom" follows the tail.
 func TestScrollPendingEdge(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 14)
 	app.applyScroll(hostapi.ScrollTop, "pad")
 	runLua(t, app, `

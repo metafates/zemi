@@ -243,6 +243,7 @@ func TestColdChatRender(t *testing.T) {
 		{"one long turn", longTurn, 30, [2]string{"question 0", "reply 99"}, "reply 50"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
 			c.seed(host)
 			chat := host.Widgets.Get("chat")
@@ -299,6 +300,7 @@ func TestColdChatRender(t *testing.T) {
 // one digest row, exactly as the session's chat does, and the digest's click
 // opens the rail under it.
 func TestAgentViewFolds(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	db := testStore(t, host)
 	id := store.ShortID()
@@ -333,6 +335,7 @@ func TestAgentViewFolds(t *testing.T) {
 // TestAgentViewSwitchForgetsOpenedRows: an opened digest belongs to the run
 // it was opened in, so showing another run draws folded rows again.
 func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	db := testStore(t, host)
 	ids := make([]string, 2)
@@ -372,6 +375,7 @@ func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
 // TestReplyReadoutBehindANotice: the readout rides the reply that ends an
 // exchange, and a notice row arriving after it does not swallow it.
 func TestReplyReadoutBehindANotice(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "go")
 	appendReply(host, "done", hostapi.TurnStat{Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
@@ -415,6 +419,7 @@ func TestWaitRowGuard(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 100, 30)
 			host.SeedStream(tc.stream)
 			app.AgentStream()
@@ -455,6 +460,7 @@ func TestWaitRowGuard(t *testing.T) {
 // TestWaitingNoticesAreOneBlock: reports waiting for a step boundary draw as
 // one block, as the same rows do once the model has read them.
 func TestWaitingNoticesAreOneBlock(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "go")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
@@ -482,6 +488,7 @@ func TestWaitingNoticesAreOneBlock(t *testing.T) {
 // TestPrintedRunFoldsNoNotice: a printed run has no click, so it lists every
 // notice row where the chat folds a long burst behind one.
 func TestPrintedRunFoldsNoNotice(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	rows := []hostapi.ChatMessage{{Role: "user", Text: "go"}}
 	for i := range 6 {
@@ -518,6 +525,7 @@ func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message
 // TestNoticeBurst: a burst of notice rows draws as one block, no blank row
 // between them, its oldest behind one row a click opens.
 func TestNoticeBurst(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "go")
 	for i := range 6 {
@@ -546,6 +554,7 @@ func TestNoticeBurst(t *testing.T) {
 // ones behind one row, which a click opens and closes. A printed run lists
 // everything.
 func TestRailWindow(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look around")
 	for i := range 10 {
@@ -581,6 +590,7 @@ func TestRailWindow(t *testing.T) {
 // cache, and the digest's second click folds it again. The rows of the
 // opened run carry their own view's id: only folds happen in the rail.
 func TestChatFoldOpensItsRun(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 140, 30)
 	host.AppendMessage("user", "run it")
 	appendReasoning(host, strings.Repeat("plan it word by word ", 8)+"\n\nthen build", hostapi.TurnStat{ThoughtMS: 6000})
@@ -635,6 +645,7 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 // TestLoneThoughtDigestOpensItsText: a run of one thought opens from its
 // digest as the text alone, the digest already naming the thought.
 func TestLoneThoughtDigestOpensItsText(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 140, 30)
 	host.AppendMessage("user", "plan it")
 	appendReasoning(host, "hmm, the user asked to plan\nthen build", hostapi.TurnStat{ThoughtMS: 4400})
@@ -664,6 +675,7 @@ func TestLoneThoughtDigestOpensItsText(t *testing.T) {
 // TestTurnStats: the readout rides only the reply that ends the exchange, and
 // each call counts its own diff.
 func TestTurnStats(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	rows := func() []string {
 		app.renderSync(t)
@@ -786,6 +798,7 @@ func TestGoldenPermission(t *testing.T) {
 
 // Which ask surfaces first is not fixed, so exactly one is denied.
 func TestPermissionDenyOneAtATime(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 70, 16)
 	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
@@ -817,6 +830,7 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 // and every choice keeps its key button, down moves between them, and "t"
 // denies the open ask and the waiting one.
 func TestPermissionTellNarrow(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 30, 30)
 	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
@@ -909,6 +923,7 @@ func TestPermissionBoxFits(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, c.w, c.h)
 			go app.AskPermission(c.req)
 			waitPrompt(t, app, func() bool { return app.permAsk != nil })
@@ -1033,6 +1048,7 @@ func TestGoldenAgentStream(t *testing.T) {
 // row for the older ones, however many arrive, a click on the fold row opens
 // the burst in place, and the user's own queued lines never fold.
 func TestQueuedFold(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "go on")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
@@ -1091,6 +1107,7 @@ func TestQueuedFold(t *testing.T) {
 // settled bursts fold only what more than one row stands for - and shows the
 // notice instead.
 func TestQueuedFoldOne(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	if err := host.AgentSend("a typed line"); err != nil {
@@ -1157,6 +1174,7 @@ func TestInterruptKeys(t *testing.T) {
 		{"ctrl+c drops a held prefix", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, host := bootAgentApp(t, 90, 16)
 			clock := time.UnixMilli(1000)
 			agentID := store.ShortID()
@@ -1218,6 +1236,7 @@ func TestInterruptKeys(t *testing.T) {
 // TestPermissionPreview: a file tool's ask shows the proposed change, with
 // escape sequences from model input stripped.
 func TestPermissionPreview(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	done, done2 := make(chan struct{}), make(chan struct{})
 	go func() {
@@ -1258,6 +1277,7 @@ func TestPermissionPreview(t *testing.T) {
 // TestLuaSelect drives zemi.ui.select from Lua: enter hands the chosen item
 // to on_choice, esc hands it nil. The callback reports through a toast.
 func TestLuaSelect(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	pick := `function(item) zemi.notify({ title = "picked", body = item or "none" }) end`
 
@@ -1362,6 +1382,7 @@ func TestMatchLook(t *testing.T) {
 // enter runs the command with the highlighted one once the user moved to it
 // and a bare "/name " as typed.
 func TestPaletteArgumentCompletion(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""
 	host.Commands.Add(&hostapi.Command{
@@ -1430,6 +1451,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 // TestTrustAnswers: the cursor starts on Later, so enter, esc and ctrl+c
 // trust nothing; trusting takes y, moving to its row or a click on it.
 func TestTrustAnswers(t *testing.T) {
+	t.Parallel()
 	click := func(label string) func(*App) {
 		return func(app *App) {
 			app.renderSync(t)
@@ -1499,6 +1521,7 @@ func TestGoldenTrustPrompt(t *testing.T) {
 // TestPromptKeyGrace: a key pressed within permGrace of a prompt opening
 // is ignored, so typing cannot answer it; a later key answers.
 func TestPromptKeyGrace(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, want string
 		ask        func(app *App) string
@@ -1550,6 +1573,7 @@ func TestPromptWaitsOnFullQueue(t *testing.T) {
 
 // TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
 func TestLuaUtil(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `
 		local u = require("zemi.util")
@@ -1593,6 +1617,7 @@ func printedLines(t *testing.T, host *hostapi.Host, width int) [][]hostapi.Segme
 // with the text under a thin bar. A thought too short to count says no time,
 // and thinking alone folds into its own digest.
 func TestReasoningExpanded(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
@@ -1634,6 +1659,7 @@ func spinOf(head string) (mark, rest string) {
 // TestReasoningLiveTail: while the model thinks, only its last lines show, and
 // the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\nfive\n", Thinking: true})
 	render := func(ms int64) string {
@@ -1669,6 +1695,7 @@ func TestReasoningLiveTail(t *testing.T) {
 // effects, so the live mark keeps stepping and the tick stays on the frame
 // clock while the box waits for the reader.
 func TestReasoningSpinsBehindModal(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\n", Thinking: true})
 	app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Body: "x"})
@@ -1696,6 +1723,7 @@ func TestReasoningSpinsBehindModal(t *testing.T) {
 // model closed with a reply folds the moment it starts answering, and the run
 // it is working in stays open while it thinks and calls.
 func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "look around")
 	appendReasoning(host, "where to start", hostapi.TurnStat{ThoughtMS: 1200})
@@ -1747,6 +1775,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 // with a countdown so the turn does not look stuck, and the rule names the
 // running call nowhere: that is the chat row's job.
 func TestWorkingRowRetry(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	// the block keeps a cell off the rule's end, so the corner follows a space
 	// whatever it says
@@ -1770,6 +1799,7 @@ func TestWorkingRowRetry(t *testing.T) {
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
+	t.Parallel()
 	for _, r := range "@·.─^><?" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
@@ -1862,6 +1892,7 @@ func TestWorkingRowMascot(t *testing.T) {
 // middle of the rule and the key that leaves it at the rule's end, alone while
 // nothing runs, and keeps that key once the name is dropped for width.
 func TestWorkingRowAgentView(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 16)
 	db := testStore(t, host)
 	id := store.ShortID()
@@ -1911,6 +1942,7 @@ func TestWorkingRowAgentView(t *testing.T) {
 // TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
 // hands the text to on_confirm, esc hands it nil.
 func TestLuaInput(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	open := `zemi.ui.input({ prompt = "Branch", default = "fix-" }, function(t) zemi.notify({ title = "input", body = t or "none" }) end)`
 
@@ -1936,6 +1968,7 @@ func TestLuaInput(t *testing.T) {
 // and leaves /config open, its row rebuilt, and a refused value toasts and
 // changes nothing.
 func TestConfigEdit(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	reloadUI(t, host)
 	for _, c := range []struct {
@@ -1970,6 +2003,7 @@ func TestConfigEdit(t *testing.T) {
 // TestKeySequence: ctrl+x then t runs a <leader>t binding without typing
 // the t; a key that breaks the sequence reaches the composer.
 func TestKeySequence(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `zemi.keymap.set("<leader>t", function() zemi.notify({ title = "seq", body = "ran" }) end)`)
 	leader := tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}
@@ -1992,6 +2026,7 @@ func TestKeySequence(t *testing.T) {
 // answers the highlighted one, and the letters answer directly; without an
 // always choice there are three.
 func TestPermissionChoices(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 100, 30)
 	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
 		t.Helper()
@@ -2034,6 +2069,7 @@ func TestPermissionChoices(t *testing.T) {
 // view, a step's the id that opens its calls, each of those its own, and a
 // digest's the run it folds.
 func TestCallRowClickIDs(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look first")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
@@ -2098,6 +2134,7 @@ func TestCallRowClickIDs(t *testing.T) {
 // at column 2 behind the bar; a kept command shows the model's description
 // with the command under it, and --reasoning shows every call.
 func TestToolRows(t *testing.T) {
+	t.Parallel()
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
 	app, host := bootAgentApp(t, 100, 80)
 	host.AppendMessage("user", "fix it")
@@ -2205,6 +2242,7 @@ func TestToolRows(t *testing.T) {
 // turn, so its row says what the turn waits on in place of its verb, its own
 // progress line under it unchanged; any other running call names its verb.
 func TestRailWaitsOnNestedRun(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 24)
 	host.AppendMessage("user", "review it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{
@@ -2230,6 +2268,7 @@ func TestRailWaitsOnNestedRun(t *testing.T) {
 // sentence, an MCP call counting under its server however many of its tools
 // ran; a row an MCP call keeps of its own still reads as its name in words.
 func TestDigestCountsEveryFamily(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 100, 80)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "mcp_gitlab_get_commit", Input: "abc123", Status: "run"},
@@ -2291,7 +2330,10 @@ func TestPendingRow(t *testing.T) {
 		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
 		{"compaction", func(h *hostapi.Host) { h.SeedStream(hostapi.StreamSnapshot{Active: true, Compacting: true}) }, "⧗ compacting the conversation"},
 	} {
-		t.Run(c.name, func(t *testing.T) { pendingRow(t, c.work, c.want) })
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			pendingRow(t, c.work, c.want)
+		})
 	}
 }
 
@@ -2358,7 +2400,10 @@ func TestTodoRowsFollowTheLiveItem(t *testing.T) {
 			gone: []string{"step 14"},
 		},
 	} {
-		t.Run(c.name, func(t *testing.T) { todoRows(t, c.h, c.live, c.last, c.want, c.gone) })
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			todoRows(t, c.h, c.live, c.last, c.want, c.gone)
+		})
 	}
 }
 
@@ -2392,6 +2437,7 @@ func todoRows(t *testing.T, h int, live, last store.TodoStatus, want, gone []str
 // TestReasoningWrapKeepsWords: an expanded thought longer than the chat
 // width wraps without losing or repeating words.
 func TestReasoningWrapKeepsWords(t *testing.T) {
+	t.Parallel()
 	_, host := bootAgentApp(t, 60, 40)
 	var words []string
 	for i := range 40 {
@@ -2433,6 +2479,7 @@ func TestStreamEventsCoalesce(t *testing.T) {
 // TestWidgetErrorRecordedOnce: a widget whose render raises is recorded in
 // /errors once, not once per frame.
 func TestWidgetErrorRecordedOnce(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	run := func(src string) {
 		t.Helper()

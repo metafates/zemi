@@ -16,6 +16,7 @@ import (
 // only on a terminal that answered OSC 11 and shows the color, and the host
 // chrome sits on the same canvas, whatever the theme sets it to.
 func TestTerminalBackground(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	canvas := host.Themes.Get("whorl").Palette.Bg
 	hint := hostapi.Segment{Text: " ", HL: "Host:Hint"}
@@ -55,6 +56,7 @@ func TestTerminalBackground(t *testing.T) {
 // near-black group on the black canvas, dim on the band. A diff's number
 // keeps its red on the grey row. At 256 each keeps a color of its own.
 func TestSurfacesAt16Colors(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	app.host.Themes.SetHL("NearBlack", hostapi.HLSpec{Fg: "#202020"})
 	for _, c := range []struct {

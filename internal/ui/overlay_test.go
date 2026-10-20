@@ -240,6 +240,7 @@ func pressWhileLuaBusy(t *testing.T, app *App, keys ...tea.KeyPressMsg) (release
 // TestOverlaySelectOffKeyLoop: enter on a Lua picker returns while the
 // interpreter is busy; on_choice runs on the background worker.
 func TestOverlaySelectOffKeyLoop(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `zemi.ui.select({ "a" }, {}, function() end)`)
 	defer pressWhileLuaBusy(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})()
@@ -252,6 +253,7 @@ func TestOverlaySelectOffKeyLoop(t *testing.T) {
 // interpreter is busy, and the Lua completer's answer fills the palette once
 // it is free.
 func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `zemi.command.add("greet", function() end, { nargs = "?", complete = function() return { "alice", "bob" } end })`)
 	var keys []tea.KeyPressMsg
@@ -283,6 +285,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 // TestTopBoxJoinsAlone: the sides of a dimmed box running into the top
 // box's borders do not join them.
 func TestTopBoxJoinsAlone(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	items := make([]any, 14)
 	for i := range items {
@@ -319,6 +322,7 @@ func TestBoxAreaFallsBackToTheScreen(t *testing.T) {
 }
 
 func TestModalDimsBackground(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "hello there")
 	for i := range 20 { // a chat full of text for the box to stand over
@@ -408,6 +412,7 @@ func TestModalDimsBackground(t *testing.T) {
 // screen too short for one the box is the whole screen, so the tray lands on
 // the box's own rows and must still be the text drawn there.
 func TestToastOverBox(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 10)
 	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Origin: lua.OriginBuiltin, Items: []any{"a", "b", "c"}})
 	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
@@ -431,6 +436,7 @@ func TestToastOverBox(t *testing.T) {
 // states the error and the log, the composer gives way to it, `c` copies the
 // error, and a boot that succeeds takes it away.
 func TestBootFailedBox(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 90, 24)
 	host.PurgeGeneration() // what a failed boot leaves behind: no theme, no widgets
 	app.SignalBoot(errors.New("boot step zemi.tui: zemi/tui/init.lua:12: attempt to call a nil value (global 'pending')"))
@@ -1029,6 +1035,7 @@ func TestListAlias(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 20)
 			runLua(t, app, `zemi.keymap.set("ctrl+j", "down", { list = true })
 zemi.keymap.set("ctrl+f", "ctrl+d", { list = true })
@@ -1081,6 +1088,7 @@ func TestHintOrder(t *testing.T) {
 // TestOverlayFilterKeepsSize: filtering, down to no match, never resizes
 // the box or moves the description column, and the list grows with the screen.
 func TestOverlayFilterKeepsSize(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 40)
 	var items []any
 	for i := range 15 {
@@ -1109,6 +1117,7 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 // TestOverlayRowsBuiltOnce: a frame that moved nothing builds no list rows,
 // so an open picker costs the same at 10 items and 10000.
 func TestOverlayRowsBuiltOnce(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
 	var items []any
 	for i := range 50 {
@@ -1142,6 +1151,7 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 // TestOverlayClosesOnOutsideClick: a click beside a menu closes it, a click
 // inside does not, and a blocking ask ignores both.
 func TestOverlayClosesOnOutsideClick(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"alpha", "beta"}})
 	app.renderSync(t)
@@ -1250,6 +1260,7 @@ func TestOverlaySwitch(t *testing.T) {
 }
 
 func TestOverlayFitsShortScreen(t *testing.T) {
+	t.Parallel()
 	a, _ := bootAgentApp(t, 80, 16)
 	items := make([]any, 30)
 	for i := range items {
@@ -1266,6 +1277,7 @@ func TestOverlayFitsShortScreen(t *testing.T) {
 // row's style where it sets none, cuts with an ellipsis, and loses a click
 // id, which would otherwise act as Go chrome.
 func TestOverlaySegmentLabel(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 40, 20)
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginPlugin, Items: []any{"a", "b"}, Selected: 1, ItemText: [][]hostapi.Segment{
 		{{Text: "red", HL: "ToastErr", Click: "reload"}, {Text: " plain"}},
@@ -1284,6 +1296,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 // TestOverlayTailLabel: a tail row too wide for the box keeps its end, with
 // its desc beside or under it, at every width.
 func TestOverlayTailLabel(t *testing.T) {
+	t.Parallel()
 	path := "~/some very/long/parent/directory/names/that/go/on/and/on/alpha"
 	for _, w := range []int{40, 80, 120} {
 		app, _ := bootAgentApp(t, w, 20)
@@ -1303,6 +1316,7 @@ func TestOverlayTailLabel(t *testing.T) {
 // TestOverlayBodyLines: a body of lines keeps its highlights and nothing
 // else, y copies its text, and markdown reaches the detail views.
 func TestOverlayBodyLines(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 16)
 	runLua(t, app, `zemi.ui.overlay.open({ id = "b", markdown = true,
   body = { { { text = "red", hl = "Danger", click = "quit" }, " plain" }, { "two" } },
@@ -1322,6 +1336,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 // TestOverlayItemFields: every field of a Lua item reaches the parsed row,
 // and one of the wrong type raises, a detail action's id included.
 func TestOverlayItemFields(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 16)
 	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "v",
   hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", danger = true, tail = true, on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
@@ -1342,6 +1357,7 @@ end
 // its item and draws in its hl, and a list key, named in the footer, runs
 // its fn with the selected item; both close the list like on_select.
 func TestOverlayActionsAndKeys(t *testing.T) {
+	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 16)
 	open := `zemi.ui.overlay.open({ id = "k", items = { "a", { text = "b", actions = { { text = "Delete", id = "del", danger = true }, { text = "Back" } } } },
   on_action = function(item, action) zemi.notify({ body = item.text .. ":" .. action.id }) end,
@@ -1541,6 +1557,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 // enter, runs on_select, then shows the items reload returns, rendered
 // again, and keeps its items when reload fails.
 func TestLuaOverlayReload(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 60, 16)
 	runLua(t, app, `
 local on = { a = false, b = false }
@@ -1581,6 +1598,7 @@ zemi.ui.overlay.open({ id = "toggles", title = "Toggles", items = items(),
 // the origin that opened the overlay, and it runs on_close, so a picker's
 // callback always answers.
 func TestOverlayCloseRules(t *testing.T) {
+	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	run := func(src string, origin lua.Origin) {
 		t.Helper()
@@ -1705,6 +1723,7 @@ func TestFieldRows(t *testing.T) {
 // pane as tall as the longest preview, so moving or filtering never changes
 // the box's height, and the filter matches preview words.
 func TestListPreview(t *testing.T) {
+	t.Parallel()
 	short, long := "one short line", strings.Repeat("a preview that wraps ", 6)+"xylophone"
 	for _, c := range []struct {
 		keys []string
