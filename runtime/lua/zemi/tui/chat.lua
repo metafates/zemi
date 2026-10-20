@@ -1059,6 +1059,7 @@ zemi.ui.widget.add({
 				and ag.active
 				and not ctx.view -- a run's view draws its own rows: its calls and reply never reach tools or text
 				and not ag.retry
+				and not ag.compacting -- the pending row already names the summary
 				and not ctx.cancelling
 				and ctx.waiting == ""
 				and (ag.elapsed or 0) >= 0.3

@@ -34,8 +34,9 @@ zemi.ui.widget.add({
 		local parts = {}
 		---@param text string
 		---@param hl   string?
+		---@param effect string?
 		---@return zemi.Line
-		local function plain(text, hl) return { { text = text, hl = hl or "Dim" } } end
+		local function plain(text, hl, effect) return { { text = text, hl = hl or "Dim", effect = effect } } end
 		local state = "idle"
 		---@type { label: string, elapsed: number, cancellable: boolean }?
 		local busy = (ctx.busy or {})[1]
@@ -60,7 +61,7 @@ zemi.ui.widget.add({
 				state = "working"
 				-- what the job is, worth least of the three parts: a narrow rule
 				-- keeps the key that stops it and the clock that shows it alive
-				parts[#parts + 1] = { plain(fmt.lower(busy.label)), 4 }
+				parts[#parts + 1] = { plain(fmt.lower(busy.label), nil, "shimmer"), 4 }
 				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
 				parts[#parts + 1] = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
 			elseif ctx.ended == "ok" then

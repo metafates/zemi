@@ -2136,9 +2136,9 @@ rides the `memories.md` line and its ledger entries.
   that guards the working rule's block: its label breathes (the shimmer
   effect) for as long as the row lives, and the first reasoning, call or reply
   arrives into it - reasoning flows in under it, a first call replaces it, a
-  reply takes its block. A retry's backoff, a cancel winding down and an ask
-  holding the turn say so through the working rule instead, and the row
-  stands down.
+  reply takes its block. A retry's backoff, a compaction, a cancel winding down
+  and an ask holding the turn say so through the working rule instead, and the
+  row stands down.
   A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back, with the
@@ -2161,8 +2161,9 @@ rides the `memories.md` line and its ledger entries.
   exchange carries its readout: how long its turn ran, its tokens out and the
   clock; a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).
-  Under the transcript the chat draws what is still pending as one static row,
-  with no spinner and no clock, so an hour-long job never costs a frame. It
+  Under the transcript the chat draws what is still pending as one row whose
+  labels breathe, with no spinner and no clock of its own, so what a job is
+  never widens the row as it runs. It
   names every handed-off agent and workflow and background job, and the
   `Host.Busy` entries (a compaction, the idle recap, a plugin install, a boot's
   MCP starts) as one part: the oldest's label, `, and N more` when more run. An empty transcript

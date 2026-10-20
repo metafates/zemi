@@ -757,8 +757,9 @@ func shimmer(thm themeResolver, anim bool, frame int, seg hostapi.Segment) []hos
 
 // segEffects expands a row's segment effects where a draw applies them: a
 // shimmer segment becomes one per rune carrying the band's blend, a spin one
-// steps its spinner glyph to frame. It reports whether a spin mark was
-// drawn, so the frame clock keeps stepping while one is on screen.
+// steps its spinner glyph to frame. It reports whether a segment that moves
+// by itself was drawn, so the frame clock keeps stepping while one is on
+// screen.
 func segEffects(thm themeResolver, anim bool, frame int, segs []hostapi.Segment) ([]hostapi.Segment, bool) {
 	i := slices.IndexFunc(segs, func(s hostapi.Segment) bool { return s.Effect != "" })
 	if i < 0 {
@@ -773,6 +774,7 @@ func segEffects(thm themeResolver, anim bool, frame int, segs []hostapi.Segment)
 				r.Over, r.Fill, r.Fade, r.OnPanel = s.Over, s.Fill, s.Fade, s.OnPanel
 				out = append(out, r)
 			}
+			spun = spun || (anim && frame != 0)
 		case "spin":
 			if _, n := utf8.DecodeRuneInString(s.Text); n > 0 {
 				s.Text = hostapi.Spinner[frame%len(hostapi.Spinner)] + s.Text[n:]
