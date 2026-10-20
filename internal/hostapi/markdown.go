@@ -196,6 +196,10 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 // glamour renders text with the renderer for (key, width); width 0 does not
 // wrap, so zemi wraps the prose itself and marks where (Segment.Soft).
 func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width int) [][]Segment {
+	// quick.Highlight resolves chroma's global lexer, style and formatter
+	// registries; a render must not overlap a markdownStyle register.
+	styleMu.RLock()
+	defer styleMu.RUnlock()
 	rk := fmt.Sprintf("%s|%d", key, width)
 	r := c.renderers[rk]
 	if r == nil {
@@ -383,32 +387,37 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
 	// NOTE: every distinct theme key stays registered for the process; a
 	// session that sets thousands of highlight overrides would grow it.
-	styleMu.Lock()
-	defer styleMu.Unlock()
-	if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
-		entries := chroma.StyleEntries{}
-		for i, cg := range codeGroups {
-			p := code[i]
-			var e []string
-			// chroma takes hex only: a group in the terminal's own colors
-			// falls back to the text color
-			if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
-				e = append(e, *p.Color)
+	styleMu.RLock()
+	_, ok := styles.Registry[cfg.CodeBlock.Theme]
+	styleMu.RUnlock()
+	if !ok {
+		styleMu.Lock()
+		defer styleMu.Unlock()
+		if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
+			entries := chroma.StyleEntries{}
+			for i, cg := range codeGroups {
+				p := code[i]
+				var e []string
+				// chroma takes hex only: a group in the terminal's own colors
+				// falls back to the text color
+				if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
+					e = append(e, *p.Color)
+				}
+				// the canvas already paints Normal's background
+				if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") && cg.tok != chroma.Text {
+					e = append(e, "bg:"+*p.BackgroundColor)
+				}
+				if cg.tok == chroma.Comment {
+					e = append(e, "italic")
+				}
+				entries[cg.tok] = strings.Join(e, " ")
 			}
-			// the canvas already paints Normal's background
-			if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") && cg.tok != chroma.Text {
-				e = append(e, "bg:"+*p.BackgroundColor)
+			s, err := chroma.NewStyle(cfg.CodeBlock.Theme, entries)
+			if err != nil {
+				cfg.CodeBlock.Theme = ""
+			} else {
+				styles.Register(s)
 			}
-			if cg.tok == chroma.Comment {
-				e = append(e, "italic")
-			}
-			entries[cg.tok] = strings.Join(e, " ")
-		}
-		s, err := chroma.NewStyle(cfg.CodeBlock.Theme, entries)
-		if err != nil {
-			cfg.CodeBlock.Theme = ""
-		} else {
-			styles.Register(s)
 		}
 	}
 	return cfg, key.String()
@@ -416,9 +425,9 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 
 // codeGroups is how code draws: the chroma style markdownStyle registers
 // for code blocks and the groups Highlight names both come from it.
-// styleMu serializes the check-and-register below: styles.Registry is
+// styleMu keeps the register off glamour's reads: styles.Registry is
 // chroma's unlocked global map, and two hosts render markdown concurrently.
-var styleMu sync.Mutex
+var styleMu sync.RWMutex
 
 var codeGroups = [...]struct {
 	tok   chroma.TokenType
