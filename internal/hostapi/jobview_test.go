@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -21,9 +20,12 @@ func TestJobsScreen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for h.jobs.Running() > 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, func() error {
+		if n := h.jobs.Running(); n > 0 {
+			return fmt.Errorf("%d jobs still running", n)
+		}
+		return nil
+	})
 	running, err := h.jobs.Start(dir, "sleep 30", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -63,9 +65,12 @@ func TestJobsScreen(t *testing.T) {
 	if err := h.stopJobs("all"); err != nil {
 		t.Fatal(err)
 	}
-	for h.jobs.Running() > 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, func() error {
+		if n := h.jobs.Running(); n > 0 {
+			return fmt.Errorf("%d jobs still running", n)
+		}
+		return nil
+	})
 }
 
 // TestJobTail: a view holds the end of a long output and names what it left
