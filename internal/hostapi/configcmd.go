@@ -138,6 +138,7 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 	if role, ok := config.ModelRole(path); ok {
 		return h.SetModel(role + " " + cmp.Or(s, "chat"))
 	}
+	//nolint:exhaustive // a model target's key is no builtin constant
 	switch path {
 	case config.KeyAgentProfile:
 		return h.SetProfile(s)
@@ -245,6 +246,7 @@ func configPicker(path config.Key) string {
 
 // configChoices is what /config edit offers for path; "" is the default.
 func (h *Host) configChoices(path config.Key) []string {
+	//nolint:exhaustive // a model target's key is no builtin constant
 	switch path {
 	case config.KeyUITheme:
 		var names []string

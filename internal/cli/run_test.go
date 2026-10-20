@@ -24,7 +24,7 @@ func TestFollower(t *testing.T) {
 		return hostapi.StreamTool{ID: id, Name: "shell", Input: "ls", Status: s, Output: "x\nexit status 1"}
 	}
 	row := func(t hostapi.StreamTool) hostapi.ChatMessage {
-		return hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, ID: t.ID, Tool: t.Name, Text: t.Input, Status: t.Status, Output: t.Output}
+		return hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Status: t.Status, Output: t.Output}
 	}
 	live := func(ts ...hostapi.StreamTool) hostapi.RunFrame {
 		return hostapi.RunFrame{Stream: hostapi.StreamSnapshot{Tools: ts}}

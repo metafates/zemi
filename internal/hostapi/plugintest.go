@@ -498,7 +498,7 @@ func (t *PluginTest) set(L *glua.LState) int {
 	})
 	v := luaToGoChecked(L, 2, "test.set")
 	return t.drive(L, "set", "", func(context.Context) (func(*glua.LState) []glua.LValue, error) {
-		return nil, t.h.SetConfig(config.Key(s.Path), v)
+		return nil, t.h.SetConfig(s.Path, v)
 	})
 }
 
