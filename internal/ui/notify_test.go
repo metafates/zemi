@@ -28,6 +28,7 @@ func notifyApp(t *testing.T) (*App, *hostapi.Host) {
 // while the terminal reports zemi unfocused, once the agent reads idle; a
 // loop's run ends quietly, and the loop's end notifies.
 func TestNotifyWhenAway(t *testing.T) {
+	t.Parallel()
 	app, host := notifyApp(t)
 	frame := func() string {
 		_, cmd := app.Update(frameTickMsg{})
@@ -81,6 +82,7 @@ func TestNotifyWhenAway(t *testing.T) {
 // after recapDelay when the turn ended well with no input since, and the
 // next input stops it; the reflector runs after ReflectIdle whatever came.
 func TestRecapWhenIdle(t *testing.T) {
+	t.Parallel()
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
 		name           string
@@ -138,6 +140,7 @@ func TestRecapWhenIdle(t *testing.T) {
 // while a turn runs, ? while a prompt waits, and how a turn ended while the
 // window was away until it is focused again.
 func TestWindowTitle(t *testing.T) {
+	t.Parallel()
 	running := func(app *App) { app.turnActive = true }
 	for _, c := range []struct {
 		name  string
@@ -180,6 +183,7 @@ func TestWindowTitle(t *testing.T) {
 // level and title, newest first; a twin restarts its row, an expired toast's
 // rows leave, and a short stage cuts the tray with its frame closed.
 func TestToastTray(t *testing.T) {
+	t.Parallel()
 	app, _ := notifyApp(t)
 	type push struct {
 		level       slog.Level
