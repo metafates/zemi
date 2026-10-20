@@ -484,6 +484,34 @@ func TestBootFailedBox(t *testing.T) {
 	}
 }
 
+// TestOverlayWidthIsFixed: a box takes its width when it opens and keeps it,
+// so a row whose keys make the footer longer moves nothing.
+func TestOverlayWidthIsFixed(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 120, 30)
+	app.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []any{
+		map[string]any{"text": "short", "keys": []any{map[string]any{"key": "c", "desc": "Change", "run": "nope"}}},
+		map[string]any{"text": "long", "keys": []any{
+			map[string]any{"key": "c", "desc": "Change", "run": "nope"},
+			map[string]any{"key": "o", "desc": "Open the file in the editor now", "run": "nope"},
+			map[string]any{"key": "x", "desc": "Delete it", "danger": true, "run": "nope"},
+		}},
+	}})
+	width := func() int { return hostapi.SegsWidth(app.overlayBox(&app.overlays[0], 120, 30)[0]) }
+	opened := width()
+	pressKeys(app, "j")
+	if got := width(); got != opened {
+		t.Fatalf("the box went %d cells wide on the wider row, it opened at %d", got, opened)
+	}
+	pressKeys(app, "k")
+	if got := width(); got != opened {
+		t.Fatalf("the box went %d cells wide on the narrower row, it opened at %d", got, opened)
+	}
+	if opened < listBoxW+4 || opened > 120-4 {
+		t.Fatalf("the box opened at %d cells, outside a menu's width", opened)
+	}
+}
+
 func TestOverlayNavigation(t *testing.T) {
 	detail := func(keys ...any) map[string]any {
 		return map[string]any{"text": "err", "desc": "short", "detail": "line one\nline two", "keys": keys}

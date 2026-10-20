@@ -817,7 +817,9 @@ zemi.ui.widget.add({
 				B.fold(tr, first, last, mode == "unfold")
 			elseif mode ~= "" then
 				B.gap("activity")
-				B.rail(tr, first, last, { open = mode == "open", run = first })
+				-- the picker's rail view draws the run whole, the live turn's own
+				-- included: every call it walks has a row to band
+				B.rail(tr, first, last, { open = mode == "open", run = first, full = (ctx.rail or 0) == first })
 			elseif m.kind == "shell" then
 				-- a !command: the command, then its output, already cut to a head
 				-- and a tail by the host; a failure's mark takes the prompt's place
@@ -941,16 +943,21 @@ zemi.ui.widget.add({
 			and settled.active == active
 			and settled.replying == replying
 			and settled
-		if not done then
-			-- ctx.transcript copies every row into Lua, so only a miss reads it
+		-- the row the run this turn is still adding to starts at: the live turn's
+		-- calls are no unit of their own, but the picker names that run by it
+		local live_first = 0
+		if active and not replying then
 			local tr = ctx.transcript or {}
-			local live_first = 0
-			if active and not replying and #tr > 0 and activity(tr[#tr]) then
+			if #tr > 0 and activity(tr[#tr]) then
 				live_first = #tr
 				while live_first > 1 and activity(tr[live_first - 1]) do
 					live_first = live_first - 1
 				end
 			end
+		end
+		if not done then
+			-- ctx.transcript copies every row into Lua, so only a miss reads it
+			local tr = ctx.transcript or {}
 			---@param first integer
 			---@return zemi.tui.RunMode|""
 			local function mode_of(first)
@@ -1071,7 +1078,14 @@ zemi.ui.widget.add({
 			end
 			if #tools > 0 then
 				B.gap("activity")
-				B.rail(tools, 1, #tools, { live = true, open = ctx.show_reasoning })
+				-- the picker's rail view opens this run as it opens a settled one:
+				-- every row, until the menu closes back to its own short rail
+				B.rail(
+					tools,
+					1,
+					#tools,
+					{ live = true, open = ctx.show_reasoning, full = live_first > 0 and live_first == (ctx.rail or 0) }
+				)
 			end
 			if text ~= "" then
 				B.gap("text")

@@ -1853,7 +1853,10 @@ rides the `memories.md` line and its ledger entries.
   composer frame on the side of the pill that opened it: a Lua picker
   left, `/profile`, `/model`, `/effort` and `/usage` right; the box stands on
   the frame, whose top rule is its bottom border, the label that rule carries
-  giving way to it cell for cell). A Lua overlay has
+  giving way to it cell for cell). A box takes its width on the frame it
+  opens in and keeps it: a menu that resized as the selection moved, or as a
+  reload brought longer text, would shift under the reader, so its rows, body
+  and hints fit that width and a longer title is cut instead. A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, `follow` and an
   item's `anchor`: moving the selection then scrolls the chat to the
   transcript row the item names and bands that message, opening on the row
@@ -2175,23 +2178,30 @@ rides the `memories.md` line and its ledger entries.
   rail folded. `l` on that row opens the rail's own list, one row per call and
   thought, and the chat draws that run whole while it is up: no row of it
   stays behind the rail's own `… N earlier`, each call keeps its body folded,
-  and the call the list names is the one banded. It opens where the reader
-  is, the way muffin opens on the symbol under the cursor, not on its first
-  row: the levels down to the row the view's middle draws come up together,
-  turns then the turn then its rail, and `h` walks back up, each level on the
-  row it was left on. A level's row with no level under it takes `enter` for
-  the place itself: the whole menu closes and the chat stays there, and `l`
-  does nothing; what a row offers is its flat keys, `o` to read it whole,
-  `j` for its job, `r` to rewind a prompt. Prompt and reply rows lead with the
+  and the call the list names is the one banded, the run this turn is still
+  adding to included: its calls are open whole while the list is up and go
+  back to the short tail a live rail keeps once it closes. It opens where the
+  reader is, the way muffin opens on the symbol under the cursor, not on its
+  first row: the levels down to the row the view's middle draws come up
+  together, turns then the turn then its rail, and `h` walks back up, each
+  level on the row it was left on, while `esc` closes the whole menu. A
+  level's row with no level under it takes `enter` for the place itself: the
+  menu closes and the chat stays there, and `l` does nothing; a call of a
+  rail is the exception, since the run folds away with the list, so enter
+  keeps it open where the preview put it. What a row offers is its flat keys,
+  `o` to read it whole, `j` for its job, `r` to rewind a prompt. The list is
+  a window on the transcript, not a copy of it: a row that lands while it is
+  open shows there at once, and a level the transcript no longer holds (a
+  rewind, a compaction) closes. Prompt and reply rows lead with the
   speaker's kind glyph, `▌` in the accent and `◆` in dim, and the state rows
   keep their marks, a marked row drawing no glyph of its own. It follows the
   chat: moving the selection scrolls the transcript to the row the item
   names, centers the message in the view when the whole of it fits (else its
   first row just under the pinned header) and bands every row of it, the
   scrollbar column and a reply's readout aside; `y` copies the row, and `esc`
-  puts the chat back where it was found, the way muffin's popup cancels. A
-  view a key opens sits over the level it came from, so esc returns to it as
-  it was. A jump records the row
+  closes the menu with the chat back where it was found, the way muffin's
+  popup cancels. A view a key opens sits over the level it came from, so esc
+  there returns to it as it was. A jump records the row
   it placed the view at, because the viewport alone cannot say which message
   it is when a centered placement clamps at the top or the tail and many share
   one top row: the list opens on that row again while the view still sits

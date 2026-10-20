@@ -477,6 +477,11 @@ type Host struct {
 	view     *agentRun // the agent run the chat shows instead of the session, nil for none
 	viewBack string    // the command that reopens the screen view came from
 
+	// msgMu guards the messages picker's levels opened in this session: a
+	// transcript that grows rebuilds them where they are open
+	msgMu     sync.Mutex
+	msgLevels []string
+
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
@@ -1020,6 +1025,7 @@ func (h *Host) AppendChat(m ChatMessage) {
 	h.session.Transcript = append(h.session.Transcript, m)
 	h.tMu.Unlock()
 	h.refresh()
+	h.refreshMessages()
 }
 
 // OpenHelp opens the help overlay listing keys and slash commands. A

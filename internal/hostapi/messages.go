@@ -64,17 +64,79 @@ func (h *Host) OpenMessages() error {
 	ui.OpenOverlay(h.messagesOverlay(tr))
 	first, run := messagesAt(tr, ui.ChatRow())
 	if first == 0 {
+		h.trackMessages("messages")
 		return nil
 	}
+	ids := []string{"messages", "messages turn " + strconv.Itoa(first)}
 	if o, ok := h.messagesTurnOverlay(tr, first); ok {
 		ui.OpenOverlay(o)
 	}
 	if run != 0 {
 		if o, ok := h.messagesRailOverlay(tr, run); ok {
 			ui.OpenOverlay(o)
+			ids = append(ids, "messages rail "+strconv.Itoa(run))
 		}
 	}
+	h.trackMessages(ids...)
 	return nil
+}
+
+// refreshMessages rebuilds the open levels of the messages picker from the
+// transcript as it grows, so a call that settles or a reply that lands shows
+// there; a level the transcript no longer holds (a rewind, a compaction)
+// closes. It reads the session, never the agent's stream: a caller may hold
+// that lock.
+func (h *Host) refreshMessages() {
+	ui := h.hooks()
+	if ui == nil || h.viewedRun() != nil {
+		return
+	}
+	h.msgMu.Lock()
+	levels := slices.Clone(h.msgLevels)
+	h.msgMu.Unlock()
+	if len(levels) == 0 {
+		return
+	}
+	tr := h.Session().Transcript
+	var open []string
+	for _, id := range levels {
+		o, ok := h.messagesLevel(id, tr)
+		if !ok {
+			ui.CloseOverlay(id)
+			continue
+		}
+		open = append(open, id)
+		ui.RefreshOverlay(id, func() Overlay { return o })
+	}
+	h.msgMu.Lock()
+	h.msgLevels = open
+	h.msgMu.Unlock()
+}
+
+// messagesLevel builds one of the picker's levels from a transcript, ok false
+// for an id it no longer holds.
+func (h *Host) messagesLevel(id string, tr []ChatMessage) (Overlay, bool) {
+	switch {
+	case id == "messages":
+		return h.messagesOverlay(tr), true
+	case strings.HasPrefix(id, "messages turn "):
+		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages turn ")); err == nil {
+			return h.messagesTurnOverlay(tr, n)
+		}
+	case strings.HasPrefix(id, "messages rail "):
+		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages rail ")); err == nil {
+			return h.messagesRailOverlay(tr, n)
+		}
+	}
+	return Overlay{}, false
+}
+
+// trackMessages remembers the levels the picker opened, so they rebuild as the
+// transcript grows.
+func (h *Host) trackMessages(ids ...string) {
+	h.msgMu.Lock()
+	defer h.msgMu.Unlock()
+	h.msgLevels = append(h.msgLevels, ids...)
 }
 
 // messagesAt is the level of /messages that holds a transcript row: the turn
@@ -217,6 +279,7 @@ func (h *Host) openMessagesTurn(first int) error {
 		return Usagef("the chat shows no turn at row %d", first)
 	}
 	ui.OpenOverlay(o)
+	h.trackMessages(o.ID)
 	return nil
 }
 
@@ -272,6 +335,7 @@ func (h *Host) openMessagesRail(first int) error {
 		return Usagef("the chat shows no rail at row %d", first)
 	}
 	ui.OpenOverlay(o)
+	h.trackMessages(o.ID)
 	return nil
 }
 

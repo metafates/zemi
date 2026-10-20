@@ -210,7 +210,9 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			st.selected = n
 		}
 	}
-	if n := len(a.overlays); n > 0 && !o.Input { // stacked lists line up, as a detail view does
+	if n := len(a.overlays); n > 0 && !o.Input && !o.Follow {
+		// a level drawn over its list lines up with it; a browsing list hides
+		// the level under it, so it takes the width of what it holds
 		st.size.w = a.overlays[n-1].size.w
 	}
 	a.overlays = append(a.overlays, st)
@@ -538,6 +540,10 @@ func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 		return cmp.Or(st.o.Verb, hostapi.VerbRun)
 	case r.Fill != "":
 		return cmp.Or(r.Verb, hostapi.VerbFill)
+	case st.o.Follow && st.o.Rail != 0:
+		// the run closes with the list, so enter cannot leave the chat on a
+		// row of it: the list stays where the preview put it
+		return ""
 	case st.o.Follow:
 		// the list already moved the chat to the row: enter keeps that place
 		return hostapi.VerbGo
@@ -646,6 +652,18 @@ func (a *App) closeOverlays(id string) {
 		a.reloadOverlay(a.overlays[n-1].o, nil)
 	}
 	a.syncRail()
+}
+
+// cancelMenuRoot closes the outermost level of a browsing menu, so esc on any
+// of its levels closes the lot; false when the level is its own root.
+func (a *App) cancelMenuRoot(o hostapi.Overlay) bool {
+	for _, st := range a.overlays {
+		if strings.HasPrefix(o.ID, st.o.ID+" ") {
+			a.cancelOverlay(st.o)
+			return true
+		}
+	}
+	return false
 }
 
 // closeMenu closes a browsing list with every level under it opened, keeping
@@ -817,16 +835,25 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		return nil
 	case "h":
-		// one level back, a view stacked over another only: at the root esc
-		// is the way out, and h types into a filter as it always did
+		// one level back, a view or a level stacked over another only: at the
+		// root there is nowhere back to, and h types into a filter as always
 		if len(a.overlays) == 1 {
 			return nil
 		}
-		fallthrough
+		if st.back {
+			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
+			a.syncRail()
+			return nil
+		}
+		a.cancelOverlay(o) // the chat back where this level found it
 	case "esc":
 		if st.back {
 			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
 			a.syncRail()
+			return nil
+		}
+		// a browsing menu closes whole, the chat back where it was found
+		if o.Follow && a.cancelMenuRoot(o) {
 			return nil
 		}
 		a.cancelOverlay(o)
@@ -1002,6 +1029,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	// breadcrumb title where the screen has room, and a field repeating the
 	// title's item (a project's path) shows only when the title is cut
 	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
+	// a box takes its width when it first draws and keeps it: one that
+	// resized as the selection moved would shift under the reader, so the
+	// body, the rows and the hints all fit that width
+	measuring := st.size.h == 0
 	fields := st.o.Fields
 	if st.back {
 		title := ansi.StringWidth(st.o.Title) + 1 + map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""]
@@ -1009,13 +1040,16 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if title <= inner {
 			fields = slices.DeleteFunc(slices.Clone(fields), func(f hostapi.Field) bool { return strings.HasSuffix(st.o.Title, " / "+f.Value) })
 		}
-	} else {
+	} else if measuring { // the fewest cells a measuring box keeps, so it reads as a menu
 		st.size.w = max(st.size.w, map[bool]int{true: listBoxW, false: textBoxW}[len(st.o.Items) > 0 && !previews])
 	}
 	if st.o.Wide {
 		st.size.w = max(st.size.w, inner)
 	}
-	bodyW := min(inner, st.size.w)
+	bodyW := inner
+	if !measuring {
+		bodyW = min(inner, st.size.w)
+	}
 	if previews && st.paneW != bodyW {
 		st.paneW, st.paneN = bodyW, 0
 		for _, it := range st.items {
@@ -1066,10 +1100,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				head = [][]hostapi.Segment{st.filterRow(bodyW)}
 			}
 			if len(st.visible) == 0 {
-				listPH, fixed = nil, emptyRows(noMatches, inner)
+				listPH, fixed = nil, emptyRows(noMatches, bodyW)
 			}
 		case bodyN == 0 || st.o.Empty != "":
-			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), inner)
+			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), bodyW)
 		default:
 			listPH = nil
 		}
@@ -1093,7 +1127,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 					it.match = st.match[n]
 					items = append(items, it)
 				}
-				st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.size.w, inner)
+				st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.size.w, bodyW)
 				key.top = st.view.top
 				st.rowsKey = key
 			}
@@ -1129,19 +1163,17 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if scroll == nil && st.o.Reload != nil {
 			scroll = []hintPair{scrollGap}
 		}
-		// a following list's esc cancels the browse: it is not closing, it
-		// is putting the chat back
 		esc := map[bool]string{true: "back", false: "close"}[st.back]
-		if st.o.Follow {
-			esc = "back"
+		if !st.back && len(a.overlays) > 1 {
+			hints = append(hints, hintPair{"h", "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)
-		foot := hint(inner, hints...)
+		foot := hint(bodyW, hints...)
 		if st.armed {
-			foot = armedHint(inner, "enter", st.items[st.visible[st.selected]].label)
+			foot = armedHint(bodyW, "enter", st.items[st.visible[st.selected]].label)
 		}
 		if d := st.keyDesc(st.keyArmed); d != "" {
-			foot = armedHint(inner, st.keyArmed, d)
+			foot = armedHint(bodyW, st.keyArmed, d)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
