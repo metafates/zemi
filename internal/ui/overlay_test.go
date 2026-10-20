@@ -1749,33 +1749,46 @@ func TestOverlayStepsAlongRail(t *testing.T) {
 	}
 }
 
-// TestBodyPartsWell: parts naming a surface stand as one well - a padding
-// row above each, one below the last, each on its own surface - while a part
-// outside it keeps its gap and its own look.
+// TestBodyPartsWell: a part naming a surface covers its own rows alone, with
+// a blank row above and below it, so a command and what it answered differ in
+// their surface and nothing else, while a part outside keeps one gap.
 func TestBodyPartsWell(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
-	var fills []hostapi.Fill
-	for _, row := range app.bodyParts([]hostapi.BodyPart{
-		{Text: "go test ./...", Lang: "bash", Fill: hostapi.FillCanvas},
-		{Text: "ok", Fill: hostapi.FillWell},
-		{Text: "~~a~~", Lang: "markdown"},
-	}, 20) {
-		if len(row) == 0 {
-			fills = append(fills, hostapi.FillAuto)
-			continue
+	rows := func(parts ...hostapi.BodyPart) []string {
+		var got []string
+		for _, row := range app.bodyParts(parts, 20) {
+			var text strings.Builder
+			fill := hostapi.FillAuto
+			for _, sg := range row {
+				fill = cmp.Or(fill, sg.Fill)
+				text.WriteString(sg.Text)
+			}
+			got = append(got, fmt.Sprintf("%d:%s", fill, strings.TrimSpace(text.String())))
 		}
-		fills = append(fills, row[0].Fill)
+		return got
 	}
-	want := []hostapi.Fill{
-		hostapi.FillCanvas, // the command's padding and the command
-		hostapi.FillCanvas,
-		hostapi.FillWell, // what it answered: its padding, its row, its padding
-		hostapi.FillWell,
-		hostapi.FillWell,
-		hostapi.FillAuto, // the gap before a part outside the well
+	row := func(fill hostapi.Fill, text string) string { return fmt.Sprintf("%d:%s", fill, text) }
+	want := []string{
+		row(hostapi.FillAuto, ""),                // air above the command
+		row(hostapi.FillCanvas, "go test ./..."), // the command, on the canvas
+		row(hostapi.FillAuto, ""),                // air, one row from each part
+		row(hostapi.FillAuto, ""),                //
+		row(hostapi.FillWell, "ok"),              // what it answered, on the well
+		row(hostapi.FillAuto, ""),                // air under it
+		row(hostapi.FillAuto, "done"),            // a part outside, one gap before it
 	}
-	if len(fills) < len(want) || !slices.Equal(fills[:len(want)], want) {
-		t.Fatalf("row surfaces %v, want %v", fills, want)
+	if got := rows(
+		hostapi.BodyPart{Text: "go test ./...", Lang: "bash", Fill: hostapi.FillCanvas},
+		hostapi.BodyPart{Text: "ok", Fill: hostapi.FillWell},
+		hostapi.BodyPart{Text: "done", Lang: "markdown"},
+	); !slices.Equal(got, want) {
+		t.Fatalf("rows %q, want %q", got, want)
+	}
+	// a surface is the body's width whole: the text wraps inside its padding
+	for _, row := range app.bodyParts([]hostapi.BodyPart{{Text: strings.Repeat("x ", 40), Fill: hostapi.FillWell}}, 20) {
+		if w := hostapi.SegsWidth(row); len(row) > 0 && w != 20 {
+			t.Fatalf("a row of the well is %d wide: %v", w, row)
+		}
 	}
 }

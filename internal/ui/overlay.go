@@ -1182,27 +1182,21 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 
-// bodyParts lays a view's parts out: a run of parts naming a Fill stands as
-// one well, a padding row above each of its parts and one below the last, so
-// a command and what it answered read as one box with two surfaces and air
-// between them.
+// bodyParts lays a view's parts out: a part naming a Fill keeps a blank row
+// above and below it, off its surface, so a command and what it answered
+// stand as two bands of one block with air between them. A part outside a
+// fill keeps one blank row before it.
 func (a *App) bodyParts(parts []hostapi.BodyPart, w int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	for i, p := range parts {
-		well, held := p.Fill != hostapi.FillAuto, i > 0 && parts[i-1].Fill != hostapi.FillAuto
-		switch {
-		case well: // one above the first part, one over each after it
-			rows = append(rows, wellPad(p.Fill, w))
-		case !well && i > 0:
-			if held {
-				rows = append(rows, wellPad(parts[i-1].Fill, w))
-			}
+		well := p.Fill != hostapi.FillAuto
+		if well || i > 0 && parts[i-1].Fill == hostapi.FillAuto {
 			rows = append(rows, nil)
 		}
 		rows = append(rows, a.bodyPart(p, w)...)
-	}
-	if n := len(parts); n > 0 && parts[n-1].Fill != hostapi.FillAuto {
-		rows = append(rows, wellPad(parts[n-1].Fill, w))
+		if well {
+			rows = append(rows, nil)
+		}
 	}
 	return rows
 }
@@ -1217,11 +1211,10 @@ func (a *App) bodyPart(p hostapi.BodyPart, w int) [][]hostapi.Segment {
 	case "diff":
 		return hostapi.DiffRows(p.Text, w)
 	case "":
-		rows := wrapText(p.Text, "", w)
-		if p.Fill != hostapi.FillAuto {
-			return wellRows(rows, p.Fill, w)
+		if p.Fill != hostapi.FillAuto { // the well's own side padding, like code
+			return wellRows(wrapText(p.Text, "", w-2), p.Fill, w)
 		}
-		return rows
+		return wrapText(p.Text, "", w)
 	}
 	if p.Fill != hostapi.FillAuto { // the well pads it, not the part
 		return a.wellCode(p.Text, p.Lang, p.Fill, w)

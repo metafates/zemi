@@ -1972,11 +1972,11 @@ rides the `memories.md` line and its ledger entries.
   parts, each drawn the way its text is written - markdown, a unified diff,
   or a language to highlight it as - and a body its work rewrites (`Live`)
   keeps the reader's place, or follows its tail while they never scrolled.
-  A part that names a surface stands in a well: consecutive ones share one
-  well, a padding row above each and one below the last, so a call's
-  command (the canvas, sunk into the box) and what it answered (the well,
-  a step above the box) read as one box with two surfaces and air between
-  them, as `/jobs view` draws it too. A `status` field colors the status
+  A part that names a surface covers its own rows alone, with a blank row
+  above and below it, so a call's command (the canvas, sunk into the box)
+  and what it answered (the well, a step above the box) read as two bands
+  of one block with air between them, and they differ in nothing but their
+  surface, as `/jobs view` draws it too. A `status` field colors the status
   words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
