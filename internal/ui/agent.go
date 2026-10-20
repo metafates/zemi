@@ -476,11 +476,12 @@ type listItem struct {
 // markSeg is a hostapi.Marks state mark and its gap, as the chat draws it;
 // none for "".
 func markSeg(kind string) hostapi.Segment {
-	m, ok := hostapi.Marks[kind]
+	k := hostapi.MarkKind(kind)
+	m, ok := hostapi.Marks[k]
 	if !ok {
 		return hostapi.Segment{}
 	}
-	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]string{true: "spin"}[kind == "spin"]}
+	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]string{true: "spin"}[k == hostapi.MarkSpin]}
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.

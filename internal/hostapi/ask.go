@@ -42,7 +42,7 @@ func (h *Host) vetoHook() func(tools.Request) string {
 
 // resolved reports one settled request on permission.resolved.
 func (h *Host) resolved(req tools.Request, allowed bool, by string) {
-	h.EmitAsync("permission.resolved", map[string]any{
+	h.EmitAsync(EventPermissionResolved, map[string]any{
 		"subject": req.Subject, "arg": req.Arg,
 		"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
 		"by":       by,

@@ -98,9 +98,9 @@ func (h *Host) watchCall(n int) {
 // callTitles name a call's view by what it is, not by the verb its row reads
 // with; any other tool reads as its own name's words.
 var callTitles = map[string]string{
-	"shell": "Command", "edit": "Edit", "write": "Write", "read": "Read",
-	"grep": "Search", "glob": "Find", "skill": "Skill", "lsp": "Lookup",
-	"plan": "Plan", "lua": "Script", "todos": "Todos", "memory": "Memory",
+	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
+	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill", tools.ToolLSP: "Lookup",
+	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
 }
 
 // callWords say where a call stands, beside its mark.
@@ -118,9 +118,9 @@ var callMarks = map[CallStatus]string{
 // callArg names what a call was given, so the facts table says what it acted
 // on before the body says what came back.
 var callArg = map[string]string{
-	"read": "file", "edit": "file", "write": "file", "grep": "pattern",
-	"glob": "pattern", "skill": "skill", "lsp": "symbol",
-	"memory": "memory", "todos": "what",
+	tools.ToolRead: "file", tools.ToolEdit: "file", tools.ToolWrite: "file", tools.ToolGrep: "pattern",
+	tools.ToolGlob: "pattern", tools.ToolSkill: "skill", tools.ToolLSP: "symbol",
+	tools.ToolMemory: "memory", tools.ToolTodos: "what",
 }
 
 // callView is one row's view: the mark and the facts of the call, then its
@@ -144,7 +144,7 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		if m.Label != "" {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
-		if (m.Tool == "shell" || m.Tool == "lua") && m.Text != "" {
+		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolLua) && m.Text != "" {
 			// a command is code, so it heads the body rather than the facts
 			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash"})
 		} else if arg := callArg[m.Tool]; arg != "" && m.Text != "" {
@@ -249,7 +249,7 @@ func callTitle(m ChatMessage) string {
 	switch {
 	case m.Kind == RowReasoning:
 		return "Thought"
-	case m.Tool == "question":
+	case m.Tool == tools.ToolQuestion:
 		return "Question"
 	}
 	if t, ok := callTitles[m.Tool]; ok {
@@ -263,7 +263,7 @@ func callTitle(m ChatMessage) string {
 // the answer it gives, so it stands alone.
 func callOutput(m ChatMessage) string {
 	switch m.Tool {
-	case "question":
+	case tools.ToolQuestion:
 		var b strings.Builder
 		for i, l := range strings.Split(strings.TrimRight(m.Output, "\n"), "\n") {
 			fields := strings.SplitN(l, "\t", 3)

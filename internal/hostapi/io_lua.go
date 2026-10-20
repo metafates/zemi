@@ -1100,7 +1100,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			if onExit != nil {
 				h.callLuaAsync("zemi.job on_exit", at, onExit, jh.snapshot())
 			}
-			h.EmitAsync("job.exit", map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
+			h.EmitAsync(EventJobExit, map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
 		})
 		return jh, nil
 	}

@@ -375,8 +375,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if run.forkBase == len(runner.History) && pipe.Pad != "" && setup.writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
-	h.consultHooks("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description})
-	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
+	h.consultHooks(EventAgentSubagentStart, map[string]any{"agent": def.Name, "description": run.description})
+	h.EmitAsync(EventAgentSubagentStart, map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue
 	// a fork reports only what it said, not the conversation it opened with
 	own := run.forkBase
@@ -400,8 +400,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
 	}
-	h.consultHooks("agent.subagent.finish", map[string]any{"agent": def.Name, "error": errString(err)})
-	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
+	h.consultHooks(EventAgentSubagentFinish, map[string]any{"agent": def.Name, "error": errString(err)})
+	h.EmitAsync(EventAgentSubagentFinish, map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
 	text = lastAssistantText(said())
@@ -1169,10 +1169,10 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if in.Wait && in.Stop {
 		return fantasy.NewTextErrorResponse("set one of wait or stop, not both"), nil
 	}
-	if resp, stop := t.h.preCheck("agent", call.Input); stop {
+	if resp, stop := t.h.preCheck(tools.ToolAgent, call.Input); stop {
 		return resp, nil
 	}
-	defer t.h.postNotify(ctx, t.pipe.Pad, "agent", call.Input, &reply, time.Now())
+	defer t.h.postNotify(ctx, t.pipe.Pad, tools.ToolAgent, call.Input, &reply, time.Now())
 	if in.SendTo != "" {
 		run := t.h.tasks.find(in.SendTo)
 		if run == nil {

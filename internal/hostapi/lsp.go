@@ -682,7 +682,7 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	} else {
 		h.lspSync(true)
 	}
-	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
+	h.EmitAsync(EventLSPRequest, map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
 	if errors.Is(err, lsp.ErrNoFresh) && isLuals(def) && p.client.Published(abs) {
 		// lua-language-server publishes only a changed result, so its silence repeats the last one.
@@ -747,7 +747,7 @@ func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, erro
 		return tools.LSPSession{}, err
 	}
 	h.lspSync(true)
-	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": path, "kind": "tool"})
+	h.EmitAsync(EventLSPRequest, map[string]any{"server": def.Name, "path": path, "kind": "tool"})
 	open := func(path string) error { return p.client.Open(path, languageID(path)) }
 	if err := open(path); err != nil {
 		return tools.LSPSession{}, err

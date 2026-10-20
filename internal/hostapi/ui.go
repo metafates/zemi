@@ -309,7 +309,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		mt := L.CreateTable(0, 2)
 		mt.RawSetString("glyph", glua.LString(m.Glyph))
 		mt.RawSetString("hl", glua.LString(m.HL))
-		marks.RawSetString(k, mt)
+		marks.RawSetString(string(k), mt)
 	}
 	tb.RawSetString("marks", marks)
 
@@ -655,7 +655,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	} else if m["verb"] != nil {
 		bad("verb", "a string", m["verb"])
 	}
-	if _, ok := Marks[p.Mark]; !ok && p.Mark != "" {
+	if _, ok := Marks[MarkKind(p.Mark)]; !ok && p.Mark != "" {
 		bad("mark", "a zemi.ui.marks key", m["mark"])
 		p.Mark = ""
 	}

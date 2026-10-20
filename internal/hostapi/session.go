@@ -124,7 +124,7 @@ func (h *Host) ResumeSession(id string) error {
 	h.setTranscript(sess.Title, tr)
 	// a list left in progress settles here: nothing runs on a resumed session
 	h.settleTodos()
-	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
+	h.EmitAsync(EventSessionOpen, map[string]any{"id": id, "title": sess.Title})
 	// a resumed session pins its environment and the prompt a send would show,
 	// so /prompt reads it before the first message, which then reuses it. The
 	// prompt builds off this goroutine: a Lua caller resumes on the interpreter
@@ -351,8 +351,8 @@ func (h *Host) closeSession(open func()) error {
 	h.refreshPending()
 	if prev != "" {
 		// the payload names the session that ended: the live one is the next
-		h.consultHooks("session.close", map[string]any{"session_id": prev})
-		h.EmitAsync("session.close", map[string]any{"id": prev})
+		h.consultHooks(EventSessionClose, map[string]any{"session_id": prev})
+		h.EmitAsync(EventSessionClose, map[string]any{"id": prev})
 		h.reflectIfDue(prev)
 		if h.DB != nil {
 			h.DB.Touch()

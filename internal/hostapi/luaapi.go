@@ -52,7 +52,7 @@ func (h *Host) SetComposerSnapshot(text string, cursor int) {
 	h.composerText, h.composerCursor = text, cursor
 	h.composerMu.Unlock()
 	if changed {
-		h.EmitAsync("composer.change", map[string]any{"text": text, "cursor": cursor})
+		h.EmitAsync(EventComposerChange, map[string]any{"text": text, "cursor": cursor})
 	}
 }
 
@@ -163,8 +163,8 @@ const (
 // It calls into the interpreter, so it must never run on the interpreter
 // goroutine (zemi.agent.send starts turns asynchronously for that reason).
 func (h *Host) assembleSections() string {
-	h.recordEvent("agent.assemble", "host", map[string]any{"cwd": h.Dirs.ProjectDir})
-	handlers := h.Events.Handlers("agent.assemble")
+	h.recordEvent(EventAgentAssemble, "host", map[string]any{"cwd": h.Dirs.ProjectDir})
+	handlers := h.Events.Handlers(EventAgentAssemble)
 	if len(handlers) == 0 {
 		return ""
 	}
@@ -188,7 +188,7 @@ func (h *Host) assembleSections() string {
 }
 
 func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, text string) {
-	ev := eventTable("agent.assemble", "host", map[string]any{"cwd": h.Dirs.ProjectDir})
+	ev := eventTable(EventAgentAssemble, "host", map[string]any{"cwd": h.Dirs.ProjectDir})
 	ret, timedOut, err := h.callEvent(L, hd, ev)
 	switch {
 	case timedOut:

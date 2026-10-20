@@ -13,31 +13,51 @@ import (
 
 // Host events Go code emits or checks by name, outside hostapi too.
 const (
-	EventAppReady          = "app.ready"
-	EventConfigReloaded    = "config.reloaded"
-	EventAppQuit           = "app.quit"
-	EventSessionNew        = "session.new"
-	EventComposerSubmit    = "composer.submit"
-	EventToolPre           = "tool.pre"
-	EventToolPost          = "tool.post"
-	EventPermissionRequest = "permission.request"
+	EventAppReady            = "app.ready"
+	EventAppQuit             = "app.quit"
+	EventConfigReloaded      = "config.reloaded"
+	EventSessionNew          = "session.new"
+	EventSessionOpen         = "session.open"
+	EventSessionClose        = "session.close"
+	EventAgentStart          = "agent.start"
+	EventAgentFinish         = "agent.finish"
+	EventAgentError          = "agent.error"
+	EventAgentAssemble       = "agent.assemble"
+	EventAgentSubagentStart  = "agent.subagent.start"
+	EventAgentSubagentFinish = "agent.subagent.finish"
+	EventAgentTextDelta      = "agent.text_delta"
+	EventAgentReasoningDelta = "agent.reasoning_delta"
+	EventAgentStep           = "agent.step"
+	EventToolPre             = "tool.pre"
+	EventToolPost            = "tool.post"
+	EventToolDenied          = "tool.denied"
+	EventPermissionRequest   = "permission.request"
+	EventPermissionResolved  = "permission.resolved"
+	EventUIResize            = "ui.resize"
+	EventComposerChange      = "composer.change"
+	EventComposerSubmit      = "composer.submit"
+	EventMemoryWritten       = "memory.written"
+	EventReflectorStart      = "reflector.start"
+	EventReflectorDone       = "reflector.done"
+	EventJobExit             = "job.exit"
+	EventLSPRequest          = "lsp.request"
 )
 
 // eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
 var eventCatalogue = set.Of(
 	EventAppReady, EventAppQuit, EventConfigReloaded,
-	EventSessionNew, "session.open", "session.close",
-	"agent.start", "agent.finish", "agent.error",
-	"agent.assemble", "agent.subagent.start", "agent.subagent.finish",
-	"agent.text_delta", "agent.reasoning_delta", "agent.step",
-	EventToolPre, EventToolPost, "tool.denied",
-	EventPermissionRequest, "permission.resolved",
-	"ui.resize", "composer.change", EventComposerSubmit,
-	"memory.written",
-	"reflector.start", "reflector.done",
-	"job.exit",
-	"lsp.request",
+	EventSessionNew, EventSessionOpen, EventSessionClose,
+	EventAgentStart, EventAgentFinish, EventAgentError,
+	EventAgentAssemble, EventAgentSubagentStart, EventAgentSubagentFinish,
+	EventAgentTextDelta, EventAgentReasoningDelta, EventAgentStep,
+	EventToolPre, EventToolPost, EventToolDenied,
+	EventPermissionRequest, EventPermissionResolved,
+	EventUIResize, EventComposerChange, EventComposerSubmit,
+	EventMemoryWritten,
+	EventReflectorStart, EventReflectorDone,
+	EventJobExit,
+	EventLSPRequest,
 )
 
 // eventNames lists the catalogue for an error message: a near miss

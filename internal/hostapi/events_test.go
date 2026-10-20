@@ -76,6 +76,8 @@ func TestHostToolEvents(t *testing.T) {
 
 // TestHostEmitsAreCatalogued reads the source, since most host emits run
 // under a recover (GoSafe, a turn, a Lua call) that would swallow a failure.
+// An emit names its event as a literal or as a constant, which is resolved
+// from the same source.
 func TestHostEmitsAreCatalogued(t *testing.T) {
 	nameArg := map[string]int{"EmitAsync": 0, "EmitVetoable": 1, "emitVetoable": 1, "EmitOnState": 1, "recordEvent": 0}
 	files, _ := filepath.Glob("*.go")
@@ -83,15 +85,64 @@ func TestHostEmitsAreCatalogued(t *testing.T) {
 		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
 		files = append(files, more...)
 	}
-	seen := 0
+	fset := token.NewFileSet()
+	var parsed []*ast.File
+	consts := map[string]string{}
+	lit := func(e ast.Expr) (string, bool) {
+		b, ok := e.(*ast.BasicLit)
+		if !ok || b.Kind != token.STRING {
+			return "", false
+		}
+		s, err := strconv.Unquote(b.Value)
+		return s, err == nil
+	}
 	for _, file := range files {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
-		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.SkipObjectResolution)
+		f, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
 		if err != nil {
 			t.Fatal(err)
 		}
+		parsed = append(parsed, f)
+		for _, d := range f.Decls {
+			g, ok := d.(*ast.GenDecl)
+			if !ok || g.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range g.Specs {
+				vs := spec.(*ast.ValueSpec)
+				for i, n := range vs.Names {
+					if i >= len(vs.Values) {
+						continue
+					}
+					if v, ok := lit(vs.Values[i]); ok {
+						consts[n.Name] = v
+					}
+				}
+			}
+		}
+	}
+	// name resolves a literal or a const ident, of this package or a
+	// selected one (hostapi.EventToolPre): false leaves a variable alone.
+	name := func(e ast.Expr) (string, bool) {
+		if b, ok := lit(e); ok {
+			return b, true
+		}
+		var id string
+		switch e := e.(type) {
+		case *ast.Ident:
+			id = e.Name
+		case *ast.SelectorExpr:
+			id = e.Sel.Name
+		default:
+			return "", false
+		}
+		s, ok := consts[id]
+		return s, ok
+	}
+	seen := 0
+	for _, f := range parsed {
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -108,18 +159,17 @@ func TestHostEmitsAreCatalogued(t *testing.T) {
 			if !ok || len(call.Args) <= i {
 				return true
 			}
-			lit, ok := call.Args[i].(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
-			}
 			if fn == "recordEvent" {
 				if from, ok := call.Args[1].(*ast.BasicLit); !ok || from.Value != `"host"` {
 					return true
 				}
 			}
-			name, _ := strconv.Unquote(lit.Value)
-			if seen++; !eventCatalogue.Has(name) {
-				t.Errorf("%s: %s(%q) is not in eventCatalogue", file, fn, name)
+			ev, ok := name(call.Args[i])
+			if !ok {
+				return true
+			}
+			if seen++; !eventCatalogue.Has(ev) {
+				t.Errorf("%s: %s(%q) is not in eventCatalogue", fset.Position(call.Pos()).Filename, fn, ev)
 			}
 			return true
 		})

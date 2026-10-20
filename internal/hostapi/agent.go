@@ -972,7 +972,7 @@ func (h *Host) startTurn(text string) {
 		h.agents.mu.Unlock()
 	}
 	h.agentStream()
-	h.EmitAsync("agent.start", map[string]any{"text": text})
+	h.EmitAsync(EventAgentStart, map[string]any{"text": text})
 }
 
 // appendUserRows shows one message as the model reads it: what was typed,
@@ -1343,7 +1343,7 @@ func (h *Host) turnModelID() string {
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
 func (h *Host) emitStep(sid, model string, st agent.Step) {
 	u := st.Usage
-	h.EmitAsync("agent.step", map[string]any{
+	h.EmitAsync(EventAgentStep, map[string]any{
 		"session": sid, "model": model, "step": st.N,
 		"ms": st.Took.Milliseconds(), "first_token_ms": st.FirstToken.Milliseconds(), "tools": st.Tools,
 		"usage": map[string]any{
@@ -2861,8 +2861,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		LSP:         h.lspOpen,
 		ReadOnly:    func() bool { return readOnly },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
-			h.consultHooks("tool.denied", map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
-			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
+			h.consultHooks(EventToolDenied, map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
+			h.EmitAsync(EventToolDenied, map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
 		Post:   h.toolPost,
 		Jobs:   h.jobs,

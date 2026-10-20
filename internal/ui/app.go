@@ -435,7 +435,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
-		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
+		a.host.EmitAsync(hostapi.EventUIResize, map[string]any{"width": msg.Width, "height": msg.Height})
 		a.bump()
 	case tea.KeyPressMsg:
 		cmd := a.handleKey(msg)

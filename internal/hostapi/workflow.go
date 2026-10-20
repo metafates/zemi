@@ -1397,10 +1397,10 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := h.preCheck("workflow", call.Input); stop {
+	if resp, stop := h.preCheck(tools.ToolWorkflow, call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, t.pipe.Pad, "workflow", call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, tools.ToolWorkflow, call.Input, &reply, time.Now())
 	// a run started in /workflows has no call of the model's behind it: list is
 	// how the model learns it is there, and the id to act on
 	if in.Action == "list" && in.Run == "" && in.Name == "" && in.Script == "" {
@@ -1453,8 +1453,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
-	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
-		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
+	if v := t.pipe.CheckDenied(tools.Request{Tool: tools.ToolWorkflow, Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
+		return fantasy.NewTextErrorResponse(tools.DeniedText(v, tools.ToolWorkflow+" "+arg)), nil
 	}
 	spec.done = h.deliverFlow("")
 	if spec.background {
@@ -1515,8 +1515,8 @@ func (h *Host) approveRerun(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); !v.Allowed {
-		return "", errors.New(tools.DeniedText(v, "workflow "+id))
+	if v := pipe.CheckDenied(tools.Request{Tool: tools.ToolWorkflow, Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); !v.Allowed {
+		return "", errors.New(tools.DeniedText(v, tools.ToolWorkflow+" "+id))
 	}
 	return src, nil
 }
