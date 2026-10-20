@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race vet lint fmt golden luals stylua check install clean
+.PHONY: all build run site first-run mcp-auth test race cover vet lint fmt golden luals stylua check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -50,6 +50,14 @@ test:
 
 race:
 	go test -race ./...
+
+# coverage of every package by every test (hostapi's drive store, tools and
+# agent through the real flow); the total prints and bin/cover.out stays for
+# go tool cover -html=bin/cover.out
+cover:
+	@mkdir -p bin
+	go test -coverpkg=./... -coverprofile=bin/cover.out -timeout 900s ./...
+	go tool cover -func=bin/cover.out | tail -1
 
 vet:
 	go vet ./...
