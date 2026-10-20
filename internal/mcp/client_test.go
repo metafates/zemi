@@ -384,6 +384,7 @@ func TestHTTPRateLimit(t *testing.T) {
 		}, 1, "mcp: http 503"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			var reqs atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if status, after := c.status(int(reqs.Add(1))); status != 0 {
