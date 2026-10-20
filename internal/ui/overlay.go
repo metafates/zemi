@@ -353,7 +353,8 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	st.armed = old.armed && sameDanger(was, st.selectedRow())
 	st.followed, st.restore = old.followed, old.restore
 	// the same danger key running the same command keeps its press
-	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger && slices.Contains(old.o.Keys, st.o.Keys[k]) {
+	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger &&
+		slices.ContainsFunc(old.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == st.o.Keys[k].Key }) {
 		st.keyArmed = old.keyArmed
 	}
 	a.overlays[i] = st
@@ -654,10 +655,31 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			break
 		}
 	}
+	// a view opened from a rail steps along it in place
+	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
+		a.closeOverlayByID(o.ID)
+		a.runOverlayRow(hostapi.OverlayItem{Run: run})
+		return nil
+	}
 	declared := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key })
-	if i := declared; i >= 0 && (o.Keys[i].Run != "" || o.Keys[i].Fn != nil) {
+	if i := declared; i >= 0 && !keyApplies(o.Keys[i], st) {
+		declared = -1 // a row this key does not act on
+	}
+	if i := declared; i >= 0 && (o.Keys[i].Run != "" || o.Keys[i].Fn != nil || o.Keys[i].Act != nil) {
 		if o.Keys[i].Danger && keyArmed != key {
 			st.keyArmed = key
+			return nil
+		}
+		if act := o.Keys[i].Act; act != nil {
+			item := st.selectedRow()
+			call := func() { act(item) }
+			if o.Reload != nil { // the screen keeps its place and rebuilds
+				a.reloadOverlay(o, call)
+				return nil
+			}
+			// the box closes before the work, so a screen it opens is left open
+			a.closeOverlayByID(o.ID)
+			a.background(call)
 			return nil
 		}
 		if run := o.Keys[i].Run; run != "" {
@@ -899,6 +921,14 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) {
 	}
 }
 
+// listRowsMax is the most rows a list takes before it scrolls: a menu that
+// fills the screen hides what it is a menu over.
+const listRowsMax = 20
+
+// listRowsCap is that cap, at most three fifths of the screen and never so
+// few that nothing is a list.
+func listRowsCap(h int) int { return max(min(h-4, 3*h/5, listRowsMax), 3) }
+
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
 // §8): the body, then the list, then the keys that act on the selection.
 // h is the height the box may take.
@@ -993,7 +1023,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			}
 		}
 		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), pane, oneRow)) + len(bodyPH) + len(listPH)
-		limit := max(room-min(bodyN, 3), 1) // the list's rows; the body keeps three
+		limit := min(max(room-min(bodyN, 3), 1), listRowsCap(h)) // the list's rows; the body keeps three
 		enterCopies := false
 		switch {
 		case st.back && len(st.o.Items) > 0:
@@ -1035,8 +1065,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		// it; one naming its rows' action waits for a row
 		last := -1
 		for i, k := range st.o.Keys {
-			if k.Run == "" && k.Fn == nil && len(st.visible) == 0 {
-				continue
+			if k.Run == "" && len(st.visible) == 0 || !keyApplies(k, st) {
+				continue // it acts on the row the list has not got
 			}
 			if last >= 0 && k.Desc == st.o.Keys[last].Desc { // keys sharing a desc read as one hint: +/- at once
 				hints[len(hints)-1].key += "/" + k.Key
@@ -1053,6 +1083,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		// y says nothing enter does not
 		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {
 			hints = append(hints, hintPair{"y", "copy"})
+		}
+		if st.o.Next != "" || st.o.Prev != "" {
+			hints = append(hints, hintPair{"ctrl+j/k", "next/prev"})
 		}
 		scroll := scrolls(st.body, st.view)
 		if scroll == nil && st.o.Reload != nil {
@@ -1096,6 +1129,12 @@ func (a *App) bodyPart(p hostapi.BodyPart, w int) [][]hostapi.Segment {
 		return wrapText(p.Text, "", w)
 	}
 	return a.codePanel(p.Text, p.Lang, w)
+}
+
+// keyApplies reports whether a list key acts on the selected row: a key
+// whose Applies refuses it is neither hinted nor run.
+func keyApplies(k hostapi.OverlayKey, st *overlayState) bool {
+	return k.Applies == nil || k.Applies(st.selectedRow())
 }
 
 // pressArmed is key on a screen whose selected danger button may be armed:

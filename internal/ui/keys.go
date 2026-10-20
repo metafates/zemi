@@ -217,8 +217,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	t := keyText(msg)
 	defer c.snapshot(composerSnap{text: c.text, cursor: c.cursor}, t != "" && t != " ")
 
-	// Popups take the list moves but for the ones that edit the draft.
-	popupMove := key != "k" && key != "j" && !lineKey(key)
+	// Popups take the list moves but for the ones that edit the draft: a
+	// printable key (j, k, g) types, it never jumps.
+	popupMove := key != "k" && key != "j" && key != "g" && key != "G" && !lineKey(key)
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			p.moved = true
@@ -350,8 +351,8 @@ func (a *App) interrupt() {
 }
 
 // moveSel applies a list key to a selection over n items: the list moves
-// one item, ctrl+d/u half a page, the page keys page items, home and end
-// the ends. It reports whether the key was a move.
+// one item, ctrl+d/u half a page, the page keys page items, home/end and
+// g/G the ends. It reports whether the key was a move.
 func moveSel(sel *int, n, page int, key string) bool {
 	switch key {
 	case "ctrl+d":
@@ -362,9 +363,9 @@ func moveSel(sel *int, n, page int, key string) bool {
 		*sel -= page
 	case "pgdown":
 		*sel += page
-	case "home", "ctrl+home":
+	case "home", "ctrl+home", "g":
 		*sel = 0
-	case "end", "ctrl+end":
+	case "end", "ctrl+end", "G":
 		*sel = n - 1
 	default:
 		if listMove(key) == 0 {

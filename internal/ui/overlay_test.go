@@ -1059,6 +1059,8 @@ func TestMoveSel(t *testing.T) {
 		{"ctrl+d", 20, 10, 17, 19},
 		{"ctrl+u", 20, 10, 3, 0},
 		{"ctrl+d", 20, 1, 0, 1},
+		{"g", 20, 10, 7, 0},
+		{"G", 20, 10, 3, 19},
 	} {
 		if sel := c.from; !moveSel(&sel, c.n, c.page, c.key) || sel != c.want {
 			t.Errorf("%s from %d over %d, page %d: %d, want %d", c.key, c.from, c.n, c.page, sel, c.want)
@@ -1086,7 +1088,8 @@ func TestHintOrder(t *testing.T) {
 }
 
 // TestOverlayFilterKeepsSize: filtering, down to no match, never resizes
-// the box or moves the description column, and the list grows with the screen.
+// the box or moves the description column; a list longer than the cap
+// scrolls instead of filling the screen.
 func TestOverlayFilterKeepsSize(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 40)
@@ -1097,9 +1100,14 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, map[string]any{"text": "a much longer row than the others", "desc": "x"})})
 	st := &app.overlays[0]
 	box := app.overlayBox(st, 80, 40)
-	if !strings.Contains(fmt.Sprint(box), "item 14") {
-		t.Fatalf("a tall screen still scrolls: %v", box)
+	if len(box) > listRowsCap(40)+4 {
+		t.Fatalf("a 16-row list took %d of 40 rows", len(box))
 	}
+	st.selected = 15
+	if !strings.Contains(fmt.Sprint(app.overlayBox(st, 80, 40)), "item 14") {
+		t.Fatal("the last row does not scroll into view")
+	}
+	st.selected = 0
 	col := func(box [][]hostapi.Segment) int { return strings.Index(hostapi.SegsText(box[2]), "about") }
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
@@ -1133,7 +1141,7 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 		{"first frame", func() {}, true},
 		{"same frame", func() {}, false},
 		{"move", func() { st.selected = 30 }, true},
-		{"filter", func() { st.query = "item 4"; st.apply() }, true},
+		{"filter", func() { st.set("item 4") }, true},
 		{"resize", func() {}, true},
 	} {
 		c.step()
@@ -1766,5 +1774,31 @@ func TestPhaseMark(t *testing.T) {
 		if got := phaseMark(c.marks); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestOverlayStepsAlongRail: ctrl+j and ctrl+k open the next and the previous
+// view of the same rail in place, so walking a turn's calls leaves no stack
+// of boxes behind and esc closes the one the walk ended on.
+func TestOverlayStepsAlongRail(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 24)
+	runLua(t, app, `zemi.command.add("step", function() zemi.ui.overlay.open({ id = "two", title = "two" }) end)`)
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "step"})
+	app.renderSync(t)
+	pressKeys(app, "ctrl+j")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
+	if len(app.overlays) != 1 || app.overlays[0].o.ID != "two" {
+		t.Fatalf("ctrl+j left %d overlays", len(app.overlays))
+	}
+	pressKeys(app, "esc")
+	if len(app.overlays) != 0 {
+		t.Fatal("esc left a box open")
+	}
+	// the hint names the pair only where there is somewhere to go
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Prev: "step"})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "ctrl+j/k next/prev") {
+		t.Fatalf("the footer does not name the step keys:\n%s", frame)
 	}
 }

@@ -309,6 +309,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		h.refresh()
 	}()
 	h.refresh()
+	h.watchAgents() // an open /agents follows the run from here
 	run.mu.Lock()
 	prev := run.runner
 	// fresh per attempt: a continuation makes the run live again, and a
@@ -956,6 +957,12 @@ func (h *Host) setToolDetail(callID, detail string) {
 	h.setTool(callID, func(t *StreamTool) { t.Detail = detail })
 }
 
+// setToolProgress updates a running shell call: its last line under the row,
+// and the tail its view reads.
+func (h *Host) setToolProgress(callID, line, tail string) {
+	h.setTool(callID, func(t *StreamTool) { t.Detail, t.Tail = line, tail })
+}
+
 func (h *Host) setTool(callID string, set func(*StreamTool)) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -1459,6 +1466,14 @@ func (h *Host) openAgents() error {
 	if err != nil {
 		return err
 	}
+	ui.OpenOverlay(h.agentsOverlay())
+	h.watchAgents()
+	return nil
+}
+
+// agentsOverlay is /agents: the runs this process holds, then one row per
+// agent file, so a run's elapsed time and state are read where they are.
+func (h *Host) agentsOverlay() Overlay {
 	defs := h.agentDefs()
 	runs := h.agentRunItems()
 	sel := 0
@@ -1492,9 +1507,27 @@ func (h *Host) openAgents() error {
 		item["fields"] = fieldList(fields...)
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"})
-	return nil
+	return Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"}
 }
+
+// watchAgents keeps /agents current while a run lives: its elapsed time, its
+// state and its mark come from the run, which the rows snapshot when they are
+// built.
+func (h *Host) watchAgents() {
+	h.overlayTicker("agents view", h.claimAgentsView, func() bool {
+		running := h.tasks.running()
+		if !running {
+			h.agentsView.Store(false)
+		}
+		if ui := h.hooks(); ui != nil {
+			ui.RefreshOverlay("agents", h.agentsOverlay)
+		}
+		return running
+	})
+}
+
+// claimAgentsView takes the agents view's one ticker: false while it runs.
+func (h *Host) claimAgentsView() bool { return h.agentsView.CompareAndSwap(false, true) }
 
 // agentRunFns adds zemi.agent.run and zemi.agent.list to the agent
 // namespace. run is async: on_done(result, err) fires on the interpreter

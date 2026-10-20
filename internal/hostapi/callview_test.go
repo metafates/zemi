@@ -1,11 +1,13 @@
 package hostapi
 
 import (
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -71,6 +73,17 @@ func TestCallView(t *testing.T) {
 			}
 		}
 	}
+	// the view steps along the turn's rail, and a question is a call view too
+	for row, want := range map[int][2]string{
+		1: {"", "call 2"}, 2: {"call 1", "call 3"}, 4: {"call 3", "call 5"},
+		5: {"call 4", "call 6"}, 6: {"call 5", ""},
+	} {
+		o := h.callView(row, mustRow(t, h, row), 0)
+		if o.Prev != want[0] || o.Next != want[1] {
+			t.Errorf("row %d: prev %q next %q, want %q and %q", row, o.Prev, o.Next, want[0], want[1])
+		}
+	}
+
 	// a call that went on as a background job offers to open it
 	job := h.callView(6, mustRow(t, h, 6), 0)
 	if fieldOf(job, "job") != "job-3" || !slices.ContainsFunc(job.Keys, func(k OverlayKey) bool { return k.Run == "jobs view job-3" }) {
@@ -133,4 +146,26 @@ func fieldOf(o Overlay, name string) string {
 		}
 	}
 	return ""
+}
+
+// TestSkillBody: a skill's view reads the whole file, not the cut rows a
+// transcript keeps, so the procedure is there to read.
+func TestSkillBody(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostSkillsNoBoot(t)
+	writeSkill(t, filepath.Join(h.Dirs.ConfigHome, "skills"), "mine", "a test skill", "")
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	h.syncSkills()
+	body := h.skillBody(ChatMessage{Kind: RowTool, Tool: tools.ToolSkill, Text: "mine"})
+	if !strings.Contains(body, "Body.") || strings.Contains(body, "Skill directory") {
+		t.Fatalf("skill body = %q", body)
+	}
+	if got := h.skillBody(ChatMessage{Kind: RowTool, Tool: tools.ToolSkill, Text: "nope"}); got != "" {
+		t.Fatalf("a skill gone since reads %q", got)
+	}
+	if got := h.skillBody(ChatMessage{Kind: RowTool, Tool: tools.ToolRead, Text: "mine"}); got != "" {
+		t.Fatalf("a read is no skill: %q", got)
+	}
 }

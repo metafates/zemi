@@ -179,11 +179,11 @@ func TestShellProgress(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	ctx, stop := context.WithCancel(t.Context())
 	var mu sync.Mutex
-	var lines []string
-	p.Progress = func(id, line string) {
+	var lines, tails []string
+	p.Progress = func(id string, got Progress) {
 		mu.Lock()
 		defer mu.Unlock()
-		lines = append(lines, id+":"+line)
+		lines, tails = append(lines, id+":"+got.Line), append(tails, got.Tail)
 		stop() // the line came while the command ran
 	}
 	// one write, so no poll lands between the lines
@@ -193,8 +193,9 @@ func TestShellProgress(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(lines) != 1 || lines[0] != "t1:two" {
-		t.Fatalf("progress lines = %q", lines)
+	// the tail is the whole output a view of the call reads, not its last line
+	if len(lines) != 1 || lines[0] != "t1:two" || len(tails) != 1 || tails[0] != "one\ntwo" {
+		t.Fatalf("progress lines = %q, tails = %q", lines, tails)
 	}
 }
 

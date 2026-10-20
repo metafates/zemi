@@ -227,6 +227,12 @@ func (r *taskReg) addFlow(f *flowRun, advice string) error {
 	return nil
 }
 
+// running reports whether any agent or workflow run is live.
+func (r *taskReg) running() bool {
+	a, f := r.live(func(string) bool { return true })
+	return a+f > 0
+}
+
 // watch claims the one ticker of the workflow views; false when it runs.
 func (r *taskReg) watch() bool {
 	r.mu.Lock()
@@ -701,7 +707,8 @@ func (h *Host) startBackgroundAgent(ctx context.Context, def AgentDef, descripti
 		run.cancel()
 		return "", err
 	}
-	h.refresh() // the run is listed and counted from here on
+	h.refresh()     // the run is listed and counted from here on
+	h.watchAgents() // and an open /agents follows it
 	h.GoSafe("background agent", func() {
 		// whatever queued behind this run starts once nothing else holds it,
 		// report or not (a cancelled run has none, a finished one's joins the turn)

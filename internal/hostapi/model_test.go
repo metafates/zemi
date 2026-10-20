@@ -471,3 +471,42 @@ func TestInertBoot(t *testing.T) {
 		t.Errorf("the types were synced: %v", err)
 	}
 }
+
+// TestModelFavorites: f marks the model a row names in models.favorites, and
+// the marked models head the picker in the key's own order.
+func TestModelFavorites(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, rolesProvider)
+	h.toggleModelFavorite("a/small", "")
+	favs := h.Settings.List(config.KeyModelsFavorites)
+	if !slices.Equal(favs, []string{"a/small"}) {
+		t.Fatalf("favorites = %v", favs)
+	}
+	// /model's own two rows lead the list; the models follow
+	o := h.modelPicker("")
+	first := o.Items[2].(map[string]any)
+	if first["text"] != "small" || first["section"] != "Favorites" {
+		t.Fatalf("the list does not head with the favorite: %v", o.Items)
+	}
+	// the key toggles, and marking another model keeps the first one first
+	h.toggleModelFavorite("a/big", "")
+	o = h.modelPicker("")
+	if favs = h.Settings.List(config.KeyModelsFavorites); !slices.Equal(favs, []string{"a/small", "a/big"}) {
+		t.Fatalf("favorites = %v", favs)
+	}
+	if a, b := o.Items[2].(map[string]any)["text"], o.Items[3].(map[string]any)["text"]; a != "small" || b != "big" {
+		t.Errorf("favorites order = %v, %v", a, b)
+	}
+	h.toggleModelFavorite("a/small", "")
+	if favs = h.Settings.List(config.KeyModelsFavorites); !slices.Equal(favs, []string{"a/big"}) {
+		t.Fatalf("unmarking left %v", favs)
+	}
+	// the key acts on a model row alone
+	key := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "f" })]
+	if !key.Applies(OverlayItem{ID: "a/big"}) || key.Applies(OverlayItem{Text: "Choose a model per role"}) {
+		t.Error("f acts on a row that names no model")
+	}
+}

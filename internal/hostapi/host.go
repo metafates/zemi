@@ -152,6 +152,11 @@ type Overlay struct {
 	// command or on_select and rebuild the items, keeping the overlay open.
 	// It runs on the UI worker, never on the key path.
 	Reload func() (items []any, text [][]Segment)
+
+	// Next and Prev are the commands that open the next and the previous
+	// view on the same rail in this one's place (ctrl+j, ctrl+k), so walking
+	// a turn's calls takes no trip back to the chat.
+	Next, Prev string
 }
 
 // ServiceStatus is where an MCP server, a language server or a plugin
@@ -310,6 +315,11 @@ type OverlayKey struct {
 	Fn        *glua.LFunction
 	Run       string
 	Danger    bool
+	// Act is the Go screen's handler: it runs with the selected row, where
+	// Run names a command that takes none. Applies narrows the key and its
+	// hint to the rows it acts on, nil for every row.
+	Act     func(OverlayItem)
+	Applies func(OverlayItem) bool
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
@@ -322,6 +332,7 @@ type ChatMessage struct {
 	Tool   string
 	Status CallStatus // tool and shell rows; an error row an interrupt left is CallCancelled
 	Detail string     // tool rows: subagent or workflow progress summary; notice rows: a hint drawn after the text, never copied
+	Tail   string     // a running shell row: its output tail, which its view reads as it grows
 	Run    string     // agent tool rows: the run id
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
@@ -479,10 +490,12 @@ type Host struct {
 	// swap records that closeSession swapped the session (/new, /resume):
 	// a headless run reads and clears it, so only a swap made during the
 	// run counts.
-	swap     atomic.Bool
-	agents   *agentHost
-	luaTools *toolReg
-	stops    *stopReg
+	swap atomic.Bool
+	// agentsView is the agents view's one ticker claim (watchAgents).
+	agentsView atomic.Bool
+	agents     *agentHost
+	luaTools   *toolReg
+	stops      *stopReg
 	// test is set, before boot, only in a zemi plugins test zemi
 	test *PluginTest
 

@@ -57,6 +57,16 @@ const (
 	ToolSearch   = "tool_search"
 )
 
+// Progress is a running call's output: Line is its last non-blank line,
+// which the chat row shows under it, and Tail is its last ProgressTail lines,
+// which a call view reads while the call runs.
+type Progress struct {
+	Line, Tail string
+}
+
+// ProgressTail is how many lines of a running call's output Progress carries.
+const ProgressTail = 200
+
 // Request is one permission check the pipeline needs answered.
 type Request struct {
 	Tool    string // the tool asking (shell, edit, mcp_github_search); set by the pipeline
@@ -263,7 +273,7 @@ type Pipeline struct {
 	Changes func(dir string) func() (note, diff string, paths []string)
 	// Progress shows a running call's last output line under its row;
 	// nil = none.
-	Progress func(callID, line string)
+	Progress func(callID string, p Progress)
 
 	// changed is what a shell run found changed, kept on its per-run copy for post
 	changed []string

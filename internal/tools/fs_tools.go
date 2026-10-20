@@ -59,22 +59,39 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 			case <-t.C:
 			}
 			raw, _ := buf.Snapshot()
-			line := ""
-			for l := range strings.SplitSeq(cmdText(raw), "\n") {
-				if strings.TrimSpace(l) != "" {
-					line = l
-				}
+			text := cmdText(raw)
+			if text == last {
+				continue
 			}
-			if line != last {
-				last = line
-				p.Progress(id, line)
-			}
+			last = text
+			p.Progress(id, Progress{Line: lastLine(text), Tail: tailLines(text, ProgressTail)})
 		}
 	}()
 	return func() {
 		close(done)
 		<-stopped
 	}
+}
+
+// lastLine is the last line of text with something in it, "" for none.
+func lastLine(text string) string {
+	line := ""
+	for l := range strings.SplitSeq(text, "\n") {
+		if strings.TrimSpace(l) != "" {
+			line = l
+		}
+	}
+	return line
+}
+
+// tailLines is the last n lines of text, so a view of a running call reads
+// the output as a terminal shows it.
+func tailLines(text string, n int) string {
+	lines := strings.Split(text, "\n")
+	if len(lines) <= n {
+		return text
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // shellArgs is the shell tool's input and its schema source.

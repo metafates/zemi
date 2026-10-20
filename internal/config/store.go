@@ -257,9 +257,10 @@ func (s *Store) Get(path Key) (any, bool) {
 // Str reads a string schema key; Bool and Int read the other two kinds, Int
 // truncating a fraction. Every schema key holds its default until someone
 // sets it, so only a key outside the schema reads as the zero value.
-func (s *Store) Str(path Key) string { return s.value[string](path) }
-func (s *Store) Bool(path Key) bool  { return s.value[bool](path) }
-func (s *Store) Int(path Key) int    { return int(s.value[float64](path)) }
+func (s *Store) Str(path Key) string    { return s.value[string](path) }
+func (s *Store) Bool(path Key) bool     { return s.value[bool](path) }
+func (s *Store) Int(path Key) int       { return int(s.value[float64](path)) }
+func (s *Store) List(path Key) []string { return s.value[[]string](path) }
 
 func (s *Store) value[T any](path Key) T {
 	s.mu.RLock()

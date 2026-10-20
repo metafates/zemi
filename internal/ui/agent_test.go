@@ -895,7 +895,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		{
 			"scrolled preview keeps its last column", 80, 16,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: strings.Repeat("abcdefghij", 60)},
-			[]string{strings.Repeat("abcdefghij", 7) + "  █"},
+			[]string{strings.Repeat("abcdefghij", 7)},
 		},
 		{
 			"a long command shows", 80, 24,

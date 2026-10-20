@@ -160,7 +160,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 				t.Diff = changed // shell: what the command changed, failed or not
 			}
 			if name == tools.ToolShell {
-				t.Detail = "" // its last output line, which the result now holds
+				t.Detail, t.Tail = "", "" // its last line and tail, which the result now holds
 			}
 			row = *t
 			break

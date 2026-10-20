@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 func (h *Host) callCommands() []*Command {
@@ -64,7 +66,7 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 		t := s.Tools[i]
 		return ChatMessage{
 			Kind: RowTool, Tool: t.Name, Text: t.Input, Label: t.Label,
-			Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output,
+			Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
 		}, time.Since(t.Started), true
 	}
 	tr := h.Session().Transcript
@@ -81,19 +83,15 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 // and its mark change in place. A live row's index names another call once
 // the next turn starts, so the ticker stops with the turn.
 func (h *Host) watchCall(n int) {
-	h.GoSafe("call view", func() {
-		for range time.Tick(time.Second) {
-			row, took, ok := h.chatRow(n)
-			if !ok || n < 0 && !h.AgentActive() {
-				return
-			}
-			if ui := h.hooks(); ui != nil {
-				ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
-			}
-			if row.Status != CallRun && row.Status != CallWait {
-				return
-			}
+	h.overlayTicker("call view", nil, func() bool {
+		row, took, ok := h.chatRow(n)
+		if !ok || n < 0 && !h.AgentActive() {
+			return false
 		}
+		if ui := h.hooks(); ui != nil {
+			ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
+		}
+		return row.Status == CallRun || row.Status == CallWait
 	})
 }
 
@@ -155,12 +153,17 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		if m.Diff != "" {
 			parts = append(parts, BodyPart{Text: m.Diff, Lang: "diff"})
 		}
-		if out := callOutput(m); out != "" {
-			parts = append(parts, BodyPart{Text: out})
-		}
-		if m.Detail != "" {
+		switch out := cmp.Or(h.skillBody(m), callOutput(m), m.Tail); {
+		case out != "":
+			// a skill answers in markdown, the rest as its text is written
+			parts = append(parts, BodyPart{Text: out, Lang: map[bool]string{true: "markdown"}[m.Tool == tools.ToolSkill]})
+		case m.Detail != "":
+			// a running call with no output yet says what it is doing
 			parts = append(parts, BodyPart{Text: m.Detail})
 		}
+	}
+	if n > 0 {
+		o.Prev, o.Next = callStep(h.viewedTranscript(), n)
 	}
 	if job := jobOf(m.Tool, m.Status, m.Output); job != "" {
 		fields = append(fields, Field{Name: "job", Value: job})
@@ -176,6 +179,68 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		}
 	}
 	return o
+}
+
+// skillBody is what a skill call answers in its view: the skill's own file
+// whole, formatted as markdown, where the row keeps only the first and last
+// lines of the result. Empty for any other call, or a skill gone since.
+func (h *Host) skillBody(m ChatMessage) string {
+	if m.Tool != tools.ToolSkill {
+		return ""
+	}
+	name := strings.TrimSpace(m.Text)
+	s, ok := h.skillsReg.get(name)
+	if !ok { // a project's skill or a recipe lives outside the stored table
+		for _, p := range h.projectOnlySkills() {
+			if p.Name == name {
+				s, ok = p, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return ""
+	}
+	text, err := tools.SkillText(tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data})
+	if err != nil {
+		return ""
+	}
+	_, body, found := strings.Cut(text, "\n\n")
+	if !found {
+		return text
+	}
+	return body
+}
+
+// callStep names the views around row n in its rail: the run of thinking and
+// call rows the chat draws as one unit between two messages, so ctrl+j and
+// ctrl+k walk it. A run digest is no call view (it opens its run), so a step
+// passes over it.
+func callStep(tr []ChatMessage, n int) (prev, next string) {
+	if n < 1 || n > len(tr) {
+		return "", ""
+	}
+	rail := func(i int) bool { return tr[i].Kind == RowTool || tr[i].Kind == RowReasoning }
+	step := func(i int) string {
+		switch {
+		case !rail(i), tr[i].Kind == RowTool && tr[i].Run != "":
+			return ""
+		}
+		return "call " + strconv.Itoa(i+1)
+	}
+	for i := n - 2; i >= 0 && rail(i); i-- {
+		if cmd := step(i); cmd != "" {
+			prev = cmd
+			break
+		}
+	}
+	for i := n; i < len(tr) && rail(i); i++ {
+		if cmd := step(i); cmd != "" {
+			next = cmd
+			break
+		}
+	}
+	return prev, next
 }
 
 // callTitle names the view: a thought is a thought, a question it asks, and

@@ -238,12 +238,15 @@ func TestToastNotCopied(t *testing.T) {
 	if y < text.Min.Y || y >= text.Max.Y {
 		t.Fatalf("the toast's row %d is not among the box's text rows %v", y, text)
 	}
-	dragTo(app, text.Min.X, y, text.Max.X-1, y)
+	// the ask's facts row is where the oldest toast shares it, and the
+	// box's own text there copies alone
+	_, cy := findCell(t, app, "rm -rf build &&")
+	dragTo(app, text.Min.X, cy, text.Max.X-1, cy)
 	got := app.selectionText()
 	if strings.Contains(got, "failed") || strings.Contains(got, "denied") {
 		t.Fatalf("the drag copied the toast: %q", got)
 	}
-	if !strings.Contains(got, "command") { // the box's own text on that row
+	if !strings.Contains(got, "command") {
 		t.Fatalf("the drag copied nothing of the box: %q", got)
 	}
 }

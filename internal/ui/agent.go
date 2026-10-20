@@ -1095,7 +1095,8 @@ func previewLang(req hostapi.PermRequest) string {
 }
 
 // codePanel shows text in a well of the canvas inside the box, wrapped to
-// width and highlighted as lang when it names one.
+// width and highlighted as lang when it names one, with a row of canvas
+// above and below so the well never touches what surrounds it.
 func (a *App) codePanel(text, lang string, width int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	if lang != "" {
@@ -1103,8 +1104,9 @@ func (a *App) codePanel(text, lang string, width int) [][]hostapi.Segment {
 	} else {
 		rows = wrapText(text, "", width-2)
 	}
-	out := make([][]hostapi.Segment, len(rows))
-	for i, r := range rows {
+	out := make([][]hostapi.Segment, 0, len(rows)+2)
+	out = append(out, codeWellPad(width))
+	for _, r := range rows {
 		row := make([]hostapi.Segment, 0, len(r)+2)
 		row = append(row, hostapi.Segment{Text: " ", Fill: hostapi.FillCanvas})
 		w := 0
@@ -1113,7 +1115,12 @@ func (a *App) codePanel(text, lang string, width int) [][]hostapi.Segment {
 			row = append(row, hostapi.Segment{Text: sg.Text, HL: cmp.Or(sg.HL, hostapi.ChromeValue), Fill: hostapi.FillCanvas})
 		}
 		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, width-2-w)) + " ", Fill: hostapi.FillCanvas})
-		out[i] = row
+		out = append(out, row)
 	}
-	return out
+	return append(out, codeWellPad(width))
+}
+
+// codeWellPad is one row of a code well's canvas.
+func codeWellPad(width int) []hostapi.Segment {
+	return []hostapi.Segment{{Text: strings.Repeat(" ", width), Fill: hostapi.FillCanvas}}
 }

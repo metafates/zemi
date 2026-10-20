@@ -156,25 +156,37 @@ func jobTail(out string) string {
 	return strings.Join(append([]string{MoreLines(len(lines) - jobViewLines)}, lines[len(lines)-jobViewLines:]...), "\n")
 }
 
-// watchJobs runs the one ticker that keeps /jobs and the job views current
-// while a job lives. A start or an exit asks for it, and the loop gives the
-// claim back before its last refresh, so a job starting then finds a new
-// one; an idle zemi runs no ticker.
-func (h *Host) watchJobs() {
-	if h.hooks() == nil || !h.jobs.ClaimWatch() {
+// overlayTicker refreshes a screen once a second while something it shows is
+// still moving: an overlay's rows are a snapshot of the moment they were
+// built, so a view of a running thing stands still without it. claim takes
+// the watcher's one ticker, nil when there is nothing to share; more
+// refreshes and says whether anything still moves, so the last pass sees the
+// end. An idle zemi runs no ticker.
+func (h *Host) overlayTicker(name string, claim, more func() bool) {
+	h.tickOverlay(time.Second, name, claim, more)
+}
+
+// tickOverlay is overlayTicker at a given period.
+func (h *Host) tickOverlay(every time.Duration, name string, claim, more func() bool) {
+	if h.hooks() == nil || claim != nil && !claim() {
 		return
 	}
-	h.GoSafe("job views", func() {
-		for range time.Tick(time.Second) {
-			last := h.jobs.ReleaseWatch()
-			h.refreshJobs()
-			if last {
-				return
-			}
-			if !h.jobs.ClaimWatch() {
+	h.GoSafe(name, func() {
+		for range time.Tick(every) {
+			if !more() {
 				return
 			}
 		}
+	})
+}
+
+// watchJobs runs the one ticker that keeps /jobs and the job views current
+// while a job lives. A start or an exit asks for it; an idle zemi runs none.
+func (h *Host) watchJobs() {
+	h.overlayTicker("job views", h.jobs.ClaimWatch, func() bool {
+		last := h.jobs.ReleaseWatch()
+		h.refreshJobs()
+		return !last && h.jobs.ClaimWatch()
 	})
 }
 

@@ -77,6 +77,7 @@ type StreamTool struct {
 	Label   string // the model's short description of a command
 	Started time.Time
 	Detail  string // live progress line (subagents, workflows, a shell command's last output line)
+	Tail    string // a running shell call's output tail, what its view reads
 	Run     string // agent tool: the run id, so the row can open its transcript
 	Diff    string // file tools: the change as "- "/"+ " lines
 	Output  string // the last lines of the result (shortOutput)
@@ -2036,6 +2037,19 @@ func (h *Host) modelPicker(name string) Overlay {
 	// a decisions model answers classification only, so it is offered to the
 	// slots that classify and never to a chat one
 	classifier := h.classifies(name)
+	// a favorited model heads the list, in the order the key holds them
+	favs := h.Settings.List(config.KeyModelsFavorites)
+	favRank := func(id string) int {
+		if i := slices.Index(favs, id); i >= 0 {
+			return i
+		}
+		return math.MaxInt
+	}
+	type modelRow struct {
+		id   string
+		item map[string]any
+	}
+	var rows []modelRow
 	for _, s := range h.Providers.List() {
 		section := s.ID
 		if !h.Providers.HasKey(s.ID) {
@@ -2046,20 +2060,39 @@ func (h *Host) modelPicker(name string) Overlay {
 				continue
 			}
 			id := s.ID + "/" + m.ID
-			item := map[string]any{"text": m.ID, "section": section, "desc": modelDesc(id, m), "run": run + id, "copy": id}
+			// the id is the row: a rebuild keeps the selection on it, and f
+			// marks the model it names
+			item := map[string]any{"id": id, "text": m.ID, "section": section, "desc": modelDesc(id, m), "run": run + id, "copy": id}
 			if id == cur {
-				item["key"], o.Selected = "current", len(o.Items)
+				item["key"] = "current"
 			}
-			o.Items = append(o.Items, item)
+			rows = append(rows, modelRow{id, item})
 		}
+	}
+	slices.SortStableFunc(rows, func(a, b modelRow) int { return cmp.Compare(favRank(a.id), favRank(b.id)) })
+	for _, r := range rows {
+		if favRank(r.id) != math.MaxInt {
+			r.item["section"] = "Favorites"
+		}
+		o.Items = append(o.Items, r.item)
+	}
+	// the selection opens on the model the slot runs
+	o.Selected = slices.IndexFunc(rows, func(r modelRow) bool { return r.id == cur })
+	if o.Selected >= 0 {
+		o.Selected += heads
 	}
 	prov, _, _ := strings.Cut(cur, "/")
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = slices.Insert(o.Items, heads, any(map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
+		o.Items = slices.Insert(o.Items, heads, any(map[string]any{"id": cur, "text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
 		o.Selected = heads
 	}
+	// f marks the model a row names, wherever it sits in the list
+	o.Keys = append(o.Keys, OverlayKey{
+		Key: "f", Desc: "favorite", Applies: func(it OverlayItem) bool { return it.ID != "" },
+		Act: func(it OverlayItem) { h.toggleModelFavorite(it.ID, name) },
+	})
 	usable := len(o.Items) > heads
 	if !usable {
 		o.Items = nil
@@ -2073,6 +2106,30 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.Body = "No models yet. Export one of these keys in your shell and start zemi again, or " + h.addProvider() + "."
 	}
 	return o
+}
+
+// toggleModelFavorite marks or unmarks a model in models.favorites, then
+// rebuilds the picker under the key, which keeps the selection on the row.
+func (h *Host) toggleModelFavorite(id, name string) {
+	favs := slices.Clone(h.Settings.List(config.KeyModelsFavorites))
+	if i := slices.Index(favs, id); i >= 0 {
+		favs = slices.Delete(favs, i, i+1)
+	} else if id != "" {
+		favs = append(favs, id)
+	}
+	if _, err := h.writeSetting(config.KeyModelsFavorites, favs); err != nil {
+		h.Notify(slog.LevelWarn, "Could not mark the model", err.Error())
+		return
+	}
+	// the box the key was pressed in is gone by now: this is a fresh list,
+	// opened on the row the key marked wherever it moved
+	o := h.modelPicker(name)
+	if i := slices.IndexFunc(o.Items, func(it any) bool { r, _ := it.(map[string]any); return r["id"] == id }); i >= 0 {
+		o.Selected = i
+	}
+	if ui := h.hooks(); ui != nil {
+		ui.OpenOverlay(o)
+	}
 }
 
 // ownRoles names the targets config gave a model of their own, chat apart: it
@@ -2788,13 +2845,15 @@ func (h *Host) afterWrite(path string) string {
 func (h *Host) PipelineFor() *tools.Pipeline {
 	readOnly := h.readOnly()
 	p := &tools.Pipeline{
-		Pre:         h.toolPreHook(),
-		Ask:         h.askHook(),
-		Veto:        h.vetoHook(),
-		Checkpoint:  h.checkpointFile,
-		AfterWrite:  h.afterWrite,
-		Changes:     h.shellChanges,
-		Progress:    func(id, line string) { h.setToolDetail(id, sanitize.String(line)) },
+		Pre:        h.toolPreHook(),
+		Ask:        h.askHook(),
+		Veto:       h.vetoHook(),
+		Checkpoint: h.checkpointFile,
+		AfterWrite: h.afterWrite,
+		Changes:    h.shellChanges,
+		Progress: func(id string, p tools.Progress) {
+			h.setToolProgress(id, sanitize.String(p.Line), sanitize.String(p.Tail))
+		},
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		ReadOnly:    func() bool { return readOnly },

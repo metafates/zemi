@@ -1950,17 +1950,10 @@ func (h *Host) workflowsOverlay() Overlay {
 // watchFlows keeps the open /workflows and run views current once a second
 // while any run lives, one ticker for every run; an idle zemi runs none.
 func (h *Host) watchFlows() {
-	if h.hooks() == nil || !h.tasks.watch() {
-		return
-	}
-	h.GoSafe("workflow views", func() {
-		for range time.Tick(time.Second) {
-			last := h.tasks.unwatch() // read first, so the last refresh shows the end
-			h.refreshFlows()
-			if last {
-				return
-			}
-		}
+	h.overlayTicker("workflow views", h.tasks.watch, func() bool {
+		last := h.tasks.unwatch() // read first, so the last refresh shows the end
+		h.refreshFlows()
+		return !last
 	})
 }
 
