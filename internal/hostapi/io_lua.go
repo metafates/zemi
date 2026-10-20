@@ -536,7 +536,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 				L.RaiseError("zemi.fs.grep: %v", err)
 			}
 			root = p.String()
-			rel, _ = filepath.Rel(h.Dirs.ProjectDir, root)
+			// Rel against the resolved project: the walk answers rels from
+			// the dir as given, which under a symlinked TMPDIR differ.
+			rel, _ = filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), root)
 		}
 		h.luaGate(L, "lua.fs.read", root, nil)
 		re, err := regexp.Compile(pattern)
