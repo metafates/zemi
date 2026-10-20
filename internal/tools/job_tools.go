@@ -24,9 +24,6 @@ import (
 // timeout; the host stamps such a row "bg" by this phrase.
 const JobHandoff = "moved to the background as "
 
-// jobStartPrefix opens a job_start answer, "started job-2 (npm run dev)".
-const jobStartPrefix = "started "
-
 // jobSettle is how long new job output must stay quiet before a job_read
 // wait returns.
 // NOTE: a build that pauses longer returns early and costs another read.

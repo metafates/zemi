@@ -100,7 +100,6 @@ func TestToolStatus(t *testing.T) {
 	}
 }
 
-
 // outsideTemp is a directory that is none of zemi's roots - not the project,
 // not the pad, not a data dir - for a fixture whose point is a path outside
 // them. t.TempDir() alone would do, except a test may chdir into the project,
