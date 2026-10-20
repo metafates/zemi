@@ -714,8 +714,13 @@ func TestMessagesRail(t *testing.T) {
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q after a step, want the next call", got)
 	}
-	// back to the turn folds the run again, the band on its one row
+	// back to the turn folds the run again, the band on its one row. The
+	// list waits for the chat to render it folded, so no frame shows the run
+	// open with the list gone: the fold lands first, the close after it.
 	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if app.rail != 0 || app.railClose == "" || len(app.overlays) != 2 {
+		t.Fatalf("a closing rail: rail %d, closing %q, %d overlays", app.rail, app.railClose, len(app.overlays))
+	}
 	pump()
 	if strings.Contains(frame(), "read a") {
 		t.Fatalf("the run stayed open:\n%s", frame())
