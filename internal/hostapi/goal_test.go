@@ -115,17 +115,23 @@ func TestGoalLoop(t *testing.T) {
 			if s, _ := saw.Load().(string); !strings.Contains(s, c.saw) {
 				t.Errorf("the last turn read %q, want %q in it", s, c.saw)
 			}
-			if _, on := h.Loop(); on == c.loopOff {
-				t.Errorf("loop on %v, want %v", on, !c.loopOff)
-			}
-			g, set := h.Goal()
-			if set != c.goal || set && g.Condition != "the tests pass" {
-				t.Errorf("goal = %+v %v, want set %v", g, set, c.goal)
-			}
-			notices := goalRows(h.Session().Transcript)
-			if !slices.Equal(notices, c.notices) {
-				t.Errorf("notices = %q, want %q", notices, c.notices)
-			}
+			var g Goal
+			var set bool
+			var notices []string
+			waitFor(t, func() error {
+				if _, on := h.Loop(); on == c.loopOff {
+					return fmt.Errorf("loop on %v, want %v", on, !c.loopOff)
+				}
+				g, set = h.Goal()
+				if set != c.goal || set && g.Condition != "the tests pass" {
+					return fmt.Errorf("goal = %+v %v, want set %v", g, set, c.goal)
+				}
+				notices = goalRows(h.Session().Transcript)
+				if !slices.Equal(notices, c.notices) {
+					return fmt.Errorf("notices = %q, want %q", notices, c.notices)
+				}
+				return nil
+			})
 
 			sid := h.AgentSessionID()
 			if err := h.NewSession(); err != nil {
