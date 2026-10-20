@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +36,8 @@ func TestErrorLog(t *testing.T) {
 	if err := h.OpenErrors(""); err != nil || h.HasUnseenErrors() {
 		t.Fatalf("open: err=%v unseen=%v", err, h.HasUnseenErrors())
 	}
-	newest := ui.opened[len(ui.opened)-1].Items[0].(map[string]any)
-	if !strings.Contains(fmt.Sprint(newest["fields"]), "[error initialize: connection refused]") || !strings.Contains(fmt.Sprint(newest["keys"]), "key:r run:mcp restart gitlab") {
+	newest := ui.opened[len(ui.opened)-1].Items[0]
+	if !strings.Contains(dumpFields(newest.Fields), "[error initialize: connection refused]") || !slices.Contains(newest.Keys, ItemKey{Key: "r", Desc: "restart", Run: "mcp restart gitlab"}) {
 		t.Fatalf("mcp error item: %+v", newest)
 	}
 }

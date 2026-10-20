@@ -110,9 +110,9 @@ var callWords = map[CallStatus]string{
 }
 
 // callMarks are the chat's own marks for a call's state.
-var callMarks = map[CallStatus]string{
-	CallWait: "wait", CallRun: "spin", CallOK: "ok", CallWarn: "warn",
-	CallErr: "err", CallStopped: "stop", CallBG: "bg", CallCancelled: "stop",
+var callMarks = map[CallStatus]MarkKind{
+	CallWait: MarkWait, CallRun: MarkSpin, CallOK: MarkOK, CallWarn: MarkWarn,
+	CallErr: MarkErr, CallStopped: MarkStop, CallBG: MarkBG, CallCancelled: MarkStop,
 }
 
 // callArg names what a call was given, so the facts table says what it acted
@@ -145,8 +145,9 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
 		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolLua) && m.Text != "" {
-			// a command is code, so it heads the body rather than the facts
-			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash"})
+			// a command is code, so it heads the body rather than the facts,
+			// and sinks into the well its answer lifts out of
+			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash", Fill: FillCanvas})
 		} else if arg := callArg[m.Tool]; arg != "" && m.Text != "" {
 			fields = append(fields, Field{Name: arg, Value: m.Text})
 		}
@@ -155,11 +156,16 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		}
 		switch out := cmp.Or(h.skillBody(m), callOutput(m), m.Tail); {
 		case out != "":
-			// a skill answers in markdown, the rest as its text is written
-			parts = append(parts, BodyPart{Text: out, Lang: map[bool]string{true: "markdown"}[m.Tool == tools.ToolSkill]})
+			// a skill answers in markdown, on its own surface; anything else
+			// reads in the well the command opened
+			if m.Tool == tools.ToolSkill {
+				parts = append(parts, BodyPart{Text: out, Lang: "markdown"})
+			} else {
+				parts = append(parts, BodyPart{Text: out, Fill: FillWell})
+			}
 		case m.Detail != "":
 			// a running call with no output yet says what it is doing
-			parts = append(parts, BodyPart{Text: m.Detail})
+			parts = append(parts, BodyPart{Text: m.Detail, Fill: FillWell})
 		}
 	}
 	if n > 0 {

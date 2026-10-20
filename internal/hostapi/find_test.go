@@ -198,24 +198,21 @@ func TestOpenFindSessions(t *testing.T) {
 	if len(res.Items) != 2 {
 		t.Fatalf("%d rows, want 2", len(res.Items))
 	}
-	row, ok := res.Items[0].(map[string]any)
-	if !ok {
-		t.Fatalf("row = %T, want a map", res.Items[0])
+	row := res.Items[0]
+	if row.Text != markedTitle(f.plain, "Postgres tuning") {
+		t.Errorf("text = %v", row.Text)
 	}
-	if row["text"] != markedTitle(f.plain, "Postgres tuning") {
-		t.Errorf("text = %v", row["text"])
-	}
-	if desc, _ := row["desc"].(string); !strings.Contains(desc, filepath.Base(f.dirs.TrustRoot())) || !strings.Contains(desc, "3 hits") {
+	if desc := row.Desc; !strings.Contains(desc, filepath.Base(f.dirs.TrustRoot())) || !strings.Contains(desc, "3 hits") {
 		t.Errorf("desc = %q, want the project and the hit count", desc)
 	}
-	if detail, _ := row["detail"].(string); !strings.Contains(detail, "· ") {
+	if detail := row.Detail; !strings.Contains(detail, "· ") {
 		t.Errorf("detail = %q, want the hits in it", detail)
 	}
-	keys, _ := row["keys"].([]any)
+	keys := row.Keys
 	if len(keys) != 1 {
 		t.Fatalf("keys = %v", keys)
 	}
-	if got := keys[0].(map[string]any)["run"]; got != "sessions open "+f.plain+" "+f.dirs.TrustRoot() {
+	if got := keys[0].Run; got != "sessions open "+f.plain+" "+f.dirs.TrustRoot() {
 		t.Errorf("action run = %v", got)
 	}
 

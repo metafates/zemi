@@ -542,7 +542,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			local p = zemi.learn.list()
 			assert(#p == 1 and p[1].forget == true and p[1].text == "deploy by hand", "forget row")
 		`)
-		if rows := h.memoryItems(); rows[0].(map[string]any)["text"] != "forget: deploy by hand" {
+		if rows := h.memoryItems(); rows[0].Text != "forget: deploy by hand" {
 			t.Fatalf("review row: %+v", rows[0])
 		}
 		want := 1

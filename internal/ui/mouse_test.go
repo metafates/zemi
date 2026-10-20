@@ -220,10 +220,10 @@ func TestFilterRowWidth(t *testing.T) {
 // pointer over the item's own cells.
 func TestHoverTargets(t *testing.T) {
 	overlay := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha", map[string]any{"text": "gamma", "section": "Remembered"}}})
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "beta and a much longer row"}, {Text: "alpha"}, {Text: "gamma", Section: "Remembered"}}})
 	}
 	keyed := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a much longer row than the other", map[string]any{"text": "alpha", "key": "current"}}})
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a much longer row than the other"}, {Text: "alpha", Key: "current"}}})
 	}
 	perm := func(app *App) {
 		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
@@ -314,9 +314,9 @@ func TestHoverTargets(t *testing.T) {
 func TestClickScrolledListOpensSameItem(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 30)
-	var items []any
+	var items []hostapi.OverlayItem
 	for i := range 30 {
-		items = append(items, map[string]any{"text": fmt.Sprintf("item %02d", i), "fill": fmt.Sprintf("item %02d", i)})
+		items = append(items, hostapi.OverlayItem{Text: fmt.Sprintf("item %02d", i), Fill: fmt.Sprintf("item %02d", i)})
 	}
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: items})
 	x, y := findCell(t, app, "item 08")
@@ -631,7 +631,7 @@ func TestWheelUnderPointer(t *testing.T) {
 			for i := range 12 {
 				body = append(body, fmt.Sprintf("intro %d", i))
 			}
-			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []any{"alpha", "beta", "gamma", "delta", "epsilon"}})
+			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []hostapi.OverlayItem{{Text: "alpha"}, {Text: "beta"}, {Text: "gamma"}, {Text: "delta"}, {Text: "epsilon"}}})
 			app.renderSync(t)
 			x, y := findCell(t, app, c.over)
 			app.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})

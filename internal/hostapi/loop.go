@@ -265,7 +265,7 @@ func (h *Host) openLoop() error {
 			{"ran", fmt.Sprintf("%d %s since %s, stops at %s", l.Runs, Plural(l.Runs, "time", "times"), l.Started.Format(ClockLayout), stops.Format(ClockLayout+" on Jan 2"))},
 			{"spent", h.spentSince(l.Tokens, l.Cost)},
 		},
-		Items: []any{map[string]any{"text": "Stop the loop", "run": "loop stop", "verb": "stop"}},
+		Items: []OverlayItem{{Text: "Stop the loop", Run: "loop stop", Verb: VerbStop}},
 	})
 	return nil
 }

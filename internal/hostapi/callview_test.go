@@ -36,7 +36,7 @@ func TestCallView(t *testing.T) {
 		{
 			1, "Command",
 			map[string]string{"status": "failed"},
-			[]BodyPart{{Text: "go test ./...", Lang: "bash"}, {Text: "FAIL\nmain_test.go"}},
+			[]BodyPart{{Text: "go test ./...", Lang: "bash", Fill: FillCanvas}, {Text: "FAIL\nmain_test.go", Fill: FillWell}},
 		},
 		{
 			2, "Edit",
@@ -46,7 +46,7 @@ func TestCallView(t *testing.T) {
 		{
 			3, "Read",
 			map[string]string{"status": "ok", "file": "main.go"},
-			[]BodyPart{{Text: "1\tpackage main"}},
+			[]BodyPart{{Text: "1\tpackage main", Fill: FillWell}},
 		},
 		{
 			4, "Thought",
@@ -56,7 +56,7 @@ func TestCallView(t *testing.T) {
 		{
 			5, "Question",
 			map[string]string{"status": "ok"},
-			[]BodyPart{{Text: "Where?  in main\nnote: because\nWhat?  now"}},
+			[]BodyPart{{Text: "Where?  in main\nnote: because\nWhat?  now", Fill: FillWell}},
 		},
 	} {
 		row, took, ok := h.chatRow(c.row)

@@ -66,7 +66,7 @@ func (h *Host) configCommand(args string) error {
 	case "":
 		o := Overlay{
 			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Items: h.configItems(),
-			Reload: func() ([]any, [][]Segment) { return h.configItems(), nil },
+			Reload: h.configItems,
 			// what init.lua sets past its error never ran
 			Fields: []Field{{"error", h.InitError()}},
 		}
@@ -157,10 +157,10 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 // configItems lists every setting by section under two action rows. Enter
 // opens a row's detail, whose actions change the value; space toggles a
 // bool and passes the other rows by.
-func (h *Host) configItems() []any {
-	items := []any{
-		map[string]any{"text": "Show as Lua", "verb": "open", "run": "config lua", "preview": "every setting off its default, as the zemi.config.set lines init.lua would write"},
-		map[string]any{"text": "Open init.lua", "verb": "open", "run": "config open", "preview": "your config in the editor; zemi reloads when you save it"},
+func (h *Host) configItems() []OverlayItem {
+	items := []OverlayItem{
+		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting off its default, as the zemi.config.set lines init.lua would write"},
+		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
 	}
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
@@ -182,28 +182,28 @@ func (h *Host) configItems() []any {
 		// The source leads every row's description, since a bool's key column
 		// holds its switch; one width, so a change moves no text. The key's
 		// description is the preview, whole under the list.
-		item := map[string]any{
-			"text": string(s.Path), "desc": desc, "preview": s.Desc, "section": section,
-			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
-			"detail": s.Desc + note,
+		item := OverlayItem{
+			Text: string(s.Path), Desc: desc, Preview: s.Desc, Section: section,
+			Fields: fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
+			Detail: s.Desc + note,
 		}
-		edit := map[string]any{"key": "c", "desc": "Change", "run": configPicker(s.Path)}
+		edit := ItemKey{Key: "c", Desc: "change", Run: configPicker(s.Path)}
 		if s.Kind == config.KindBool {
-			item["on"], item["run"] = v == true, "config toggle "+string(s.Path)
-			edit = map[string]any{"key": "t", "desc": "Toggle", "run": item["run"]}
+			item.On, item.Run = new(v == true), "config toggle "+string(s.Path)
+			edit = ItemKey{Key: "t", Desc: "toggle", Run: item.Run}
 		}
-		if item["run"] == nil {
-			item["verb"] = "open" // a row with a verb is no toggle
+		if item.Run == "" {
+			item.Verb = VerbOpen // a row with a verb is no toggle
 		}
-		keys := []any{edit}
+		keys := []ItemKey{edit}
 		if !reflect.DeepEqual(v, base) {
-			label := map[bool]string{true: "Reset to init.lua", false: "Reset to default"}[set]
-			keys = append(keys, map[string]any{"key": "r", "desc": label, "run": "config reset " + string(s.Path)})
+			label := map[bool]string{true: "reset to init.lua", false: "reset to default"}[set]
+			keys = append(keys, ItemKey{Key: "r", Desc: label, Run: "config reset " + string(s.Path)})
 		}
 		if note != "" {
-			keys = append(keys, map[string]any{"key": "o", "desc": "Open init.lua", "run": "config open"})
+			keys = append(keys, ItemKey{Key: "o", Desc: "open init.lua", Run: "config open"})
 		}
-		item["keys"] = keys
+		item.Keys = keys
 		items = append(items, item)
 	}
 	return items
@@ -287,18 +287,18 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "config edit", Title: title, Origin: lua.OriginBuiltin, Items: items, Selected: sel,
-		Reload: func() ([]any, [][]Segment) { items, _ := h.pickItems(path); return items, nil },
+		Reload: func() []OverlayItem { items, _ := h.pickItems(path); return items },
 	})
 	return nil
 }
 
 // pickItems are path's choices as rows, the current one keyed and its index.
-func (h *Host) pickItems(path config.Key) (items []any, sel int) {
+func (h *Host) pickItems(path config.Key) (items []OverlayItem, sel int) {
 	cur := h.Settings.Str(path)
 	for i, c := range h.configChoices(path) {
-		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + string(path) + " " + c, "verb": "pick"}
+		item := OverlayItem{Text: cmp.Or(c, "default"), Run: "config set " + string(path) + " " + c, Verb: VerbPick}
 		if c == cur {
-			item["key"], sel = "current", i
+			item.Key, sel = "current", i
 		}
 		items = append(items, item)
 	}

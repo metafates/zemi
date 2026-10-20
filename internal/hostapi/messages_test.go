@@ -31,14 +31,14 @@ func TestMessagesTurns(t *testing.T) {
 	if len(o.Items) != 2 {
 		t.Fatalf("%d turns: %v", len(o.Items), o.Items)
 	}
-	first := o.Items[0].(map[string]any)
-	if first["text"] != "ping" || first["anchor"] != 1 || first["run"] != "messages turn 1" ||
-		first["desc"] != sent.Format(ClockLayout)+" · 1 reply · 2 steps" || first["id"] != "m1" {
-		t.Errorf("turn 1 = %v", first)
+	first := o.Items[0]
+	if first.Text != "ping" || first.Anchor != 1 || first.Run != "messages turn 1" ||
+		first.Desc != sent.Format(ClockLayout)+" · 1 reply · 2 steps" || first.ID != "m1" {
+		t.Errorf("turn 1 = %+v", first)
 	}
-	second := o.Items[1].(map[string]any)
-	if second["text"] != "again" || second["anchor"] != 5 || second["run"] != "messages turn 5" {
-		t.Errorf("turn 2 = %v", second)
+	second := o.Items[1]
+	if second.Text != "again" || second.Anchor != 5 || second.Run != "messages turn 5" {
+		t.Errorf("turn 2 = %+v", second)
 	}
 	// r is the list's own key, and it acts on the rows that name a prompt
 	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
@@ -80,9 +80,7 @@ func TestMessagesTurnRows(t *testing.T) {
 	}
 	var got []row
 	for _, it := range o.Items {
-		m := it.(map[string]any)
-		anchor, _ := m["anchor"].(int)
-		got = append(got, row{str(m["text"]), str(m["mark"]), anchor})
+		got = append(got, row{it.Text, string(it.Mark), it.Anchor})
 	}
 	want := []row{
 		{"ping", "", 1},
@@ -101,24 +99,24 @@ func TestMessagesTurnRows(t *testing.T) {
 	}
 	// every row's keys act on it from the list; a prompt names the row r
 	// rewinds to
-	keys := func(it map[string]any) []string {
+	keys := func(it OverlayItem) []string {
 		var runs []string
-		for _, k := range it["keys"].([]any) {
-			runs = append(runs, k.(map[string]any)["run"].(string))
+		for _, k := range it.Keys {
+			runs = append(runs, k.Run)
 		}
 		return runs
 	}
-	prompt := o.Items[0].(map[string]any)
-	if prompt["id"] != "m1" || !slices.Equal(keys(prompt), []string{"messages view 1"}) {
-		t.Errorf("prompt = %v", prompt)
+	prompt := o.Items[0]
+	if prompt.ID != "m1" || !slices.Equal(keys(prompt), []string{"messages view 1"}) {
+		t.Errorf("prompt = %+v", prompt)
 	}
-	if reply := o.Items[2].(map[string]any); !slices.Equal(keys(reply), []string{"messages view 4"}) {
-		t.Errorf("reply = %v", reply)
+	if reply := o.Items[2]; !slices.Equal(keys(reply), []string{"messages view 4"}) {
+		t.Errorf("reply = %+v", reply)
 	}
 	// a run reads the same whatever it did, and its row opens the rail alone
-	rail := o.Items[1].(map[string]any)
-	if rail["mark"] != nil || rail["desc"] != nil || rail["run"] != "messages rail 2" || rail["verb"] != "open" || rail["keys"] != nil {
-		t.Errorf("rail = %v", rail)
+	rail := o.Items[1]
+	if rail.Mark != "" || rail.Desc != "" || rail.Run != "messages rail 2" || rail.Verb != "open" || rail.Keys != nil {
+		t.Errorf("rail = %+v", rail)
 	}
 	// the next turn's prompt is no row of this one
 	if strings.Contains(fmt.Sprint(o.Items), "next turn") {
@@ -135,15 +133,17 @@ func TestMessagesTurnRows(t *testing.T) {
 	}
 	var calls []row
 	for _, it := range r.Items {
-		m := it.(map[string]any)
-		anchor, _ := m["anchor"].(int)
-		calls = append(calls, row{str(m["text"]), str(m["mark"]), anchor})
+		calls = append(calls, row{it.Text, string(it.Mark), it.Anchor})
 	}
 	if !slices.Equal(calls, []row{{"hmm", "", 2}, {"run the tests", "err", 3}}) {
 		t.Errorf("calls = %+v", calls)
 	}
-	if got := keys(r.Items[1].(map[string]any)); !slices.Equal(got, []string{"call 3"}) {
+	if got := keys(r.Items[1]); !slices.Equal(got, []string{"call 3"}) {
 		t.Errorf("call keys = %v", got)
+	}
+	// a call that started a job opens it from its view, never by a second o
+	if row := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "sleep 9", Job: "job-1"}); len(row.Keys) != 1 || row.Keys[0].Run != "call 3" {
+		t.Errorf("a call with a job: %+v", row.Keys)
 	}
 	if err := h.openMessagesRail(9); err == nil {
 		t.Error("a row that opens no rail opened one")
@@ -183,11 +183,6 @@ func TestMessagesView(t *testing.T) {
 }
 
 // str is an optional item string.
-func str(v any) string {
-	s, _ := v.(string)
-	return s
-}
-
 // TestMessagesRun: with a run on screen, the picker lists that run's rows,
 // not the session's, and it is what a bare /copy opens.
 func TestMessagesRun(t *testing.T) {
@@ -219,7 +214,7 @@ func TestMessagesRun(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("%d turns: %v", len(items), items)
 	}
-	if first := items[0].(map[string]any); first["text"] != "find the widget" || first["anchor"] != 1 {
-		t.Fatalf("turn = %v", first)
+	if first := items[0]; first.Text != "find the widget" || first.Anchor != 1 {
+		t.Fatalf("turn = %+v", first)
 	}
 }

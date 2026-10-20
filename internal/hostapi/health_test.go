@@ -118,12 +118,12 @@ func TestHealthChecks(t *testing.T) {
 	}
 
 	items := h.healthItems()
-	if first, last := items[0].(map[string]any), items[len(items)-1].(map[string]any); first["section"] != "Needs attention" || last["section"] != "OK" {
-		t.Fatalf("problems first: %v ... %v", first, last)
+	if first, last := items[0], items[len(items)-1]; first.Section != "Needs attention" || last.Section != "OK" {
+		t.Fatalf("problems first: %+v ... %+v", first, last)
 	}
-	for _, it := range items {
-		if m := it.(map[string]any); m["text"] == "store" && m["detail"] != nil {
-			t.Fatalf("a fine short row opens a detail view: %v", m)
+	for _, item := range items {
+		if item.Text == "store" && item.Detail != "" {
+			t.Fatalf("a fine short row opens a detail view: %+v", item)
 		}
 	}
 }

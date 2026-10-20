@@ -1659,6 +1659,8 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 		switch fill {
 		case hostapi.FillBand:
 			st.Bg = theme.Palette.Band
+		case hostapi.FillWell:
+			st.Bg = theme.Palette.Well
 		case hostapi.FillPanel:
 			if sameColor(st.Bg, theme.Palette.Bg) {
 				st.Bg = theme.Palette.Panel

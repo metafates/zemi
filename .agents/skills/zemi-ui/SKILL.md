@@ -86,7 +86,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   end, and so do `leaveTail` and `followStage`; failing that, the last message when the view reaches
   the end of the transcript, else the message whose rows hold the view's middle row, else the last
   one above it, so a wheel line or two keeps a centered message and scrolling on moves to the ones it
-  passes), `syncFollow` in `compose` carries a selection change out before the paint, enter closes
+  passes), `syncFollow` in `compose` carries a selection change out before the paint,
+  and the topmost *following* list answers rather than the top overlay, so a screen a row
+  opened (`o` on a call) keeps the run open and the band on its row under it, enter closes
   keeping the place, and `cancelOverlay` puts the chat back on the mark its state took when it
   opened (`followMark`, focus included).
   Opening the id of an open overlay replaces it in place
@@ -102,7 +104,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first
   and closes after: the worker then runs the rebuild behind the action. A row that fills the
   composer closes a toggle list, which would keep the keys. A row's `verb` names enter's action
-  in the hint and keeps space from toggling it.
+  in the hint and keeps space from toggling it. Every hint's label is lowercase, the
+  verbs' grammar too (`h back`, `o open the view`), and a row's two keys on one letter
+  raise: a key runs one action.
 - **The key loop never waits on Lua.** Keymap right-hand sides, Lua commands, completion
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async

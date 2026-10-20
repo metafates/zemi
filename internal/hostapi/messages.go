@@ -202,7 +202,6 @@ func (h *Host) messagesOverlay(tr []ChatMessage) Overlay {
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
 	}
-	var texts [][]Segment
 	for _, t := range messagesTurns(tr) {
 		m := tr[t.first-1]
 		text := strings.TrimSpace(m.Text)
@@ -227,21 +226,20 @@ func (h *Host) messagesOverlay(tr []ChatMessage) Overlay {
 			desc = append(desc, pluralCount(steps, "step", "steps"))
 		}
 		head := clipRunes(cmp.Or(messageHead(text), "(untitled turn)"), 60)
-		item := map[string]any{
-			"text": head, "desc": strings.Join(desc, " · "), "anchor": t.first,
-			"verb": "open", "run": "messages turn " + strconv.Itoa(t.first),
+		item := OverlayItem{
+			Text: head, Desc: strings.Join(desc, " · "), Anchor: t.first,
+			Verb: VerbOpen, Run: "messages turn " + strconv.Itoa(t.first),
+			Row: []Segment{{Text: "▌ ", HL: "UserMsg"}, {Text: head}},
 		}
 		if text != "" {
-			item["copy"] = text
+			item.Copy = text
 		}
 		if m.ID != "" {
-			item["id"] = m.ID
+			item.ID = m.ID
 			o.Keys = h.rewindKey(o.Keys)
 		}
 		o.Items = append(o.Items, item)
-		texts = append(texts, []Segment{{Text: "▌ ", HL: "UserMsg"}, {Text: head}})
 	}
-	o.ItemText = texts
 	return o
 }
 
@@ -300,25 +298,21 @@ func (h *Host) messagesTurnOverlay(tr []ChatMessage, first int) (Overlay, bool) 
 		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true,
 		Empty: "This turn held nothing.",
 	}
-	var texts [][]Segment
 	for _, e := range turnElements(tr, turn.rows) {
-		var item map[string]any
-		var segs []Segment
+		var item OverlayItem
 		if e.run != nil {
-			item, segs = railRow(*e.run)
+			item = railRow(*e.run)
 		} else {
-			item, segs = h.messageRow(e.idx, tr[e.idx-1])
+			item = h.messageRow(e.idx, tr[e.idx-1])
 		}
-		if item == nil {
+		if item.Text == "" {
 			continue
 		}
 		o.Items = append(o.Items, item)
-		texts = append(texts, segs)
-		if id, _ := item["id"].(string); id != "" {
+		if item.ID != "" {
 			o.Keys = h.rewindKey(o.Keys)
 		}
 	}
-	o.ItemText = texts
 	return o, true
 }
 
@@ -352,9 +346,7 @@ func (h *Host) messagesRailOverlay(tr []ChatMessage, first int) (Overlay, bool) 
 				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
 			}
 			for _, idx := range e.run.rows {
-				item, segs := messageCallRow(idx, tr[idx-1])
-				o.Items = append(o.Items, item)
-				o.ItemText = append(o.ItemText, segs)
+				o.Items = append(o.Items, messageCallRow(idx, tr[idx-1]))
 			}
 			return o, true
 		}
@@ -379,13 +371,12 @@ type msgRun struct {
 // railRow is a run as the turn view lists it: one row standing for the rail
 // the chat draws folded, which l opens call by call. It reads the same
 // whatever the run did, so a list of turns keeps one shape.
-func railRow(run msgRun) (map[string]any, []Segment) {
+func railRow(run msgRun) OverlayItem {
 	text := pluralCount(len(run.rows), "step", "steps")
-	item := map[string]any{
-		"text": text, "anchor": run.first, "verb": "open",
-		"run": "messages rail " + strconv.Itoa(run.first),
+	return OverlayItem{
+		Text: text, Anchor: run.first, Verb: VerbOpen,
+		Run: "messages rail " + strconv.Itoa(run.first), Row: []Segment{{Text: text}},
 	}
-	return item, []Segment{{Text: text}}
 }
 
 // turnElements groups a turn's rows: a contiguous run of calls and thoughts
@@ -412,56 +403,55 @@ func turnElements(tr []ChatMessage, rows []int) []msgElement {
 }
 
 // messageCallRow is one call or thought of a rail: what it reads as, and the
-// view or run its keys open over the list.
-func messageCallRow(idx int, m ChatMessage) (map[string]any, []Segment) {
+// view or run its key opens over the list.
+func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
-	item := map[string]any{"anchor": idx}
+	item := OverlayItem{Anchor: idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
 	head := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 40)
 	glyph, hl := "│", "Dim"
 	if m.Kind == RowReasoning {
 		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 40), "✻"
 	}
-	var keys []any
 	switch {
 	case m.Run != "" && m.Tool == "workflow":
-		keys = append(keys, viewKey("Open the run", "workflows view "+m.Run))
+		item.Keys = []ItemKey{viewKey("open the run", "workflows view "+m.Run)}
 	case m.Run != "":
-		keys = append(keys, viewKey("Open the run", "agents view "+m.Run))
+		item.Keys = []ItemKey{viewKey("open the run", "agents view "+m.Run)}
 	default:
-		keys = append(keys, viewKey("Open the view", "call "+strconv.Itoa(idx)))
-		if m.Job != "" {
-			keys = append(keys, viewKey("Open the job", "jobs view "+m.Job))
-		}
+		// the job a call started opens from its view, which is where the row
+		// goes: one o, one level down, so the footer never names two
+		item.Keys = []ItemKey{viewKey("open the view", "call "+strconv.Itoa(idx))}
 	}
 	if n := lineCount(m.Output); m.Output != "" && n > 1 {
-		item["desc"] = pluralCount(n, "line", "lines")
+		item.Desc = pluralCount(n, "line", "lines")
 	}
 	if text != "" {
-		item["copy"] = text
+		item.Copy = text
 	}
-	item["text"] = head
-	item["keys"] = keys
+	item.Text = head
 	// a mark says what the row is, so the row draws no glyph of its own
 	if mark := markFor(m); mark != "" {
-		item["mark"] = mark
-		return item, []Segment{{Text: head}}
+		item.Mark, item.Row = mark, []Segment{{Text: head}}
+		return item
 	}
-	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	item.Row = []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	return item
 }
 
 // messageRow is one row of a turn: what it reads as, what y copies, and the
-// actions that open it or rewind to it. nil for a row the list leaves out.
-func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
+// actions that open it or rewind to it. Its text is empty for a row the list
+// leaves out.
+func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
-	item := map[string]any{"anchor": idx}
+	item := OverlayItem{Anchor: idx}
 	var glyph, hl string
 	var head, desc string
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
 		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 40), "▌", "UserMsg"
 		if m.ID != "" {
-			item["id"] = m.ID // r rewinds to it; the list's key checks the rows
+			item.ID = m.ID // r rewinds to it; the list's key checks the rows
 		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
@@ -474,7 +464,7 @@ func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 		}
 	case m.Kind == RowNotice, m.Kind == RowCompact, m.Kind == RowError, m.Kind == RowShell:
 		if text == "" {
-			return nil, nil
+			return OverlayItem{}
 		}
 		head, glyph = clipRunes(messageHead(text), 40), "·"
 		if m.Kind == RowError {
@@ -483,42 +473,41 @@ func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 	case m.Kind == RowTool, m.Kind == RowReasoning:
 		return messageCallRow(idx, m)
 	default:
-		return nil, nil
+		return OverlayItem{}
 	}
-	item["text"] = head
-	if desc != "" {
-		item["desc"] = desc
-	}
+	item.Text = head
+	item.Desc = desc
 	if text != "" {
-		item["copy"] = text
+		item.Copy = text
 	}
-	item["keys"] = []any{viewKey("Read it", "messages view "+strconv.Itoa(idx))}
+	item.Keys = []ItemKey{viewKey("read it", "messages view "+strconv.Itoa(idx))}
 	if mark := markFor(m); mark != "" {
-		item["mark"] = mark
-		return item, []Segment{{Text: head}}
+		item.Mark, item.Row = mark, []Segment{{Text: head}}
+		return item
 	}
-	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	item.Row = []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	return item
 }
 
 // viewKey is the key that opens what a row reads as: its screen sits over the
 // list, which stays so esc comes back to it.
-func viewKey(desc, run string) map[string]any {
-	return map[string]any{"key": "o", "desc": desc, "run": run, "verb": "open"}
+func viewKey(desc, run string) ItemKey {
+	return ItemKey{Key: "o", Desc: desc, Run: run, Verb: VerbOpen}
 }
 
 // markFor is the mark a row carries, so a failed call reads as one in the
 // list as it does in the chat.
-func markFor(m ChatMessage) string {
+func markFor(m ChatMessage) MarkKind {
 	if m.Kind == RowError {
-		return "err"
+		return MarkErr
 	}
 	if m.Kind == RowNotice || m.Kind == RowCompact || m.Kind == RowShell {
-		return "note"
+		return MarkNote
 	}
 	if k, ok := callMarks[m.Status]; ok {
 		return k
 	}
-	return ""
+	return MarkKind("")
 }
 
 // openMessageView reads one row whole: a reply as its markdown, a prompt or

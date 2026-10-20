@@ -51,11 +51,11 @@ func flowDesc(f *flowRun, v flowView) string {
 
 // flowItem is a run's row in /workflows: enter opens its view, whose keys
 // act on it.
-func (h *Host) flowItem(f *flowRun, section string) map[string]any {
+func (h *Host) flowItem(f *flowRun, section string) OverlayItem {
 	v := f.view()
-	return map[string]any{
-		"id": f.id, "text": f.description, "desc": flowDesc(f, v) + h.fromSession(f.parent), "section": section,
-		"run": "workflows view " + f.id, "verb": "open", "mark": RunMarks[flowWord(v)],
+	return OverlayItem{
+		ID: f.id, Text: f.description, Desc: flowDesc(f, v) + h.fromSession(f.parent), Section: section,
+		Run: "workflows view " + f.id, Verb: VerbOpen, Mark: RunMarks[flowWord(v)],
 	}
 }
 
@@ -91,7 +91,7 @@ func (h *Host) openFlow(id string) error {
 // saves when the model wrote it and this process still holds it as it ran.
 func (h *Host) flowOverlay(f *flowRun) Overlay {
 	v := f.view()
-	var items []any
+	var items []OverlayItem
 	names, by := f.phases(v.agents)
 	for _, p := range names {
 		section := fmt.Sprintf("%s  %d/%d", p, ended(by[p]), len(by[p]))
@@ -104,7 +104,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		Mark: RunMarks[flowWord(v)],
 		// one row, so a long one never pushes the list down
 		Body: clipLine(f.about, 76), Empty: "No agent has started yet.",
-		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },
+		Reload: func() []OverlayItem { return h.flowOverlay(f).Items },
 	}
 	for kv := flowFields(f, v); len(kv) > 0; kv = kv[2:] {
 		o.Fields = append(o.Fields, Field{kv[0], kv[1]})
@@ -136,7 +136,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 
 // flowAgentItem is an agent's row in a run's view, keyed by its call's
 // index, which a call made later in an earlier phase does not move.
-func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]any {
+func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem {
 	word := statusCol(string(a.status))
 	desc := word + " · " + a.def
 	if a.reused {
@@ -145,9 +145,9 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	if a.status != "queued" {
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
-	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section, "mark": RunMarks[string(a.status)]}
+	item := OverlayItem{ID: strconv.Itoa(a.call), Text: a.description, Desc: desc, Section: section, Mark: RunMarks[string(a.status)]}
 	// a queued row opens too, so starting it moves no footer text
-	item["fields"] = fieldList("status", string(a.status), "agent", a.def)
+	item.Fields = fieldList("status", string(a.status), "agent", a.def)
 	if a.id == "" {
 		return item
 	}
@@ -160,17 +160,17 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	if a.cost > 0 {
 		usage += " · " + fmtCost(a.cost)
 	}
-	keys := []any{map[string]any{"key": "v", "desc": "View its transcript", "run": "workflows view " + f.id + " " + a.id}}
+	keys := []ItemKey{{Key: "v", Desc: "view its transcript", Run: "workflows view " + f.id + " " + a.id}}
 	if run != nil {
 		detail = run.prompt()
 		if a.status == RunRunning {
 			keys = append(keys,
-				map[string]any{"key": "r", "desc": "Restart", "run": "workflows restart " + f.id + " " + a.id},
+				ItemKey{Key: "r", Desc: "restart", Run: "workflows restart " + f.id + " " + a.id},
 				// s stops this agent; x on the view stops the whole run
-				map[string]any{"key": "s", "desc": "Stop", "run": "agents stop " + a.id, "danger": true})
+				ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + a.id, Danger: true})
 		}
 	}
-	item["fields"] = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
-	item["detail"], item["keys"] = detail, keys
+	item.Fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
+	item.Detail, item.Keys = detail, keys
 	return item
 }

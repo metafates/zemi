@@ -28,11 +28,11 @@ type Theme struct {
 // is derived, Panel and Band stay near Bg, and every text role meets its
 // contrast floor on all three, so no theme can hide a prompt's text.
 type Palette struct {
-	Bg, Fg, Accent, Literal, Ok, Warn, Danger, Dim, Rule, Panel, Band, AddBg, DelBg color.Color
+	Bg, Fg, Accent, Literal, Ok, Warn, Danger, Dim, Rule, Panel, Band, AddBg, DelBg, Well color.Color
 }
 
 // Roles are the names a theme spec and a group's colors give Palette's fields.
-var Roles = []string{"bg", "fg", "accent", "literal", "ok", "warn", "danger", "dim", "rule", "panel", "band", "addbg", "delbg"}
+var Roles = []string{"bg", "fg", "accent", "literal", "ok", "warn", "danger", "dim", "rule", "panel", "band", "addbg", "delbg", "well"}
 
 func (p *Palette) role(name string) *color.Color {
 	switch name {
@@ -62,6 +62,8 @@ func (p *Palette) role(name string) *color.Color {
 		return &p.AddBg
 	case "delbg":
 		return &p.DelBg
+	case "well":
+		return &p.Well
 	}
 	return nil
 }
@@ -116,6 +118,9 @@ var mixes = [...]struct {
 	{"band", "panel", "accent", 0.16, 0},
 	{"addbg", "bg", "ok", 0.28, 0},
 	{"delbg", "bg", "danger", 0.28, 0},
+	// a command well sinks to the canvas; what it answered lifts a step off
+	// the box, far enough to stay a surface of its own at 256 colors
+	{"well", "panel", "fg", 0.08, 0},
 }
 
 // surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,

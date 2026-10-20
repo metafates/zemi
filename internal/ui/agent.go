@@ -475,13 +475,12 @@ type listItem struct {
 
 // markSeg is a hostapi.Marks state mark and its gap, as the chat draws it;
 // none for "".
-func markSeg(kind string) hostapi.Segment {
-	k := hostapi.MarkKind(kind)
-	m, ok := hostapi.Marks[k]
+func markSeg(kind hostapi.MarkKind) hostapi.Segment {
+	m, ok := hostapi.Marks[kind]
 	if !ok {
 		return hostapi.Segment{}
 	}
-	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]string{true: "spin"}[k == hostapi.MarkSpin]}
+	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]hostapi.Effect{true: hostapi.EffectSpin}[kind == hostapi.MarkSpin]}
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.
@@ -770,13 +769,13 @@ func segEffects(thm themeResolver, frame int, segs []hostapi.Segment) ([]hostapi
 	spun := false
 	for _, s := range segs[i:] {
 		switch s.Effect {
-		case "shimmer":
+		case hostapi.EffectShimmer:
 			for _, r := range shimmer(thm, frame, s) {
 				r.Over, r.Fill, r.Fade, r.OnPanel = s.Over, s.Fill, s.Fade, s.OnPanel
 				out = append(out, r)
 			}
 			spun = spun || frame != 0
-		case "spin":
+		case hostapi.EffectSpin:
 			if _, n := utf8.DecodeRuneInString(s.Text); n > 0 {
 				s.Text = hostapi.Spinner[frame%len(hostapi.Spinner)] + s.Text[n:]
 			}
@@ -805,7 +804,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	var content [][]hostapi.Segment
 	switch {
 	case req.Subject == perm.SubjectShell:
-		content = a.codePanel(req.Arg, "bash", inner)
+		content = a.codePanel(req.Arg, "bash", hostapi.FillCanvas, inner)
 	case isDiff:
 		content = hostapi.DiffRows(req.Preview, inner)
 		for _, r := range content {
@@ -814,7 +813,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 			}
 		}
 	case req.Preview != "":
-		content = a.codePanel(req.Preview, previewLang(req), inner)
+		content = a.codePanel(req.Preview, previewLang(req), hostapi.FillCanvas, inner)
 	}
 	var btns []promptChoice
 	for _, c := range pa.choices() {
@@ -1100,30 +1099,40 @@ func previewLang(req hostapi.PermRequest) string {
 // codePanel shows text in a well of the canvas inside the box, wrapped to
 // width and highlighted as lang when it names one, with a row of canvas
 // above and below so the well never touches what surrounds it.
-func (a *App) codePanel(text, lang string, width int) [][]hostapi.Segment {
-	var rows [][]hostapi.Segment
-	if lang != "" {
-		rows = a.host.Highlight(text, lang, width-2)
-	} else {
-		rows = wrapText(text, "", width-2)
-	}
-	out := make([][]hostapi.Segment, 0, len(rows)+2)
-	out = append(out, codeWellPad(width))
-	for _, r := range rows {
-		row := make([]hostapi.Segment, 0, len(r)+2)
-		row = append(row, hostapi.Segment{Text: " ", Fill: hostapi.FillCanvas})
-		w := 0
-		for _, sg := range r {
-			w += ansi.StringWidth(sg.Text)
-			row = append(row, hostapi.Segment{Text: sg.Text, HL: cmp.Or(sg.HL, hostapi.ChromeValue), Fill: hostapi.FillCanvas})
-		}
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, width-2-w)) + " ", Fill: hostapi.FillCanvas})
-		out = append(out, row)
-	}
-	return append(out, codeWellPad(width))
+func (a *App) codePanel(text, lang string, fill hostapi.Fill, width int) [][]hostapi.Segment {
+	rows := a.wellCode(text, lang, fill, width)
+	return append(append([][]hostapi.Segment{wellPad(fill, width)}, rows...), wellPad(fill, width))
 }
 
-// codeWellPad is one row of a code well's canvas.
-func codeWellPad(width int) []hostapi.Segment {
-	return []hostapi.Segment{{Text: strings.Repeat(" ", width), Fill: hostapi.FillCanvas}}
+// wellCode is code's rows in a well's side padding, anything the language
+// leaves plain read as a value.
+func (a *App) wellCode(text, lang string, fill hostapi.Fill, width int) [][]hostapi.Segment {
+	rows := wrapText(text, "", width-2)
+	if lang != "" {
+		rows = a.host.Highlight(text, lang, width-2)
+	}
+	for _, r := range rows {
+		for i := range r {
+			r[i].HL = cmp.Or(r[i].HL, hostapi.ChromeValue)
+		}
+	}
+	return wellRows(rows, fill, width)
+}
+
+// wellRow is one row of a well at width cells: its surface runs to both edges.
+func wellRow(segs []hostapi.Segment, fill hostapi.Fill, width int) []hostapi.Segment {
+	row := make([]hostapi.Segment, 0, len(segs)+2)
+	row = append(row, hostapi.Segment{Text: " ", Fill: fill})
+	used := 0
+	for _, sg := range segs {
+		used += ansi.StringWidth(sg.Text)
+		sg.Fill = fill
+		row = append(row, sg)
+	}
+	return append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, width-2-used)) + " ", Fill: fill})
+}
+
+// wellPad is one row of a well's surface alone.
+func wellPad(fill hostapi.Fill, width int) []hostapi.Segment {
+	return []hostapi.Segment{{Text: strings.Repeat(" ", width), Fill: fill}}
 }

@@ -1360,19 +1360,22 @@ func TestSavedWorkflows(t *testing.T) {
 	if err := h.openWorkflows(); err != nil {
 		t.Fatal(err)
 	}
-	row := func(name string) map[string]any {
-		j := slices.IndexFunc(ui.opened[0].Items, func(it any) bool { return it.(map[string]any)["text"] == name })
+	row := func(name string) OverlayItem {
+		j := slices.IndexFunc(ui.opened[0].Items, func(it OverlayItem) bool { return it.Text == name })
 		if j < 0 {
 			t.Fatalf("no %s row in %v", name, ui.opened[0].Items)
 		}
-		return ui.opened[0].Items[j].(map[string]any)
+		return ui.opened[0].Items[j]
 	}
-	if ui.opened[0].Items[0].(map[string]any)["text"] != "New workflow" {
+	if ui.opened[0].Items[0].Text != "New workflow" {
 		t.Fatalf("the list does not head with making one: %v", ui.opened[0].Items[0])
 	}
-	acts := fmt.Sprint(row("review")["keys"])
-	if acts != "[map[desc:Run key:r run:workflows run review] map[desc:Run with arguments fill:/workflows run review  key:a] map[desc:Open in the editor key:o run:workflows open review]]" {
-		t.Fatalf("workflow keys: %s", acts)
+	var acts []string
+	for _, k := range row("review").Keys {
+		acts = append(acts, k.Key+" "+k.Desc)
+	}
+	if want := []string{"r run", "a run with arguments", "o open in the editor"}; !slices.Equal(acts, want) {
+		t.Fatalf("workflow keys: %q, want %q", acts, want)
 	}
 
 	// a run's script saves under workflows/, headed by its description and
@@ -1464,8 +1467,7 @@ func TestFlowViewIDs(t *testing.T) {
 	}
 	ids := func() map[string]any {
 		m := map[string]any{}
-		for _, it := range h.flowOverlay(f).Items {
-			row, _ := ParseOverlayItem(it)
+		for _, row := range h.flowOverlay(f).Items {
 			if row.Fields == nil {
 				t.Fatalf("%s opens nothing", row.Text)
 			}

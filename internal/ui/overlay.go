@@ -25,9 +25,9 @@ type overlayState struct {
 	listFilter
 	input composerState // text of an input overlay
 	body  viewport
-	text  textRows // the body's rows
-	back  bool     // a detail view: esc and its actions return to the overlay under it
-	item  any      // a detail view's item: a reload can swap the parent's under it
+	text  textRows            // the body's rows
+	back  bool                // a detail view: esc and its actions return to the overlay under it
+	item  hostapi.OverlayItem // a detail view's item: a reload can swap the parent's under it
 	size  boxSize
 	// the selected row's danger act waits for a second press; a key or a
 	// click that moves the selection drops it
@@ -309,10 +309,17 @@ func (st *overlayState) selectedAnchor() int {
 // list's selection names, once per selection change: keys, clicks and the
 // wheel all land here, and the paint carries it out. Its selection is also
 // the message the paint bands.
+//
+// The topmost following list answers, not the top overlay: a screen a row
+// opens (/call, /jobs view) sits over the list it came from, and the chat
+// keeps previewing the row under it.
 func (a *App) syncFollow() {
 	a.highlight = 0
 	i := len(a.overlays) - 1
-	if i < 0 || !a.overlays[i].o.Follow {
+	for i >= 0 && !a.overlays[i].o.Follow {
+		i--
+	}
+	if i < 0 {
 		return
 	}
 	st := &a.overlays[i]
@@ -325,14 +332,16 @@ func (a *App) syncFollow() {
 	}
 }
 
-// railOf is the transcript row the top overlay draws whole, 0 for none: a
-// list on its way out already reads as closed.
+// railOf is the transcript row the topmost following list draws whole, 0 for
+// none: a list on its way out already reads as closed.
 func (a *App) railOf() int {
 	if a.railClose != "" {
 		return 0
 	}
-	if i := len(a.overlays) - 1; i >= 0 && a.overlays[i].o.Follow {
-		return a.overlays[i].o.Rail
+	for i := range slices.Backward(a.overlays) {
+		if a.overlays[i].o.Follow {
+			return a.overlays[i].o.Rail
+		}
 	}
 	return 0
 }
@@ -393,11 +402,11 @@ func (st *overlayState) selectedRow() hostapi.OverlayItem {
 	return st.items[st.visible[st.selected]].row
 }
 
-// selectedItem is the item the selected row was read from, nil when nothing
+// selectedItem is the item the selected row was read from, zero when nothing
 // is selected.
-func (st *overlayState) selectedItem() any {
+func (st *overlayState) selectedItem() hostapi.OverlayItem {
 	if st.selected >= len(st.visible) {
-		return nil
+		return hostapi.OverlayItem{}
 	}
 	return st.o.Items[st.visible[st.selected]]
 }
@@ -418,7 +427,7 @@ func (a *App) refreshDetail(i int) {
 		return
 	}
 	d := a.overlays[j]
-	idx := slices.IndexFunc(a.overlays[i].o.Items, func(it any) bool { return itemKey(it) == itemKey(d.item) })
+	idx := slices.IndexFunc(a.overlays[i].o.Items, func(it hostapi.OverlayItem) bool { return itemKey(it) == itemKey(d.item) })
 	a.overlays = slices.Delete(a.overlays, j, j+1)
 	if idx < 0 {
 		return
@@ -429,10 +438,7 @@ func (a *App) refreshDetail(i int) {
 }
 
 // itemKey names an item across rebuilds: its id, else its text.
-func itemKey(item any) string {
-	r, _ := hostapi.ParseOverlayItem(item)
-	return cmp.Or(r.ID, r.Text)
-}
+func itemKey(r hostapi.OverlayItem) string { return cmp.Or(r.ID, r.Text) }
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Every string here is Lua's (or a model's, through a Go builder):
@@ -459,21 +465,19 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.input.insert(sanitize.String(o.Default))
 		return st
 	}
-	for i, item := range o.Items {
-		// zemi.ui.overlay.open raised on a Lua item's wrong type; a Go screen's
-		// or a select's item keeps the fields that parse
-		r, _ := hostapi.ParseOverlayItem(item)
+	for _, item := range o.Items {
+		r := item
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
 		r.Desc, r.Key, r.Section = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section)
 		r.Verb = hostapi.Verb(sanitize.Line(string(r.Verb)))
 		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview)                          // Detail is the detail view's Body, sanitized there
 		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, mark: markSeg(r.Mark), row: r} // a newline would break the box
-		if r.Switch || r.Locked {
-			it.key = switchSeg(r.On, r.Locked)
+		if r.On != nil || r.Locked != nil {
+			it.key = switchSeg(r.On != nil && *r.On, r.Locked != nil)
 		}
-		if i < len(o.ItemText) && o.ItemText[i] != nil {
+		if r.Row != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
-			for _, seg := range o.ItemText[i] {
+			for _, seg := range r.Row {
 				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
 			it.label = hostapi.SegsText(it.segs) // spaces kept: a filter's offsets index the segments
@@ -485,7 +489,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy+"  "+r.Preview)
 	}
 	if o.Phases {
-		marks := map[string][]string{}
+		marks := map[string][]hostapi.MarkKind{}
 		for _, it := range st.items {
 			marks[it.section] = append(marks[it.section], it.row.Mark)
 		}
@@ -607,11 +611,11 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 		if call != nil {
 			call()
 		}
-		items, text := o.Reload()
+		items := o.Reload()
 		a.do(func() {
 			if i := a.overlayIndex(o.ID); i >= 0 && a.overlays[i].o.Gen == o.Gen {
 				next := a.overlays[i].o
-				next.Items, next.ItemText = items, text
+				next.Items = items
 				a.replaceOverlay(i, next)
 			}
 		})
@@ -746,10 +750,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 			return nil
 		}
-		var item any
-		if len(st.visible) > 0 {
-			item = o.Items[st.visible[st.selected]]
-		}
+		item := st.selectedItem()
 		call := func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) }
 		if o.Reload != nil { // a toggle list stays open and rebuilds
 			a.reloadOverlay(o, call)
@@ -1064,12 +1065,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		switch {
 		case len(st.o.Parts) > 0:
-			for i, p := range st.o.Parts {
-				if i > 0 {
-					rows = append(rows, nil)
-				}
-				rows = append(rows, a.bodyPart(p, w)...)
-			}
+			rows = append(rows, a.bodyParts(st.o.Parts, w)...)
 		case st.o.BodySegs != nil:
 			for _, row := range st.o.BodySegs {
 				rows = append(rows, hostapi.WrapSegs(row, w)...)
@@ -1186,9 +1182,33 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 
+// bodyParts lays a view's parts out: a run of parts naming a Fill stands as
+// one well, one padding above and below it and no gap between its parts, so
+// a command and what it answered read as one box with two surfaces.
+func (a *App) bodyParts(parts []hostapi.BodyPart, w int) [][]hostapi.Segment {
+	var rows [][]hostapi.Segment
+	for i, p := range parts {
+		well, held := p.Fill != hostapi.FillAuto, i > 0 && parts[i-1].Fill != hostapi.FillAuto
+		switch {
+		case well && !held:
+			rows = append(rows, wellPad(p.Fill, w))
+		case !well && i > 0:
+			if held {
+				rows = append(rows, wellPad(parts[i-1].Fill, w))
+			}
+			rows = append(rows, nil)
+		}
+		rows = append(rows, a.bodyPart(p, w)...)
+	}
+	if n := len(parts); n > 0 && parts[n-1].Fill != hostapi.FillAuto {
+		rows = append(rows, wellPad(parts[n-1].Fill, w))
+	}
+	return rows
+}
+
 // bodyPart draws one part of a view's body in the form its text is written
-// in, wrapped to w: a command reads as a well of the canvas, as the prompt's
-// preview does, while a diff and markdown bring their own surfaces.
+// in, wrapped to w: a part in a well sits on its surface, while a diff and
+// markdown bring their own.
 func (a *App) bodyPart(p hostapi.BodyPart, w int) [][]hostapi.Segment {
 	switch p.Lang {
 	case "markdown":
@@ -1196,9 +1216,25 @@ func (a *App) bodyPart(p hostapi.BodyPart, w int) [][]hostapi.Segment {
 	case "diff":
 		return hostapi.DiffRows(p.Text, w)
 	case "":
-		return wrapText(p.Text, "", w)
+		rows := wrapText(p.Text, "", w)
+		if p.Fill != hostapi.FillAuto {
+			return wellRows(rows, p.Fill, w)
+		}
+		return rows
 	}
-	return a.codePanel(p.Text, p.Lang, w)
+	if p.Fill != hostapi.FillAuto { // the well pads it, not the part
+		return a.wellCode(p.Text, p.Lang, p.Fill, w)
+	}
+	return a.codePanel(p.Text, p.Lang, hostapi.FillCanvas, w)
+}
+
+// wellRows puts wrapped text in a well at width cells.
+func wellRows(rows [][]hostapi.Segment, fill hostapi.Fill, width int) [][]hostapi.Segment {
+	out := make([][]hostapi.Segment, len(rows))
+	for i, r := range rows {
+		out[i] = wellRow(r, fill, width)
+	}
+	return out
 }
 
 // keyApplies reports whether a list key acts on the selected row: a key
@@ -1290,13 +1326,13 @@ func armedHint(w int, key, label string) []hostapi.Segment {
 // phaseMark is a phase's state from its rows' marks: failed once one
 // failed, else running while one runs, waiting while one waits, stopped
 // when one stopped, done when every row is.
-func phaseMark(marks []string) string {
-	for _, m := range []string{"err", "spin", "wait", "stop"} {
+func phaseMark(marks []hostapi.MarkKind) hostapi.MarkKind {
+	for _, m := range []hostapi.MarkKind{hostapi.MarkErr, hostapi.MarkSpin, hostapi.MarkWait, hostapi.MarkStop} {
 		if slices.Contains(marks, m) {
 			return m
 		}
 	}
-	return "ok"
+	return hostapi.MarkOK
 }
 
 // statusHL colors the status words every screen shares.
@@ -1312,7 +1348,7 @@ var statusHL = map[hostapi.ServiceStatus]string{
 // danger color and a status word in its own behind mark. A field with no
 // value is left out; too narrow for the column, a field is a "name: value"
 // line.
-func fieldRows(fields []hostapi.Field, mark string, w int) [][]hostapi.Segment {
+func fieldRows(fields []hostapi.Field, mark hostapi.MarkKind, w int) [][]hostapi.Segment {
 	kw := 0
 	for _, f := range fields {
 		if f.Value != "" {

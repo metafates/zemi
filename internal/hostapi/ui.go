@@ -157,7 +157,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		}
 		render, _ := opt[*glua.LFunction](L, tb, "render_item")
 		if render != nil {
-			o.ItemText = h.renderItems(L, o.ID, render, o.Items)
+			h.renderItems(L, o.ID, render, o.Items)
 		}
 		if fn, ok := opt[*glua.LFunction](L, tb, "reload"); ok {
 			o.Reload = h.luaReload(o, fn, render)
@@ -221,12 +221,16 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 			Origin:   h.RT.CurrentOrigin(L),
 			Path:     h.RT.CurrentPath(L),
 			Gen:      h.currentGen(),
-			Items:    list,
 			OnSelect: cb,
 			OnClose:  cb, // cb() gets nil, the vim.ui cancel shape
 		}
+		if list != nil { // an empty picker is no list to parse
+			if o.Items, err = overlayItems(items); err != nil {
+				L.RaiseError("zemi.ui.select: %v", err)
+			}
+		}
 		if fn, ok := opt[*glua.LFunction](L, opts, "format_item"); ok {
-			o.ItemText = h.renderItems(L, o.ID, fn, list)
+			h.renderItems(L, o.ID, fn, o.Items)
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -553,22 +557,27 @@ const (
 	VerbFill   Verb = "fill"   // the composer
 	VerbCopy   Verb = "copy"   // the row's value
 	VerbGo     Verb = "go"     // a browsing list's leaf: close it, keeping the place
+	VerbStop   Verb = "stop"   // the screen's own thing stops: a loop, a goal
 )
 
-var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo}
+var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo, VerbStop}
 
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
 	Text, Desc, Key, Section, Detail, Fill, Copy, Run, ID, Preview string
 	Verb                                                           Verb
-	Mark                                                           string    // a Marks key, drawn ahead of the text
-	Switch, On, Locked                                             bool      // Switch: on is set, so the row draws the switch
+	Mark                                                           MarkKind  // drawn ahead of the text
+	On, Locked                                                     *bool     // On: the switch is drawn, on or off; Locked: it stands with nothing to switch
 	Danger                                                         bool      // cannot be undone: drawn in Danger, and its first enter or key only arms it
 	Tail                                                           bool      // a text too wide is cut from the left: a path's name is at its end
 	Anchor                                                         int       // a following list's row: the transcript row it stands for, 0 for none
 	Keys                                                           []ItemKey // what acts on the row: from the list by its character, in the footer of its view
 	Fields                                                         []Field   // the row's view: facts set above Detail
+	Row                                                            []Segment // the row render_item drew, nil for the text alone
+	// raw is the Lua value the row was parsed from, which its callbacks get
+	// back: a Go screen's row has none.
+	raw any
 }
 
 // ItemKey is one operation a row offers: a character that runs it from the
@@ -587,21 +596,22 @@ type Field struct{ Name, Value string }
 
 // BodyPart is one part of a view's body, drawn in the form its text is
 // written in: markdown, a unified diff ("diff"), a language to highlight it
-// as, or "" for plain text.
+// as, or "" for plain text. A part with a Fill joins the well its neighbours
+// with one make: one padding, no gap, each on its own surface.
 type BodyPart struct {
 	Text string
 	Lang string
+	Fill Fill
 }
 
-// fieldList is an item's "fields" from name, value pairs, in the shape a Lua
-// list marshals to, so Go items stay plain Lua data.
-func fieldList(kv ...string) []any {
+// fieldList is a row's view fields from name, value pairs.
+func fieldList(kv ...string) []Field {
 	if len(kv)%2 != 0 {
 		panic("fieldList: a name without a value")
 	}
-	out := make([]any, 0, len(kv)/2)
+	out := make([]Field, 0, len(kv)/2)
 	for i := 0; i < len(kv); i += 2 {
-		out = append(out, []any{kv[i], kv[i+1]})
+		out = append(out, Field{kv[i], kv[i+1]})
 	}
 	return out
 }
@@ -622,9 +632,9 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 		if !ok {
 			s = fmt.Sprint(item)
 		}
-		return OverlayItem{Text: s}, nil
+		return OverlayItem{Text: s, raw: item}, nil
 	}
-	var p OverlayItem
+	p := OverlayItem{raw: item}
 	var err error
 	bad := func(key, want string, v any) {
 		if err == nil {
@@ -634,7 +644,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	for _, f := range []struct {
 		key string
 		dst *string
-	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}, {"mark", &p.Mark}} {
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case string:
@@ -648,21 +658,48 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	if _, ok := m["text"].(string); !ok {
 		p.Text = fmt.Sprint(item)
 	}
-	if v, ok := m["verb"].(string); ok {
+	switch v := m["verb"].(type) {
+	case nil:
+	case Verb: // a Go screen's item
+		if p.Verb = v; !slices.Contains(verbs, p.Verb) {
+			bad("verb", "one of "+joinVerbs(), v)
+		}
+	case string:
 		if p.Verb = Verb(v); !slices.Contains(verbs, p.Verb) {
 			bad("verb", "one of "+joinVerbs(), v)
 		}
-	} else if m["verb"] != nil {
-		bad("verb", "a string", m["verb"])
+	default:
+		bad("verb", "a string", v)
 	}
-	if _, ok := Marks[MarkKind(p.Mark)]; !ok && p.Mark != "" {
-		bad("mark", "a zemi.ui.marks key", m["mark"])
+	switch v := m["mark"].(type) {
+	case nil:
+	case MarkKind: // a Go screen's item
+		p.Mark = v
+	case string:
+		p.Mark = MarkKind(v)
+	default:
+		bad("mark", "a zemi.ui.marks key", v)
+	}
+	if _, ok := Marks[p.Mark]; !ok && p.Mark != "" {
+		bad("mark", "a zemi.ui.marks key", p.Mark)
 		p.Mark = ""
 	}
 	for _, f := range []struct {
 		key string
+		dst **bool // nil is no switch, false a switch drawn off
+	}{{"on", &p.On}, {"locked", &p.Locked}} {
+		switch v := m[f.key].(type) {
+		case nil:
+		case bool:
+			*f.dst = &v
+		default:
+			bad(f.key, "a boolean", v)
+		}
+	}
+	for _, f := range []struct {
+		key string
 		dst *bool
-	}{{"on", &p.On}, {"locked", &p.Locked}, {"danger", &p.Danger}, {"tail", &p.Tail}} {
+	}{{"danger", &p.Danger}, {"tail", &p.Tail}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case bool:
@@ -671,7 +708,6 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 			bad(f.key, "a boolean", v)
 		}
 	}
-	_, p.Switch = m["on"].(bool)
 	switch v := m["anchor"].(type) {
 	case nil:
 	case float64:
@@ -706,6 +742,13 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 			ik, e := parseKey(k)
 			if e != nil && err == nil {
 				err = fmt.Errorf("keys[%d].%w", i+1, e)
+			}
+			// a key runs one row action: a second on its letter is never read
+			if slices.ContainsFunc(p.Keys, func(prev ItemKey) bool { return prev.Key == ik.Key }) {
+				e = fmt.Errorf("key %q is another of the row's", ik.Key)
+				if err == nil {
+					err = fmt.Errorf("keys[%d].%w", i+1, e)
+				}
 			}
 			p.Keys = append(p.Keys, ik)
 		}
@@ -771,27 +814,30 @@ func joinVerbs() string {
 
 // overlayItems is a Lua items list with every item's fields checked. nil is
 // no list, so a reload that returns nothing keeps the old items.
-func overlayItems(v any) ([]any, error) {
+func overlayItems(v any) ([]OverlayItem, error) {
 	list, ok := luaList(v)
 	if !ok || v == nil {
 		return nil, fmt.Errorf("items must be a list, got %s", luaShape(v))
 	}
+	items := make([]OverlayItem, len(list))
 	for i, item := range list {
-		if _, err := ParseOverlayItem(item); err != nil {
+		p, err := ParseOverlayItem(item)
+		if err != nil {
 			return nil, fmt.Errorf("items[%d].%w", i+1, err)
 		}
+		items[i] = p
 	}
-	return list, nil
+	return items, nil
 }
 
 // renderItems runs an overlay's render_item here on the interpreter, so the
 // UI goroutine never waits on the queue to draw the rows. render_item
 // returns a string or one line of segments; a failing item falls back to its
 // plain value.
-func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []any) [][]Segment {
-	out := make([][]Segment, len(items))
-	for i, item := range items {
-		rets, err := h.callFn(L, h.callerOf(L), fn, 1, lua.FromGo(L, item))
+func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []OverlayItem) {
+	for i := range items {
+		item := &items[i]
+		rets, err := h.callFn(L, h.callerOf(L), fn, 1, lua.FromGo(L, item.raw))
 		if err == nil {
 			switch v := rets[0].(type) {
 			case *glua.LTable:
@@ -799,49 +845,48 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 				if line, err = lua.ToGo(v); err == nil {
 					var rows [][]Segment
 					if rows, err = convertSegments([]any{line}, ""); err == nil {
-						out[i] = rows[0]
+						item.Row = rows[0]
 					}
 				}
 			case *glua.LNilType:
 			default:
-				out[i] = []Segment{{Text: v.String()}}
+				item.Row = []Segment{{Text: v.String()}}
 			}
 		}
 		if err != nil {
 			h.Log.Debug("overlay render_item failed", "origin", "ui", "id", id, "error", err)
-			out[i] = []Segment{{Text: fmt.Sprint(item)}}
+			item.Row = []Segment{{Text: fmt.Sprint(item.raw)}}
 		}
 	}
-	return out
 }
 
 // luaReload is a Lua overlay's reload: fn(), a task, returns the new items,
 // which render_item renders again, under the overlay's origin. A failure or a
 // stale generation keeps the items the overlay has.
-func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [][]Segment) {
-	return func() ([]any, [][]Segment) {
-		items, text := o.Items, o.ItemText
+func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() []OverlayItem {
+	return func() []OverlayItem {
+		items := o.Items
 		t := h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn)
 		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
 			v, err := lua.ToGo(rets[0])
-			var list []any
+			var list []OverlayItem
 			if err == nil {
 				list, err = overlayItems(v)
 			}
 			if err != nil {
 				return nil, err
 			}
-			items, text = list, nil
 			if render != nil {
-				text = h.renderItems(L, o.ID, render, list)
+				h.renderItems(L, o.ID, render, list)
 			}
+			items = list
 			return nil, nil
 		}
 		_, err := h.RT.RunTask(context.Background(), t)
 		if err != nil && !lua.Dropped(err) {
 			h.RecordError("overlay "+o.ID+" reload", err.Error())
 		}
-		return items, text
+		return items
 	}
 }
 

@@ -752,7 +752,7 @@ func (h *Host) openMCP(confirm string) error {
 func (h *Host) mcpOverlay(refresh bool) Overlay {
 	o := Overlay{
 		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.mcpItems(),
-		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
+		Reload: h.mcpItems,
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}
 	if len(h.mcpWaitingNames()) >= 2 {
@@ -784,8 +784,8 @@ var mcpMarks = map[ServiceStatus]MarkKind{
 	StatusSignIn: MarkWait, StatusStopped: MarkStop, StatusOff: MarkStop,
 }
 
-func (h *Host) mcpItems() []any {
-	var items []any
+func (h *Host) mcpItems() []OverlayItem {
+	var items []OverlayItem
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
 		status, errText, signIn := s.status, s.err, s.signIn
@@ -815,18 +815,18 @@ func (h *Host) mcpItems() []any {
 		}
 		fields := fieldList(where[0], where[1], "status", string(status), "sign in at", signIn,
 			"tools", strings.Join(tools, ", "), "error", strings.TrimPrefix(errText, "mcp: "))
-		keys := []any{map[string]any{"key": "r", "desc": "Restart", "run": "mcp restart " + s.name}}
+		keys := []ItemKey{{Key: "r", Desc: "restart", Run: "mcp restart " + s.name}}
 		if status == StatusSignIn {
-			keys = append(keys, map[string]any{"key": "s", "desc": "Sign in", "run": "mcp sign-in " + s.name})
+			keys = append(keys, ItemKey{Key: "s", Desc: "sign in", Run: "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
-			keys = append(keys, map[string]any{"key": "x", "desc": "Sign out", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
+			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
 		}
-		item := map[string]any{"text": s.name, "desc": desc, "mark": string(mcpMarks[status]), "fields": fields, "keys": keys}
+		item := OverlayItem{Text: s.name, Desc: desc, Mark: mcpMarks[status], Fields: fields, Keys: keys}
 		if signIn != "" {
 			// the URL is too long for a toast; y copies it when the browser
 			// was blocked
-			item["copy"] = signIn
+			item.Copy = signIn
 		}
 		items = append(items, item)
 	}

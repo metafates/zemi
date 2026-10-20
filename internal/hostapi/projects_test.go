@@ -97,7 +97,7 @@ func TestProjectsCommand(t *testing.T) {
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "key:current",
 				"desc:missing                  · now", "[trust trusted] [sessions ]",
 				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: " + SessionMark("sid-other") + " fix the flaky test]",
-				"desc:Switch to it key:s run:projects switch " + other, "desc:Forget trust key:f run:projects forget " + other, "danger:true desc:Delete key:x run:projects delete " + other + " --yes",
+				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other + " --yes",
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
 			not: []string{"run:projects switch " + gone},
@@ -139,7 +139,7 @@ func TestProjectsCommand(t *testing.T) {
 		case <-time.After(30 * time.Second):
 			t.Fatalf("%s: no list opened", c.name)
 		}
-		got := fmt.Sprintf("%v Selected:%d Confirm:%s", list.Items, list.Selected, list.Confirm)
+		got := fmt.Sprintf("%s Selected:%d Confirm:%s", dumpItems(list.Items), list.Selected, list.Confirm)
 		for len(ui.notes) > 0 {
 			got += "\n" + <-ui.notes
 		}

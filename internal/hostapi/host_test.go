@@ -282,7 +282,7 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("build callback: %v", err)
 	}
-	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []any{"a"}}
+	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []OverlayItem{{Text: "a"}}}
 
 	h.SelectOverlay(t.Context(), o, 0)
 	if !called {
@@ -324,20 +324,21 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 		for _, hk in ipairs({ "j", "/", "ab" }) do
 			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", keys = { { key = hk, desc = "b" } } } } }), "row key " .. hk)
 		end
+		assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", keys = { { key = "o", run = "a" }, { key = "o", run = "b" } } } } }), "one letter, two actions")
 		assert(not pcall(zemi.ui.select, { prompt = "p" }, {}, function() end), "select with the args swapped must raise")
 	`)
-	if s := ui.opened[3]; s.Anchor != "bottom-right" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
+	if s := ui.opened[3]; s.Anchor != "bottom-right" || s.Selected != 1 || s.Items[0].Row[0].HL != "Title" {
 		t.Fatalf("segment overlay: %+v", s)
 	}
-	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["keys"].([]any)) != 1 {
+	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].Keys) != 1 {
 		t.Fatalf("detail overlay: %+v", d)
 	}
 	var got []string
 	for _, o := range ui.opened {
 		var rows []string
-		for _, segs := range o.ItemText {
+		for _, item := range o.Items {
 			var row string
-			for _, seg := range segs {
+			for _, seg := range item.Row {
 				row += seg.Text
 			}
 			rows = append(rows, row)
@@ -618,28 +619,32 @@ func TestThemeCommand(t *testing.T) {
 	if len(opened) != 1 || opened[0].Reload == nil {
 		t.Fatalf("opened %d overlays, want the pick as a toggle list", len(opened))
 	}
-	row := func(items []any, name string) map[string]any {
-		i := slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == name })
+	row := func(items []OverlayItem, name string) (OverlayItem, bool) {
+		i := slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == name })
 		if i < 0 {
-			return nil
+			return OverlayItem{}, false
 		}
-		return items[i].(map[string]any)
+		return items[i], true
+	}
+	key := func(items []OverlayItem, name string) string {
+		r, _ := row(items, name)
+		return r.Key
 	}
 	items := opened[0].Items
-	if row(items, "catppuccin-light") == nil || row(items, "nord")["key"] != "current" {
-		t.Fatalf("rows: %v", items)
+	if _, ok := row(items, "catppuccin-light"); !ok || key(items, "nord") != "current" {
+		t.Fatalf("rows: %+v", items)
 	}
 	if err := h.configCommand("set ui.theme dracula"); err != nil {
 		t.Fatal(err)
 	}
-	if items, _ := opened[0].Reload(); row(items, "dracula")["key"] != "current" || row(items, "nord")["key"] != nil {
-		t.Fatalf("after a pick: %v", items)
+	if items := opened[0].Reload(); key(items, "dracula") != "current" || key(items, "nord") != "" {
+		t.Fatalf("after a pick: %+v", items)
 	}
 	if err := h.configCommand("set ui.theme catppuccin-light"); err != nil {
 		t.Fatal(err)
 	}
-	if items, _ := opened[0].Reload(); row(items, "catppuccin-light")["key"] != "current" {
-		t.Fatalf("after a light pick: %v", items)
+	if items := opened[0].Reload(); key(items, "catppuccin-light") != "current" {
+		t.Fatalf("after a light pick: %+v", items)
 	}
 }
 
@@ -676,9 +681,9 @@ func TestConfigSet(t *testing.T) {
 	// unless the key has a picker
 	for path, run := range map[string]string{"editor.command": "config edit editor.command", "ui.theme": "theme", "models.chat": "model chat"} {
 		items := h.configItems()
-		row := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == path })].(map[string]any)
-		if act := row["keys"].([]any)[0].(map[string]any); act["run"] != run || act["desc"] != "Change" {
-			t.Errorf("%s: first action %v, want Change running %q", path, act, run)
+		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == path })]
+		if act := row.Keys[0]; act.Run != run || act.Desc != "change" {
+			t.Errorf("%s: first action %+v, want change running %q", path, act, run)
 		}
 	}
 	// a bool row draws its switch after its source, and its description is
@@ -695,9 +700,9 @@ func TestConfigSet(t *testing.T) {
 	} {
 		c.step()
 		items := h.configItems()
-		row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.mouse" })].(map[string]any)
-		if desc, _ := row["desc"].(string); row["on"] != c.on || desc != c.desc || !strings.Contains(row["preview"].(string), "drag to select") {
-			t.Errorf("bool row: on %v, desc %q, preview %q; want %v, %q", row["on"], desc, row["preview"], c.on, c.desc)
+		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == "ui.mouse" })]
+		if row.On == nil || *row.On != c.on || row.Desc != c.desc || !strings.Contains(row.Preview, "drag to select") {
+			t.Errorf("bool row: on %v, desc %q, preview %q; want %v, %q", row.On, row.Desc, row.Preview, c.on, c.desc)
 		}
 	}
 }
@@ -932,7 +937,7 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: boom, OnClose: boom, Items: []any{"a"}}
+	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: boom, OnClose: boom, Items: []OverlayItem{{Text: "a"}}}
 	for source, run := range map[string]func(){
 		"overlay x on_select": func() { h.SelectOverlay(t.Context(), o, 0) },
 		"overlay x on_close":  func() { h.CancelOverlay(t.Context(), o) },

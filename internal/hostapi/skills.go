@@ -550,7 +550,7 @@ func (h *Host) openSkills(confirm string) error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true, Confirm: confirm,
-		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
+		Reload: h.skillItems,
 		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + perm.TildePath(h.Dirs.ConfigHome) + " or " + perm.TildePath(h.Dirs.AgentsHome) + ".",
 	})
 	return nil
@@ -619,24 +619,24 @@ func (h *Host) untrustedNote(kind, name, dir string) string {
 	return fmt.Sprintf("%s %q is in %s, and this project is not trusted: the user runs %s to load it", kind, name, dir, h.trustHint())
 }
 
-func (h *Host) skillItems() []any {
+func (h *Host) skillItems() []OverlayItem {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
 	sortBySource(all, func(s skill.Skill) skill.Source { return s.Source })
-	items := make([]any, 0, len(all))
+	items := make([]OverlayItem, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
-		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(s.Source)}
-		var keys []any
+		item := OverlayItem{Text: s.Name, Desc: listDesc(s.Description), Section: sourceSection(s.Source)}
+		var keys []ItemKey
 		state := "on"
 		switch {
 		case !s.Source.Stored(): // no state to toggle
-			item["locked"] = true
+			item.Locked = new(true)
 		case h.skillsReg.isEnabled(s.Name):
-			item["on"], item["run"] = true, toggle
-			keys = append(keys, map[string]any{"key": "d", "desc": "Disable", "run": toggle})
+			item.On, item.Run = new(true), toggle
+			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: toggle})
 		default:
-			state, item["on"], item["run"] = "off", false, toggle
-			keys = append(keys, map[string]any{"key": "e", "desc": "Enable", "run": toggle})
+			state, item.On, item.Run = "off", new(false), toggle
+			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: toggle})
 		}
 		body, err := s.Body()
 		if err != nil {
@@ -647,14 +647,14 @@ func (h *Host) skillItems() []any {
 			use = "/" + s.Name + " "
 		}
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
-			keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "skills open " + s.Name})
+			keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "skills open " + s.Name})
 		}
-		item["keys"] = append(keys, map[string]any{"key": "u", "desc": "Use now", "fill": use})
+		item.Keys = append(keys, ItemKey{Key: "u", Desc: "use now", Fill: use})
 		if s.Source == skill.Recipe {
-			item["keys"] = append(item["keys"].([]any), map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "skills delete " + s.Name + " --yes"})
+			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name + " --yes"})
 		}
-		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
-		item["detail"] = body // enter reads the skill itself: its description is the row's desc
+		item.Fields = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
+		item.Detail = body // enter reads the skill itself: its description is the row's desc
 		items = append(items, item)
 	}
 	return items

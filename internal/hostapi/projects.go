@@ -345,7 +345,7 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 
 // projectItems is a row per project, the selection on the first that zemi
 // does not run in and that exists.
-func (h *Host) projectItems() (items []any, sel int) {
+func (h *Host) projectItems() (items []OverlayItem, sel int) {
 	sel = -1
 	for i, p := range ListProjects(h.Dirs, true) {
 		// each column padded, blank when empty, so the age lines up; a word
@@ -359,29 +359,29 @@ func (h *Host) projectItems() (items []any, sel int) {
 		if !p.Used.IsZero() {
 			desc += " · " + ago(p.Used.UnixMilli())
 		}
-		item := map[string]any{"text": sanitize.String(perm.TildePath(p.Root)), "tail": true, "desc": strings.TrimRight(desc, " "), "fields": h.projectFields(p)}
+		item := OverlayItem{Text: sanitize.String(perm.TildePath(p.Root)), Tail: true, Desc: strings.TrimRight(desc, " "), Fields: h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
-			item["key"] = "current"
-			item["detail"] = "zemi runs here: /trust changes its trust. Switch to another project to delete this one's data."
+			item.Key = "current"
+			item.Detail = "zemi runs here: /trust changes its trust. Switch to another project to delete this one's data."
 			items = append(items, item)
 			continue
 		case p.Missing:
-			item["detail"] = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
+			item.Detail = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
-			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes and the trust decision. The project's own files stay."
+			item.Detail = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes and the trust decision. The project's own files stay."
 		}
 		if sel < 0 && !p.Missing {
 			sel = i
 		}
-		var keys []any
+		var keys []ItemKey
 		if !p.Missing {
-			keys = append(keys, map[string]any{"key": "s", "desc": "Switch to it", "run": "projects switch " + p.Root})
+			keys = append(keys, ItemKey{Key: "s", Desc: "switch to it", Run: "projects switch " + p.Root})
 		}
 		if p.Trust != "" {
-			keys = append(keys, map[string]any{"key": "f", "desc": "Forget trust", "run": "projects forget " + p.Root})
+			keys = append(keys, ItemKey{Key: "f", Desc: "forget trust", Run: "projects forget " + p.Root})
 		}
-		item["keys"] = append(keys, map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "projects delete " + p.Root + " --yes"})
+		item.Keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "projects delete " + p.Root + " --yes"})
 		items = append(items, item)
 	}
 	return items, max(sel, 0)
@@ -404,7 +404,7 @@ func (h *Host) trustWord(p Project) string {
 // projectFields is what a project's detail says of it; an empty value is
 // left out. Its trust is the decision a gone root keeps too, and its path
 // repeats the detail's title, which the UI shows only when the title clips.
-func (h *Host) projectFields(p Project) []any {
+func (h *Host) projectFields(p Project) []Field {
 	sessions, memories, recipes, errText := "", "", "", ""
 	if p.Latest != nil {
 		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))

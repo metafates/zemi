@@ -198,7 +198,7 @@ func TestAnchoredPickerComposerLine(t *testing.T) {
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
 	_ = a.Frame()
 	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
-		a.openOverlay(hostapi.Overlay{ID: "pick", Title: "Picker", Items: []any{"manual", "allow"}, Anchor: anchor})
+		a.openOverlay(hostapi.Overlay{ID: "pick", Title: "Picker", Items: []hostapi.OverlayItem{{Text: "manual"}, {Text: "allow"}}, Anchor: anchor})
 		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
 		edge := func(row string) bool {
 			if anchor == hostapi.OverlayBottomLeft {
@@ -235,7 +235,7 @@ func TestAnchoredBoxBottomBorder(t *testing.T) {
 		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "esc interrupt · 20s") {
 			t.Fatalf("%s: no working key and clock on the rule to cut:\n%s", anchor, label)
 		}
-		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []any{"row one"}, Anchor: anchor})
+		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []hostapi.OverlayItem{{Text: "row one"}}, Anchor: anchor})
 		app.renderSync(t)
 		frame := ansi.Strip(app.Frame())
 		r := app.chromeRect

@@ -479,7 +479,7 @@ func (h *Host) OpenRewind() error {
 	}
 	paths, _ := h.DB.CheckpointPaths(sid)
 	restored := set.Set[string]{} // what rewinding to this prompt restores: its files and every later prompt's
-	var items []any
+	var items []OverlayItem
 	for _, row := range slices.Backward(rows) {
 		for _, p := range paths[row.ID] {
 			restored.Add(perm.FoldCase(p))
@@ -496,12 +496,12 @@ func (h *Host) OpenRewind() error {
 		}
 		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository and not ignored."
 		first, _, _ := strings.Cut(text, "\n")
-		items = append(items, map[string]any{
-			"text":   first,
-			"desc":   desc,
-			"detail": effect + "\n\n" + text, // what it does first: a long prompt scrolls below
-			"keys": []any{
-				map[string]any{"key": "r", "desc": "Rewind", "danger": true, "run": "rewind " + row.ID},
+		items = append(items, OverlayItem{
+			Text:   first,
+			Desc:   desc,
+			Detail: effect + "\n\n" + text, // what it does first: a long prompt scrolls below
+			Keys: []ItemKey{
+				{Key: "r", Desc: "rewind", Danger: true, Run: "rewind " + row.ID},
 			},
 		})
 	}

@@ -93,7 +93,7 @@ func TestRewind(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, want := range []string{"2 files", "2 files", "2 files"} {
-		if desc := ui.opened[0].Items[i].(map[string]any)["desc"].(string); !strings.HasSuffix(desc, want) {
+		if desc := ui.opened[0].Items[i].Desc; !strings.HasSuffix(desc, want) {
 			t.Fatalf("prompt %d: %q, want %s", i, desc, want)
 		}
 	}

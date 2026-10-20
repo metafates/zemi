@@ -97,20 +97,20 @@ func (h *Host) openJob(id string) error {
 // Stop keeps the list open, so jobs go one by one, and the last of them
 // stops the whole lot.
 func (h *Host) jobsOverlay() Overlay {
-	var running, ended []any
+	var running, ended []OverlayItem
 	all := h.jobs.List()
 	slices.Reverse(all)
 	for _, j := range all {
-		item := map[string]any{
-			"id":      j.ID,
-			"text":    j.Name,
-			"desc":    statusCol(j.Status()) + " · " + fmtDuration(j.Elapsed()) + " · " + j.ID,
-			"mark":    j.Mark(),
-			"section": map[bool]string{true: "Running", false: "Ended"}[j.Running()],
-			"run":     "jobs view " + j.ID, "verb": "open",
+		item := OverlayItem{
+			ID:      j.ID,
+			Text:    j.Name,
+			Desc:    statusCol(j.Status()) + " · " + fmtDuration(j.Elapsed()) + " · " + j.ID,
+			Mark:    MarkKind(j.Mark()),
+			Section: map[bool]string{true: "Running", false: "Ended"}[j.Running()],
+			Run:     "jobs view " + j.ID, Verb: VerbOpen,
 		}
 		if j.Running() {
-			item["keys"] = []any{map[string]any{"key": "s", "desc": "Stop", "run": "jobs stop " + j.ID}}
+			item.Keys = []ItemKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID}}
 			running = append(running, item)
 			continue
 		}
@@ -119,7 +119,7 @@ func (h *Host) jobsOverlay() Overlay {
 	o := Overlay{
 		ID: "jobs", Title: "Jobs", Origin: lua.OriginBuiltin, Items: slices.Concat(running, ended),
 		Empty:  "No background processes.",
-		Reload: func() ([]any, [][]Segment) { return h.jobsOverlay().Items, nil },
+		Reload: func() []OverlayItem { return h.jobsOverlay().Items },
 	}
 	if h.jobs.Running() > 0 {
 		o.Keys = []OverlayKey{{Key: "x", Desc: "stop all", Run: "jobs stop all", Danger: true}}
@@ -135,9 +135,9 @@ func (h *Host) jobOverlay(j *tools.Job) Overlay {
 	out := jobTail(j.Output())
 	o := Overlay{
 		ID: "job:" + j.ID, Title: "Jobs / " + clipLine(j.Name, 50), Origin: lua.OriginBuiltin,
-		Live: true, Body: out, Mark: j.Mark(),
+		Live: true, Body: out, Mark: MarkKind(j.Mark()),
 		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}},
-		Parts:  []BodyPart{{Text: j.Name, Lang: "bash"}, {Text: out}},
+		Parts:  []BodyPart{{Text: j.Name, Lang: "bash", Fill: FillCanvas}, {Text: out, Fill: FillWell}},
 	}
 	if out == "" {
 		o.Empty = "(no output yet)"

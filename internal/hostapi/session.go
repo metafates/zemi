@@ -165,14 +165,14 @@ func (h *Host) OpenSessions(confirm string) error {
 	ui.OpenOverlay(Overlay{
 		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm,
 		Empty:  "No sessions in this project yet. Send a message to start one.",
-		Reload: func() ([]any, [][]Segment) { items, _ := h.sessionItems(); return items, nil },
+		Reload: func() []OverlayItem { items, _ := h.sessionItems(); return items },
 	})
 	return nil
 }
 
 // sessionItems lists the recent sessions, the live one marked and the rest
 // with what resumes, renames or deletes them.
-func (h *Host) sessionItems() ([]any, error) {
+func (h *Host) sessionItems() ([]OverlayItem, error) {
 	if h.DB == nil {
 		return nil, errNoStore
 	}
@@ -186,7 +186,7 @@ func (h *Host) sessionItems() ([]any, error) {
 		ids = append(ids, s.ID)
 	}
 	previews, _ := h.DB.SessionPreviews(ids) // best effort: a bare list still resumes
-	items := make([]any, 0, len(list))
+	items := make([]OverlayItem, 0, len(list))
 	for _, s := range list {
 		p := previews[s.ID]
 		desc, count, prompt := []string{ago(s.UpdatedAt)}, "", firstUserLine(p.FirstJSON)
@@ -201,17 +201,17 @@ func (h *Host) sessionItems() ([]any, error) {
 			desc = append(desc, clipRunes(prompt, 60))
 		}
 		// a list gives its labels room before descriptions: a whole title would hide the age
-		item := map[string]any{"text": markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")), "desc": strings.Join(desc, " · ")}
+		item := OverlayItem{Text: markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")), Desc: strings.Join(desc, " · ")}
 		if s.ID == current {
-			item["key"] = "current"
-			item["detail"] = "zemi runs this session: /new leaves it, and then it can be resumed or deleted here."
+			item.Key = "current"
+			item.Detail = "zemi runs this session: /new leaves it, and then it can be resumed or deleted here."
 		} else {
-			item["fields"] = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
-			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
-			item["keys"] = []any{
-				map[string]any{"key": "r", "desc": "Resume", "run": "resume " + s.ID},
-				map[string]any{"key": "n", "desc": "Rename", "run": "sessions rename " + s.ID + " "},
-				map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
+			item.Fields = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
+			item.Detail = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
+			item.Keys = []ItemKey{
+				{Key: "r", Desc: "resume", Run: "resume " + s.ID},
+				{Key: "n", Desc: "rename", Run: "sessions rename " + s.ID + " "},
+				{Key: "x", Desc: "delete", Danger: true, Run: "sessions delete " + s.ID + " --yes"},
 			}
 		}
 		items = append(items, item)

@@ -357,14 +357,18 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("a typed delete: %v, %+v", err, ui.opened)
 	}
 	// another session's row keys its operations by letter, the permanent one none
-	acts := ""
+	var acts []string
 	for _, it := range ui.opened[0].Items {
-		if a, ok := it.(map[string]any)["keys"]; ok {
-			acts = fmt.Sprint(a)
+		for _, k := range it.Keys {
+			acts = append(acts, k.Key+" "+k.Desc+" "+k.Run)
 		}
 	}
-	if acts != "[map[desc:Resume key:r run:resume "+first+"] map[desc:Rename key:n run:sessions rename "+first+" ] map[danger:true desc:Delete key:x run:sessions delete "+first+" --yes]]" {
-		t.Fatalf("session keys: %s", acts)
+	want := []string{
+		"r resume resume " + first, "n rename sessions rename " + first + " ",
+		"x delete sessions delete " + first + " --yes",
+	}
+	if !slices.Equal(acts, want) {
+		t.Fatalf("session keys: %q, want %q", acts, want)
 	}
 	pad := h.scratchFor(first)
 	if err := os.MkdirAll(pad, 0o700); err != nil {
@@ -510,7 +514,7 @@ func TestSessionsRowsCarryTheMarker(t *testing.T) {
 	}
 	var texts []string
 	for _, item := range ui.overlays()[len(ui.overlays())-1].Items {
-		texts = append(texts, item.(map[string]any)["text"].(string))
+		texts = append(texts, item.Text)
 	}
 	sessions, err := h.DB.ListSessions(10)
 	if err != nil {

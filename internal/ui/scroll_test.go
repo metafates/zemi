@@ -530,9 +530,9 @@ func TestChatFade(t *testing.T) {
 func TestBoxFade(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
-	items := make([]any, 30)
+	items := make([]hostapi.OverlayItem, 30)
 	for i := range items {
-		items[i] = fmt.Sprintf("row %02d", i)
+		items[i] = hostapi.OverlayItem{Text: fmt.Sprintf("row %02d", i)}
 	}
 	app.openOverlay(hostapi.Overlay{ID: "l", Title: "List", Origin: lua.OriginBuiltin, Items: items})
 	st := &app.overlays[0]

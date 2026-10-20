@@ -113,14 +113,13 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 	h.syncSkills()
 	seen := map[string]bool{}
 	for _, it := range h.skillItems() {
-		m := it.(map[string]any)
-		name, keys, body := m["text"].(string), fmt.Sprint(m["keys"]), fmt.Sprint(m["detail"])
+		name, keys, body := it.Text, fmt.Sprint(it.Keys), it.Detail
 		if name != "local-run" && name != "zemi" {
 			continue
 		}
 		seen[name] = true
 		if body == "" || strings.Contains(keys, "skills open "+name) != (name == "local-run") {
-			t.Errorf("%s: keys %v, body %v", name, m["keys"], m["detail"])
+			t.Errorf("%s: keys %v, body %v", name, it.Keys, it.Detail)
 		}
 	}
 	if !seen["local-run"] || !seen["zemi"] {
@@ -283,8 +282,8 @@ func TestSkillCommands(t *testing.T) {
 			}
 			used := ""
 			for _, it := range h.skillItems() {
-				if m := it.(map[string]any); m["text"] == name && m["section"] != "Builtin" {
-					used = fmt.Sprint(m["fields"])
+				if it.Text == name && it.Section != "Builtin" {
+					used = dumpFields(it.Fields)
 				}
 			}
 			if c.used == "" && used != "" || c.used != "" && !strings.Contains(used, "[used by "+c.used+"]") {
@@ -598,8 +597,8 @@ func TestRecipes(t *testing.T) {
 		}
 		for _, it := range h.skillItems() {
 			// a recipe has no stored state, so its row must not toggle
-			if m := it.(map[string]any); m["section"] == "Recipe" && m["run"] == nil {
-				items = append(items, m["text"].(string))
+			if it.Section == "Recipe" && it.Run == "" {
+				items = append(items, it.Text)
 			}
 		}
 		slices.Sort(prompt)

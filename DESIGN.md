@@ -1861,7 +1861,9 @@ rides the `memories.md` line and its ledger entries.
   item's `anchor`: moving the selection then scrolls the chat to the
   transcript row the item names and bands that message, opening on the row
   the reader is at, with enter keeping that place and esc putting the chat
-  back; a `body` of styled lines or `markdown`, `render_item`
+  back; the topmost following list answers while a screen a row opened sits
+  over it, so the chat keeps previewing the row that screen is about, and a
+  row's second key on one letter raises, since a key runs one action; a `body` of styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `keys`, one character each, act on that row from the list and are
   named in the footer of its view,
@@ -1945,7 +1947,9 @@ rides the `memories.md` line and its ledger entries.
   so it sits last and its cells are trailing blanks while it is away. A
   toggle list, which can grow past its view, keeps scrolling's cells blank
   until it does, so the hint coming moves nothing. A narrow footer drops
-  scrolling and copy before the screen's keys. A row names its own (`verb`)
+  scrolling and copy before the screen's keys. Every hint's label is a
+  lowercase word or phrase, the verbs' grammar too: `h back`,
+  `o open the view`, `y copy`, `esc close`. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one
@@ -1966,9 +1970,13 @@ rides the `memories.md` line and its ledger entries.
   list's and the row's, and the footer names them; `y` copies the fields as
   `name: value` lines above the prose. A Go screen's body may come in
   parts, each drawn the way its text is written - markdown, a unified diff,
-  or a language to highlight it as, a command's in a well of the canvas -
-  and a body its work rewrites (`Live`) keeps the reader's place, or follows
-  its tail while they never scrolled. A `status` field colors the status
+  or a language to highlight it as - and a body its work rewrites (`Live`)
+  keeps the reader's place, or follows its tail while they never scrolled.
+  A part that names a surface stands in a well: consecutive ones share one
+  well, a padding row above and below and no gap between them, so a call's
+  command (the canvas, sunk into the box) and what it answered (the well,
+  a step above the box) read as one box with two surfaces, as `/jobs view`
+  draws it too. A `status` field colors the status
   words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source

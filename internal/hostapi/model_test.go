@@ -272,16 +272,16 @@ func TestModelTargetUI(t *testing.T) {
 	rows := ui.opened[0].Items
 	var got []string
 	for _, it := range rows {
-		got = append(got, it.(map[string]any)["text"].(string))
+		got = append(got, it.Text)
 	}
 	if want := []string{"chat", "agents", "titles", "compact", "memory", "clf", "cheap"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
-	if row := rows[5].(map[string]any); row["desc"] != "a/small · the classifier" {
-		t.Errorf("clf row %v", row)
+	if row := rows[5]; row.Desc != "a/small · the classifier" {
+		t.Errorf("clf row %+v", row)
 	}
-	if row := rows[6].(map[string]any); row["desc"] != "a/small · every tool" || row["key"] != "a/small" {
-		t.Errorf("cheap row %v (its spec model is what the row tags)", row)
+	if row := rows[6]; row.Desc != "a/small · every tool" || row.Key != "a/small" {
+		t.Errorf("cheap row %+v (its spec model is what the row tags)", row)
 	}
 	// the active profile takes row one, and its own row is not repeated
 	if err := h.SetProfile("cheap"); err != nil {
@@ -291,12 +291,12 @@ func TestModelTargetUI(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows = ui.opened[1].Items
-	if row := rows[0].(map[string]any); row["text"] != "cheap" || row["key"] != nil {
-		t.Errorf("row one %v", row)
+	if row := rows[0]; row.Text != "cheap" || row.Key != "" {
+		t.Errorf("row one %+v", row)
 	}
 	var names []string
 	for _, it := range rows {
-		names = append(names, it.(map[string]any)["text"].(string))
+		names = append(names, it.Text)
 	}
 	if slices.Contains(names[1:], "cheap") {
 		t.Errorf("the profile row one shows is repeated: %v", names)
@@ -305,16 +305,16 @@ func TestModelTargetUI(t *testing.T) {
 	if err := h.OpenModelPicker("clf"); err != nil {
 		t.Fatal(err)
 	}
-	head := ui.opened[2].Items[0].(map[string]any)
-	if head["text"] != "Follow the registered model" || head["desc"] != "a/small" || head["key"] != "current" {
-		t.Errorf("clf's first row %v", head)
+	head := ui.opened[2].Items[0]
+	if head.Text != "Follow the registered model" || head.Desc != "a/small" || head.Key != "current" {
+		t.Errorf("clf's first row %+v", head)
 	}
 	if err := h.OpenModelPicker("cheap"); err != nil {
 		t.Fatal(err)
 	}
-	head = ui.opened[len(ui.opened)-1].Items[0].(map[string]any)
-	if head["text"] != "Follow the profile's model" || head["desc"] != "a/small" {
-		t.Errorf("cheap's first row %v", head)
+	head = ui.opened[len(ui.opened)-1].Items[0]
+	if head.Text != "Follow the profile's model" || head.Desc != "a/small" {
+		t.Errorf("cheap's first row %+v", head)
 	}
 	// a profile named default is row one under its own name, but what it opens
 	// is the conversation's slot, chat
@@ -322,8 +322,8 @@ func TestModelTargetUI(t *testing.T) {
 	if err := h.OpenModelRoles(); err != nil {
 		t.Fatal(err)
 	}
-	if row := ui.opened[len(ui.opened)-1].Items[0].(map[string]any); row["text"] != "default" || row["run"] != "model chat" || row["key"] != nil {
-		t.Errorf("row one under a defined default %v", row)
+	if row := ui.opened[len(ui.opened)-1].Items[0]; row.Text != "default" || row.Run != "model chat" || row.Key != "" {
+		t.Errorf("row one under a defined default %+v", row)
 	}
 	// and the list a bare /model opens marks the model the conversation runs
 	// on, which is the active profile's slot
@@ -334,8 +334,8 @@ func TestModelTargetUI(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := ui.opened[len(ui.opened)-1]
-	if row := o.Items[o.Selected].(map[string]any); row["key"] != "current" || row["run"] != "model a/small" {
-		t.Errorf("the bare list marks %v, want the conversation's model", row)
+	if row := o.Items[o.Selected]; row.Key != "current" || row.Run != "model a/small" {
+		t.Errorf("the bare list marks %+v, want the conversation's model", row)
 	}
 }
 
@@ -407,8 +407,8 @@ func TestSetModelArgs(t *testing.T) {
 	}
 	// the roles list tags what follows chat, and zemi.model.list says what runs where
 	roles := ui.opened[2].Items
-	if k := roles[2].(map[string]any)["key"]; k != "follows chat" {
-		t.Errorf("titles row key %v", k)
+	if k := roles[2].Key; k != "follows chat" {
+		t.Errorf("titles row key %q", k)
 	}
 	for _, c := range []struct{ line, want string }{
 		{"/model ", "roles update chat agents titles compact memory a/big a/small"},
@@ -482,9 +482,9 @@ func TestModelFavorites(t *testing.T) {
 	}
 	// /model's own two rows lead the list; the models follow
 	o := h.modelPicker("")
-	first := o.Items[2].(map[string]any)
-	if first["text"] != "small" || first["section"] != "Favorites" {
-		t.Fatalf("the list does not head with the favorite: %v", o.Items)
+	first := o.Items[2]
+	if first.Text != "small" || first.Section != "Favorites" {
+		t.Fatalf("the list does not head with the favorite: %+v", o.Items)
 	}
 	// the key toggles, and marking another model keeps the first one first
 	h.toggleModelFavorite("a/big", "")
@@ -492,7 +492,7 @@ func TestModelFavorites(t *testing.T) {
 	if favs = h.Settings.List(config.KeyModelsFavorites); !slices.Equal(favs, []string{"a/small", "a/big"}) {
 		t.Fatalf("favorites = %v", favs)
 	}
-	if a, b := o.Items[2].(map[string]any)["text"], o.Items[3].(map[string]any)["text"]; a != "small" || b != "big" {
+	if a, b := o.Items[2].Text, o.Items[3].Text; a != "small" || b != "big" {
 		t.Errorf("favorites order = %v, %v", a, b)
 	}
 	h.toggleModelFavorite("a/small", "")

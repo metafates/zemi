@@ -521,8 +521,8 @@ func TestPluginSettings(t *testing.T) {
 			v, _ := h.Settings.Get(key)
 			fmt.Fprintf(&out, "value %v %s\n", cmp.Or(fmt.Sprint(v), "<nil>"), h.cfgSource(key))
 			for _, it := range h.configItems() {
-				if m := it.(map[string]any); m["text"] == key {
-					fmt.Fprintf(&out, "section %s\n", m["section"])
+				if it.Text == key {
+					fmt.Fprintf(&out, "section %s\n", it.Section)
 				}
 			}
 			keys, _ := h.GlobalDB.KeysKV("config:")

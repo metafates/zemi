@@ -982,6 +982,7 @@ function zemi.event.stats() end
 ---@field band? string A box's selected row, kept near bg in lightness.
 ---@field addbg? string
 ---@field delbg? string
+---@field well? string The surface of a command well's answer, a step above panel so a call's command and its output read as one box with two surfaces; derived from panel and fg.
 
 --- One overlay row. Enter on an item with `detail` or `fields` opens its
 --- view (never on_select); otherwise it fills, runs or selects the item, and
@@ -1006,7 +1007,7 @@ function zemi.event.stats() end
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
----@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another: "open" (a screen of its own), "pick" (a value), "run" (a command), "toggle", "fill" or "copy"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
+---@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another: "open" (a screen of its own), "pick" (a value), "run" (a command), "toggle", "fill", "copy" or "stop"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 ---@field anchor? integer The transcript row this one stands for, counted as `ctx.transcript` is (1-based); a list with `follow` set scrolls the chat here when the row is selected.
 
 --- What enter does on a row, in one word for the footer hint.
@@ -1018,11 +1019,12 @@ function zemi.event.stats() end
 ---| "fill" the composer
 ---| "copy" the row's value
 ---| "go" a following list's row: enter lands there, closing the menu
+---| "stop" the screen's own thing stops: a running loop or goal
 
 --- One of a row's keys: a character that acts on the row from the list.
 ---@class zemi.OverlayItemKey
 ---@field key string one character; j, k, /, y and Y are the list's and raise
----@field desc? string named beside the key in the footer
+---@field desc? string named beside the key in the footer, a lowercase word or phrase like every hint ("open the view", "rewind")
 ---@field id? string hands the key to the overlay's on_action, which takes it over fill and run
 ---@field fill? string put in the composer, closing the list
 ---@field run? string a command line, run on the row; with `verb = "open"` the screen it opens sits over the list, which stays

@@ -1257,10 +1257,9 @@ func TestEffortPicker(t *testing.T) {
 		t.Fatalf("picker %+v", o)
 	}
 	for i, w := range want {
-		row := o.Items[i].(map[string]any)
-		key, _ := row["key"].(string)
-		if row["text"] != w.text || row["desc"] != w.desc || row["run"] != w.run || key != w.key {
-			t.Errorf("row %d %v, want %+v", i, row, w)
+		row := o.Items[i]
+		if row.Text != w.text || row.Desc != w.desc || row.Run != w.run || row.Key != w.key {
+			t.Errorf("row %d %+v, want %+v", i, row, w)
 		}
 	}
 }
@@ -1298,7 +1297,7 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if h.OpenProfilePicker() != nil || ui.opened[0].Items[2].(map[string]any)["desc"] != "x/big · every tool" {
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[2].Desc != "x/big · every tool" {
 		t.Errorf("the defined profile's picker row %v", ui.opened)
 	}
 	if h.SetProfile("p") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "q" {
@@ -1378,7 +1377,7 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
-		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["copy"] != "export DEEPSEEK_API_KEY=" || !strings.HasPrefix(o.Body, "No models yet. Export") {
+		if len(o.Items) != 1 || o.Items[0].Text != "deepseek" || o.Items[0].Copy != "export DEEPSEEK_API_KEY=" || !strings.HasPrefix(o.Body, "No models yet. Export") {
 			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
 		}
 	}
@@ -1389,12 +1388,12 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	o := ui.opened[2]
-	row := o.Items[2].(map[string]any)
-	if o.Selected != 2 || len(o.Items) != 5 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
+	row := o.Items[2]
+	if o.Selected != 2 || len(o.Items) != 5 || row.Text != "a/typo" || row.Run != "model a/typo" || row.Key != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
 	// the keyless builtins still close the list, copy only, with no body
-	if last := o.Items[4].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY=" || o.Body != "" {
+	if last := o.Items[4]; last.Text != "deepseek" || last.Run != "" || last.Copy != "export DEEPSEEK_API_KEY=" || o.Body != "" {
 		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
 	if w := h.modelRow().Detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
@@ -1478,8 +1477,8 @@ func TestProfileSwitch(t *testing.T) {
 		if o.ID != want.id {
 			t.Fatalf("picker %d is %q, want %q", i, o.ID, want.id)
 		}
-		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || item["run"] != want.run {
-			t.Errorf("%s picker marks %v, want run %q", o.ID, item, want.run)
+		if item := o.Items[o.Selected]; item.Key != "current" || item.Run != want.run {
+			t.Errorf("%s picker marks %+v, want run %q", o.ID, item, want.run)
 		}
 	}
 }

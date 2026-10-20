@@ -343,12 +343,8 @@ func TestClassifyProtocolClient(t *testing.T) {
 }
 
 // pickerHas reports whether a model id is one of an overlay's rows.
-func pickerHas(items []any, id string) bool {
-	return slices.ContainsFunc(items, func(it any) bool {
-		row, _ := it.(map[string]any)
-		s, _ := row["copy"].(string)
-		return s == id
-	})
+func pickerHas(items []OverlayItem, id string) bool {
+	return slices.ContainsFunc(items, func(it OverlayItem) bool { return it.Copy == id })
 }
 
 // TestClassifyStub: a plugin's own test answers lua.classify.ask, so a

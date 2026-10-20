@@ -665,11 +665,10 @@ func (t *PluginTest) overlay(L *glua.LState) int {
 func itemTexts(o Overlay) []string {
 	texts := make([]string, len(o.Items))
 	for i, item := range o.Items {
-		if i < len(o.ItemText) && o.ItemText[i] != nil {
-			texts[i] = SegsText(o.ItemText[i])
+		if item.Row != nil {
+			texts[i] = SegsText(item.Row)
 		} else {
-			p, _ := ParseOverlayItem(item)
-			texts[i] = p.Text
+			texts[i] = item.Text
 		}
 	}
 	return texts
@@ -686,6 +685,7 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		raise(L, "test.answer: no overlay is open")
 	}
 	what, fn, args := "on_close", o.OnClose, []any(nil)
+	var row OverlayItem
 	switch c := L.Get(1).(type) {
 	case *glua.LNilType:
 	case glua.LString:
@@ -700,21 +700,21 @@ func (t *PluginTest) answer(L *glua.LState) int {
 			}
 			raise(L, "test.answer: no item %q in %s; it lists %s", string(c), o.ID, strings.Join(texts, ", "))
 		default:
-			args = []any{o.Items[i]}
+			row = o.Items[i]
+			args = []any{row.raw}
 		}
 	case glua.LNumber:
 		i := int(c) - 1
 		if o.Input || i < 0 || i >= len(o.Items) {
 			raise(L, "test.answer: %s has no item %d", o.ID, int(c))
 		}
-		args = []any{o.Items[i]}
+		row = o.Items[i]
+		args = []any{row.raw}
 	default:
 		raise(L, "test.answer: choice must be an item's index or text, the input's text, or nil for esc")
 	}
-	var row OverlayItem
 	if args != nil {
 		what, fn = "on_select", o.OnSelect
-		row, _ = ParseOverlayItem(args[0])
 	}
 	var key ItemKey
 	if a := L.Get(2); a != glua.LNil && args != nil {

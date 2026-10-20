@@ -387,7 +387,7 @@ func (h *Host) openMemory(confirm string) error {
 func (h *Host) memoryOverlay() Overlay {
 	o := Overlay{
 		ID: "memory", Title: "Memory", Origin: lua.OriginBuiltin, Items: h.memoryItems(),
-		Reload: func() ([]any, [][]Segment) { return h.memoryItems(), nil },
+		Reload: h.memoryItems,
 		Empty:  "Nothing remembered yet. Type /memory <note> to save one.",
 	}
 	h.memUndo.mu.Lock()
@@ -781,7 +781,7 @@ func (h *Host) refreshPending() {
 // scope's names its share of brain.ScopeBudget. A row is one line: the
 // preview and the detail hold the whole text. The trail of cut and
 // superseded lines is one collapsed row at the end (DESIGN §10.4).
-func (h *Host) memoryItems() []any {
+func (h *Host) memoryItems() []OverlayItem {
 	props := h.memoryProposals()
 	live, _ := h.memoryList(false)
 	count, used := map[store.Scope]int{}, map[store.Scope]int{}
@@ -789,32 +789,32 @@ func (h *Host) memoryItems() []any {
 		count[m.Scope]++
 		used[m.Scope] += brain.LineSize(m.Text)
 	}
-	items := make([]any, 0, len(props)+len(live)+1)
+	items := make([]OverlayItem, 0, len(props)+len(live)+1)
 	for _, p := range props {
 		if p.Promote {
-			item := map[string]any{
-				"id": p.ID, "text": clipRunes("promote to "+p.Path, 40),
-				"desc": fmt.Sprintf("Suggested by zemi (%d)", len(props)), "section": scopeWords[p.Scope],
-				"preview": p.Memory.Text, "copy": p.Memory.Text,
-				"fields": fieldList("file", p.Path, "description", p.Description, "read_if", p.ReadIf, "moves", p.Memory.Text),
+			item := OverlayItem{
+				ID: p.ID, Text: clipRunes("promote to "+p.Path, 40),
+				Desc: fmt.Sprintf("Suggested by zemi (%d)", len(props)), Section: scopeWords[p.Scope],
+				Preview: p.Memory.Text, Copy: p.Memory.Text,
+				Fields: fieldList("file", p.Path, "description", p.Description, "read_if", p.ReadIf, "moves", p.Memory.Text),
 			}
-			item["keys"] = []any{
-				map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
-				map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
+			item.Keys = []ItemKey{
+				{Key: "a", Desc: "accept", Run: "memory accept " + p.ID + " --yes"},
+				{Key: "d", Desc: "drop", Run: "memory reject " + p.ID + " --yes"},
 			}
 			items = append(items, item)
 			continue
 		}
 		if p.Path != "" {
-			item := map[string]any{
-				"id": p.ID, "text": clipRunes("write "+filepath.Base(p.Path), 40),
-				"desc": fmt.Sprintf("Suggested by zemi (%d)", len(props)), "section": scopeWords[p.Scope],
-				"preview": p.Content, "copy": p.Content,
-				"fields": fieldList("path", p.Path, "bytes", strconv.Itoa(len(p.Content))),
+			item := OverlayItem{
+				ID: p.ID, Text: clipRunes("write "+filepath.Base(p.Path), 40),
+				Desc: fmt.Sprintf("Suggested by zemi (%d)", len(props)), Section: scopeWords[p.Scope],
+				Preview: p.Content, Copy: p.Content,
+				Fields: fieldList("path", p.Path, "bytes", strconv.Itoa(len(p.Content))),
 			}
-			item["keys"] = []any{
-				map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
-				map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
+			item.Keys = []ItemKey{
+				{Key: "a", Desc: "accept", Run: "memory accept " + p.ID + " --yes"},
+				{Key: "d", Desc: "drop", Run: "memory reject " + p.ID + " --yes"},
 			}
 			items = append(items, item)
 			continue
@@ -835,9 +835,9 @@ func (h *Host) memoryItems() []any {
 		item := memoryItem(p.Memory, label, fmt.Sprintf("Suggested by zemi (%d)", len(props)), scopeWords[p.Scope], replaces)
 		// accept or drop the proposal, whatever it suggests: a forget one says
 		// so in its label, so no letter carries two meanings
-		item["keys"] = append([]any{
-			map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
-			map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
+		item.Keys = append([]ItemKey{
+			{Key: "a", Desc: "accept", Run: "memory accept " + p.ID + " --yes"},
+			{Key: "d", Desc: "drop", Run: "memory reject " + p.ID + " --yes"},
 		}, moveAndEdit(p.Memory, p.Forget)...)
 		items = append(items, item)
 	}
@@ -849,7 +849,7 @@ func (h *Host) memoryItems() []any {
 		}
 		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, brain.ScopeBudget/1024)
 		item := memoryItem(*m, m.Text, section, desc, "")
-		item["keys"] = append([]any{map[string]any{"key": "f", "desc": "Forget", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
+		item.Keys = append([]ItemKey{{Key: "f", Desc: "forget", Run: "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
 		items = append(items, item)
 	}
 	if trail := h.memoryTrail(live); len(trail) > 0 {
@@ -861,11 +861,11 @@ func (h *Host) memoryItems() []any {
 			}
 			b.WriteString(t.String() + "\n")
 		}
-		items = append(items, map[string]any{
-			"text":    fmt.Sprintf("%d removed from memories.md", len(trail)),
-			"desc":    "cut by the budget or superseded; the ledger keeps their text",
-			"section": "Trail", "preview": strings.TrimRight(b.String(), "\n"),
-			"fields": fieldList("count", strconv.Itoa(len(trail))),
+		items = append(items, OverlayItem{
+			Text:    fmt.Sprintf("%d removed from memories.md", len(trail)),
+			Desc:    "cut by the budget or superseded; the ledger keeps their text",
+			Section: "Trail", Preview: strings.TrimRight(b.String(), "\n"),
+			Fields: fieldList("count", strconv.Itoa(len(trail))),
 		})
 	}
 	return items
@@ -920,7 +920,7 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 
 // memoryItem is m's row under section: label cut to one line, its whole
 // text and quote in the preview, and its facts in the detail.
-func memoryItem(m store.Memory, label, section, desc, replaces string) map[string]any {
+func memoryItem(m store.Memory, label, section, desc, replaces string) OverlayItem {
 	preview := m.Text
 	if m.Quote != "" {
 		preview += "\n\"" + m.Quote + "\""
@@ -929,22 +929,22 @@ func memoryItem(m store.Memory, label, section, desc, replaces string) map[strin
 	if m.UpdatedAt != 0 {
 		updated = ago(m.UpdatedAt)
 	}
-	return map[string]any{
-		"id": m.ID, "text": clipRunes(label, 40), "desc": desc, "section": section, "preview": preview, "copy": m.Text,
-		"fields": fieldList("text", m.Text, "quote", m.Quote, "replaces", replaces, "scope", scopeWords[m.Scope],
+	return OverlayItem{
+		ID: m.ID, Text: clipRunes(label, 40), Desc: desc, Section: section, Preview: preview, Copy: m.Text,
+		Fields: fieldList("text", m.Text, "quote", m.Quote, "replaces", replaces, "scope", scopeWords[m.Scope],
 			"origin", map[store.Origin]string{store.OriginUser: "saved by you", store.OriginLearned: "learned"}[m.Origin], "updated", updated),
 	}
 }
 
 // moveAndEdit are the keys of a row that can move and be edited; a
 // forget suggestion does neither.
-func moveAndEdit(m store.Memory, forget bool) []any {
+func moveAndEdit(m store.Memory, forget bool) []ItemKey {
 	if forget {
 		return nil
 	}
-	return []any{
-		map[string]any{"key": "s", "desc": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "run": "memory move " + m.ID + " --yes"},
-		map[string]any{"key": "o", "desc": openInEditorLabel, "run": "memory edit " + m.ID + " --yes"},
+	return []ItemKey{
+		{Key: "s", Desc: map[store.Scope]string{store.ScopeProject: "use everywhere", store.ScopeUser: "only this project"}[m.Scope], Run: "memory move " + m.ID + " --yes"},
+		{Key: "o", Desc: openInEditorLabel, Run: "memory edit " + m.ID + " --yes"},
 	}
 }
 

@@ -49,9 +49,9 @@ var runStatuses = []RunStatus{RunRunning, RunDone, RunWarn, RunFailed, RunCancel
 
 // RunMarks are the Marks a run's or an agent's status word draws, as the
 // chat marks a call: queued and paused wait, running spins.
-var RunMarks = map[string]string{
-	"queued": "wait", "paused": "wait", string(RunRunning): "spin", string(RunDone): "ok",
-	string(RunWarn): "warn", string(RunFailed): "err", string(RunCancelled): "stop",
+var RunMarks = map[string]MarkKind{
+	"queued": MarkWait, "paused": MarkWait, string(RunRunning): MarkSpin, string(RunDone): MarkOK,
+	string(RunWarn): MarkWarn, string(RunFailed): MarkErr, string(RunCancelled): MarkStop,
 }
 
 // runState is the lifecycle agentRun and flowRun share: both are registered,
@@ -1052,19 +1052,19 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 // stored ones this process does not hold included; enter shows a transcript.
 // A row is named by the run's label and carries the definition it ran in its
 // desc, next to the status, the clock and the calls.
-func (h *Host) agentRunItems() []any {
+func (h *Host) agentRunItems() []OverlayItem {
 	sid := h.AgentSessionID()
-	var running, flows, earlier []any
+	var running, flows, earlier []OverlayItem
 	row := func(id string, status RunStatus, label string, took time.Duration, desc, calls string) {
-		item := map[string]any{
-			"text":    label,
-			"desc":    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
-			"run":     "agents view " + id,
-			"section": "Earlier in this session",
-			"mark":    RunMarks[string(status)],
+		item := OverlayItem{
+			Text:    label,
+			Desc:    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
+			Run:     "agents view " + id,
+			Section: "Earlier in this session",
+			Mark:    RunMarks[string(status)],
 		}
 		if status == RunRunning {
-			item["section"] = "Running"
+			item.Section = "Running"
 			running = append(running, item)
 			return
 		}

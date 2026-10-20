@@ -698,14 +698,13 @@ func TestAgentsList(t *testing.T) {
 	}
 	rows := map[string]string{}
 	for _, it := range ui.opened[0].Items {
-		m := it.(map[string]any)
-		rows[fmt.Sprint(m["text"])] = fmt.Sprint(m)
+		rows[it.Text] = dumpItem(it)
 	}
-	if first := fmt.Sprint(ui.opened[0].Items[0]); !strings.Contains(first, "fill:/agents new ") || !strings.Contains(first, "text:New agent") {
-		t.Errorf("first row = %s", first)
+	if first := ui.opened[0].Items[0]; first.Text != "New agent" || first.Fill != "/agents new " {
+		t.Errorf("first row = %+v", first)
 	}
-	if s := ui.opened[0].Items[1].(map[string]any)["section"]; s != "User agents" {
-		t.Errorf("first agent section %v, want User agents", s)
+	if s := ui.opened[0].Items[1].Section; s != "User agents" {
+		t.Errorf("first agent section %q, want User agents", s)
 	}
 	if _, listed := rows[id]; listed {
 		t.Errorf("job %s is listed in /agents: %s", id, rows[id])

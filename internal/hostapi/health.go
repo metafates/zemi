@@ -588,7 +588,7 @@ func (h *Host) OpenHealth() error {
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.
 	h.GoSafe("health", func() {
-		items := func() []any {
+		items := func() []OverlayItem {
 			defer h.Busy("Checking health", nil)()
 			return h.healthItems()
 		}()
@@ -602,24 +602,24 @@ func (h *Host) OpenHealth() error {
 var healthMarks = map[HealthLevel]MarkKind{HealthOK: MarkOK, HealthWarn: MarkWarn, HealthError: MarkErr}
 
 // healthItems are the /health rows, problems first.
-func (h *Host) healthItems() []any {
-	var problems, ok []any
+func (h *Host) healthItems() []OverlayItem {
+	var problems, ok []OverlayItem
 	for _, c := range h.HealthRows() {
-		item := map[string]any{"text": c.Name, "desc": c.Detail, "section": "OK", "mark": string(healthMarks[c.Level])}
+		item := OverlayItem{Text: c.Name, Desc: c.Detail, Section: "OK", Mark: healthMarks[c.Level]}
 		// a detail view that only repeats a short, fine row leads nowhere
 		if c.Run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
-			item["detail"] = c.Detail
+			item.Detail = c.Detail
 		}
 		if c.Run != "" {
 			if label, key, ok := healthAction(c.Run); ok {
-				item["keys"] = []any{map[string]any{"key": key, "desc": label, "run": c.Run}}
+				item.Keys = []ItemKey{{Key: key, Desc: label, Run: c.Run}}
 			}
 		}
 		if c.Level == HealthOK {
 			ok = append(ok, item)
 			continue
 		}
-		item["section"] = "Needs attention"
+		item.Section = "Needs attention"
 		problems = append(problems, item)
 	}
 	return append(problems, ok...)

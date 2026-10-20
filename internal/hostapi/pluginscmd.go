@@ -274,22 +274,22 @@ func (h *Host) pluginNamed(name string) (plugin.Plugin, error) {
 func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 	ui.OpenOverlay(Overlay{
 		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.pluginItems(), Confirm: confirm,
-		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil },
+		Reload: h.pluginItems,
 	})
 }
 
 // pluginItems lists the plugins under three action rows, which carry the empty
 // state, so a rebuild keeps it true.
-func (h *Host) pluginItems() []any {
+func (h *Host) pluginItems() []OverlayItem {
 	ps, err := plugin.List(context.Background(), h.Dirs)
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the plugins", err.Error())
 	}
-	install := map[string]any{"text": "Install a plugin", "verb": "fill", "fill": "/plugins install "}
+	install := OverlayItem{Text: "Install a plugin", Verb: VerbFill, Fill: "/plugins install "}
 	if len(ps) == 0 && err == nil {
-		install["desc"] = "no plugins yet"
+		install.Desc = "no plugins yet"
 	}
-	items := []any{map[string]any{"text": "New plugin", "verb": "fill", "fill": "/plugins new "}, install, map[string]any{"text": "Check for updates", "verb": "run", "run": "plugins check"}}
+	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugins new "}, install, {Text: "Check for updates", Verb: VerbRun, Run: "plugins check"}}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
@@ -317,29 +317,29 @@ func (h *Host) pluginItems() []any {
 		if loadErr != nil {
 			errText = loadErr.Error()
 		}
-		var keys []any
+		var keys []ItemKey
 		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {
-			label := "Update to " + p.Latest
+			label := "update to " + p.Latest
 			if strings.Contains(p.Latest, "new commit") || strings.HasPrefix(p.Latest, "updated in the marketplace (") {
-				label = "Update"
+				label = "update"
 			}
-			keys = append(keys, map[string]any{"key": "u", "desc": label, "run": "plugins update " + p.Name})
+			keys = append(keys, ItemKey{Key: "u", Desc: label, Run: "plugins update " + p.Name})
 		}
 		if p.Enabled {
-			keys = append(keys, map[string]any{"key": "d", "desc": "Disable", "run": "plugins disable " + p.Name})
+			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: "plugins disable " + p.Name})
 		} else {
-			keys = append(keys, map[string]any{"key": "e", "desc": "Enable", "run": "plugins enable " + p.Name})
+			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: "plugins enable " + p.Name})
 		}
-		keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "plugins open " + p.Name})
+		keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "plugins open " + p.Name})
 		if p.Local {
-			keys = append(keys, map[string]any{"key": "m", "desc": "Modify with zemi", "fill": "/plugins modify " + p.Name + " "})
+			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugins modify " + p.Name + " "})
 		}
-		keys = append(keys, map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "plugins delete " + p.Name + " --yes"})
-		items = append(items, map[string]any{
-			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
-			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
-			"detail": pluginDetail(p), "keys": keys,
-			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
+		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugins delete " + p.Name + " --yes"})
+		items = append(items, OverlayItem{
+			Text: p.Name, Desc: strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
+			Section: section, On: new(p.Enabled), Run: "plugins toggle " + p.Name,
+			Detail: pluginDetail(p), Keys: keys,
+			Fields: fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
 				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
 	}
@@ -349,16 +349,16 @@ func (h *Host) pluginItems() []any {
 
 // marketplaceItems appends the Marketplaces section: one row per registered
 // marketplace, or the filler row that adds one when none is.
-func (h *Host) marketplaceItems(items *[]any) {
+func (h *Host) marketplaceItems(items *[]OverlayItem) {
 	ms, err := plugin.Marketplaces(h.Dirs)
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the marketplaces", err.Error())
 	}
 	if len(ms) == 0 {
 		if err == nil {
-			*items = append(*items, map[string]any{
-				"text": "Add a marketplace", "verb": "fill", "fill": "/plugins marketplace add ",
-				"section": "Marketplaces", "desc": "none registered",
+			*items = append(*items, OverlayItem{
+				Text: "Add a marketplace", Verb: VerbFill, Fill: "/plugins marketplace add ",
+				Section: "Marketplaces", Desc: "none registered",
 			})
 		}
 		return
@@ -368,14 +368,14 @@ func (h *Host) marketplaceItems(items *[]any) {
 		if len(m.Entries) != 1 {
 			count += "s"
 		}
-		*items = append(*items, map[string]any{
-			"text": m.Name, "section": "Marketplaces",
-			"desc":   perm.TildePath(m.Source) + " · " + count,
-			"detail": marketplaceDetail(m),
-			"fields": fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
-			"keys": []any{
-				map[string]any{"key": "u", "desc": "Update", "run": "plugins marketplace update " + m.Name},
-				map[string]any{"key": "x", "desc": "Remove", "danger": true, "run": "plugins marketplace remove " + m.Name},
+		*items = append(*items, OverlayItem{
+			Text: m.Name, Section: "Marketplaces",
+			Desc:   perm.TildePath(m.Source) + " · " + count,
+			Detail: marketplaceDetail(m),
+			Fields: fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
+			Keys: []ItemKey{
+				{Key: "u", Desc: "update", Run: "plugins marketplace update " + m.Name},
+				{Key: "x", Desc: "remove", Danger: true, Run: "plugins marketplace remove " + m.Name},
 			},
 		})
 	}

@@ -926,23 +926,23 @@ func (h *Host) lspOverlay(refresh bool) Overlay {
 	empty += " zemi's own Lua, in your config and local plugins, gets lua-language-server."
 	return Overlay{
 		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.lspItems(),
-		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty,
+		Reload: h.lspItems, Empty: empty,
 	}
 }
 
-func (h *Host) lspItems() []any {
-	var items []any
+func (h *Host) lspItems() []OverlayItem {
+	var items []OverlayItem
 	for _, row := range h.lspRows() {
 		files := row.Filetypes
 		if row.Status == StatusIdle {
 			files += " (starts on the first one)"
 		}
-		item := map[string]any{
-			"text": row.Name, "desc": string(row.Status) + " · " + row.Filetypes,
-			"fields": fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
+		item := OverlayItem{
+			Text: row.Name, Desc: string(row.Status) + " · " + row.Filetypes,
+			Fields: fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
 		}
 		if row.Status != StatusIdle {
-			item["keys"] = []any{map[string]any{"key": "r", "desc": "Restart", "run": "lsp restart " + row.Name}}
+			item.Keys = []ItemKey{{Key: "r", Desc: "restart", Run: "lsp restart " + row.Name}}
 		}
 		items = append(items, item)
 	}

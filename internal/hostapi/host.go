@@ -101,8 +101,7 @@ type Overlay struct {
 	Title    string
 	Origin   lua.Origin
 	Path     string
-	Items    []any
-	ItemText [][]Segment // render_item's row per item, rendered when it opened
+	Items    []OverlayItem // every row's fields, Lua's parsed at the boundary
 	OnSelect *glua.LFunction
 	OnAction *glua.LFunction // on_action(item, key), for a row key with an id
 	OnClose  *glua.LFunction
@@ -118,7 +117,7 @@ type Overlay struct {
 	BodyMD   bool        // render Body (and every detail view's) as markdown
 	Parts    []BodyPart  // draw Body's place in parts, each in the form it is written in
 	Fields   []Field     // set as a table above Body
-	Mark     string      // a Marks key ahead of the "status" field's value
+	Mark     MarkKind    // ahead of the "status" field's value
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
 	Empty    string
 	Selected int
@@ -157,7 +156,7 @@ type Overlay struct {
 	// Reload makes a list a toggle list: enter and space run the row's "run"
 	// command or on_select and rebuild the items, keeping the overlay open.
 	// It runs on the UI worker, never on the key path.
-	Reload func() (items []any, text [][]Segment)
+	Reload func() []OverlayItem
 
 	// Next and Prev are the commands that open the next and the previous
 	// view on the same rail in this one's place (ctrl+j, ctrl+k), so walking
@@ -1035,12 +1034,12 @@ func (h *Host) OpenHelp() error {
 	if err != nil {
 		return err
 	}
-	var items []any
+	var items []OverlayItem
 	keys, lists := ui.KeyHelp()
 	for _, k := range keys {
-		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Keys"})
+		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Keys"})
 	}
-	var aliases []any
+	var aliases []OverlayItem
 	for _, b := range h.Keymaps.List() {
 		desc := b.Desc
 		if desc == "" {
@@ -1050,22 +1049,21 @@ func (h *Host) OpenHelp() error {
 			desc += " (in " + b.Focus + ")"
 		}
 		if b.List {
-			aliases = append(aliases, map[string]any{"text": b.Key, "desc": cmp.Or(b.Desc, "same as "+b.RHS.Move), "section": "Lists"})
+			aliases = append(aliases, OverlayItem{Text: b.Key, Desc: cmp.Or(b.Desc, "same as "+b.RHS.Move), Section: "Lists"})
 			continue
 		}
-		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
+		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Section: "Keys"})
 	}
 	for _, k := range lists {
-		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Lists"})
+		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Lists"})
 	}
 	items = append(items, aliases...)
 	// Hidden keeps a command out of the palette's default list, not out of
 	// /help: this is the index the README points people at.
 	for _, c := range h.Commands.List() {
-		item := map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "run": c.Name}
+		item := OverlayItem{Text: "/" + c.Name, Desc: c.Desc, Section: "Commands", Run: c.Name}
 		if c.NArgs == NArgsSome {
-			delete(item, "run")
-			item["fill"] = "/" + c.Name + " "
+			item.Run, item.Fill = "", "/"+c.Name+" "
 		}
 		items = append(items, item)
 	}
@@ -1279,6 +1277,15 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 
 // widget rendering
 
+// Effect is an animation the UI applies to a segment's text.
+type Effect string
+
+const (
+	EffectNone    Effect = ""        // still
+	EffectShimmer Effect = "shimmer" // a bright band sweeps the text, blending its hl toward Normal
+	EffectSpin    Effect = "spin"    // its first glyph steps through Spinner
+)
+
 // Segment is one styled run of text.
 type Segment struct {
 	Text string
@@ -1291,7 +1298,7 @@ type Segment struct {
 	// Link is the URL the text stands for, drawn as a terminal hyperlink and
 	// opened by a click: a markdown link or a bare URL, and nothing else
 	Link   string
-	Effect string // "shimmer": the UI animates the text, blending hl toward Normal; "spin": its first glyph steps through Spinner
+	Effect Effect // the animation the UI applies to the text
 	Over   string // Go only: a hover group drawn over HL
 	// NoCopy marks decoration (gutters, bullets, borders): a selection
 	// neither lights nor copies it
@@ -1347,6 +1354,7 @@ const (
 	FillPanel              // a box: overlays, prompts, toasts, popups, the composer
 	FillBand               // a list's or a prompt's selected row, over any background
 	FillCanvas             // the canvas even inside a box: a well, such as a prompt's command
+	FillWell               // a well's lifted half, over the panel: what a command answered
 )
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
@@ -1482,7 +1490,7 @@ func segment(field func(string) any, widget string) Segment {
 		seg.HL = UserHL(hl)
 	}
 	if e, ok := field("effect").(string); ok {
-		seg.Effect = e
+		seg.Effect = Effect(e)
 	}
 	if f, ok := field("fade").(float64); ok {
 		seg.Fade = min(max(f, 0), 1)
@@ -2082,7 +2090,7 @@ func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	var item any
 	if index >= 0 && index < len(o.Items) {
-		item = o.Items[index]
+		item = o.Items[index].raw
 	}
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
 }
@@ -2100,14 +2108,14 @@ func (h *Host) staleOverlay(o Overlay) bool {
 }
 
 // OverlayAction runs on_action with the item and the action chosen in its
-// detail view.
-func (h *Host) OverlayAction(ctx context.Context, o Overlay, item, action any) {
-	_ = h.callOverlay(ctx, o, "on_action", o.OnAction, item, action)
+// detail view. Lua gets the row back as the table it wrote.
+func (h *Host) OverlayAction(ctx context.Context, o Overlay, item OverlayItem, action any) {
+	_ = h.callOverlay(ctx, o, "on_action", o.OnAction, item.raw, action)
 }
 
 // OverlayKey runs a list-level key's function with the selected item.
-func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item any) {
-	_ = h.callOverlay(ctx, o, "key "+k.Key, k.Fn, item)
+func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item OverlayItem) {
+	_ = h.callOverlay(ctx, o, "key "+k.Key, k.Fn, item.raw)
 }
 
 // CancelOverlay runs on_close if present.

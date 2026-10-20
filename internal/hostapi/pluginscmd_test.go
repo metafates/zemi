@@ -92,14 +92,14 @@ func TestPluginsCommand(t *testing.T) {
 				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugins toggle a section:Local text:a",
-				"desc:failed", "[status failed]", "broken", "desc:Disable key:d run:plugins disable a",
-				"danger:true desc:Delete key:x run:plugins delete a --yes",
+				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugins disable a",
+				"danger:true desc:delete key:x run:plugins delete a --yes",
 			},
 			not: []string{"key:u"},
 		},
 		{
 			name: "toggle flips the switch before any reload", args: "toggle a", reload: true,
-			want: []string{"on:false run:plugins toggle a", "[status off]", "desc:Enable key:e run:plugins enable a"},
+			want: []string{"on:false run:plugins toggle a", "[status off]", "desc:enable key:e run:plugins enable a"},
 		},
 		{name: "delete a local plugin", args: "delete b --yes", want: []string{"info: Plugin deleted: b"}, not: []string{"text:b"}},
 		{
@@ -107,7 +107,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Marketplace added: marketplace test added (1 plugins)",
 				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
-				"desc:Update key:u run:plugins marketplace update test", "danger:true desc:Remove key:x run:plugins marketplace remove test",
+				"desc:update key:u run:plugins marketplace update test", "danger:true desc:remove key:x run:plugins marketplace remove test",
 			},
 		},
 		{
@@ -115,7 +115,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
-				"danger:true desc:Delete key:x run:plugins delete x --yes",
+				"danger:true desc:delete key:x run:plugins delete x --yes",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
@@ -130,7 +130,7 @@ func TestPluginsCommand(t *testing.T) {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 		if c.reload {
-			list.Items, _ = list.Reload()
+			list.Items = list.Reload()
 		} else {
 			select {
 			case list = <-ui.opened:
@@ -138,7 +138,7 @@ func TestPluginsCommand(t *testing.T) {
 				t.Fatalf("%s: no list opened", c.name)
 			}
 		}
-		got := fmt.Sprint(list.Items)
+		got := dumpItems(list.Items)
 		for len(ui.notes) > 0 {
 			got += "\n" + <-ui.notes
 		}
@@ -224,8 +224,8 @@ func TestPluginsSend(t *testing.T) {
 			if !c.headless {
 				h.SetUIHooks(&fakeUI{})
 			}
-			items := fmt.Sprint(h.pluginItems())
-			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "Modify with zemi") != 1 {
+			items := dumpItems(h.pluginItems())
+			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "modify with zemi") != 1 {
 				t.Fatalf("items: %s", items)
 			}
 			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins modify ")); got != "[mine]" {

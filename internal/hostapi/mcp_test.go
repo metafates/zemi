@@ -140,8 +140,8 @@ func TestMCPBridge(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	row := func() map[string]any { return ui.overlays()[0].Items[0].(map[string]any) }
-	if err := h.openMCP(""); err != nil || row()["desc"] != "ready · 2 of 3 tools" || row()["mark"] != "ok" || ui.overlays()[0].Reload == nil {
+	row := func() OverlayItem { return ui.overlays()[0].Items[0] }
+	if err := h.openMCP(""); err != nil || row().Desc != "ready · 2 of 3 tools" || row().Mark != MarkOK || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	// under the ask-everything policy the user's no refuses the call; with
@@ -190,7 +190,7 @@ func TestMCPBridge(t *testing.T) {
 	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != StatusSignIn {
 		t.Fatalf("status after the sign-in expired = %q, %q", s.status, s.err)
 	}
-	if items, _ := ui.overlays()[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["keys"]), "key:s run:mcp sign-in fake") {
+	if items := ui.overlays()[0].Reload(); !strings.Contains(strings.Join(dumpKeys(items[0].Keys), " "), "key:s run:mcp sign-in fake") {
 		t.Errorf("the rebuilt /mcp row offers no [s] Sign in: %v", items)
 	}
 	// a reload that disables echo stops the snapshot's echo too
@@ -235,8 +235,8 @@ func TestMCPBridge(t *testing.T) {
 		t.Errorf("a reload after a sign-out started the server: %q", s.status)
 	}
 	if !slices.ContainsFunc(ui.overlays()[n:], func(o Overlay) bool {
-		row := o.Items[0].(map[string]any)
-		return o.Refresh && row["desc"] == "needs sign-in" && strings.Contains(fmt.Sprint(row["keys"]), "run:mcp sign-in fake")
+		row := o.Items[0]
+		return o.Refresh && row.Desc == "needs sign-in" && strings.Contains(strings.Join(dumpKeys(row.Keys), " "), "run:mcp sign-in fake")
 	}) {
 		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
 	}
@@ -248,9 +248,9 @@ func TestMCPBridge(t *testing.T) {
 	out.mu.Lock()
 	out.signIn = "https://auth.example.com/authorize?client_id=fake"
 	out.mu.Unlock()
-	if row := h.mcpItems()[0].(map[string]any); row["desc"] != "waiting in the browser" || row["mark"] != "wait" ||
-		row["copy"] != "https://auth.example.com/authorize?client_id=fake" {
-		t.Errorf("a waiting row = %v", row)
+	if row := h.mcpItems()[0]; row.Desc != "waiting in the browser" || row.Mark != MarkWait ||
+		row.Copy != "https://auth.example.com/authorize?client_id=fake" {
+		t.Errorf("a waiting row = %+v", row)
 	}
 }
 

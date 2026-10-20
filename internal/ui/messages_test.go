@@ -547,6 +547,11 @@ func messagesApp(t *testing.T) (*App, *hostapi.Host) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// a row's o opens the view a screen would: one that does not follow the
+	// chat, drawn over the list it came from
+	runLua(t, app, `zemi.command.add("call", function(args)
+		zemi.ui.overlay.open({ id = "call:" .. args.args, title = "Command", body = "status ok" })
+	end, { nargs = "*" })`)
 	return app, host
 }
 
@@ -771,6 +776,26 @@ func TestMessagesRail(t *testing.T) {
 	pump()
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q after a step, want the next call", got)
+	}
+	// a screen a call opens sits over the list: the chat keeps the run open
+	// and bands the row under it, and esc comes back to the same preview
+	row := top().selected
+	press(t, app, tea.KeyPressMsg{Code: 'o', Text: "o"})
+	waitPrompt(t, app, func() bool { return top().o.ID == "call:3" })
+	pump()
+	if id := top().o.ID; id != "call:3" || !strings.Contains(frame(), "read a") {
+		t.Fatalf("o opened %q with the run folded:\n%s", id, frame())
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
+		t.Fatalf("banded %q under the call's view, want the picked call", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	pump()
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages rail 2" || top().selected != row {
+		t.Fatalf("esc on the view: %d overlays, %q at %d, want the rail at %d", n, id, top().selected, row)
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
+		t.Fatalf("banded %q after esc, want the picked call", got)
 	}
 	// enter on a call keeps the rail open where the preview put it: closing
 	// would fold the run out from under the row it names

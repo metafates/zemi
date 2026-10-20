@@ -163,7 +163,7 @@ func (h *Host) openGoal() error {
 	ui.OpenOverlay(Overlay{
 		ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
 		Fields: []Field{{"goal", g.Condition}, {"running", running}, {"spent", h.spentSince(g.Tokens, g.Cost)}, {"last", g.Reason}},
-		Items:  []any{map[string]any{"text": "Stop the goal", "run": "goal stop", "verb": "stop"}},
+		Items:  []OverlayItem{{Text: "Stop the goal", Run: "goal stop", Verb: VerbStop}},
 	})
 	return nil
 }

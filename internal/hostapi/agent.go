@@ -2014,15 +2014,15 @@ func (h *Host) OpenModelPicker(name string) error {
 }
 
 // followRow is a target's list head: what it runs on with no pick of its own.
-func (h *Host) followRow(name, run string) map[string]any {
-	head := map[string]any{"text": "Follow the chat model", "desc": h.roleModel("chat"), "run": run + "chat"}
+func (h *Host) followRow(name, run string) OverlayItem {
+	head := OverlayItem{Text: "Follow the chat model", Desc: h.roleModel("chat"), Run: run + "chat"}
 	t, _ := h.target(name)
 	switch {
 	case t == nil || t.def() == "":
 	case t.Prof != nil:
-		head["text"], head["desc"] = "Follow the profile's model", h.modelRef(t.def())
+		head.Text, head.Desc = "Follow the profile's model", h.modelRef(t.def())
 	default:
-		head["text"], head["desc"] = "Follow the registered model", h.modelRef(t.def())
+		head.Text, head.Desc = "Follow the registered model", h.modelRef(t.def())
 	}
 	return head
 }
@@ -2034,9 +2034,9 @@ func (h *Host) modelPicker(name string) Overlay {
 	run, cur := "model ", h.roleModel(h.ConversationTarget())
 	switch name {
 	case "":
-		o.Items = []any{
-			map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
-			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "run", "run": "model update"},
+		o.Items = []OverlayItem{
+			{Text: "Choose a model per role", Desc: rolesDesc(h.ownRoles()), Verb: VerbOpen, Run: "model roles"},
+			{Text: "Update the model catalog", Desc: h.Builtin.Load().Info.String(), Verb: VerbRun, Run: "model update"},
 		}
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
@@ -2044,9 +2044,9 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str(config.ModelKey(name))
 		head := h.followRow(name, run)
 		if cur == "" {
-			head["key"] = "current"
+			head.Key = "current"
 		}
-		o.Items = []any{head}
+		o.Items = []OverlayItem{head}
 	}
 	heads := len(o.Items)
 	// a decisions model answers classification only, so it is offered to the
@@ -2062,7 +2062,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	}
 	type modelRow struct {
 		id   string
-		item map[string]any
+		item OverlayItem
 	}
 	var rows []modelRow
 	for _, s := range h.Providers.List() {
@@ -2077,9 +2077,9 @@ func (h *Host) modelPicker(name string) Overlay {
 			id := s.ID + "/" + m.ID
 			// the id is the row: a rebuild keeps the selection on it, and f
 			// marks the model it names
-			item := map[string]any{"id": id, "text": m.ID, "section": section, "desc": modelDesc(id, m), "run": run + id, "copy": id}
+			item := OverlayItem{ID: id, Text: m.ID, Section: section, Desc: modelDesc(id, m), Run: run + id, Copy: id}
 			if id == cur {
-				item["key"] = "current"
+				item.Key = "current"
 			}
 			rows = append(rows, modelRow{id, item})
 		}
@@ -2087,7 +2087,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	slices.SortStableFunc(rows, func(a, b modelRow) int { return cmp.Compare(favRank(a.id), favRank(b.id)) })
 	for _, r := range rows {
 		if favRank(r.id) != math.MaxInt {
-			r.item["section"] = "Favorites"
+			r.item.Section = "Favorites"
 		}
 		o.Items = append(o.Items, r.item)
 	}
@@ -2100,7 +2100,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = slices.Insert(o.Items, heads, any(map[string]any{"id": cur, "text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
+		o.Items = slices.Insert(o.Items, heads, OverlayItem{ID: cur, Text: cur, Run: run + cur, Key: "current, not in the list", Desc: "the provider decides whether it exists"})
 		o.Selected = heads
 	}
 	// f marks the model a row names, wherever it sits in the list
@@ -2115,7 +2115,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on
 	for _, m := range h.Providers.Missing() {
-		o.Items = append(o.Items, map[string]any{"text": m.ID, "section": "Needs a key", "desc": "export " + m.Env, "copy": "export " + m.Env + "="})
+		o.Items = append(o.Items, OverlayItem{Text: m.ID, Section: "Needs a key", Desc: "export " + m.Env, Copy: "export " + m.Env + "="})
 	}
 	if !usable && len(o.Items) > 0 {
 		o.Body = "No models yet. Export one of these keys in your shell and start zemi again, or " + h.addProvider() + "."
@@ -2139,7 +2139,7 @@ func (h *Host) toggleModelFavorite(id, name string) {
 	// the box the key was pressed in is gone by now: this is a fresh list,
 	// opened on the row the key marked wherever it moved
 	o := h.modelPicker(name)
-	if i := slices.IndexFunc(o.Items, func(it any) bool { r, _ := it.(map[string]any); return r["id"] == id }); i >= 0 {
+	if i := slices.IndexFunc(o.Items, func(it OverlayItem) bool { return it.ID == id }); i >= 0 {
 		o.Selected = i
 	}
 	if ui := h.hooks(); ui != nil {
@@ -2179,10 +2179,8 @@ func (h *Host) OpenModelRoles() error {
 	if err != nil {
 		return err
 	}
-	build := func() ([]any, [][]Segment) {
-		return h.modelRoleItems(), nil
-	}
-	items, _ := build()
+	build := h.modelRoleItems
+	items := build()
 	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: OverlayBottomRight, Reload: build})
 	return nil
 }
@@ -2191,15 +2189,15 @@ func (h *Host) OpenModelRoles() error {
 // roles, then the profiles. default and the shipped shape have no key of their
 // own, so row one is the chat slot for them, named for what the conversation
 // is; a profile row one shows is never repeated.
-func (h *Host) modelRoleItems() []any {
+func (h *Host) modelRoleItems() []OverlayItem {
 	slot := h.ConversationTarget()
 	first, firstDesc := slot, roles[0].Desc
 	if p, _ := h.resolveProfile(""); p != nil {
 		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
 	}
-	items := []any{map[string]any{
-		"text": first, "desc": h.slotLine(slot, firstDesc),
-		"verb": "open", "run": "model " + slot,
+	items := []OverlayItem{{
+		Text: first, Desc: h.slotLine(slot, firstDesc),
+		Verb: VerbOpen, Run: "model " + slot,
 	}}
 	for _, r := range roles[1:] {
 		items = append(items, h.modelSlotRow(r.Name, r.Desc))
@@ -2218,13 +2216,13 @@ func (h *Host) modelRoleItems() []any {
 
 // modelSlotRow is one /model roles row: what /model <name> opens, and the tag
 // naming what a slot with no pick of its own falls back to.
-func (h *Host) modelSlotRow(name, desc string) map[string]any {
-	item := map[string]any{
-		"text": name, "desc": h.slotLine(name, desc),
-		"verb": "open", "run": "model " + name,
+func (h *Host) modelSlotRow(name, desc string) OverlayItem {
+	item := OverlayItem{
+		Text: name, Desc: h.slotLine(name, desc),
+		Verb: VerbOpen, Run: "model " + name,
 	}
 	if tag := h.slotTag(name); tag != "" {
-		item["key"] = tag
+		item.Key = tag
 	}
 	return item
 }
@@ -2565,11 +2563,11 @@ func (h *Host) OpenProfilePicker() error {
 		return err
 	}
 	cur, sel := h.Settings.Str(config.KeyAgentProfile), 0
-	var items []any
+	var items []OverlayItem
 	for i, name := range h.ProfileNames() {
-		item := map[string]any{"text": name, "run": "profile " + name, "desc": h.profileDesc(name)}
+		item := OverlayItem{Text: name, Run: "profile " + name, Desc: h.profileDesc(name)}
 		if name == cur {
-			item["key"], sel = "current", i
+			item.Key, sel = "current", i
 		}
 		items = append(items, item)
 	}
@@ -2585,13 +2583,13 @@ func (h *Host) OpenEffortPicker() error {
 		return err
 	}
 	pick, model := h.Settings.Str(config.KeyAgentEffort), h.AgentStream().Model
-	items := make([]any, 0, len(agent.Efforts)+1)
+	items := make([]OverlayItem, 0, len(agent.Efforts)+1)
 	sel := 0
 	for _, level := range append(strs(agent.Efforts), "") {
 		name := cmp.Or(level, "default")
-		item := map[string]any{"text": name, "run": "effort " + name, "desc": h.effortDesc(model, level)}
+		item := OverlayItem{Text: name, Run: "effort " + name, Desc: h.effortDesc(model, level)}
 		if level == pick {
-			item["key"], sel = "current", len(items)
+			item.Key, sel = "current", len(items)
 		}
 		items = append(items, item)
 	}

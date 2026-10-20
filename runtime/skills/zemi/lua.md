@@ -99,7 +99,7 @@ zemi.ui.overlay.open({
 			section = "Failed",
 			fields = { { "status", "failed" }, { "exit", "1" } },
 			detail = "The migration timed out.",
-			keys = { { key = "r", desc = "Retry", run = "deploy api" }, { key = "x", desc = "Drop", id = "drop", danger = true } },
+			keys = { { key = "r", desc = "retry", run = "deploy api" }, { key = "x", desc = "drop", id = "drop", danger = true } },
 		},
 		-- preview: shown whole under the list while the row is selected
 		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web ", preview = "Deployed from main." },

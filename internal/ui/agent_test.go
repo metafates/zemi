@@ -1992,8 +1992,8 @@ func TestConfigEdit(t *testing.T) {
 		if len(app.overlays) != 1 || app.overlays[0].o.ID != "config" {
 			t.Fatalf("%s: overlays after enter: %d", c.path, len(app.overlays))
 		}
-		i := slices.IndexFunc(app.overlays[0].o.Items, func(it any) bool { return it.(map[string]any)["text"] == c.path })
-		if desc := app.overlays[0].o.Items[i].(map[string]any)["desc"]; desc != c.desc || c.toast != "" && !strings.Contains(toast, c.toast) {
+		i := slices.IndexFunc(app.overlays[0].o.Items, func(it hostapi.OverlayItem) bool { return it.Text == c.path })
+		if desc := app.overlays[0].o.Items[i].Desc; desc != c.desc || c.toast != "" && !strings.Contains(toast, c.toast) {
 			t.Errorf("%s: row %q, toast %q; want %q, %q", c.path, desc, toast, c.desc, c.toast)
 		}
 		app.cancelOverlay(app.overlays[0].o)
@@ -2395,7 +2395,7 @@ func TestLiveRailOpensWhole(t *testing.T) {
 	app.uiState()
 	app.openOverlay(hostapi.Overlay{
 		ID: "messages rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
-		Items: []any{map[string]any{"text": "run", "anchor": first}},
+		Items: []hostapi.OverlayItem{{Text: "run", Anchor: first}},
 	})
 	app.renderSync(t)
 	app.Frame()
@@ -2424,7 +2424,7 @@ func TestLiveRailOpensWhole(t *testing.T) {
 	shortTail := strings.Count(ansi.Strip(app.Frame()), "live p")
 	app.openOverlay(hostapi.Overlay{
 		ID: "messages rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
-		Items: []any{map[string]any{"text": "run", "anchor": first}},
+		Items: []hostapi.OverlayItem{{Text: "run", Anchor: first}},
 	})
 	app.renderSync(t)
 	app.Frame()

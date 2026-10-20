@@ -1544,10 +1544,10 @@ func (h *Host) agentsOverlay() Overlay {
 	defs := h.agentDefs()
 	runs := h.agentRunItems()
 	sel := 0
-	if len(runs) > 0 && runs[0].(map[string]any)["section"] == "Running" { // runs list running first
+	if len(runs) > 0 && runs[0].Section == "Running" { // runs list running first
 		sel = 1
 	}
-	items := append([]any{map[string]any{"text": "New agent", "verb": "fill", "fill": "/agents new "}}, runs...)
+	items := append([]OverlayItem{{Text: "New agent", Verb: VerbFill, Fill: "/agents new "}}, runs...)
 	for _, d := range defs {
 		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
 		if d.Tools != nil {
@@ -1561,17 +1561,17 @@ func (h *Host) agentsOverlay() Overlay {
 			// nothing of its own to describe: it sends the caller's own
 			fields = []string{"source", h.sourceOf(d.Source, d.Path), "prompt, tools, model", "the caller's"}
 		}
-		item := map[string]any{
-			"text":    d.Name,
-			"desc":    listDesc(d.Description),
-			"section": sourceSection(d.Source) + " agents", // apart from the runs above
-			"detail":  d.Description,
+		item := OverlayItem{
+			Text:    d.Name,
+			Desc:    listDesc(d.Description),
+			Section: sourceSection(d.Source) + " agents", // apart from the runs above
+			Detail:  d.Description,
 		}
 		if d.Path != "" {
 			fields = append(fields, "path", perm.TildePath(d.Path))
-			item["keys"] = []any{map[string]any{"key": "o", "desc": openInEditorLabel, "run": "agents open " + d.Name}}
+			item.Keys = []ItemKey{{Key: "o", Desc: openInEditorLabel, Run: "agents open " + d.Name}}
 		}
-		item["fields"] = fieldList(fields...)
+		item.Fields = fieldList(fields...)
 		items = append(items, item)
 	}
 	return Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"}

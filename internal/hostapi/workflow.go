@@ -1895,7 +1895,7 @@ func (h *Host) openWorkflows() error {
 // then the saved workflows by source.
 func (h *Host) workflowsOverlay() Overlay {
 	sid := h.AgentSessionID()
-	var running, earlier []any
+	var running, earlier []OverlayItem
 	held := set.Set[string]{}
 	for _, f := range h.tasks.flowList() {
 		held.Add(f.id)
@@ -1918,7 +1918,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	}
 	// making one heads the list, as it does in /agents and /plugins, and a run
 	// already in flight is what its keys act on by default
-	items := []any{map[string]any{"text": "New workflow", "verb": "fill", "fill": "/workflows new "}}
+	items := []OverlayItem{{Text: "New workflow", Verb: VerbFill, Fill: "/workflows new "}}
 	sel := 0
 	if len(running) > 0 {
 		sel = 1
@@ -1929,26 +1929,26 @@ func (h *Host) workflowsOverlay() Overlay {
 	// pad's journals each second; cache them if a large pad shows in a profile.
 	for _, w := range h.workflows() {
 		path := ""
-		keys := []any{
-			map[string]any{"key": "r", "desc": "Run", "run": "workflows run " + w.Name},
-			map[string]any{"key": "a", "desc": "Run with arguments", "fill": "/workflows run " + w.Name + " "},
+		keys := []ItemKey{
+			{Key: "r", Desc: "run", Run: "workflows run " + w.Name},
+			{Key: "a", Desc: "run with arguments", Fill: "/workflows run " + w.Name + " "},
 		}
 		if w.Source != lua.OriginBuiltin {
 			path = perm.TildePath(w.Path)
-			keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "workflows open " + w.Name})
+			keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "workflows open " + w.Name})
 		}
-		items = append(items, map[string]any{
-			"text":    w.Name,
-			"desc":    listDesc(w.Description),
-			"section": sourceSection(w.Source),
-			"fields":  fieldList("source", h.sourceOf(w.Source, w.Path), "path", path),
-			"detail":  w.Description,
-			"keys":    keys,
+		items = append(items, OverlayItem{
+			Text:    w.Name,
+			Desc:    listDesc(w.Description),
+			Section: sourceSection(w.Source),
+			Fields:  fieldList("source", h.sourceOf(w.Source, w.Path), "path", path),
+			Detail:  w.Description,
+			Keys:    keys,
 		})
 	}
 	return Overlay{
 		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Wide: true,
-		Reload: func() ([]any, [][]Segment) { return h.workflowsOverlay().Items, nil },
+		Reload: func() []OverlayItem { return h.workflowsOverlay().Items },
 	}
 }
 

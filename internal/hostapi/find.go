@@ -289,7 +289,7 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 	}
 	current := h.AgentSessionID()
 	hits := 0
-	items := make([]any, 0, len(res.Sessions))
+	items := make([]OverlayItem, 0, len(res.Sessions))
 	for _, s := range res.Sessions {
 		hits += s.Count
 		desc := []string{filepath.Base(s.Root) + " · " + ago(s.UpdatedAt)}
@@ -299,13 +299,13 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		if s.TitleHit && s.Count == 0 {
 			desc = append(desc, "title") // why a session with no matches is here
 		}
-		item := map[string]any{
-			"text":   markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")),
-			"desc":   strings.Join(desc, " · "),
-			"fields": fieldList("project", perm.TildePath(s.Root), "updated", ago(s.UpdatedAt), "hits", strconv.Itoa(s.Count)),
+		item := OverlayItem{
+			Text:   markedTitle(s.ID, cmp.Or(s.Title, "(untitled)")),
+			Desc:   strings.Join(desc, " · "),
+			Fields: fieldList("project", perm.TildePath(s.Root), "updated", ago(s.UpdatedAt), "hits", strconv.Itoa(s.Count)),
 		}
 		if len(s.Hits) > 0 {
-			item["preview"] = s.Hits[0]
+			item.Preview = s.Hits[0]
 		}
 		detail := make([]string, 0, len(s.Hits)+1)
 		switch {
@@ -317,11 +317,11 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		for _, hit := range s.Hits {
 			detail = append(detail, "· "+hit)
 		}
-		item["detail"] = strings.Join(detail, "\n\n")
+		item.Detail = strings.Join(detail, "\n\n")
 		if s.ID == current {
-			item["key"] = "current"
+			item.Key = "current"
 		} else {
-			item["keys"] = []any{map[string]any{"key": "r", "desc": "Resume", "run": "sessions open " + s.ID + " " + s.Root}}
+			item.Keys = []ItemKey{{Key: "r", Desc: "resume", Run: "sessions open " + s.ID + " " + s.Root}}
 		}
 		items = append(items, item)
 	}
