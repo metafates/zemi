@@ -194,6 +194,11 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		st.selected = a.followRow(&st)
 		st.followed = st.selectedAnchor()
 		if chat := a.scrolls[a.scrollDef]; chat != nil {
+			// a pick whose row the view does not show (a turn's prompt over
+			// the tail) is brought into view as any move would
+			if from, to := unitRows(chat.lines, st.followed); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+				a.pendingAnchor[a.scrollDef] = st.followed
+			}
 			st.restore = &followMark{top: chat.top, focus: chat.focus, follow: chat.follow}
 		}
 	} else if sel := a.lastSel[o.ID]; sel != "" {
@@ -496,6 +501,9 @@ var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 func (st *overlayState) enterVerb(idx int) string {
 	r := st.items[idx].row
 	switch {
+	case hasDetail(r) && st.o.Follow:
+		// the list already moved the chat to the row: enter keeps the place
+		return "close"
 	case hasDetail(r):
 		return "open"
 	case r.Run != "" || st.o.OnSelect != nil || st.back && r.ID != "" && st.o.OnAction != nil:
@@ -552,7 +560,7 @@ func (a *App) detailState(parent *overlayState, idx int) overlayState {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Mark: r.Mark, Items: r.Actions, OnAction: p.OnAction})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Mark: r.Mark, Items: r.Actions, OnAction: p.OnAction, Follow: p.Follow})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
@@ -734,6 +742,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		sel := func() { a.host.SelectOverlay(context.Background(), o, idx) }
 		switch {
 		case key == "space" && !confirmed && (o.Reload == nil || r.Verb != ""):
+		case key == "enter" && o.Follow && hasDetail(r):
+			// a following list already moved the chat to the row found:
+			// enter keeps that place, and l is the way into the row
+			a.closeOverlayByID(o.ID)
 		case key == "enter" && hasDetail(r) && !(r.Verb == "open" && r.Run != ""):
 			// a row that says it opens a screen opens it; its actions keep
 			// their own keys
@@ -767,6 +779,23 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 			a.closeOverlayByID(o.ID)
 		}
+	case "l":
+		// one level in: a row's actions where it has them, enter's act else
+		if st.back || len(st.visible) == 0 {
+			return nil
+		}
+		if hasDetail(st.items[st.visible[st.selected]].row) {
+			a.openDetail(st, st.visible[st.selected], 0)
+			return nil
+		}
+		return a.overlayKey("enter", "")
+	case "h":
+		// one level back, a view stacked over another only: at the root esc
+		// is the way out, and h types into a filter as it always did
+		if len(a.overlays) == 1 {
+			return nil
+		}
+		fallthrough
 	case "esc":
 		if st.back {
 			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
@@ -1057,8 +1086,13 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, hintPair{"enter", verb})
 				enterCopies = verb == "copy"
 			}
-			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
+			r := st.items[st.visible[st.selected]].row
+			if verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
+			}
+			if hasDetail(r) && verb == "close" {
+				// enter keeps the place here, so l is the way into the row
+				hints = append(hints, hintPair{"l", "actions"})
 			}
 		}
 		// a key with a Run or Fn acts with no row too, so an empty list names

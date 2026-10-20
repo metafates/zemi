@@ -991,8 +991,8 @@ func (a *App) compose(w, h int) string {
 		modals = append(modals, func() { a.chromeRect = spliceBox(rows, box, area, w) })
 	}
 	for i := range a.overlays {
-		if i+1 < len(a.overlays) && a.overlays[i+1].back {
-			continue // a detail view replaces the list it opened from
+		if i+1 < len(a.overlays) && (a.overlays[i+1].back || a.overlays[i].o.Follow) {
+			continue // a view drawn over a browse replaces the level below it
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor != "" {
 			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight

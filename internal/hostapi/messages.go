@@ -6,7 +6,10 @@ package hostapi
 
 import (
 	"cmp"
+	"context"
 	"fmt"
+	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,14 +19,44 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// OpenMessages opens the picker over what the chat shows: the session, or
-// the agent run it was told to show.
+// messagesCommands is /messages: the conversation as turns, and the levels
+// under it a list row opens.
+func (h *Host) messagesCommands() []*Command {
+	return []*Command{{
+		Name: "messages", NArgs: NArgsAny, Desc: "the conversation as turns: read, copy or rewind a message",
+		GoFn: func(h *Host, args string) error { return h.MessagesCommand(args) },
+	}}
+}
+
+// MessagesCommand is /messages and the levels under it: no argument lists the
+// turns, "turn N" opens one turn's messages and rail, "view N" reads one row
+// whole.
+func (h *Host) MessagesCommand(args string) error {
+	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+	switch verb {
+	case "":
+		return h.OpenMessages()
+	case "turn", "view":
+		n, err := strconv.Atoi(strings.TrimSpace(rest))
+		if err != nil {
+			return Usagef("/messages %s <row> (a row the list shows)", verb)
+		}
+		if verb == "turn" {
+			return h.openMessagesTurn(n)
+		}
+		return h.openMessageView(n)
+	}
+	return Usagef("usage: /messages [turn <row> | view <row>]")
+}
+
+// OpenMessages lists the conversation as turns: one row per prompt, each
+// opening on what the turn held. The chat follows the selection.
 func (h *Host) OpenMessages() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(messagesPicker(h.viewedTranscript()))
+	ui.OpenOverlay(h.messagesOverlay(h.viewedTranscript()))
 	return nil
 }
 
@@ -38,111 +71,272 @@ func (h *Host) viewedTranscript() []ChatMessage {
 	return sess.Transcript
 }
 
-// messagesPicker lists the rows under a section per turn: what the user
-// typed, the replies, notices, errors and commands between, a reply's code
-// blocks hanging under it and the runs a click can open. Thinking and other
-// calls stay out: they are the activity a turn folds into one digest, not
-// messages.
-func messagesPicker(tr []ChatMessage) Overlay {
+// msgTurn is one turn as /messages groups it: the transcript row it starts
+// at (1-based, the row the chat previews) and every row it holds.
+type msgTurn struct {
+	n     int // 1-based, in order
+	first int // the transcript row the turn starts at
+	rows  []int
+}
+
+// messagesTurns groups the transcript into turns: a user prompt opens one,
+// and everything after it until the next prompt belongs to it. Rows before
+// the first prompt (a resumed session's notes) join the first turn.
+func messagesTurns(tr []ChatMessage) []msgTurn {
+	var turns []msgTurn
+	for i, m := range tr {
+		idx := i + 1
+		if m.Kind == "" && m.Role == fantasy.MessageRoleUser && strings.TrimSpace(m.Text) != "" {
+			turns = append(turns, msgTurn{n: len(turns) + 1, first: idx, rows: []int{idx}})
+			continue
+		}
+		if len(turns) == 0 {
+			turns = append(turns, msgTurn{n: 1, first: idx})
+		}
+		t := &turns[len(turns)-1]
+		t.rows = append(t.rows, idx)
+	}
+	return turns
+}
+
+// messagesOverlay is /messages: one row per turn, the prompt it opens on
+// first, and what it held after it.
+func (h *Host) messagesOverlay(tr []ChatMessage) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
 	}
-	section, turn := "", 0
 	var texts [][]Segment
-	add := func(item map[string]any, segs []Segment) {
-		item["section"] = section
-		o.Items = append(o.Items, item)
-		texts = append(texts, segs)
-	}
-	for i, m := range tr {
-		n := i + 1 // the chat's own row number, as its anchors carry it
+	for _, t := range messagesTurns(tr) {
+		m := tr[t.first-1]
 		text := strings.TrimSpace(m.Text)
-		switch {
-		case m.Kind == RowMessage && m.Role == fantasy.MessageRoleUser:
-			if text == "" {
-				continue
-			}
-			turn++
-			section = "Turn " + strconv.Itoa(turn)
-			var desc []string
-			if m.SentAt > 0 {
-				desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
-			}
-			if c := lineCount(text); c > 1 {
-				desc = append(desc, pluralCount(c, "line", "lines"))
-			}
-			add(messageItem(n, text, strings.Join(desc, " · "), "▌", "UserMsg"))
-		case m.Kind == RowMessage:
-			if text == "" {
-				continue
-			}
-			blocks := codeBlocks(text)
-			var desc []string
-			if c := lineCount(text); c > 1 {
-				desc = append(desc, pluralCount(c, "line", "lines"))
-			}
-			if len(blocks) > 0 {
-				desc = append(desc, pluralCount(len(blocks), "code block", "code blocks"))
-			}
-			add(messageItem(n, text, strings.Join(desc, " · "), "◆", "Dim"))
-			for _, b := range blocks {
-				lang := cmp.Or(b.lang, "text")
-				item, segs := messageItem(n, "⎿ "+lang+" · "+pluralCount(lineCount(b.text), "line", "lines"), firstLine(b.text), "", "")
-				item["copy"] = b.text
-				add(item, segs)
-			}
-		case m.Kind == RowNotice, m.Kind == RowCompact:
-			if text == "" {
-				continue
-			}
-			item, segs := messageItem(n, text, "", "", "")
-			item["mark"] = "note"
-			add(item, segs)
-		case m.Kind == RowError:
-			item, segs := messageItem(n, text, "", "", "")
-			switch m.Status {
-			case CallCancelled:
-				item["mark"] = "stop"
-			default:
-				item["mark"] = "err"
-			}
-			add(item, segs)
-		case m.Kind == RowShell:
-			item, segs := messageItem(n, m.Text, "", "", "")
-			item["text"] = "$ " + firstLine(m.Text)
-			add(item, segs)
-		case m.Kind == RowTool && m.Run != "":
-			view, what := "agents view ", "agent run"
-			if m.Tool == "workflow" {
-				view, what = "workflows view ", "workflow run"
-			}
-			item, segs := messageItem(n, cmp.Or(m.Label, text), what, "", "")
-			item["run"] = view + m.Run
-			add(item, segs)
+		var desc []string
+		if m.SentAt > 0 {
+			desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
 		}
+		replies, steps := 0, 0
+		for _, idx := range t.rows[1:] {
+			r := tr[idx-1]
+			switch {
+			case r.Kind == "" && strings.TrimSpace(r.Text) != "":
+				replies++
+			case r.Kind == RowTool || r.Kind == RowReasoning:
+				steps++
+			}
+		}
+		if replies > 0 {
+			desc = append(desc, pluralCount(replies, "reply", "replies"))
+		}
+		if steps > 0 {
+			desc = append(desc, pluralCount(steps, "step", "steps"))
+		}
+		head := clipRunes(cmp.Or(messageHead(text), "(untitled turn)"), 60)
+		item := map[string]any{
+			"text": head, "desc": strings.Join(desc, " · "), "anchor": t.first,
+			"verb": "open", "run": "messages turn " + strconv.Itoa(t.first),
+		}
+		if text != "" {
+			item["copy"] = text
+		}
+		if m.ID != "" {
+			item["id"] = m.ID
+			o.Keys = h.rewindKey(o.Keys)
+		}
+		o.Items = append(o.Items, item)
+		texts = append(texts, []Segment{{Text: "▌ ", HL: "UserMsg"}, {Text: head}})
 	}
 	o.ItemText = texts
 	return o
 }
 
-// messageItem is a list row for transcript row n: its head line as the
-// label, desc after it and its whole text as what y copies. A glyph and its
-// theme group lead the label as the speaker's kind mark, and the row's
-// segments come back for the overlay's ItemText.
-func messageItem(n int, text, desc, glyph, hl string) (map[string]any, []Segment) {
-	head := clipRunes(messageHead(text), 60)
-	item := map[string]any{"anchor": n, "text": head}
-	if body := strings.TrimSpace(text); body != "" {
-		item["copy"] = body
+// rewindKey adds r once: the key rewinds to the prompt a row names, and only
+// such a row carries it.
+func (h *Host) rewindKey(keys []OverlayKey) []OverlayKey {
+	if slices.ContainsFunc(keys, func(k OverlayKey) bool { return k.Key == "r" }) {
+		return keys
 	}
+	return append(keys, OverlayKey{
+		Key: "r", Desc: "rewind", Danger: true,
+		Applies: func(it OverlayItem) bool { return it.ID != "" },
+		Act:     func(it OverlayItem) { h.rewindTo(it.ID) },
+	})
+}
+
+// rewindTo runs the rewind command on a row's stored message, the way
+// /rewind <id> does.
+func (h *Host) rewindTo(id string) {
+	if err := h.RunCommand(context.Background(), "rewind", id); err != nil {
+		h.Notify(slog.LevelWarn, "Could not rewind", err.Error())
+	}
+}
+
+// openMessagesTurn lists what one turn held: its prompt, replies, notices,
+// commands and errors, then the rail of calls and runs a click opens. Every
+// row names its transcript row, so the chat follows the selection here too.
+func (h *Host) openMessagesTurn(first int) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	tr := h.viewedTranscript()
+	var turn msgTurn
+	for _, t := range messagesTurns(tr) {
+		if t.first == first {
+			turn = t
+		}
+	}
+	if turn.first != first {
+		return Usagef("the chat shows no turn at row %d", first)
+	}
+	o := Overlay{
+		ID: "messages turn " + strconv.Itoa(first), Title: "Messages / Turn " + strconv.Itoa(turn.n),
+		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true,
+		Empty: "This turn held nothing.",
+	}
+	var texts [][]Segment
+	for _, idx := range turn.rows {
+		m := tr[idx-1]
+		item, segs := h.messageRow(idx, m)
+		if item == nil {
+			continue
+		}
+		o.Items = append(o.Items, item)
+		texts = append(texts, segs)
+		if id, _ := item["id"].(string); id != "" {
+			o.Keys = h.rewindKey(o.Keys)
+		}
+	}
+	o.ItemText = texts
+	ui.OpenOverlay(o)
+	return nil
+}
+
+// messageRow is one row of a turn: what it reads as, what y copies, and the
+// actions that open it or rewind to it. nil for a row the list leaves out.
+func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
+	text := strings.TrimSpace(m.Text)
+	item := map[string]any{"anchor": idx}
+	var glyph, hl string
+	var head, desc string
+	var actions []any
+	switch {
+	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
+		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 60), "▌", "UserMsg"
+		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
+		if m.ID != "" {
+			item["id"] = m.ID // r rewinds to it; the list's key checks the rows
+			actions = append(actions, rowAction("Rewind", "r", "rewind "+m.ID, idx))
+		}
+	case m.Kind == "" && text != "":
+		blocks := codeBlocks(text)
+		head, glyph, hl = clipRunes(messageHead(text), 60), "◆", "Dim"
+		if n := lineCount(text); n > 1 {
+			desc = pluralCount(n, "line", "lines")
+		}
+		if len(blocks) > 0 {
+			desc = strings.TrimSpace(desc + " · " + pluralCount(len(blocks), "code block", "code blocks"))
+		}
+		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
+	case m.Kind == RowNotice, m.Kind == RowCompact, m.Kind == RowError, m.Kind == RowShell:
+		if text == "" {
+			return nil, nil
+		}
+		head, glyph = clipRunes(messageHead(text), 60), "·"
+		if m.Kind == RowError {
+			glyph = "✗"
+		}
+		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
+	case m.Kind == RowTool, m.Kind == RowReasoning:
+		// the rail: a call, a thought or a run digest, what the turn folded
+		head, glyph, hl = clipRunes(cmp.Or(m.Label, messageHead(text), m.Tool), 60), "│", "Dim"
+		if m.Kind == RowReasoning {
+			head, glyph = cmp.Or(m.Label, messageHead(text), "thought"), "✻"
+		}
+		if n := len(strings.Split(strings.TrimSpace(m.Output), "\n")); m.Output != "" && n > 1 {
+			desc = pluralCount(n, "line", "lines")
+		}
+		switch {
+		case m.Run != "" && m.Tool == "workflow":
+			actions = append(actions, rowAction("Open the run", "o", "workflows view "+m.Run, idx))
+		case m.Run != "":
+			actions = append(actions, rowAction("Open the run", "o", "agents view "+m.Run, idx))
+		default:
+			actions = append(actions, rowAction("Open the view", "o", "call "+strconv.Itoa(idx), idx))
+			if job := jobOf(m.Tool, m.Status, m.Output); job != "" {
+				actions = append(actions, rowAction("Open the job", "j", "jobs view "+job, idx))
+			}
+		}
+	default:
+		return nil, nil
+	}
+	item["text"] = head
 	if desc != "" {
 		item["desc"] = desc
 	}
-	if glyph == "" {
-		return item, nil
+	if text != "" {
+		item["copy"] = text
 	}
-	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	item["mark"] = markFor(m)
+	if len(actions) > 0 {
+		item["actions"] = actions
+	}
+	segs := []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
+	return item, segs
+}
+
+// rowAction is one thing a row offers a level down.
+func rowAction(text, hotkey, run string, anchor int) map[string]any {
+	return map[string]any{"text": text, "hotkey": hotkey, "run": run, "anchor": anchor}
+}
+
+// markFor is the mark a row carries, so a failed call reads as one in the
+// list as it does in the chat.
+func markFor(m ChatMessage) string {
+	if m.Kind == RowError {
+		return "err"
+	}
+	if m.Kind == RowNotice || m.Kind == RowCompact || m.Kind == RowShell {
+		return "note"
+	}
+	if k, ok := callMarks[m.Status]; ok {
+		return k
+	}
+	return ""
+}
+
+// openMessageView reads one row whole: a reply as its markdown, a prompt or
+// a notice as the text it is.
+func (h *Host) openMessageView(n int) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	tr := h.viewedTranscript()
+	if n < 1 || n > len(tr) {
+		return Usagef("the chat shows no row %d", n)
+	}
+	m := tr[n-1]
+	text := strings.TrimSpace(m.Text)
+	if text == "" {
+		return Usagef("row %d has no text", n)
+	}
+	title := "Message"
+	md := false
+	switch {
+	case m.Kind == RowReasoning:
+		title = "Thought"
+		md = true
+	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
+		title = "Prompt"
+	case m.Kind == "":
+		title = "Reply"
+		md = true
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "messages view " + strconv.Itoa(n), Title: title, Origin: lua.OriginBuiltin,
+		Body: text, BodyMD: md,
+	})
+	return nil
 }
 
 // messageHead is the line a message reads by: its first non-blank one, a
@@ -167,10 +361,4 @@ func messageHead(text string) string {
 // pluralCount is "1 line", "2 code blocks".
 func pluralCount(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, Plural(n, one, many))
-}
-
-// firstLine is text's first line, trimmed.
-func firstLine(text string) string {
-	head, _, _ := strings.Cut(text, "\n")
-	return strings.TrimSpace(head)
 }

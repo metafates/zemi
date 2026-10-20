@@ -496,9 +496,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenPrompt()
 		}},
-		{Name: "messages", Desc: "find, read or copy an earlier message", GoFn: func(h *hostapi.Host, _ string) error {
-			return h.OpenMessages()
-		}},
 		{Name: "logs", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenLogs()
 		}},

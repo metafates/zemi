@@ -47,6 +47,30 @@ func bandedChatRows(app *App) []string {
 	return out
 }
 
+// fillOneTurn fills one turn: its prompt and 30 replies, so a turn's own
+// rows are a long conversation, each one a message the chat draws.
+func fillOneTurn(host *hostapi.Host) {
+	host.AppendMessage("user", "message 1")
+	for i := 1; i <= 30; i++ {
+		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+	}
+}
+
+// openTurnRows opens the one turn of fillOneTurn as its rows: the level a
+// message is picked at, where every row names its own transcript row.
+func openTurnRows(t *testing.T, app *App, host *hostapi.Host) *overlayState {
+	t.Helper()
+	if err := host.MessagesCommand("turn 1"); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	if len(app.overlays) != 1 || !app.overlays[0].o.Follow {
+		t.Fatalf("overlays: %+v", app.overlays)
+	}
+	return &app.overlays[0]
+}
+
 // TestMessagesOpenAtGap: with the chat at its top, or with the view's first
 // row the blank line between two messages, the picker opens on the message
 // the reader sees, never on the one already scrolled out of view above.
@@ -140,8 +164,8 @@ func TestMessagesOpenOnRun(t *testing.T) {
 	for app.Pump() {
 	}
 	ov := &app.overlays[0]
-	if got := ov.items[ov.visible[ov.selected]].label; !strings.Contains(got, "reply two") {
-		t.Fatalf("opened on %q, want the message under the run", got)
+	if got := ov.items[ov.visible[ov.selected]].label; !strings.Contains(got, "one") {
+		t.Fatalf("opened on %q, want the turn the run sits in", got)
 	}
 }
 
@@ -183,12 +207,14 @@ func TestMessagesTallJump(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
-	host.AppendMessage("user", "long one")
+	// the turn's prompt is the row a turn is picked by, so a tall turn is a
+	// long prompt
 	var b strings.Builder
 	for i := range 40 {
 		fmt.Fprintf(&b, "line %d\n\n", i)
 	}
-	appendReply(host, b.String(), hostapi.TurnStat{})
+	host.AppendMessage("user", "long one\n\n"+b.String())
+	appendReply(host, "done", hostapi.TurnStat{})
 	app.renderSync(t)
 	app.Frame()
 	if err := host.OpenMessages(); err != nil {
@@ -199,8 +225,7 @@ func TestMessagesTallJump(t *testing.T) {
 	app.Frame()
 	chat := app.scrolls["chat"]
 	ov := &app.overlays[0]
-	// away and back: the tail opens on the last row without moving, so the
-	// jump to this message is what the second key makes
+	// away and back, so the jump to this turn is what the second key makes
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
 	app.Frame()
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd})
@@ -234,7 +259,7 @@ func TestMessagesTallJump(t *testing.T) {
 func TestMessagesFollow(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
-	fillChat(host)
+	fillOneTurn(host)
 	app.renderSync(t)
 	app.Frame()
 	chat := app.scrolls["chat"]
@@ -243,18 +268,15 @@ func TestMessagesFollow(t *testing.T) {
 	}
 	open := func() *overlayState {
 		t.Helper()
-		if err := host.OpenMessages(); err != nil {
+		if err := host.MessagesCommand("turn 1"); err != nil {
 			t.Fatal(err)
 		}
 		for app.Pump() {
 		}
-		if len(app.overlays) != 1 || !app.overlays[0].o.Follow {
-			t.Fatalf("overlays: %+v", app.overlays)
-		}
-		return &app.overlays[0]
+		return openTurnRows(t, app, host)
 	}
 	ov := open()
-	if got := ov.selectedAnchor(); got != 60 { // the last reply, at the tail
+	if got := ov.selectedAnchor(); got != 31 { // the last reply, at the tail
 		t.Fatalf("opened on anchor %d", got)
 	}
 	if top := chat.top; top != chat.rows-chat.viewH {
@@ -274,7 +296,7 @@ func TestMessagesFollow(t *testing.T) {
 	}
 
 	// a message well inside the chat lands in the middle of the view
-	ov.selected = 41 // reply 21
+	ov.selected = 21 // reply 21
 	app.Frame()
 	from, to := unitRows(chat.lines, ov.selectedAnchor())
 	if from < chat.top || to >= chat.top+chat.viewH {
@@ -382,7 +404,7 @@ func TestMessagesReopenAll(t *testing.T) {
 		}
 		return &app.overlays[0]
 	}
-	for k := range 60 {
+	for k := range 30 {
 		ov := open()
 		ov.selected = 0 // away first, so picking k always moves the view
 		app.Frame()
@@ -397,26 +419,6 @@ func TestMessagesReopenAll(t *testing.T) {
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 		app.Frame()
 	}
-
-	// a move of the reader's own drops the place: the view decides again
-	ov := open()
-	ov.selected = 41
-	app.Frame()
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
-	app.Frame()
-	if chat.focus == 0 {
-		t.Fatal("a committed jump should keep its place")
-	}
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
-	app.Frame()
-	if chat.focus != 0 {
-		t.Fatal("scrolling by hand should drop it")
-	}
-	ov = open()
-	from, _ := unitRows(chat.lines, ov.selectedAnchor())
-	if from < chat.top || from >= chat.top+chat.viewH {
-		t.Fatalf("reopened on an off-screen message: row %d, view %d..%d", from, chat.top, chat.top+chat.viewH)
-	}
 }
 
 // TestMessagesBottomDropsPlace: scrolling to the bottom drops where a jump
@@ -425,7 +427,7 @@ func TestMessagesReopenAll(t *testing.T) {
 func TestMessagesBottomDropsPlace(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
-	fillChat(host)
+	fillOneTurn(host)
 	app.renderSync(t)
 	app.Frame()
 	chat := app.scrolls["chat"]
@@ -438,11 +440,11 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 		}
 		return &app.overlays[0]
 	}
-	ov := open()
-	// a message whose jump lands on the tail: it follows, and keeps its place
-	ov.selected = 58 // message 30, the second to last
+	// a turn's own rows: a jump there, then enter keeps that place
+	rows := openTurnRows(t, app, host)
+	rows.selected = 21 // reply 21
 	app.Frame()
-	if !chat.follow || chat.focus != 59 {
+	if chat.focus != 22 {
 		t.Fatalf("follow %v, focus %d", chat.follow, chat.focus)
 	}
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -453,35 +455,26 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 	if chat.focus != 0 {
 		t.Fatalf("a scroll to the bottom kept the place: focus %d", chat.focus)
 	}
-	if got := open().selectedAnchor(); got != 60 {
-		t.Fatalf("opened on %d, want the last message 60", got)
+	if got := open().selectedAnchor(); got != 1 {
+		t.Fatalf("opened on %d, want the turn's prompt 1", got)
 	}
 }
 
-// TestMessagesWheelKeepsPlace: the wheel moves the chat a few lines at a time.
-// A line or two leaves the message a jump centered near the middle, so the
-// list opens on it again; scrolled well past it, the list opens on the message
-// the middle now shows.
+// TestMessagesWheelKeepsPlace: the wheel moves the chat a few lines at a
+// time. A line or two leaves the message a jump centered near the middle, so
+// the list opens on it again; scrolled well past it, the list opens on the
+// message the middle now shows.
 func TestMessagesWheelKeepsPlace(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 148, 44)
+	host.AppendMessage("user", "prompt")
 	for i := range 20 {
-		host.AppendMessage("user", fmt.Sprintf("prompt %d", i))
 		appendReply(host, fmt.Sprintf("reply %d at\none\ntwo\nthree\nfour", i), hostapi.TurnStat{})
 	}
 	app.renderSync(t)
 	app.Frame()
 	chat := app.scrolls["chat"]
-	open := func() *overlayState {
-		t.Helper()
-		if err := host.OpenMessages(); err != nil {
-			t.Fatal(err)
-		}
-		for app.Pump() {
-		}
-		return &app.overlays[0]
-	}
-	ov := open()
+	ov := openTurnRows(t, app, host)
 	ov.selected = slices.IndexFunc(ov.visible, func(idx int) bool {
 		return strings.Contains(ov.items[idx].label, "reply 10 at")
 	})
@@ -503,19 +496,88 @@ func TestMessagesWheelKeepsPlace(t *testing.T) {
 	}
 	for range 2 {
 		wheel(1)
-		if got := open().selectedAnchor(); got != want {
+		got := openTurnRows(t, app, host).selectedAnchor()
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+		app.Frame()
+		if got != want {
 			t.Fatalf("a wheel line: opened on %d, want %d", got, want)
 		}
-		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
-		app.Frame()
 	}
 	wheel(8)
-	got := open().selectedAnchor()
+	got := openTurnRows(t, app, host).selectedAnchor()
 	if got == want {
 		t.Fatalf("scrolled well past it, still on %d", want)
 	}
 	mid := chat.top + (chat.viewH-1)/2
 	if from, to := unitRows(chat.lines, got); from > mid || to < mid {
 		t.Fatalf("opened on rows %d..%d, the view's middle is %d", from, to, mid)
+	}
+}
+
+// messagesApp boots an app whose host knows /messages, which the ui tests
+// otherwise boot without: the tree's rows are commands.
+func messagesApp(t *testing.T) (*App, *hostapi.Host) {
+	t.Helper()
+	app, host := bootAgentApp(t, 110, 34)
+	if _, err := host.Commands.Add(&hostapi.Command{
+		Name: "messages", NArgs: hostapi.NArgsAny,
+		GoFn: func(h *hostapi.Host, args string) error { return h.MessagesCommand(args) },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return app, host
+}
+
+// TestMessagesTree: l walks the conversation one level at a time - the turns,
+// a turn's messages and rail, a row's actions - and h or esc walks back, the
+// chat following whatever level names the row.
+func TestMessagesTree(t *testing.T) {
+	t.Parallel()
+	app, host := messagesApp(t)
+	host.AppendMessage("user", "first")
+	appendReply(host, "first reply", hostapi.TurnStat{})
+	host.AppendMessage("user", "second")
+	appendReply(host, "second reply with text", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	pump := func() {
+		for app.Pump() {
+		}
+		app.Frame()
+	}
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	pump()
+	if got := app.overlays[len(app.overlays)-1].o.ID; got != "messages" {
+		t.Fatalf("the turns list is %q", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 2 || !strings.HasPrefix(id, "messages turn ") {
+		t.Fatalf("a turn is %d overlays deep, %q", n, id)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 3 || !strings.HasSuffix(id, "#detail") {
+		t.Fatalf("a row's actions are %d overlays deep, %q", n, id)
+	}
+	// an action opens its own view over the list it came from
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	pump()
+	top := app.overlays[len(app.overlays)-1].o.ID
+	if !strings.HasPrefix(top, "messages view ") {
+		t.Fatalf("the action opened %q", top)
+	}
+	// back to the list the action came from, then out of the browse
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	pump()
+	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 1 || id != "messages" {
+		t.Fatalf("%d overlays after h, %q", n, id)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	pump()
+	if n := len(app.overlays); n != 0 {
+		t.Fatalf("%d overlays after esc", n)
 	}
 }
