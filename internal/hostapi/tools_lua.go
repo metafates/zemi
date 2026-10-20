@@ -507,7 +507,7 @@ func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]
 
 // postChain runs handlers as tool.post for one call of name.
 func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
-	if !lspQuietTool[name] {
+	if !lspQuietTool.Has(name) {
 		h.lspDirty()
 	}
 	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": output, "changed": changed, "ms": took.Milliseconds()}

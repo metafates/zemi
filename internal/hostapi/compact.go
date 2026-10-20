@@ -21,6 +21,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -572,11 +573,11 @@ func pruneToolOutput(history []fantasy.Message, threshold int64, inTurn bool) ([
 	if threshold > 0 {
 		kept = min(kept, threshold/4)
 	}
-	keep := map[string]bool{}
+	keep := set.Set[string]{}
 	for _, m := range history {
 		for _, part := range m.Content {
 			if p, ok := part.(fantasy.ToolCallPart); ok && slices.Contains(keptTools, p.ToolName) {
-				keep[p.ToolCallID] = true
+				keep.Add(p.ToolCallID)
 			}
 		}
 	}
@@ -599,7 +600,7 @@ func pruneToolOutput(history []fantasy.Message, threshold int64, inTurn bool) ([
 		for j, part := range h.Content {
 			p, ok := part.(fantasy.ToolResultPart)
 			text := toolText(p)
-			if !ok || keep[p.ToolCallID] || text == "" || text == clearedOutput {
+			if !ok || keep.Has(p.ToolCallID) || text == "" || text == clearedOutput {
 				continue
 			}
 			n := int64(len(text) / 4)
@@ -612,10 +613,11 @@ func pruneToolOutput(history []fantasy.Message, threshold int64, inTurn bool) ([
 		return history, 0
 	}
 	out := slices.Clone(history)
-	cloned := map[int]bool{}
+	cloned := set.Set[int]{}
 	for _, l := range old {
-		if !cloned[l.msg] {
-			out[l.msg].Content, cloned[l.msg] = slices.Clone(out[l.msg].Content), true
+		if !cloned.Has(l.msg) {
+			out[l.msg].Content = slices.Clone(out[l.msg].Content)
+			cloned.Add(l.msg)
 		}
 		p := out[l.msg].Content[l.part].(fantasy.ToolResultPart)
 		p.Output = fantasy.ToolResultOutputContentText{Text: clearedOutput}

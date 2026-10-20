@@ -13,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // normalizeKey lowercases named keys ("Ctrl+T" is "ctrl+t", as bubbletea
@@ -26,17 +27,17 @@ func normalizeKey(key string) string {
 }
 
 // keyMods are the modifier prefixes ultraviolet writes before a key name.
-var keyMods = map[string]bool{"ctrl": true, "alt": true, "shift": true, "super": true, "hyper": true, "meta": true}
+var keyMods = set.Of("ctrl", "alt", "shift", "super", "hyper", "meta")
 
 // keyNames are the named keys the terminal can report, taken from
 // ultraviolet's own table so the list cannot drift from what a keypress
 // matches against.
-var keyNames = sync.OnceValue(func() map[string]bool {
-	names := map[string]bool{}
+var keyNames = sync.OnceValue(func() set.Set[string] {
+	names := set.Set[string]{}
 	add := func(c rune) {
 		if n := (uv.Key{Code: c}).Keystroke(); len(n) > 1 && strings.IndexFunc(n,
 			func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') }) < 0 {
-			names[n] = true
+			names.Add(n)
 		}
 	}
 	for _, c := range []rune{uv.KeyBackspace, uv.KeyTab, uv.KeyEnter, uv.KeyEscape, uv.KeySpace} {
@@ -59,12 +60,12 @@ func checkKey(key string) error {
 		if !ok || rest == "" {
 			break
 		}
-		if !keyMods[mod] {
+		if !keyMods.Has(mod) {
 			return fmt.Errorf("unknown modifier %q in key %q: use ctrl, alt, shift, super, hyper or meta", mod, key)
 		}
 		base = rest
 	}
-	if len([]rune(base)) == 1 || keyNames()[base] {
+	if len([]rune(base)) == 1 || keyNames().Has(base) {
 		return nil
 	}
 	return fmt.Errorf("unknown key %q in key %q", base, key)

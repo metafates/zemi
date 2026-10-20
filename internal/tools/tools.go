@@ -24,6 +24,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -626,7 +627,7 @@ func ResolveSchemaRefs(schema map[string]any) (map[string]any, error) {
 	if !ok {
 		return map[string]any{}, nil
 	}
-	v, err := resolveRefs(props, schema, map[string]bool{}, 0)
+	v, err := resolveRefs(props, schema, set.Set[string]{}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -634,23 +635,23 @@ func ResolveSchemaRefs(schema map[string]any) (map[string]any, error) {
 	return out, nil
 }
 
-func resolveRefs(v, root any, seen map[string]bool, depth int) (any, error) {
+func resolveRefs(v, root any, seen set.Set[string], depth int) (any, error) {
 	if depth > 64 {
 		return nil, fmt.Errorf("schema nests deeper than 64 levels")
 	}
 	switch v := v.(type) {
 	case map[string]any:
 		if ref, ok := v["$ref"].(string); ok {
-			if seen[ref] {
+			if seen.Has(ref) {
 				return nil, fmt.Errorf("recursive $ref %q", ref)
 			}
 			target, err := schemaPointer(root, ref)
 			if err != nil {
 				return nil, err
 			}
-			seen[ref] = true
+			seen.Add(ref)
 			out, err := resolveRefs(target, root, seen, depth+1)
-			delete(seen, ref)
+			seen.Remove(ref)
 			return out, err
 		}
 		out := make(map[string]any, len(v))

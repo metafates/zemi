@@ -33,6 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -136,7 +137,7 @@ type agentHost struct {
 	// when the session changes.
 	readMu sync.Mutex
 	reads  map[string]*sync.Map
-	instr  map[string]bool
+	instr  set.Set[string]
 	loaded *sync.Map
 
 	// promptTokens estimates the system prompt and tool schemas the runner
@@ -338,19 +339,17 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a zemi run does not pay for their schemas every step.
-var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
+var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
 // toolSkip adds to base the tools that could only answer with why they
 // cannot, whose schemas would ride every step: the language server tools
 // when no server can start in this project (untrusted, or none installed
 // for it).
-func (h *Host) toolSkip(base map[string]bool) map[string]bool {
-	skip := maps.Clone(base)
-	if skip == nil {
-		skip = map[string]bool{}
-	}
+func (h *Host) toolSkip(base set.Set[string]) set.Set[string] {
+	skip := base.Clone()
 	if len(h.lspDefs("")) == 0 {
-		skip[tools.ToolLSP], skip[tools.ToolDiagnostics] = true, true
+		skip.Add(tools.ToolLSP)
+		skip.Add(tools.ToolDiagnostics)
 	}
 	return skip
 }
@@ -359,7 +358,7 @@ func (h *Host) toolSkip(base map[string]bool) map[string]bool {
 // MCP tools, filtered by the profile. The lua tool builds its scripts' calls
 // through it, so a script reaches exactly what the run has, a profile's filter
 // included.
-func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
+func (h *Host) toolBuilder(p *Profile, skip set.Set[string]) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
 	var want []string
 	if p != nil {
 		want = p.Tools
@@ -395,7 +394,7 @@ func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 // which model the set is built for. nil lists no profile: a fork keeps the
 // caller's own set, which it selects by name.
 func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTool, unknown []string) {
-	var skip map[string]bool
+	var skip set.Set[string]
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
@@ -2714,7 +2713,7 @@ func (h *Host) sessionLogs() (reads, loaded *sync.Map) {
 	defer ag.readMu.Unlock()
 	if ag.reads[sid] == nil {
 		ag.reads = map[string]*sync.Map{sid: {}}
-		ag.instr = map[string]bool{}
+		ag.instr = set.Set[string]{}
 		ag.loaded = &sync.Map{}
 	}
 	return ag.reads[sid], ag.loaded

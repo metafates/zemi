@@ -30,6 +30,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -53,29 +54,29 @@ const luaToolCallWait = time.Hour
 // approval: members that only read zemi's state, and pure helpers. Every
 // other Go function exposed to Lua, handle methods included ("job:kill"),
 // raises in an unapproved run, so a new member asks until it is added here.
-var luaReadOnly = map[string]bool{
-	"agent.current": true, "agent.list": true, "agent.prompt": true, "agent.usage": true,
-	"command.list": true, "composer.get": true,
-	"config.get": true, "config.schema": true,
-	"errors.list": true, "event.log": true, "event.stats": true,
-	"health.list": true,
-	"fs.data_dir": true, "fs.exists": true, "fs.glob": true, "fs.grep": true, "fs.list": true, "fs.read": true, "fs.stat": true,
-	"json.decode": true, "json.encode": true,
-	"keymap.get": true, "keymap.list": true, "learn.list": true,
-	"log": true, "log.list": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
-	"lsp.list": true, "mcp.list": true, "memory.list": true,
-	"model.list": true, "notify.list": true,
-	"project.root": true, "project.trusted": true, "provider.list": true,
-	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
-	"skills.list": true, "state.get": true, "tool.describe": true, "tool.list": true,
-	"ui.focus.get": true, "ui.hl.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.highlight": true, "ui.diff": true, "ui.wrap": true, "ui.width": true, "ui.screenshot": true, "ui.theme.get": true, "ui.theme.list": true, "ui.widget.list": true,
-	"workflow.list": true, "job:wait": true, "http:wait": true, "tool:wait": true,
-}
+var luaReadOnly = set.Of(
+	"agent.current", "agent.list", "agent.prompt", "agent.usage",
+	"command.list", "composer.get",
+	"config.get", "config.schema",
+	"errors.list", "event.log", "event.stats",
+	"health.list",
+	"fs.data_dir", "fs.exists", "fs.glob", "fs.grep", "fs.list", "fs.read", "fs.stat",
+	"json.decode", "json.encode",
+	"keymap.get", "keymap.list", "learn.list",
+	"log", "log.list", "log.debug", "log.info", "log.warn", "log.error",
+	"lsp.list", "mcp.list", "memory.list",
+	"model.list", "notify.list",
+	"project.root", "project.trusted", "provider.list",
+	"session.id", "session.list", "session.messages", "session.title", "session.todos",
+	"skills.list", "state.get", "tool.describe", "tool.list",
+	"ui.focus.get", "ui.hl.get", "ui.layout.get", "ui.layout.rects", "ui.markdown", "ui.highlight", "ui.diff", "ui.wrap", "ui.width", "ui.screenshot", "ui.theme.get", "ui.theme.list", "ui.widget.list",
+	"workflow.list", "job:wait", "http:wait", "tool:wait",
+)
 
 // luaDelegated is what a script may call without the user's approval of the
 // script itself: zemi.tool.call decides for itself, one gate per call, and
 // reaches nothing else of zemi.
-var luaDelegated = map[string]bool{"tool.call": true}
+var luaDelegated = set.Of("tool.call")
 
 // luaEvalTool is the model's lua tool. build is profileTools' builder, which a
 // script's callable set is built with under its own pipeline copy.
@@ -252,10 +253,10 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 // luaDelegated, and a widget render, which runs every frame, only the
 // luaReadOnly members other than fs.* and a handle's wait.
 func (h *Host) guardLua(L *glua.LState, member string) {
-	if h.rendering.Load() && (!luaReadOnly[member] || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
+	if h.rendering.Load() && (!luaReadOnly.Has(member) || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
 		L.RaiseError("zemi.%s is not allowed during widget render (render must be pure)", member)
 	}
-	if luaReadOnly[member] || luaDelegated[member] {
+	if luaReadOnly.Has(member) || luaDelegated.Has(member) {
 		return
 	}
 	if tool, approved := h.modelLuaRun(L); tool && !approved {

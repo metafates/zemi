@@ -39,6 +39,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -154,7 +155,7 @@ type flowRun struct {
 	phase   string
 	log     []string
 	agents  []*flowAgent    // in call order
-	restart map[string]bool // agent run ids flowControl cancelled to run again
+	restart set.Set[string] // agent run ids flowControl cancelled to run again
 	result  string          // the script's value: strings as is, anything else JSON
 	err     error
 }
@@ -212,7 +213,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	f := &flowRun{
 		id: store.ShortID(), name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
-		done: make(chan struct{}), status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
+		done: make(chan struct{}), status: RunRunning, limit: limit, started: time.Now(), restart: set.Set[string]{},
 	}
 	if spec.name != "" {
 		f.about = leadingComment(spec.src)
@@ -409,8 +410,8 @@ func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string
 func (r *wfRun) agentDone(d wfDone) {
 	f := r.f
 	f.mu.Lock()
-	again := f.restart[d.run.id] && r.ctx.Err() == nil
-	delete(f.restart, d.run.id)
+	again := f.restart.Has(d.run.id) && r.ctx.Err() == nil
+	f.restart.Remove(d.run.id)
 	f.mu.Unlock()
 	stopped := errors.Is(d.err, context.Canceled) && r.ctx.Err() == nil
 	if again && stopped && r.started < workflowMaxAgents {
@@ -999,7 +1000,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 		if i < 0 || !f.agents[i].run.isRunning() {
 			return "", Usagef("no running agent %q in workflow %s", agent, id)
 		}
-		f.restart[agent] = true
+		f.restart.Add(agent)
 		f.agents[i].run.cancel()
 		return "Restarting agent " + agent, nil
 	default:
@@ -1217,12 +1218,12 @@ func (h *Host) padFlows(sid string) []string {
 // flowAgentIDs are the agent run ids session sid's journals name: /agents
 // lists a workflow's agents as the workflow. A forged journal can only hide
 // this session's own agents from that list.
-func (h *Host) flowAgentIDs(sid string) map[string]bool {
-	ids := map[string]bool{}
+func (h *Host) flowAgentIDs(sid string) set.Set[string] {
+	ids := set.Set[string]{}
 	for _, id := range h.padFlows(sid) {
 		if j, err := readJournal(h.scratchFor(sid), id); err == nil {
 			for _, a := range j.agents {
-				ids[a.Agent] = true
+				ids.Add(a.Agent)
 			}
 		}
 	}
@@ -1890,9 +1891,9 @@ func (h *Host) openWorkflows() error {
 func (h *Host) workflowsOverlay() Overlay {
 	sid := h.AgentSessionID()
 	var running, earlier []any
-	held := map[string]bool{}
+	held := set.Set[string]{}
 	for _, f := range h.tasks.flowList() {
-		held[f.id] = true
+		held.Add(f.id)
 		switch {
 		case f.isRunning():
 			running = append(running, h.flowItem(f, "Running"))
@@ -1902,7 +1903,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	}
 	var stored []*flowRun
 	for _, id := range h.padFlows(sid) {
-		if f, err := h.loadFlow(sid, id); err == nil && !held[id] {
+		if f, err := h.loadFlow(sid, id); err == nil && !held.Has(id) {
 			stored = append(stored, f)
 		}
 	}

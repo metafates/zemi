@@ -11,14 +11,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"os/exec"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/metafates/zemi/internal/set"
 )
 
 // waitDelay bounds how long Wait waits on pipes an orphaned grandchild
@@ -35,7 +35,7 @@ var NonInteractiveEnv = []string{
 
 var (
 	mu   sync.Mutex
-	live = map[int]bool{}
+	live = set.Set[int]{}
 )
 
 // Command is exec.Command in its own session.
@@ -90,7 +90,7 @@ func Start(cmd *exec.Cmd) error {
 		return err
 	}
 	mu.Lock()
-	live[cmd.Process.Pid] = true
+	live.Add(cmd.Process.Pid)
 	mu.Unlock()
 	return nil
 }
@@ -105,7 +105,7 @@ func Wait(cmd *exec.Cmd) error {
 	if cmd.Process != nil {
 		killGroup(cmd.Process.Pid)
 		mu.Lock()
-		delete(live, cmd.Process.Pid)
+		live.Remove(cmd.Process.Pid)
 		mu.Unlock()
 	}
 	return err
@@ -148,7 +148,7 @@ func Kill(cmd *exec.Cmd) {
 // for: running commands, jobs and servers.
 func KillAll() {
 	mu.Lock()
-	pids := slices.Collect(maps.Keys(live))
+	pids := live.Slice()
 	mu.Unlock()
 	for _, pid := range pids {
 		killGroup(pid)

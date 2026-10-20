@@ -8,6 +8,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Host events Go code emits or checks by name, outside hostapi too.
@@ -24,20 +25,20 @@ const (
 
 // eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
-var eventCatalogue = map[string]bool{
-	EventAppReady: true, EventAppQuit: true, EventConfigReloaded: true,
-	EventSessionNew: true, "session.open": true, "session.close": true,
-	"agent.start": true, "agent.finish": true, "agent.error": true,
-	"agent.assemble": true, "agent.subagent.start": true, "agent.subagent.finish": true,
-	"agent.text_delta": true, "agent.reasoning_delta": true, "agent.step": true,
-	EventToolPre: true, EventToolPost: true, "tool.denied": true,
-	EventPermissionRequest: true, "permission.resolved": true,
-	"ui.resize": true, "composer.change": true, EventComposerSubmit: true,
-	"memory.written":  true,
-	"reflector.start": true, "reflector.done": true,
-	"job.exit":    true,
-	"lsp.request": true,
-}
+var eventCatalogue = set.Of(
+	EventAppReady, EventAppQuit, EventConfigReloaded,
+	EventSessionNew, "session.open", "session.close",
+	"agent.start", "agent.finish", "agent.error",
+	"agent.assemble", "agent.subagent.start", "agent.subagent.finish",
+	"agent.text_delta", "agent.reasoning_delta", "agent.step",
+	EventToolPre, EventToolPost, "tool.denied",
+	EventPermissionRequest, "permission.resolved",
+	"ui.resize", "composer.change", EventComposerSubmit,
+	"memory.written",
+	"reflector.start", "reflector.done",
+	"job.exit",
+	"lsp.request",
+)
 
 // eventNames lists the catalogue for an error message: a near miss
 // ("agent.done") is fixed from the list without a doc lookup.
@@ -51,7 +52,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("on", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
-		if !eventCatalogue[name] && !strings.HasPrefix(name, "user.") {
+		if !eventCatalogue.Has(name) && !strings.HasPrefix(name, "user.") {
 			L.RaiseError("zemi.event.on: unknown event %q (%s, or a user.* name)", name, eventNames())
 		}
 		hd := &EventHandler{

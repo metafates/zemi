@@ -144,7 +144,7 @@ func TestClaudeHooksLoad(t *testing.T) {
 		t.Fatalf("data dir: %v", err)
 	}
 	g := h.pluginGrant.Load()
-	if g == nil || !g.claude[root] {
+	if g == nil || !g.claude.Has(root) {
 		t.Fatalf("grant: %+v", g)
 	}
 	var names []string

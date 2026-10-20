@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -40,14 +41,14 @@ func Reconcile(p Partition, rows []*store.Memory, at time.Time) error {
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]bool, len(ops))
+	seen := make(set.Set[string], len(ops))
 	for _, op := range ops {
-		seen[op.ID] = true
+		seen.Add(op.ID)
 	}
 	var added []Line
 	var fresh []*store.Memory
 	for _, m := range rows {
-		if m.SupersededBy != "" || seen[m.ID] {
+		if m.SupersededBy != "" || seen.Has(m.ID) {
 			continue
 		}
 		fresh = append(fresh, m)

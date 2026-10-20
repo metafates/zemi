@@ -22,6 +22,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -378,9 +379,9 @@ func (h *Host) nearestInstructions(path string, prompted []string, sent func(str
 	if err != nil {
 		return ""
 	}
-	inPrompt := map[string]bool{}
+	inPrompt := set.Set[string]{}
 	for _, p := range prompted {
-		inPrompt[p] = true
+		inPrompt.Add(p)
 	}
 	root := h.Dirs.RepoRoot()
 	if root == "" || !h.ProjectTrusted() {
@@ -401,7 +402,7 @@ func (h *Host) nearestInstructions(path string, prompted []string, sent func(str
 				continue
 			}
 			// CLAUDE.md is read only where no AGENTS.md is
-			if inPrompt[p] {
+			if inPrompt.Has(p) {
 				break
 			}
 			if sent(p) {
@@ -650,13 +651,13 @@ func (h *Host) instructionSent(p string) bool {
 	ag := h.agents
 	ag.readMu.Lock()
 	defer ag.readMu.Unlock()
-	if ag.instr[p] {
+	if ag.instr.Has(p) {
 		return true
 	}
 	if ag.instr == nil {
-		ag.instr = map[string]bool{}
+		ag.instr = set.Set[string]{}
 	}
-	ag.instr[p] = true
+	ag.instr.Add(p)
 	return false
 }
 
@@ -666,7 +667,7 @@ func (h *Host) instructionSent(p string) bool {
 func (h *Host) forgetInstructions() {
 	ag := h.agents
 	ag.readMu.Lock()
-	ag.instr = map[string]bool{}
+	ag.instr = set.Set[string]{}
 	ag.readMu.Unlock()
 	ag.mu.Lock()
 	sent := ag.pin.sent

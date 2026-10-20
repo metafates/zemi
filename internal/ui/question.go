@@ -18,6 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -33,7 +34,7 @@ type questionPrompt struct {
 // qState is one question's answer, kept while the user moves between tabs.
 type qState struct {
 	sel    int          // an option row, or len(options) for the typed answer
-	picked map[int]bool // the picked options: a single choice's one, a multi-select's marks
+	picked set.Set[int] // the picked options: a single choice's one, a multi-select's marks
 	typed  bool         // the answer is input's text instead of a pick
 	typing bool         // the field has the keys
 	input  composerState
@@ -62,7 +63,7 @@ func (a *App) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 		for _, o := range q.Options {
 			clean[i].Options = append(clean[i].Options, tools.QuestionOption{Label: sanitize.String(o.Label), Description: sanitize.String(o.Description), Recommended: o.Recommended})
 		}
-		states[i] = qState{picked: map[int]bool{}, typing: q.Type == tools.TypeFreeText || len(clean[i].Options) == 0}
+		states[i] = qState{picked: set.Set[int]{}, typing: q.Type == tools.TypeFreeText || len(clean[i].Options) == 0}
 	}
 	ch := make(chan qAnswer, 1)
 	a.await(func() tea.Cmd {
@@ -99,7 +100,7 @@ func (st *qState) answer(q tools.Question) tools.Answer {
 	}
 	var a tools.Answer
 	for i, o := range q.Options {
-		if st.picked[i] {
+		if st.picked.Has(i) {
 			a.Picked = append(a.Picked, o.Label)
 		}
 	}
@@ -113,7 +114,7 @@ func (st *qState) answer(q tools.Question) tools.Answer {
 // multi-select's marks, the highlighted option when none is marked.
 func (st *qState) choose(q tools.Question) {
 	if !q.Multi() || len(st.picked) == 0 {
-		st.picked = map[int]bool{st.sel: true}
+		st.picked = set.Of(st.sel)
 	}
 	st.typed = false
 }
@@ -160,7 +161,7 @@ func (a *App) questionKey(key, text string) {
 				st.choose(q)
 				a.answerQuestion()
 			case strings.TrimSpace(st.input.text) != "":
-				st.picked, st.typed = map[int]bool{}, true
+				st.picked, st.typed = set.Set[int]{}, true
 				a.answerQuestion()
 			}
 		case "esc":
@@ -206,10 +207,10 @@ func (a *App) questionKey(key, text string) {
 		st.typing = true
 	case q.Multi() && key == "space" && !tail:
 		// the marks are the answer, so leaving the tab with tab keeps them
-		if st.picked[st.sel] {
-			delete(st.picked, st.sel)
+		if st.picked.Has(st.sel) {
+			st.picked.Remove(st.sel)
 		} else {
-			st.picked[st.sel] = true
+			st.picked.Add(st.sel)
 		}
 		st.typed = false
 	case key == "enter":
@@ -352,7 +353,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var choices []promptChoice
 	if q.Type != tools.TypeFreeText {
 		for i, opt := range q.Options {
-			items = append(items, listItem{label: opt.Label, key: switchSeg(st.picked[i], false)})
+			items = append(items, listItem{label: opt.Label, key: switchSeg(st.picked.Has(i), false)})
 			choices = append(choices, promptChoice{key: optionKey(i), label: opt.Label})
 		}
 		items = append(items, listItem{label: "Type your own answer"})

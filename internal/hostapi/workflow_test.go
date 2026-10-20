@@ -628,7 +628,7 @@ func TestWorkflowRerun(t *testing.T) {
 				t.Fatalf("loadFlow = %+v, %v", old, err)
 			}
 			for _, a := range f.view().agents {
-				if !h.flowAgentIDs("s1")[a.id] {
+				if !h.flowAgentIDs("s1").Has(a.id) {
 					t.Fatalf("flowAgentIDs misses %s", a.id)
 				}
 			}

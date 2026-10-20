@@ -162,7 +162,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	var members []string
 	for ns, ms := range bootedNamespaces(t, false) {
 		for _, m := range ms {
-			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly[name] && !luaDelegated[name] {
+			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly.Has(name) && !luaDelegated.Has(name) {
 				members = append(members, fmt.Sprintf("%q", name))
 			}
 		}
