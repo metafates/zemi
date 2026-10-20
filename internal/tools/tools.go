@@ -57,6 +57,17 @@ const (
 	ToolSearch   = "tool_search"
 )
 
+// Outcome is what a call did beyond its text: the job or run it handed the
+// work to, a failure inside a call that still answered, and a stop the user
+// asked for. A tool reports it while it runs, so a row never reads its own
+// status out of prose.
+type Outcome struct {
+	Job     string // the job a shell call handed off to, or job_start's job
+	Run     string // the background agent or workflow run a call started
+	Warn    bool   // it answered, with a failure inside
+	Stopped bool   // the user denied, dismissed or interrupted it
+}
+
 // Progress is a running call's output: Line is its last non-blank line,
 // which the chat row shows under it, and Tail is its last ProgressTail lines,
 // which a call view reads while the call runs.
@@ -119,8 +130,7 @@ const (
 	VetoAsk  = "ask"
 )
 
-// DeniedText and stopTurn build their user-stop wordings from these, and
-// UserStopped matches them, so a producer reword cannot desync the matcher.
+// DeniedText and stopTurn build their user-stop wordings from these.
 const (
 	deniedPrefix  = "permission denied ("
 	userDismissed = "The user dismissed"
@@ -134,12 +144,6 @@ func DeniedText(v Verdict, what string) string {
 		return s
 	}
 	return s + ": " + v.Reason
-}
-
-// UserStopped reports a failed call's output as the user's own answer (a
-// denied ask, a dismissed question or plan), which is no failure.
-func UserStopped(output string) bool {
-	return strings.HasPrefix(output, deniedPrefix+ByUser+")") || strings.HasPrefix(output, userDismissed)
 }
 
 // PreVerdict is a tool.pre answer; "" passes the call on.
@@ -274,6 +278,9 @@ type Pipeline struct {
 	// Progress shows a running call's last output line under its row;
 	// nil = none.
 	Progress func(callID string, p Progress)
+	// Outcome reports what a call did beyond its text; the host keys it by
+	// call id and reads it when the call ends.
+	Outcome func(callID string, o Outcome)
 
 	// changed is what a shell run found changed, kept on its per-run copy for post
 	changed []string
@@ -348,6 +355,14 @@ func (p *Pipeline) resolveAsk(req Request) Verdict {
 		return Verdict{DecidedBy: by, Reason: req.Reason}
 	}
 	return Verdict{DecidedBy: by}
+}
+
+// outcome reports a call's outcome to the host, when it listens.
+func (p *Pipeline) outcome(ctx context.Context, o Outcome) {
+	id, _ := ctx.Value(callIDKey{}).(string)
+	if p.Outcome != nil && id != "" {
+		p.Outcome(id, o)
+	}
 }
 
 // callIDKey carries the tool call id to a run function, for Progress.
@@ -462,6 +477,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 			what += " " + req.Arg
 		}
 		if !v.Allowed {
+			if v.DecidedBy == ByUser {
+				run.outcome(ctx, Outcome{Stopped: true})
+			}
 			return fantasy.NewTextErrorResponse(DeniedText(v, what)), nil
 		}
 	}

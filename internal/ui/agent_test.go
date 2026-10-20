@@ -2080,7 +2080,7 @@ func TestCallRowClickIDs(t *testing.T) {
 		{Name: "edit", Input: "/w/a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7,2 +7,2 @@\n-old\n+new\n keep"},
 		{Name: "read", Input: "c.go", Status: "ok", Output: "1\tpackage c"},
 		{Name: "read", Input: "d.go", Status: "ok"},
-		{Name: "shell", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
+		{Name: "shell", Input: "make slow", Label: "Build it", Status: "bg", Job: "job-1", Output: "still running"},
 	}})
 	ids := func() map[string]string {
 		app.renderSync(t)
@@ -2147,8 +2147,8 @@ func TestToolRows(t *testing.T) {
 		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 		{Name: "shell", Input: "cat > n.txt <<EOT\nfirst line\nEOT", Label: "Write notes", Status: "err"},
 		{Name: "shell", Input: "printf a\nprintf b", Status: "err"},
-		{Name: "shell", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
-		{Name: "job_start", Input: "npm run dev", Label: "Dev server", Status: "bg", Output: "started job-2 (npm run dev)"},
+		{Name: "shell", Input: "make slow", Label: "Build it", Status: "bg", Job: "job-1", Output: "still running"},
+		{Name: "job_start", Input: "npm run dev", Label: "Dev server", Status: "bg", Job: "job-2", Output: "started job-2 (npm run dev)"},
 		// a collapsed failure counts every line it hides, the host's cut
 		// included; a command's shows its end, where its error and exit status are
 		{Name: "shell", Input: "go build", Label: "Build the binary", Status: "err", Output: "e1\ne2\ne3\n… 21 more lines\nl1\nl2\nl3\nl4\nl5\nl6"},

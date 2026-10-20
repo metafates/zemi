@@ -850,7 +850,11 @@ func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		t := &run.tr[i]
-		t.Status, t.Output = toolStatus(name, result, s.ctx != nil && s.ctx.Err() != nil), shortOutput(out)
+		o := s.h.takeToolOutcome(id)
+		t.Status, t.Output, t.Job = toolStatus(result, s.ctx != nil && s.ctx.Err() != nil, o), shortOutput(out), o.Job
+		if o.Run != "" {
+			t.Run = o.Run
+		}
 		switch {
 		case diff != "":
 			t.Diff = diff // shell: what the command changed
@@ -860,9 +864,14 @@ func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 		diff = t.Diff
 		run.touch()
 	}
+	row := StreamTool{ID: id, Name: name, Diff: diff}
+	if i, found := run.rows[id]; found {
+		row.Status, row.Run, row.Job = run.tr[i].Status, run.tr[i].Run, run.tr[i].Job
+	}
 	run.mu.Unlock()
+	s.h.setCallRow(id, rowMeta{Status: row.Status, Run: row.Run, Job: row.Job})
 	s.h.refreshViewed(run)
-	s.h.recordToolCall(s.sid, StreamTool{ID: id, Name: name, Diff: diff}, ok)
+	s.h.recordToolCall(s.sid, row, ok)
 }
 
 func (s *subagentHooks) StepStart() {
@@ -961,6 +970,65 @@ func (h *Host) setToolDetail(callID, detail string) {
 // and the tail its view reads.
 func (h *Host) setToolProgress(callID, line, tail string) {
 	h.setTool(callID, func(t *StreamTool) { t.Detail, t.Tail = line, tail })
+}
+
+// setToolOutcome keeps what a call's tool reported beyond its text, read when
+// the call ends.
+func (h *Host) setToolOutcome(callID string, o tools.Outcome) {
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.outcomes == nil {
+		ag.outcomes = map[string]tools.Outcome{}
+	}
+	ag.outcomes[callID] = o
+	ag.mu.Unlock()
+}
+
+// setCallRow keeps a finished call's facts for the message that drew it.
+func (h *Host) setCallRow(callID string, m rowMeta) {
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.rows == nil {
+		ag.rows = map[string]rowMeta{}
+	}
+	ag.rows[callID] = m
+	ag.mu.Unlock()
+}
+
+// takeCallRows are the facts of the calls a message draws, cleared as they
+// are read.
+func (h *Host) takeCallRows(msg fantasy.Message) map[string]rowMeta {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	var out map[string]rowMeta
+	for _, p := range msg.Content {
+		id := ""
+		switch p := p.(type) {
+		case fantasy.ToolCallPart:
+			id = p.ToolCallID
+		case fantasy.ToolResultPart:
+			id = p.ToolCallID
+		}
+		if m, ok := ag.rows[id]; ok && id != "" {
+			if out == nil {
+				out = map[string]rowMeta{}
+			}
+			out[id] = m
+			delete(ag.rows, id)
+		}
+	}
+	return out
+}
+
+// takeToolOutcome is a finished call's outcome, cleared as it is read.
+func (h *Host) takeToolOutcome(callID string) tools.Outcome {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	o := ag.outcomes[callID]
+	delete(ag.outcomes, callID)
+	return o
 }
 
 func (h *Host) setTool(callID string, set func(*StreamTool)) {
@@ -1169,6 +1237,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
+		t.h.setToolOutcome(call.ID, tools.Outcome{Run: id})
 		return fantasy.NewTextResponse(bgAgentText(id)), nil
 	}
 	// the run outlives the call: a foreground one hands off to the user's

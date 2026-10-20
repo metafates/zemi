@@ -1463,6 +1463,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = "background "+f.id+" (/workflows)", f.id })
+		h.setToolOutcome(call.ID, tools.Outcome{Run: f.id})
 		return fantasy.NewTextResponse(bgFlowText(f)), nil
 	}
 	spec.progress = func(f *flowRun) { h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = f.summary(), f.id }) }
@@ -1481,6 +1482,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		<-f.done
 	case <-h.userSpoke():
 		if f.detach() {
+			h.setToolOutcome(call.ID, tools.Outcome{Run: f.id})
 			return fantasy.NewTextResponse(bgFlowText(f)), nil
 		}
 		<-f.done
@@ -1488,6 +1490,9 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	report, ok := f.report()
 	if !ok {
 		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
+	}
+	if f.status == RunWarn {
+		h.setToolOutcome(call.ID, tools.Outcome{Warn: true})
 	}
 	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil
 }

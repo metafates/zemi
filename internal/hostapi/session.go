@@ -460,6 +460,12 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		if row.Role == compactTailRole {
 			continue // the transcript already has the original
 		}
+		// what the calls of this message did beyond their text, as they were
+		// stored; a row older than that column reads as its result says
+		var meta map[string]rowMeta
+		if row.RowMeta != "" {
+			_ = json.Unmarshal([]byte(row.RowMeta), &meta)
+		}
 		var text strings.Builder
 		// text streamed before a call is a row of its own above it, as the
 		// live turn flushed it; reasoning never cuts a reply (ReasoningDelta)
@@ -496,12 +502,21 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				toolRow[p.ToolCallID] = len(tr)
 				tc := pending[p.ToolCallID]
 				delete(pending, p.ToolCallID)
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName, Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: CallOK, Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
+				rm := meta[p.ToolCallID]
+				tr = append(tr, ChatMessage{
+					Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName,
+					Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: cmp.Or(rm.Status, CallOK),
+					Diff: tc.Diff, Run: cmp.Or(tc.Run, rm.Run), Job: rm.Job, Detail: tc.Detail,
+				})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
 					tr[i].Output = rowOutput(tr[i].Tool, out)
-					tr[i].Status = toolStatus(tr[i].Tool, p.Output, false)
+					if rm := meta[p.ToolCallID]; rm.Status != "" {
+						tr[i].Status = rm.Status
+					} else if agent.ErrResult(p.Output) {
+						tr[i].Status = CallErr
+					}
 				}
 			}
 		}

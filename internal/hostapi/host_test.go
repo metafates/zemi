@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -67,59 +68,38 @@ func outErr(s string) fantasy.ToolResultOutputContent {
 	return fantasy.ToolResultOutputContentError{Error: errors.New(s)}
 }
 
-// TestToolStatus: the mark comes from the result's own type, so a call that
-// refused, or a job_read of a job that died, draws a failure and never a
-// check; a handoff and an interrupt keep their own marks.
+// TestToolStatus: the mark comes from the outcome the tool reported and the
+// result's own type, never from the result's words: a call that refused, or
+// a job_read of a job that died, draws a failure and never a check.
 func TestToolStatus(t *testing.T) {
 	for _, c := range []struct {
 		name      string
-		tool      string
 		result    fantasy.ToolResultOutputContent
 		cancelled bool
+		outcome   tools.Outcome
 		want      CallStatus
 	}{
-		{"a finished call", tools.ToolRead, out("package a"), false, CallOK},
-		{"a dropped memory", tools.ToolMemory, outErr("dropped: quote not found in this session's messages"), false, CallErr},
-		{"a near-duplicate memory", tools.ToolMemory, outErr("near-duplicate of m1 (project): \"deploy by hand\""), false, CallErr},
-		{"a job that died", tools.ToolJobRead, outErr("job-3 failed: exit status 1"), false, CallErr},
-		{"an ask the user denied", tools.ToolWrite, outErr("permission denied (user): fs.write /p/b.go"), false, CallStopped},
-		{"an ask the user dismissed", tools.ToolQuestion, outErr("The user dismissed the questions."), false, CallStopped},
-		{"an interrupted turn", tools.ToolRead, outErr("context canceled"), true, CallStopped},
-		{"a background agent", tools.ToolAgent, out(bgAgentStarted + " run=1"), false, CallBG},
-		{"a background workflow", tools.ToolWorkflow, out(bgWorkflowStarted + " run=1"), false, CallBG},
-		{"a shell that handed off", tools.ToolShell, out("still running, so it " + tools.JobHandoff + "job-3"), false, CallBG},
-		{"a job that started", tools.ToolJobStart, out("started job-2 (npm run dev)"), false, CallBG},
-		{"a shell that named a job but exited", tools.ToolShell, out(tools.JobHandoff + "job-3"), false, CallOK},
+		{"a finished call", out("package a"), false, tools.Outcome{}, CallOK},
+		{"a dropped memory", outErr("dropped: quote not found in this session's messages"), false, tools.Outcome{}, CallErr},
+		{"a job that died", outErr("job-3 failed: exit status 1"), false, tools.Outcome{}, CallErr},
+		{"an ask the user denied", outErr("permission denied (user): fs.write /p/b.go"), false, tools.Outcome{Stopped: true}, CallStopped},
+		{"a question the user dismissed", outErr("The user dismissed the questions."), false, tools.Outcome{Stopped: true}, CallStopped},
+		{"an interrupted turn", outErr("context canceled"), true, tools.Outcome{}, CallStopped},
+		{"a background agent", out("run=1"), false, tools.Outcome{Run: "1"}, CallBG},
+		{"a shell that handed off", out("still running"), false, tools.Outcome{Job: "job-3"}, CallBG},
+		{"a job that started", out("started job-2 (npm run dev)"), false, tools.Outcome{Job: "job-2"}, CallBG},
+		{"a workflow that warn-finished", out("finished"), false, tools.Outcome{Warn: true}, CallWarn},
+		// the words alone decide nothing: a result naming a job is no hand-off
+		{"a shell that named a job but exited", out(tools.JobHandoff + "job-3"), false, tools.Outcome{}, CallOK},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if got := toolStatus(c.tool, c.result, c.cancelled); got != c.want {
-				t.Fatalf("toolStatus(%s) = %s, want %s", c.tool, got, c.want)
+			if got := toolStatus(c.result, c.cancelled, c.outcome); got != c.want {
+				t.Fatalf("toolStatus = %s, want %s", got, c.want)
 			}
 		})
 	}
 }
 
-// TestJobOf: only a call that started or handed off to a job names one, from
-// the phrase its own tool wrote, so the wording around it belongs to the tool.
-func TestJobOf(t *testing.T) {
-	for _, c := range []struct {
-		tool   string
-		status CallStatus
-		out    string
-		want   string
-	}{
-		{tools.ToolShell, CallBG, "still running, so it moved to the background as job-3: read the rest", "job-3"},
-		{tools.ToolShell, CallBG, "job-7 of the build\nso it moved to the background as job-3: read the rest", "job-3"},
-		{tools.ToolJobStart, CallBG, "started job-2 (npm run dev)", "job-2"},
-		{tools.ToolShell, CallOK, "moved to the background as job-3", ""}, // a shell that exited names no job
-		{tools.ToolJobStart, CallBG, "job-2", ""},                         // only the tool's own phrasing counts
-		{tools.ToolShell, CallBG, "no id here", ""},
-	} {
-		if got := jobOf(c.tool, c.status, c.out); got != c.want {
-			t.Errorf("jobOf(%s, %s, %q) = %q, want %q", c.tool, c.status, c.out, got, c.want)
-		}
-	}
-}
 
 // outsideTemp is a directory that is none of zemi's roots - not the project,
 // not the pad, not a data dir - for a fixture whose point is a path outside
@@ -1051,5 +1031,38 @@ func TestSessionMark(t *testing.T) {
 	}
 	if len(seen) < 10 {
 		t.Fatalf("200 ids drew only %d markers", len(seen))
+	}
+}
+
+// TestHistoryRowFacts: a resumed session rebuilds a call's row from the facts
+// stored beside its message, never from the words it answered; a row older
+// than that column reads as its result says.
+func TestHistoryRowFacts(t *testing.T) {
+	parts, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ToolCallPart{ToolCallID: "t1", ToolName: tools.ToolShell, Input: `{"command":"make slow"}`},
+		fantasy.ToolResultPart{ToolCallID: "t1", Output: fantasy.ToolResultOutputContentText{Text: "still running"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		meta string
+		want rowMeta
+	}{
+		{"a hand-off", `{"t1":{"status":"bg","job":"job-3"}}`, rowMeta{Status: CallBG, Job: "job-3"}},
+		{"a stop", `{"t1":{"status":"stopped"}}`, rowMeta{Status: CallStopped}},
+		{"a row older than the column", "", rowMeta{Status: CallOK}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, tr := historyFrom([]*store.Message{{Role: "assistant", PartsJSON: string(parts), RowMeta: c.meta}})
+			if len(tr) != 1 {
+				t.Fatalf("%d rows: %+v", len(tr), tr)
+			}
+			got := rowMeta{Status: tr[0].Status, Run: tr[0].Run, Job: tr[0].Job}
+			if got != c.want {
+				t.Fatalf("row = %+v, want %+v", got, c.want)
+			}
+		})
 	}
 }

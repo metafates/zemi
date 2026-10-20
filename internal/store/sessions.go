@@ -121,12 +121,15 @@ func (s *DB) AddUsage(id string, prompt, completion, cacheRead, cacheBilled int6
 		WHERE id = ?`, prompt, completion, cacheRead, cacheBilled, cost, id)
 }
 
-// Message is one persisted message: role plus fantasy content parts as JSON.
+// Message is one persisted message: role plus fantasy content parts as JSON,
+// and RowMeta, the rows the message draws that its text cannot say (a call's
+// status, the run it started), as JSON.
 type Message struct {
 	ID        string
 	SessionID string
 	Role      string
 	PartsJSON string
+	RowMeta   string
 	CreatedAt int64
 }
 
@@ -142,9 +145,9 @@ func insertMessage(ex execer, m *Message) error {
 	if m.CreatedAt == 0 {
 		m.CreatedAt = now()
 	}
-	_, err := ex.Exec(`INSERT INTO messages (id, session_id, role, parts_json, created_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		m.ID, m.SessionID, m.Role, m.PartsJSON, m.CreatedAt)
+	_, err := ex.Exec(`INSERT INTO messages (id, session_id, role, parts_json, row_meta, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		m.ID, m.SessionID, m.Role, m.PartsJSON, m.RowMeta, m.CreatedAt)
 	if err == nil {
 		// updated_at means new messages: a late bill for a closed session
 		// must not make it the most recent one.
@@ -227,7 +230,7 @@ func (s *DB) ForkSession(src *Session, id, title string) (err error) {
 		}
 		ids := make(map[string]string, len(msgs))
 		for _, m := range msgs {
-			copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, CreatedAt: m.CreatedAt}
+			copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, RowMeta: m.RowMeta, CreatedAt: m.CreatedAt}
 			if err := insertMessage(tx, copied); err != nil {
 				return err
 			}
@@ -261,14 +264,14 @@ func (s *DB) ForkSession(src *Session, id, title string) (err error) {
 // Messages returns a session's messages in insertion order: rowid, since a
 // turn persists several messages within one millisecond and ids are random.
 func (s *DB) Messages(sessionID string) ([]*Message, error) {
-	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
+	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, row_meta, created_at
 		FROM messages WHERE session_id = ? ORDER BY rowid`, sessionID)
 	return collect(rows, err, scanMessage)
 }
 
 func scanMessage(r scanner) (*Message, error) {
 	var m Message
-	return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
+	return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.RowMeta, &m.CreatedAt)
 }
 
 // MessageCount is how many rows Messages would return, tool telemetry
@@ -284,7 +287,7 @@ func (s *DB) MessageCount(sessionID string) (int, error) {
 // it was typed in. Subagent (child) sessions are excluded, since their user
 // rows are prompts the agent wrote, not the user.
 func (s *DB) UserMessages(limit int) ([]*Message, error) {
-	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
+	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, row_meta, created_at
 		FROM messages WHERE role = 'user'
 		AND session_id IN (SELECT id FROM sessions WHERE COALESCE(parent_id, '') = '')
 		ORDER BY rowid DESC LIMIT ?`, limit)

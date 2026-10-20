@@ -167,6 +167,7 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 		// the work so far is not thrown away: it keeps running as a job
 		if p.Jobs != nil {
 			id := p.Jobs.Adopt(cmd, c, buf, written, started, wait)
+			p.outcome(ctx, Outcome{Job: id})
 			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it exits or goes quiet), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
 		}

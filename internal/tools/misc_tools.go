@@ -188,6 +188,7 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 	implement := " " + ImplementPlan + saved
 	switch {
 	case !ok:
+		p.outcome(ctx, Outcome{Stopped: true})
 		return stopTurn(userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Hold:
 		return endTurn(planApproved + "; the user has not asked for it yet, so do not start implementing: stop here and wait for them to say when." + saved), nil
@@ -337,6 +338,7 @@ func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.Too
 	}
 	answers, ok := p.Question(qs)
 	if !ok || len(answers) != len(qs) {
+		p.outcome(ctx, Outcome{Stopped: true})
 		return stopTurn(userDismissed + " the questions. Stop and wait for them to say how to proceed."), nil
 	}
 	res := questionResult{Answers: make([]questionAnswer, len(qs))}

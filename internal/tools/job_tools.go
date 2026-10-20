@@ -27,31 +27,6 @@ const JobHandoff = "moved to the background as "
 // jobStartPrefix opens a job_start answer, "started job-2 (npm run dev)".
 const jobStartPrefix = "started "
 
-// JobID is the job a call's result names, "" when it names none: the phrase
-// each tool writes, then the id it wrote. A command's own output cannot name
-// one, since only a tool that started a job is asked.
-func JobID(tool, out string) string {
-	var at string
-	switch tool {
-	case ToolShell:
-		at = JobHandoff
-	case ToolJobStart:
-		at = jobStartPrefix
-	default:
-		return ""
-	}
-	_, rest, ok := strings.Cut(out, at)
-	if !ok {
-		return ""
-	}
-	id, _, _ := strings.Cut(rest, ":")
-	id, _, _ = strings.Cut(id, " ")
-	if !strings.HasPrefix(id, "job-") {
-		return ""
-	}
-	return id
-}
-
 // jobSettle is how long new job output must stay quiet before a job_read
 // wait returns.
 // NOTE: a build that pauses longer returns early and costs another read.
@@ -356,6 +331,7 @@ func runJobStart(ctx context.Context, p *Pipeline, in jobStartArgs) (fantasy.Too
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	p.outcome(ctx, Outcome{Job: id})
 	return fantasy.NewTextResponse(fmt.Sprintf("started %s (%s)", id, line)), nil
 }
 

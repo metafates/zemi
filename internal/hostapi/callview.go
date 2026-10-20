@@ -165,9 +165,9 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 	if n > 0 {
 		o.Prev, o.Next = callStep(h.viewedTranscript(), n)
 	}
-	if job := jobOf(m.Tool, m.Status, m.Output); job != "" {
-		fields = append(fields, Field{Name: "job", Value: job})
-		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "open job", Run: "jobs view " + job})
+	if m.Job != "" {
+		fields = append(fields, Field{Name: "job", Value: m.Job})
+		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "open job", Run: "jobs view " + m.Job})
 	}
 	o.Fields, o.Parts = fields, parts
 	for _, p := range parts {

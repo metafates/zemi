@@ -1375,7 +1375,7 @@ func TestAgentToolHandsOff(t *testing.T) {
 	})
 	h.UserSpoke()
 	resp := waitCall(t, calls)
-	if !strings.HasPrefix(resp.Content, bgAgentStarted) || toolStatus(tools.ToolAgent, out(resp.Content), false) != CallBG {
+	if !strings.HasPrefix(resp.Content, bgAgentStarted) || toolStatus(out(resp.Content), false, tools.Outcome{Run: run.id}) != CallBG {
 		t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
 	}
 	if !run.isRunning() {

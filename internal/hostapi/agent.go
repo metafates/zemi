@@ -84,7 +84,9 @@ type StreamTool struct {
 	Name    string
 	Input   string
 	Status  CallStatus
-	partial string // the head of the streaming input, until Label is known
+	Job     string        // shell and job_start calls: the job the work went to
+	Out     tools.Outcome // what the tool reported beyond its text, read when it ends
+	partial string        // the head of the streaming input, until Label is known
 }
 
 // agentHost owns the live agent session: the model slots config registered,
@@ -93,6 +95,12 @@ type agentHost struct {
 	mu        sync.Mutex
 	runner    *agent.Runner
 	sessionID string
+	// outcomes is what each running call's tool reported beyond its text,
+	// keyed by call id and read once the call ends
+	outcomes map[string]tools.Outcome
+	// rows is the facts of each ended call, kept until the message that drew
+	// it is stored, so a resumed session rebuilds the same rows
+	rows map[string]rowMeta
 
 	// targetsMu guards targets, the slots zemi.model.add and
 	// zemi.agent.profile.add registered. It is a leaf: roleModel reads it with
@@ -1304,20 +1312,20 @@ func inputDiff(name, input string) string {
 // text says, and cancelled is the user denying, dismissing or interrupting
 // it, which is a stop rather than a failure. The only chooser of a
 // CallStatus, so no caller can hand it an outcome it made up.
-func toolStatus(name string, result fantasy.ToolResultOutputContent, cancelled bool) CallStatus {
-	output := agent.ToolOutput(result)
+// toolStatus is a finished call's row status, from the outcome its tool
+// reported and the result itself: a background hand-off, a call that
+// answered with a failure inside, or a stop the user asked for. The only
+// chooser of a CallStatus, so no caller can hand it an outcome it made up.
+func toolStatus(result fantasy.ToolResultOutputContent, cancelled bool, o tools.Outcome) CallStatus {
 	ok := !agent.ErrResult(result)
 	switch {
-	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
-		name == tools.ToolWorkflow && strings.HasPrefix(output, bgWorkflowStarted),
-		name == tools.ToolShell && strings.Contains(output, "so it "+tools.JobHandoff),
-		name == tools.ToolJobStart && ok:
+	case ok && (o.Job != "" || o.Run != ""):
 		return CallBG
-	case name == tools.ToolWorkflow && strings.HasPrefix(output, warnWorkflowFinished):
+	case ok && o.Warn:
 		return CallWarn
 	case ok:
 		return CallOK
-	case cancelled || tools.UserStopped(output):
+	case o.Stopped || cancelled:
 		return CallStopped
 	}
 	return CallErr
@@ -1587,6 +1595,13 @@ func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Durati
 		return nil, err
 	}
 	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
+	if rows := h.takeCallRows(msg); len(rows) > 0 {
+		// the calls this message drew, so a resumed session rebuilds their
+		// rows as they were
+		if meta, err := json.Marshal(rows, json.Deterministic(true)); err == nil {
+			row.RowMeta = string(meta)
+		}
+	}
 	if err := h.DB.AddMessage(row); err != nil {
 		return nil, err
 	}
@@ -2841,6 +2856,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Progress: func(id string, p tools.Progress) {
 			h.setToolProgress(id, sanitize.String(p.Line), sanitize.String(p.Tail))
 		},
+		Outcome:     h.setToolOutcome,
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		ReadOnly:    func() bool { return readOnly },

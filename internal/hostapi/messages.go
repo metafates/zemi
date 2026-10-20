@@ -262,8 +262,8 @@ func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 			actions = append(actions, rowAction("Open the run", "o", "agents view "+m.Run, idx))
 		default:
 			actions = append(actions, rowAction("Open the view", "o", "call "+strconv.Itoa(idx), idx))
-			if job := jobOf(m.Tool, m.Status, m.Output); job != "" {
-				actions = append(actions, rowAction("Open the job", "j", "jobs view "+job, idx))
+			if m.Job != "" {
+				actions = append(actions, rowAction("Open the job", "j", "jobs view "+m.Job, idx))
 			}
 		}
 	default:

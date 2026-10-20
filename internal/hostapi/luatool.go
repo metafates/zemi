@@ -184,6 +184,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		pipe.Script = rel
 		// a call's progress (a command's last line) shows on this tool's row
 		pipe.Progress = func(_ string, p tools.Progress) { h.setToolProgress(call.ID, sanitize.String(p.Line), "") }
+		pipe.Outcome = func(_ string, o tools.Outcome) { h.setToolOutcome(call.ID, o) }
 		set, _ := t.build(&pipe)
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()

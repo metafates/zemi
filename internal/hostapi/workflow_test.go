@@ -239,11 +239,11 @@ func TestWorkflowCallWarns(t *testing.T) {
 		return resp.Content
 	}
 	warned := call(`local r, e = wf.agent("fail") return "the run went on"`)
-	if got := toolStatus(tools.ToolWorkflow, fantasy.ToolResultOutputContentText{Text: warned}, false); got != CallWarn {
+	if got := toolStatus(fantasy.ToolResultOutputContentText{Text: warned}, false, tools.Outcome{Warn: true}); got != CallWarn {
 		t.Fatalf("a call whose run warned reads %s: %q", got, warned)
 	}
 	clean := call(`wf.agent("ok") return "done"`)
-	if got := toolStatus(tools.ToolWorkflow, fantasy.ToolResultOutputContentText{Text: clean}, false); got != CallOK {
+	if got := toolStatus(fantasy.ToolResultOutputContentText{Text: clean}, false, tools.Outcome{}); got != CallOK {
 		t.Fatalf("a call whose run finished reads %s: %q", got, clean)
 	}
 }
@@ -929,7 +929,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			c.act(h, cancel)
 			if c.wantBG {
 				resp := waitCall(t, calls)
-				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(tools.ToolWorkflow, out(resp.Content), false) != CallBG {
+				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(out(resp.Content), false, tools.Outcome{Run: "f"}) != CallBG {
 					t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
 				}
 				if !f.isRunning() {
@@ -1141,7 +1141,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	seedSession(t, h)
 	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true,"description":"scan six parts"}`})
-	if err != nil || toolStatus(tools.ToolWorkflow, out(resp.Content), false) != CallBG {
+	if err != nil || toolStatus(out(resp.Content), false, tools.Outcome{Run: "f"}) != CallBG {
 		t.Fatalf("background start = %+v, %v", resp, err)
 	}
 	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]

@@ -151,7 +151,7 @@ func TestJobReadOfAFailedJobIsAnError(t *testing.T) {
 			if start.IsError {
 				t.Fatal(start.Content)
 			}
-			id := JobID(ToolJobStart, start.Content)
+			id := p.Jobs.List()[0].ID // the one job this pipeline started
 			if c.killed {
 				if res, _ := runJobKill(t.Context(), p, jobKillArgs{ID: id}); res.IsError {
 					t.Fatal(res.Content)

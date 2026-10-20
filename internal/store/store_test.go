@@ -58,7 +58,9 @@ func TestMigrationKeepsData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{`DROP TABLE goose_db_version`, `PRAGMA user_version = 8`} {
+	// a store from an older zemi: no goose table, and none of the columns a
+	// later migration added
+	for _, q := range []string{`DROP TABLE goose_db_version`, `ALTER TABLE messages DROP COLUMN row_meta`, `PRAGMA user_version = 8`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -74,8 +76,8 @@ func TestMigrationKeepsData(t *testing.T) {
 		t.Fatalf("sessions = %d, %v", n, err)
 	}
 	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 1 {
-		t.Fatalf("goose version = %d, %v; want 1", version, err)
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("goose version = %d, %v; want 2", version, err)
 	}
 }
 

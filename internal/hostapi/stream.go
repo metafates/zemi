@@ -144,15 +144,19 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 
 func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, changed string) {
 	ag := s.h.agents
-	t := s.h.turn.Load()
-	status := toolStatus(name, result, t != nil && t.ctx.Err() != nil)
+	turn := s.h.turn.Load()
 	ok, output := !agent.ErrResult(result), agent.ToolOutput(result)
+	o := s.h.takeToolOutcome(id)
 	row := StreamTool{ID: id, Name: name}
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		t := &ag.tools[i]
 		if t.ID == id && (t.Status == CallRun || t.Status == CallWait) {
-			t.Status, t.Output = status, rowOutput(name, output)
+			t.Status = toolStatus(result, turn != nil && turn.ctx.Err() != nil, o)
+			t.Output, t.Job = rowOutput(name, output), o.Job
+			if o.Run != "" {
+				t.Run = o.Run
+			}
 			if !ok {
 				t.Diff = "" // the change did not happen
 			}
@@ -167,6 +171,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 		}
 	}
 	ag.mu.Unlock()
+	s.h.setCallRow(id, rowMeta{Status: row.Status, Run: row.Run, Job: row.Job})
 	s.h.agentStream()
 	s.h.recordToolCall(s.h.AgentSessionID(), row, ok)
 	if name == tools.ToolTodos {

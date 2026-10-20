@@ -320,6 +320,14 @@ type OverlayKey struct {
 	Applies func(OverlayItem) bool
 }
 
+// rowMeta is what a transcript row knows beyond its text: the facts a
+// resumed session rebuilds it from, kept beside the message that drew it.
+type rowMeta struct {
+	Status CallStatus `json:"status,omitempty"`
+	Run    string     `json:"run,omitempty"`
+	Job    string     `json:"job,omitempty"`
+}
+
 // ChatMessage is a transcript entry (composer submissions); assistant
 // replies carry the turn stats the chat widget renders.
 type ChatMessage struct {
@@ -331,6 +339,7 @@ type ChatMessage struct {
 	Status CallStatus // tool and shell rows; an error row an interrupt left is CallCancelled
 	Detail string     // tool rows: subagent or workflow progress summary; notice rows: a hint drawn after the text, never copied
 	Tail   string     // a running shell row: its output tail, which its view reads as it grows
+	Job    string     // shell and job_start rows: the job the call handed the work to
 	Run    string     // agent tool rows: the run id
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
@@ -351,15 +360,6 @@ func Plural(n int, one, many string) string {
 // MoreLines is the one wording of what a cut left out: "… 3 more lines".
 func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, Plural(n, "line", "lines"))
-}
-
-// jobOf is the job a finished call handed off to, "" for any other call: the
-// row carries the id, so a widget never reads it out of the result's prose.
-func jobOf(tool string, status CallStatus, output string) string {
-	if status != CallBG {
-		return ""
-	}
-	return tools.JobID(tool, output)
 }
 
 // rowOutput is a tool result as its transcript row shows it, else
@@ -1959,7 +1959,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 		row.RawSetString("status", glua.LString(t.Status))
 		row.RawSetString("detail", glua.LString(t.Detail))
 		row.RawSetString("run", glua.LString(t.Run))
-		row.RawSetString("job", glua.LString(jobOf(t.Name, t.Status, t.Output)))
+		row.RawSetString("job", glua.LString(t.Job))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
 		if !t.Started.IsZero() {
 			row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
@@ -1983,7 +1983,7 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 	row.RawSetString("status", glua.LString(m.Status))
 	row.RawSetString("detail", glua.LString(m.Detail))
 	row.RawSetString("run", glua.LString(m.Run))
-	row.RawSetString("job", glua.LString(jobOf(m.Tool, m.Status, m.Output)))
+	row.RawSetString("job", glua.LString(m.Job))
 	row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 	row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 	row.RawSetString("output", glua.LString(m.Output))

@@ -25,7 +25,7 @@ func TestCallView(t *testing.T) {
 		Role: "assistant", Kind: RowTool, Tool: "question", Text: "Where?", Status: CallOK,
 		Output: "Where?\tin main\tbecause\nWhat?\tnow\t\n",
 	})
-	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "make slow", Status: CallBG, Output: "still running, so it " + tools.JobHandoff + "job-3"})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "make slow", Status: CallBG, Job: "job-3", Output: "still running"})
 
 	for _, c := range []struct {
 		row    int
