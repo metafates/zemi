@@ -588,10 +588,10 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	runUser(t, r, `
 		zemi.config.set("memory.autonomy", "auto")
 
-		zemi.config.set("agent.max_steps", 42)
+		zemi.config.set("agent.max_background", 42)
 	`)
-	if v, ok := h.Settings.Get("agent.max_steps"); !ok || v != 42.0 {
-		t.Fatalf("agent.max_steps = %v, want 42", v)
+	if v, ok := h.Settings.Get("agent.max_background"); !ok || v != 42.0 {
+		t.Fatalf("agent.max_background = %v, want 42", v)
 	}
 }
 
