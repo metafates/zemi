@@ -268,7 +268,7 @@ func (h *Host) storeProposal(res *learn.Result) (cut []string, err error) {
 		}
 	}
 	m.ID = l.ID
-	h.EmitAsync("memory.written", map[string]any{
+	h.EmitAsync(EventMemoryWritten, map[string]any{
 		"id": m.ID, "scope": m.Scope, "origin": m.Origin, "text": m.Text,
 	})
 	return cut, nil

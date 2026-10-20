@@ -301,7 +301,7 @@ func (h *Host) reflectClaimed(sid, claim string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
 	defer cancel()
 	defer h.Busy("Reflecting", cancel)()
-	h.EmitAsync("reflector.start", map[string]any{"session": sid})
+	h.EmitAsync(EventReflectorStart, map[string]any{"session": sid})
 	tries, _ := h.DB.GetKV(reflectTriesKey(sid))
 	try, _ := strconv.Atoi(tries)
 	try++
@@ -332,7 +332,7 @@ func (h *Host) reflectClaimed(sid, claim string) bool {
 	h.agents.mu.Unlock()
 	if err != nil {
 		h.Log.Warn("run failed", "origin", "reflector", "session", sid, "error", err)
-		h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
+		h.EmitAsync(EventReflectorDone, map[string]any{"session": sid, "error": err.Error()})
 	}
 	return true
 }
@@ -371,7 +371,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 		"superseded": superseded, "skipped": skipped,
 	}
 	h.Log.Info("run complete", "origin", "reflector", "result", result)
-	h.EmitAsync("reflector.done", result)
+	h.EmitAsync(EventReflectorDone, result)
 	return read, nil
 }
 

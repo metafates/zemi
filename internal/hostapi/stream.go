@@ -36,7 +36,7 @@ func (s *streamAdapter) TextDelta(text string) {
 	s.h.agentStream()
 	// NOTE: one queue round trip per delta; fine for the few configs that
 	// listen, coalesce here if one ever streams into something slow.
-	s.h.EmitAsync("agent.text_delta", map[string]any{"text": text})
+	s.h.EmitAsync(EventAgentTextDelta, map[string]any{"text": text})
 }
 
 func (s *streamAdapter) StepStart() {
@@ -88,7 +88,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag.retryAt = time.Time{}
 	ag.mu.Unlock()
 	s.h.agentStream()
-	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
+	s.h.EmitAsync(EventAgentReasoningDelta, map[string]any{"text": text})
 }
 
 // ToolCallPending shows the call while the model is still streaming its
@@ -256,7 +256,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
 	if err != nil {
-		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
+		h.EmitAsync(EventAgentError, map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
 		// that ended silently looks like zemi ignored the message.
 		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
@@ -269,8 +269,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
 			"cost": h.turnCost(model, usage),
 		}}
-		h.EmitAsync("agent.finish", payload)
-		h.consultHooks("agent.finish", nil)
+		h.EmitAsync(EventAgentFinish, payload)
+		h.consultHooks(EventAgentFinish, nil)
 	}
 }
 

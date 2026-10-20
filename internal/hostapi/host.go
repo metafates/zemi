@@ -255,14 +255,29 @@ var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallWarn, CallErr, Ca
 // Mark is a row's state mark: a glyph one cell wide and its theme group.
 type Mark struct{ Glyph, HL string }
 
+// MarkKind names a state mark: a key of Marks, and the word a row or Lua
+// passes to ask for one.
+type MarkKind string
+
+const (
+	MarkSpin    MarkKind = "spin" // drawn with the "spin" effect, which steps its glyph through Spinner
+	MarkOK      MarkKind = "ok"
+	MarkWarn    MarkKind = "warn"
+	MarkErr     MarkKind = "err"
+	MarkStop    MarkKind = "stop"
+	MarkBG      MarkKind = "bg"
+	MarkWait    MarkKind = "wait"
+	MarkThought MarkKind = "thought"
+	MarkNote    MarkKind = "note"
+)
+
 // Marks are the state marks every row shares, the chat's calls and the
 // lists' runs alike (zemi.ui.marks), one glyph and one meaning each:
 // running, finished, finished with a failure inside, failed, stopped by the
-// user, going on in the background, waiting, reasoning and a notice. "spin"
-// is drawn with the "spin" effect, which steps its glyph through Spinner.
-var Marks = map[string]Mark{
-	"spin": {Spinner[0], "Dim"}, "ok": {"✓", "Ok"}, "warn": {"!", "Warn"}, "err": {"✗", "Danger"}, "stop": {"■", "Dim"},
-	"bg": {"⧗", "Dim"}, "wait": {"·", "Dim"}, "thought": {"✻", "ThinkingMark"}, "note": {"◦", "Dim"},
+// user, going on in the background, waiting, reasoning and a notice.
+var Marks = map[MarkKind]Mark{
+	MarkSpin: {Spinner[0], "Dim"}, MarkOK: {"✓", "Ok"}, MarkWarn: {"!", "Warn"}, MarkErr: {"✗", "Danger"}, MarkStop: {"■", "Dim"},
+	MarkBG: {"⧗", "Dim"}, MarkWait: {"·", "Dim"}, MarkThought: {"✻", "ThinkingMark"}, MarkNote: {"◦", "Dim"},
 }
 
 // Spinner is the running mark's frames, one per frame tick.

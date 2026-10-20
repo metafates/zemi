@@ -34,6 +34,10 @@ const (
 	hookContextMax  = 16 << 10
 )
 
+// hookSessionStart keys the registry's SessionStart capture. Nothing emits
+// it: it is not an event, and captureSessionContext is its only reader.
+const hookSessionStart = "session.start"
+
 // hookEventMap maps the Claude events zemi runs to the zemi events that
 // consult them. Everything else is refused at load: PreToolUse and
 // PermissionRequest would need deny semantics zemi's gate does not give a
@@ -41,13 +45,13 @@ const (
 // UserPromptSubmit would tax every submit (SessionStart is the supported
 // route), and the rest have no counterpart.
 var hookEventMap = map[string]string{
-	"PostToolUse":      "tool.post",
-	"PermissionDenied": "tool.denied",
-	"Stop":             "agent.finish",
-	"SessionEnd":       "session.close",
-	"SubagentStart":    "agent.subagent.start",
-	"SubagentStop":     "agent.subagent.finish",
-	"SessionStart":     "session.start",
+	"PostToolUse":      EventToolPost,
+	"PermissionDenied": EventToolDenied,
+	"Stop":             EventAgentFinish,
+	"SessionEnd":       EventSessionClose,
+	"SubagentStart":    EventAgentSubagentStart,
+	"SubagentStop":     EventAgentSubagentFinish,
+	"SessionStart":     hookSessionStart,
 }
 
 // hookEntry is one hook command the registry fires.
@@ -251,7 +255,7 @@ func (h *Host) runHook(e hookEntry, input []byte, timeout time.Duration) string 
 // rebuilds with it. A reload never re-runs it: this is session state, not
 // registry state.
 func (h *Host) captureSessionContext(sid, kind string) {
-	entries := h.hookReg.handlers("session.start")
+	entries := h.hookReg.handlers(hookSessionStart)
 	if len(entries) == 0 || proc.Refused() != nil {
 		return
 	}

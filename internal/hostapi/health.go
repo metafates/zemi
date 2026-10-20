@@ -599,13 +599,13 @@ func (h *Host) OpenHealth() error {
 
 // healthMarks is a check's level as the mark the transcript uses for the same
 // state, so /health reads in the one state vocabulary the product has.
-var healthMarks = map[HealthLevel]string{HealthOK: "ok", HealthWarn: "warn", HealthError: "err"}
+var healthMarks = map[HealthLevel]MarkKind{HealthOK: MarkOK, HealthWarn: MarkWarn, HealthError: MarkErr}
 
 // healthItems are the /health rows, problems first.
 func (h *Host) healthItems() []any {
 	var problems, ok []any
 	for _, c := range h.HealthRows() {
-		item := map[string]any{"text": c.Name, "desc": c.Detail, "section": "OK", "mark": healthMarks[c.Level]}
+		item := map[string]any{"text": c.Name, "desc": c.Detail, "section": "OK", "mark": string(healthMarks[c.Level])}
 		// a detail view that only repeats a short, fine row leads nowhere
 		if c.Run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
 			item["detail"] = c.Detail

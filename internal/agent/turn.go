@@ -599,7 +599,7 @@ const (
 // pollingTools are meant to be called again with the same input: waiting on
 // a job is not a loop, it is how the model watches one. Such a step is left
 // out of the comparison entirely, so one poll cannot break a real loop's run.
-var pollingTools = set.Of("job_read", "job_list")
+var pollingTools = set.Of(tools.ToolJobRead, tools.ToolJobList)
 
 // IsWaitCall is a call that waits on a run the model started detached: the
 // workflow tool's wait action, the agent tool's wait flag. Waiting is how the

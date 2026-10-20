@@ -779,9 +779,9 @@ func (h *Host) mcpWaitingNames() []string {
 
 // mcpMarks are the list rows' status marks, the chat's: starting spins and
 // a server waiting for a sign-in waits.
-var mcpMarks = map[ServiceStatus]string{
-	StatusStarting: "spin", StatusReady: "ok", StatusFailed: "err",
-	StatusSignIn: "wait", StatusStopped: "stop", StatusOff: "stop",
+var mcpMarks = map[ServiceStatus]MarkKind{
+	StatusStarting: MarkSpin, StatusReady: MarkOK, StatusFailed: MarkErr,
+	StatusSignIn: MarkWait, StatusStopped: MarkStop, StatusOff: MarkStop,
 }
 
 func (h *Host) mcpItems() []any {
@@ -822,7 +822,7 @@ func (h *Host) mcpItems() []any {
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
 			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
 		}
-		item := map[string]any{"text": s.name, "desc": desc, "mark": mcpMarks[status], "fields": fields, "actions": actions}
+		item := map[string]any{"text": s.name, "desc": desc, "mark": string(mcpMarks[status]), "fields": fields, "actions": actions}
 		if signIn != "" {
 			// the URL is too long for a toast; y copies it when the browser
 			// was blocked
