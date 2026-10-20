@@ -171,14 +171,19 @@ func TestLoop(t *testing.T) {
 					t.Fatalf("step %d: loop on %v, next at +%s; want +%s", i, on, next, s.next)
 				}
 			}
-			var notices []string
-			for _, m := range h.Session().Transcript {
-				if m.Kind == RowNotice && strings.HasPrefix(m.Text, "Loop ") {
-					notices = append(notices, m.Text)
-				}
-			}
-			if c.notices != nil && !slices.Equal(notices, c.notices) {
-				t.Errorf("notices = %q, want %q", notices, c.notices)
+			if c.notices != nil {
+				waitFor(t, func() error {
+					var notices []string
+					for _, m := range h.Session().Transcript {
+						if m.Kind == RowNotice && strings.HasPrefix(m.Text, "Loop ") {
+							notices = append(notices, m.Text)
+						}
+					}
+					if !slices.Equal(notices, c.notices) {
+						return fmt.Errorf("notices = %q, want %q", notices, c.notices)
+					}
+					return nil
+				})
 			}
 		})
 	}

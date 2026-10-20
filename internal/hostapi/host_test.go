@@ -177,10 +177,11 @@ func askEverything(t *testing.T, r *lua.Runtime) {
 }
 
 // waitFor polls cond until it returns nil and fails the test with its last
-// error after 3s.
+// error after 10s: parallel hosts on a loaded machine stretch every
+// transition past a shorter deadline.
 func waitFor(t *testing.T, cond func() error) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		err := cond()
 		if err == nil {

@@ -25,7 +25,7 @@ func waitIdle(t *testing.T, h *Host) {
 	t.Helper()
 	waitFor(t, func() error {
 		if h.AgentActive() {
-			return errors.New("turn did not finish within 3s")
+			return errors.New("turn did not finish")
 		}
 		return nil
 	})

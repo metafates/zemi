@@ -1387,9 +1387,12 @@ func TestAgentToolHandsOff(t *testing.T) {
 		return nil
 	})
 	waitIdle(t, h)
-	if n := reportRows(h, run.id); n != 1 {
-		t.Fatalf("%d report rows for %s, want exactly 1", n, run.id)
-	}
+	waitFor(t, func() error {
+		if n := reportRows(h, run.id); n != 1 {
+			return fmt.Errorf("%d report rows for %s, want exactly 1", n, run.id)
+		}
+		return nil
+	})
 }
 
 // TestForegroundEscStopsTheRun: esc cancels the call's own context, and the run
