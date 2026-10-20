@@ -565,9 +565,9 @@ func TestSessionsAcrossProjects(t *testing.T) {
 			}
 		}
 		db.Close()
-		ids[p.root] = sid
+		ids[perm.CanonPath(p.root)] = sid
 	}
-	theirs := ids[other]
+	theirs := ids[perm.CanonPath(other)]
 	for _, c := range []struct {
 		name           string
 		args           []string
@@ -586,7 +586,7 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
 		// -r takes any session id: this project's, or one another project holds
 		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},
-		{name: "-r keeps this project", args: []string{"-r", ids[base]}, root: base},
+		{name: "-r keeps this project", args: []string{"-r", ids[perm.CanonPath(base)]}, root: base},
 		{name: "-r leaves an explicit -C alone", args: []string{"-C", base, "-r", theirs}, root: base},
 	} {
 		var out, errOut strings.Builder
