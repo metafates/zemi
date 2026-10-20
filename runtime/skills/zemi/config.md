@@ -53,7 +53,7 @@ A definition is a target as well: `models.<profile>` overrides the `model` a pro
 - `lsp.auto`: under MCP and language servers.
 
 - `agent.compact_at`: the percent of the model's context window auto compaction waits for (80, never under half the window); `100` leaves only `/compact` and a provider's too-long refusal. Every model divides by its own `context_window`.
-- `agent.max_background`, `agent.max_steps`, `session.auto_title`, `session.recap`, `ui.theme` and `ui.mouse`: the schema's description covers them.
+- `agent.max_background`, `session.auto_title`, `session.recap`, `ui.theme` and `ui.mouse`: the schema's description covers them.
 
 ## Permissions
 
