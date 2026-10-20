@@ -383,6 +383,8 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
 	// NOTE: every distinct theme key stays registered for the process; a
 	// session that sets thousands of highlight overrides would grow it.
+	styleMu.Lock()
+	defer styleMu.Unlock()
 	if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
 		entries := chroma.StyleEntries{}
 		for i, cg := range codeGroups {
@@ -414,6 +416,10 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 
 // codeGroups is how code draws: the chroma style markdownStyle registers
 // for code blocks and the groups Highlight names both come from it.
+// styleMu serializes the check-and-register below: styles.Registry is
+// chroma's unlocked global map, and two hosts render markdown concurrently.
+var styleMu sync.Mutex
+
 var codeGroups = [...]struct {
 	tok   chroma.TokenType
 	group string

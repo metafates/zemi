@@ -9,6 +9,7 @@ import (
 )
 
 func TestMarkdown(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		local function join(line)
@@ -394,6 +395,7 @@ func TestHighlight(t *testing.T) {
 // and the light variant, blocks sit one blank row apart and a quote keeps
 // its bar on every row it wraps to.
 func TestMarkdownTheme(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
 		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"
