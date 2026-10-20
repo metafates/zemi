@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"flag"
 	"os"
 	"testing"
 
@@ -14,5 +15,8 @@ func TestMain(m *testing.M) {
 		lsptest.Serve(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
+	// parallel host boots saturate the kernel past four, and the veto and
+	// turn ceilings measure wall time however loaded the machine is
+	flag.Set("test.parallel", "4")
 	m.Run()
 }
