@@ -74,7 +74,11 @@ func TestExportAndFork(t *testing.T) {
 	a, _ := h.DB.Messages(orig)
 	b, _ := h.DB.Messages(id)
 	if len(a) == 0 || len(a) != len(b) || len(h.Session().Transcript) != 2 {
-		t.Fatalf("fork copied %d of %d messages, transcript %d rows", len(b), len(a), len(h.Session().Transcript))
+		extra := []string{}
+		for _, m := range b[min(len(a), len(b)):] {
+			extra = append(extra, m.Role+": "+m.PartsJSON)
+		}
+		t.Fatalf("fork copied %d of %d messages, transcript %d rows, fork's extra: %q", len(b), len(a), len(h.Session().Transcript), extra)
 	}
 }
 

@@ -296,7 +296,15 @@ func TestTurnTelemetry(t *testing.T) {
 		one, _ := h.GlobalDB.GetKV("step1")
 		two, _ := h.GlobalDB.GetKV("step2")
 		if one != `"1 number number"` || two != `"0 number number"` {
-			return fmt.Errorf("agent.step = %s, %s", one, two)
+			h.evlog.mu.Lock()
+			emitted := []any{}
+			for _, e := range h.evlog.entries {
+				if e.name == "agent.step" {
+					emitted = append(emitted, e.payload["step"])
+				}
+			}
+			h.evlog.mu.Unlock()
+			return fmt.Errorf("agent.step = %s, %s (events emitted for steps %v)", one, two, emitted)
 		}
 		return nil
 	})

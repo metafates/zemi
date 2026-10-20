@@ -940,12 +940,12 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 					if f.isRunning() {
 						return errors.New("the run never ended")
 					}
+					if n := reportRows(h, f.id); n != 1 {
+						return fmt.Errorf("%d report rows for %s, want exactly 1", n, f.id)
+					}
 					return nil
 				})
 				waitIdle(t, h)
-				if n := reportRows(h, f.id); n != 1 {
-					t.Fatalf("%d report rows for %s, want exactly 1", n, f.id)
-				}
 				return
 			}
 			close(gate)

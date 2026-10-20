@@ -395,11 +395,20 @@ func TestLSPRealLuaLS(t *testing.T) {
 	}
 	bad := filepath.Join(plugin, ".zemi", "lua", "bad.lua")
 	os.WriteFile(bad, []byte("zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"), 0o644)
-	// the first check, which starts the server, finds it
-	got, _ := h.lspDiagnostics(bad)
-	if !strings.Contains(got, "error ") || !strings.Contains(got, "region") {
-		t.Fatalf("the planted spec: %q", got)
-	}
+	// the first check, which starts the server, finds it: a server that just
+	// started indexes the project first, so ask until it publishes
+	var got string
+	waitFor(t, func() error {
+		out, err := h.lspDiagnostics(bad)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(out, "error ") || !strings.Contains(out, "region") {
+			return fmt.Errorf("the planted spec: %q", out)
+		}
+		got = out
+		return nil
+	})
 	// an edit that leaves the error as it was gets no new publish
 	spec, _ := os.ReadFile(bad)
 	os.WriteFile(bad, append(spec, "-- still broken\n"...), 0o644)
