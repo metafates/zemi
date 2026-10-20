@@ -756,7 +756,7 @@ func TestMessagesRail(t *testing.T) {
 	}
 	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	pump()
-	if id, n := top().o.ID, len(top().visible); id != "messages rail 2" || n != 3 {
+	if id, n := top().o.ID, len(top().visible); id != "messages turn 1 rail 2" || n != 3 {
 		t.Fatalf("rail view: %q, %d rows", id, n)
 	}
 	// the run draws whole, and only the picked call's row is banded
@@ -787,25 +787,29 @@ func TestMessagesRail(t *testing.T) {
 	}
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 	pump()
-	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages rail 2" || top().selected != row {
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 1 rail 2" || top().selected != row {
 		t.Fatalf("esc on the view: %d overlays, %q at %d, want the rail at %d", n, id, top().selected, row)
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q after esc, want the picked call", got)
 	}
-	// enter is the row's place in the chat, never a level down: this level
-	// closes on the call it named, the chat keeping that place
+	// enter is the row's place in the chat, never a level down: the menu
+	// closes whole on the call it named, the chat keeping that place
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	pump()
-	if n, id := len(app.overlays), top().o.ID; n != 1 || id != "messages turn 1" {
-		t.Fatalf("enter on a call left %d overlays, %q", n, id)
+	if n := len(app.overlays); n != 0 {
+		t.Fatalf("enter on a call left %d overlays", n)
 	}
 	if got := app.scrolls["chat"].focus; got != 3 {
 		t.Fatalf("the chat kept %d as its place, want the call's row 3", got)
 	}
-	if err := host.MessagesCommand("rail 2"); err != nil {
+	if err := host.MessagesCommand("turn 1"); err != nil {
 		t.Fatal(err)
 	}
+	pump()
+	press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	pump()
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	pump()
 	// back to the turn folds the run again, the band on its one row. The
 	// list waits for the chat to render it folded, so no frame shows the run
@@ -820,5 +824,19 @@ func TestMessagesRail(t *testing.T) {
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "· ") {
 		t.Fatalf("banded %q, want the run's row", got)
+	}
+	// a rail is a level of its turn, so esc on it closes the menu whole
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if n := len(app.overlays); n != 2 {
+		t.Fatalf("%d overlays before esc", n)
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	pump()
+	if n := len(app.overlays); n != 0 {
+		t.Fatalf("esc on the rail left %d overlays", n)
+	}
+	if app.rail != 0 || strings.Contains(frame(), "read a") {
+		t.Fatalf("rail %d, the run still open:\n%s", app.rail, frame())
 	}
 }

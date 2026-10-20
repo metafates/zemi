@@ -180,6 +180,8 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	if i := a.overlayIndex(o.ID); i >= 0 {
 		a.replaceOverlay(i, o)
 		a.refreshDetail(i)
+		a.byRow = false
+		a.syncRail()
 		return
 	}
 	if o.Refresh {
@@ -1182,21 +1184,28 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 
-// bodyParts lays a view's parts out: a part naming a Fill keeps a blank row
-// above and below it, off its surface, so a command and what it answered
-// stand as two bands of one block with air between them. A part outside a
-// fill keeps one blank row before it.
+// bodyParts lays a view's parts out: a part naming a Fill keeps a padding row
+// of its own surface above and below it, so a command and what it answered
+// stand as two blocks joined in one, each with air all around its text and
+// nothing between them but their own padding. A part outside a fill keeps
+// one blank row before it, and an empty one draws nothing: a call with no
+// output yet is its command alone.
 func (a *App) bodyParts(parts []hostapi.BodyPart, w int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
-	for i, p := range parts {
-		well := p.Fill != hostapi.FillAuto
-		if well || i > 0 && parts[i-1].Fill == hostapi.FillAuto {
-			rows = append(rows, nil)
+	for _, p := range parts {
+		if strings.TrimSpace(p.Text) == "" && p.Fill != hostapi.FillAuto {
+			continue
 		}
+		if p.Fill == hostapi.FillAuto {
+			if len(rows) > 0 {
+				rows = append(rows, nil)
+			}
+			rows = append(rows, a.bodyPart(p, w)...)
+			continue
+		}
+		rows = append(rows, wellPad(p.Fill, w))
 		rows = append(rows, a.bodyPart(p, w)...)
-		if well {
-			rows = append(rows, nil)
-		}
+		rows = append(rows, wellPad(p.Fill, w))
 	}
 	return rows
 }

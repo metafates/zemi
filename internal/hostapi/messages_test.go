@@ -121,7 +121,7 @@ func TestMessagesTurnRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := ui.opened[len(ui.opened)-1]
-	if r.ID != "messages rail 2" || r.Title != "Messages / Turn 1 activity" || r.Rail != 2 || !r.Follow {
+	if r.ID != "messages turn 1 rail 2" || r.Title != "Messages / Turn 1 activity" || r.Rail != 2 || !r.Follow {
 		t.Fatalf("rail view: %s %q rail=%d", r.ID, r.Title, r.Rail)
 	}
 	var calls []row
@@ -167,7 +167,8 @@ func TestMessagesView(t *testing.T) {
 	if err := h.openMessageView(1); err != nil {
 		t.Fatal(err)
 	}
-	if o := ui.opened[len(ui.opened)-1]; o.Title != "Prompt" || o.BodyMD {
+	// a prompt reads in markdown too: the model's own text is written in it
+	if o := ui.opened[len(ui.opened)-1]; o.Title != "Prompt" || !o.BodyMD {
 		t.Errorf("prompt view = %q %v", o.Title, o.BodyMD)
 	}
 	if err := h.openMessageView(9); err == nil {

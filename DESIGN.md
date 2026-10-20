@@ -1972,11 +1972,12 @@ rides the `memories.md` line and its ledger entries.
   parts, each drawn the way its text is written - markdown, a unified diff,
   or a language to highlight it as - and a body its work rewrites (`Live`)
   keeps the reader's place, or follows its tail while they never scrolled.
-  A part that names a surface covers its own rows alone, with a blank row
-  above and below it, so a call's command (the canvas, sunk into the box)
-  and what it answered (the well, a step above the box) read as two bands
-  of one block with air between them, and they differ in nothing but their
-  surface, as `/jobs view` draws it too. A `status` field colors the status
+  A part that names a surface keeps a padding row of that surface above and
+  below it, and an empty one draws nothing, so a call's command (the canvas,
+  sunk into the box) and what it answered (the well, a step above the box)
+  join as two blocks of one with their own padding between their texts and
+  nothing but it, as `/jobs view` draws it too: a call that has not answered
+  yet is its command alone. A `status` field colors the status
   words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
@@ -2192,7 +2193,9 @@ rides the `memories.md` line and its ledger entries.
   reader is, the way muffin opens on the symbol under the cursor, not on its
   first row: the levels down to the row the view's middle draws come up
   together, turns then the turn then its rail, and `h` walks back up, each
-  level on the row it was left on, while `esc` closes the whole menu. `l` is
+  level on the row it was left on, while `esc` closes the whole menu: a
+  level's id is its parent's and its own, so a rail is the turn's child and
+  the menu closes whole from any of them. `l` is
   the one way down a level: a row's own view or the run its keys open. `enter`
   on a row of any level is the place itself - the menu closes and the chat
   stays there, the run folding under it - so enter answers "open in chat"

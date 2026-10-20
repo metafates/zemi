@@ -1749,9 +1749,10 @@ func TestOverlayStepsAlongRail(t *testing.T) {
 	}
 }
 
-// TestBodyPartsWell: a part naming a surface covers its own rows alone, with
-// a blank row above and below it, so a command and what it answered differ in
-// their surface and nothing else, while a part outside keeps one gap.
+// TestBodyPartsWell: a part naming a surface carries its own padding row
+// above and below, on that surface, so a command and what it answered join as
+// two blocks of one, nothing between them but their own padding; a part
+// outside keeps one blank row, and an empty one draws nothing at all.
 func TestBodyPartsWell(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
@@ -1770,13 +1771,14 @@ func TestBodyPartsWell(t *testing.T) {
 	}
 	row := func(fill hostapi.Fill, text string) string { return fmt.Sprintf("%d:%s", fill, text) }
 	want := []string{
-		row(hostapi.FillAuto, ""),                // air above the command
-		row(hostapi.FillCanvas, "go test ./..."), // the command, on the canvas
-		row(hostapi.FillAuto, ""),                // air, one row from each part
-		row(hostapi.FillAuto, ""),                //
-		row(hostapi.FillWell, "ok"),              // what it answered, on the well
-		row(hostapi.FillAuto, ""),                // air under it
-		row(hostapi.FillAuto, "done"),            // a part outside, one gap before it
+		row(hostapi.FillCanvas, ""), // the command's padding
+		row(hostapi.FillCanvas, "go test ./..."),
+		row(hostapi.FillCanvas, ""),
+		row(hostapi.FillWell, ""), // the answer's, joined straight to it
+		row(hostapi.FillWell, "ok"),
+		row(hostapi.FillWell, ""),
+		row(hostapi.FillAuto, ""), // the gap before a part outside
+		row(hostapi.FillAuto, "done"),
 	}
 	if got := rows(
 		hostapi.BodyPart{Text: "go test ./...", Lang: "bash", Fill: hostapi.FillCanvas},
@@ -1784,6 +1786,15 @@ func TestBodyPartsWell(t *testing.T) {
 		hostapi.BodyPart{Text: "done", Lang: "markdown"},
 	); !slices.Equal(got, want) {
 		t.Fatalf("rows %q, want %q", got, want)
+	}
+	// a call that has answered nothing yet is its command alone
+	if got := rows(
+		hostapi.BodyPart{Text: "sleep 9", Lang: "bash", Fill: hostapi.FillCanvas},
+		hostapi.BodyPart{Fill: hostapi.FillWell},
+	); !slices.Equal(got, []string{
+		row(hostapi.FillCanvas, ""), row(hostapi.FillCanvas, "sleep 9"), row(hostapi.FillCanvas, ""),
+	}) {
+		t.Fatalf("a call with no output yet: %q", got)
 	}
 	// a surface is the body's width whole: the text wraps inside its padding
 	for _, row := range app.bodyParts([]hostapi.BodyPart{{Text: strings.Repeat("x ", 40), Fill: hostapi.FillWell}}, 20) {

@@ -74,7 +74,7 @@ func (h *Host) OpenMessages() error {
 	if run != 0 {
 		if o, ok := h.messagesRailOverlay(tr, run); ok {
 			ui.OpenOverlay(o)
-			ids = append(ids, "messages rail "+strconv.Itoa(run))
+			ids = append(ids, o.ID)
 		}
 	}
 	h.trackMessages(ids...)
@@ -116,16 +116,18 @@ func (h *Host) refreshMessages() {
 // messagesLevel builds one of the picker's levels from a transcript, ok false
 // for an id it no longer holds.
 func (h *Host) messagesLevel(id string, tr []ChatMessage) (Overlay, bool) {
+	if _, rail, ok := strings.Cut(id, " rail "); ok { // a turn's rail level
+		if n, err := strconv.Atoi(rail); err == nil {
+			return h.messagesRailOverlay(tr, n)
+		}
+		return Overlay{}, false
+	}
 	switch {
 	case id == "messages":
 		return h.messagesOverlay(tr), true
 	case strings.HasPrefix(id, "messages turn "):
 		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages turn ")); err == nil {
 			return h.messagesTurnOverlay(tr, n)
-		}
-	case strings.HasPrefix(id, "messages rail "):
-		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages rail ")); err == nil {
-			return h.messagesRailOverlay(tr, n)
 		}
 	}
 	return Overlay{}, false
@@ -342,7 +344,10 @@ func (h *Host) messagesRailOverlay(tr []ChatMessage, first int) (Overlay, bool) 
 				continue
 			}
 			o := Overlay{
-				ID: "messages rail " + strconv.Itoa(first), Title: "Messages / Turn " + strconv.Itoa(t.n) + " activity",
+				// a level's id starts with the id of the one it opened from,
+				// so the menu closes whole from any of its levels
+				ID:     "messages turn " + strconv.Itoa(t.first) + " rail " + strconv.Itoa(first),
+				Title:  "Messages / Turn " + strconv.Itoa(t.n) + " activity",
 				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
 			}
 			for _, idx := range e.run.rows {
@@ -528,7 +533,7 @@ func (h *Host) openMessageView(n int) error {
 		title = "Thought"
 		md = true
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
-		title = "Prompt"
+		title, md = "Prompt", true
 	case m.Kind == "":
 		title = "Reply"
 		md = true

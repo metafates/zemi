@@ -2394,7 +2394,7 @@ func TestLiveRailOpensWhole(t *testing.T) {
 	short := strings.Count(ansi.Strip(app.Frame()), "read f")
 	app.uiState()
 	app.openOverlay(hostapi.Overlay{
-		ID: "messages rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
+		ID: "messages turn 1 rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
 		Items: []hostapi.OverlayItem{{Text: "run", Anchor: first}},
 	})
 	app.renderSync(t)
@@ -2423,7 +2423,7 @@ func TestLiveRailOpensWhole(t *testing.T) {
 	app.Frame()
 	shortTail := strings.Count(ansi.Strip(app.Frame()), "live p")
 	app.openOverlay(hostapi.Overlay{
-		ID: "messages rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
+		ID: "messages turn 1 rail " + strconv.Itoa(first), Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: first,
 		Items: []hostapi.OverlayItem{{Text: "run", Anchor: first}},
 	})
 	app.renderSync(t)
