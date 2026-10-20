@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -41,7 +42,7 @@ const listMaxFiles = 200
 
 // completionMax is the rows the popup shows, clamped to what a popup can show.
 func (a *App) completionMax() int {
-	return min(max(a.host.Settings.Int("ui.completion.max_items"), 1), 50)
+	return min(max(a.host.Settings.Int(config.KeyUICompletionMaxItems), 1), 50)
 }
 
 // updateCompletion recomputes both popups after a composer edit: the
@@ -57,7 +58,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	files := i < cur && r[i] == '@' && a.host.Settings.Bool("ui.completion.files")
+	files := i < cur && r[i] == '@' && a.host.Settings.Bool(config.KeyUICompletionFiles)
 	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
 	if !files && !lua {
 		a.completion.close()

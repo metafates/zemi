@@ -40,6 +40,22 @@ import (
 	"github.com/metafates/zemi/internal/config"
 )
 
+// ModelID is a model id: a provider, a slash, then the model's own name, as
+// config and /model write it. It is parsed once, here, so no caller cuts it.
+type ModelID string
+
+// Split returns the provider and the model's own name; ok is false for an id
+// with no slash, which names no model.
+func (id ModelID) Split() (provider, model string, ok bool) {
+	return strings.Cut(string(id), "/")
+}
+
+// Provider is the provider half, "" when the id carries none.
+func (id ModelID) Provider() string { p, _, _ := id.Split(); return p }
+
+// Model is the model half, the whole id when it carries no slash.
+func (id ModelID) Model() string { _, m, _ := id.Split(); return m }
+
 // Model is one entry of a provider's catalog. ContextWindow is optional:
 // the token budget the context percent and auto compaction divide by.
 type Model struct {
@@ -506,8 +522,8 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 // Decisions reports the spec and the catalog entry an id names when that model
 // answers classification through its provider's own protocol: a decisions
 // model is never resolved as a chat model.
-func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
-	providerID, model, _ := strings.Cut(modelID, "/")
+func (r *Registry) Decisions(id ModelID) (Spec, Model, bool) {
+	providerID, model, _ := id.Split()
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return Spec{}, Model{}, false
@@ -530,8 +546,8 @@ func (r *Registry) Decisions(modelID string) (Spec, Model, bool) {
 // It amends the kind's own options struct rather than replacing it, so a
 // gateway's body fields (routing, a cache setting) ride the request as they do
 // on every other call.
-func (r *Registry) LogprobOptions(modelID string) func(fantasy.ProviderOptions, int64) fantasy.ProviderOptions {
-	providerID, model, _ := strings.Cut(modelID, "/")
+func (r *Registry) LogprobOptions(id ModelID) func(fantasy.ProviderOptions, int64) fantasy.ProviderOptions {
+	providerID, model, _ := id.Split()
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
@@ -624,15 +640,15 @@ type Effort string
 
 var Efforts = []Effort{"low", "medium", "high"}
 
-// Effort is the reasoning level modelID runs at for the /effort pick ("" =
+// Effort is the reasoning level an id runs at for the /effort pick ("" =
 // unset): a catalog model gets its default level when unset, else the level
 // it lists nearest the pick, and none when it lists none; any other model
 // gets the pick.
-func (r *Registry) Effort(modelID string, pick Effort) string {
+func (r *Registry) Effort(id ModelID, pick Effort) string {
 	if !slices.Contains(Efforts, pick) {
 		pick = ""
 	}
-	providerID, model, _ := strings.Cut(modelID, "/")
+	providerID, model, _ := id.Split()
 	spec, _ := r.Lookup(providerID)
 	m, found := spec.Model(model)
 	switch {
@@ -654,8 +670,8 @@ func (r *Registry) Effort(modelID string, pick Effort) string {
 // as prompt_cache_key: it routes on a hash of the prompt's first tokens and
 // the key, and every session's prompt starts alike, so without one parallel
 // sessions and subagents pile onto one cache shard and miss.
-func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.ProviderOptions {
-	providerID, model, _ := strings.Cut(modelID, "/")
+func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.ProviderOptions {
+	providerID, model, _ := id.Split()
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
@@ -743,10 +759,10 @@ func nearestEffort(levels []string, effort string) string {
 
 // Resolve turns "provider/model" into a fantasy language model; a missing
 // key surfaces as an error at send time.
-func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
-	providerID, model, ok := strings.Cut(modelID, "/")
+func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
+	providerID, model, ok := id.Split()
 	if !ok {
-		return nil, fmt.Errorf("model id must be provider/model, got %q", modelID)
+		return nil, fmt.Errorf("model id must be provider/model, got %q", id)
 	}
 	spec, ok := r.Lookup(providerID)
 	if !ok {
@@ -784,7 +800,7 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		return languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
 			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) }, vercel.WithObjectMode)
 	case KindSystemOne:
-		return nil, fmt.Errorf("%s is a decisions model: the %s protocol answers classification, and no chat turn runs on it", modelID, KindSystemOne)
+		return nil, fmt.Errorf("%s is a decisions model: the %s protocol answers classification, and no chat turn runs on it", id, KindSystemOne)
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}

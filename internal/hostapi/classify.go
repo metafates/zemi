@@ -106,7 +106,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 // questions of one call share a prompt.
 func (h *Host) classifyRequest(id, sid string, state map[string]any, questions map[string]classify.Question) (classify.Request, error) {
 	req := classify.Request{State: state, Questions: questions}
-	if spec, model, ok := h.Providers.Decisions(id); ok {
+	if spec, model, ok := h.Providers.Decisions(agent.ModelID(id)); ok {
 		req.Protocol = &classify.Protocol{
 			BaseURL: spec.BaseURL,
 			APIKey:  h.Providers.Key(spec.ID),
@@ -122,11 +122,11 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 	}
 	req.Chat = &classify.Chat{
 		Model:   chat,
-		Options: h.Providers.CallOptions(id, "", sid),
+		Options: h.Providers.CallOptions(agent.ModelID(id), "", sid),
 		Headers: agent.SessionHeaders(sid),
 		// a decoded answer is the model's own words, so it is asked greedily
 		Temperature: new(0.0),
-		Logprobs:    h.Providers.LogprobOptions(id),
+		Logprobs:    h.Providers.LogprobOptions(agent.ModelID(id)),
 	}
 	return req, nil
 }

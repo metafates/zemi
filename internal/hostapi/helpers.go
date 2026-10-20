@@ -226,6 +226,13 @@ func errText(err error) error {
 // bytes, UTF-8 included, stay as they are. A number is written whole, 1000000
 // and never 1e+06.
 func luaLiteral(v any) string {
+	if list, ok := v.([]string); ok {
+		parts := make([]string, len(list))
+		for i, it := range list {
+			parts[i] = luaLiteral(it)
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	}
 	s, ok := v.(string)
 	if f, isNum := v.(float64); isNum {
 		return strconv.FormatFloat(f, 'f', -1, 64)

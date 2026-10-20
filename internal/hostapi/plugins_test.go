@@ -483,7 +483,7 @@ func TestPluginSettings(t *testing.T) {
 				"bad argument #1 to (anonymous) (string expected, got table)",
 				`zemi.config.add: key "ui.theme" must be a lowercase letter`, `key "Interval" must be`,
 				"plugins.br.units expects metric", "plugins.br.n expects number", "plugins.br.nan expects number",
-				"kind must be string, number or bool",
+				"kind must be one of string, number, bool or list",
 				"zemi.config.add: only a plugin registers settings",
 				"zemi.config.add: register settings when the plugin loads",
 			},

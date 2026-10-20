@@ -135,7 +135,7 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 	}
 	f.retries = fr.Stream.Retries
 	asCall := func(m hostapi.ChatMessage) hostapi.StreamTool {
-		return hostapi.StreamTool{ID: m.ID, Name: m.Tool, Input: m.Text, Label: m.Label, Status: m.Status, Output: m.Output, Diff: m.Diff, Detail: m.Detail}
+		return hostapi.StreamTool{ID: m.CallID, Name: m.Tool, Input: m.Text, Label: m.Label, Status: m.Status, Output: m.Output, Diff: m.Diff, Detail: m.Detail}
 	}
 	for _, m := range fr.Settled {
 		switch {

@@ -238,7 +238,7 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 
 // NotifyStyle is notifyStyle for this process.
 func (h *Host) NotifyStyle() (style, why string) {
-	return notifyStyle(h.Settings.Str("ui.notify"), os.Getenv, runtime.GOOS, func(name string) bool {
+	return notifyStyle(h.Settings.Str(config.KeyUINotify), os.Getenv, runtime.GOOS, func(name string) bool {
 		_, err := exec.LookPath(name)
 		return err == nil
 	})

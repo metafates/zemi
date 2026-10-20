@@ -31,7 +31,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 	}
 	var names []string
 	for _, s := range config.NewStore().Schema() {
-		names = append(names, s.Path)
+		names = append(names, string(s.Path))
 	}
 	for _, tool := range tools.All(&tools.Pipeline{}) {
 		names = append(names, tool.Info().Name)

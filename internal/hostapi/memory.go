@@ -1838,5 +1838,5 @@ func foldSpace(s string) string { return strings.ToLower(strings.Join(strings.Fi
 // memoryAuto reports whether auto autonomy applies what the model or the
 // reflector proposes without review; ask queues everything.
 func (h *Host) memoryAuto() bool {
-	return h.Settings.Str("memory.autonomy") == "auto"
+	return h.Settings.Str(config.KeyMemoryAutonomy) == "auto"
 }

@@ -39,7 +39,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 	if err := h.modelErr(id); err != nil {
 		return nil, err
 	}
-	return h.Providers.Resolve(id)
+	return h.Providers.Resolve(agent.ModelID(id))
 }
 
 // ErrNoModel is the send failure when config registered no model.
@@ -65,7 +65,7 @@ func (h *Host) modelErr(id string) error {
 	if err := h.modelRunErr(id); err != nil {
 		return err
 	}
-	if _, _, decisions := h.Providers.Decisions(id); decisions {
+	if _, _, decisions := h.Providers.Decisions(agent.ModelID(id)); decisions {
 		return fmt.Errorf("%s is a decisions model: zemi.classify.ask judges with it, and no turn runs on one", id)
 	}
 	return nil
@@ -115,7 +115,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
-		ProviderOptions: h.Providers.CallOptions(id, "", sid),
+		ProviderOptions: h.Providers.CallOptions(agent.ModelID(id), "", sid),
 		Headers:         agent.SessionHeaders(sid),
 	}
 	if retry != nil {
@@ -151,7 +151,7 @@ func (h *Host) generateObject(ctx context.Context, sid, system, prompt string, s
 		Schema:          schema,
 		MaxOutputTokens: maxOut,
 		Temperature:     temp,
-		ProviderOptions: h.Providers.CallOptions(id, "", sid),
+		ProviderOptions: h.Providers.CallOptions(agent.ModelID(id), "", sid),
 		Headers:         agent.SessionHeaders(sid),
 	}
 	res, err := model.GenerateObject(ctx, call)
@@ -456,12 +456,12 @@ func (h *Host) isTarget(name string) bool {
 // was registered with. "" when nothing can run.
 func (h *Host) roleModel(name string) string {
 	if name == "default" {
-		return cmp.Or(h.Settings.Str("models.chat"), h.modelRef(h.targetDef(name)), h.Providers.Default())
+		return cmp.Or(h.Settings.Str(config.KeyModelsChat), h.modelRef(h.targetDef(name)), h.Providers.Default())
 	}
-	if v := h.Settings.Str("models." + name); v != "" {
+	if v := h.Settings.Str(config.ModelKey(name)); v != "" {
 		return v
 	}
-	return cmp.Or(h.modelRef(h.targetDef(name)), h.Settings.Str("models.chat"), h.Providers.Default())
+	return cmp.Or(h.modelRef(h.targetDef(name)), h.Settings.Str(config.KeyModelsChat), h.Providers.Default())
 }
 
 // modelRef resolves a model reference, a target name or a provider/model id. A
@@ -503,7 +503,7 @@ func (h *Host) addTarget(L *glua.LState, name string, t modelTarget) error {
 	if name == "default" { // the conversation's own slot: no key of its own
 		return nil
 	}
-	return h.addKey(config.Setting{Path: "models." + name, Kind: config.KindString, Default: "", Desc: targetDesc(name, t)})
+	return h.addKey(config.Setting{Path: config.ModelKey(name), Kind: config.KindString, Default: "", Check: config.ModelRefCheck, Desc: targetDesc(name, t)})
 }
 
 // delTarget drops a slot zemi.model.add registered, with its key and any pick
@@ -523,11 +523,11 @@ func (h *Host) delTarget(L *glua.LState, name string) error {
 	h.agents.targetsMu.Lock()
 	delete(h.agents.targets, name)
 	h.agents.targetsMu.Unlock()
-	h.Settings.Del("models." + name)
+	h.Settings.Del(config.ModelKey(name))
 	h.cfgMu.Lock()
-	delete(h.pluginKeys, "models."+name)
-	delete(h.cfgNow, "models."+name)
-	h.forgetPick("models." + name)
+	delete(h.pluginKeys, config.ModelKey(name))
+	delete(h.cfgNow, config.ModelKey(name))
+	h.forgetPick(config.ModelKey(name))
 	h.cfgMu.Unlock()
 	return nil
 }
@@ -867,7 +867,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		}
 		// the conversation's slot, so a call under a profile moves what the
 		// conversation runs on
-		path := "models." + h.ConversationTarget()
+		path := config.ModelKey(h.ConversationTarget())
 		if h.cfgReplayed(path, id) {
 			return 0
 		}

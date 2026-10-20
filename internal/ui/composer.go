@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -271,10 +272,12 @@ func (c *composerState) delWord() {
 func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
 // multiline reports whether newline insertion is allowed.
-func (a *App) multiline() bool { return a.host.Settings.Bool("ui.composer.multiline") }
+func (a *App) multiline() bool { return a.host.Settings.Bool(config.KeyUIComposerMultiline) }
 
 // historySize reads the history cap; 0 disables.
-func (a *App) historySize() int { return min(max(a.host.Settings.Int("ui.composer.history"), 0), 1000) }
+func (a *App) historySize() int {
+	return min(max(a.host.Settings.Int(config.KeyUIComposerHistory), 0), 1000)
+}
 
 func (c *composerState) pushHistory(text string, cap int) {
 	if cap <= 0 {

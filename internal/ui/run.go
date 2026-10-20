@@ -14,6 +14,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/term"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -27,7 +28,7 @@ func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, frame int,
 	var b strings.Builder
 	normal := t.style("Normal").Fg
 	canvas := t.canvas()
-	anim := t.host != nil && t.host.Settings.Bool("ui.animations")
+	anim := t.host != nil && t.host.Settings.Bool(config.KeyUIAnimations)
 	for _, line := range lines {
 		line, _ = segEffects(t, anim, frame, line)
 		for _, s := range line {

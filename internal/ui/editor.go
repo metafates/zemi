@@ -15,6 +15,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -45,7 +46,7 @@ type editorDoneMsg struct {
 // exits. A cancelled ctx returns and leaves the editor running, so unsaved
 // work stays the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
-	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str("editor.command")), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
+	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str(config.KeyEditorCommand)), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
 	// NOTE: not internal/proc: the editor needs the controlling terminal
 	// Setsid would drop, and tea.ExecProcess runs and waits for it itself.
 	c := exec.Command("sh", "-c", editorScript(editor, req.Line), "sh", req.Path)

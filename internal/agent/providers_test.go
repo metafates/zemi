@@ -74,7 +74,7 @@ func TestCallOptions(t *testing.T) {
 		{"bg/lite", "", "google", "minimal"},
 		{"bg/lite", "high", "google", "low"},
 	} {
-		opts := r.CallOptions(c.model, r.Effort(c.model, Effort(c.pick)), "s1")
+		opts := r.CallOptions(ModelID(c.model), r.Effort(ModelID(c.model), Effort(c.pick)), "s1")
 		if c.key == "" {
 			if opts != nil {
 				t.Fatalf("%s %q: want no options, got %v", c.model, c.pick, opts)
@@ -396,5 +396,26 @@ func TestRegistryBuiltin(t *testing.T) {
 	r.Reset(Catalog{})
 	if r.Default() != "" || len(r.List()) != 0 {
 		t.Fatal("reset to empty")
+	}
+}
+
+// TestModelID: an id splits at its first slash, and one without a slash names
+// no model.
+func TestModelID(t *testing.T) {
+	for _, c := range []struct {
+		id              ModelID
+		provider, model string
+		ok              bool
+	}{
+		{"a/b", "a", "b", true},
+		{"a/b/c", "a", "b/c", true},
+		{"a", "a", "", false},
+		{"", "", "", false},
+	} {
+		provider, model, ok := c.id.Split()
+		if provider != c.provider || model != c.model || ok != c.ok ||
+			c.id.Provider() != c.provider || c.id.Model() != c.model {
+			t.Errorf("%q: Split %q, %q, %v; Provider %q, Model %q", c.id, provider, model, ok, c.id.Provider(), c.id.Model())
+		}
 	}
 }

@@ -23,6 +23,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -512,7 +513,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 			shown, heads, _ := userRowsFor(s) // show what was typed
 			if shown != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: row.CreatedAt})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, ID: row.ID, SentAt: row.CreatedAt})
 			}
 			for _, n := range heads {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
@@ -544,7 +545,7 @@ const titleSystem = `Name the coding conversation below for a session list, from
 // model call in the background; any failure keeps the first-line title. No
 // UI means no title: a zemi run exits before the call would answer.
 func (h *Host) autoTitle(sid, user string) {
-	if !h.Settings.Bool("session.auto_title") || h.hooks() == nil {
+	if !h.Settings.Bool(config.KeySessionAutoTitle) || h.hooks() == nil {
 		return
 	}
 	if h.DB == nil {

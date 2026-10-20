@@ -175,7 +175,9 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 		t.Fatalf("stored run: %v", err)
 	}
 	for i := range stored.tr {
-		stored.tr[i].SentAt = 0 // the store stamps a prompt's clock, the live row does not
+		// the store stamps a prompt's clock and names its row; the live row
+		// has neither yet
+		stored.tr[i].SentAt, stored.tr[i].ID = 0, ""
 	}
 	if got := stored.transcript(); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("stored run: %+v", got)

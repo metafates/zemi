@@ -269,7 +269,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "for good", restart: true, want: "", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
-		key := cmp.Or(c.key, "models.chat")
+		key := config.Key(cmp.Or(c.key, "models.chat"))
 		src := head
 		for _, v := range c.config {
 			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
@@ -281,7 +281,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		switch c.pick {
 		case nil:
 		case "reset":
-			if err := h.configCommand("reset " + key); err != nil {
+			if err := h.configCommand("reset " + string(key)); err != nil {
 				t.Fatal(err)
 			}
 		default:

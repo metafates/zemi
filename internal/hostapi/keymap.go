@@ -11,6 +11,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -77,7 +78,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
 	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
-		tokens = strings.Fields(cmp.Or(strings.TrimSpace(h.Settings.Str("keymap.leader")), "ctrl+x"))
+		tokens = strings.Fields(cmp.Or(strings.TrimSpace(h.Settings.Str(config.KeyKeymapLeader)), "ctrl+x"))
 		if rest = strings.TrimSpace(rest); strings.Contains(rest, " ") {
 			tokens = append(tokens, strings.Fields(rest)...)
 		} else {

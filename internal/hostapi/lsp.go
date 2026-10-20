@@ -27,6 +27,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -224,7 +225,7 @@ func (h *Host) lualsDef() (lspDef, bool) {
 		def = h.lsp.user[i]
 	}
 	h.lsp.mu.Unlock()
-	if i < 0 && h.Settings.Bool("lsp.auto") {
+	if i < 0 && h.Settings.Bool(config.KeyLSPAuto) {
 		def = builtinLSP[slices.IndexFunc(builtinLSP, func(d lspDef) bool { return d.Name == "luals" })]
 		if _, err := exec.LookPath(def.Command); err != nil {
 			return lspDef{}, false
@@ -264,7 +265,7 @@ func (h *Host) lspKnown() []lspDef {
 	defs := slices.Clone(h.lsp.user)
 	disabled := maps.Clone(h.lsp.disabled)
 	h.lsp.mu.Unlock()
-	if h.Settings.Bool("lsp.auto") {
+	if h.Settings.Bool(config.KeyLSPAuto) {
 		for _, d := range builtinLSP {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue

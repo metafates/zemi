@@ -11,6 +11,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -389,7 +390,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
-		Profile: h.Settings.Str("agent.profile"),
+		Profile: h.Settings.Str(config.KeyAgentProfile),
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,

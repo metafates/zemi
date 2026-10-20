@@ -242,6 +242,7 @@ zemi.api = {}
 ---| "string"
 ---| "number"
 ---| "bool"
+---| "list"
 
 ---@class zemi.SettingSpec
 ---@field kind zemi.SettingKind

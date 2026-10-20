@@ -20,6 +20,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -89,7 +90,7 @@ func (h *Host) compactThreshold(window int64) int64 {
 	if window <= 0 {
 		return 0
 	}
-	pct := min(max(int64(h.Settings.Int("agent.compact_at")), 1), 100)
+	pct := min(max(int64(h.Settings.Int(config.KeyAgentCompactAt)), 1), 100)
 	return max(window*pct/100, window/2)
 }
 

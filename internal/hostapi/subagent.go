@@ -25,6 +25,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -353,7 +354,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	// a fork keeps the caller's session: that is what the conversation is cached under
 	cache := cmp.Or(setup.cache, sid)
-	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), cache), agent.SessionHeaders(cache)
+	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(agent.ModelID(modelID), h.Effort(modelID), cache), agent.SessionHeaders(cache)
 	seedLoaded(setup.loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	ctx = context.WithValue(ctx, runKey{}, run)
@@ -447,7 +448,7 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 // capRun caps a run's steps and output and ends its turn when the window fills.
 func (h *Host) capRun(runner *agent.Runner, modelID string) {
 	runner.MaxOutputTokens = h.maxOutput(modelID)
-	runner.MaxSteps = h.Settings.Int("agent.max_steps")
+	runner.MaxSteps = h.Settings.Int(config.KeyAgentMaxSteps)
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= h.compactThreshold(window) }
 }

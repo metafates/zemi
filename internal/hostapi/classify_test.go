@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -422,7 +423,7 @@ func TestLogprobKinds(t *testing.T) {
 		// a responses model drops logprobs itself, with a warning
 		{"o/gpt-5", false},
 	} {
-		if got := h.Providers.LogprobOptions(c.id) != nil; got != c.want {
+		if got := h.Providers.LogprobOptions(agent.ModelID(c.id)) != nil; got != c.want {
 			t.Errorf("%s takes a readout = %v, want %v", c.id, got, c.want)
 		}
 	}

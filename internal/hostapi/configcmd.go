@@ -25,7 +25,7 @@ func (h *Host) configCommands() []*Command {
 			}
 			var paths []string
 			for _, s := range h.Settings.Schema() {
-				paths = append(paths, s.Path)
+				paths = append(paths, string(s.Path))
 			}
 			return paths
 		}),
@@ -33,13 +33,13 @@ func (h *Host) configCommands() []*Command {
 		Name: "theme", NArgs: NArgsOptional, Desc: "pick the theme; the screen repaints in it as you pick",
 		GoFn: func(h *Host, args string) error {
 			if args = strings.TrimSpace(args); args != "" {
-				return h.SetConfig("ui.theme", args)
+				return h.SetConfig(config.KeyUITheme, args)
 			}
 			ui, err := h.Screen()
 			if err != nil {
 				return err
 			}
-			return h.openConfigEdit(ui, "ui.theme")
+			return h.openConfigEdit(ui, config.KeyUITheme)
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string
@@ -54,8 +54,9 @@ func (h *Host) configCommands() []*Command {
 func (h *Host) configCommand(args string) error {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	path, value, _ := strings.Cut(strings.TrimSpace(rest), " ")
+	key := config.Key(path)
 	if verb == "set" {
-		return h.configSet(path, strings.TrimSpace(value))
+		return h.configSet(key, strings.TrimSpace(value))
 	}
 	ui, err := h.Screen()
 	if err != nil {
@@ -71,20 +72,20 @@ func (h *Host) configCommand(args string) error {
 		}
 		ui.OpenOverlay(o)
 	case "toggle", "reset":
-		s, err := h.setting(path)
+		s, err := h.setting(key)
 		if err != nil {
 			return err
 		}
 		if verb == "reset" {
-			base, _ := h.cfgBase(path)
-			return h.SetConfig(path, base)
+			base, _ := h.cfgBase(key)
+			return h.SetConfig(key, base)
 		}
 		if s.Kind != config.KindBool {
 			return Usagef("%s is not on or off; /config set %s <value>", path, path)
 		}
-		return h.SetConfig(path, !h.Settings.Bool(path))
+		return h.SetConfig(key, !h.Settings.Bool(key))
 	case "edit":
-		return h.openConfigEdit(ui, path)
+		return h.openConfigEdit(ui, key)
 	case "lua":
 		ui.OpenOverlay(Overlay{ID: "config lua", Title: "Config as Lua", Origin: lua.OriginBuiltin, Body: h.configLua()})
 	case "open":
@@ -95,7 +96,7 @@ func (h *Host) configCommand(args string) error {
 	return nil
 }
 
-func (h *Host) setting(path string) (config.Setting, error) {
+func (h *Host) setting(path config.Key) (config.Setting, error) {
 	all := h.Settings.Schema()
 	if i := slices.IndexFunc(all, func(s config.Setting) bool { return s.Path == path }); i >= 0 {
 		return all[i], nil
@@ -105,13 +106,15 @@ func (h *Host) setting(path string) (config.Setting, error) {
 
 // configSet parses value in path's kind: on or off, a number, or the rest
 // of the line as a string.
-func (h *Host) configSet(path, value string) error {
+func (h *Host) configSet(path config.Key, value string) error {
 	s, err := h.setting(path)
 	if err != nil {
 		return err
 	}
 	var v any = value
 	switch s.Kind {
+	case config.KindList:
+		v = listValue(value)
 	case config.KindBool:
 		b, ok := map[string]bool{"on": true, "true": true, "off": false, "false": false}[value]
 		if !ok {
@@ -130,15 +133,15 @@ func (h *Host) configSet(path, value string) error {
 // SetConfig writes a config key at runtime (/config, /effort): a key with a
 // setter of its own goes through it, which validates, and every write
 // fires the key's watches.
-func (h *Host) SetConfig(path string, val any) error {
+func (h *Host) SetConfig(path config.Key, val any) error {
 	s, _ := val.(string)
-	if role, ok := strings.CutPrefix(path, "models."); ok {
+	if role, ok := config.ModelRole(path); ok {
 		return h.SetModel(role + " " + cmp.Or(s, "chat"))
 	}
 	switch path {
-	case "agent.profile":
+	case config.KeyAgentProfile:
 		return h.SetProfile(s)
-	case "ui.theme":
+	case config.KeyUITheme:
 		if err := h.checkTheme(s); err != nil {
 			return err
 		}
@@ -165,7 +168,7 @@ func (h *Host) configItems() []any {
 		if s.Kind == config.KindBool {
 			desc = source // the switch in the key column draws the value
 		}
-		section, _, _ := strings.Cut(s.Path, ".")
+		section, _, _ := strings.Cut(string(s.Path), ".")
 		section = sourceSection(section)
 		if name := settingPlugin(s.Path); name != "" {
 			section = "Plugin " + name
@@ -179,13 +182,13 @@ func (h *Host) configItems() []any {
 		// holds its switch; one width, so a change moves no text. The key's
 		// description is the preview, whole under the list.
 		item := map[string]any{
-			"text": s.Path, "desc": desc, "preview": s.Desc, "section": section,
+			"text": string(s.Path), "desc": desc, "preview": s.Desc, "section": section,
 			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
 			"detail": s.Desc + note,
 		}
 		edit := map[string]any{"text": "Change", "hotkey": "c", "run": configPicker(s.Path)}
 		if s.Kind == config.KindBool {
-			item["on"], item["run"] = v == true, "config toggle "+s.Path
+			item["on"], item["run"] = v == true, "config toggle "+string(s.Path)
 			edit = map[string]any{"text": "Toggle", "hotkey": "t", "run": item["run"]}
 		}
 		if item["run"] == nil {
@@ -194,7 +197,7 @@ func (h *Host) configItems() []any {
 		actions := []any{edit}
 		if !reflect.DeepEqual(v, base) {
 			label := map[bool]string{true: "Reset to init.lua", false: "Reset to default"}[set]
-			actions = append(actions, map[string]any{"text": label, "hotkey": "r", "run": "config reset " + s.Path})
+			actions = append(actions, map[string]any{"text": label, "hotkey": "r", "run": "config reset " + string(s.Path)})
 		}
 		if note != "" {
 			actions = append(actions, map[string]any{"text": "Open init.lua", "hotkey": "o", "run": "config open"})
@@ -211,28 +214,39 @@ func showSetting(v any) string {
 		return map[bool]string{true: "on", false: "off"}[v]
 	case string:
 		return cmp.Or(v, "empty")
+	case []string:
+		return cmp.Or(strings.Join(v, ", "), "none")
 	}
 	return luaLiteral(v)
 }
 
+// listValue is a list key's line: entries separated by commas or spaces.
+func listValue(value string) []string {
+	out := []string{}
+	for _, f := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }) {
+		out = append(out, strings.TrimSpace(f))
+	}
+	return out
+}
+
 // configPicker is the command that changes path's value on a screen of its
 // own: the key's picker, else /config edit.
-func configPicker(path string) string {
-	switch role, ok := strings.CutPrefix(path, "models."); {
+func configPicker(path config.Key) string {
+	switch role, ok := config.ModelRole(path); {
 	case ok:
 		return "model " + role
-	case path == "agent.profile":
+	case path == config.KeyAgentProfile:
 		return "profile"
-	case path == "ui.theme":
+	case path == config.KeyUITheme:
 		return "theme"
 	}
-	return "config edit " + path
+	return "config edit " + string(path)
 }
 
 // configChoices is what /config edit offers for path; "" is the default.
-func (h *Host) configChoices(path string) []string {
+func (h *Host) configChoices(path config.Key) []string {
 	switch path {
-	case "ui.theme":
+	case config.KeyUITheme:
 		var names []string
 		for _, t := range h.Themes.List() {
 			names = append(names, t.Name)
@@ -247,7 +261,7 @@ func (h *Host) configChoices(path string) []string {
 // enter sets one and keeps the list open, so a theme repaints the screen,
 // the list's own box included, as its preview. Closing either rebuilds
 // /config under it.
-func (h *Host) openConfigEdit(ui UIHooks, path string) error {
+func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 	s, err := h.setting(path)
 	if err != nil {
 		return err
@@ -261,12 +275,12 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 		if !ok {
 			text = luaLiteral(v) // a number as /config set reads it
 		}
-		ui.OpenOverlay(Overlay{ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Input: true, Default: text, Run: "config set " + path})
+		ui.OpenOverlay(Overlay{ID: "config edit", Title: string(path), Origin: lua.OriginBuiltin, Input: true, Default: text, Run: "config set " + string(path)})
 		return nil
 	}
 	items, sel := h.pickItems(path)
-	title := path
-	if path == "ui.theme" { // /theme opens it
+	title := string(path)
+	if path == config.KeyUITheme { // /theme opens it
 		title = "Theme"
 	}
 	ui.OpenOverlay(Overlay{
@@ -277,10 +291,10 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 }
 
 // pickItems are path's choices as rows, the current one keyed and its index.
-func (h *Host) pickItems(path string) (items []any, sel int) {
+func (h *Host) pickItems(path config.Key) (items []any, sel int) {
 	cur := h.Settings.Str(path)
 	for i, c := range h.configChoices(path) {
-		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + path + " " + c, "verb": "pick"}
+		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + string(path) + " " + c, "verb": "pick"}
 		if c == cur {
 			item["key"], sel = "current", i
 		}

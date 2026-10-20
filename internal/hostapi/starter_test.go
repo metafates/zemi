@@ -62,7 +62,7 @@ func TestStarterInitProviderBlock(t *testing.T) {
 	if !ok || spec.BaseURL != "http://localhost:11434/v1" || len(spec.Models) != 1 || spec.Builtin {
 		t.Fatalf("provider = %+v, %v", spec, ok)
 	}
-	for _, key := range []string{"models.chat", "models.titles"} {
+	for _, key := range []config.Key{config.KeyModelsChat, config.KeyModelsTitles} {
 		if id := h.Settings.Str(key); !slices.Contains(h.ModelIDs(), id) {
 			t.Fatalf("%s = %q is not in the catalog", key, id)
 		}

@@ -756,7 +756,7 @@ func TestOpenAIResponses(t *testing.T) {
 		{"o/gpt-4o", "/responses", "rs_1", false},
 		{"o/gpt-3.5-turbo-16k", "/chat/completions", "", false},
 	} {
-		m, err := reg.Resolve(c.model)
+		m, err := reg.Resolve(ModelID(c.model))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -765,7 +765,7 @@ func TestOpenAIResponses(t *testing.T) {
 		var history []fantasy.Message
 		for _, text := range []string{"hi", "again"} {
 			r := NewRunner(rec, nil, "sys")
-			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "", "")
+			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(ModelID(c.model), "", "")
 			r.Persist = func(msg fantasy.Message) error {
 				b, err := json.Marshal(msg, json.Deterministic(true))
 				stored = append(stored, string(b))
@@ -876,12 +876,12 @@ func TestCacheBreakpoints(t *testing.T) {
 		{"a/claude-sonnet-4", "https://api.anthropic.com/v1/messages", "+", "-++", "-+"},
 		{"or/anthropic/claude-sonnet-4", "https://openrouter.ai/api/v1/chat/completions", "", "+-++", "--"},
 	} {
-		m, err := reg.Resolve(c.model)
+		m, err := reg.Resolve(ModelID(c.model))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r := NewRunner(m, tools, "sys")
-		r.Hooks, r.ProviderOptions, r.Headers = newRecHooks(), reg.CallOptions(c.model, "", ""), SessionHeaders("s1")
+		r.Hooks, r.ProviderOptions, r.Headers = newRecHooks(), reg.CallOptions(ModelID(c.model), "", ""), SessionHeaders("s1")
 		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
 		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
 		mu.Lock()

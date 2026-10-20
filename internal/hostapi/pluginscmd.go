@@ -485,7 +485,7 @@ func (h *Host) pluginProvides() map[string][]string {
 	// only a plugin registers plugins.<its name>.<key> (zemi.config.add)
 	for _, s := range h.Settings.Schema() {
 		if name := settingPlugin(s.Path); name != "" {
-			out[name] = append(out[name], "setting "+s.Path)
+			out[name] = append(out[name], "setting "+string(s.Path))
 		}
 	}
 	return out

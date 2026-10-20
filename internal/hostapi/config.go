@@ -20,7 +20,7 @@ import (
 // dropped LState (DESIGN §4 stale-callback rule).
 type watchRec struct {
 	gen    Gen
-	path   string
+	path   config.Key
 	fn     *glua.LFunction
 	origin lua.Origin
 	src    string
@@ -90,7 +90,7 @@ func (h *Host) purgeWatches() {
 // stays. The first write that differs makes the key's later writes apply
 // too, config setting one key twice included. Every setter init.lua can
 // call runs a valid value through it, so /config knows what config set.
-func (h *Host) cfgReplayed(path string, v any) bool {
+func (h *Host) cfgReplayed(path config.Key, v any) bool {
 	if !h.RT.Booting() {
 		return false
 	}
@@ -111,7 +111,7 @@ func (h *Host) cfgReplayed(path string, v any) bool {
 // reaches cfgReplayed.
 func (h *Host) cfgRotate() {
 	if gen := h.currentGen(); gen != h.cfgGen {
-		h.cfgGen, h.cfgPrev, h.cfgNow = gen, h.cfgNow, map[string][]any{}
+		h.cfgGen, h.cfgPrev, h.cfgNow = gen, h.cfgNow, map[config.Key][]any{}
 	}
 }
 
@@ -150,7 +150,7 @@ func (h *Host) cfgSettle() {
 // what init.lua last wrote, "saved" when it is the pick kept for a key
 // init.lua does not write, "default" at the default of such a key, and
 // "this run" for anything else, which a restart does not keep.
-func (h *Host) cfgSource(path string) string {
+func (h *Host) cfgSource(path config.Key) string {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	live, _ := h.Settings.Get(path)
@@ -170,7 +170,7 @@ func (h *Host) cfgSource(path string) string {
 
 // cfgBase is what path is without a pick: config's last write when init.lua
 // wrote the key, else its default. set reports that init.lua wrote it.
-func (h *Host) cfgBase(path string) (v any, set bool) {
+func (h *Host) cfgBase(path config.Key) (v any, set bool) {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.cfgRotate() // a generation that moved has not written the key yet
@@ -182,7 +182,7 @@ func (h *Host) cfgBase(path string) (v any, set bool) {
 
 // writeSetting is every runtime write of a config key: the value, then
 // keepPick.
-func (h *Host) writeSetting(path string, v any) ([]config.WatchFired, error) {
+func (h *Host) writeSetting(path config.Key, v any) ([]config.WatchFired, error) {
 	fired, err := h.Settings.SetQuiet(path, v)
 	if err == nil {
 		h.keepPick(path)
@@ -193,7 +193,7 @@ func (h *Host) writeSetting(path string, v any) ([]config.WatchFired, error) {
 // keepPick keeps path's live value in the global store for the next start,
 // or forgets it when it is the key's cfgBase. A write during boot is
 // init.lua's, and one before KeepPicks is a flag's.
-func (h *Host) keepPick(path string) {
+func (h *Host) keepPick(path config.Key) {
 	if h.GlobalDB == nil || h.RT.Booting() || !h.KeepPicks.Load() {
 		return
 	}
@@ -207,7 +207,7 @@ func (h *Host) keepPick(path string) {
 	}
 	b, err := json.Marshal(live, json.Deterministic(true))
 	if err == nil {
-		err = h.GlobalDB.SetKV("config:"+path, string(b))
+		err = h.GlobalDB.SetKV("config:"+string(path), string(b))
 	}
 	if err != nil {
 		h.Log.Warn("could not keep a pick", "origin", "config", "path", path, "error", err)
@@ -218,12 +218,12 @@ func (h *Host) keepPick(path string) {
 
 // forgetPick drops a kept pick everywhere it lives: the live copy and the
 // config: row a later boot would read. Callers hold cfgMu.
-func (h *Host) forgetPick(path string) {
+func (h *Host) forgetPick(path config.Key) {
 	delete(h.picked, path)
 	if h.GlobalDB == nil {
 		return
 	}
-	if _, err := h.GlobalDB.DelKV("config:" + path); err != nil {
+	if _, err := h.GlobalDB.DelKV("config:" + string(path)); err != nil {
 		h.Log.Warn("could not forget a kept pick", "origin", "config", "path", path, "error", err)
 	}
 }
@@ -236,7 +236,7 @@ func (h *Host) loadPicks() {
 		h.Log.Warn("could not read the kept picks", "origin", "config", "error", err)
 	}
 	for _, k := range keys {
-		path := strings.TrimPrefix(k, "config:")
+		path := config.Key(strings.TrimPrefix(k, "config:"))
 		raw, err := h.GlobalDB.GetKV(k)
 		var v any
 		if err == nil {
@@ -244,7 +244,7 @@ func (h *Host) loadPicks() {
 		}
 		// a key the schema does not hold yet may still be registered later in
 		// this boot, by a plugin or by a model target, which applies its pick
-		if _, known := h.Settings.Get(path); err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(path, "models.")) {
+		if _, known := h.Settings.Get(path); err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(string(path), "models.")) {
 			h.picked[path] = v
 			continue
 		}
@@ -267,23 +267,19 @@ var settingKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 // settingPath is the key path names: plugin code names its own settings by
 // the bare key. Every builtin key has a section, so a bare name is no builtin
 // one, and a plugin still reads any other key by its full path.
-func (h *Host) settingPath(L *glua.LState, path string) string {
+func (h *Host) settingPath(L *glua.LState, path string) config.Key {
 	if strings.Contains(path, ".") || h.RT.CurrentOrigin(L) != lua.OriginPlugin {
-		return path
+		return config.Key(path)
 	}
 	if name := h.PluginOf(h.RT.CurrentPath(L)); name != "" {
-		return "plugins." + name + "." + path
+		return config.PluginKey(name, path)
 	}
-	return path
+	return config.Key(path)
 }
 
 // settingPlugin is the plugin that registered path, "" for a builtin key.
-func settingPlugin(path string) string {
-	rest, ok := strings.CutPrefix(path, "plugins.")
-	if !ok {
-		return ""
-	}
-	name, _, _ := strings.Cut(rest, ".")
+func settingPlugin(path config.Key) string {
+	name, _ := config.PluginOf(path)
 	return name
 }
 
@@ -300,7 +296,7 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
 	def := config.Setting{
-		Path: "plugins." + name + "." + key, Kind: config.Kind(rawString(L, spec, "kind")),
+		Path: config.PluginKey(name, key), Kind: config.Kind(rawString(L, spec, "kind")),
 		Desc: listDesc(rawString(L, spec, "desc")), Choices: rawStrings(L, spec, "choices"),
 	}
 	switch {
@@ -309,7 +305,7 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 	case !settingKey.MatchString(key):
 		L.RaiseError("zemi.config.add: key %q must be a lowercase letter, then up to 31 lowercase letters, digits and _", key)
 	case !slices.Contains(config.Kinds, def.Kind):
-		L.RaiseError("zemi.config.add: kind must be string, number or bool")
+		L.RaiseError("zemi.config.add: kind must be one of %s", config.OrList(kindNames()))
 	case def.Choices != nil && def.Kind != config.KindString:
 		L.RaiseError("zemi.config.add: only a string key takes choices")
 	case def.Desc == "":
@@ -319,6 +315,15 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 	if err := h.addKey(def); err != nil {
 		L.RaiseError("zemi.config.add: default: %v", err)
 	}
+}
+
+// kindNames is the kinds zemi.config.add accepts, for its refusal.
+func kindNames() []string {
+	names := make([]string, len(config.Kinds))
+	for i, k := range config.Kinds {
+		names[i] = string(k)
+	}
+	return names
 }
 
 // addKey registers a key the schema does not own — a plugin's setting or a
@@ -357,7 +362,7 @@ func (h *Host) addKey(def config.Setting) error {
 // settingOff reports a plugins.<name>.<key> path the schema lacks whose
 // plugin is off, gone or failed to load, so init.lua's line for it does
 // nothing; for a plugin that loaded it is a typo, which raises.
-func (h *Host) settingOff(path string) bool {
+func (h *Host) settingOff(path config.Key) bool {
 	name := settingPlugin(path)
 	if _, known := h.Settings.Get(path); name == "" || known {
 		return false
@@ -419,7 +424,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		path := L.CheckString(1)
+		path := h.settingPath(L, L.CheckString(1))
 		v, err := lua.ToGo(L.Get(2))
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)

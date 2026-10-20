@@ -29,6 +29,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -256,7 +257,7 @@ func newAgentHost(clock lua.Clock) *agentHost {
 
 // Effort is the reasoning level modelID runs at under the agent.effort pick.
 func (h *Host) Effort(modelID string) string {
-	return h.Providers.Effort(modelID, agent.Effort(h.Settings.Str("agent.effort")))
+	return h.Providers.Effort(agent.ModelID(modelID), agent.Effort(h.Settings.Str(config.KeyAgentEffort)))
 }
 
 // resolveProfile returns the profile to run: explicit name, else the
@@ -264,7 +265,7 @@ func (h *Host) Effort(modelID string) string {
 // implicit shipped shape (nil).
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	if name == "" {
-		name = h.Settings.Str("agent.profile")
+		name = h.Settings.Str(config.KeyAgentProfile)
 	}
 	if t, ok := h.target(name); ok && t.Prof != nil {
 		return t.Prof, nil
@@ -438,9 +439,9 @@ func (h *Host) ensureRunner(p *Profile, toolset []fantasy.AgentTool) (*agent.Run
 	h.agents.mu.Unlock()
 	id := h.currentModelID(p)
 	sid := h.AgentSessionID()
-	r.ProviderOptions, r.Headers = h.Providers.CallOptions(id, h.Effort(id), sid), agent.SessionHeaders(sid)
+	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
-	r.MaxSteps = h.Settings.Int("agent.max_steps")
+	r.MaxSteps = h.Settings.Int(config.KeyAgentMaxSteps)
 	if p != nil {
 		r.Temperature = p.Temperature
 	}
@@ -1368,7 +1369,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, ID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
@@ -1623,6 +1624,14 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 	if msg.Role == fantasy.MessageRoleUser {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
+		// the row drawn when the message was sent names the stored one from
+		// here: a send draws its row before the row exists
+		for i := range h.session.Transcript {
+			if r := &h.session.Transcript[i]; r.ID == "" && r.Kind == "" && r.Role == fantasy.MessageRoleUser {
+				r.ID = row.ID
+				break
+			}
+		}
 		h.agents.mu.Unlock()
 		h.setGoalFrom(sid, msg)
 	}
@@ -1872,7 +1881,7 @@ func (h *Host) Recap(ctx context.Context) {
 }
 
 func (h *Host) recap(ctx context.Context) {
-	if !h.Settings.Bool("session.recap") {
+	if !h.Settings.Bool(config.KeySessionRecap) {
 		return
 	}
 	ag := h.agents
@@ -2017,7 +2026,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
-		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str("models."+name)
+		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str(config.ModelKey(name))
 		head := h.followRow(name, run)
 		if cur == "" {
 			head["key"] = "current"
@@ -2072,7 +2081,7 @@ func (h *Host) modelPicker(name string) Overlay {
 func (h *Host) ownRoles() []string {
 	var own []string
 	for _, n := range h.targetNames()[1:] {
-		if h.Settings.Str("models."+n) != "" {
+		if h.Settings.Str(config.ModelKey(n)) != "" {
 			own = append(own, n)
 		}
 	}
@@ -2152,7 +2161,7 @@ func (h *Host) modelSlotRow(name, desc string) map[string]any {
 // slotTag is what a row shows past the model id: the default a slot with no
 // pick of its own falls back to.
 func (h *Host) slotTag(name string) string {
-	if h.Settings.Str("models."+name) != "" {
+	if h.Settings.Str(config.ModelKey(name)) != "" {
 		return ""
 	}
 	if def := h.targetDef(name); def != "" {
@@ -2215,7 +2224,7 @@ func (h *Host) SetModel(args string) error {
 	if err := h.modelSetErr(role, id); err != nil {
 		return err
 	}
-	if err := h.setWatched("models."+role, id); err != nil {
+	if err := h.setWatched(config.ModelKey(role), id); err != nil {
 		return err
 	}
 	if ui, err := h.Screen(); err == nil { // a /model under the roles list shows the pick when it comes back
@@ -2301,7 +2310,7 @@ func (h *Host) modelSetErr(slot, id string) error {
 	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
 		return usageError{h.modelErr(id)}
 	}
-	if _, _, decisions := h.Providers.Decisions(id); decisions && !h.classifies(slot) {
+	if _, _, decisions := h.Providers.Decisions(agent.ModelID(id)); decisions && !h.classifies(slot) {
 		return usageError{h.modelErr(id)}
 	}
 	return nil
@@ -2336,7 +2345,7 @@ func (h *Host) OfferModel() {
 // setWatched writes a config key from any goroutine: the watches it fires
 // run later on the interpreter queue. It checks only the kind: SetConfig
 // sends a key with a setter of its own there first.
-func (h *Host) setWatched(path string, val any) error {
+func (h *Host) setWatched(path config.Key, val any) error {
 	fired, err := h.writeSetting(path, val)
 	if err != nil {
 		return err
@@ -2376,7 +2385,7 @@ func (h *Host) SetProfile(name string) error {
 	}
 	if next != nil && next.ReadOnly && !h.readOnly() {
 		h.plans.mu.Lock()
-		h.plans.prePlanProfile = h.Settings.Str("agent.profile")
+		h.plans.prePlanProfile = h.Settings.Str(config.KeyAgentProfile)
 		h.plans.mu.Unlock()
 	}
 	return h.setWatched("agent.profile", name)
@@ -2387,7 +2396,7 @@ func (h *Host) SetProfile(name string) error {
 func (h *Host) cycleProfile(step int) error {
 	names := h.ProfileNames()
 	n := len(names)
-	cur := h.Settings.Str("agent.profile")
+	cur := h.Settings.Str(config.KeyAgentProfile)
 	i := max(slices.Index(names, cur), 0)
 	return h.SetProfile(names[((i+step)%n+n)%n])
 }
@@ -2484,7 +2493,7 @@ func (h *Host) OpenProfilePicker() error {
 	if err != nil {
 		return err
 	}
-	cur, sel := h.Settings.Str("agent.profile"), 0
+	cur, sel := h.Settings.Str(config.KeyAgentProfile), 0
 	var items []any
 	for i, name := range h.ProfileNames() {
 		item := map[string]any{"text": name, "run": "profile " + name, "desc": h.profileDesc(name)}
@@ -2504,7 +2513,7 @@ func (h *Host) OpenEffortPicker() error {
 	if err != nil {
 		return err
 	}
-	pick, model := h.Settings.Str("agent.effort"), h.AgentStream().Model
+	pick, model := h.Settings.Str(config.KeyAgentEffort), h.AgentStream().Model
 	items := make([]any, 0, len(agent.Efforts)+1)
 	sel := 0
 	for _, level := range append(strs(agent.Efforts), "") {
@@ -2525,7 +2534,7 @@ func (h *Host) effortDesc(model, level string) string {
 	if model == "" {
 		return ""
 	}
-	sent := h.Providers.Effort(model, agent.Effort(level))
+	sent := h.Providers.Effort(agent.ModelID(model), agent.Effort(level))
 	switch {
 	case sent == "":
 		return "the model takes no reasoning effort"
@@ -2607,7 +2616,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		out := L.NewTable()
 		ag := h.agents
 		ag.mu.Lock()
-		out.RawSetString("profile", glua.LString(h.Settings.Str("agent.profile")))
+		out.RawSetString("profile", glua.LString(h.Settings.Str(config.KeyAgentProfile)))
 		sid, model := ag.sessionID, h.liveModelID()
 		ag.mu.Unlock()
 		out.RawSetString("id", glua.LString(sid))

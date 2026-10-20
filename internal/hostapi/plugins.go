@@ -343,7 +343,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 			continue
 		}
 		if path, ok := strings.CutPrefix(k, "config:"); ok {
-			h.forgetPick(path)
+			h.forgetPick(config.Key(path))
 		} else {
 			_, _ = h.GlobalDB.DelKV(k)
 		}

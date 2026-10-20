@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // A reader of a path outside the schema gets the zero value: every writer
 // (Add, Check, SetQuiet, AddWatch) refuses an unknown key, so this is the
@@ -18,5 +21,47 @@ func TestStoreReadUnknownKey(t *testing.T) {
 	}
 	if got := s.Int("ui.theemes"); got != 0 {
 		t.Fatalf("unknown number key = %d", got)
+	}
+}
+
+// A list key stores []string whatever handed it the entries (Lua and JSON
+// both hand []any), and a model key refuses a role name where an id belongs.
+func TestStoreKinds(t *testing.T) {
+	cases := []struct {
+		name string
+		key  Key
+		val  any
+		want any
+		bad  bool
+	}{
+		{"list from lua", KeyModelsFavorites, []any{"a/b", "c/d"}, []string{"a/b", "c/d"}, false},
+		{"list from json", KeyModelsFavorites, []string{"a/b"}, []string{"a/b"}, false},
+		{"list refuses a non-string entry", KeyModelsFavorites, []any{"a/b", 2}, nil, true},
+		{"a model key takes an id", KeyModelsChat, "a/b", "a/b", false},
+		{"a model key takes empty", KeyModelsChat, "", "", false},
+		{"a model key refuses a role", KeyModelsChat, "titles", nil, true},
+	}
+	s := NewStore()
+	for _, c := range cases {
+		got, err := s.Check(c.key, c.val)
+		if c.bad != (err != nil) || !c.bad && !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: Check = %v, %v; want %v, bad %v", c.name, got, err, c.want, c.bad)
+		}
+	}
+}
+
+// Only a models.<role> key names a model slot: favorites is a list key.
+func TestKeyFamilies(t *testing.T) {
+	if role, ok := ModelRole(KeyModelsChat); !ok || role != "chat" {
+		t.Fatalf("ModelRole(models.chat) = %q, %v", role, ok)
+	}
+	if role, ok := ModelRole(KeyModelsFavorites); ok {
+		t.Fatalf("favorites names slot %q", role)
+	}
+	if name, ok := PluginOf(PluginKey("jira", "url")); !ok || name != "jira" {
+		t.Fatalf("PluginOf = %q, %v", name, ok)
+	}
+	if _, ok := PluginOf(KeyUITheme); ok {
+		t.Fatal("a builtin key names a plugin")
 	}
 }

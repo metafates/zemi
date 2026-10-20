@@ -686,10 +686,11 @@ func TestConfigSet(t *testing.T) {
 		{"agent.compact_at", 80.0, "abc", "80", "agent.compact_at is a number"},
 		{"agent.compact_at", 80.0, "NaN", "80", "config key agent.compact_at expects number"},
 	} {
-		h.Settings.SetQuiet(c.path, c.from)
+		key := config.Key(c.path)
+		h.Settings.SetQuiet(key, c.from)
 		// a refused value is a usage hint, not an error
-		err := h.configSet(c.path, c.value)
-		got, _ := h.Settings.Get(c.path)
+		err := h.configSet(key, c.value)
+		got, _ := h.Settings.Get(key)
 		if fmt.Sprint(err) != cmp.Or(c.err, "<nil>") || err != nil && !errors.Is(err, ErrUsage) || luaLiteral(got) != c.want {
 			t.Errorf("%s %q: %s, %v; want %s, %q", c.path, c.value, luaLiteral(got), err, c.want, c.err)
 		}
@@ -705,14 +706,14 @@ func TestConfigSet(t *testing.T) {
 	}
 	// a bool row draws its switch after its source, and its description is
 	// the preview
-	h.cfgNow = map[string][]any{"ui.animations": {false}}
+	h.cfgNow = map[config.Key][]any{config.KeyUIAnimations: {false}}
 	for _, c := range []struct {
 		step func()
 		on   bool
 		desc string
 	}{
-		{func() { h.Settings.SetQuiet("ui.animations", false) }, false, "init.lua"},
-		{func() { h.configSet("ui.animations", "on") }, true, "this run"},
+		{func() { h.Settings.SetQuiet(config.KeyUIAnimations, false) }, false, "init.lua"},
+		{func() { h.configSet(config.KeyUIAnimations, "on") }, true, "this run"},
 		{func() { h.cfgNow = nil }, true, "default"},
 	} {
 		c.step()

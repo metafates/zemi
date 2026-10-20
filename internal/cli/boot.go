@@ -714,7 +714,7 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	return lua.BootStep{
 		Name: hostapi.EventAppReady,
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			if !h.Settings.Bool("providers.builtin") {
+			if !h.Settings.Bool(config.KeyProvidersBuiltin) {
 				h.Providers.DropBuiltin()
 			}
 			h.CheckToolNames()

@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -813,7 +814,7 @@ func (h *Host) checkTheme(name string) error {
 // CheckTheme records a ui.theme no theme answers to once boot is done: a
 // typo, or a pick of a removed plugin's theme, draws whorl instead.
 func (h *Host) CheckTheme() {
-	if name := h.Settings.Str("ui.theme"); h.Themes.Get(name) == nil {
+	if name := h.Settings.Str(config.KeyUITheme); h.Themes.Get(name) == nil {
 		h.RecordErrorOnce("ui.theme", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
 	}
 }
@@ -822,7 +823,7 @@ func (h *Host) CheckTheme() {
 // that names none, and its light twin on a light terminal. nil before any
 // theme is.
 func (h *Host) ActiveTheme() *Theme {
-	t := h.Themes.Get(h.Settings.Str("ui.theme"))
+	t := h.Themes.Get(h.Settings.Str(config.KeyUITheme))
 	if t == nil {
 		t = h.Themes.Get("whorl")
 	}

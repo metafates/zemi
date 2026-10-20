@@ -325,7 +325,8 @@ type ChatMessage struct {
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
-	ID     string // the live turn's tool rows: the call id, so zemi run reports a call once
+	CallID string // tool rows: the stream's call id, so zemi run reports a call once
+	ID     string // the stored message's id once it is stored; a rewind names it
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
 }
 
@@ -461,16 +462,16 @@ type Host struct {
 	// writing the same sequence keeps a runtime pick made since (config.go)
 	cfgMu   sync.Mutex
 	cfgGen  Gen
-	cfgPrev map[string][]any
-	cfgNow  map[string][]any
+	cfgPrev map[config.Key][]any
+	cfgNow  map[config.Key][]any
 	// picked mirrors the picks kept in the global store as config:<path>,
 	// unchecked for a plugin key not registered yet
-	picked map[string]any
+	picked map[config.Key]any
 	// pluginKeys is the generation that last registered each key a
 	// registration owns (a plugin setting, a model target's models.<name>);
 	// dropPluginKeys drops the ones a replay did not register again, never one
 	// the schema owns
-	pluginKeys map[string]Gen
+	pluginKeys map[config.Key]Gen
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
 	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
 	KeepPicks atomic.Bool
@@ -745,7 +746,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// and a worktree are the same project, with the same sessions
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
-	h.picked, h.pluginKeys = map[string]any{}, map[string]Gen{}
+	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
 	if h.GlobalDB != nil {
 		h.loadPicks()
 		// the global store's partition reconciles at startup; a project

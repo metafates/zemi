@@ -501,7 +501,7 @@ func (a *App) View() tea.View {
 	// Cell motion: the wheel scrolls the transcript (the altscreen buffer has
 	// no native scrollback), drags select and clicks press. ui.mouse = false
 	// leaves the mouse to the terminal.
-	if a.host.Settings.Bool("ui.mouse") {
+	if a.host.Settings.Bool(config.KeyUIMouse) {
 		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
@@ -520,7 +520,7 @@ func (a *App) View() tea.View {
 // when it changes, so the value (which the indeterminate state never sends)
 // flips every progressInterval.
 func (a *App) progressTick(running bool) {
-	a.progress = running && a.host.Settings.Bool("ui.progress")
+	a.progress = running && a.host.Settings.Bool(config.KeyUIProgress)
 	if now := a.now(); a.progress && now.Sub(a.progressAt) >= progressInterval {
 		a.progressAt, a.beat = now, 1-a.beat
 	}
@@ -750,7 +750,7 @@ func (a *App) windowTitle() string {
 // frameClock is the frame clock's tick, frameMS each: what the spinner, the
 // eyes and the shimmer step on. Always 0 with animations off.
 func frameClock(h *hostapi.Host, now func() time.Time) int {
-	if !h.Settings.Bool("ui.animations") {
+	if !h.Settings.Bool(config.KeyUIAnimations) {
 		return 0
 	}
 	return int(now().UnixMilli() / frameMS)
@@ -1664,7 +1664,7 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
-	segs, spun := segEffects(a.thm, a.host.Settings.Bool("ui.animations"), a.frame(), segs)
+	segs, spun := segEffects(a.thm, a.host.Settings.Bool(config.KeyUIAnimations), a.frame(), segs)
 	a.spun = a.spun || spun
 	// truncated before styling, so a link never leaves its escape sequence open
 	if hostapi.SegsWidth(segs) > w {

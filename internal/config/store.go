@@ -2,13 +2,76 @@ package config
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
 )
+
+// Key is a config key's dotted path. Every path a caller names is a
+// constant of this type or built from one, so no call site spells it.
+type Key string
+
+// The builtin keys, in the order defineDefaults declares them.
+const (
+	KeyModelsChat           Key = "models.chat"
+	KeyModelsAgents         Key = "models.agents"
+	KeyModelsTitles         Key = "models.titles"
+	KeyModelsCompact        Key = "models.compact"
+	KeyModelsMemory         Key = "models.memory"
+	KeyModelsFavorites      Key = "models.favorites"
+	KeyProvidersBuiltin     Key = "providers.builtin"
+	KeyUITheme              Key = "ui.theme"
+	KeyUIAnimations         Key = "ui.animations"
+	KeyAgentEffort          Key = "agent.effort"
+	KeyAgentProfile         Key = "agent.profile"
+	KeySessionAutoTitle     Key = "session.auto_title"
+	KeySessionRecap         Key = "session.recap"
+	KeyAgentCompactAt       Key = "agent.compact_at"
+	KeyAgentMaxBackground   Key = "agent.max_background"
+	KeyAgentMaxSteps        Key = "agent.max_steps"
+	KeyLSPAuto              Key = "lsp.auto"
+	KeyEditorCommand        Key = "editor.command"
+	KeyKeymapLeader         Key = "keymap.leader"
+	KeyUIMouse              Key = "ui.mouse"
+	KeyUINotify             Key = "ui.notify"
+	KeyUIProgress           Key = "ui.progress"
+	KeyUIComposerMultiline  Key = "ui.composer.multiline"
+	KeyUIComposerHistory    Key = "ui.composer.history"
+	KeyUICompletionFiles    Key = "ui.completion.files"
+	KeyUICompletionMaxItems Key = "ui.completion.max_items"
+	KeyMemoryAutonomy       Key = "memory.autonomy"
+)
+
+// ModelKey is the key a model target's own model is set at (models.<name>).
+func ModelKey(role string) Key { return Key("models." + role) }
+
+// PluginOf is the plugin a plugins.<name>.<key> key belongs to.
+func PluginOf(key Key) (string, bool) {
+	rest, ok := strings.CutPrefix(string(key), "plugins.")
+	name, _, nested := strings.Cut(rest, ".")
+	if !ok || !nested {
+		return "", false
+	}
+	return name, true
+}
+
+// ModelRole is the target a models.<role> key names; favorites is a list key,
+// not a slot.
+func ModelRole(key Key) (string, bool) {
+	role, ok := strings.CutPrefix(string(key), "models.")
+	if !ok || key == KeyModelsFavorites {
+		return "", false
+	}
+	return role, true
+}
+
+// PluginKey is the key a plugin's own setting is registered at.
+func PluginKey(plugin, key string) Key { return Key("plugins." + plugin + "." + key) }
 
 // Kind is the type of value a setting holds.
 type Kind string
@@ -17,17 +80,21 @@ const (
 	KindString Kind = "string"
 	KindNumber Kind = "number"
 	KindBool   Kind = "bool"
+	KindList   Kind = "list" // a list of strings
 )
 
-var Kinds = []Kind{KindString, KindNumber, KindBool}
+var Kinds = []Kind{KindString, KindNumber, KindBool, KindList}
 
 // Setting describes one config key.
 type Setting struct {
-	Path    string
+	Path    Key
 	Kind    Kind
 	Default any
 	Desc    string
 	Choices []string // the only values a string key takes; nil takes any
+	// Check narrows a value past its kind; the settings whose path alone
+	// cannot say what they hold (a model key holds an id, never a role).
+	Check func(any) (any, error)
 	// builtin marks a key defineDefaults owns: a key registered later (a
 	// plugin's, a model target's) may take its value over, never the key.
 	builtin bool
@@ -37,8 +104,8 @@ type Setting struct {
 // Go-owned: a key outside it cannot be set.
 type Store struct {
 	mu       sync.RWMutex
-	values   map[string]any
-	schema   map[string]Setting
+	values   map[Key]any
+	schema   map[Key]Setting
 	watchers []watcher
 	watchSeq int
 }
@@ -51,7 +118,7 @@ type WatchFired struct {
 
 type watcher struct {
 	id   int
-	path string
+	path Key
 }
 
 // The ui.notify styles, in the order the setting lists them: the resolver that
@@ -68,8 +135,8 @@ var notifyStyles = []string{NotifyAuto, NotifyOSC, NotifyNative, NotifyBell, Not
 
 func NewStore() *Store {
 	s := &Store{
-		values: map[string]any{},
-		schema: map[string]Setting{},
+		values: map[Key]any{},
+		schema: map[Key]Setting{},
 	}
 	s.defineDefaults()
 	return s
@@ -77,32 +144,33 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: "models.chat", Kind: KindString, Default: "", Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
-		{Path: "models.agents", Kind: KindString, Default: "", Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
-		{Path: "models.titles", Kind: KindString, Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
-		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
-		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
-		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
-		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
-		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
-		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
-		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
-		{Path: "session.recap", Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
-		{Path: "agent.compact_at", Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
-		{Path: "agent.max_background", Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
-		{Path: "agent.max_steps", Kind: KindNumber, Default: 200.0, Desc: "steps one turn may take before it stops and hands back, its tool calls included; 0 or less keeps 200, and a sent message continues the turn"},
-		{Path: "lsp.auto", Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
-		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
-		{Path: "keymap.leader", Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
-		{Path: "ui.mouse", Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: "ui.notify", Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks what shows on this machine (/health names it)"},
-		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
-		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter)"},
-		{Path: "ui.composer.history", Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
-		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
-		{Path: "ui.completion.max_items", Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},
-		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores them at once, ask queues them for /memory"},
+		{Path: KeyModelsChat, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
+		{Path: KeyModelsAgents, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
+		{Path: KeyModelsTitles, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
+		{Path: KeyModelsCompact, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
+		{Path: KeyModelsMemory, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
+		{Path: KeyModelsFavorites, Kind: KindList, Default: []string{}, Desc: "the models /model lists first, marked with f (provider/model ids)"},
+		{Path: KeyProvidersBuiltin, Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
+		{Path: KeyUITheme, Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
+		{Path: KeyUIAnimations, Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
+		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
+		{Path: KeyAgentProfile, Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
+		{Path: KeySessionAutoTitle, Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
+		{Path: KeySessionRecap, Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
+		{Path: KeyAgentCompactAt, Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
+		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
+		{Path: KeyAgentMaxSteps, Kind: KindNumber, Default: 200.0, Desc: "steps one turn may take before it stops and hands back, its tool calls included; 0 or less keeps 200, and a sent message continues the turn"},
+		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
+		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
+		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
+		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
+		{Path: KeyUINotify, Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks what shows on this machine (/health names it)"},
+		{Path: KeyUIProgress, Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
+		{Path: KeyUIComposerMultiline, Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter)"},
+		{Path: KeyUIComposerHistory, Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
+		{Path: KeyUICompletionFiles, Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
+		{Path: KeyUICompletionMaxItems, Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},
+		{Path: KeyMemoryAutonomy, Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores them at once, ask queues them for /memory"},
 	}
 	for _, def := range defaults {
 		def.builtin = true
@@ -110,6 +178,20 @@ func (s *Store) defineDefaults() {
 		s.values[def.Path] = def.Default
 	}
 }
+
+// checkModelRef refuses a model key that names a role instead of a model:
+// roles never nest, so a models.<role> key holds a provider/model id or "".
+func checkModelRef(v any) (any, error) {
+	s, ok := v.(string)
+	if ok && s != "" && !strings.Contains(s, "/") {
+		return nil, &BadValueError{Path: "", Want: `a provider/model id or ""`}
+	}
+	return v, nil
+}
+
+// ModelRefCheck is checkModelRef for a key registered outside this package (a
+// model target's models.<name>).
+func ModelRefCheck(v any) (any, error) { return checkModelRef(v) }
 
 // Add registers a key beside the builtin ones. One registered again with
 // the same kind, default and choices keeps its value and takes the new
@@ -122,7 +204,7 @@ func (s *Store) Add(def Setting) (changed bool, err error) {
 	defer s.mu.Unlock()
 	if old, ok := s.schema[def.Path]; ok {
 		def.builtin = old.builtin // a key the schema owns stays the schema's
-		if old.Kind == def.Kind && old.Default == def.Default && slices.Equal(old.Choices, def.Choices) {
+		if old.Kind == def.Kind && reflect.DeepEqual(old.Default, def.Default) && slices.Equal(old.Choices, def.Choices) {
 			old.Desc = def.Desc
 			s.schema[def.Path] = old
 			return false, nil
@@ -134,7 +216,7 @@ func (s *Store) Add(def Setting) (changed bool, err error) {
 }
 
 // Del drops a key Add registered, with its value.
-func (s *Store) Del(path string) {
+func (s *Store) Del(path Key) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.schema, path)
@@ -149,7 +231,7 @@ func (s *Store) Schema() []Setting {
 }
 
 // Default is the schema default of path, nil for a key outside the schema.
-func (s *Store) Default(path string) any {
+func (s *Store) Default(path Key) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.schema[path].Default
@@ -158,14 +240,14 @@ func (s *Store) Default(path string) any {
 // Builtin reports whether the schema owns path: a key registered later is not
 // one, and neither is a path outside the schema. Whatever drops registrations
 // must leave these alone.
-func (s *Store) Builtin(path string) bool {
+func (s *Store) Builtin(path Key) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.schema[path].builtin
 }
 
 // Get looks up a dotted path over the merged values.
-func (s *Store) Get(path string) (any, bool) {
+func (s *Store) Get(path Key) (any, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.values[path]
@@ -175,11 +257,11 @@ func (s *Store) Get(path string) (any, bool) {
 // Str reads a string schema key; Bool and Int read the other two kinds, Int
 // truncating a fraction. Every schema key holds its default until someone
 // sets it, so only a key outside the schema reads as the zero value.
-func (s *Store) Str(path string) string { return s.value[string](path) }
-func (s *Store) Bool(path string) bool  { return s.value[bool](path) }
-func (s *Store) Int(path string) int    { return int(s.value[float64](path)) }
+func (s *Store) Str(path Key) string { return s.value[string](path) }
+func (s *Store) Bool(path Key) bool  { return s.value[bool](path) }
+func (s *Store) Int(path Key) int    { return int(s.value[float64](path)) }
 
-func (s *Store) value[T any](path string) T {
+func (s *Store) value[T any](path Key) T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, _ := s.values[path].(T)
@@ -189,7 +271,7 @@ func (s *Store) value[T any](path string) T {
 // SetQuiet applies a runtime override without notifying watchers; the
 // callers on the interpreter goroutine deliver the fired watches themselves
 // so a Lua watch callback never re-enters the request queue.
-func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
+func (s *Store) SetQuiet(path Key, val any) ([]WatchFired, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	def, ok := s.schema[path]
@@ -213,7 +295,7 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 
 // Check returns val in the stored form of path's kind, or why it cannot be
 // set there.
-func (s *Store) Check(path string, val any) (any, error) {
+func (s *Store) Check(path Key, val any) (any, error) {
 	s.mu.RLock()
 	def, ok := s.schema[path]
 	s.mu.RUnlock()
@@ -225,7 +307,7 @@ func (s *Store) Check(path string, val any) (any, error) {
 
 // SetChoices limits the string key path to choices, for a list that lives
 // in a package config cannot import (agent.Efforts).
-func (s *Store) SetChoices[T ~string](path string, choices []T) {
+func (s *Store) SetChoices[T ~string](path Key, choices []T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	def, ok := s.schema[path]
@@ -242,7 +324,7 @@ func (s *Store) SetChoices[T ~string](path string, choices []T) {
 // AddWatch registers a change observer of path and returns its id. A path
 // outside the schema is refused: watchers match by exact path, so a typo
 // would sit there and never fire.
-func (s *Store) AddWatch(path string) (int, error) {
+func (s *Store) AddWatch(path Key) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.schema[path]; !ok {
@@ -265,7 +347,7 @@ func (s *Store) RemoveWatch(id int) bool {
 // BadValueError means the value has the wrong kind or is outside the key's
 // choices; Got, set for a refused choice, is echoed back.
 type BadValueError struct {
-	Path string
+	Path Key
 	Want string
 	Got  any
 }
@@ -286,10 +368,6 @@ func checkKind(def Setting, val any) (any, error) {
 	case KindString:
 		var s string
 		s, ok = val.(string)
-		// a models.* key holds an id, never a role name: roles never nest
-		if ok && strings.HasPrefix(def.Path, "models.") && s != "" && !strings.Contains(s, "/") {
-			return nil, &BadValueError{Path: def.Path, Want: `a provider/model id or ""`}
-		}
 		if ok && def.Choices != nil && !slices.Contains(def.Choices, s) {
 			// "default" names a "" choice, as /config shows it
 			if s == "default" && slices.Contains(def.Choices, "") {
@@ -311,6 +389,8 @@ func checkKind(def Setting, val any) (any, error) {
 		val = f
 	case KindBool:
 		_, ok = val.(bool)
+	case KindList:
+		val, ok = stringList(val)
 	}
 	if !ok {
 		if def.Choices != nil {
@@ -318,7 +398,38 @@ func checkKind(def Setting, val any) (any, error) {
 		}
 		return nil, &BadValueError{Path: def.Path, Want: string(def.Kind)}
 	}
+	if def.Check != nil {
+		v, err := def.Check(val)
+		if err != nil {
+			var bad *BadValueError
+			if errors.As(err, &bad) && bad.Path == "" {
+				bad.Path = def.Path
+			}
+			return nil, err
+		}
+		val = v
+	}
 	return val, nil
+}
+
+// stringList is a list key's stored form: Lua and JSON both hand it []any, so
+// every entry is checked as a string and the slice comes back as []string.
+func stringList(val any) ([]string, bool) {
+	switch v := val.(type) {
+	case []string:
+		return v, true
+	case []any:
+		out := make([]string, len(v))
+		for i, it := range v {
+			s, ok := it.(string)
+			if !ok {
+				return nil, false
+			}
+			out[i] = s
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func choiceList(choices []string) string {
