@@ -942,7 +942,7 @@ func (h *Host) lspItems() []any {
 			"fields": fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
 		}
 		if row.Status != StatusIdle {
-			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + row.Name}}
+			item["keys"] = []any{map[string]any{"key": "r", "desc": "Restart", "run": "lsp restart " + row.Name}}
 		}
 		items = append(items, item)
 	}

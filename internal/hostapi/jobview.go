@@ -110,7 +110,7 @@ func (h *Host) jobsOverlay() Overlay {
 			"run":     "jobs view " + j.ID, "verb": "open",
 		}
 		if j.Running() {
-			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "jobs stop " + j.ID}}
+			item["keys"] = []any{map[string]any{"key": "s", "desc": "Stop", "run": "jobs stop " + j.ID}}
 			running = append(running, item)
 			continue
 		}
@@ -127,15 +127,17 @@ func (h *Host) jobsOverlay() Overlay {
 	return o
 }
 
-// jobOverlay is one job's view: its facts, then the tail of its output, which
-// follows as it runs unless the reader scrolls up.
+// jobOverlay is one job's view, drawn as the chat draws a shell call's: its
+// facts, the command in a well of the canvas, then the tail of its output,
+// which follows as it runs unless the reader scrolls up.
 func (h *Host) jobOverlay(j *tools.Job) Overlay {
 	status, elapsed := j.Status(), fmtDuration(j.Elapsed())
 	out := jobTail(j.Output())
 	o := Overlay{
 		ID: "job:" + j.ID, Title: "Jobs / " + clipLine(j.Name, 50), Origin: lua.OriginBuiltin,
 		Live: true, Body: out, Mark: j.Mark(),
-		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}, {Name: "command", Value: j.Name}},
+		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}},
+		Parts:  []BodyPart{{Text: j.Name, Lang: "bash"}, {Text: out}},
 	}
 	if out == "" {
 		o.Empty = "(no output yet)"

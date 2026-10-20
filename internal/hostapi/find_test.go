@@ -211,11 +211,11 @@ func TestOpenFindSessions(t *testing.T) {
 	if detail, _ := row["detail"].(string); !strings.Contains(detail, "· ") {
 		t.Errorf("detail = %q, want the hits in it", detail)
 	}
-	actions, _ := row["actions"].([]any)
-	if len(actions) != 1 {
-		t.Fatalf("actions = %v", actions)
+	keys, _ := row["keys"].([]any)
+	if len(keys) != 1 {
+		t.Fatalf("keys = %v", keys)
 	}
-	if got := actions[0].(map[string]any)["run"]; got != "sessions open "+f.plain+" "+f.dirs.TrustRoot() {
+	if got := keys[0].(map[string]any)["run"]; got != "sessions open "+f.plain+" "+f.dirs.TrustRoot() {
 		t.Errorf("action run = %v", got)
 	}
 

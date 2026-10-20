@@ -187,23 +187,23 @@ func (h *Host) configItems() []any {
 			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
 			"detail": s.Desc + note,
 		}
-		edit := map[string]any{"text": "Change", "hotkey": "c", "run": configPicker(s.Path)}
+		edit := map[string]any{"key": "c", "desc": "Change", "run": configPicker(s.Path)}
 		if s.Kind == config.KindBool {
 			item["on"], item["run"] = v == true, "config toggle "+string(s.Path)
-			edit = map[string]any{"text": "Toggle", "hotkey": "t", "run": item["run"]}
+			edit = map[string]any{"key": "t", "desc": "Toggle", "run": item["run"]}
 		}
 		if item["run"] == nil {
 			item["verb"] = "open" // a row with a verb is no toggle
 		}
-		actions := []any{edit}
+		keys := []any{edit}
 		if !reflect.DeepEqual(v, base) {
 			label := map[bool]string{true: "Reset to init.lua", false: "Reset to default"}[set]
-			actions = append(actions, map[string]any{"text": label, "hotkey": "r", "run": "config reset " + string(s.Path)})
+			keys = append(keys, map[string]any{"key": "r", "desc": label, "run": "config reset " + string(s.Path)})
 		}
 		if note != "" {
-			actions = append(actions, map[string]any{"text": "Open init.lua", "hotkey": "o", "run": "config open"})
+			keys = append(keys, map[string]any{"key": "o", "desc": "Open init.lua", "run": "config open"})
 		}
-		item["actions"] = actions
+		item["keys"] = keys
 		items = append(items, item)
 	}
 	return items

@@ -86,7 +86,7 @@ func TestMessagesTurnRows(t *testing.T) {
 	}
 	want := []row{
 		{"ping", "", 1},
-		{"2 steps", "err", 2},
+		{"2 steps", "", 2},
 		{"the tests fail", "", 4},
 		{"plugin updated", "note", 5},
 		{"1 step", "", 6},
@@ -99,24 +99,25 @@ func TestMessagesTurnRows(t *testing.T) {
 			t.Errorf("row %d = %+v, want %+v", i+1, got[i], want[i])
 		}
 	}
-	// every row opens its actions, a prompt first names the row r rewinds to
-	actions := func(it map[string]any) []string {
+	// every row's keys act on it from the list; a prompt names the row r
+	// rewinds to
+	keys := func(it map[string]any) []string {
 		var runs []string
-		for _, a := range it["actions"].([]any) {
-			runs = append(runs, a.(map[string]any)["run"].(string))
+		for _, k := range it["keys"].([]any) {
+			runs = append(runs, k.(map[string]any)["run"].(string))
 		}
 		return runs
 	}
 	prompt := o.Items[0].(map[string]any)
-	if prompt["id"] != "m1" || !slices.Equal(actions(prompt), []string{"messages view 1", "rewind m1"}) {
+	if prompt["id"] != "m1" || !slices.Equal(keys(prompt), []string{"messages view 1"}) {
 		t.Errorf("prompt = %v", prompt)
 	}
-	if reply := o.Items[2].(map[string]any); !slices.Equal(actions(reply), []string{"messages view 4"}) {
+	if reply := o.Items[2].(map[string]any); !slices.Equal(keys(reply), []string{"messages view 4"}) {
 		t.Errorf("reply = %v", reply)
 	}
-	// a run says what failed, and its row opens the rail alone
+	// a run reads the same whatever it did, and its row opens the rail alone
 	rail := o.Items[1].(map[string]any)
-	if rail["desc"] != "1 failure" || rail["run"] != "messages rail 2" || rail["verb"] != "open" || rail["actions"] != nil {
+	if rail["mark"] != nil || rail["desc"] != nil || rail["run"] != "messages rail 2" || rail["verb"] != "open" || rail["keys"] != nil {
 		t.Errorf("rail = %v", rail)
 	}
 	// the next turn's prompt is no row of this one
@@ -141,8 +142,8 @@ func TestMessagesTurnRows(t *testing.T) {
 	if !slices.Equal(calls, []row{{"hmm", "", 2}, {"run the tests", "err", 3}}) {
 		t.Errorf("calls = %+v", calls)
 	}
-	if got := actions(r.Items[1].(map[string]any)); !slices.Equal(got, []string{"call 3"}) {
-		t.Errorf("call actions = %v", got)
+	if got := keys(r.Items[1].(map[string]any)); !slices.Equal(got, []string{"call 3"}) {
+		t.Errorf("call keys = %v", got)
 	}
 	if err := h.openMessagesRail(9); err == nil {
 		t.Error("a row that opens no rail opened one")

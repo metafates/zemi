@@ -83,6 +83,13 @@ type App struct {
 	// rail is the activity run the open list walks call by call, which the
 	// chat draws whole so each call it names has a row; 0 when none.
 	rail int
+	// byRow says an overlay is opening from a key on another list's row, so
+	// it reopens where that list left it instead of following the chat
+	byRow bool
+	// railClose is the list that folds a run: it closes once the chat has
+	// rendered that run folded, whose generation is railGen
+	railClose string
+	railGen   int64
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
@@ -162,6 +169,7 @@ type App struct {
 	// without waiting on the Update goroutine.
 	frameMu   sync.Mutex
 	lastFrame string
+	readRow   int // the transcript row the paint placed the reader at
 	rects     map[string]hostapi.Rect
 
 	program   *tea.Program
@@ -768,6 +776,12 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
 		delete(a.pending, msg.id)
 	}
+	// the chat drew the run a closing list had open: the list can go now, and
+	// the frame that shows it gone shows the run folded
+	if id := a.railClose; id != "" && msg.id == a.scrollDef && msg.gen >= a.railGen {
+		a.railClose = ""
+		a.closeOverlays(id)
+	}
 	// renders of one generation at two sizes run concurrently: one dispatched
 	// earlier that finishes last must not replace newer lines
 	if c := a.caches[msg.id]; c != nil && c.seq > msg.seq {
@@ -1068,9 +1082,51 @@ func (a *App) compose(w, h int) string {
 		}
 	}
 	a.frameMu.Lock()
-	a.lastFrame, a.rects = out, rects
+	a.lastFrame, a.rects, a.readRow = out, rects, a.chatRow()
 	a.frameMu.Unlock()
 	return out
+}
+
+// ChatRow implements hostapi.UIHooks from the last composed frame.
+func (a *App) ChatRow() int {
+	a.frameMu.Lock()
+	defer a.frameMu.Unlock()
+	return a.readRow
+}
+
+// chatRow is the transcript row the reader is at: the message a jump placed
+// the view at while it still sits there, the last one the view draws at the
+// transcript's end, else the row over its middle, down to the call a rail
+// row names.
+func (a *App) chatRow() int {
+	chat := a.scrolls[a.scrollDef]
+	switch {
+	case chat == nil || len(chat.lines) == 0:
+		return 0
+	case chat.focus > 0 && chat.top == chat.placed:
+		return chat.focus
+	case chat.follow || chat.top+chat.viewH >= chat.rows:
+		return drawnRow(chat.lines, len(chat.lines)-1, -1, -1)
+	}
+	mid := chat.top + max(chat.viewH-1, 0)/2
+	if mid < 0 || mid >= len(chat.lines) {
+		return 0
+	}
+	return drawnRow(chat.lines, mid, -1, 1)
+}
+
+// drawnRow is the transcript row of the line at from walking by step until
+// one names a row: a call of a rail, else a unit's anchor.
+func drawnRow(lines [][]hostapi.Segment, from, stop, step int) int {
+	for i := from; i != stop && i >= 0 && i < len(lines); i += step {
+		if c := rowCall(lines[i]); c > 0 {
+			return c
+		}
+		if anchor := rowAnchor(lines[i]); anchor > 0 {
+			return anchor
+		}
+	}
+	return 0
 }
 
 // LayoutRects implements hostapi.UIHooks from the last composed frame.

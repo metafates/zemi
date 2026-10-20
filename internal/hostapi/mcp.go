@@ -815,14 +815,14 @@ func (h *Host) mcpItems() []any {
 		}
 		fields := fieldList(where[0], where[1], "status", string(status), "sign in at", signIn,
 			"tools", strings.Join(tools, ", "), "error", strings.TrimPrefix(errText, "mcp: "))
-		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
+		keys := []any{map[string]any{"key": "r", "desc": "Restart", "run": "mcp restart " + s.name}}
 		if status == StatusSignIn {
-			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
+			keys = append(keys, map[string]any{"key": "s", "desc": "Sign in", "run": "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
-			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
+			keys = append(keys, map[string]any{"key": "x", "desc": "Sign out", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
 		}
-		item := map[string]any{"text": s.name, "desc": desc, "mark": mcpMarks[status], "fields": fields, "actions": actions}
+		item := map[string]any{"text": s.name, "desc": desc, "mark": mcpMarks[status], "fields": fields, "keys": keys}
 		if signIn != "" {
 			// the URL is too long for a toast; y copies it when the browser
 			// was blocked

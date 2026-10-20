@@ -189,6 +189,7 @@ func (a *App) CloseOverlay(id string) {
 func (a *App) CloseLuaOverlays() {
 	a.do(func() {
 		a.overlays = slices.DeleteFunc(a.overlays, func(st overlayState) bool { return st.o.Gen != 0 })
+		a.syncRail()
 	})
 }
 

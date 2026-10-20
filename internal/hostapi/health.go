@@ -612,7 +612,7 @@ func (h *Host) healthItems() []any {
 		}
 		if c.Run != "" {
 			if label, key, ok := healthAction(c.Run); ok {
-				item["actions"] = []any{map[string]any{"text": label, "hotkey": key, "run": c.Run}}
+				item["keys"] = []any{map[string]any{"key": key, "desc": label, "run": c.Run}}
 			}
 		}
 		if c.Level == HealthOK {

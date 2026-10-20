@@ -103,8 +103,9 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 	}
 }
 
-// TestSkillItemsShowTheBody: /skills offers the instructions and the file
-// itself, but for a builtin skill, whose file zemi rewrites on every start.
+// TestSkillItemsShowTheBody: a skill's view holds its text; only a skill
+// with a file of its own offers to open it, since zemi rewrites a builtin's
+// on every start.
 func TestSkillItemsShowTheBody(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostSkills(t)
@@ -113,13 +114,13 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 	seen := map[string]bool{}
 	for _, it := range h.skillItems() {
 		m := it.(map[string]any)
-		name, actions := m["text"].(string), fmt.Sprint(m["actions"])
+		name, keys, body := m["text"].(string), fmt.Sprint(m["keys"]), fmt.Sprint(m["detail"])
 		if name != "local-run" && name != "zemi" {
 			continue
 		}
 		seen[name] = true
-		if !strings.Contains(actions, "Read it") || strings.Contains(actions, "skills open "+name) != (name == "local-run") {
-			t.Errorf("%s: actions %v", name, m["actions"])
+		if body == "" || strings.Contains(keys, "skills open "+name) != (name == "local-run") {
+			t.Errorf("%s: keys %v, body %v", name, m["keys"], m["detail"])
 		}
 	}
 	if !seen["local-run"] || !seen["zemi"] {

@@ -500,8 +500,8 @@ func (h *Host) OpenRewind() error {
 			"text":   first,
 			"desc":   desc,
 			"detail": effect + "\n\n" + text, // what it does first: a long prompt scrolls below
-			"actions": []any{
-				map[string]any{"text": "Rewind", "hotkey": "r", "danger": true, "run": "rewind " + row.ID},
+			"keys": []any{
+				map[string]any{"key": "r", "desc": "Rewind", "danger": true, "run": "rewind " + row.ID},
 			},
 		})
 	}

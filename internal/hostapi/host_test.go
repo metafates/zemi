@@ -316,21 +316,20 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 			return s:upper()
 		end })
 		zemi.ui.select({ 1 }, { format_item = function(n) return "#" .. n end }, function() end)
-		zemi.ui.overlay.open({ id = "d", body = "text", empty = "none", items = { { text = "a", actions = { { text = "Go", fill = "x" } } } } })
+		zemi.ui.overlay.open({ id = "d", body = "text", empty = "none", items = { { text = "a", keys = { { key = "g", desc = "Go", fill = "x" } } } } })
 		zemi.ui.overlay.open({ id = "s", anchor = "bottom-right", selected = 2, items = { "x", "y" }, render_item = function(s)
 			return { { text = s, hl = "Title" }, { text = "!" } }
 		end })
 		assert(not pcall(zemi.ui.overlay.open, { id = "t", anchor = "top" }), "an unknown anchor must raise")
 		for _, hk in ipairs({ "j", "/", "ab" }) do
-			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", hotkey = hk } } }), "item hotkey " .. hk)
-			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", actions = { { text = "b", hotkey = hk } } } } }), "action hotkey " .. hk)
+			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", keys = { { key = hk, desc = "b" } } } } }), "row key " .. hk)
 		end
 		assert(not pcall(zemi.ui.select, { prompt = "p" }, {}, function() end), "select with the args swapped must raise")
 	`)
 	if s := ui.opened[3]; s.Anchor != "bottom-right" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
 		t.Fatalf("segment overlay: %+v", s)
 	}
-	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["actions"].([]any)) != 1 {
+	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["keys"].([]any)) != 1 {
 		t.Fatalf("detail overlay: %+v", d)
 	}
 	var got []string
@@ -678,7 +677,7 @@ func TestConfigSet(t *testing.T) {
 	for path, run := range map[string]string{"editor.command": "config edit editor.command", "ui.theme": "theme", "models.chat": "model chat"} {
 		items := h.configItems()
 		row := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == path })].(map[string]any)
-		if act := row["actions"].([]any)[0].(map[string]any); act["run"] != run || act["text"] != "Change" {
+		if act := row["keys"].([]any)[0].(map[string]any); act["run"] != run || act["desc"] != "Change" {
 			t.Errorf("%s: first action %v, want Change running %q", path, act, run)
 		}
 	}

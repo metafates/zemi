@@ -93,10 +93,10 @@ func TestMessagesOpenAtGap(t *testing.T) {
 		}
 		for app.Pump() {
 		}
-		if len(app.overlays) != 1 {
-			t.Fatalf("%d overlays", len(app.overlays))
+		if len(app.overlays) == 0 {
+			t.Fatal("no overlays")
 		}
-		from, to := unitRows(chat.lines, app.overlays[0].selectedAnchor())
+		from, to := unitRows(chat.lines, app.overlays[len(app.overlays)-1].selectedAnchor())
 		if from < chat.top || from >= chat.top+chat.viewH {
 			t.Fatalf("the picked message is off screen: rows %d..%d, view %d..%d", from, to, chat.top, chat.top+chat.viewH)
 		}
@@ -227,9 +227,10 @@ func TestMessagesTallJump(t *testing.T) {
 	}
 	for app.Pump() {
 	}
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"}) // back to the turns
 	app.Frame()
 	chat := app.scrolls["chat"]
-	ov := &app.overlays[0]
+	ov := &app.overlays[len(app.overlays)-1]
 	// away and back, so the jump to this turn is what the second key makes
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
 	app.Frame()
@@ -242,18 +243,6 @@ func TestMessagesTallJump(t *testing.T) {
 	pins := len(pinned(nil, chat.lines, chat.top))
 	if from != chat.top+pins {
 		t.Fatalf("the message starts at view row %d, %d pins over it", from-chat.top, pins)
-	}
-	// the same computation reads the tall message back on the next open
-	want := ov.selectedAnchor()
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
-	app.Frame()
-	if err := host.OpenMessages(); err != nil {
-		t.Fatal(err)
-	}
-	for app.Pump() {
-	}
-	if got := app.overlays[0].selectedAnchor(); got != want {
-		t.Fatalf("reopened on %d, want %d", got, want)
 	}
 }
 
@@ -386,11 +375,10 @@ func TestMessagesFollow(t *testing.T) {
 	}
 }
 
-// TestMessagesReopenAll: every message, entered on and reopened, comes back
-// on the same message. The viewport alone cannot say which one - centering
-// clamps at the top and the tail, where many messages share one top row - so
-// the chat keeps the row it was placed at until the reader moves it by hand.
-func TestMessagesReopenAll(t *testing.T) {
+// TestMessagesOpensAtTheReader: /messages opens on the level the reader is
+// in, not on the list of turns, and enter there closes the menu keeping the
+// place it moved the chat to.
+func TestMessagesOpensAtTheReader(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 120, 46)
 	fillChat(host)
@@ -404,25 +392,54 @@ func TestMessagesReopenAll(t *testing.T) {
 		}
 		for app.Pump() {
 		}
-		if len(app.overlays) != 1 {
-			t.Fatalf("%d overlays", len(app.overlays))
+		if len(app.overlays) < 2 {
+			t.Fatalf("%d overlays, want the turns and the one level in", len(app.overlays))
 		}
-		return &app.overlays[0]
+		return &app.overlays[len(app.overlays)-1]
 	}
-	for k := range 30 {
+	// every turn's prompt, put at the top of the view, opens its own level
+	turns := 0
+	for _, line := range chat.lines {
+		anchor := rowAnchor(line)
+		if !strings.Contains(hostapi.SegsText(line), "message ") || anchor == 0 {
+			continue
+		}
+		var from int
+		for i, l := range chat.lines {
+			if rowAnchor(l) == anchor {
+				from = i
+				break
+			}
+		}
+		chat.follow, chat.top, chat.focus = false, from, 0
+		app.Frame()
 		ov := open()
-		ov.selected = 0 // away first, so picking k always moves the view
-		app.Frame()
-		ov.selected = k
-		app.Frame()
+		if !strings.HasPrefix(ov.o.ID, "messages turn ") {
+			t.Fatalf("the reader at %d opened %q", anchor, ov.o.ID)
+		}
+		if got := ov.selectedAnchor(); got != anchor && !strings.Contains(fmt.Sprint(ov.labels), "message") {
+			t.Fatalf("the reader at %d opened on %d", anchor, got)
+		}
 		want := ov.selectedAnchor()
+		top := chat.top
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 		app.Frame()
+		if len(app.overlays) != 0 {
+			t.Fatalf("enter left %d overlays", len(app.overlays))
+		}
+		if chat.top != top {
+			t.Fatalf("enter moved the chat: top %d, want %d", chat.top, top)
+		}
+		// reopening lands on the same row again
 		if got := open().selectedAnchor(); got != want {
-			t.Errorf("message %d: reopened on %d, want %d (top %d of %d, follow %v)", k, got, want, chat.top, chat.rows, chat.follow)
+			t.Fatalf("reopened on %d, want %d", got, want)
 		}
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 		app.Frame()
+		turns++
+	}
+	if turns < 5 {
+		t.Fatalf("only %d turns read", turns)
 	}
 }
 
@@ -533,9 +550,10 @@ func messagesApp(t *testing.T) (*App, *hostapi.Host) {
 	return app, host
 }
 
-// TestMessagesTree: l walks the conversation one level at a time - the turns,
-// a turn's messages and rail, a row's actions - and h or esc walks back, the
-// chat following whatever level names the row.
+// TestMessagesTree: /messages opens the levels down to the reader's place;
+// h walks back up remembering each level's row, esc on a view returns to the
+// level it came from, l on a leaf does nothing, and enter closes the menu
+// keeping the chat's place.
 func TestMessagesTree(t *testing.T) {
 	t.Parallel()
 	app, host := messagesApp(t)
@@ -550,38 +568,86 @@ func TestMessagesTree(t *testing.T) {
 		}
 		app.Frame()
 	}
+	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
+	ids := func() []string {
+		var out []string
+		for _, st := range app.overlays {
+			out = append(out, st.o.ID)
+		}
+		return out
+	}
+	home := tea.KeyPressMsg{Code: tea.KeyHome}
 	if err := host.OpenMessages(); err != nil {
 		t.Fatal(err)
 	}
 	pump()
-	if got := app.overlays[len(app.overlays)-1].o.ID; got != "messages" {
-		t.Fatalf("the turns list is %q", got)
+	// the reader sits at the tail: the level of that turn, under the turns
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" {
+		t.Fatalf("%d overlays, top %q", n, id)
 	}
-	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	press(t, app, home)
 	pump()
-	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 2 || !strings.HasPrefix(id, "messages turn ") {
-		t.Fatalf("a turn is %d overlays deep, %q", n, id)
-	}
-	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	pump()
-	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 3 || !strings.HasSuffix(id, "#detail") {
-		t.Fatalf("a row's actions are %d overlays deep, %q", n, id)
-	}
-	// an action opens its own view over the list it came from
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
-	pump()
-	top := app.overlays[len(app.overlays)-1].o.ID
-	if !strings.HasPrefix(top, "messages view ") {
-		t.Fatalf("the action opened %q", top)
-	}
-	// back to the list the action came from, then out of the browse
+	turnRow := top().selected
+	t.Logf("home: selected %d of %d, labels %v", turnRow, len(top().visible), top().labels)
+	// h is the way back to the turns, and l returns to the row left there
 	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
 	pump()
-	if n, id := len(app.overlays), app.overlays[len(app.overlays)-1].o.ID; n != 1 || id != "messages" {
+	if n, id := len(app.overlays), top().o.ID; n != 1 || id != "messages" {
 		t.Fatalf("%d overlays after h, %q", n, id)
 	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" || top().selected != turnRow {
+		var keys []string
+		for _, i := range top().visible {
+			keys = append(keys, itemKey(top().o.Items[i]))
+		}
+		t.Fatalf("%d overlays after l, %q at %d, want %d; lastSel %v keys %v byRow %v", n, id, top().selected, turnRow, app.lastSel, keys, app.byRow)
+	}
+	// a message's key reads it over this level; esc comes back to it as it was
+	row := top().selected
+	press(t, app, tea.KeyPressMsg{Code: 'o', Text: "o"})
+	pump()
+	if id := top().o.ID; !strings.HasPrefix(id, "messages view ") {
+		t.Fatalf("o opened %q: %v", id, ids())
+	}
+	t.Logf("after o: %v", ids())
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 	pump()
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" || top().selected != row {
+		t.Fatalf("esc on the view: %d overlays, %q at %d: %v", n, id, top().selected, ids())
+	}
+	// l on a leaf is nothing, enter is the place itself: the menu closes
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if n := len(app.overlays); n != 2 {
+		t.Fatalf("l on a leaf opened a level: %v", ids())
+	}
+	chat := app.scrolls["chat"]
+	chatTop, want := chat.top, top().selectedAnchor()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
+	pump()
+	if n := len(app.overlays); n != 0 {
+		t.Fatalf("enter left %v", ids())
+	}
+	if chat.top != chatTop {
+		t.Fatalf("enter moved the chat: top %d, want %d", chat.top, chatTop)
+	}
+	if got := bandedChatRows(app); len(got) != 0 {
+		t.Fatalf("banded rows after enter: %q", got)
+	}
+	// reopening the menu follows the chat again, from the place it kept
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	pump()
+	if got := top().selectedAnchor(); got != want {
+		t.Fatalf("reopened on %d, want %d", got, want)
+	}
+	for range 4 {
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+		pump()
+	}
 	if n := len(app.overlays); n != 0 {
 		t.Fatalf("%d overlays after esc", n)
 	}

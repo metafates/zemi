@@ -52,15 +52,46 @@ func (h *Host) MessagesCommand(args string) error {
 	return Usagef("usage: /messages [turn <row> | rail <row> | view <row>]")
 }
 
-// OpenMessages lists the conversation as turns: one row per prompt, each
-// opening on what the turn held. The chat follows the selection.
+// OpenMessages lists the conversation where the reader is: the deepest level
+// holding their place, the way muffin opens on the symbol under the cursor.
+// A row the chat draws from no turn opens the list of turns.
 func (h *Host) OpenMessages() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(h.messagesOverlay(h.viewedTranscript()))
+	tr := h.viewedTranscript()
+	ui.OpenOverlay(h.messagesOverlay(tr))
+	first, run := messagesAt(tr, ui.ChatRow())
+	if first == 0 {
+		return nil
+	}
+	if o, ok := h.messagesTurnOverlay(tr, first); ok {
+		ui.OpenOverlay(o)
+	}
+	if run != 0 {
+		if o, ok := h.messagesRailOverlay(tr, run); ok {
+			ui.OpenOverlay(o)
+		}
+	}
 	return nil
+}
+
+// messagesAt is the level of /messages that holds a transcript row: the turn
+// it belongs to, and the activity run of that turn holding it, 0 for none.
+func messagesAt(tr []ChatMessage, row int) (first, run int) {
+	for _, t := range messagesTurns(tr) {
+		if !slices.Contains(t.rows, row) {
+			continue
+		}
+		for _, e := range turnElements(tr, t.rows) {
+			if e.run != nil && slices.Contains(e.run.rows, row) {
+				run = e.run.first
+			}
+		}
+		return t.first, run
+	}
+	return 0, 0
 }
 
 // viewedTranscript is the chat's rows: the session's, or the shown run's,
@@ -181,7 +212,17 @@ func (h *Host) openMessagesTurn(first int) error {
 	if err != nil {
 		return err
 	}
-	tr := h.viewedTranscript()
+	o, ok := h.messagesTurnOverlay(h.viewedTranscript(), first)
+	if !ok {
+		return Usagef("the chat shows no turn at row %d", first)
+	}
+	ui.OpenOverlay(o)
+	return nil
+}
+
+// messagesTurnOverlay is one turn's rows: its prompt, replies, notices,
+// commands and errors, and its activity run folded into the row l opens.
+func (h *Host) messagesTurnOverlay(tr []ChatMessage, first int) (Overlay, bool) {
 	var turn msgTurn
 	for _, t := range messagesTurns(tr) {
 		if t.first == first {
@@ -189,7 +230,7 @@ func (h *Host) openMessagesTurn(first int) error {
 		}
 	}
 	if turn.first != first {
-		return Usagef("the chat shows no turn at row %d", first)
+		return Overlay{}, false
 	}
 	o := Overlay{
 		ID: "messages turn " + strconv.Itoa(first), Title: "Messages / Turn " + strconv.Itoa(turn.n),
@@ -201,7 +242,7 @@ func (h *Host) openMessagesTurn(first int) error {
 		var item map[string]any
 		var segs []Segment
 		if e.run != nil {
-			item, segs = railRow(tr, *e.run)
+			item, segs = railRow(*e.run)
 		} else {
 			item, segs = h.messageRow(e.idx, tr[e.idx-1])
 		}
@@ -215,8 +256,7 @@ func (h *Host) openMessagesTurn(first int) error {
 		}
 	}
 	o.ItemText = texts
-	ui.OpenOverlay(o)
-	return nil
+	return o, true
 }
 
 // openMessagesRail lists the calls and thoughts of one activity run, the
@@ -227,7 +267,17 @@ func (h *Host) openMessagesRail(first int) error {
 	if err != nil {
 		return err
 	}
-	tr := h.viewedTranscript()
+	o, ok := h.messagesRailOverlay(h.viewedTranscript(), first)
+	if !ok {
+		return Usagef("the chat shows no rail at row %d", first)
+	}
+	ui.OpenOverlay(o)
+	return nil
+}
+
+// messagesRailOverlay is one activity run call by call: the rail the turn
+// view folds into a row, whose run the chat draws whole while this is up.
+func (h *Host) messagesRailOverlay(tr []ChatMessage, first int) (Overlay, bool) {
 	for _, t := range messagesTurns(tr) {
 		for _, e := range turnElements(tr, t.rows) {
 			if e.run == nil || e.run.first != first {
@@ -237,18 +287,15 @@ func (h *Host) openMessagesRail(first int) error {
 				ID: "messages rail " + strconv.Itoa(first), Title: "Messages / Turn " + strconv.Itoa(t.n) + " activity",
 				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
 			}
-			var texts [][]Segment
 			for _, idx := range e.run.rows {
 				item, segs := messageCallRow(idx, tr[idx-1])
 				o.Items = append(o.Items, item)
-				texts = append(texts, segs)
+				o.ItemText = append(o.ItemText, segs)
 			}
-			o.ItemText = texts
-			ui.OpenOverlay(o)
-			return nil
+			return o, true
 		}
 	}
-	return Usagef("the chat shows no rail at row %d", first)
+	return Overlay{}, false
 }
 
 // msgElement is one row the turn view lists: a message, or the activity run
@@ -265,48 +312,16 @@ type msgRun struct {
 	rows  []int // every row it holds
 }
 
-// runStates ranks a call's state by how bad it is, so a run's one row marks
-// the worst of them, and names the states that count as failures: the chat's
-// digest says nothing of a failed call, so a fold here has to.
-var runStates = map[CallStatus]struct {
-	rank   int
-	failed bool
-}{
-	CallErr: {5, true}, CallStopped: {5, true}, CallCancelled: {5, true},
-	CallWarn: {4, false}, CallRun: {3, false}, CallWait: {3, false}, CallBG: {2, false},
-}
-
-// facts is what the run's one row says of its calls: the worst state any of
-// them is in, "" when every one went well, and how many failed.
-func (r msgRun) facts(tr []ChatMessage) (mark string, failed int) {
-	top, at := 0, CallStatus("")
-	for _, idx := range r.rows {
-		st := tr[idx-1].Status
-		if s := runStates[st]; s.rank > top {
-			top, at = s.rank, st
-		}
-		if runStates[st].failed {
-			failed++
-		}
-	}
-	return callMarks[at], failed
-}
-
 // railRow is a run as the turn view lists it: one row standing for the rail
-// the chat draws folded, which l opens call by call.
-func railRow(tr []ChatMessage, run msgRun) (map[string]any, []Segment) {
+// the chat draws folded, which l opens call by call. It reads the same
+// whatever the run did, so a list of turns keeps one shape.
+func railRow(run msgRun) (map[string]any, []Segment) {
 	text := pluralCount(len(run.rows), "step", "steps")
 	item := map[string]any{
 		"text": text, "anchor": run.first, "verb": "open",
 		"run": "messages rail " + strconv.Itoa(run.first),
 	}
-	if mark, failed := run.facts(tr); mark != "" {
-		item["mark"] = mark
-		if failed > 0 {
-			item["desc"] = pluralCount(failed, "failure", "failures")
-		}
-	}
-	return item, []Segment{{Text: "│ ", HL: "Dim"}, {Text: text}}
+	return item, []Segment{{Text: text}}
 }
 
 // turnElements groups a turn's rows: a contiguous run of calls and thoughts
@@ -333,40 +348,41 @@ func turnElements(tr []ChatMessage, rows []int) []msgElement {
 }
 
 // messageCallRow is one call or thought of a rail: what it reads as, and the
-// view, job or run it opens a level down.
+// view or run its keys open over the list.
 func messageCallRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 	text := strings.TrimSpace(m.Text)
 	item := map[string]any{"anchor": idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
-	head, glyph, hl := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 60), "│", "Dim"
+	head := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 40)
+	glyph, hl := "│", "Dim"
 	if m.Kind == RowReasoning {
-		head, glyph = cmp.Or(m.Label, messageHead(text), "thought"), "✻"
+		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 40), "✻"
 	}
-	var desc string
-	if n := len(strings.Split(strings.TrimSpace(m.Output), "\n")); m.Output != "" && n > 1 {
-		desc = pluralCount(n, "line", "lines")
-	}
-	var actions []any
+	var keys []any
 	switch {
 	case m.Run != "" && m.Tool == "workflow":
-		actions = append(actions, rowAction("Open the run", "o", "workflows view "+m.Run, idx))
+		keys = append(keys, viewKey("Open the run", "workflows view "+m.Run))
 	case m.Run != "":
-		actions = append(actions, rowAction("Open the run", "o", "agents view "+m.Run, idx))
+		keys = append(keys, viewKey("Open the run", "agents view "+m.Run))
 	default:
-		actions = append(actions, rowAction("Open the view", "o", "call "+strconv.Itoa(idx), idx))
+		keys = append(keys, viewKey("Open the view", "call "+strconv.Itoa(idx)))
 		if m.Job != "" {
-			actions = append(actions, rowAction("Open the job", "j", "jobs view "+m.Job, idx))
+			keys = append(keys, viewKey("Open the job", "jobs view "+m.Job))
 		}
+	}
+	if n := lineCount(m.Output); m.Output != "" && n > 1 {
+		item["desc"] = pluralCount(n, "line", "lines")
 	}
 	if text != "" {
 		item["copy"] = text
 	}
-	if desc != "" {
-		item["desc"] = desc
-	}
 	item["text"] = head
-	item["mark"] = markFor(m)
-	item["actions"] = actions
+	item["keys"] = keys
+	// a mark says what the row is, so the row draws no glyph of its own
+	if mark := markFor(m); mark != "" {
+		item["mark"] = mark
+		return item, []Segment{{Text: head}}
+	}
 	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
 }
 
@@ -377,34 +393,29 @@ func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 	item := map[string]any{"anchor": idx}
 	var glyph, hl string
 	var head, desc string
-	var actions []any
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
-		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 60), "▌", "UserMsg"
-		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
+		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 40), "▌", "UserMsg"
 		if m.ID != "" {
 			item["id"] = m.ID // r rewinds to it; the list's key checks the rows
-			actions = append(actions, rowAction("Rewind", "r", "rewind "+m.ID, idx))
 		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
-		head, glyph, hl = clipRunes(messageHead(text), 60), "◆", "Dim"
+		head, glyph, hl = clipRunes(messageHead(text), 40), "◆", "Dim"
 		if n := lineCount(text); n > 1 {
 			desc = pluralCount(n, "line", "lines")
 		}
 		if len(blocks) > 0 {
 			desc = strings.TrimSpace(desc + " · " + pluralCount(len(blocks), "code block", "code blocks"))
 		}
-		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
 	case m.Kind == RowNotice, m.Kind == RowCompact, m.Kind == RowError, m.Kind == RowShell:
 		if text == "" {
 			return nil, nil
 		}
-		head, glyph = clipRunes(messageHead(text), 60), "·"
+		head, glyph = clipRunes(messageHead(text), 40), "·"
 		if m.Kind == RowError {
 			glyph = "✗"
 		}
-		actions = append(actions, rowAction("Read it", "o", "messages view "+strconv.Itoa(idx), idx))
 	case m.Kind == RowTool, m.Kind == RowReasoning:
 		return messageCallRow(idx, m)
 	default:
@@ -417,17 +428,18 @@ func (h *Host) messageRow(idx int, m ChatMessage) (map[string]any, []Segment) {
 	if text != "" {
 		item["copy"] = text
 	}
-	item["mark"] = markFor(m)
-	if len(actions) > 0 {
-		item["actions"] = actions
+	item["keys"] = []any{viewKey("Read it", "messages view "+strconv.Itoa(idx))}
+	if mark := markFor(m); mark != "" {
+		item["mark"] = mark
+		return item, []Segment{{Text: head}}
 	}
-	segs := []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
-	return item, segs
+	return item, []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
 }
 
-// rowAction is one thing a row offers a level down.
-func rowAction(text, hotkey, run string, anchor int) map[string]any {
-	return map[string]any{"text": text, "hotkey": hotkey, "run": run, "anchor": anchor}
+// viewKey is the key that opens what a row reads as: its screen sits over the
+// list, which stays so esc comes back to it.
+func viewKey(desc, run string) map[string]any {
+	return map[string]any{"key": "o", "desc": desc, "run": run, "verb": "open"}
 }
 
 // markFor is the mark a row carries, so a failed call reads as one in the

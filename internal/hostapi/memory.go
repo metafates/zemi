@@ -798,9 +798,9 @@ func (h *Host) memoryItems() []any {
 				"preview": p.Memory.Text, "copy": p.Memory.Text,
 				"fields": fieldList("file", p.Path, "description", p.Description, "read_if", p.ReadIf, "moves", p.Memory.Text),
 			}
-			item["actions"] = []any{
-				map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
-				map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
+			item["keys"] = []any{
+				map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
+				map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
 			}
 			items = append(items, item)
 			continue
@@ -812,9 +812,9 @@ func (h *Host) memoryItems() []any {
 				"preview": p.Content, "copy": p.Content,
 				"fields": fieldList("path", p.Path, "bytes", strconv.Itoa(len(p.Content))),
 			}
-			item["actions"] = []any{
-				map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
-				map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
+			item["keys"] = []any{
+				map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
+				map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
 			}
 			items = append(items, item)
 			continue
@@ -835,9 +835,9 @@ func (h *Host) memoryItems() []any {
 		item := memoryItem(p.Memory, label, fmt.Sprintf("Suggested by zemi (%d)", len(props)), scopeWords[p.Scope], replaces)
 		// accept or drop the proposal, whatever it suggests: a forget one says
 		// so in its label, so no letter carries two meanings
-		item["actions"] = append([]any{
-			map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
-			map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
+		item["keys"] = append([]any{
+			map[string]any{"key": "a", "desc": "Accept", "run": "memory accept " + p.ID + " --yes"},
+			map[string]any{"key": "d", "desc": "Drop", "run": "memory reject " + p.ID + " --yes"},
 		}, moveAndEdit(p.Memory, p.Forget)...)
 		items = append(items, item)
 	}
@@ -849,7 +849,7 @@ func (h *Host) memoryItems() []any {
 		}
 		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, brain.ScopeBudget/1024)
 		item := memoryItem(*m, m.Text, section, desc, "")
-		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "f", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
+		item["keys"] = append([]any{map[string]any{"key": "f", "desc": "Forget", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
 		items = append(items, item)
 	}
 	if trail := h.memoryTrail(live); len(trail) > 0 {
@@ -936,15 +936,15 @@ func memoryItem(m store.Memory, label, section, desc, replaces string) map[strin
 	}
 }
 
-// moveAndEdit are the actions of a row that can move and be edited; a
+// moveAndEdit are the keys of a row that can move and be edited; a
 // forget suggestion does neither.
 func moveAndEdit(m store.Memory, forget bool) []any {
 	if forget {
 		return nil
 	}
 	return []any{
-		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID + " --yes"},
-		map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
+		map[string]any{"key": "s", "desc": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "run": "memory move " + m.ID + " --yes"},
+		map[string]any{"key": "o", "desc": openInEditorLabel, "run": "memory edit " + m.ID + " --yes"},
 	}
 }
 

@@ -1370,9 +1370,9 @@ func TestSavedWorkflows(t *testing.T) {
 	if ui.opened[0].Items[0].(map[string]any)["text"] != "New workflow" {
 		t.Fatalf("the list does not head with making one: %v", ui.opened[0].Items[0])
 	}
-	acts := fmt.Sprint(row("review")["actions"])
-	if acts != "[map[hotkey:r run:workflows run review text:Run] map[fill:/workflows run review  hotkey:a text:Run with arguments] map[hotkey:o run:workflows open review text:Open in the editor]]" {
-		t.Fatalf("workflow actions: %s", acts)
+	acts := fmt.Sprint(row("review")["keys"])
+	if acts != "[map[desc:Run key:r run:workflows run review] map[desc:Run with arguments fill:/workflows run review  key:a] map[desc:Open in the editor key:o run:workflows open review]]" {
+		t.Fatalf("workflow keys: %s", acts)
 	}
 
 	// a run's script saves under workflows/, headed by its description and

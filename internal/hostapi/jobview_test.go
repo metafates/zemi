@@ -43,7 +43,7 @@ func TestJobsScreen(t *testing.T) {
 	if first.Section != "Running" || first.Text != "sleep 30" || !strings.Contains(first.Desc, running) || first.Mark != "spin" {
 		t.Fatalf("first row = %+v, want the running job first with its id and clock", first)
 	}
-	if len(first.Actions) == 0 {
+	if !slices.ContainsFunc(first.Keys, func(k ItemKey) bool { return k.Run == "jobs stop "+running && k.Key == "s" }) {
 		t.Fatal("a running job offers no stop")
 	}
 	second, err := ParseOverlayItem(o.Items[1])

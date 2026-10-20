@@ -1571,7 +1571,7 @@ func (h *Host) agentsOverlay() Overlay {
 		}
 		if d.Path != "" {
 			fields = append(fields, "path", perm.TildePath(d.Path))
-			item["actions"] = []any{map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "agents open " + d.Name}}
+			item["keys"] = []any{map[string]any{"key": "o", "desc": openInEditorLabel, "run": "agents open " + d.Name}}
 		}
 		item["fields"] = fieldList(fields...)
 		items = append(items, item)

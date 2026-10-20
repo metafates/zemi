@@ -165,18 +165,18 @@ func (h *Host) OpenErrors(args string) error {
 	noModel := h.modelErr(h.currentModelID(nil))
 	for i, e := range slices.Backward(entries) {
 		at := e.at.Format(time.TimeOnly)
-		var actions []any
+		var keys []any
 		if noModel == nil {
-			actions = append(actions, map[string]any{"text": "Ask zemi to fix it", "hotkey": "a", "run": fmt.Sprintf("errors ask %d", i)})
+			keys = append(keys, map[string]any{"key": "a", "desc": "Ask zemi to fix it", "run": fmt.Sprintf("errors ask %d", i)})
 		}
 		if kind, name, ok := strings.Cut(e.source, " "); ok && (kind == "mcp" || kind == "lsp") {
-			actions = append(actions, map[string]any{"text": "Restart", "hotkey": "r", "run": kind + " restart " + name})
+			keys = append(keys, map[string]any{"key": "r", "desc": "Restart", "run": kind + " restart " + name})
 		}
 		items = append(items, map[string]any{
-			"text":    e.source,
-			"desc":    at + " · " + Headline(e.msg),
-			"fields":  fieldList("at", at, "error", ShortChunk(e.msg)),
-			"actions": actions,
+			"text":   e.source,
+			"desc":   at + " · " + Headline(e.msg),
+			"fields": fieldList("at", at, "error", ShortChunk(e.msg)),
+			"keys":   keys,
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No errors yet."})

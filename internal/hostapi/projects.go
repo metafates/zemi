@@ -374,14 +374,14 @@ func (h *Host) projectItems() (items []any, sel int) {
 		if sel < 0 && !p.Missing {
 			sel = i
 		}
-		var actions []any
+		var keys []any
 		if !p.Missing {
-			actions = append(actions, map[string]any{"text": "Switch to it", "hotkey": "s", "run": "projects switch " + p.Root})
+			keys = append(keys, map[string]any{"key": "s", "desc": "Switch to it", "run": "projects switch " + p.Root})
 		}
 		if p.Trust != "" {
-			actions = append(actions, map[string]any{"text": "Forget trust", "hotkey": "f", "run": "projects forget " + p.Root})
+			keys = append(keys, map[string]any{"key": "f", "desc": "Forget trust", "run": "projects forget " + p.Root})
 		}
-		item["actions"] = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "projects delete " + p.Root + " --yes"})
+		item["keys"] = append(keys, map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "projects delete " + p.Root + " --yes"})
 		items = append(items, item)
 	}
 	return items, max(sel, 0)

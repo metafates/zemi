@@ -78,12 +78,14 @@ zemi.ui.select({ "patch", "minor" }, { prompt = "Bump" }, function(choice)
 	if choice then zemi.agent.send("bump the " .. choice .. " version") end
 end)
 
--- A list whose items open a detail view: enter shows `fields` as a table, `detail`
--- under them and `actions` under that; an action fills the composer, runs a command (`run` only from user config) or,
--- with an `id`, calls on_action; one with none goes back. esc goes back, y copies the text.
--- An action's `hotkey` also acts on the selected row from the list; j, k, /, y and Y
--- raise as hotkeys. `danger = true` (an item or an action that cannot be undone) draws
--- it red, and its first press only arms it: the same key or enter runs it.
+-- A list whose items open a view: enter shows `fields` as a table and `detail` under them.
+-- What acts on a row is its own `keys`, flat: the character acts on the selected row from
+-- the list, and esc, y and the footer's hints are the view's. A key fills the composer,
+-- runs a command (`run` only from user config) or, with an `id`, calls on_action; one with
+-- `verb = "open"` opens a screen over the list, which stays. j, k, /, y and Y raise as keys.
+-- `danger = true` (an item or a key that cannot be undone) draws it red, and its first
+-- press only arms it: the same key again runs it. A list's own `keys` act on the selection
+-- and win over a row's.
 -- The item a callback gets is a copy: match on an id field, never on the table. A callback
 -- closes the list unless it has `reload`; to stay open without one, open it again from the callback.
 zemi.ui.overlay.open({
@@ -97,12 +99,12 @@ zemi.ui.overlay.open({
 			section = "Failed",
 			fields = { { "status", "failed" }, { "exit", "1" } },
 			detail = "The migration timed out.",
-			actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", danger = true } },
+			keys = { { key = "r", desc = "Retry", run = "deploy api" }, { key = "x", desc = "Drop", id = "drop", danger = true } },
 		},
 		-- preview: shown whole under the list while the row is selected
 		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web ", preview = "Deployed from main." },
 	},
-	on_action = function(item, action) zemi.notify({ body = action.id .. " " .. item.text }) end,
+	on_action = function(item, key) zemi.notify({ body = key.id .. " " .. item.text }) end,
 	keys = { l = { desc = "logs", fn = function(item) zemi.agent.send("show the logs of " .. item.text) end } },
 })
 

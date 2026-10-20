@@ -317,28 +317,28 @@ func (h *Host) pluginItems() []any {
 		if loadErr != nil {
 			errText = loadErr.Error()
 		}
-		var actions []any
+		var keys []any
 		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {
 			label := "Update to " + p.Latest
 			if strings.Contains(p.Latest, "new commit") || strings.HasPrefix(p.Latest, "updated in the marketplace (") {
 				label = "Update"
 			}
-			actions = append(actions, map[string]any{"text": label, "hotkey": "u", "run": "plugins update " + p.Name})
+			keys = append(keys, map[string]any{"key": "u", "desc": label, "run": "plugins update " + p.Name})
 		}
 		if p.Enabled {
-			actions = append(actions, map[string]any{"text": "Disable", "hotkey": "d", "run": "plugins disable " + p.Name})
+			keys = append(keys, map[string]any{"key": "d", "desc": "Disable", "run": "plugins disable " + p.Name})
 		} else {
-			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": "plugins enable " + p.Name})
+			keys = append(keys, map[string]any{"key": "e", "desc": "Enable", "run": "plugins enable " + p.Name})
 		}
-		actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "plugins open " + p.Name})
+		keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "plugins open " + p.Name})
 		if p.Local {
-			actions = append(actions, map[string]any{"text": "Modify with zemi", "hotkey": "m", "fill": "/plugins modify " + p.Name + " "})
+			keys = append(keys, map[string]any{"key": "m", "desc": "Modify with zemi", "fill": "/plugins modify " + p.Name + " "})
 		}
-		actions = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "plugins delete " + p.Name + " --yes"})
+		keys = append(keys, map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "plugins delete " + p.Name + " --yes"})
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
-			"detail": pluginDetail(p), "actions": actions,
+			"detail": pluginDetail(p), "keys": keys,
 			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
 				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
@@ -373,9 +373,9 @@ func (h *Host) marketplaceItems(items *[]any) {
 			"desc":   perm.TildePath(m.Source) + " · " + count,
 			"detail": marketplaceDetail(m),
 			"fields": fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
-			"actions": []any{
-				map[string]any{"text": "Update", "hotkey": "u", "run": "plugins marketplace update " + m.Name},
-				map[string]any{"text": "Remove", "hotkey": "x", "danger": true, "run": "plugins marketplace remove " + m.Name},
+			"keys": []any{
+				map[string]any{"key": "u", "desc": "Update", "run": "plugins marketplace update " + m.Name},
+				map[string]any{"key": "x", "desc": "Remove", "danger": true, "run": "plugins marketplace remove " + m.Name},
 			},
 		})
 	}

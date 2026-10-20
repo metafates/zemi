@@ -321,7 +321,7 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 		if s.ID == current {
 			item["key"] = "current"
 		} else {
-			item["actions"] = []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "sessions open " + s.ID + " " + s.Root}}
+			item["keys"] = []any{map[string]any{"key": "r", "desc": "Resume", "run": "sessions open " + s.ID + " " + s.Root}}
 		}
 		items = append(items, item)
 	}

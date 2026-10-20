@@ -356,15 +356,15 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := h.DeleteSession(first, false); err != nil || ui.opened[0].Confirm != "sessions delete "+first+" --yes" {
 		t.Fatalf("a typed delete: %v, %+v", err, ui.opened)
 	}
-	// another session's detail keys its actions by letter, the permanent one a danger
+	// another session's row keys its operations by letter, the permanent one none
 	acts := ""
 	for _, it := range ui.opened[0].Items {
-		if a, ok := it.(map[string]any)["actions"]; ok {
+		if a, ok := it.(map[string]any)["keys"]; ok {
 			acts = fmt.Sprint(a)
 		}
 	}
-	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[hotkey:n run:sessions rename "+first+"  text:Rename] map[danger:true hotkey:x run:sessions delete "+first+" --yes text:Delete]]" {
-		t.Fatalf("session actions: %s", acts)
+	if acts != "[map[desc:Resume key:r run:resume "+first+"] map[desc:Rename key:n run:sessions rename "+first+" ] map[danger:true desc:Delete key:x run:sessions delete "+first+" --yes]]" {
+		t.Fatalf("session keys: %s", acts)
 	}
 	pad := h.scratchFor(first)
 	if err := os.MkdirAll(pad, 0o700); err != nil {

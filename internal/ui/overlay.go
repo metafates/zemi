@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -187,12 +186,15 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		return
 	}
 	st := a.overlayState(o)
-	// a following list opens where the reader is, not on its first row, but a
-	// rail's own list opens on the rail the reader just opened; any other
-	// menu reopens on the row it was left on
+	// a level reopened from the row that opened it lands where it was left; a
+	// list opened on its own opens where the reader is
+	byRow := a.byRow
+	a.byRow = false
 	if o.Follow {
-		if o.Rail == 0 { // a rail's list starts at the rail itself
+		if sel := a.lastSel[o.ID]; !byRow || sel == "" {
 			st.selected = a.followRow(&st)
+		} else if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
+			st.selected = n
 		}
 		st.followed = st.selectedAnchor()
 		if chat := a.scrolls[a.scrollDef]; chat != nil {
@@ -212,18 +214,16 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		st.size.w = a.overlays[n-1].size.w
 	}
 	a.overlays = append(a.overlays, st)
+	a.syncRail()
 	if o.Confirm == "" {
 		return
 	}
 	top := &a.overlays[len(a.overlays)-1]
 	for idx, it := range top.items {
-		for n, act := range it.row.Actions {
-			if r, _ := hostapi.ParseOverlayItem(act); r.Run == o.Confirm {
+		for _, k := range it.row.Keys {
+			if k.Run == o.Confirm {
 				top.selected = max(slices.Index(top.visible, idx), 0)
-				// sized as a drawn list, since its detail view opens at its width
-				area := boxArea(a.stage, a.width, a.height)
-				a.overlayBox(top, area.Dx(), area.Dy())
-				a.openDetail(top, idx, n).armed = true
+				top.keyArmed = k.Key
 				return
 			}
 		}
@@ -308,24 +308,40 @@ func (st *overlayState) selectedAnchor() int {
 // wheel all land here, and the paint carries it out. Its selection is also
 // the message the paint bands.
 func (a *App) syncFollow() {
-	a.highlight, a.rail = 0, 0
+	a.highlight = 0
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].o.Follow {
 		return
 	}
 	st := &a.overlays[i]
-	if r := st.o.Rail; r != a.rail {
-		a.rail = r
-		// the chat draws that run whole only once it renders again, and a
-		// level opening is no reason to wait out a tick
-		a.bump()
-	}
 	if a.highlight = st.selectedAnchor(); a.highlight == 0 {
 		return
 	}
 	if a.highlight != st.followed {
 		st.followed = a.highlight
 		a.pendingAnchor[a.scrollDef] = a.highlight
+	}
+}
+
+// railOf is the transcript row the top overlay draws whole, 0 for none: a
+// list on its way out already reads as closed.
+func (a *App) railOf() int {
+	if a.railClose != "" {
+		return 0
+	}
+	if i := len(a.overlays) - 1; i >= 0 && a.overlays[i].o.Follow {
+		return a.overlays[i].o.Rail
+	}
+	return 0
+}
+
+// syncRail keeps the chat's whole-run view in step with the overlay stack as
+// it changes, never during a paint: the chat renders the run whole from the
+// state it reads, so a level opening or closing lands in the same frame.
+func (a *App) syncRail() {
+	if r := a.railOf(); r != a.rail {
+		a.rail = r
+		a.bump()
 	}
 }
 
@@ -361,8 +377,7 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	st.armed = old.armed && sameDanger(was, st.selectedRow())
 	st.followed, st.restore = old.followed, old.restore
 	// the same danger key running the same command keeps its press
-	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger &&
-		slices.ContainsFunc(old.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == st.o.Keys[k].Key }) {
+	if arm := old.armOf(old.keyArmed); arm != "" && st.armOf(old.keyArmed) == arm {
 		st.keyArmed = old.keyArmed
 	}
 	a.overlays[i] = st
@@ -376,16 +391,25 @@ func (st *overlayState) selectedRow() hostapi.OverlayItem {
 	return st.items[st.visible[st.selected]].row
 }
 
+// selectedItem is the item the selected row was read from, nil when nothing
+// is selected.
+func (st *overlayState) selectedItem() any {
+	if st.selected >= len(st.visible) {
+		return nil
+	}
+	return st.o.Items[st.visible[st.selected]]
+}
+
 // sameDanger reports whether the selected row n is still the danger row o,
 // so a rebuild keeps the press it waits for.
 func sameDanger(o, n hostapi.OverlayItem) bool {
 	return n.Danger && n.Run == o.Run && cmp.Or(n.ID, n.Text) == cmp.Or(o.ID, o.Text)
 }
 
-// refreshDetail rebuilds the detail view open over list i from its item
-// in the list's new items, keeping the selected action and the scroll, or
-// drops it with its item: a screen a Go job refreshes (a server starting, a
-// run moving) would otherwise show a stale detail.
+// refreshDetail rebuilds the view open over list i from its item in the
+// list's new items, keeping the scroll, or drops it with its item: a screen a
+// Go job refreshes (a server starting, a run moving) would otherwise show
+// what it said before.
 func (a *App) refreshDetail(i int) {
 	j := i + 1
 	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+"#detail" {
@@ -393,14 +417,13 @@ func (a *App) refreshDetail(i int) {
 	}
 	d := a.overlays[j]
 	idx := slices.IndexFunc(a.overlays[i].o.Items, func(it any) bool { return itemKey(it) == itemKey(d.item) })
+	a.overlays = slices.Delete(a.overlays, j, j+1)
 	if idx < 0 {
-		a.overlays = slices.Delete(a.overlays, j, j+1)
 		return
 	}
-	n := a.detailState(&a.overlays[i], idx)
-	n.selected, n.view, n.body, n.size = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body, d.size
-	n.armed = d.armed && sameDanger(d.selectedRow(), n.selectedRow())
-	a.overlays[j] = n
+	a.openDetail(&a.overlays[i], idx)
+	n := &a.overlays[len(a.overlays)-1]
+	n.body, n.size = d.body, d.size
 }
 
 // itemKey names an item across rebuilds: its id, else its text.
@@ -439,8 +462,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// or a select's item keeps the fields that parse
 		r, _ := hostapi.ParseOverlayItem(item)
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
-		r.Desc, r.Key, r.Section, r.Verb = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
-		r.Hotkey = sanitize.Line(r.Hotkey)
+		r.Desc, r.Key, r.Section = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section)
+		r.Verb = hostapi.Verb(sanitize.Line(string(r.Verb)))
 		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview)                          // Detail is the detail view's Body, sanitized there
 		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, mark: markSeg(r.Mark), row: r} // a newline would break the box
 		if r.Switch || r.Locked {
@@ -474,121 +497,100 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	return st
 }
 
-// actionAt is the index of the selected row's action whose hotkey is key,
-// -1 in a detail view, with no row, or when none has it.
-func (st *overlayState) actionAt(key string) int {
+// rowKey is the key of the selected row that answers to key: zero (an empty
+// Key) in a view, with no row, or when the row offers none.
+func (st *overlayState) rowKey(key string) hostapi.ItemKey {
 	if st.back || len(st.visible) == 0 || len([]rune(key)) != 1 {
-		return -1
+		return hostapi.ItemKey{}
 	}
-	return slices.IndexFunc(st.items[st.visible[st.selected]].row.Actions, func(a any) bool {
-		r, _ := hostapi.ParseOverlayItem(a)
-		return sanitize.Line(r.Hotkey) == key
-	})
+	for _, k := range st.items[st.visible[st.selected]].row.Keys {
+		if k.Key == key {
+			return k
+		}
+	}
+	return hostapi.ItemKey{}
 }
 
 var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 // enterVerb names what enter does on item idx, one word per act in every
-// list: "open" a detail view or another screen, "pick" a value, "run" a
-// command, "toggle" a toggle list's row, "fill" the composer, "copy", "back"
-// from a detail view, or "" when it does nothing. A row's own verb, else the
-// overlay's, names its run, select or fill where the default would not; a
-// row with one is not a toggle: space passes it by in a toggle list.
-func (st *overlayState) enterVerb(idx int) string {
+// list: "open" a view or another screen, "pick" a value, "run" a command,
+// "toggle" a toggle list's row, "fill" the composer, "copy" the row's value,
+// "go" to a browsing list's row (which closes the list keeping that place),
+// or "" when it does nothing. A row's own verb, else the overlay's, names its
+// run, select or fill where the default would not; a row with one is not a
+// toggle: space passes it by in a toggle list.
+func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 	r := st.items[idx].row
 	switch {
-	case hasDetail(r) && st.o.Follow:
-		// the list already moved the chat to the row: enter keeps the place
-		return "close"
-	case hasDetail(r):
-		return "open"
-	case r.Run != "" || st.o.OnSelect != nil || st.back && r.ID != "" && st.o.OnAction != nil:
-		act := "run"
-		if st.o.Reload != nil {
-			act = "toggle"
-		} else if st.o.OnSelect != nil {
-			act = "pick"
+	case hasView(r):
+		return hostapi.VerbOpen
+	case r.Run != "" || st.o.OnSelect != nil:
+		if r.Verb != "" {
+			return r.Verb
 		}
-		return cmp.Or(r.Verb, st.o.Verb, act)
+		switch {
+		case st.o.Reload != nil:
+			return hostapi.VerbToggle
+		case st.o.OnSelect != nil:
+			return hostapi.VerbPick
+		}
+		return cmp.Or(st.o.Verb, hostapi.VerbRun)
 	case r.Fill != "":
-		return cmp.Or(r.Verb, "fill")
+		return cmp.Or(r.Verb, hostapi.VerbFill)
+	case st.o.Follow:
+		// the list already moved the chat to the row: enter keeps that place
+		return hostapi.VerbGo
 	case r.Copy != "":
-		if st.o.Follow {
-			// the list already scrolled the chat there: enter keeps it, and y
-			// is what copies
-			return "close"
-		}
-		return "copy"
-	case st.back:
-		return "back"
+		return hostapi.VerbCopy
 	}
 	return ""
 }
 
-func hasDetail(r hostapi.OverlayItem) bool {
-	return r.Detail != "" || r.Fields != nil || r.Actions != nil
-}
+// hasView reports whether a row has a view of its own: text and facts, or a
+// screen its run names.
+func hasView(r hostapi.OverlayItem) bool { return r.Detail != "" || r.Fields != nil }
 
-// actionKey is the key that acts on visible row n: the item's own hotkey,
-// and in a detail view, whose rows are actions, its position when it has
-// none, so every action reads as a button with a key.
-func (st *overlayState) actionKey(n int) string {
-	if k := st.items[st.visible[n]].row.Hotkey; k != "" || !st.back {
-		return k
-	}
-	return strconv.Itoa(n + 1)
-}
-
-// openDetail pushes the detail view of item idx with action n selected: its
-// detail text as the body and its actions as the list, under the parent's
-// origin so the badge and the run gate stay the parent's.
-func (a *App) openDetail(parent *overlayState, idx, n int) *overlayState {
-	a.overlays = append(a.overlays, a.detailState(parent, idx))
-	d := &a.overlays[len(a.overlays)-1]
-	d.selected = n
-	return d
-}
-
-func (a *App) detailState(parent *overlayState, idx int) overlayState {
+// openDetail pushes the view of item idx: its facts and text, under the
+// parent's origin so the badge and the run gate stay the parent's. What acts
+// on the row is a key of the row, so the view lists nothing.
+func (a *App) openDetail(parent *overlayState, idx int) {
 	r := parent.items[idx].row
 	title := parent.items[idx].label
 	if parent.o.Title != "" {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Mark: r.Mark, Items: r.Actions, OnAction: p.OnAction, Follow: p.Follow})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
-	return st
+	a.overlays = append(a.overlays, st)
 }
 
-// detailAction runs action idx of the detail view on top, then closes it.
-// An action with an id goes to on_action; one that runs or fills something
-// ends the parent too, unless a toggle list runs it, which rebuilds as the
-// detail view closes; one that does none of it goes back.
-func (a *App) detailAction(idx int) {
-	d := a.overlays[len(a.overlays)-1]
-	p := a.overlays[len(a.overlays)-2].o // a detail view opens right on top of its parent
-	r := d.items[idx].row
+// pressRowKey runs one of the selected row's keys: an id goes to on_action,
+// else it fills or runs. A screen the key opens sits over the list, which
+// stays so esc comes back to it; anything else closes the list, unless it
+// rebuilds.
+func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
+	o := st.o
+	item := st.selectedItem()
 	switch {
-	case r.ID != "" && d.o.OnAction != nil:
-		a.background(func() { a.host.OverlayAction(context.Background(), p, d.item, d.o.Items[idx]) })
-		if p.Reload == nil {
-			a.closeOverlayByID(p.ID) // the detail view goes with it
-			return
+	case k.ID != "" && o.OnAction != nil:
+		a.background(func() { a.host.OverlayAction(context.Background(), o, item, k.Raw) })
+	case k.Fill != "" || k.Run != "":
+		a.runOverlayRow(hostapi.OverlayItem{Run: k.Run, Fill: k.Fill})
+		if k.Fill == "" && k.Verb == hostapi.VerbOpen {
+			return // the screen it opened sits over this list
 		}
-	case r.Run == "" && r.Fill == "":
-		a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
-		return
-	case r.Fill == "" && p.Reload != nil:
-		a.runOverlayRow(r)
 	default:
-		a.runOverlayRow(r)
-		a.cancelOverlay(p)
 		return
 	}
-	a.closeOverlayByID(d.o.ID)
+	if o.Reload != nil { // the list shows what the key changed
+		a.reloadOverlay(o, nil)
+		return
+	}
+	a.closeOverlayByID(o.ID)
 }
 
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
@@ -610,11 +612,29 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 	})
 }
 
-// closeOverlayByID closes an overlay and the detail views over it. A toggle
-// list it uncovers rebuilds on the worker, so callers act before they close:
-// the rebuild then shows what the closed overlay changed.
+// closeOverlayByID closes an overlay, the levels of its menu and the views
+// over it: a level's id starts with the id of the list it opened from. A list
+// that draws a run whole folds it at once and closes once the chat has
+// rendered it folded, so the run is never seen open beside a closed list.
 func (a *App) closeOverlayByID(id string) {
-	closes := func(st overlayState) bool { return st.o.ID == id || strings.HasPrefix(st.o.ID, id+"#detail") }
+	closes := func(st overlayState) bool {
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+"#detail")
+	}
+	if a.rail != 0 && a.railClose == "" && slices.ContainsFunc(a.overlays, func(st overlayState) bool { return st.o.Rail != 0 && closes(st) }) {
+		a.railClose, a.railGen = id, a.frameGen
+		a.syncRail()
+		return
+	}
+	a.closeOverlays(id)
+}
+
+// closeOverlays is closeOverlayByID past the fold: a toggle list it uncovers
+// rebuilds on the worker, so callers act before they close, and the rebuild
+// then shows what the closed overlay changed.
+func (a *App) closeOverlays(id string) {
+	closes := func(st overlayState) bool {
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+"#detail")
+	}
 	for _, st := range a.overlays { // where each closed list sat, so coming back reopens on its row
 		if closes(st) && !st.back && st.selected < len(st.visible) {
 			a.lastSel[st.o.ID] = itemKey(st.o.Items[st.visible[st.selected]])
@@ -625,6 +645,28 @@ func (a *App) closeOverlayByID(id string) {
 	if n := len(a.overlays); top && n > 0 && a.overlays[n-1].o.Reload != nil {
 		a.reloadOverlay(a.overlays[n-1].o, nil)
 	}
+	a.syncRail()
+}
+
+// closeMenu closes a browsing list with every level under it opened, keeping
+// the chat where the selection left it: enter on a row whose place is the
+// transcript is not a level down, it is the place itself.
+func (a *App) closeMenu(st *overlayState) {
+	// the chat stays where the menu left it, and keeps that row as its place,
+	// so reopening the menu follows it back there
+	if chat := a.scrolls[a.scrollDef]; chat != nil {
+		if anchor := st.selectedAnchor(); anchor > 0 {
+			chat.focus, chat.placed = anchor, chat.top
+		}
+	}
+	root := st.o.ID
+	for _, s := range a.overlays { // levels are outermost first
+		if strings.HasPrefix(st.o.ID, s.o.ID+" ") {
+			root = s.o.ID
+			break
+		}
+	}
+	a.closeOverlayByID(root)
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
@@ -637,7 +679,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		return nil
 	}
 	a.bump()
-	confirmed, swallowed := pressArmed(&st.armed, key, func() string { return st.actionKey(st.selected) })
+	a.byRow = false // a row's screen opens before the next key, not after it
+	confirmed, swallowed := pressArmed(&st.armed, key)
 	keyArmed := st.keyArmed
 	if st.keyArmed = ""; swallowed || keyArmed != "" && key == "esc" {
 		return nil
@@ -650,14 +693,6 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if !st.back && st.filterable && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
-	}
-	// a row's key acts like enter on it; one printable character, so no
-	// overlay can take esc or ctrl+c
-	for n := range st.visible {
-		if len([]rune(key)) == 1 && st.actionKey(n) == key {
-			st.selected, key = n, "enter"
-			break
-		}
 	}
 	// a view opened from a rail steps along it in place
 	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
@@ -706,20 +741,15 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		a.closeOverlayByID(o.ID)
 		return nil
 	}
-	// an action's key acts on the selected row as its button does; a danger
-	// one opens the detail on it armed, so the view is its confirmation
-	if n := st.actionAt(key); n >= 0 {
-		d := a.openDetail(st, st.visible[st.selected], n)
-		r := d.items[n].row
-		if r.Danger {
-			d.armed = true
+	// a row's own key acts on it from the list, danger ones on their second
+	// press as the list's do
+	if k := st.rowKey(key); k.Key != "" {
+		if k.Danger && keyArmed != key {
+			st.keyArmed = key
 			return nil
 		}
-		cmd := a.overlayKey("enter", "")
-		if hasDetail(r) { // the action's own view: esc returns to the list
-			a.overlays = slices.Delete(a.overlays, len(a.overlays)-2, len(a.overlays)-1)
-		}
-		return cmd
+		a.pressRowKey(st, k)
+		return nil
 	}
 	if declared >= 0 && len(st.visible) > 0 {
 		a.pushToast(slog.LevelWarn, "Cannot "+o.Keys[declared].Desc, st.items[st.visible[st.selected]].row.Detail)
@@ -738,23 +768,19 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		sel := func() { a.host.SelectOverlay(context.Background(), o, idx) }
 		switch {
 		case key == "space" && !confirmed && (o.Reload == nil || r.Verb != ""):
-		case key == "enter" && o.Follow && hasDetail(r):
-			// a following list already moved the chat to the row found:
-			// enter keeps that place, and l is the way into the row
-			a.closeOverlayByID(o.ID)
-		case key == "enter" && hasDetail(r) && !(r.Verb == "open" && r.Run != ""):
-			// a row that says it opens a screen opens it; its actions keep
-			// their own keys
-			a.openDetail(st, idx, 0)
-		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
-			// a detail view whose only action it is states the effect and holds
-			// nothing a stray key hits: it is the confirmation
+		case key == "enter" && hasView(r) && !(r.Verb == hostapi.VerbOpen && r.Run != ""):
+			// a row with a view of its own takes enter; one whose run says it
+			// opens a screen opens it below
+			a.openDetail(st, idx)
+		case key == "enter" && verb == hostapi.VerbGo:
+			// a browsing list's row stands for its place in the chat: enter
+			// closes the menu there, and l is the way into a level
+			a.closeMenu(st)
+		case r.Danger && !confirmed:
 			st.armed = true
-		case verb == "copy" && r.Copy != "":
+		case verb == hostapi.VerbCopy && r.Copy != "":
 			// a copy row's value goes to the clipboard and the list stays open
 			return a.copied(st.value(idx))
-		case st.back:
-			a.detailAction(idx)
 		case o.Reload != nil && r.Fill == "":
 			a.runOverlayRow(r)
 			a.reloadOverlay(o, sel)
@@ -765,7 +791,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 			a.closeOverlayByID(o.ID)
 		case verb == "":
-		case r.Verb == "open" && o.OnSelect == nil:
+		case verb == hostapi.VerbOpen && o.OnSelect == nil:
 			a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
 			if o.OnSelect != nil {
@@ -776,15 +802,20 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.closeOverlayByID(o.ID)
 		}
 	case "l":
-		// one level in: a row's actions where it has them, enter's act else
+		// one level in, where there is one: a row's view or the screen its run
+		// opens. Its operations are keys of the row, so a row with neither
+		// takes nothing from l.
 		if st.back || len(st.visible) == 0 {
 			return nil
 		}
-		if hasDetail(st.items[st.visible[st.selected]].row) {
-			a.openDetail(st, st.visible[st.selected], 0)
-			return nil
+		idx := st.visible[st.selected]
+		switch r := st.items[idx].row; {
+		case hasView(r):
+			a.openDetail(st, idx)
+		case r.Run != "" && o.OnSelect == nil:
+			a.runOverlayRow(r)
 		}
-		return a.overlayKey("enter", "")
+		return nil
 	case "h":
 		// one level back, a view stacked over another only: at the root esc
 		// is the way out, and h types into a filter as it always did
@@ -795,6 +826,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	case "esc":
 		if st.back {
 			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
+			a.syncRail()
 			return nil
 		}
 		a.cancelOverlay(o)
@@ -934,7 +966,8 @@ func (a *App) cancelMenu() {
 }
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
-// palette) and "run", which only builtin and user overlays keep.
+// palette) and "run", which only builtin and user overlays keep. A screen it
+// opens is a level of this list, so it reopens on the row the list left.
 func (a *App) runOverlayRow(r hostapi.OverlayItem) {
 	if r.Fill != "" {
 		a.composer.text = r.Fill
@@ -942,6 +975,7 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) {
 	}
 	if r.Run != "" {
 		name, args := hostapi.SplitCommand(r.Run)
+		a.byRow = true // the screen it opens is a level of this list
 		a.runCommand(name, args)
 	}
 }
@@ -1051,19 +1085,6 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		limit := min(max(room-min(bodyN, 3), 1), listRowsCap(h)) // the list's rows; the body keeps three
 		enterCopies := false
 		switch {
-		case st.back && len(st.o.Items) > 0:
-			// a detail view's rows are actions: draw them as the prompts' buttons
-			choices := make([]promptChoice, 0, len(st.visible))
-			for n, i := range st.visible {
-				// an action armed without danger (Overlay.Confirm) reads as a danger one
-				armed := st.armed && n == st.selected
-				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: hostapi.ChromeDanger}[st.items[i].row.Danger || armed]})
-			}
-			st.view.viewH = limit
-			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
-			if len(st.visible) > 0 {
-				hints = append(hints, pickHint)
-			}
 		case len(st.visible) > 0:
 			if key := (listKey{query: st.query, sel: st.selected, top: st.view.top, room: limit, minW: st.size.w, maxW: inner}); st.rows == nil || key != st.rowsKey {
 				items := make([]listItem, 0, len(st.visible))
@@ -1079,32 +1100,19 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			list = st.rows
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {
-				hints = append(hints, hintPair{"enter", verb})
-				enterCopies = verb == "copy"
+				hints = append(hints, hintPair{"enter", string(verb)})
+				enterCopies = verb == hostapi.VerbCopy
 			}
 			r := st.items[st.visible[st.selected]].row
-			if verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
+			if verb != hostapi.VerbToggle && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
-			if hasDetail(r) && verb == "close" {
-				// enter keeps the place here, so l is the way into the row
-				hints = append(hints, hintPair{"l", "actions"})
+			if st.o.OnSelect != nil && (hasView(r) || r.Run != "") {
+				// enter picks the row: l is the way into what it opens
+				hints = append(hints, hintPair{"l", "open"})
 			}
 		}
-		// a key with a Run or Fn acts with no row too, so an empty list names
-		// it; one naming its rows' action waits for a row
-		last := -1
-		for i, k := range st.o.Keys {
-			if k.Run == "" && len(st.visible) == 0 || !keyApplies(k, st) {
-				continue // it acts on the row the list has not got
-			}
-			if last >= 0 && k.Desc == st.o.Keys[last].Desc { // keys sharing a desc read as one hint: +/- at once
-				hints[len(hints)-1].key += "/" + k.Key
-				continue
-			}
-			last = i
-			hints = append(hints, hintPair{k.Key, k.Desc})
-		}
+		hints = append(hints, st.hintKeys()...)
 		var body [][]hostapi.Segment
 		if bodyN > 0 {
 			st.body.viewH = max(room-len(list), 1)
@@ -1130,10 +1138,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		hints = st.filterHints(append(hints, scroll...), esc)
 		foot := hint(inner, hints...)
 		if st.armed {
-			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)
+			foot = armedHint(inner, "enter", st.items[st.visible[st.selected]].label)
 		}
-		if i := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == st.keyArmed }); i >= 0 {
-			foot = armedHint(inner, st.keyArmed, st.o.Keys[i].Desc)
+		if d := st.keyDesc(st.keyArmed); d != "" {
+			foot = armedHint(inner, st.keyArmed, d)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
@@ -1167,15 +1175,72 @@ func keyApplies(k hostapi.OverlayKey, st *overlayState) bool {
 	return k.Applies == nil || k.Applies(st.selectedRow())
 }
 
-// pressArmed is key on a screen whose selected danger button may be armed:
-// enter, space and the button's key confirm it; any other key drops the arm,
-// and esc does only that. button is read only while armed, when a row is
-// selected.
-func pressArmed(armed *bool, key string, button func() string) (confirmed, swallowed bool) {
+// hintKeys are what the footer names: the list's keys that act on the
+// selected row, then the row's own, which act on it from the list and are
+// the whole of what a row offers once its view opens.
+func (st *overlayState) hintKeys() []hintPair {
+	var out []hintPair
+	last := ""
+	add := func(key, desc string) {
+		if last != "" && desc == last { // keys sharing a desc read as one hint: +/- at once
+			out[len(out)-1].key += "/" + key
+			return
+		}
+		last = desc
+		out = append(out, hintPair{key, desc})
+	}
+	for _, k := range st.o.Keys {
+		if k.Run == "" && k.Fn == nil && k.Act == nil && len(st.visible) == 0 || !keyApplies(k, st) {
+			continue // it acts on the row the list has not got
+		}
+		add(k.Key, k.Desc)
+	}
+	if !st.back && len(st.visible) > 0 {
+		for _, k := range st.selectedRow().Keys {
+			if slices.ContainsFunc(st.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == k.Key }) {
+				continue
+			}
+			add(k.Key, k.Desc)
+		}
+	}
+	return out
+}
+
+// armOf is the command the danger key that answers to key runs, "" for none
+// or a key that cannot be undone: the list's, then the selected row's.
+func (st *overlayState) armOf(key string) string {
+	if key == "" {
+		return ""
+	}
+	if i := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key && k.Danger }); i >= 0 {
+		return st.o.Keys[i].Run
+	}
+	if k := st.rowKey(key); k.Key != "" && k.Danger {
+		return k.Run
+	}
+	return ""
+}
+
+// keyDesc is the label the key that answers to key carries, "" for none: the
+// list's, then the selected row's.
+func (st *overlayState) keyDesc(key string) string {
+	if key == "" {
+		return ""
+	}
+	if i := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
+		return st.o.Keys[i].Desc
+	}
+	return st.rowKey(key).Desc
+}
+
+// pressArmed is key on a screen whose selected danger row may be armed:
+// enter and space confirm it; any other key drops the arm, and esc does only
+// that.
+func pressArmed(armed *bool, key string) (confirmed, swallowed bool) {
 	if !*armed {
 		return false, false
 	}
-	if key == "enter" || key == "space" || key == button() {
+	if key == "enter" || key == "space" {
 		return true, false
 	}
 	*armed = false

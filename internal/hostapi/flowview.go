@@ -160,17 +160,17 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	if a.cost > 0 {
 		usage += " · " + fmtCost(a.cost)
 	}
-	actions := []any{map[string]any{"text": "View its transcript", "hotkey": "v", "run": "workflows view " + f.id + " " + a.id}}
+	keys := []any{map[string]any{"key": "v", "desc": "View its transcript", "run": "workflows view " + f.id + " " + a.id}}
 	if run != nil {
 		detail = run.prompt()
 		if a.status == RunRunning {
-			actions = append(actions,
-				map[string]any{"text": "Restart", "hotkey": "r", "run": "workflows restart " + f.id + " " + a.id},
-				// no hotkey: x on the view stops the whole run
-				map[string]any{"text": "Stop", "run": "agents stop " + a.id, "danger": true})
+			keys = append(keys,
+				map[string]any{"key": "r", "desc": "Restart", "run": "workflows restart " + f.id + " " + a.id},
+				// s stops this agent; x on the view stops the whole run
+				map[string]any{"key": "s", "desc": "Stop", "run": "agents stop " + a.id, "danger": true})
 		}
 	}
 	item["fields"] = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
-	item["detail"], item["actions"] = detail, actions
+	item["detail"], item["keys"] = detail, keys
 	return item
 }

@@ -158,12 +158,27 @@ func (h *Host) OpenSessions(confirm string) error {
 	if err != nil {
 		return err
 	}
+	items, err := h.sessionItems()
+	if err != nil {
+		return err
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm,
+		Empty:  "No sessions in this project yet. Send a message to start one.",
+		Reload: func() ([]any, [][]Segment) { items, _ := h.sessionItems(); return items, nil },
+	})
+	return nil
+}
+
+// sessionItems lists the recent sessions, the live one marked and the rest
+// with what resumes, renames or deletes them.
+func (h *Host) sessionItems() ([]any, error) {
 	if h.DB == nil {
-		return errNoStore
+		return nil, errNoStore
 	}
 	list, err := h.DB.ListSessions(50)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	current := h.AgentSessionID()
 	ids := make([]string, 0, len(list))
@@ -193,19 +208,15 @@ func (h *Host) OpenSessions(confirm string) error {
 		} else {
 			item["fields"] = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
 			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
-			item["actions"] = []any{
-				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
-				map[string]any{"text": "Rename", "hotkey": "n", "run": "sessions rename " + s.ID + " "},
-				map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
+			item["keys"] = []any{
+				map[string]any{"key": "r", "desc": "Resume", "run": "resume " + s.ID},
+				map[string]any{"key": "n", "desc": "Rename", "run": "sessions rename " + s.ID + " "},
+				map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
 			}
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{
-		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one.",
-		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "n", Desc: "rename"}, {Key: "x", Desc: "delete"}},
-	})
-	return nil
+	return items, nil
 }
 
 // DeleteSession removes a stored session other than the live one, with its

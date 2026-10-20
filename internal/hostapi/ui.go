@@ -542,17 +542,44 @@ func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
 	return spec
 }
 
+// Verb says what enter does on a row, in one word for the footer hint.
+type Verb string
+
+const (
+	VerbOpen   Verb = "open"   // a screen of its own, over this list
+	VerbPick   Verb = "pick"   // a value
+	VerbRun    Verb = "run"    // a command
+	VerbToggle Verb = "toggle" // a toggle list's row
+	VerbFill   Verb = "fill"   // the composer
+	VerbCopy   Verb = "copy"   // the row's value
+	VerbGo     Verb = "go"     // a browsing list's leaf: close it, keeping the place
+)
+
+var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo}
+
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
-	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID, Preview string
-	Mark                                                                         string  // a Marks key, drawn ahead of the text
-	Switch, On, Locked                                                           bool    // Switch: on is set, so the row draws the switch
-	Danger                                                                       bool    // cannot be undone: drawn in Danger, and its first enter or key only arms it
-	Tail                                                                         bool    // a text too wide is cut from the left: a path's name is at its end
-	Anchor                                                                       int     // a following list's row: the transcript row it stands for, 0 for none
-	Actions                                                                      []any   // a detail view's items; nil when it has none
-	Fields                                                                       []Field // the detail view's facts, set above Detail
+	Text, Desc, Key, Section, Detail, Fill, Copy, Run, ID, Preview string
+	Verb                                                           Verb
+	Mark                                                           string    // a Marks key, drawn ahead of the text
+	Switch, On, Locked                                             bool      // Switch: on is set, so the row draws the switch
+	Danger                                                         bool      // cannot be undone: drawn in Danger, and its first enter or key only arms it
+	Tail                                                           bool      // a text too wide is cut from the left: a path's name is at its end
+	Anchor                                                         int       // a following list's row: the transcript row it stands for, 0 for none
+	Keys                                                           []ItemKey // what acts on the row: from the list by its character, in the footer of its view
+	Fields                                                         []Field   // the row's view: facts set above Detail
+}
+
+// ItemKey is one operation a row offers: a character that runs it from the
+// list and names it in the footer of the row's view.
+type ItemKey struct {
+	Key, Desc string
+	Run, Fill string
+	ID        string // hands it to the overlay's on_action
+	Verb      Verb   // VerbOpen: what it opens sits over the list, which stays
+	Danger    bool   // acts on its second press, like a list key
+	Raw       any    // what on_action gets
 }
 
 // Field is a name and value a detail view sets as a table above its text.
@@ -607,7 +634,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	for _, f := range []struct {
 		key string
 		dst *string
-	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}, {"mark", &p.Mark}} {
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}, {"mark", &p.Mark}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case string:
@@ -620,6 +647,13 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	}
 	if _, ok := m["text"].(string); !ok {
 		p.Text = fmt.Sprint(item)
+	}
+	if v, ok := m["verb"].(string); ok {
+		if p.Verb = Verb(v); !slices.Contains(verbs, p.Verb) {
+			bad("verb", "one of "+joinVerbs(), v)
+		}
+	} else if m["verb"] != nil {
+		bad("verb", "a string", m["verb"])
 	}
 	if _, ok := Marks[p.Mark]; !ok && p.Mark != "" {
 		bad("mark", "a zemi.ui.marks key", m["mark"])
@@ -665,28 +699,74 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	if !ok {
 		bad("fields", "a list of { name, value } pairs", m["fields"])
 	}
-	switch v := m["actions"].(type) {
+	switch v := m["keys"].(type) {
 	case nil:
 	case []any:
-		p.Actions = v
+		for i, k := range v {
+			ik, e := parseKey(k)
+			if e != nil && err == nil {
+				err = fmt.Errorf("keys[%d].%w", i+1, e)
+			}
+			p.Keys = append(p.Keys, ik)
+		}
 	case map[string]any:
 		if len(v) > 0 {
-			bad("actions", "a list", v)
-			break
-		}
-		p.Actions = []any{} // Lua's {} marshals as an empty map
+			bad("keys", "a list", v)
+		} // Lua's {} marshals as an empty map
 	default:
-		bad("actions", "a list", v)
-	}
-	if h := p.Hotkey; h != "" && (utf8.RuneCountInString(h) != 1 || strings.Contains(listOwnKeys, h)) && err == nil {
-		err = fmt.Errorf("hotkey must be one character other than j, k, /, y and Y, got %q", h)
-	}
-	for i, a := range p.Actions {
-		if _, e := parseItem(a, true); e != nil && err == nil {
-			err = fmt.Errorf("actions[%d].%w", i+1, e)
-		}
+		bad("keys", "a list", v)
 	}
 	return p, err
+}
+
+// parseKey reads one of a row's keys.
+func parseKey(v any) (ItemKey, error) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return ItemKey{}, fmt.Errorf("a key is a table, got %s", luaShape(v))
+	}
+	var k ItemKey
+	k.Raw = v
+	var err error
+	for _, f := range []struct {
+		name string
+		dst  *string
+	}{{"key", &k.Key}, {"desc", &k.Desc}, {"run", &k.Run}, {"fill", &k.Fill}, {"id", &k.ID}} {
+		switch x := m[f.name].(type) {
+		case nil:
+		case string:
+			*f.dst = x
+		default:
+			if err == nil {
+				err = fmt.Errorf("%s must be a string, got %s", f.name, luaShape(x))
+			}
+		}
+	}
+	if d, ok := m["danger"].(bool); ok {
+		k.Danger = d
+	}
+	if v, ok := m["verb"].(string); ok {
+		k.Verb = Verb(v)
+		if !slices.Contains(verbs, k.Verb) {
+			err = fmt.Errorf("verb must be one of %s, got %q", joinVerbs(), v)
+		}
+	}
+	switch {
+	case k.Key == "":
+		err = errors.New("key is the character it answers to")
+	case utf8.RuneCountInString(k.Key) != 1 || strings.Contains(listOwnKeys, k.Key):
+		err = fmt.Errorf("key must be one character other than j, k, /, y and Y, got %q", k.Key)
+	}
+	return k, err
+}
+
+// joinVerbs lists the verbs for an error message.
+func joinVerbs() string {
+	names := make([]string, len(verbs))
+	for i, v := range verbs {
+		names[i] = string(v)
+	}
+	return strings.Join(names, ", ")
 }
 
 // overlayItems is a Lua items list with every item's fields checked. nil is

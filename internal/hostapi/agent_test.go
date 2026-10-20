@@ -715,6 +715,7 @@ type fakeUI struct {
 	closedLua           int
 	turnsDone           atomic.Int32
 	screenshot          string
+	chatRow             int
 	copied              string
 	edit                func(path string) // what the user does in the editor
 	relaunched, resumed string
@@ -761,6 +762,8 @@ func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 }
 
 func (f *fakeUI) Screenshot() string { return f.screenshot }
+
+func (f *fakeUI) ChatRow() int { return f.chatRow }
 
 func (f *fakeUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	f.qAsked = append(f.qAsked, qs...)

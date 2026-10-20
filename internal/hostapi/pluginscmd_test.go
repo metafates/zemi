@@ -92,14 +92,14 @@ func TestPluginsCommand(t *testing.T) {
 				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugins toggle a section:Local text:a",
-				"desc:failed", "[status failed]", "broken", "hotkey:d run:plugins disable a",
-				"danger:true hotkey:x run:plugins delete a --yes text:Delete",
+				"desc:failed", "[status failed]", "broken", "desc:Disable key:d run:plugins disable a",
+				"danger:true desc:Delete key:x run:plugins delete a --yes",
 			},
-			not: []string{"hotkey:u"},
+			not: []string{"key:u"},
 		},
 		{
 			name: "toggle flips the switch before any reload", args: "toggle a", reload: true,
-			want: []string{"on:false run:plugins toggle a", "[status off]", "hotkey:e run:plugins enable a"},
+			want: []string{"on:false run:plugins toggle a", "[status off]", "desc:Enable key:e run:plugins enable a"},
 		},
 		{name: "delete a local plugin", args: "delete b --yes", want: []string{"info: Plugin deleted: b"}, not: []string{"text:b"}},
 		{
@@ -107,7 +107,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Marketplace added: marketplace test added (1 plugins)",
 				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
-				"hotkey:u run:plugins marketplace update test", "danger:true hotkey:x run:plugins marketplace remove test",
+				"desc:Update key:u run:plugins marketplace update test", "danger:true desc:Remove key:x run:plugins marketplace remove test",
 			},
 		},
 		{
@@ -115,7 +115,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
-				"danger:true hotkey:x run:plugins delete x --yes text:Delete",
+				"danger:true desc:Delete key:x run:plugins delete x --yes",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},

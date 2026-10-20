@@ -1929,13 +1929,13 @@ func (h *Host) workflowsOverlay() Overlay {
 	// pad's journals each second; cache them if a large pad shows in a profile.
 	for _, w := range h.workflows() {
 		path := ""
-		actions := []any{
-			map[string]any{"text": "Run", "hotkey": "r", "run": "workflows run " + w.Name},
-			map[string]any{"text": "Run with arguments", "hotkey": "a", "fill": "/workflows run " + w.Name + " "},
+		keys := []any{
+			map[string]any{"key": "r", "desc": "Run", "run": "workflows run " + w.Name},
+			map[string]any{"key": "a", "desc": "Run with arguments", "fill": "/workflows run " + w.Name + " "},
 		}
 		if w.Source != lua.OriginBuiltin {
 			path = perm.TildePath(w.Path)
-			actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "workflows open " + w.Name})
+			keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "workflows open " + w.Name})
 		}
 		items = append(items, map[string]any{
 			"text":    w.Name,
@@ -1943,7 +1943,7 @@ func (h *Host) workflowsOverlay() Overlay {
 			"section": sourceSection(w.Source),
 			"fields":  fieldList("source", h.sourceOf(w.Source, w.Path), "path", path),
 			"detail":  w.Description,
-			"actions": actions,
+			"keys":    keys,
 		})
 	}
 	return Overlay{

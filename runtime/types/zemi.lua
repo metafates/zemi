@@ -983,10 +983,12 @@ function zemi.event.stats() end
 ---@field addbg? string
 ---@field delbg? string
 
---- One overlay row. Enter on an item with `detail` or `actions` opens a
---- detail view (never on_select); otherwise it fills, runs or selects the
---- item, and does nothing when none applies. `run` is honored only for
---- user config.
+--- One overlay row. Enter on an item with `detail` or `fields` opens its
+--- view (never on_select); otherwise it fills, runs or selects the item, and
+--- does nothing when none applies. What acts on a row is its own `keys`, on
+--- the row from the list and named in the footer of its view: a row has one
+--- view, never a second one of buttons. `run` is honored only for user
+--- config.
 ---@class zemi.OverlayItem
 ---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field desc? string dim column after the text; the filter finds words in it
@@ -1000,24 +1002,32 @@ function zemi.event.stats() end
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
 ---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail
----@field actions? zemi.OverlayAction[] listed under the detail
+---@field keys? zemi.OverlayItemKey[] what acts on the row: a character each, run on it from the list, and named in the footer of its view
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
----@field hotkey? string one character that acts like enter on this row (not while a filter types; j, k, /, y and Y are the list's and raise)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
----@field verb? string enter's action in the hint where the default would say another: zemi's lists use "open" (another screen), "pick" (a value), "run" (a command), "toggle" and "fill"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
+---@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another: "open" (a screen of its own), "pick" (a value), "run" (a command), "toggle", "fill" or "copy"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 ---@field anchor? integer The transcript row this one stands for, counted as `ctx.transcript` is (1-based); a list with `follow` set scrolls the chat here when the row is selected.
 
---- A detail view action; with no id, fill or run it goes back.
----@class zemi.OverlayAction
----@field text string
----@field id? string hands the action to the overlay's on_action, which takes it over fill and run
----@field danger? boolean cannot be undone: drawn in Danger, and the first enter or hotkey only arms it; the footer then says to press it again, and any other key disarms
----@field hotkey? string one character that acts like enter on this action, and from the list on the selected row (a `danger` one opens the detail on it armed); with none, its position ("1", "2", ...). j, k, /, y and Y raise.
----@field detail? string enter opens it as a detail view of its own, over this one
----@field fields? zemi.OverlayField[] that view's facts, set as a table above detail
----@field fill? string
----@field run? string
+--- What enter does on a row, in one word for the footer hint.
+---@alias zemi.OverlayVerb
+---| "open" a screen of its own, over the list
+---| "pick" a value
+---| "run" a command
+---| "toggle" a toggle list's row
+---| "fill" the composer
+---| "copy" the row's value
+---| "go" a following list's row: enter lands there, closing the menu
+
+--- One of a row's keys: a character that acts on the row from the list.
+---@class zemi.OverlayItemKey
+---@field key string one character; j, k, /, y and Y are the list's and raise
+---@field desc? string named beside the key in the footer
+---@field id? string hands the key to the overlay's on_action, which takes it over fill and run
+---@field fill? string put in the composer, closing the list
+---@field run? string a command line, run on the row; with `verb = "open"` the screen it opens sits over the list, which stays
+---@field danger? boolean cannot be undone: the first press only arms it, and the footer says to press it again
+---@field verb? zemi.OverlayVerb "open" for a run that opens a screen
 
 --- A detail view's fact: its name in the dim column, its value beside it. A
 --- "status" value colors the status words every screen shares, an "error" one
@@ -1045,10 +1055,10 @@ function zemi.event.stats() end
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
 ---@field anchor? zemi.OverlayAnchor In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
----@field follow? boolean Moving the selection scrolls the chat to the row the selected item names by its `anchor`, centers that message when the whole of it fits, and bands its rows while the list is open; the list opens on the message a jump last placed the view at, while the view still sits where it left it, or else the one over the view's middle (the last message when the view shows the end of the transcript), `enter` closes it keeping that place, and `esc` puts the chat back where it was.
+---@field follow? boolean Moving the selection scrolls the chat to the row the selected item names by its `anchor`, centers that message when the whole of it fits, and bands its rows while the list is open; the list opens on the message a jump last placed the view at, while the view still sits where it left it, or else the one over the view's middle (the last message when the view shows the end of the transcript). `enter` on a row with no level under it closes the menu keeping that place (`go`), and `esc` puts the chat back where it was.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
----@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
----@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise; a row's hotkey wins, and this wins over a row's action keys): a second verb on the selected item, which closes or rebuilds the list like on_action.
+---@field on_action? fun(item: any, key: zemi.OverlayItemKey) Runs for a row key with an `id`; the list closes like on on_select, a `reload` list rebuilds.
+---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise, and this wins over a row's own keys): a second verb on the selected item, which closes or rebuilds the list like on_action.
 ---@field on_close? fun()
 ---@field reload? fun(): any[] Makes a toggle list: enter and space (while no filter types) run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Enter on a row with `fill` runs on_select, fills the composer and closes the list. It runs again when an overlay opened over the list closes. Both run off the key path; an error, an item field of the wrong type included, keeps the old items and shows in /errors.
 

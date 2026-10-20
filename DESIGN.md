@@ -1860,7 +1860,8 @@ rides the `memories.md` line and its ledger entries.
   the reader is at, with enter keeping that place and esc putting the chat
   back; a `body` of styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
-  an item's `hotkey`, one character, acts like enter on that row while no filter types,
+  an item's `keys`, one character each, act on that row from the list and are
+  named in the footer of its view,
   an item's `preview` shows whole in a pane under the list while its row is
   selected, the pane as tall as the longest preview (4 rows at most, and the
   list 72 cells wide, like text), so moving never resizes the box, and the
@@ -1883,69 +1884,59 @@ rides the `memories.md` line and its ledger entries.
   selection on its row wherever the rebuild moved it, whoever opens it. Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
-  (a list item's `id` is its own data). A detail view's rows are actions
-  (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
-  the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
-  position. Go screens key every action by its verb's initial, one verb per
-  letter on a screen: `r` restart, resume or run, `a` ask or run with
-  arguments, or `/mcp`'s sign in to all, `s` sign in or stop, `e` enable, `d`
-  disable, `n` rename, `o` open, `u`
-  update or use now, `c` change, and `x` for what cannot be undone (delete,
-  or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
-  action per check takes its label's initial. An item or action with
-  `danger` (those `x` rows, `/rewind`'s `r`; not `/memory`'s actions, which `u`
-  undoes) draws in the danger color, and its
-  first enter or key only arms it: the footer turns to `x again to delete ·
-  esc cancel`, the verb in that color and the keys drawn as keys, the same key, enter or space runs it, esc disarms and
-  stays, and any other key, or a click or wheel that moves the selection,
-  disarms and then acts; a screen's own danger key (a workflow view's `x`)
-  waits the same way, and any click or wheel drops it. A detail view whose only action it is (`/rewind`'s)
-  states the effect and is itself the confirmation, so it runs at once. A
-  row's action keys act
-  from the list too, on the selected row, as its detail's button would (an
-  action with a view of its own opens it over the list); a danger one opens
-  the detail on it armed, so the view is its confirmation. A Go screen
-  declares the action keys its rows offer (`/sessions`' `r resume · n
-  rename · x delete`, `/projects`' `s switch · x delete`) as list keys with no command,
-  so its footer names them whatever row is selected; on a row without the
-  action (the current session) the key toasts the row's detail, which says
-  why. A destructive
-  command typed without the `--yes` its action's run ends in (`/plugins
-  delete x`, `/skills delete x`, `/sessions delete <id>`, `/mcp sign-out x`)
-  asks the same way: its screen opens on that detail, armed
-  (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row the list does not
-  hold (a session past the 50 it shows), a toast names the `--yes` form;
-  `/memory forget <id>` opens `/memory` on that memory, its Forget button
-  armed. In `zemi run` such a command refuses, naming
-  the command that runs it without asking (`zemi plugins delete x --yes`). The list's footer
-  names no action key, since the keys a row offers move with its state and
-  the footer's text would move with them; the detail's buttons name them. `j`, `k`, `/`, `y` and `Y` are
-  the list's own and cannot be hotkeys. A
+  (a list item's `id` is its own data). A row has one view: its fields and
+  text, never a second one of buttons. What acts on it is its own `keys`, one
+  character each (`fill`, `run`, or an `id` handed to the list's `on_action`),
+  which act on the selected row from the list and are named in its view's
+  footer; a key whose `run` opens a screen says `verb = "open"` and leaves the
+  list under it, so esc comes back. Go screens key every operation by its
+  verb's initial, one letter per act on a screen: `r` restart, resume or run,
+  `a` ask or run with arguments, or `/mcp`'s sign in to all, `s` sign in or
+  stop, `e` enable, `d` disable, `n` rename, `o` open, `u` update or use now,
+  `c` change, and `x` for what cannot be undone (delete, or `/mcp`'s sign
+  out, which deletes the saved token); `/health`'s one key per check takes its
+  label's initial. A row or key with `danger` (those `x` keys, `/rewind`'s
+  `r`; not `/memory`'s keys, which `u` undoes) draws in the danger color, and
+  its first press only arms it: the footer turns to `x again to delete · esc
+  cancel`, the verb in that color and the keys drawn as keys, the same key,
+  enter or space runs it, esc disarms and stays, and any other key, or a click
+  or wheel that moves the selection, disarms and then acts; a screen's own
+  danger key (a workflow view's `x`) waits the same way, and any click or
+  wheel drops it. A destructive command typed without the `--yes` its key's
+  run ends in (`/plugins delete x`, `/skills delete x`, `/sessions delete
+  <id>`, `/mcp sign-out x`) asks the same way: its screen opens on that row
+  with that key armed (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row
+  the list does not hold (a session past the 50 it shows), a toast names the
+  `--yes` form; `/memory forget <id>` opens `/memory` on that memory, its
+  Forget key armed. In `zemi run` such a command refuses, naming the command
+  that runs it without asking (`zemi plugins delete x --yes`). `j`, `k`, `/`,
+  `y` and `Y` are the list's own and cannot be keys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`,
   `/plugins`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
   action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
   and a workflow's view also rebuild in place when a server, a run or a
   slow action changes their state off the key loop (`Overlay.Refresh`, for
   a run a 1 s ticker's `RefreshOverlay` that lives only as long as some run
-  does and builds only an open screen), a detail open over them too; `/sessions` and `/agents` close on an action instead: a resume
-  and an agent's transcript move to another screen, which a rebuilt
-  list would cover. A row's binary state (a skill or plugin on or off, a
+  does and builds only an open screen), a detail open over them too; `/sessions` rebuilds the same way, so a deleted
+  one goes without the list closing. A row's binary state (a skill or plugin on or off, a
   picked option of a multi-select) is one 5-cell switch in the key column,
   `◆ on ` in Ok, `◇ off` or a locked `  on ` in Hint, so a toggle never
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
   Enter's hint names its act in one word shared by every list: `open` a
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
   `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
-  list's row, `fill` the composer, `copy`, and `close` for a following list,
-  whose enter keeps the place it scrolled the chat to while its esc says
-  `back` and puts the chat where it was; a prompt's footer says `pick`
+  list's row, `fill` the composer, `copy`, and `go` for a following list's
+  row with no level under it, whose enter closes the menu keeping the place
+  it scrolled the chat to while its esc says `back` and puts the chat where
+  it was; a prompt's footer says `pick`
   for its buttons, whichever is highlighted, and `send` for typed text
   (`zemi.ui.input`, a typed answer or note, a multi-select's picks, a plan's
   changes, a question batch's Submit tab, whose digits `change` a question):
   four letters each, so starting to type or moving the highlight never
   shifts the footer. The footer's pairs sit in one order: moving keys,
   enter, space, copy, the screen's own keys (a Lua list's `keys`,
-  `/memory`'s `u`, a workflow view's `p`, `+/-`, `x`, `r`, `o`, `s`), esc,
+  `/memory`'s `u`, a workflow view's `p`, `+/-`, `x`, `r`, `o`, `s`, and the
+  selected row's own keys), esc,
   then scrolling; the screen's keys come and go with its state, so their
   going moves only esc, and the scroll hint comes and goes with the text,
   so it sits last and its cells are trailing blanks while it is away. A
@@ -1968,8 +1959,9 @@ rides the `memories.md` line and its ledger entries.
   gives the keys back to the list (j and k move in the narrowed rows, `/`
   types on), and esc clears it, then closes. A detail view opens with its
   item's `fields` set as a table (names in a dim column, a field with no value
-  left out), then its `detail` prose, then the actions; `y` copies the fields
-  as `name: value` lines above the prose. A Go screen's body may come in
+  left out), then its `detail` prose, and lists nothing: its keys are the
+  list's and the row's, and the footer names them; `y` copies the fields as
+  `name: value` lines above the prose. A Go screen's body may come in
   parts, each drawn the way its text is written - markdown, a unified diff,
   or a language to highlight it as, a command's in a well of the canvas -
   and a body its work rewrites (`Live`) keeps the reader's place, or follows
@@ -2182,20 +2174,30 @@ rides the `memories.md` line and its ledger entries.
   rail folded. `l` on that row opens the rail's own list, one row per call and
   thought, and the chat draws that run whole while it is up: no row of it
   stays behind the rail's own `… N earlier`, each call keeps its body folded,
-  and the call the list names is the one banded. Prompt and reply rows lead
-  with the speaker's kind glyph, `▌` in the accent and `◆` in dim, and the
-  state rows keep their marks. It follows the chat: moving the selection scrolls the transcript to
-  the row the item names, centers the message in the view when the whole of it
-  fits (else its first row just under the pinned header) and bands every row
-  of it, the scrollbar column and a reply's readout aside; `enter` closes the
-  list keeping that place, `y` copies the row, and `esc` puts the chat back
-  where it was found, the way muffin's popup cancels. A jump records the row
+  and the call the list names is the one banded. It opens where the reader
+  is, the way muffin opens on the symbol under the cursor, not on its first
+  row: the levels down to the row the view's middle draws come up together,
+  turns then the turn then its rail, and `h` walks back up, each level on the
+  row it was left on. A level's row with no level under it takes `enter` for
+  the place itself: the whole menu closes and the chat stays there, and `l`
+  does nothing; what a row offers is its flat keys, `o` to read it whole,
+  `j` for its job, `r` to rewind a prompt. Prompt and reply rows lead with the
+  speaker's kind glyph, `▌` in the accent and `◆` in dim, and the state rows
+  keep their marks, a marked row drawing no glyph of its own. It follows the
+  chat: moving the selection scrolls the transcript to the row the item
+  names, centers the message in the view when the whole of it fits (else its
+  first row just under the pinned header) and bands every row of it, the
+  scrollbar column and a reply's readout aside; `y` copies the row, and `esc`
+  puts the chat back where it was found, the way muffin's popup cancels. A
+  view a key opens sits over the level it came from, so esc returns to it as
+  it was. A jump records the row
   it placed the view at, because the viewport alone cannot say which message
   it is when a centered placement clamps at the top or the tail and many share
   one top row: the list opens on that row again while the view still sits
-  where the jump left it. A scroll landing the view at the transcript's end
-  drops it, because the reader is at the newest content then, and so do a
-  submit and a click. Without it the list opens on the message whose rows
+  where the jump left it, and so does closing the menu on a row, which lands
+  the reader there. A scroll landing the view at the transcript's end drops
+  it, because the reader is at the newest content then, and so do a submit
+  and a click. Without it the list opens on the message whose rows
   hold the view's middle row, else the last one above it: a wheel line or two
   keeps the message a jump centered, scrolling on moves to the message the
   middle passes, and a blank line or a run of calls hands over to a message

@@ -190,7 +190,7 @@ func TestMCPBridge(t *testing.T) {
 	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != StatusSignIn {
 		t.Fatalf("status after the sign-in expired = %q, %q", s.status, s.err)
 	}
-	if items, _ := ui.overlays()[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["actions"]), "hotkey:s run:mcp sign-in fake") {
+	if items, _ := ui.overlays()[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["keys"]), "key:s run:mcp sign-in fake") {
 		t.Errorf("the rebuilt /mcp row offers no [s] Sign in: %v", items)
 	}
 	// a reload that disables echo stops the snapshot's echo too
@@ -236,7 +236,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if !slices.ContainsFunc(ui.overlays()[n:], func(o Overlay) bool {
 		row := o.Items[0].(map[string]any)
-		return o.Refresh && row["desc"] == "needs sign-in" && strings.Contains(fmt.Sprint(row["actions"]), "run:mcp sign-in fake")
+		return o.Refresh && row["desc"] == "needs sign-in" && strings.Contains(fmt.Sprint(row["keys"]), "run:mcp sign-in fake")
 	}) {
 		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
 	}

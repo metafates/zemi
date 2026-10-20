@@ -716,20 +716,19 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		what, fn = "on_select", o.OnSelect
 		row, _ = ParseOverlayItem(args[0])
 	}
+	var key ItemKey
 	if a := L.Get(2); a != glua.LNil && args != nil {
-		i := slices.IndexFunc(row.Actions, func(x any) bool {
-			ap, _ := ParseOverlayItem(x)
-			return ap.ID == a.String() || ap.Text == a.String()
-		})
+		i := slices.IndexFunc(row.Keys, func(k ItemKey) bool { return k.ID == a.String() || k.Desc == a.String() })
 		if i < 0 {
-			raise(L, "test.answer: the item has no action %q", a.String())
+			raise(L, "test.answer: the item has no key %q", a.String())
 		}
-		args = append(args, row.Actions[i])
-		row, _ = ParseOverlayItem(row.Actions[i])
+		key = row.Keys[i]
+		args = append(args, key.Raw)
 		what, fn = "on_action", o.OnAction
-		if row.ID == "" {
-			fn = nil // the UI sends on_action only an action with an id
+		if key.ID == "" {
+			fn = nil // the UI sends on_action only a key with an id
 		}
+		row.Run = key.Run
 	}
 	act := func(ctx context.Context) error { return t.h.callOverlay(ctx, o, what, fn, args...) }
 	if fn == nil && args != nil {
@@ -1037,6 +1036,7 @@ func (*testUI) AgentStream()                                        {}
 func (*testUI) TurnDone(string, bool)                               {}
 func (*testUI) AskPermission(PermRequest) (bool, string)            { return false, tools.ByUser }
 func (*testUI) Screenshot() string                                  { return "" }
+func (*testUI) ChatRow() int                                        { return 0 }
 func (*testUI) AskQuestion([]tools.Question) ([]tools.Answer, bool) { return nil, false }
 func (*testUI) AskPlan(string, string) (tools.PlanVerdict, bool) {
 	return tools.PlanVerdict{}, false

@@ -626,17 +626,17 @@ func (h *Host) skillItems() []any {
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
 		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(s.Source)}
-		var actions []any
+		var keys []any
 		state := "on"
 		switch {
 		case !s.Source.Stored(): // no state to toggle
 			item["locked"] = true
 		case h.skillsReg.isEnabled(s.Name):
 			item["on"], item["run"] = true, toggle
-			actions = append(actions, map[string]any{"text": "Disable", "hotkey": "d", "run": toggle})
+			keys = append(keys, map[string]any{"key": "d", "desc": "Disable", "run": toggle})
 		default:
 			state, item["on"], item["run"] = "off", false, toggle
-			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
+			keys = append(keys, map[string]any{"key": "e", "desc": "Enable", "run": toggle})
 		}
 		body, err := s.Body()
 		if err != nil {
@@ -646,16 +646,15 @@ func (h *Host) skillItems() []any {
 		if h.hasSkillCommand(s) {
 			use = "/" + s.Name + " "
 		}
-		actions = append(actions, map[string]any{"text": "Read it", "hotkey": "r", "detail": body})
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
-			actions = append(actions, map[string]any{"text": openInEditorLabel, "hotkey": "o", "run": "skills open " + s.Name})
+			keys = append(keys, map[string]any{"key": "o", "desc": openInEditorLabel, "run": "skills open " + s.Name})
 		}
-		item["actions"] = append(actions, map[string]any{"text": "Use now", "hotkey": "u", "fill": use})
+		item["keys"] = append(keys, map[string]any{"key": "u", "desc": "Use now", "fill": use})
 		if s.Source == skill.Recipe {
-			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
+			item["keys"] = append(item["keys"].([]any), map[string]any{"key": "x", "desc": "Delete", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
 		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
-		item["detail"] = s.Description
+		item["detail"] = body // enter reads the skill itself: its description is the row's desc
 		items = append(items, item)
 	}
 	return items

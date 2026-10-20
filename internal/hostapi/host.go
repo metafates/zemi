@@ -65,6 +65,10 @@ type UIHooks interface {
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string
+	// ChatRow is the transcript row the reader is at in the last drawn
+	// frame, down to the call of a rail a row draws; 0 for none. Safe from
+	// any goroutine.
+	ChatRow() int
 	AskQuestion(qs []tools.Question) (answers []tools.Answer, ok bool)
 	// AskPlan shows a plan for approval (restore is the agent to return to on
 	// approval, "" when none); ok is false when the user dismisses it.
@@ -100,7 +104,7 @@ type Overlay struct {
 	Items    []any
 	ItemText [][]Segment // render_item's row per item, rendered when it opened
 	OnSelect *glua.LFunction
-	OnAction *glua.LFunction // on_action(item, action), for a detail action with an id
+	OnAction *glua.LFunction // on_action(item, key), for a row key with an id
 	OnClose  *glua.LFunction
 	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
@@ -118,10 +122,10 @@ type Overlay struct {
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
 	Empty    string
 	Selected int
-	Verb     string
+	Verb     Verb // what enter does to a row, where the list's default word does not say it
 	Refresh  bool // only replaces the open overlay with this ID, so one the user closed stays closed
-	// Confirm is the run of an action to open armed in its row's detail
-	// view: a destructive command typed without --yes asks there
+	// Confirm is the run of a row key to open armed: a destructive command
+	// typed without --yes asks there
 	Confirm string
 	// Wide boxes take the widest a screen shows whatever opened them, so a
 	// screen reached from a list or a command draws at one width

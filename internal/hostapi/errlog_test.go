@@ -36,7 +36,7 @@ func TestErrorLog(t *testing.T) {
 		t.Fatalf("open: err=%v unseen=%v", err, h.HasUnseenErrors())
 	}
 	newest := ui.opened[len(ui.opened)-1].Items[0].(map[string]any)
-	if !strings.Contains(fmt.Sprint(newest["fields"]), "[error initialize: connection refused]") || !strings.Contains(fmt.Sprint(newest["actions"]), "hotkey:r run:mcp restart gitlab") {
+	if !strings.Contains(fmt.Sprint(newest["fields"]), "[error initialize: connection refused]") || !strings.Contains(fmt.Sprint(newest["keys"]), "key:r run:mcp restart gitlab") {
 		t.Fatalf("mcp error item: %+v", newest)
 	}
 }
