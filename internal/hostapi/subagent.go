@@ -25,7 +25,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/set"
@@ -447,10 +446,9 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 	return pipe
 }
 
-// capRun caps a run's steps and output and ends its turn when the window fills.
+// capRun caps a run's output and ends its turn when the window fills.
 func (h *Host) capRun(runner *agent.Runner, modelID string) {
 	runner.MaxOutputTokens = h.maxOutput(modelID)
-	runner.MaxSteps = h.Settings.Int(config.KeyAgentMaxSteps)
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= h.compactThreshold(window) }
 }

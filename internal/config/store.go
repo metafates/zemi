@@ -33,7 +33,6 @@ const (
 	KeySessionRecap         Key = "session.recap"
 	KeyAgentCompactAt       Key = "agent.compact_at"
 	KeyAgentMaxBackground   Key = "agent.max_background"
-	KeyAgentMaxSteps        Key = "agent.max_steps"
 	KeyLSPAuto              Key = "lsp.auto"
 	KeyEditorCommand        Key = "editor.command"
 	KeyKeymapLeader         Key = "keymap.leader"
@@ -159,7 +158,6 @@ func (s *Store) defineDefaults() {
 		{Path: KeySessionRecap, Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
 		{Path: KeyAgentCompactAt, Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
 		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
-		{Path: KeyAgentMaxSteps, Kind: KindNumber, Default: 200.0, Desc: "steps one turn may take before it stops and hands back, its tool calls included; 0 or less keeps 200, and a sent message continues the turn"},
 		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},

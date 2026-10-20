@@ -449,7 +449,6 @@ func (h *Host) ensureRunner(p *Profile, toolset []fantasy.AgentTool) (*agent.Run
 	sid := h.AgentSessionID()
 	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
-	r.MaxSteps = h.Settings.Int(config.KeyAgentMaxSteps)
 	if p != nil {
 		r.Temperature = p.Temperature
 	}

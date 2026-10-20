@@ -18,8 +18,6 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openai"
-
-	"github.com/metafates/zemi/internal/config"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one
@@ -438,35 +436,6 @@ func TestToolLoopEndsTurn(t *testing.T) {
 		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
 			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
 		}
-	}
-}
-
-// TestStepLimit: a turn stops at the configured step cap and says the count,
-// where the default is 200; the results move, so no loop ends it first.
-func TestStepLimit(t *testing.T) {
-	m := &mockModel{parts: textParts("done")}
-	for range 8 {
-		m.steps = append(m.steps, callStep("{}"))
-	}
-	n := 0
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		n++
-		return fantasy.NewTextResponse(fmt.Sprintf("step %d", n)), nil
-	})
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
-	r.Hooks, r.MaxSteps = newRecHooks(), 3
-	err := r.Send(t.Context(), "hi")
-	if err == nil || err.Error() != "stopped at the 3-step limit (agent.max_steps): send a message to continue" {
-		t.Fatalf("err = %v", err)
-	}
-	if n != 3 {
-		t.Fatalf("ran %d calls, want the 3 the cap allows", n)
-	}
-	// nothing on the runner: the default cap, which is the schema's
-	// agent.max_steps, so the two cannot drift
-	r = NewRunner(&mockModel{parts: textParts("done")}, nil, "")
-	if got, want := r.stepLimit(), config.NewStore().Int("agent.max_steps"); got != want {
-		t.Fatalf("default step limit = %d, want the schema's %d", got, want)
 	}
 }
 
