@@ -74,7 +74,7 @@ func pressKeys(app *App, keys ...string) {
 // §8): a batch shows tabs, answering moves on to the Submit tab, whose
 // summary shows a note, and the answers come back in order.
 func TestGoldenQuestionOverlay(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 18)
+	app, _ := bootAgentAppPinned(t, 70, 18)
 	done := askAsync(t, app,
 		tools.Question{Type: tools.TypeSingle, Question: "Apply the mined rules to this project?", Header: "Rules", Options: []tools.QuestionOption{
 			{Label: "apply", Description: "store both as project memories", Recommended: true},

@@ -74,15 +74,27 @@ func (c fixedClock) AfterFunc(d time.Duration, f func()) func() bool {
 // golden_test harness.
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
-	return bootAgentAppOn(t, w, h, tipClock)
+	_, cfg := tempHome(t)
+	return bootAgentAppOn(t, w, h, tipClock, cfg)
 }
 
-// bootAgentAppOn is bootAgentApp on clock, nil for the wall clock.
-func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Host) {
+// bootAgentAppPinned is bootAgentApp with $HOME pointed at the boot's own
+// home, so rendered paths read ~; the Setenv rules out t.Parallel.
+func bootAgentAppPinned(t testing.TB, w, h int) (*App, *hostapi.Host) {
+	t.Helper()
+	home, cfg := tempHome(t)
+	t.Setenv("HOME", home)
+	return bootAgentAppOn(t, w, h, tipClock, cfg)
+}
+
+// bootAgentAppOn is bootAgentApp on clock, nil for the wall clock, with cfg
+// as the config home. A test that pins rendered ~ paths points $HOME at
+// cfg's home first, which rules out t.Parallel for it.
+func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock, cfg string) (*App, *hostapi.Host) {
 	t.Helper()
 	ctx := t.Context()
-	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
-	cfg, data, state = resolved(t, cfg), resolved(t, data), resolved(t, state)
+	data, state := t.TempDir(), t.TempDir()
+	data, state = resolved(t, data), resolved(t, state)
 
 	log := slog.New(slog.DiscardHandler)
 	settings := config.NewStore()
@@ -231,7 +243,7 @@ func TestColdChatRender(t *testing.T) {
 		{"one long turn", longTurn, 30, [2]string{"question 0", "reply 99"}, "reply 50"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			app, host := bootAgentAppOn(t, 140, 40, &lagClock{})
+			app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
 			c.seed(host)
 			chat := host.Widgets.Get("chat")
 			var lines [][]hostapi.Segment
@@ -257,7 +269,7 @@ func TestColdChatRender(t *testing.T) {
 		})
 	}
 
-	app, host := bootAgentAppOn(t, 140, 40, &lagClock{})
+	app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
 	seedResumedChat(host, turns)
 	app.renderSync(t)
 	app.Frame()
@@ -752,7 +764,7 @@ func TestGoldenPermission(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			app, _ := bootAgentApp(t, c.w, c.h)
+			app, _ := bootAgentAppPinned(t, c.w, c.h)
 			done := make(chan struct{})
 			var allowed bool
 			var by string
@@ -1471,7 +1483,7 @@ func TestGoldenTrustPrompt(t *testing.T) {
 		{"worktree on a short screen", "/code/acme-wt", "", 60, 16},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			app, _ := bootAgentApp(t, c.w, c.h)
+			app, _ := bootAgentAppPinned(t, c.w, c.h)
 			go app.AskTrust("/code/acme", c.cwd, c.state)
 			waitPrompt(t, app, func() bool { return app.trust != nil })
 			app.renderSync(t)

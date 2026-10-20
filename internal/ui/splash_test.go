@@ -87,7 +87,7 @@ func TestSplashFitsShortChat(t *testing.T) {
 		{19, []string{"+#%#@%@%%#%#:", "● Tip"}, []string{"v1"}},
 		{17, []string{"zemi", "● Tip"}, []string{"+#%#@%@%%#%#:"}},
 	} {
-		app, _ := bootAgentApp(t, 80, c.h)
+		app, _ := bootAgentAppPinned(t, 80, c.h)
 		runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({

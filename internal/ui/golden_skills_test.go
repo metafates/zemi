@@ -11,7 +11,7 @@ import (
 // TestGoldenSkillsList pins /skills: a toggle list sectioned by source, the
 // user's own skills first.
 func TestGoldenSkillsList(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
+	app, host := bootAgentAppPinned(t, 80, 24)
 	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "deploy")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)

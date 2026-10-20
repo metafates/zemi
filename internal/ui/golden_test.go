@@ -18,29 +18,29 @@ import (
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
-// tempConfig is a config dir under a fresh, resolved $HOME, so the splash
-// names ~/.config/zemi/init.lua on every machine. Setenv rules out
-// t.Parallel in the tests that boot an app.
-func tempConfig(t testing.TB) string {
+// tempHome lays a fresh, resolved home with an empty .config/zemi. Tests
+// that pin rendered ~ paths point $HOME at home, which rules out
+// t.Parallel for them.
+func tempHome(t testing.TB) (home, cfg string) {
 	t.Helper()
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
-	cfg := filepath.Join(home, ".config", "zemi")
+	cfg = filepath.Join(home, ".config", "zemi")
 	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return cfg
+	return home, cfg
 }
 
 // User init.lua rebinds a default key and adds a statusline segment; the
 // composed frame is pinned as a golden.
 func TestGoldenFrame(t *testing.T) {
 	ctx := t.Context()
-	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
-	cfg, data, state = resolved(t, cfg), resolved(t, data), resolved(t, state)
+	home, cfg := tempHome(t)
+	t.Setenv("HOME", home)
+	data, state := resolved(t, t.TempDir()), resolved(t, t.TempDir())
 
 	initLua := `
 zemi.keymap.set("ctrl+t", function()
@@ -151,7 +151,7 @@ func TestGoldenComposerCompletion(t *testing.T) {
 // while the cursor row stays clear of the ramp with a row of headroom below
 // it.
 func TestGoldenComposerFade(t *testing.T) {
-	app, _ := bootAgentApp(t, 60, 20)
+	app, _ := bootAgentAppPinned(t, 60, 20)
 	var draft strings.Builder
 	for i := range 14 {
 		fmt.Fprintf(&draft, "draft line %d\n", i+1)
@@ -184,7 +184,7 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 // as the first character lists the registered commands, filtered as you
 // type, with the first match highlighted.
 func TestGoldenSlashPalette(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 14)
+	app, host := bootAgentAppPinned(t, 80, 14)
 	for _, c := range []*hostapi.Command{
 		{Name: "help", Desc: "show keys and commands"},
 		{Name: "model", Desc: "choose the model"},

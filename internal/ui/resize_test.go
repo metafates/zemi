@@ -47,7 +47,7 @@ func TestGoldenHelpOverlay(t *testing.T) {
 // TestGoldenOverlayDetail pins a detail view: the wrapped body, then the
 // actions as a list.
 func TestGoldenOverlayDetail(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
+	app, host := bootAgentAppPinned(t, 80, 24)
 	host.RecordError("mcp gitlab", `mcp: initialize: Post "http://127.0.0.1:1/mcp": dial tcp 127.0.0.1:1: connect: connection refused`)
 	if err := host.OpenErrors(""); err != nil {
 		t.Fatal(err)

@@ -71,7 +71,7 @@ func brainSeed(t *testing.T, host *hostapi.Host, m *store.Memory) {
 // memories under a title with its count and budget, a suggestion's detail
 // and a typed forget armed; an action applies at once and u undoes it.
 func TestGoldenMemory(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
+	app, host := bootAgentAppPinned(t, 80, 24)
 	ctx := t.Context()
 	// the private partition keys on the repository, so the golden seeds one;
 	// a fixed basename keeps the statusline's project label stable, and a long
