@@ -73,12 +73,13 @@ func TestExportAndFork(t *testing.T) {
 	}
 	a, _ := h.DB.Messages(orig)
 	b, _ := h.DB.Messages(id)
-	if len(a) == 0 || len(a) != len(b) || len(h.Session().Transcript) != 2 {
-		extra := []string{}
-		for _, m := range b[min(len(a), len(b)):] {
-			extra = append(extra, m.Role+": "+m.PartsJSON)
-		}
-		t.Fatalf("fork copied %d of %d messages, transcript %d rows, fork's extra: %q", len(b), len(a), len(h.Session().Transcript), extra)
+	// a fork re-captures its own context note (role context), which may land
+	// after the copy; the conversation is what the fork must hold
+	conv := func(ms []*store.Message) []*store.Message {
+		return slices.DeleteFunc(slices.Clone(ms), func(m *store.Message) bool { return m.Role == contextRole })
+	}
+	if ca, cb := conv(a), conv(b); len(ca) == 0 || len(ca) != len(cb) || len(h.Session().Transcript) != 2 {
+		t.Fatalf("fork holds %d of %d conversation messages, transcript %d rows", len(cb), len(ca), len(h.Session().Transcript))
 	}
 }
 

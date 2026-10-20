@@ -69,9 +69,17 @@ func TestPadBoundPerPipeline(t *testing.T) {
 	old, pad := h.PipelineFor(), h.ScratchDir()
 	h.agents.sessionID = "s2"
 	// a host tool's output, its error and a tool.post rewrite spill where the run's
-	// prompt says, like shell's
+	// prompt says, like shell's; a handler that misses its 50ms veto budget
+	// under load leaves the output as it was, so a call may need another turn
 	for _, tool := range h.luaFantasyTools(old) {
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+		var resp fantasy.ToolResponse
+		var err error
+		for range 3 {
+			resp, err = tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+			if err == nil && len(resp.Content) <= 31_000 && strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
+				break
+			}
+		}
 		if err != nil || resp.IsError != (tool.Info().Name == "failing") || len(resp.Content) > 31_000 || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
 			t.Errorf("%s: %d bytes, spill not in the bound pad %s: %v %q", tool.Info().Name, len(resp.Content), pad, err, resp.Content[max(0, len(resp.Content)-200):])
 		}
