@@ -268,9 +268,8 @@ func TestClassifyAskErrors(t *testing.T) {
 }
 
 // TestClassifyGate: a plugin's own call settles where its manifest declares
-// "model", a rule of the user's still decides first, project code may not call
-// a model, and the picker offers decisions models to the slots that classify
-// alone.
+// "model", a rule of the user's still decides first, and the picker offers
+// decisions models to the slots that classify alone.
 func TestClassifyGate(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostPlugin(t, `["model"]`)
@@ -313,13 +312,13 @@ func TestClassifyGate(t *testing.T) {
 	}
 
 	// the gate: a plugin's declared call settles with no rule (its manifest's
-	// `model` is the consent), and project code may not call it at all
+	// `model` is the consent), and so does project code's
 	src := `zemi.classify.ask({ state = {}, questions = { q = { type = "bool", instructions = "x", criteria = { ["true"] = "y", ["false"] = "n" } } } })`
 	if err := r.ExecuteChunk(t.Context(), src, h.pluginsRoot()+"/local/a/.zemi/init.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin with no rule: %v", err)
 	}
-	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code may not call a model") {
-		t.Errorf("project code: err = %v", err)
+	if err := r.ExecuteChunk(t.Context(), src, ".agents/p.lua", lua.OriginProject); err != nil {
+		t.Errorf("project code: %v", err)
 	}
 }
 

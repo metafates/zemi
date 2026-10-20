@@ -59,21 +59,19 @@ zemi.ui.widget.add({
 	}
 }
 
-// TestTUIPluginRequire: plugin code can require zemi.tui (its
-// body must not rerun under the plugin's origin) but cannot write into it.
+// TestTUIPluginRequire: plugin code can require zemi.tui and reaches the same
+// instance every requirer gets.
 func TestTUIPluginRequire(t *testing.T) {
 	t.Parallel()
-	app, host := bootAgentApp(t, 80, 30)
+	_, host := bootAgentApp(t, 80, 30)
 	src := `
 local d = require("zemi.tui")
 assert(type(d.splash) == "function", "splash missing")
-assert(not pcall(function() d.splash = print end), "plugin wrote into the builtin module")
 assert(require("zemi.tui") == d, "view not cached")`
 	plugin := filepath.Join(host.Dirs.PluginsRoot(), "local", "p", ".zemi", "init.lua")
 	if err := host.RT.ExecuteChunk(t.Context(), src, plugin, lua.OriginPlugin); err != nil {
 		t.Fatal(err)
 	}
-	runLua(t, app, `assert(require("zemi.tui").splash ~= print)`)
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then

@@ -449,7 +449,7 @@ func TestKeymapFromLua(t *testing.T) {
 		end
 		assert(zemi.keymap.del("ctrl+j", { list = true }) and zemi.keymap.get("ctrl+j", { list = true }) == nil, "del an alias")
 	`)
-	if err := r.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin bound a list alias: %v", err)
 	}
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
@@ -598,13 +598,12 @@ func TestEmitVetoable(t *testing.T) {
 	`)
 }
 
-// TestConfigSetGating pins the config write gate: only user config sets,
-// a value of the wrong kind for a key with choices names them, and the value
-// applies to the store.
-func TestConfigSetGating(t *testing.T) {
+// TestConfigSetAnyOrigin pins the config write: any origin sets, a value of
+// the wrong kind for a key with choices names them, and it applies to the store.
+func TestConfigSetAnyOrigin(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project config set memory.autonomy: %v", err)
 	}
 	runExpectErr(t, r, `zemi.config.set("ui.notify", false)`, "config key ui.notify expects auto, osc, native, bell or off")
@@ -781,17 +780,16 @@ func TestSetModelFiresWatches(t *testing.T) {
 	check("p/o")
 }
 
-// TestScrollRefusedBelowUser: code below user config may not scroll the
-// user's screen, while shipped code may.
-func TestScrollRefusedBelowUser(t *testing.T) {
+// TestScroll: any origin scrolls the screen, and the region id is optional.
+func TestScroll(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHostDB(t)
-	for _, o := range []lua.Origin{lua.OriginPlugin, lua.OriginProject} {
-		if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom")`, "x.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") {
-			t.Errorf("%s code ran zemi.ui.scroll: %v", o, err)
+	for _, o := range []lua.Origin{lua.OriginPlugin, lua.OriginProject, lua.OriginBuiltin} {
+		if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom")`, "x.lua", o); err != nil {
+			t.Errorf("%s code: %v", o, err)
 		}
 	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom", "chat")`, "x.lua", lua.OriginBuiltin); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom", "chat")`, "x.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -884,7 +882,6 @@ func TestClickWidget(t *testing.T) {
 		wantErr string
 	}{
 		{"user handler runs with the id", lua.OriginUser, false, ""},
-		{"project handler keeps its origin", lua.OriginProject, false, "project code may not run /probe"},
 		{"reload drops the click", lua.OriginUser, true, "reloaded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

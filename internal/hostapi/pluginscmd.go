@@ -482,7 +482,7 @@ func (h *Host) pluginProvides() map[string][]string {
 	for _, w := range h.workflows() {
 		add(w.Path, "workflow "+w.Name)
 	}
-	// only a plugin registers plugins.<its name>.<key> (zemi.config.add)
+	// a plugin's own settings live at plugins.<its name>.<key> (zemi.config.add)
 	for _, s := range h.Settings.Schema() {
 		if name := settingPlugin(s.Path); name != "" {
 			out[name] = append(out[name], "setting "+string(s.Path))

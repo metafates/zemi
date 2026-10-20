@@ -2583,19 +2583,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.agent.profile.add: spec must be a table")
 		}
-		// a profile is the user's or a plugin's shipped shape; project code
-		// may not author one (prompt authorship, DESIGN §5). `default` is
-		// the shipped shape's name and the config key's value: user alone,
-		// or a plugin defines the conversation everyone runs. A plugin
-		// registers at boot only, so a live callback cannot swap its shape
-		// under a running session.
-		o := h.RT.CurrentOrigin(L)
-		if o == lua.OriginProject || (name == "default" && o != lua.OriginUser) {
-			L.RaiseError("zemi.agent.profile.add: only user config and plugins may define profiles, not project code, and `default` is the user's alone")
-		}
-		if o == lua.OriginPlugin && !h.RT.Booting() {
-			L.RaiseError("zemi.agent.profile.add: a plugin defines its profiles while it loads, not mid-session")
-		}
+		// a name an earlier registration holds is the last writer's to take:
+		// addTarget's mayReplace keeps one plugin off another's.
 		p := &Profile{Name: name, Model: rawString(L, spec, "model"), System: rawString(L, spec, "system"), ReadOnly: rawBool(L, spec, "read_only")}
 		if temp, ok := opt[glua.LNumber](L, spec, "temperature"); ok {
 			t := float64(temp)
@@ -2651,8 +2640,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 				return 1
 			}
 			text = agent.Attached(h.principal(L), text)
-		} else {
-			h.refuseBelowUser(L, "agent.send")
 		}
 		p, err := h.resolveProfile("")
 		if err == nil {

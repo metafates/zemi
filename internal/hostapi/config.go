@@ -283,25 +283,24 @@ func settingPlugin(path config.Key) string {
 	return name
 }
 
-// addSetting is zemi.config.add: a plugin registers its own settings by bare
-// key while it loads, stored as plugins.<name>.<key>, so the schema changes
-// only with a load. A new or changed key takes its kept pick; one the new
-// spec refuses is forgotten.
+// addSetting is zemi.config.add: a setting registers a key by bare name while
+// it loads, stored as plugins.<name>.<key> for plugin code, so the schema
+// changes only with a load. A new or changed key takes its kept pick; one the
+// new spec refuses is forgotten.
 func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
-	if h.RT.CurrentOrigin(L) != lua.OriginPlugin {
-		L.RaiseError("zemi.config.add: only a plugin registers settings; user config sets values with zemi.config.set")
-	}
 	if !h.RT.Booting() {
-		L.RaiseError("zemi.config.add: register settings when the plugin loads, from its init.lua")
+		L.RaiseError("zemi.config.add: register settings while the config loads, from an init.lua")
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
+	path := config.Key(key)
+	if name != "" {
+		path = config.PluginKey(name, key)
+	}
 	def := config.Setting{
-		Path: config.PluginKey(name, key), Kind: config.Kind(rawString(L, spec, "kind")),
+		Path: path, Kind: config.Kind(rawString(L, spec, "kind")),
 		Desc: listDesc(rawString(L, spec, "desc")), Choices: rawStrings(L, spec, "choices"),
 	}
 	switch {
-	case name == "":
-		L.RaiseError("zemi.config.add: plugin code running with no file of its plugin on the stack registers no settings")
 	case !settingKey.MatchString(key):
 		L.RaiseError("zemi.config.add: key %q must be a lowercase letter, then up to 31 lowercase letters, digits and _", key)
 	case !slices.Contains(config.Kinds, def.Kind):
@@ -428,9 +427,6 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		v, err := lua.ToGo(L.Get(2))
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
-		}
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.config.set: only user config may set %q", path)
 		}
 		if h.settingOff(path) {
 			return 0

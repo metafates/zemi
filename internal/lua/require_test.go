@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	glua "github.com/yuin/gopher-lua"
+
 	pluginpkg "github.com/metafates/zemi/internal/plugin"
 )
 
@@ -122,7 +124,7 @@ func TestRequireRelative(t *testing.T) {
 	}
 }
 
-// TestRequireProjectModules: .agents/lua is on the path for project code only.
+// TestRequireProjectModules: .agents/lua is on the path for every requirer.
 func TestRequireProjectModules(t *testing.T) {
 	proj, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -136,30 +138,20 @@ func TestRequireProjectModules(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `assert(require("pmod").v == 3)`, filepath.Join(proj, "init.lua"), OriginProject); err != nil {
 		t.Fatalf("project require: %v", err)
 	}
-	if err := r.ExecuteChunk(t.Context(), `assert(not pcall(require, "pmod"), "user code loaded a project module")`, "init.lua", OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `assert(require("pmod").v == 3)`, "init.lua", OriginUser); err != nil {
 		t.Fatalf("user require: %v", err)
 	}
 }
 
-// TestLoadFileStepOrigin: a missing file is skipped, and a file whose path
-// classifies to another origin than the step declares is refused rather
-// than run under the path's origin.
-func TestLoadFileStepOrigin(t *testing.T) {
+// TestLoadFileStepSkipsMissing: a missing file is skipped, and a present one
+// runs.
+func TestLoadFileStepSkipsMissing(t *testing.T) {
 	r, cfg, _ := newRequireRuntime(t)
 	path := filepath.Join(cfg, "init.lua")
 	writeFile(t, path, "LOADED = true\n")
-	for _, c := range []struct {
-		path   string
-		origin Origin
-		ok     bool
-	}{
-		{filepath.Join(cfg, "missing.lua"), OriginUser, true},
-		{path, OriginUser, true},
-		{path, OriginProject, false},
-	} {
-		err := LoadFileStep("init", c.path, c.origin).Run(t.Context(), r, r.current())
-		if (err == nil) != c.ok {
-			t.Errorf("LoadFileStep(%s as %s) = %v", filepath.Base(c.path), c.origin, err)
+	for _, p := range []string{filepath.Join(cfg, "missing.lua"), path} {
+		if err := LoadFileStep("init", p, OriginUser).Run(t.Context(), r, r.current()); err != nil {
+			t.Errorf("LoadFileStep(%s) = %v", filepath.Base(p), err)
 		}
 	}
 }
@@ -200,20 +192,17 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 	}
 }
 
-// TestOriginFollowsCode: a module runs as its file's class, never its
-// requirer's, and code runs as the least trusted Lua function on its
-// stack: a plugin's setup() that user init.lua calls is plugin code, even
-// through a coroutine or a loadstring chunk named like user code, while a
-// builtin module in between is transparent.
+// TestOriginFollowsCode: the origin a call runs as is the innermost Lua file
+// on its stack, so a plugin's setup() that user init.lua calls runs as the
+// plugin and a user callback it calls runs as user, a module runs under its
+// own file's class, and a forged loadstring name launders nothing.
 func TestOriginFollowsCode(t *testing.T) {
 	r, cfg, plugin := newRequireRuntime(t)
 	dir := filepath.Join(plugin, "local", "omod")
-	writeFile(t, filepath.Join(dir, pluginpkg.CodeDir, "lua", "omod.lua"), `print("body")
-		return { setup = function(f) print("setup") f() coroutine.wrap(print)("wrapped")
-			local _, forged = pcall(loadstring, "print('forged')", "@user:/x") coroutine.wrap(forged)() end }`)
-	r.rfs = fstest.MapFS{"lua/zemi/util.lua": {Data: []byte(`return { call = function(f) f() end }`)}}
-	var lines []string
-	r.SetPrintHook(func(origin, line string) { lines = append(lines, origin+"|"+line) })
+	writeFile(t, filepath.Join(dir, pluginpkg.CodeDir, "lua", "omod.lua"), `_origin()
+		return { setup = function(f) _origin() f()
+			local _, forged = pcall(loadstring, "_origin()", "@user:/x") forged() end }`)
+	r.rfs = fstest.MapFS{"lua/zemi/util.lua": {Data: []byte(`_origin() return { call = function(f) f() end }`)}}
 	boot := BootStep{Name: "plugins", Run: func(_ context.Context, _ *Runtime, g *Generation) error {
 		g.Plugins = []string{dir}
 		return nil
@@ -221,79 +210,28 @@ func TestOriginFollowsCode(t *testing.T) {
 	if err := r.Boot(t.Context(), []BootStep{boot}); err != nil {
 		t.Fatal(err)
 	}
+	var seen []string
+	probeOrigin(t, r, &seen)
 	if err := r.ExecuteChunk(t.Context(), `
-		require("omod").setup(function() print("callback") end)
-		require("zemi.util").call(function() print("via builtin") end)
+		require("omod").setup(function() _origin() end)
+		require("zemi.util").call(function() _origin() end)
 	`, filepath.Join(cfg, "init.lua"), OriginUser); err != nil {
 		t.Fatal(err)
 	}
-	want := "plugin|body plugin|setup plugin|callback plugin|wrapped plugin|forged user|via builtin"
-	if got := strings.Join(lines, " "); got != want {
+	want := "plugin plugin user plugin builtin user"
+	if got := strings.Join(seen, " "); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
 }
 
-// TestRequireInstancePerOrigin: code below a module's origin gets its own
-// instance run under its own origin, so functions it plants (in a table, a
-// callback list, a nested module or zemi.util) never reach user code; a
-// forged loadstring name neither.
-func TestRequireInstancePerOrigin(t *testing.T) {
-	dirs := map[Origin]string{}
-	var pc PathClasses
-	for _, o := range []Origin{OriginUser, OriginPlugin, OriginProject} {
-		d, err := filepath.EvalSymlinks(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		dirs[o] = d
-		pc = append(pc, PathClass{Prefix: d, Origin: o})
-	}
-	r := NewRuntime(RuntimeOptions{PathClass: pc, RuntimeFS: fstest.MapFS{
-		"lua/zemi/util.lua": {Data: []byte(`return { nested = {} }`)},
-	}})
-	if err := r.Boot(t.Context(), nil); err != nil {
-		t.Fatal(err)
-	}
-	var lines []string
-	r.SetPrintHook(func(origin, line string) { lines = append(lines, origin+"|"+line) })
-	cfg := dirs[OriginUser]
-	writeFile(t, filepath.Join(cfg, "lua", "myutil.lua"), `print("body") return { go = function() end, util = require("./util") }`)
-	writeFile(t, filepath.Join(cfg, "lua", "util.lua"), `return {}`)
-	writeFile(t, filepath.Join(cfg, "lua", "hub.lua"), `local fns = {} return { on = function(f) fns[#fns + 1] = f end, fire = function() for _, f in ipairs(fns) do f() end end }`)
-	run := func(src string, o Origin) {
-		t.Helper()
-		if err := r.ExecuteChunk(t.Context(), src, filepath.Join(dirs[o], "init.lua"), o); err != nil {
-			t.Fatalf("%s chunk: %v", o, err)
-		}
-	}
-	run(`require("myutil")`, OriginUser)
-	for _, o := range []Origin{OriginPlugin, OriginProject} {
-		run(`
-			local planted = function() print("planted") end
-			local u = require("myutil")
-			u.go, u.util.go = planted, planted
-			assert(not pcall(function() require("zemi.util").go = planted end), "builtin module writable")
-			assert(not pcall(function() require("zemi.util").nested.go = planted end), "nested builtin table writable")
-			require("hub").on(planted)
-			local _, f = pcall(loadstring, "error('boom')", "@user:/x")
-			local _, err = pcall(f)
-			assert(err:find("@`+string(o)+`:", 1, true) == 1, "forged chunk name kept: " .. err)
-			local _, g = pcall(loadstring, "return require('./lua/myutil')", "`+filepath.ToSlash(filepath.Join(cfg, "init.lua"))+`")
-			assert(not pcall(g), "forged chunk name resolved a relative require in the user tree")
-		`, o)
-	}
-	run(`
-		local u = require("myutil")
-		u.go()
-		assert(u.util.go == nil, "nested module instance shared")
-		assert(require("zemi.util").go == nil and require("zemi.util").nested.go == nil, "zemi.util written through")
-		require("hub").fire()
-	`, OriginUser)
-	got := strings.Join(lines, "\n")
-	if strings.Contains(got, "planted") {
-		t.Fatalf("lower origin code ran from a user call:\n%s", got)
-	}
-	if !strings.Contains(got, "project|body") || strings.Count(got, "user|body") != 1 {
-		t.Fatalf("module bodies ran under the wrong origins:\n%s", got)
-	}
+// probeOrigin makes _origin() record the origin of the code running at the
+// call, for the tests that pin what code runs as.
+func probeOrigin(t *testing.T, r *Runtime, seen *[]string) {
+	t.Helper()
+	g := r.current()
+	g.SB.frozen.RawSetString("_origin", g.L.NewFunction(func(L *glua.LState) int {
+		*seen = append(*seen, string(r.CurrentOrigin(L)))
+		return 0
+	}))
+	g.SB.protected.Add("_origin")
 }

@@ -109,15 +109,12 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	return nil
 }
 
-// gateAsk is the origin gate both ask paths share: project code may not call a
-// model at all, and a plugin's call goes through luaGate, which is where its
-// manifest's declaration is checked. The stub a test zemi answers with comes
-// back for the caller to stand in for the transport.
-func (h *Host) gateAsk(L *glua.LState, api, subject, id string, payload func() map[string]any) *stubReply {
-	switch o := h.RT.CurrentOrigin(L); {
-	case o.Rank() <= lua.OriginProject.Rank():
-		L.RaiseError("%s: %s code may not call a model", api, o)
-	case o == lua.OriginPlugin:
+// gateAsk is the gate both ask paths share: a plugin's call goes through
+// luaGate, which is where its manifest's declaration is checked. The stub a
+// test zemi answers with comes back for the caller to stand in for the
+// transport.
+func (h *Host) gateAsk(L *glua.LState, subject, id string, payload func() map[string]any) *stubReply {
+	if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 		return h.luaGate(L, subject, id, payload)
 	}
 	return nil
@@ -186,11 +183,11 @@ func (h *Host) principal(L *glua.LState) string {
 	return perm.PluginPrincipal(name)
 }
 
-// stateScope is the prefix a chunk's keys are stored under: each plugin and
-// project code get their own space, so none reads or clobbers another's or
-// user state (DESIGN §6.5); user and builtin see the whole store.
+// stateScope is the prefix a chunk's keys are stored under: each plugin gets
+// its own space, so none reads or clobbers another's (DESIGN §6.5); every
+// other origin shares the one store.
 func (h *Host) stateScope(L *glua.LState) string {
-	if o := h.RT.CurrentOrigin(L); o.Rank() < lua.OriginBuiltin.Rank() {
+	if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 		return h.principal(L) + ":"
 	}
 	return ""
@@ -487,7 +484,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	// data_dir(name) is where config code keeps its files; nothing is created.
 	tb.RawSetString("data_dir", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "fs.data_dir")
 		name := L.CheckString(1)
 		if !filepath.IsLocal(name) || filepath.Base(name) != name {
 			L.RaiseError("zemi.fs.data_dir: %q is not a plain directory name", name)
@@ -640,14 +636,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 			hs.ForEach(func(k, v glua.LValue) {
 				req.headers[k.String()] = v.String()
 			})
-		}
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			for k := range req.headers {
-				switch strings.ToLower(k) {
-				case "authorization", "proxy-authorization", "cookie":
-					L.RaiseError("zemi.http.request: only user config may set the %s header", k)
-				}
-			}
 		}
 		if ms, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && ms > 0 {
 			req.timeout = time.Duration(ms) * time.Millisecond

@@ -6,9 +6,10 @@ import (
 	"sync"
 )
 
-// Origin is what a chunk of Lua is attributed to (DESIGN §5, §9). Origin is
-// per call, derived from the EvalSymlinks-resolved path of the file the
-// chunk came from, never from the requirer.
+// Origin is what a chunk of Lua is attributed to (DESIGN §5, §9): a label for
+// diagnostics, the overlay badge and plugin state keys, never a privilege.
+// Origin is per call, derived from the EvalSymlinks-resolved path of the file
+// the chunk came from, never from the requirer.
 type Origin string
 
 const (
@@ -18,23 +19,6 @@ const (
 	OriginBuiltin Origin = "builtin"
 	OriginHost    Origin = "host"
 )
-
-// Rank orders origins by trust. Higher wins collisions and replaces lower
-// (DESIGN §6.2, §11): user > builtin > plugin > project.
-func (o Origin) Rank() int {
-	switch o {
-	case OriginUser:
-		return 40
-	case OriginBuiltin:
-		return 30
-	case OriginPlugin:
-		return 20
-	case OriginProject:
-		return 10
-	default:
-		return 0
-	}
-}
 
 // PathClasses maps a resolved absolute directory to the origin class its
 // files run under. Set up by the runtime boot.
@@ -94,8 +78,8 @@ func resolvePrefix(p string) string {
 	return res
 }
 
-// ChunkName renders the debug name for a chunk: origin-tagged so tracebacks
-// and error messages can be redacted per origin.
+// ChunkName renders the debug name for a chunk: origin-tagged so a traceback
+// or an error names where the code came from.
 func (o Origin) ChunkName(rel string) string {
 	return "@" + string(o) + ":" + rel
 }

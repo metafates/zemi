@@ -148,8 +148,7 @@ func TestSkillsEnableGate(t *testing.T) {
 		end
 	`)
 
-	err := r.ExecuteChunk(t.Context(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject)
-	if err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project-origin enable: %v", err)
 	}
 	runUser(t, r, `
@@ -223,9 +222,9 @@ func TestSkillCommands(t *testing.T) {
 			file(filepath.Join(h.Dirs.ConfigHome, "init.lua"), `zemi.command.add("x", function() end)`)
 		}), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
 		{name: "a project command yields to a user skill", write: both(user(asks), projectCmd), indexed: true, cmd: lua.OriginUser, used: mine},
-		{name: "a plugin skill yields to a user command", write: both(userCmd, func(h *Host) {
+		{name: "a plugin skill takes a user command's name", write: both(userCmd, func(h *Host) {
 			writeSkill(t, filepath.Join(h.Dirs.DataHome, "plugins", "local", "p", "skills"), "x", asks, "")
-		}), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
+		}), indexed: true, cmd: lua.OriginPlugin, used: mine},
 		{name: "a trusted project skill", write: project, indexed: true, cmd: lua.OriginProject, used: mine},
 		{name: "an untrusted project skill", write: project, untrusted: true},
 		{name: "a recipe takes neither field", write: func(h *Host) {
@@ -329,9 +328,9 @@ func TestLearnListAndDecide(t *testing.T) {
 	`)
 	runExpectErr(t, r, `zemi.learn.decide("x", "maybe")`, "accept or reject")
 
-	err := r.ExecuteChunk(t.Context(),
-		`zemi.learn.decide("whatever", "accept")`, "project.lua", lua.OriginProject)
-	if err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := r.ExecuteChunk(t.Context(),
+		`local ok, e = zemi.learn.decide("missing", "accept") assert(ok == nil and e:find("no such proposal"), tostring(e))`,
+		"project.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project-origin decide: %v", err)
 	}
 }

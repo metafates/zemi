@@ -53,18 +53,17 @@ func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, sr
 
 // TestModelAsk: zemi.model.ask answers off the interpreter and bills the
 // live session; a plugin's own call settles where its manifest declares
-// "model", project code may not call it, and a reload cancels the call.
+// "model", and a reload cancels the call.
 func TestModelAsk(t *testing.T) {
 	const ask = `zemi.state.set("ask", zemi.model.ask({ prompt = "ping" }):wait())`
 	for _, c := range []struct {
 		name   string
 		origin lua.Origin
-		err    string // what the chunk raises
 		reload bool
 	}{
 		{name: "a wait suspends, the reply is billed", origin: lua.OriginUser},
 		{name: "a plugin's call, no rule needed", origin: lua.OriginPlugin},
-		{name: "project code", origin: lua.OriginProject, err: "project code may not call a model"},
+		{name: "project code", origin: lua.OriginProject},
 		{name: "a reload cancels it", origin: lua.OriginUser, reload: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -75,12 +74,6 @@ func TestModelAsk(t *testing.T) {
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 			done := make(chan error, 1)
 			go func() { done <- chunkAs(t.Context(), h, r, c.origin, ask) }()
-			if c.err != "" {
-				if err := <-done; err == nil || !strings.Contains(err.Error(), c.err) {
-					t.Fatalf("err = %v, want %q", err, c.err)
-				}
-				return
-			}
 			<-m.asked
 			// the waiting chunk left the interpreter free
 			runUser(t, r, `zemi.state.set("free", true)`)

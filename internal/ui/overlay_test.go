@@ -700,14 +700,6 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a plugin's run action goes back, as its hint says",
-			hostapi.Overlay{Origin: lua.OriginPlugin, Items: []any{detail(map[string]any{"text": "Restart", "run": "help"})}},
-			[]string{"enter", "enter"},
-			func(a *App) string {
-				return fail(len(a.overlays) == 1 && !a.overlays[0].back, "not back")
-			},
-		},
-		{
 			"a row that opens a screen leaves its list under it, for esc to come back to",
 			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}},
 			[]string{"enter"},
@@ -749,7 +741,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"opening an open id replaces it in place with the selection on its row, else at its place, unless a lower origin opens it",
+			"opening an open id replaces it in place with the selection on its row, else at its place",
 			hostapi.Overlay{ID: "p", Items: []any{"a", "b"}},
 			[]string{"down"},
 			func(a *App) string {
@@ -763,7 +755,7 @@ func TestOverlayNavigation(t *testing.T) {
 					}
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
-				return fail(len(a.overlays) == 2 && a.overlays[0].labels[0] == "c", "a plugin replaced a builtin list")
+				return fail(len(a.overlays) == 1 && a.overlays[0].labels[0] == "e", "a plugin did not replace the list")
 			},
 		},
 		{
@@ -823,7 +815,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a Go screen's list key runs its command, a plugin list's none",
+			"a list key runs its command, whatever opened the list",
 			hostapi.Overlay{ID: "p", Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}},
 			nil,
 			func(a *App) string {
@@ -838,7 +830,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran = ""
 				a.openOverlay(hostapi.Overlay{ID: "q", Origin: lua.OriginPlugin, Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}})
 				a.overlayKey("p", "p")
-				return fail(ran == "", "a plugin list's key ran "+ran)
+				return fail(ran == "pause", "a plugin list's key ran "+ran)
 			},
 		},
 		{
@@ -1637,7 +1629,7 @@ func TestOverlayReopensOnItsRow(t *testing.T) {
 		Name: "open", NArgs: hostapi.NArgsAny, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
 		GoFn: func(h *hostapi.Host, args string) error { // the screen the row opens closes the menu, as /agents view does
 			if ui, err := h.Screen(); err == nil {
-				ui.CloseOverlay("menu", lua.OriginBuiltin)
+				ui.CloseOverlay("menu")
 				ui.OpenOverlay(hostapi.Overlay{ID: "view:" + args, Title: "View", Origin: lua.OriginBuiltin, Items: []any{"x", "y"}})
 			}
 			return nil

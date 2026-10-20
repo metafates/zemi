@@ -116,9 +116,6 @@ func TestMCPBridge(t *testing.T) {
 	defer h.mcp.stopParked()
 	defer h.mcp.park()
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, enabled_tools = { "echo", "shot", "fail", "serach" }, disabled_tools = { "fail" } })`, srv.URL))
-	if err := r.ExecuteChunk(t.Context(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
-		t.Fatal("project config must not add MCP servers")
-	}
 
 	// the ask-everything policy a plugin's veto makes, until the restart
 	// section, whose calls run ungated

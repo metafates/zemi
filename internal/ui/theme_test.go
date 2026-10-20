@@ -110,13 +110,13 @@ func TestThemes(t *testing.T) {
 }
 
 // TestActiveTheme: a light terminal draws the theme's light twin, chrome
-// included, unless less trusted code added the twin, a dark one the theme
-// itself, and a name no theme answers to draws whorl and is named in /errors.
+// included (whatever registered it), a dark one the theme itself, and a name
+// no theme answers to draws whorl and is named in /errors.
 func TestActiveTheme(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
-	whorl, light, nord := host.Themes.Get("whorl"), host.Themes.Get("whorl-light"), host.Themes.Get("nord")
+	whorl, light := host.Themes.Get("whorl"), host.Themes.Get("whorl-light")
 	if _, err := host.Themes.Add(&hostapi.Theme{Name: "nord-light", Palette: light.Palette, Origin: lua.OriginProject}); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestActiveTheme(t *testing.T) {
 		{"light terminal", 0xfafafa, "whorl", light},
 		{"dark terminal", 0x141414, "whorl", whorl},
 		{"light theme on a dark terminal", 0x141414, "whorl-light", light},
-		{"a project's twin of a shipped theme", 0xfafafa, "nord", nord},
+		{"a project's twin of a shipped theme", 0xfafafa, "nord", host.Themes.Get("nord-light")},
 		{"unknown name", 0x141414, "gone", whorl},
 	} {
 		app.Update(tea.BackgroundColorMsg{Color: rgb(c.bg)})

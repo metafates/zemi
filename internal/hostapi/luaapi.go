@@ -66,12 +66,6 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	edit := func(what ComposerOp, op func(L *glua.LState) (string, int)) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
-			// a submitted line reaches slash commands, !shell and the agent
-			hint := ""
-			if what == ComposerSet || what == ComposerInsert {
-				hint = `an overlay item's fill = "text" fills the composer from any origin`
-			}
-			h.refuseBelowUser(L, "composer."+string(what), hint)
 			text, cursor := op(L)
 			if ui := h.hooks(); ui != nil {
 				ui.ComposerEdit(what, text, cursor)
@@ -127,16 +121,13 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		return 1
 	}))
 	tb.RawSetString("new", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, EventSessionNew)
 		return luaResult(L, h.NewSession())
 	}))
 	tb.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "session.resume")
 		return luaResult(L, h.ResumeSession(L.CheckString(1)))
 	}))
 	// rewind(message_id) -> restored file count, or nil, err
 	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "session.rewind")
 		n, err := h.RewindTo(L.CheckString(1))
 		if err != nil {
 			return luaResult(L, err)
@@ -166,9 +157,8 @@ const (
 
 // assembleSections runs the agent.assemble handlers while a system prompt is
 // built (DESIGN §6.3). A handler returns a string, or { title = , text = },
-// to add a section; nil adds nothing. Project handlers are
-// skipped: they must not steer the prompt. Each handler gets the veto
-// deadline, sections are capped, and each is labeled with its origin.
+// to add a section; nil adds nothing. Each handler gets the veto deadline,
+// sections are capped, and each is labeled with its origin.
 //
 // It calls into the interpreter, so it must never run on the interpreter
 // goroutine (zemi.agent.send starts turns asynchronously for that reason).
@@ -182,9 +172,6 @@ func (h *Host) assembleSections() string {
 	_, err := h.RT.Do(context.Background(), lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
 		func(L *glua.LState) ([]any, error) {
 			for _, hd := range handlers {
-				if hd.Origin.Rank() <= lua.OriginProject.Rank() {
-					continue
-				}
 				title, text := h.callAssembleHandler(L, hd)
 				if text = strings.TrimSpace(text); text == "" || b.Len() >= assembleTotalMax {
 					continue

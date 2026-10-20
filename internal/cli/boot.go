@@ -211,9 +211,9 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 	host := hostapi.NewHost(rt, log, config.NewStore(), dirs)
 	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)
 	host.Builtin.Store(&catalog)
-	rt.SetPrintHook(func(origin, line string) {
-		log.Info("print: "+line, "origin", origin)
-		host.RecordMessage(origin, line)
+	rt.SetPrintHook(func(line string) {
+		log.Info("print: "+line, "origin", "lua")
+		host.RecordMessage("print", line)
 	})
 	host.Version = versionString()
 	if o.dir != "" {

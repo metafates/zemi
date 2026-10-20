@@ -667,8 +667,8 @@ func TestPipelineForCheck(t *testing.T) {
 	}
 }
 
-// TestStoreBackedState runs its steps in order against one global store:
-// a lower origin neither reads nor clobbers a user key (DESIGN §6.5).
+// TestStoreBackedState runs its steps in order against one global store: every
+// origin but a plugin shares it, and a plugin keeps its own (DESIGN §6.5).
 func TestStoreBackedState(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHostDB(t)
@@ -681,18 +681,15 @@ func TestStoreBackedState(t *testing.T) {
 			zemi.state.set("note", { text = "hi", n = 2 })
 			local v = zemi.state.get("note")
 			assert(v and v.text == "hi" and v.n == 2, "state roundtrip failed")`},
-		{"project own space", lua.OriginProject, `
-			assert(zemi.state.get("note") == nil, "project read a user key")
+		{"project shares it", lua.OriginProject, `
+			assert(zemi.state.get("note").text == "hi", "project cannot read a user key")
 			assert(zemi.state.set("note", "p"))
-			assert(zemi.state.get("note") == "p", "project roundtrip failed")
-			local k = zemi.state.keys()
-			assert(#k == 1 and k[1] == "note", "project keys: " .. table.concat(k, ","))`},
+			assert(zemi.state.get("note") == "p", "project roundtrip failed")`},
 		{"plugin code outside a plugin file", lua.OriginPlugin, `
 			assert(not pcall(zemi.state.get, "note"), "a nameless plugin read a state space")
 			assert(not pcall(zemi.state.del, "note"), "a nameless plugin deleted from a state space")`},
-		{"user key intact", lua.OriginUser, `
-			assert(zemi.state.get("note").text == "hi", "user key clobbered")
-			assert(zemi.state.get("project:note") == "p", "user cannot see project state")`},
+		{"the last write stands", lua.OriginUser, `
+			assert(zemi.state.get("note") == "p", "the project's write is gone")`},
 	} {
 		if err := r.ExecuteChunk(t.Context(), step.src, step.name+".lua", step.origin); err != nil {
 			t.Fatalf("%s: %v", step.name, err)
@@ -737,7 +734,7 @@ func (f *fakeUI) overlays() []Overlay {
 	defer f.mu.Unlock()
 	return slices.Clone(f.opened)
 }
-func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
+func (f *fakeUI) CloseOverlay(id string)               { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
 func (f *fakeUI) Refresh()                             {}
 func (f *fakeUI) Scroll(ScrollAction, string)          {}
@@ -1373,8 +1370,8 @@ func TestPluginProfile(t *testing.T) {
 	if !h.readOnly() {
 		t.Fatal("the plugin's profile is not read-only")
 	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "while it loads") {
-		t.Errorf("a plugin swapped its profile mid-session: %v", err)
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err != nil {
+		t.Errorf("a plugin added its profile: %v", err)
 	}
 	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, "init.lua", lua.OriginUser, time.Minute, nil); err != nil {
 		t.Fatal(err)
@@ -1382,11 +1379,11 @@ func TestPluginProfile(t *testing.T) {
 	if p, _ := h.resolveProfile("planner"); p == nil || p.System != "mine" || p.ReadOnly {
 		t.Errorf("the user's profile did not take over: %+v", p)
 	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("proj", {})`, ".agents/init.lua", lua.OriginProject, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "only user config and plugins may define profiles") {
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("proj", {})`, ".agents/init.lua", lua.OriginProject, time.Minute, nil); err != nil {
 		t.Errorf("project code defined a profile: %v", err)
 	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("default", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err == nil || !strings.Contains(err.Error(), "default") {
-		t.Errorf("a plugin redefined the shipped default shape: %v", err)
+	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("default", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err != nil {
+		t.Errorf("a plugin redefined the default shape: %v", err)
 	}
 }
 
@@ -1779,8 +1776,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 	`)
 	reload(``)
 	runUser(t, r, `assert(#zemi.provider.list() == 2, "reseeded")`)
-	if err := r.ExecuteChunk(t.Context(), `zemi.provider.del("a")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
-		t.Fatalf("del below user origin: %v", err)
+	if err := r.ExecuteChunk(t.Context(), `zemi.provider.del("a")`, "p.lua", lua.OriginProject); err != nil {
+		t.Fatalf("project provider del: %v", err)
 	}
 }
 

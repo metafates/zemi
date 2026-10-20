@@ -88,12 +88,11 @@ func (r *toolReg) list() []*luaTool {
 
 // toolSections renders the prompt of each Lua tool in toolset, so a profile
 // that drops the tool drops its section. Name order and fixed text keep the
-// provider's prompt cache; project prompts stay out, like their
-// agent.assemble sections.
+// provider's prompt cache.
 func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 	var out strings.Builder
 	for _, t := range h.luaTools.list() {
-		if t.Prompt == "" || t.Origin.Rank() <= lua.OriginProject.Rank() || !hasTool(toolset, t.Name) {
+		if t.Prompt == "" || !hasTool(toolset, t.Name) {
 			continue
 		}
 		out.WriteString("\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)])
@@ -211,9 +210,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("override", L.NewFunction(func(L *glua.LState) int {
-		if o := h.RT.CurrentOrigin(L); o.Rank() <= lua.OriginProject.Rank() {
-			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
-		}
 		name := L.CheckString(1)
 		spec, ok := L.Get(2).(*glua.LTable)
 		if !ok {
@@ -433,9 +429,6 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 			case d == tools.PreDeny || d == tools.PreHalt:
 				decision, reason, rewritten = d, r, nil
 				return nil, nil
-			case d == tools.PreRewrite && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
-				// same denial as zemi.tool.override (DESIGN §5)
-				h.Log.Warn("tool.pre rewrite ignored", "origin", "tools", "tool", name, "from", string(hd.Origin))
 			case d == tools.PreRewrite && rw != nil:
 				maps.Copy(merged, rw)
 				decision, rewritten = tools.PreRewrite, merged
@@ -553,8 +546,6 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 				h.logHandlerError(hd, err)
 			}
 		case rewrite == nil:
-		case hd.Origin.Rank() <= lua.OriginProject.Rank():
-			h.Log.Warn("tool.post rewrite ignored", "origin", "tools", "tool", name, "from", string(hd.Origin))
 		default:
 			out = *rewrite
 		}

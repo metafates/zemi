@@ -213,8 +213,8 @@ func objectFromText(raw string) (any, error) {
 
 // modelAsk is zemi.model.ask: one tool-less call on a role's model or an
 // id, billed to the live session and run off the interpreter. It costs
-// money, and the manifest's `uses` naming `model` is what consents to it; project code
-// may not call it. A spec with a schema asks for an object instead: the
+// money, and a plugin's manifest `uses` naming `model` is what consents to its
+// call. A spec with a schema asks for an object instead: the
 // provider decodes the reply into the schema's shape and the call returns
 // that value, with the raw reply beside it.
 func (h *Host) modelAsk(L *glua.LState) int {
@@ -231,7 +231,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		s := checkSchema(L, tb)
 		schema = &s
 	}
-	stub := h.gateAsk(L, "zemi.model.ask", "lua.model.ask", id, func() map[string]any {
+	stub := h.gateAsk(L, "lua.model.ask", id, func() map[string]any {
 		return map[string]any{"model": ref, "prompt": prompt, "system": system}
 	})
 	maxOut := int64(1024)
@@ -475,16 +475,6 @@ func (h *Host) modelRef(ref string) string {
 	return ref
 }
 
-// refuseTargetOrigin raises for project code: a model slot is registered by
-// config or by a plugin that runs a model of its own, not by a project.
-func (h *Host) refuseTargetOrigin(L *glua.LState, what string) {
-	o := h.RT.CurrentOrigin(L)
-	if o == lua.OriginUser || o == lua.OriginBuiltin || o == lua.OriginPlugin {
-		return
-	}
-	L.RaiseError("zemi.%s: project code registers no model target", what)
-}
-
 // addTarget registers a model slot: the name rules, then models.<name>. A pick
 // kept for that key is applied by the registration, which is the first thing
 // that knows the key.
@@ -677,9 +667,6 @@ func (h *Host) maxOutput(modelID string) int64 {
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.provider.add: only user config may register providers")
-		}
 		spec, err := providerSpecFromLua(L, 1)
 		if err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
@@ -690,9 +677,6 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.provider.del: only user config may remove providers")
-		}
 		h.Providers.Delete(L.CheckString(1))
 		return 0
 	}))
@@ -860,7 +844,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "model.set")
 		id := L.CheckString(1)
 		if err := h.modelSetErr(h.ConversationTarget(), id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
@@ -887,7 +870,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	// backend job rather than a conversation of its own: a name /model can pick
 	// (models.<name>), with the model it runs until someone picks.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseTargetOrigin(L, "model.add")
 		spec := L.CheckTable(2)
 		raw, err := lua.ToGo(spec)
 		if err != nil {
@@ -912,7 +894,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.refuseTargetOrigin(L, "model.del")
 		if err := h.delTarget(L, L.CheckString(1)); err != nil {
 			L.RaiseError("zemi.model.del: %v", err)
 		}

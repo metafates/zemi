@@ -137,9 +137,6 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("ask", L.NewFunction(func(L *glua.LState) int {
-		if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
-			L.RaiseError("zemi.perm.ask: %s code may not ask the user; only a plugin with %q in its uses may", o, "perm")
-		}
 		h.requirePermUse(L, "zemi.perm.ask")
 		lua.CheckWait(L, "zemi.perm.ask")
 		spec := L.CheckTable(1)
@@ -148,12 +145,16 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.perm.ask: subject is required")
 		}
 		name := h.PluginOf(h.RT.CurrentPath(L))
+		owner := string(h.RT.CurrentOrigin(L))
+		if name != "" {
+			owner = perm.PluginPrincipal(name)
+		}
 		req := tools.Request{
 			Subject: subject,
 			Arg:     rawString(L, spec, "arg"),
 			Reason:  rawString(L, spec, "reason"),
 			Preview: rawString(L, spec, "preview"),
-			Owner:   perm.PluginPrincipal(name),
+			Owner:   owner,
 		}
 		done := make(chan struct{})
 		var answer string
@@ -187,8 +188,8 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 
 // requirePermUse raises unless the calling plugin declared the perm
 // capability: registering a permission.request handler and zemi.perm.ask
-// both steer the gate, so enabling the plugin is the consent. Other origins
-// are the user's own code and pass.
+// both steer the gate, so enabling the plugin is the consent. Code of no
+// plugin passes.
 func (h *Host) requirePermUse(L *glua.LState, api string) {
 	if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
 		return

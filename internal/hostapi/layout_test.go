@@ -63,11 +63,10 @@ func TestLayoutSetRefusesBadLayouts(t *testing.T) {
 
 func luaQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "\\'") + "'" }
 
-// TestLayoutOrigins: the shipped UI sets the layout, user config replaces
-// it, lower origins are refused, and a reload keeps drawing the old layout
-// until the replay sets one: the user's again, else the builtin one, else
-// the Go fallback.
-func TestLayoutOrigins(t *testing.T) {
+// TestLayout: the shipped UI sets the layout and any later registration
+// replaces it, and a reload keeps drawing the old layout until the replay
+// sets one: the user's again, else the builtin one, else the Go fallback.
+func TestLayout(t *testing.T) {
 	cfg, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +75,9 @@ func TestLayoutOrigins(t *testing.T) {
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: t.TempDir()})
 	initLua := filepath.Join(cfg, "init.lua")
-	userLayout := `zemi.ui.layout.set({ root = { kind = "box", dir = "row", children = {
-		{ kind = "region", id = "side", region = "side", size = 20 }, { kind = "composer" } } } })`
+	const userLayoutRaw = `{ root = { kind = "box", dir = "row", children = {
+		{ kind = "region", id = "side", region = "side", size = 20 }, { kind = "composer" } } } }`
+	userLayout := "zemi.ui.layout.set(" + userLayoutRaw + ")"
 	if err := os.WriteFile(initLua, []byte(userLayout), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -97,9 +97,8 @@ func TestLayoutOrigins(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.ui.layout.get().root.children[1].id == "side")`)
 	for _, o := range []lua.Origin{lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject} {
-		err := r.ExecuteChunk(t.Context(), `zemi.ui.layout.set({ root = { kind = "box", dir = "col", children = { { kind = "composer" } } } })`, "x.lua", o)
-		if err == nil || !side() {
-			t.Fatalf("%s code replaced the user's layout (err %v)", o, err)
+		if err := r.ExecuteChunk(t.Context(), `zemi.ui.layout.set(`+userLayoutRaw+`)`, "x.lua", o); err != nil || !side() {
+			t.Fatalf("%s code did not replace the layout (err %v)", o, err)
 		}
 	}
 

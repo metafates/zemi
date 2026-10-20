@@ -98,7 +98,7 @@ func TestRoleModel(t *testing.T) {
 // TestModelTargetNames: what zemi.model.add takes and what it refuses. A
 // builtin role and default are reserved, a target's own model may name a
 // builtin role or a provider/model id and nothing else, and a name another
-// origin holds is refused until a more trusted one takes it back.
+// origin holds is the last writer's.
 func TestModelTargetNames(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
@@ -125,16 +125,12 @@ func TestModelTargetNames(t *testing.T) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
 		}
 	}
-	// a plugin registers its own slot; it may not take a user's name, and the
-	// user may take the plugin's back
+	// a plugin registers its own slot, and takes a name the user holds
 	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("cli-slot", { desc = "the plugin's", model = "a/big" })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin registers a slot: %v", err)
 	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("clf", { desc = "mine now" })`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "model target clf is registered by user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("clf", { desc = "the plugin's now" })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("a plugin taking a user's name: %v", err)
-	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.model.del("clf")`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "registered by user config") {
-		t.Errorf("a plugin dropping a user's slot: %v", err)
 	}
 	runUser(t, r, `zemi.model.add("cli-slot", { desc = "the user's now" }) zemi.model.del("clf")`)
 	if _, ok := h.target("cli-slot"); !ok || h.Settings.Default("models.cli-slot") == nil {
@@ -147,8 +143,7 @@ func TestModelTargetNames(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `zemi.agent.profile.add("p", {}) zemi.model.del("p")`, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `"p" is a profile`) {
 		t.Errorf("del of a profile: %v", err)
 	}
-	// project code may not register a slot at all
-	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("proj", { desc = "x" })`, ".agents/p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "project code registers no model target") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("proj", { desc = "x" })`, ".agents/p.lua", lua.OriginProject); err != nil {
 		t.Errorf("project code: %v", err)
 	}
 }
