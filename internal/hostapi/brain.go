@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // brainLoop is the loop text every project's # Brain opens with (DESIGN §10.7);
@@ -164,7 +165,7 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 	ag.readMu.Lock()
 	defer ag.readMu.Unlock()
 	var lines []string
-	more := map[string]bool{}
+	more := set.Set[string]{}
 	for _, g := range globs {
 		if !slices.ContainsFunc(forms, g.match) {
 			continue
@@ -173,17 +174,17 @@ func (h *Host) brainPointer(path string, wrote bool) string {
 		if !wrote {
 			line = fmt.Sprintf("zemi: %s in the brain maps this path (Read If: %s); read it before you build on this.", g.name, g.readIf)
 		}
-		if ag.instr[line] {
+		if ag.instr.Has(line) {
 			continue
 		}
 		if len(lines) == 3 {
-			more[g.name] = true
+			more.Add(g.name)
 			continue
 		}
 		if ag.instr == nil {
-			ag.instr = map[string]bool{}
+			ag.instr = set.Set[string]{}
 		}
-		ag.instr[line] = true
+		ag.instr.Add(line)
 		lines = append(lines, line)
 	}
 	if len(more) > 0 {

@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Checkpoint is a file as it was before a turn first changed it.
@@ -42,13 +43,13 @@ func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) 
 		err = r.Scan(&cp.Path, &cp.Existed, &cp.Link, &cp.Content)
 		return cp, err
 	})
-	seen := map[string]bool{}
+	seen := set.Set[string]{}
 	return slices.DeleteFunc(all, func(cp Checkpoint) bool {
 		// NOTE: folds like the file tools' lock key, so two files differing
 		// only in case on a case-sensitive volume restore just the earlier one
 		key := perm.FoldCase(cp.Path)
-		dup := seen[key]
-		seen[key] = true
+		dup := seen.Has(key)
+		seen.Add(key)
 		return dup
 	}), err
 }

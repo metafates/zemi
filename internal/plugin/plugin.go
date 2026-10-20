@@ -30,6 +30,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Plugin is one directory under installed/ or local/.
@@ -155,7 +156,7 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 			// a symlink is listed so the loader can say why it refuses it
 			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
 				root := filepath.Join(dir, e.Name())
-				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off[e.Name()], Uses: manifestOf(root).Uses}
+				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off.Has(e.Name()), Uses: manifestOf(root).Uses}
 				if IsClaude(root) {
 					p.Provides = claudeProvides(root)
 				}
@@ -321,7 +322,7 @@ func update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	if err != nil {
 		return Plugin{}, err
 	}
-	return load(ctx, dir, false, !off[name]), nil
+	return load(ctx, dir, false, !off.Has(name)), nil
 }
 
 // Check fetches every installed plugin and every marketplace a copy came
@@ -1041,7 +1042,7 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlug
 	if err := recordInstall(d, name, mkt, e, kindCopy, id); err != nil {
 		return Plugin{}, err
 	}
-	p := load(ctx, dest, false, !off[name])
+	p := load(ctx, dest, false, !off.Has(name))
 	if synth {
 		// the entry's scalars sit in a manifest load does not read yet
 		p.Version = cmp.Or(p.Version, e.Version)
@@ -1312,14 +1313,14 @@ func exists(p string) bool {
 	return err == nil
 }
 
-func disabled(d config.Dirs) (map[string]bool, error) {
+func disabled(d config.Dirs) (set.Set[string], error) {
 	data, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "disabled"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	off := map[string]bool{}
+	off := set.Set[string]{}
 	for line := range strings.FieldsSeq(string(data)) {
-		off[line] = true
+		off.Add(line)
 	}
 	return off, nil
 }
@@ -1329,17 +1330,17 @@ func disabled(d config.Dirs) (map[string]bool, error) {
 // NOTE: two concurrent writes can keep only one change; an flock on the root
 // would serialize them.
 func setDisabled(d config.Dirs, name string, off bool) error {
-	set, err := disabled(d)
-	if err != nil || set[name] == off {
+	cur, err := disabled(d)
+	if err != nil || cur.Has(name) == off {
 		return err
 	}
 	if off {
-		set[name] = true
+		cur.Add(name)
 	} else {
-		delete(set, name)
+		cur.Remove(name)
 	}
 	var b strings.Builder
-	for _, n := range slices.Sorted(maps.Keys(set)) {
+	for _, n := range slices.Sorted(maps.Keys(cur)) {
 		b.WriteString(n + "\n")
 	}
 	return config.WriteFileAtomic(filepath.Join(d.PluginsRoot(), "disabled"), []byte(b.String()))

@@ -23,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -511,7 +512,7 @@ func switchSeg(on, locked bool) hostapi.Segment {
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{}             // row -> key column
-	cut, starts := map[int]bool{}, map[int]bool{} // rows a scrolled window may end after, and start at
+	cut, starts := set.Set[int]{}, set.Set[int]{} // rows a scrolled window may end after, and start at
 	var selTop, bandTop, selEnd int
 	labelW, keyW, tailDesc := 0, 0, 0
 	for _, it := range all {
@@ -541,7 +542,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			rows = append(rows, nil)
 		}
 		start := len(rows)
-		starts[start] = true
+		starts.Add(start)
 		if it.section != section && it.section != "" {
 			head := []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}}
 			if it.head.Text != "" {
@@ -623,7 +624,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			}
 			rows = append(rows, row)
 		}
-		cut[len(rows)-1] = true
+		cut.Add(len(rows) - 1)
 		if i == sel {
 			selTop, bandTop, selEnd = start, top, len(rows)
 		}
@@ -667,17 +668,17 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		return rows
 	}
 	v.reveal(selTop-boxFade, selEnd+boxFade)
-	for v.top < selTop && !starts[v.top] {
+	for v.top < selTop && !starts.Has(v.top) {
 		v.top++
 	}
 	// start and end the window on whole items, so no item shows cut, no
 	// blank separator shows at an edge and no header shows without its
 	// first item; an item taller than the window is cut anyway
 	end := v.top + v.viewH
-	for end > v.top+1 && !cut[end-1] {
+	for end > v.top+1 && !cut.Has(end-1) {
 		end--
 	}
-	if !cut[end-1] {
+	if !cut.Has(end - 1) {
 		end = v.top + v.viewH
 	}
 	win := slices.Clone(rows)

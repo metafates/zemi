@@ -22,6 +22,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
 )
@@ -103,15 +104,15 @@ type doneTool struct {
 
 // follower turns what a run shows into events, each once.
 type follower struct {
-	started map[string]bool // call ids a tool_start went out for
-	ended   map[string]bool // call ids a tool_end went out for
+	started set.Set[string] // call ids a tool_start went out for
+	ended   set.Set[string] // call ids a tool_end went out for
 	turn    int             // the frame's turn: a turn chains into the next, so retries restart with it
 	retries int
 	done    doneEvent
 }
 
 func newFollower() *follower {
-	return &follower{started: map[string]bool{}, ended: map[string]bool{}, done: doneEvent{Type: evDone}}
+	return &follower{started: set.Set[string]{}, ended: set.Set[string]{}, done: doneEvent{Type: evDone}}
 }
 
 // step reads one frame and the run's denials so far. A call's status and
@@ -176,18 +177,18 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 // finished, the start first when no read saw it run. An id-less call is
 // one key: a second one gets nothing after the first ended.
 func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
-	if t.Status == hostapi.CallWait || f.ended[t.ID] {
+	if t.Status == hostapi.CallWait || f.ended.Has(t.ID) {
 		return evs
 	}
 	ev := event{Type: evToolStart, ID: t.ID, Tool: t.Name, Input: t.Input, Label: t.Label}
-	if !f.started[t.ID] {
-		f.started[t.ID] = true
+	if !f.started.Has(t.ID) {
+		f.started.Add(t.ID)
 		evs = append(evs, ev)
 	}
 	if t.Status == hostapi.CallRun {
 		return evs
 	}
-	f.ended[t.ID] = true
+	f.ended.Add(t.ID)
 	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = evToolEnd, string(t.Status), t.Output, t.Diff, t.Detail
 	if t.Status == hostapi.CallErr || t.Status == hostapi.CallStopped {
 		ev.Error = failureLine(t.Name, t.Output)

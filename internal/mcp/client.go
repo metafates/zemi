@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // ProtocolVersion is the version zemi asks for; a server answers with the
@@ -175,7 +176,7 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			return nil, err
 		}
 	case cfg.URL != "":
-		c.t = &httpTransport{cfg: cfg, c: c, streams: map[io.Closer]struct{}{}}
+		c.t = &httpTransport{cfg: cfg, c: c, streams: set.Set[io.Closer]{}}
 	default:
 		return nil, errors.New("mcp: command or url is required")
 	}
@@ -462,8 +463,8 @@ type httpTransport struct {
 	mu      sync.Mutex
 	session string
 	version string
-	streams map[io.Closer]struct{} // SSE bodies draining off the request path
-	renewMu sync.Mutex             // one new session at a time
+	streams set.Set[io.Closer] // SSE bodies draining off the request path
+	renewMu sync.Mutex         // one new session at a time
 }
 
 // renewing marks the handshake renew runs, whose sends must not renew again.
@@ -543,13 +544,13 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			// stream is drained off the request path and the reply reaches the
 			// waiting call through handle.
 			t.mu.Lock()
-			t.streams[resp.Body] = struct{}{}
+			t.streams.Add(resp.Body)
 			t.mu.Unlock()
 			go func() {
 				defer func() {
 					resp.Body.Close()
 					t.mu.Lock()
-					delete(t.streams, resp.Body)
+					t.streams.Remove(resp.Body)
 					t.mu.Unlock()
 				}()
 				defer func() {
@@ -666,7 +667,7 @@ func redactURL(err error) error {
 func (t *httpTransport) close() error {
 	t.mu.Lock()
 	streams := t.streams
-	t.streams = map[io.Closer]struct{}{}
+	t.streams = set.Set[io.Closer]{}
 	t.mu.Unlock()
 	for b := range streams {
 		_ = b.Close()

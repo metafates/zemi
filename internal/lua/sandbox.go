@@ -8,6 +8,8 @@ import (
 	"time"
 
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Sandbox builds a sandboxed LState: curated stdlib, frozen shared tables,
@@ -15,7 +17,7 @@ import (
 type Sandbox struct {
 	L         *glua.LState
 	frozen    *glua.LTable
-	protected map[string]struct{}
+	protected set.Set[string]
 	integrity []namespaceCheck
 	originOf  func(*glua.LState) Origin
 	now       func() time.Time
@@ -127,7 +129,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 
 	s := &Sandbox{
 		L:         L,
-		protected: map[string]struct{}{},
+		protected: set.Set[string]{},
 		originOf:  originOf,
 		now:       now,
 		start:     now(),
@@ -229,7 +231,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 			return
 		}
 		frozen.RawSet(key, value)
-		s.protected[string(name)] = struct{}{}
+		s.protected.Add(string(name))
 		if tb, isTable := value.(*glua.LTable); isTable {
 			toFreeze = append(toFreeze, namedTable{name: string(name), tb: tb})
 		}
@@ -240,7 +242,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	// The zemi binding itself is write-guarded from the start (DESIGN §5):
 	// namespace registrations mark their dotted names, but the root name is
 	// protected even before any namespace exists.
-	s.protected["zemi"] = struct{}{}
+	s.protected.Add("zemi")
 	for _, e := range toFreeze {
 		frozen.RawSetString(e.name, s.protectTable(e.tb, "stdlib table "+e.name))
 	}
@@ -515,7 +517,7 @@ func (s *Sandbox) SetPrint(fn func(origin, line string)) {
 		return 0
 	})
 	s.frozen.RawSetString("print", printFn)
-	s.protected["print"] = struct{}{}
+	s.protected.Add("print")
 }
 
 // joinArgs renders the call's arguments with tostring, the way print does.
@@ -532,7 +534,7 @@ func joinArgs(L *glua.LState, sep string) string {
 // (DESIGN §5: require resolution is Go-side, never Lua-side).
 func (s *Sandbox) SetRequire(fn *glua.LFunction) {
 	s.frozen.RawSetString("require", fn)
-	s.protected["require"] = struct{}{}
+	s.protected.Add("require")
 }
 
 // freezeTable locks a shared table: writes through it raise, setmetatable
@@ -707,7 +709,7 @@ func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable, call *glua.LF
 		members[k.String()] = v
 	})
 	s.integrity = append(s.integrity, namespaceCheck{name: name, table: tbl, members: members})
-	s.protected[name] = struct{}{}
+	s.protected.Add(name)
 	parent.RawSetString(name[strings.LastIndex(name, ".")+1:], proxy)
 	return nil
 }
@@ -742,7 +744,7 @@ func (s *Sandbox) ensureParent(parts []string) (*glua.LTable, error) {
 		case *glua.LNilType:
 			real := s.L.NewTable()
 			tbl.RawSetString(parts[i], s.protectNamespace(real, "namespace "+joined, joined))
-			s.protected[joined] = struct{}{}
+			s.protected.Add(joined)
 			tbl = real
 		default:
 			return nil, fmt.Errorf("frozen path %q is registered as a non-table", joined)
@@ -827,7 +829,7 @@ func (s *Sandbox) NewChunkEnv() *glua.LTable {
 	envGuard := L.NewFunction(func(L *glua.LState) int {
 		key := L.Get(2)
 		if str, ok := key.(glua.LString); ok {
-			if _, prot := s.protected[string(str)]; prot {
+			if s.protected.Has(string(str)) {
 				L.RaiseError("zemi: assignment to protected global '%s' is refused", string(str))
 				return 0
 			}

@@ -24,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -592,7 +593,7 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 // a bad entry, a near-duplicate or a quote the user never wrote is skipped,
 // never fatal.
 func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
-	var busy map[store.Scope]bool
+	var busy set.Set[store.Scope]
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
@@ -635,7 +636,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			res.Supersedes = old.ID
 		}
-		if busy[scope] {
+		if busy.Has(scope) {
 			// a store another zemi held queued the batch: the rest waits for
 			// review too, never a per-entry lock burn (DESIGN §10.3)
 			if h.queueProposal(res) {
@@ -650,9 +651,9 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			// a failed apply queues as a proposal whose accept applies it (DESIGN §10.3)
 			if errors.Is(err, brain.ErrLocked) {
 				if busy == nil {
-					busy = map[store.Scope]bool{}
+					busy = set.Set[store.Scope]{}
 				}
-				busy[scope] = true
+				busy.Add(scope)
 			}
 			if h.queueProposal(res) {
 				queued++

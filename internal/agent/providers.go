@@ -38,6 +38,7 @@ import (
 	"github.com/charmbracelet/openai-go/option"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
@@ -223,10 +224,11 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 }
 
 // bundledRefs are the "$NAME" references the bundled catalog makes.
-var bundledRefs = sync.OnceValue(func() map[string]bool {
-	refs := map[string]bool{}
+var bundledRefs = sync.OnceValue(func() set.Set[string] {
+	refs := set.Set[string]{}
 	for _, p := range embedded.GetAll() {
-		refs[p.APIKey], refs[p.APIEndpoint] = true, true
+		refs.Add(p.APIKey)
+		refs.Add(p.APIEndpoint)
 	}
 	return refs
 })
@@ -235,7 +237,7 @@ var bundledRefs = sync.OnceValue(func() map[string]bool {
 // catalog reads, so a fetched catalog cannot pick which secret zemi sends.
 // NOTE: a provider the feed adds with a variable of its own waits for the
 // zemi release that bundles it.
-func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || bundledRefs()[ref] }
+func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || bundledRefs().Has(ref) }
 
 // CatalogURL is where UpdateCatalog fetches the catwalk catalog.
 const CatalogURL = "https://catwalk.charm.land"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // Finding is one lint result (DESIGN §10.7): single-line, control-character-free,
@@ -89,14 +90,14 @@ func lintLedger(ops []*Op, lines []Line, add func(subject, format string, args .
 	type trail struct {
 		added     bool
 		explained bool
-		hashes    map[string]bool
+		hashes    set.Set[string]
 	}
 	t := map[string]*trail{}
 	var ids []string
 	for _, op := range ops {
 		d := t[op.ID]
 		if d == nil {
-			d = &trail{hashes: map[string]bool{}}
+			d = &trail{hashes: set.Set[string]{}}
 			t[op.ID] = d
 			ids = append(ids, op.ID)
 		}
@@ -110,23 +111,23 @@ func lintLedger(ops []*Op, lines []Line, add func(subject, format string, args .
 			// adds an id here or explains one going missing
 		}
 		if op.Hash != "" {
-			d.hashes[op.Hash] = true
+			d.hashes.Add(op.Hash)
 		}
 	}
-	live := map[string]bool{}
-	flagged := map[string]bool{}
+	live := set.Set[string]{}
+	flagged := set.Set[string]{}
 	for _, ln := range lines {
-		live[ln.ID] = true
-		if flagged[ln.ID] {
+		live.Add(ln.ID)
+		if flagged.Has(ln.ID) {
 			continue
 		}
-		if d := t[ln.ID]; d == nil || !d.hashes[TextHash(ln.Text)] {
+		if d := t[ln.ID]; d == nil || !d.hashes.Has(TextHash(ln.Text)) {
 			add(MemFile, "memory %s was rewritten outside the ledger (a hand edit)", ln.ID)
-			flagged[ln.ID] = true
+			flagged.Add(ln.ID)
 		}
 	}
 	for _, id := range ids {
-		if d := t[id]; d.added && !d.explained && !live[id] {
+		if d := t[id]; d.added && !d.explained && !live.Has(id) {
 			add(MemFile, "memory %s is in the ledger, gone from %s (a crash between the ledger and the file, a lost update, or a hand edit)", id, MemFile)
 		}
 	}

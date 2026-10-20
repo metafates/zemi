@@ -20,6 +20,7 @@ import (
 
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -149,15 +150,15 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 		return nil
 	}
 	if hookMatcherList.MatchString(m) {
-		want := map[string]bool{}
+		want := set.Set[string]{}
 		for tok := range strings.SplitSeq(m, "|") {
 			tok = strings.ToLower(tok)
 			if mapTool {
 				tok = claudeTool(tok)
 			}
-			want[tok] = true
+			want.Add(tok)
 		}
-		return func(name string) bool { return want[name] }
+		return func(name string) bool { return want.Has(name) }
 	}
 	re, err := regexp.Compile(m)
 	if err != nil {

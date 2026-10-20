@@ -29,6 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -601,11 +602,11 @@ func sortBySource[T any, S ~string](rows []T, source func(T) S) {
 // order: the more trusted origin won the name. taken, when given, also drops a
 // name something outside the list holds.
 func dedupeByName[T any](rows []T, name func(T) string, taken func(string) bool) []T {
-	seen := map[string]bool{}
+	seen := set.Set[string]{}
 	return slices.DeleteFunc(rows, func(r T) bool {
 		n := name(r)
-		dup := seen[n] || taken != nil && taken(n)
-		seen[n] = true
+		dup := seen.Has(n) || taken != nil && taken(n)
+		seen.Add(n)
 		return dup
 	})
 }

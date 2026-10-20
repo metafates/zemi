@@ -14,6 +14,7 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -598,7 +599,7 @@ const (
 // pollingTools are meant to be called again with the same input: waiting on
 // a job is not a loop, it is how the model watches one. Such a step is left
 // out of the comparison entirely, so one poll cannot break a real loop's run.
-var pollingTools = map[string]bool{"job_read": true, "job_list": true}
+var pollingTools = set.Of("job_read", "job_list")
 
 // IsWaitCall is a call that waits on a run the model started detached: the
 // workflow tool's wait action, the agent tool's wait flag. Waiting is how the
@@ -652,7 +653,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		}
 		sig, polling := "", false
 		for _, c := range calls {
-			if pollingTools[c.ToolName] || IsWaitCall(c.ToolName, c.Input) {
+			if pollingTools.Has(c.ToolName) || IsWaitCall(c.ToolName, c.Input) {
 				polling = true
 				break
 			}
@@ -883,17 +884,17 @@ func closeToolCalls(history []fantasy.Message) []fantasy.Message {
 		if m.Role != fantasy.MessageRoleAssistant {
 			continue
 		}
-		answered := map[string]bool{}
+		answered := set.Set[string]{}
 		if i+1 < len(history) && history[i+1].Role == fantasy.MessageRoleTool {
 			for _, p := range history[i+1].Content {
 				if res, ok := p.(fantasy.ToolResultPart); ok {
-					answered[res.ToolCallID] = true
+					answered.Add(res.ToolCallID)
 				}
 			}
 		}
 		var missing []fantasy.MessagePart
 		for _, p := range m.Content {
-			if c, ok := p.(fantasy.ToolCallPart); ok && !c.ProviderExecuted && !answered[c.ToolCallID] {
+			if c, ok := p.(fantasy.ToolCallPart); ok && !c.ProviderExecuted && !answered.Has(c.ToolCallID) {
 				missing = append(missing, fantasy.ToolResultPart{ToolCallID: c.ToolCallID, Output: fantasy.ToolResultOutputContentError{Error: errNotRun}})
 			}
 		}

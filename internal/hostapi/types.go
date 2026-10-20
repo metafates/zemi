@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 
 	"github.com/metafates/zemi/internal/plugin"
+	"github.com/metafates/zemi/internal/set"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -85,13 +86,13 @@ func replaceDir(dir string, trees ...fs.FS) error {
 			return err
 		}
 	}
-	keep := map[string]bool{}
+	keep := set.Set[string]{}
 	err = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		rel, _ := filepath.Rel(tmp, p)
-		keep[rel] = true
+		keep.Add(rel)
 		if d.IsDir() {
 			return os.MkdirAll(filepath.Join(dir, rel), 0o755)
 		}
@@ -109,7 +110,7 @@ func replaceDir(dir string, trees ...fs.FS) error {
 			return err
 		}
 		rel, _ := filepath.Rel(dir, p)
-		if keep[rel] {
+		if keep.Has(rel) {
 			return nil
 		}
 		if err := os.RemoveAll(p); err != nil {

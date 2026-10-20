@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -477,11 +478,11 @@ func (h *Host) OpenRewind() error {
 		return err
 	}
 	paths, _ := h.DB.CheckpointPaths(sid)
-	restored := map[string]bool{} // what rewinding to this prompt restores: its files and every later prompt's
+	restored := set.Set[string]{} // what rewinding to this prompt restores: its files and every later prompt's
 	var items []any
 	for _, row := range slices.Backward(rows) {
 		for _, p := range paths[row.ID] {
-			restored[perm.FoldCase(p)] = true
+			restored.Add(perm.FoldCase(p))
 		}
 		text, ok := userText(row)
 		if !ok {

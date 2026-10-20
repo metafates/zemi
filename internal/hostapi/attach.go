@@ -26,6 +26,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -71,7 +72,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	var b strings.Builder
 	var imgs []fantasy.FilePart
 	var refused []string // "path: why", which the user hears too
-	seen := map[string]bool{}
+	seen := set.Set[string]{}
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
@@ -99,10 +100,10 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			path = p
 		}
 		abs := path.String()
-		if seen[abs] {
+		if seen.Has(abs) {
 			continue
 		}
-		seen[abs] = true
+		seen.Add(abs)
 		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
 		limit, tag := int64(attachMax), "file"
 		if image {

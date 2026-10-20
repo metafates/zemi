@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -874,12 +875,12 @@ func (h *Host) memoryItems() []any {
 // the frozen table's superseded rows, none of them live (DESIGN §7);
 // each carries its origin and last-write date.
 func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
-	liveIDs := map[string]bool{}
+	liveIDs := set.Set[string]{}
 	for _, m := range live {
-		liveIDs[m.ID] = true
+		liveIDs.Add(m.ID)
 	}
 	var out []brain.Line
-	seen := map[string]bool{}
+	seen := set.Set[string]{}
 	for _, scope := range store.Scopes {
 		p := h.partition(scope)
 		if p.Zero() {
@@ -895,10 +896,10 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 			continue
 		}
 		for _, op := range latest {
-			if (op.Op != brain.OpSupersede && op.Op != brain.OpArchive) || liveIDs[op.ID] || seen[op.ID] {
+			if (op.Op != brain.OpSupersede && op.Op != brain.OpArchive) || liveIDs.Has(op.ID) || seen.Has(op.ID) {
 				continue
 			}
-			seen[op.ID] = true
+			seen.Add(op.ID)
 			// an id the ledger alone held has no text to show
 			if op.Text == "" {
 				continue
@@ -908,8 +909,8 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 	}
 	frozen, _ := h.memoryList(true)
 	for _, m := range frozen {
-		if m.SupersededBy != "" && !liveIDs[m.ID] && !seen[m.ID] {
-			seen[m.ID] = true
+		if m.SupersededBy != "" && !liveIDs.Has(m.ID) && !seen.Has(m.ID) {
+			seen.Add(m.ID)
 			out = append(out, brain.Line{ID: m.ID, Origin: m.Origin, Date: brain.Day(time.UnixMilli(m.UpdatedAt).UTC()), Text: m.Text})
 		}
 	}
@@ -1027,7 +1028,7 @@ func (h *Host) partitionMemory(p brain.Partition, id string) (*store.Memory, boo
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
 	var errs []error
-	live := map[string]bool{}
+	live := set.Set[string]{}
 	for _, scope := range []store.Scope{store.ScopeProject, store.ScopeUser} {
 		p := h.partition(scope)
 		if p.Zero() {
@@ -1045,7 +1046,7 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 			_ = lg.Close()
 		}
 		for _, l := range lines {
-			live[l.ID] = true
+			live.Add(l.ID)
 			// the line carries only the day its last write fell on; the ledger's
 			// exact write replaces that when it wrote this very text, as a move or a
 			// restored line leaves the newest entry describing text it no longer holds
@@ -1071,7 +1072,7 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 					continue
 				}
 				for _, m := range rows {
-					if !live[m.ID] {
+					if !live.Has(m.ID) {
 						out = append(out, m)
 					}
 				}
@@ -1534,14 +1535,14 @@ func (h *Host) memorySearch(query string) (string, error) {
 		return "", errors.New("query is empty")
 	}
 	live, _ := h.memoryList(false)
-	liveIDs := map[string]bool{}
+	liveIDs := set.Set[string]{}
 	type hit struct {
 		line  brain.Line
 		scope store.Scope
 	}
 	var hits []hit
 	for _, m := range live {
-		liveIDs[m.ID] = true
+		liveIDs.Add(m.ID)
 		if searchHit(words, m.ID, m.Text) {
 			hits = append(hits, hit{brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text}, m.Scope})
 		}
@@ -1561,7 +1562,7 @@ func (h *Host) memorySearch(query string) (string, error) {
 			continue
 		}
 		for _, op := range latest {
-			if liveIDs[op.ID] || op.Text == "" || op.Op != brain.OpArchive && op.Op != brain.OpSupersede {
+			if liveIDs.Has(op.ID) || op.Text == "" || op.Op != brain.OpArchive && op.Op != brain.OpSupersede {
 				continue
 			}
 			if searchHit(words, op.ID, op.Text) {

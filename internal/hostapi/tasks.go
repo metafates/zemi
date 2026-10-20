@@ -26,6 +26,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -1064,13 +1065,13 @@ func (h *Host) agentRunItems() []any {
 	}
 	// a workflow's agents are one row, its own; another session's live one
 	// is listed like its runs below
-	held := map[string]bool{}
+	held := set.Set[string]{}
 	for _, f := range slices.DeleteFunc(h.tasks.flowList(), func(f *flowRun) bool { return f.parent != sid && !f.isRunning() }) {
 		flows = append(flows, h.flowItem(f, "Workflows"))
 	}
 	for _, run := range h.tasks.runsOf(sid) {
 		status, calls, took, runSID := run.state()
-		held[runSID] = true
+		held.Add(runSID)
 		if run.workflow == "" {
 			row(run.id, status, run.label(), took, run.agent, fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
 		}
@@ -1085,7 +1086,7 @@ func (h *Host) agentRunItems() []any {
 		children, _ := h.DB.ChildSessions(sid)
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
-			if !held[c.ID] && !inFlows[c.ID] {
+			if !held.Has(c.ID) && !inFlows.Has(c.ID) {
 				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, "")
 			}
 		}

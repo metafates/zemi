@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // SizeKind is how a layout node claims cells along its parent box's axis.
@@ -124,13 +124,13 @@ type Layout struct {
 }
 
 // regions are the region names the layout places, hidden nodes included.
-func (l *Layout) regions() map[string]bool {
-	out := map[string]bool{}
+func (l *Layout) regions() set.Set[string] {
+	out := set.Set[string]{}
 	var walk func(n *LayoutNode)
 	walk = func(n *LayoutNode) {
 		for _, r := range []string{n.Region, n.Left, n.Right, n.Top} {
 			if r != "" {
-				out[r] = true
+				out.Add(r)
 			}
 		}
 		for _, c := range n.Children {
@@ -139,7 +139,7 @@ func (l *Layout) regions() map[string]bool {
 	}
 	walk(l.Root)
 	for _, f := range l.Floats {
-		out[f.Region] = true
+		out.Add(f.Region)
 	}
 	return out
 }
@@ -359,8 +359,8 @@ func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
 // layoutParser checks a layout table as it builds the Go tree.
 type layoutParser struct {
 	nodes     int
-	ids       map[string]bool
-	regions   map[string]bool
+	ids       set.Set[string]
+	regions   set.Set[string]
 	composers int
 	stages    int
 }
@@ -375,7 +375,7 @@ func parseLayout(v any) (*Layout, error) {
 	if err := onlyKeys(m, "layout", "root", "floats"); err != nil {
 		return nil, err
 	}
-	p := &layoutParser{ids: map[string]bool{}, regions: map[string]bool{}}
+	p := &layoutParser{ids: set.Set[string]{}, regions: set.Set[string]{}}
 	root, err := p.node(m["root"], "root", 1, DirCol, false)
 	if err != nil {
 		return nil, err
@@ -389,7 +389,7 @@ func parseLayout(v any) (*Layout, error) {
 	if p.stages > 1 {
 		return nil, fmt.Errorf("at most one node may be the stage, found %d", p.stages)
 	}
-	lay, nodeIDs := &Layout{Root: root}, maps.Clone(p.ids)
+	lay, nodeIDs := &Layout{Root: root}, p.ids.Clone()
 	floats, ok := luaList(m["floats"])
 	if !ok {
 		return nil, fmt.Errorf("floats: expected a list")
@@ -402,7 +402,7 @@ func parseLayout(v any) (*Layout, error) {
 		lay.Floats = append(lay.Floats, f)
 	}
 	for _, f := range lay.Floats {
-		if r := f.Relative; r != "stage" && r != "screen" && !nodeIDs[r] {
+		if r := f.Relative; r != "stage" && r != "screen" && !nodeIDs.Has(r) {
 			return nil, fmt.Errorf("float %s: relative %q names no node", f.Region, r)
 		}
 	}
@@ -451,10 +451,10 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 	}
 	if n.ID != "" {
 		at = n.ID
-		if p.ids[n.ID] || n.ID == "stage" || n.ID == "screen" {
+		if p.ids.Has(n.ID) || n.ID == "stage" || n.ID == "screen" {
 			return nil, fmt.Errorf("node id %q is taken", n.ID)
 		}
-		p.ids[n.ID] = true
+		p.ids.Add(n.ID)
 	}
 	if n.Max > 0 && n.Min > n.Max {
 		return nil, fmt.Errorf("%s: min %d is over max %d", at, n.Min, n.Max)
@@ -471,10 +471,10 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 			return err
 		case name == "":
 			return fmt.Errorf("%s: %s must name a region", at, key)
-		case p.regions[name]:
+		case p.regions.Has(name):
 			return fmt.Errorf("%s: region %q is drawn twice", at, name)
 		}
-		p.regions[name] = true
+		p.regions.Add(name)
 		return nil
 	}
 	switch n.Kind {
@@ -618,16 +618,16 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 		return f, fmt.Errorf("%s: a focusable float needs an id", at)
 	case f.Region == "":
 		return f, fmt.Errorf("%s: region must name a region", at)
-	case p.regions[f.Region]:
+	case p.regions.Has(f.Region):
 		return f, fmt.Errorf("%s: region %q is drawn twice", at, f.Region)
 	case !slices.Contains(floatAnchors, f.Anchor):
 		return f, fmt.Errorf("%s: anchor must be one of %s", at, strings.Join(strs(floatAnchors), ", "))
-	case f.ID != "" && (p.ids[f.ID] || f.ID == "stage" || f.ID == "screen"):
+	case f.ID != "" && (p.ids.Has(f.ID) || f.ID == "stage" || f.ID == "screen"):
 		return f, fmt.Errorf("node id %q is taken", f.ID)
 	}
-	p.regions[f.Region] = true
+	p.regions.Add(f.Region)
 	if f.ID != "" {
-		p.ids[f.ID] = true
+		p.ids.Add(f.ID)
 	}
 	return f, nil
 }

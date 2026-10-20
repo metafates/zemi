@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/set"
 )
 
 // spanKid is one child of a box as the solver sees it.
@@ -323,10 +324,10 @@ func (a *App) shownWidgets() []shownWidget {
 	}
 	s := a.layout(a.width, a.height)
 	var out []shownWidget
-	regions := map[string]bool{}
+	regions := set.Set[string]{}
 	add := func(region string, w, h int) {
 		if region != "" {
-			regions[region] = true
+			regions.Add(region)
 		}
 		for _, wg := range a.host.Widgets.InRegion(region) {
 			out = append(out, shownWidget{Widget: wg, width: w, height: h})

@@ -30,6 +30,7 @@ import (
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -111,20 +112,20 @@ type lspReg struct {
 	dirty    atomic.Bool       // something other than zemi's file tools ran
 	head     string            // HEAD at the last listing; its diff names what a checkout swapped
 	user     []lspDef
-	disabled map[string]bool // names zemi.lsp.del dropped
+	disabled set.Set[string] // names zemi.lsp.del dropped
 	running  map[string]*lspProc
 	attempts map[string]int
 }
 
 func newLSPReg() *lspReg {
-	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}, disabled: map[string]bool{}}
+	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}, disabled: set.Set[string]{}}
 }
 
 // forget drops what config defined, for a reload to replay; the running
 // servers stay until lspStopChanged compares them with the replay.
 func (r *lspReg) forget() {
 	r.mu.Lock()
-	r.user, r.attempts, r.disabled = nil, map[string]int{}, map[string]bool{}
+	r.user, r.attempts, r.disabled = nil, map[string]int{}, set.Set[string]{}
 	r.mu.Unlock()
 }
 
@@ -219,7 +220,7 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 func (h *Host) lualsDef() (lspDef, bool) {
 	h.lsp.mu.Lock()
 	i := slices.IndexFunc(h.lsp.user, func(d lspDef) bool { return d.Name == "luals" })
-	def, off := lspDef{}, h.lsp.disabled["luals"]
+	def, off := lspDef{}, h.lsp.disabled.Has("luals")
 	if i >= 0 {
 		def = h.lsp.user[i]
 	}
@@ -262,7 +263,7 @@ func (h *Host) lspKnown() []lspDef {
 	}
 	h.lsp.mu.Lock()
 	defs := slices.Clone(h.lsp.user)
-	disabled := maps.Clone(h.lsp.disabled)
+	disabled := h.lsp.disabled.Clone()
 	h.lsp.mu.Unlock()
 	if h.Settings.Bool("lsp.auto") {
 		for _, d := range builtinLSP {
@@ -280,7 +281,7 @@ func (h *Host) lspKnown() []lspDef {
 			defs = append(defs, d)
 		}
 	}
-	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled[d.Name] })
+	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled.Has(d.Name) })
 }
 
 // lspStopChanged stops each running server whose definition a reload
@@ -343,12 +344,12 @@ func globalTSServer(root string) string {
 // lspQuietTool lists the tools that change nothing behind a language
 // server's back: they either only read, or write through zemi's own file
 // tools, which open the document they touched. Anything else ran a program.
-var lspQuietTool = map[string]bool{
-	tools.ToolRead: true, tools.ToolWrite: true, tools.ToolEdit: true,
-	tools.ToolGlob: true, tools.ToolGrep: true, tools.ToolTodos: true, tools.ToolPlan: true, tools.ToolQuestion: true,
-	tools.ToolSkill: true, tools.ToolLSP: true, tools.ToolDiagnostics: true, tools.ToolJobList: true,
-	tools.ToolMemory: true,
-}
+var lspQuietTool = set.Of(
+	tools.ToolRead, tools.ToolWrite, tools.ToolEdit,
+	tools.ToolGlob, tools.ToolGrep, tools.ToolTodos, tools.ToolPlan, tools.ToolQuestion,
+	tools.ToolSkill, tools.ToolLSP, tools.ToolDiagnostics, tools.ToolJobList,
+	tools.ToolMemory,
+)
 
 // lspDirty records that something may have changed files without telling
 // the language servers, so the next lspSync asks git. Mark it when the
@@ -828,7 +829,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.lsp.del: only user config may drop language servers")
 		}
 		h.lsp.mu.Lock()
-		h.lsp.disabled[name] = true
+		h.lsp.disabled.Add(name)
 		h.lsp.mu.Unlock()
 		return 0
 	}))

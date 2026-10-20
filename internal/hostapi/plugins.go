@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -37,7 +38,7 @@ type pluginLoad struct {
 type pluginGrant struct {
 	roots  []string
 	uses   map[string][]string // by plugin name
-	claude map[string]bool     // root -> it is a Claude-layout plugin
+	claude set.Set[string]     // root -> it is a Claude-layout plugin
 }
 
 // PluginsStep loads every enabled plugin's init.lua as plugin origin, sorted
@@ -55,7 +56,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.sweepPluginState(ps)
 			}
 			run, loads := pickPlugins(ps)
-			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: map[string]bool{}}
+			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: set.Set[string]{}}
 			hooks := map[string][]hookEntry{}
 			for i, p := range run {
 				kind := "installed"
@@ -73,7 +74,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 				if _, err := os.Stat(filepath.Join(root, plugin.CodeDir)); err == nil {
 					continue
 				}
-				grant.claude[root] = true
+				grant.claude.Add(root)
 				// the parts of the layout zemi has no use for yet (§6 v1 cuts)
 				for _, part := range []string{"output-styles", ".lsp.json", "settings.json"} {
 					if _, err := os.Stat(filepath.Join(root, part)); err == nil {
@@ -117,10 +118,10 @@ func (h *Host) PluginsStep() lua.BootStep {
 // pickPlugins sorts the enabled plugins by name and splits them into those
 // the loader runs and those it refuses, with why.
 func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad) {
-	installed := map[string]bool{}
+	installed := set.Set[string]{}
 	for _, p := range ps {
 		if !p.Local {
-			installed[p.Name] = true
+			installed.Add(p.Name)
 		}
 	}
 	slices.SortStableFunc(ps, func(a, b plugin.Plugin) int { return cmp.Compare(a.Name, b.Name) })
@@ -136,7 +137,7 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 		case !p.Enabled:
 		case uses != nil:
 			refused = append(refused, pluginLoad{p.Name, p.Dir, uses})
-		case p.Local && installed[p.Name]:
+		case p.Local && installed.Has(p.Name):
 			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
 		case err == nil && !fi.IsDir():
 			// origin is classified on resolved paths, so its files would be
@@ -193,7 +194,7 @@ func (h *Host) pluginDataDir(name string) string {
 // isClaudePlugin reports whether root is a Claude-layout plugin's root.
 func (h *Host) isClaudePlugin(root string) bool {
 	g := h.pluginGrant.Load()
-	return g != nil && g.claude[root]
+	return g != nil && g.claude.Has(root)
 }
 
 // claudeRootOf is the Claude-layout plugin root path belongs to, or "".
@@ -314,7 +315,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	if h.GlobalDB == nil {
 		return
 	}
-	ids, fresh, adopt := map[string]string{}, map[string]bool{}, map[string]bool{}
+	ids, fresh, adopt := map[string]string{}, set.Set[string]{}, set.Set[string]{}
 	for _, p := range ps {
 		q := strconv.Quote(installID(h.Dirs, p.Name, p.Dir))
 		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
@@ -322,13 +323,17 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		case errors.Is(err, store.ErrNotFound) && q != `""`:
 			// a copy's id lives in its row alone: adopt it on first sight, or
 			// the id an update backfilled into the row would wipe the state
-			was, adopt[p.Name] = q, true
+			was = q
+			adopt.Add(p.Name)
 		case errors.Is(err, store.ErrNotFound):
 			was = `""` // no id kept: a local plugin, or a clone no sweep has seen
 		case err != nil:
 			was = q // a failed read must not drop the plugin's keys
 		}
-		ids[p.Name], fresh[p.Name] = q, was != q
+		ids[p.Name] = q
+		if was != q {
+			fresh.Add(p.Name)
+		}
 	}
 	keys, _ := h.GlobalDB.KeysKV("plugin:")
 	picks, _ := h.GlobalDB.KeysKV("config:plugins.")
@@ -339,7 +344,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		// its kept settings config:plugins.<name>.<key>
 		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, "plugin:"), "config:plugins."), ":")
 		name, _, _ = strings.Cut(name, ".")
-		if _, ok := ids[name]; ok && !fresh[name] {
+		if _, ok := ids[name]; ok && !fresh.Has(name) {
 			continue
 		}
 		if path, ok := strings.CutPrefix(k, "config:"); ok {
@@ -349,7 +354,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		}
 	}
 	for name, id := range ids {
-		if fresh[name] && id != `""` || adopt[name] {
+		if fresh.Has(name) && id != `""` || adopt.Has(name) {
 			_ = h.GlobalDB.SetKV("plugin:"+name, id)
 		}
 	}

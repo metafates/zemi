@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -49,7 +50,7 @@ type AgentDef struct {
 // subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, the user's attention (questions, plan approval) and the main
 // agent's lua tool. Listing one in an agent file drops it.
-var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow: true, tools.ToolTodos: true, tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolLua: true}
+var subagentExcluded = set.Of(tools.ToolAgent, tools.ToolWorkflow, tools.ToolTodos, tools.ToolQuestion, tools.ToolPlan, tools.ToolLua)
 
 // forkAgent is the run that continues the caller's conversation instead of
 // starting fresh: not a definition but the same agent carried on, so only its
@@ -148,16 +149,16 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 // zemiToolNames is every tool name an agent definition may keep: the
 // builtins. A Claude agent naming anything else loses the entry, since it
 // would fail the invocation filter.
-var zemiToolNames = map[string]bool{
-	tools.ToolShell: true, tools.ToolRead: true, tools.ToolWrite: true,
-	tools.ToolEdit: true, tools.ToolGlob: true, tools.ToolGrep: true,
-	tools.ToolTodos:    true,
-	tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolSkill: true,
-	tools.ToolJobStart: true, tools.ToolJobRead: true, tools.ToolJobList: true,
-	tools.ToolJobKill: true, tools.ToolMemory: true, tools.ToolDiagnostics: true,
-	tools.ToolLSP: true, tools.ToolAgent: true, tools.ToolWorkflow: true,
-	tools.ToolLua: true, tools.ToolUpdate: true, tools.ToolSearch: true,
-}
+var zemiToolNames = set.Of(
+	tools.ToolShell, tools.ToolRead, tools.ToolWrite,
+	tools.ToolEdit, tools.ToolGlob, tools.ToolGrep,
+	tools.ToolTodos,
+	tools.ToolQuestion, tools.ToolPlan, tools.ToolSkill,
+	tools.ToolJobStart, tools.ToolJobRead, tools.ToolJobList,
+	tools.ToolJobKill, tools.ToolMemory, tools.ToolDiagnostics,
+	tools.ToolLSP, tools.ToolAgent, tools.ToolWorkflow,
+	tools.ToolLua, tools.ToolUpdate, tools.ToolSearch,
+)
 
 // agentIgnoredKeys are the Claude agent frontmatter keys zemi has no use for.
 var agentIgnoredKeys = []string{"skills", "color", "background", "memory", "isolation", "effort", "maxTurns", "permissionMode", "hooks", "mcpServers"}
@@ -241,7 +242,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 		deny := strings.HasPrefix(n, "-")
 		tool := strings.TrimPrefix(n, "-")
 		if claude {
-			if mapped := claudeTool(tool); zemiToolNames[mapped] {
+			if mapped := claudeTool(tool); zemiToolNames.Has(mapped) {
 				tool = mapped
 			} else {
 				if !deny { // a negation of what zemi does not have is safe to drop
@@ -909,26 +910,26 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 // tools at all and invent its report. A "-name" entry removes that tool
 // instead, so a list that only removes still gets the tools a later
 // release adds.
-func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (kept []fantasy.AgentTool, unknown []string) {
-	keep, drop, have := map[string]bool{}, map[string]bool{}, map[string]bool{}
+func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[string]) (kept []fantasy.AgentTool, unknown []string) {
+	keep, drop, have := set.Set[string]{}, set.Set[string]{}, set.Set[string]{}
 	for _, n := range want {
 		if name, cut := strings.CutPrefix(n, "-"); cut {
-			drop[name] = true
+			drop.Add(name)
 		} else {
-			keep[n] = true
+			keep.Add(n)
 		}
 	}
 	for _, t := range all {
 		name := t.Info().Name
-		have[name] = true
-		if skip[name] || drop[name] || (len(keep) > 0 && !keep[name]) {
+		have.Add(name)
+		if skip.Has(name) || drop.Has(name) || (len(keep) > 0 && !keep.Has(name)) {
 			continue
 		}
 		kept = append(kept, t)
 	}
 	for _, n := range want {
 		name := strings.TrimPrefix(n, "-")
-		if !have[name] && !skip[name] {
+		if !have.Has(name) && !skip.Has(name) {
 			unknown = append(unknown, name)
 		}
 	}

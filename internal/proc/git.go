@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/metafates/zemi/internal/set"
 )
 
 // gitTimeout bounds a git call whose context has no deadline of its own.
@@ -31,7 +33,7 @@ type Git struct {
 
 // noFilter holds the commands that run no filter driver as zemi calls them,
 // which skip the driver probe; cat-file would with --filters or --textconv.
-var noFilter = map[string]bool{"cat-file": true, "config": true, "fetch": true, "ls-files": true, "rev-list": true, "rev-parse": true, "tag": true}
+var noFilter = set.Of("cat-file", "config", "fetch", "ls-files", "rev-list", "rev-parse", "tag")
 
 // Run runs git with args and returns its stdout; stderr goes only into the
 // error. Without a deadline on ctx the call gets 15 seconds.
@@ -48,7 +50,7 @@ func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 		"-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
 		"-c", "protocol.ssh.allow=always", "-c", "protocol.file.allow=user",
 	}
-	if !noFilter[subcommand(args)] {
+	if !noFilter.Has(subcommand(args)) {
 		out, _ := g.run(ctx, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)
 		for line := range strings.Lines(out) {
 			scope, key, ok := strings.Cut(strings.TrimSpace(line), "\t")

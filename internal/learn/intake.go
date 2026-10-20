@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -91,20 +92,20 @@ func Similar(a, b string) bool {
 	}
 	both := 0
 	for t := range ta {
-		if tb[t] {
+		if tb.Has(t) {
 			both++
 		}
 	}
 	return 4*both >= 3*(len(ta)+len(tb)-both)
 }
 
-func tokens(s string) map[string]bool {
-	out := map[string]bool{}
+func tokens(s string) set.Set[string] {
+	out := set.Set[string]{}
 	for _, t := range contentToken.FindAllString(strings.ToLower(s), -1) {
 		if len(t) > 5 && !strings.ContainsAny(t, "0123456789") {
 			t = t[:5]
 		}
-		out[t] = true
+		out.Add(t)
 	}
 	return out
 }

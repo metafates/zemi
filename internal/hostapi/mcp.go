@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -336,7 +337,7 @@ type mcpOfferedTool struct {
 // drops its tool, so every name here is one a call reaches.
 func (h *Host) mcpOffered() []mcpOfferedTool {
 	var out []mcpOfferedTool
-	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
+	seen := set.Set[string]{} // "a.b" and "a_b" map to one tool name
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
 		list, ready := s.tools, s.status == StatusReady
@@ -349,11 +350,11 @@ func (h *Host) mcpOffered() []mcpOfferedTool {
 				continue
 			}
 			name := mcpToolName(s.name, t.Name)
-			if seen[name] {
+			if seen.Has(name) {
 				h.Log.Warn("tool name collides, skipped", "origin", "mcp", "server", s.name, "tool", t.Name)
 				continue
 			}
-			seen[name] = true
+			seen.Add(name)
 			props, err := tools.ResolveSchemaRefs(t.InputSchema)
 			if err != nil {
 				h.Log.Warn("tool schema cannot be flattened, skipped", "origin", "mcp",

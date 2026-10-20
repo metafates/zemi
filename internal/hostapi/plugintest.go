@@ -597,7 +597,7 @@ func (t *PluginTest) click(L *glua.LState) int {
 func (t *PluginTest) emit(L *glua.LState) int {
 	name := L.CheckString(1)
 	ev, _ := luaToGoChecked(L, 2, "test.emit").(map[string]any)
-	if !eventCatalogue[name] {
+	if !eventCatalogue.Has(name) {
 		raise(L, "test.emit: %q is not a host event; zemi.event.emit sends user.* events", name)
 	}
 	tool, _ := ev["tool"].(string)

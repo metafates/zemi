@@ -118,7 +118,7 @@ func TestHostEmitsAreCatalogued(t *testing.T) {
 				}
 			}
 			name, _ := strconv.Unquote(lit.Value)
-			if seen++; !eventCatalogue[name] {
+			if seen++; !eventCatalogue.Has(name) {
 				t.Errorf("%s: %s(%q) is not in eventCatalogue", file, fn, name)
 			}
 			return true

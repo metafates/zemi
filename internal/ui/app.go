@@ -31,6 +31,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 )
 
 const (
@@ -127,7 +128,7 @@ type App struct {
 	looping    bool             // what onFrame last saw of the session's /loop
 	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
-	regions    *map[string]bool // the regions the last solve drew (ctx.regions)
+	regions    *set.Set[string] // the regions the last solve drew (ctx.regions)
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	progress   bool             // the view reports a running turn (OSC 9;4)

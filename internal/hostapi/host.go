@@ -26,6 +26,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -1648,7 +1649,7 @@ type UIState struct {
 	Printed        *Printed
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
-	Regions *map[string]bool
+	Regions *set.Set[string]
 }
 
 // Printed is set when zemi run prints the frame to a shell: Rows stand in
