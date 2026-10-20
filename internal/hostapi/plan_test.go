@@ -28,6 +28,7 @@ func plannerProfile(t *testing.T, r *lua.Runtime) {
 // TestPlanMode: a read-only agent may change nothing
 // and the prompt says so; it works whatever the permission mode.
 func TestPlanMode(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	plannerProfile(t, r)
 	check := func(subject, arg string) tools.Verdict {
@@ -55,6 +56,7 @@ func TestPlanMode(t *testing.T) {
 // the agent and mode it replaced, is no longer read-only, and records the
 // implementation handoff planFollowup sends.
 func TestPlanApprovalSwitchesBack(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
@@ -96,6 +98,7 @@ func TestPlanApprovalSwitchesBack(t *testing.T) {
 // leaves the session's saved plan alone, and a hold puts the agent's
 // replacement back without recording the implementation handoff.
 func TestPlanHold(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
@@ -145,6 +148,7 @@ func TestPlanHold(t *testing.T) {
 // TestResumeShowsPlan: a resumed session draws the plan as a message above
 // its call's row, as the live turn did; the row alone keeps only the verdict.
 func TestResumeShowsPlan(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -177,6 +181,7 @@ func TestResumeShowsPlan(t *testing.T) {
 // TestPlanFeedbackKeepsPlanner: a read-only plan the user asks to change does
 // not switch the agent, so the agent revises and presents again.
 func TestPlanFeedbackKeepsPlanner(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Feedback: "use sqlite"}}
@@ -200,6 +205,7 @@ func TestPlanFeedbackKeepsPlanner(t *testing.T) {
 // claim of its own, released after; a submit that claimed the agent first
 // keeps its turn and scope, and no popup opens over it.
 func TestPlanFollowupNudgesOnce(t *testing.T) {
+	t.Parallel()
 	runner := &agent.Runner{History: []fantasy.Message{
 		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "which file did you mean?"}}},
 	}}
@@ -293,6 +299,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 // TestPlanNudgeFollowsTheTurn: picking a read-only agent while the default
 // agent replies does not nudge that reply, which it never wrote.
 func TestPlanNudgeFollowsTheTurn(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	plannerProfile(t, r)
 	h.SetUIHooks(&fakeUI{})
@@ -334,6 +341,7 @@ func TestPlanNudgeFollowsTheTurn(t *testing.T) {
 // TestNextTurnHandsOffApprovedPlan: an approved plan is sent to the restored
 // agent under the claim the read-only turn held, so nothing runs in between.
 func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	var mu sync.Mutex
@@ -390,6 +398,7 @@ func TestPlainTextEnd(t *testing.T) {
 // TestShellNotes: a !command shows in the transcript and its output rides
 // along with the next message to the model, behind the attachment marker.
 func TestShellNotes(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	var seen atomic.Value
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -422,6 +431,7 @@ func TestShellNotes(t *testing.T) {
 // TestPlanApprovalFromConfigPick: a read-only profile picked from config
 // (no SetProfile, so nothing was recorded) restores default on approval.
 func TestPlanApprovalFromConfigPick(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	plannerProfile(t, r)
 	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})

@@ -9,6 +9,7 @@ import (
 )
 
 func TestMarkdown(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		local function join(line)
@@ -43,6 +44,7 @@ func TestMarkdown(t *testing.T) {
 // TestMarkdownLinks: a markdown link and a bare URL both carry the URL a
 // click opens, and a scheme zemi does not open never does.
 func TestMarkdownLinks(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	links := func(text string) map[string]string {
 		got := map[string]string{}
@@ -77,6 +79,7 @@ func TestMarkdownLinks(t *testing.T) {
 }
 
 func TestMarkdownSplitRender(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	var b strings.Builder
 	for range 40 {
@@ -109,6 +112,7 @@ func TestMarkdownSplitRender(t *testing.T) {
 
 // TestMarkdownKeepsTabIndent: code indented with tabs keeps its indentation.
 func TestMarkdownKeepsTabIndent(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	found := false
 	for _, line := range h.Markdown("```go\nfunc f() {\n\treturn\n}\n```", 40) {
@@ -155,6 +159,7 @@ func copyText(lines [][]Segment) string {
 // TestMarkdownCopiesBackToSource: what a selection over rendered markdown
 // copies is the text the model wrote, without glamour's decoration.
 func TestMarkdownCopiesBackToSource(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct{ name, text, want string }{
 		{"paragraph", "a paragraph long enough to wrap over three rows of a narrow chat pane", "a paragraph long enough to wrap over three rows of a narrow chat pane"},
@@ -172,6 +177,7 @@ func TestMarkdownCopiesBackToSource(t *testing.T) {
 // TestMarkdownTableWidth: a table is only as wide as its content, and one
 // whose content does not fit is laid out to the width it was given.
 func TestMarkdownTableWidth(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	width := func(lines [][]Segment) int {
 		w := 0
@@ -264,6 +270,7 @@ func TestWrapSegsExpandsTabs(t *testing.T) {
 }
 
 func TestMarkdownHexColors(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct{ name, text, want string }{
 		{"dark text on a light color", "use #FFF000 here", "#FFF000 38;2;0;0;0;48;2;255;240;0"},
@@ -350,6 +357,7 @@ func TestDiffRows(t *testing.T) {
 }
 
 func TestHighlight(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
 		name, text, lang string
@@ -387,6 +395,7 @@ func TestHighlight(t *testing.T) {
 // and the light variant, blocks sit one blank row apart and a quote keeps
 // its bar on every row it wraps to.
 func TestMarkdownTheme(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
 		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"

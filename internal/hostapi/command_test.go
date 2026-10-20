@@ -15,6 +15,7 @@ import (
 // argument candidates, narrowed and ranked by the lead like a Go
 // completer's; Go subcommand completers switch lists by position.
 func TestCompleteCommand(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.command.add("greet", function() end, {
@@ -81,6 +82,7 @@ func TestMatch(t *testing.T) {
 // TestNargsOK: a Go command's arguments are checked as typed and through
 // zemi.command.run, so `/new idea` is not a plain /new.
 func TestNargsOK(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	for _, c := range []struct{ nargs, args, want string }{
 		{"", "", ""},
@@ -104,6 +106,7 @@ func TestNargsOK(t *testing.T) {
 // TestStaleKeymapAndCommandDoNotRun: a binding or command looked up before a
 // reload must not run its function on the fresh LState.
 func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	called := 0
 	var fn *glua.LFunction
@@ -141,6 +144,7 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 // TestCommandFailed: an error that is how the command was asked warns, one
 // wrapped on the way up included; any other did not happen and is recorded.
 func TestCommandFailed(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
 		err      error

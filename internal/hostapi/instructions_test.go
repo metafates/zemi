@@ -12,6 +12,7 @@ import (
 // repeat, which is every instruction file from the repo root down, nor does
 // a CLAUDE.md beside an AGENTS.md.
 func TestNearestInstructions(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
 	if err := os.MkdirAll(pkg, 0o755); err != nil {

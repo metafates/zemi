@@ -59,6 +59,7 @@ func TestPermAsk(t *testing.T) {
 // TestHeadlessDenialNotes: an ask nobody can answer in zemi run is denied and
 // noted for the run to report.
 func TestHeadlessDenialNotes(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	ok, by := h.askHook()(tools.Request{Subject: "tool.shell", Arg: "make out"})
 	if ok || by != tools.ByNobody {
@@ -75,6 +76,7 @@ func TestHeadlessDenialNotes(t *testing.T) {
 // dismissal. The restore skips it, the default stands, and the handoff is
 // still recorded.
 func TestPlanApprovalAfterProfileGone(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	plannerProfile(t, r)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}

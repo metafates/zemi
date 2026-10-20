@@ -11,6 +11,7 @@ import (
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
 // reads at their own prices; a model without prices costs nothing.
 func TestTurnCost(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.provider.add({
 		id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
@@ -35,6 +36,7 @@ func TestTurnCost(t *testing.T) {
 // TestAgentFinishUsage: agent.finish carries the turn's own tokens and cost,
 // and zemi.agent.usage() the session's, cost included.
 func TestAgentFinishUsage(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	sid := seedSession(t, h)
 	runUser(t, r, `
@@ -63,6 +65,7 @@ func TestAgentFinishUsage(t *testing.T) {
 // the input tally, live and stored alike, so a resumed session shows the
 // same total.
 func TestUsageCountsCache(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
@@ -94,6 +97,7 @@ func TestUsageCountsCache(t *testing.T) {
 // and on a subagent run's row as its stream finishes, before its tools run,
 // so a count moves during the turn instead of only when it ends.
 func TestStreamBillsLiveTally(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	u := fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3}
@@ -124,6 +128,7 @@ func (streamOnly) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse,
 // TestGenerateStreams: titles, summaries and the reflector stream, since
 // Anthropic's SDK refuses a large max_tokens without streaming.
 func TestGenerateStreams(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
 	maxOut := int64(128_000)

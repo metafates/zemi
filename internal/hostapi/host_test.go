@@ -197,6 +197,7 @@ func waitFor(t *testing.T, cond func() error) {
 // plugin test boot; TestTypesCoverAPI, TestTypesDeclareNothingExtra and
 // TestTypesEnums pin every member.
 func TestNamespaceVersion(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		assert(zemi.api.version == "0.130.0", "version=" .. tostring(zemi.api.version))
@@ -273,6 +274,7 @@ func TestReloadConfig(t *testing.T) {
 // TestErrorsFromLua: the agent reads zemi's own failures through the lua
 // tool, so debugging zemi does not depend on the user reading the screen.
 func TestErrorsFromLua(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	h.RecordError("boot", `init.lua:1: zemi.provider.add: provider "x" already registered`)
 	runUser(t, r, `
@@ -287,6 +289,7 @@ func TestErrorsFromLua(t *testing.T) {
 // reload must not run its on_select, which belongs to the retired LState
 // (DESIGN §4).
 func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -323,6 +326,7 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 // TestOverlayItemsRenderOnOpen: render_item and format_item run when the
 // overlay opens, so the UI never calls Lua to draw it.
 func TestOverlayItemsRenderOnOpen(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -370,6 +374,7 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 // Lua, emit from Lua, payload attribution (from = emitting origin), and the
 // host-owned-prefix emit refusal.
 func TestEventRoundTrip(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		captured = nil
@@ -392,6 +397,7 @@ func TestEventRoundTrip(t *testing.T) {
 // action (the Go-reserved one is refused), key names normalize, and user
 // config can remove a shipped default.
 func TestKeymapFromLua(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	if err := h.Keymaps.Set(&KeyBinding{Key: "tab", RHS: RHS{API: "zemi.ui.help"}, Origin: lua.OriginBuiltin}); err != nil {
 		t.Fatal(err)
@@ -469,6 +475,7 @@ func (c *waitedCtx) Done() <-chan struct{} {
 // not make that Lua look like render code (project config registering a
 // widget during the trust prompt was refused).
 func TestRenderGuardOnlyWhileRendering(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	w := h.Widgets.List()[0]
@@ -494,6 +501,7 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 // may call the luaReadOnly readers, and any other call, a wait or a disk
 // read raises naming it; a clean render comes back sanitized.
 func TestRenderAllowlist(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	cases := []struct{ call, refused string }{
 		{`zemi.config.get("ui.mouse")`, ""},
@@ -549,6 +557,7 @@ func TestRenderAllowlist(t *testing.T) {
 // aggregates with its reason, a wedged handler times out at the veto
 // deadline without wedging the interpreter, and the host default applies.
 func TestEmitVetoable(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.event.on("composer.submit", function(ev)
@@ -592,6 +601,7 @@ func TestEmitVetoable(t *testing.T) {
 // a value of the wrong kind for a key with choices names them, and the value
 // applies to the store.
 func TestConfigSetGating(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project config set memory.autonomy: %v", err)
@@ -611,6 +621,7 @@ func TestConfigSetGating(t *testing.T) {
 // added; bare, it lists every theme, the light twins included, and the
 // list stays open over a pick with the current row moved.
 func TestThemeCommand(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -657,6 +668,7 @@ func TestThemeCommand(t *testing.T) {
 // TestConfigSet: /config set takes the words /config and the pickers show
 // for a value, and /config lua writes a number as typed.
 func TestConfigSet(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
 		path  string
@@ -729,6 +741,7 @@ func TestLuaLiteral(t *testing.T) {
 // would wedge it; the callback runs as its registration origin (its own
 // zemi.config.set would otherwise be refused), and the chunk finishes.
 func TestConfigWatchNoDeadlock(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.config.watch("ui.completion.files", function(nv, ov)
@@ -745,6 +758,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 }
 
 func TestSetModelFiresWatches(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.config.watch("models.chat", function(nv) zemi.state.set("picked", nv) end)
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
@@ -768,6 +782,7 @@ func TestSetModelFiresWatches(t *testing.T) {
 // TestScrollRefusedBelowUser: code below user config may not scroll the
 // user's screen, while shipped code may.
 func TestScrollRefusedBelowUser(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHostDB(t)
 	for _, o := range []lua.Origin{lua.OriginPlugin, lua.OriginProject} {
 		if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom")`, "x.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") {
@@ -782,6 +797,7 @@ func TestScrollRefusedBelowUser(t *testing.T) {
 // TestEventLogFromLua: emissions are logged and counted with no handler
 // registered, and notifications are listed, newest first.
 func TestEventLogFromLua(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
 	h.EmitAsync("agent.text_delta", map[string]any{"text": "x"})
@@ -811,6 +827,7 @@ func TestEventLogFromLua(t *testing.T) {
 // Sessions belong to the per-project store and user memories to the
 // global one (DESIGN §7); the two open together and are easy to swap.
 func TestStoresByScope(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	if h.memoryDB("user") != h.GlobalDB || h.memoryDB("project") != h.DB {
 		t.Fatal("memory scope maps to the wrong store")
@@ -929,6 +946,7 @@ func TestShortOutput(t *testing.T) {
 // TestOverlayCallbackErrorsRecorded: a raising on_select or on_close reaches
 // /errors, like a timer's or an event handler's.
 func TestOverlayCallbackErrorsRecorded(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	var boom *glua.LFunction
 	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
@@ -954,6 +972,7 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 // user waits on, and a narrow one drops that name before the key that stops it
 // and the clock that shows it alive.
 func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: testEpoch}
 	h := newTestHostUI(t, clock)
 	defer h.Busy("Reflecting", func() {})()

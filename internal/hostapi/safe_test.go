@@ -12,6 +12,7 @@ import (
 // TestPanicsDoNotKillZemi: a panicking host goroutine is recovered into
 // /errors, and a turn that panics leaves the agent idle, not stuck active.
 func TestPanicsDoNotKillZemi(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	done := make(chan struct{})
 	h.GoSafe("test", func() {
@@ -51,6 +52,7 @@ func TestPanicsDoNotKillZemi(t *testing.T) {
 // Reasoning mid-step settles the finished call and keeps the open one live,
 // which the end then marks failed, or stopped after an interrupt.
 func TestFailedTurnLeavesErrorRow(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	sa := &streamAdapter{h: h}
 	for _, c := range []struct {
@@ -83,6 +85,7 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 // TestBuiltinSkillsShipEnabled: zemi's self-knowledge skill is written to
 // the data dir, discovered as builtin and enabled by default.
 func TestBuiltinSkillsShipEnabled(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	h.syncSkills()
 	s, ok := h.skillsReg.get("zemi")

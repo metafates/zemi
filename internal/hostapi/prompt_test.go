@@ -29,6 +29,7 @@ import (
 // tool's listing would, and it and the commit subjects go out only while
 // the project is trusted.
 func TestSystemPromptSections(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkillsNoBoot(t)
 	os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("my own rules"), 0o644)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make test"), 0o644)
@@ -86,6 +87,7 @@ func TestSystemPromptSections(t *testing.T) {
 // no tool the profile dropped, the shipped lean one included, which must
 // keep the file tools and what shell hands a timed out command to.
 func TestPromptFollowsToolSet(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
 	pad := h.ScratchDir()
@@ -241,6 +243,7 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 // most specific file is whole and the general one is the one named as cut
 // or left out.
 func TestInstructionBudget(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	dir := t.TempDir()
 	big, small := filepath.Join(dir, "BIG.md"), filepath.Join(dir, "SMALL.md")
@@ -262,6 +265,7 @@ func TestInstructionBudget(t *testing.T) {
 // TestUserInstructionsOwnBudget: a repository AGENTS.md over the budget is
 // cut, and the user's own file still ships whole.
 func TestUserInstructionsOwnBudget(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.Dirs.ConfigHome = t.TempDir()
 	h.SetProjectTrusted(true)
@@ -498,6 +502,7 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 // message (system text and tool definitions) stays under a ceiling, so the
 // base cannot grow unnoticed.
 func TestPromptBudget(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)

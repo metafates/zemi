@@ -10,6 +10,7 @@ import (
 // TestLogsRing: print and zemi.log lines land in the ring /logs shows and
 // zemi.log.list reads back, newest first.
 func TestLogsRing(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)

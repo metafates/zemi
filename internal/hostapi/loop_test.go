@@ -206,6 +206,7 @@ func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 
 // TestSetLoopRefuses: what /loop refuses before anything runs.
 func TestSetLoopRefuses(t *testing.T) {
+	t.Parallel()
 	h, _ := newLoopHost(t)
 	for _, c := range []struct{ args, want string }{
 		{"30s check", "every 1m to 24h"},

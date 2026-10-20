@@ -13,6 +13,7 @@ import (
 // TestThoughtRowLandsWhenItsCallStarts: the thought the call after it closes
 // is a row of the rail while the turn runs, not one step later with the reply.
 func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	var calls atomic.Int64
 	var park, unpark sync.Once
@@ -115,6 +116,7 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 // the chat draws none of the session turn's pending "thinking" row there -
 // it would stand at the bottom of every running run.
 func TestViewedRunDrawsNoPendingRow(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{})
 	def := AgentDef{Name: "explore"}
@@ -142,6 +144,7 @@ func TestViewedRunDrawsNoPendingRow(t *testing.T) {
 // the session's turn does - the tail under a live thinking row - and the
 // thought settles as one row where the call that ends it lands.
 func TestViewedRunThinksLive(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{})
 	def := AgentDef{Name: "explore"}

@@ -232,6 +232,7 @@ func fakeObject(t *testing.T, body string) (*httptest.Server, func() string) {
 // object_mode. The mode a user pinned is the route the request takes, and every
 // route ends in the decoded value.
 func TestModelAskObjectMode(t *testing.T) {
+	t.Parallel()
 	const ask = `local v, raw, err = zemi.model.ask({
 			prompt = "Is it safe?",
 			schema = { type = "object", properties = { allow = { type = "boolean" } }, required = { "allow" } },

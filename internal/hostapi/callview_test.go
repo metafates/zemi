@@ -12,6 +12,7 @@ import (
 // TestCallView: a row's view takes its facts from the call and draws what the
 // call wrote in the form it is written in, apart from what it acted on.
 func TestCallView(t *testing.T) {
+	t.Parallel()
 	h, _ := newLoopHost(t)
 	ui := h.hooks().(*fakeUI)
 	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "go test ./...", Label: "run the tests", Status: CallErr, Output: "FAIL\nmain_test.go"})
@@ -95,6 +96,7 @@ func TestCallView(t *testing.T) {
 // TestCallRowInAView: the chat shows a run's own rows while a run is on
 // screen, so the index names those.
 func TestCallRowInAView(t *testing.T) {
+	t.Parallel()
 	h, _ := newLoopHost(t)
 	h.AppendChat(ChatMessage{Role: "user", Text: "the session's"})
 	h.tMu.Lock()

@@ -13,6 +13,7 @@ import (
 // TestJobStartFailure: a command that cannot start is a runtime failure,
 // so job.start and job.wait return nil, err instead of raising (DESIGN §6.0).
 func TestJobStartFailure(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		local res, err = zemi.job.wait({ cmd = "zemi-no-such-binary" })
@@ -23,6 +24,7 @@ func TestJobStartFailure(t *testing.T) {
 }
 
 func TestJobHandleColonCalls(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
 		local j = zemi.job.start({ cmd = "cat", stdin = true })
@@ -36,6 +38,7 @@ func TestJobHandleColonCalls(t *testing.T) {
 // TestJobCwd: a job's cwd resolves against the project dir, and one outside
 // the project starts like any other.
 func TestJobCwd(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
 		t.Fatal(err)
@@ -55,6 +58,7 @@ func TestJobCwd(t *testing.T) {
 // TestFsDataDir: user code reads and writes its data dir and may hand it to
 // the editor; plugin code gets no path to it.
 func TestFsDataDir(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
 	runUser(t, r, `
@@ -82,6 +86,7 @@ func TestFsDataDir(t *testing.T) {
 // TestUiEditNoRoots: zemi.ui.edit resolves a relative path against the
 // project dir and opens one outside it, with the read gate still running.
 func TestUiEditNoRoots(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	outside := filepath.Join(outsideTemp(t), "a.txt")
 	for _, c := range []struct{ name, path string }{
@@ -95,6 +100,7 @@ func TestUiEditNoRoots(t *testing.T) {
 // TestLuaFsOutsideTheProject: a path outside the project and the config home
 // is no longer refused at resolution, and the lua.fs.write gate still runs.
 func TestLuaFsOutsideTheProject(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	file := filepath.Join(outsideTemp(t), "notes.txt")
 	// an inert boot refuses every gated call but a read, so the refusal is
@@ -113,6 +119,7 @@ func TestLuaFsOutsideTheProject(t *testing.T) {
 // TestBrainFilesFromLua: a brain file is in no root of its own, so Lua reads
 // and writes one like any other file, through the gates (DESIGN §10.8).
 func TestBrainFilesFromLua(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	user, private := h.brainParts()

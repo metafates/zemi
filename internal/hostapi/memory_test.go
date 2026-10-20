@@ -129,6 +129,7 @@ func supersededBy(t *testing.T, h *Host, oldID string) string {
 // TestRememberStoresUserOrigin covers /memory <note>: user origin,
 // project scope, autonomy gate bypassed, a secret and empty text refused.
 func TestRememberStoresUserOrigin(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 
 	if err := h.Remember("   "); err == nil {
@@ -156,6 +157,7 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 // TestMemoryUpdatedAtIsTheWrite: /memory ages a line by the clock its write ran
 // on, not by the day memories.md stores.
 func TestMemoryUpdatedAtIsTheWrite(t *testing.T) {
+	t.Parallel()
 	h, clock := newLoopHost(t)
 	at := testEpoch.Add(18 * time.Hour) // the day the line stores is 18h before this
 	clock.set(at)
@@ -179,6 +181,7 @@ func TestMemoryUpdatedAtIsTheWrite(t *testing.T) {
 // near-duplicate names the row it repeats, user config before a session
 // writes the user's own memory, and auto stores a plain fact with its id.
 func TestMemoryAddAutonomyGate(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
@@ -583,6 +586,7 @@ func TestMemoryGate(t *testing.T) {
 // TestMemoryDelOriginGate pins the review guard: model and plugin
 // origins may never delete through Lua; user origin may.
 func TestMemoryDelOriginGate(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 	m := &store.Memory{Scope: "project", Text: "old note about the pipeline", ProvenanceSessionID: "seed", Origin: store.OriginLearned}
@@ -604,6 +608,7 @@ func TestMemoryDelOriginGate(t *testing.T) {
 // covers §10.7: the session's prompt carries the memories it started with
 // (TestPromptPinned keeps later ones out).
 func TestBrainAtSessionStart(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 
@@ -780,6 +785,7 @@ func TestEditMemory(t *testing.T) {
 // TestMoveMergeKeepsUserOrigin: moving a user's memory onto a learned copy
 // of the same text leaves that copy user-attested.
 func TestMoveMergeKeepsUserOrigin(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	if err := h.Remember("deploy by hand"); err != nil {
@@ -796,6 +802,7 @@ func TestMoveMergeKeepsUserOrigin(t *testing.T) {
 }
 
 func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	// no origin: the store refuses the row, after the proposal was taken
 	payload, _ := json.Marshal(memoryProposal{ID: "pp1dp1dp", Scope: "project", Text: "unstorable"}, json.Deterministic(true))
@@ -978,6 +985,7 @@ func TestMemoryFileMode(t *testing.T) {
 
 // TestMemoryFileRefusesUserBrain pins the user partition's refusal (DESIGN §10.4).
 func TestMemoryFileRefusesUserBrain(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	user, _ := h.brainParts()
@@ -1494,6 +1502,7 @@ func TestMemorySearch(t *testing.T) {
 }
 
 func TestMemoryCommandsRegistered(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	if err := h.BuiltinCommandsStep().Run(t.Context(), h.RT, &lua.Generation{ID: 1}); err != nil {
 		t.Fatalf("step: %v", err)

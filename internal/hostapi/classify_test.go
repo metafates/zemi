@@ -232,6 +232,7 @@ func TestClassifyAsk(t *testing.T) {
 // TestClassifyAskErrors: a call no strategy answered is an error, and so is a
 // question zemi cannot put to a model.
 func TestClassifyAskErrors(t *testing.T) {
+	t.Parallel()
 	f := newEndpoint(t, func(string) string { return "not json" })
 	h, r := newTestHostDB(t)
 	runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`, f.srv.URL))
@@ -270,6 +271,7 @@ func TestClassifyAskErrors(t *testing.T) {
 // a model, and the picker offers decisions models to the slots that classify
 // alone.
 func TestClassifyGate(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostPlugin(t, `["model"]`)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -324,6 +326,7 @@ func TestClassifyGate(t *testing.T) {
 // the chat path uses, whose header timeout bounds a gateway that accepts the
 // connection and then says nothing.
 func TestClassifyProtocolClient(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true } } })`)
 	req, err := h.classifyRequest("jev/m", "", nil, nil)
@@ -396,6 +399,7 @@ end)`), 0o600); err != nil {
 // of asking for probabilities that never come and re-sending the state at every
 // depth.
 func TestLogprobKinds(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.provider.add({ id = "c", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
 		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "m" } } })

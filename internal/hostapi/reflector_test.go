@@ -521,6 +521,7 @@ func TestReflectPrompt(t *testing.T) {
 // rewrite, accepting after a move deletes it where it went, and a pending
 // forget does not block saving its text again.
 func TestReflectForgetThroughReview(t *testing.T) {
+	t.Parallel()
 	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "merged", "deleted"} {
 		h, r := newTestHostDB(t)
 		h.Settings.SetQuiet("memory.autonomy", "ask")
@@ -619,6 +620,7 @@ func TestReflectBadOutput(t *testing.T) {
 // the deadline lives in the caller (runReflectDetached), so the test
 // applies one.
 func TestReflectTimeout(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)

@@ -91,6 +91,7 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 // an edited editor config, and leaves the file alone when it already says that
 // or is a link, whose target is not zemi's.
 func TestSyncTypesWritesAnnotations(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
 	root, elsewhere := h.Dirs.PluginsRoot(), t.TempDir()
@@ -338,6 +339,7 @@ func TestTypesEnums(t *testing.T) {
 }
 
 func TestTypesHostActions(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	var live []string
 	for name, fn := range h.hostActions {
@@ -351,6 +353,7 @@ func TestTypesHostActions(t *testing.T) {
 // TestTypesWidgetCtx: every key a render's ctx holds is annotated, and every
 // annotated field that is not optional reads non-nil (the lazy ones too).
 func TestTypesWidgetCtx(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	var fields strings.Builder
 	for _, m := range regexp.MustCompile(`(?m)^---@field ([a-z_]+)(\??) `).FindAllStringSubmatch(annotatedClass(t, "zemi.WidgetCtx"), -1) {

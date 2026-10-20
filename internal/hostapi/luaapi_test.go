@@ -69,6 +69,7 @@ func TestLuaAPIAdditions(t *testing.T) {
 // TestAgentAssemble: user handlers add labeled prompt sections, project
 // handlers are ignored.
 func TestAgentAssemble(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("agent.assemble", function(ev)
 		return { title = "branch", text = "on main in " .. ev.cwd }
@@ -88,6 +89,7 @@ func TestAgentAssemble(t *testing.T) {
 // TestLuaHTTPNetworkRules: http.get refuses schemes and URLs a request
 // cannot make safely, whatever the mode allows.
 func TestLuaHTTPNetworkRules(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHostDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
@@ -107,6 +109,7 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 // headers and body; command del and inline run; fs list/stat/exists/mkdir/
 // remove and ** globs; streaming job callbacks ending with on_exit.
 func TestLuaAPIIO(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		b, _ := io.ReadAll(req.Body)
@@ -182,6 +185,7 @@ func TestLuaAPIIO(t *testing.T) {
 // TestKeySequences: <leader> expands to keymap.leader, sequences register
 // as prefixes, and a sequence may not start with a printable key.
 func TestKeySequences(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.keymap.set("<leader>gs", "zemi.ui.help")
@@ -200,6 +204,7 @@ func TestKeySequences(t *testing.T) {
 // theme takes only the palette roles and ansi, and ui.theme may name one
 // before it is added.
 func TestHighlightOverride(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.ui.theme.add("t", { bg = "#101010", fg = "#e0e0e0", accent = "#8899ff", ok = "#88dd88", warn = "#dddd66", danger = "#ee6666" })
@@ -258,6 +263,7 @@ func TestHighlightOverride(t *testing.T) {
 // one, del reports whether there was one, and code below builtin cannot
 // print to the shell on quit. A priority between two others stays between.
 func TestWidgetOrigins(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", priority = 41.5, render = function() return {} end })
 		assert(zemi.ui.widget.list()[1].priority == 41.5)`)
@@ -273,6 +279,7 @@ func TestWidgetOrigins(t *testing.T) {
 // TestPurgeStopsLuaWork: a reload stops the jobs, agents and workflows Lua
 // started, which would otherwise run on with nobody left to hear from them.
 func TestPurgeStopsLuaWork(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return newGate(), nil } // agents wait for the cancel
 	runUser(t, r, `
@@ -302,6 +309,7 @@ func TestPurgeStopsLuaWork(t *testing.T) {
 // refused, nil gives it back to the session, and so does a reload that does
 // not set it again.
 func TestTerminalTitle(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	if got := h.TerminalTitle(); got != "zemi" {
 		t.Fatalf("default title %q", got)
@@ -328,6 +336,7 @@ func TestTerminalTitle(t *testing.T) {
 // TestToolPromptFollowsTheTool: a Lua tool's prompt ships only to a run that
 // has the tool, in name order, and never from project code.
 func TestToolPromptFollowsTheTool(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	add := `zemi.tool.add({ name = %q, description = "d", prompt = %q, execute = function() return "" end })`
 	runUser(t, r, fmt.Sprintf(add, "zeta", "use zeta last")+"\n"+fmt.Sprintf(add, "alpha", "use alpha first"))

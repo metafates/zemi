@@ -38,6 +38,7 @@ func TestTaskRegEviction(t *testing.T) {
 // host and the ctx go on reporting it after the registry forgets it past
 // maxKeptRuns.
 func TestViewedRunOutlivesTheRegistry(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
 	shown := &agentRun{id: "shown", agent: "explore", status: "done", started: time.Now()}
@@ -120,6 +121,7 @@ func TestBackgroundCap(t *testing.T) {
 // finishes; the report then arrives as a message that starts a new turn,
 // shown in the transcript as a one-line notice.
 func TestBackgroundAgent(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{}) // a detached run needs the TUI: headless it runs inline
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600); err != nil {
@@ -188,6 +190,7 @@ func TestBackgroundAgent(t *testing.T) {
 // boundary draws its notice under the reply streamed so far, where the
 // model reads it, never above the turn's rows.
 func TestReportNoticeWhereRead(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	h.agents.mu.Lock()
@@ -208,6 +211,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 // own end revises that row and stores how it ended, so neither the chat nor
 // /agents reads a finished run as still going or a failed one as done.
 func TestRunRowFollowsItsRun(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	if err := h.DB.CreateSession("r1", sid, "look around", "explore"); err != nil {
@@ -278,6 +282,7 @@ not a report
 // markup draws a row of each, and taking the queue back returns the typed line
 // while the markup stays queued for the model.
 func TestMixedMessageRows(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	markup := agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found")
 	h.agents.mu.Lock()
@@ -304,6 +309,7 @@ func TestMixedMessageRows(t *testing.T) {
 // back what waits for that run, leaving the session's own queue alone, and a
 // report riding it stays queued for the model.
 func TestViewedRunTakesItsQueueBack(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look around", "look", true)
@@ -477,6 +483,7 @@ func TestQueueDroppedOnFailure(t *testing.T) {
 // TestAgentItemsListRunsOfOtherSessions: a run left behind by /new still
 // blocks /rewind, so /agents lists it under Running, named by its session.
 func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	if err := h.DB.CreateSession("other", "", "Other work", ""); err != nil {
@@ -511,6 +518,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 }
 
 func TestAgentSendsWhileBackground(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "d", "look", true)
@@ -556,6 +564,7 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 // the user moved on is stored in the session that started the run, so a
 // resume shows it and the next send carries it.
 func TestReportStoredWhenSessionMoved(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	release := make(chan struct{})
@@ -603,6 +612,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 // TestSendTo: a continuation keeps the run's model and its row counts only
 // its own calls; another session's run is refused.
 func TestSendTo(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{}) // send_to is a TUI feature
 	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k", models = { { id = "a", max_output = 1000 }, { id = "b", max_output = 2000 } } })`)
@@ -640,6 +650,7 @@ func TestSendTo(t *testing.T) {
 // TestStopWording: a stopped run reads as stopped, whoever stopped it,
 // and /agents stop with nothing to stop says how to name one.
 func TestStopWording(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(func(string)) (string, error) {
 		return "", context.Canceled

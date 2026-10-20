@@ -165,6 +165,7 @@ func goalRows(tr []ChatMessage) []string {
 
 // TestSetGoalRefuses: what /goal refuses before anything is sent.
 func TestSetGoalRefuses(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	plannerProfile(t, r)
 	for _, c := range []struct{ args, want string }{

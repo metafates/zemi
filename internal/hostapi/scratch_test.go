@@ -16,6 +16,7 @@ import (
 // pad while anything in it moved within the TTL, whatever its own directory
 // time says.
 func TestScratchSweep(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.agents.sessionID = store.ShortID()
 	live := h.ScratchDir()
@@ -54,6 +55,7 @@ func TestScratchSweep(t *testing.T) {
 // the pad its prompt names with no ask and its commands get it as $TMPDIR;
 // another session's pad is not the run's to use.
 func TestPadBoundPerPipeline(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	runUser(t, r, `

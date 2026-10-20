@@ -47,6 +47,7 @@ func pinBrain(t *testing.T, h *Host) {
 // hash moves the context key at a build, and the stored role-"context" row
 // replays while the key matches.
 func TestBrainKeyAndReplay(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := h.ensureSession(nil, "hello"); err != nil {
@@ -109,6 +110,7 @@ func TestBrainKeyAndReplay(t *testing.T) {
 // catalog and the memory lines, and no byte of the private partition; trust
 // adds the private catalog.
 func TestBrainRenderTrust(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
@@ -157,6 +159,7 @@ func TestBrainRenderTrust(t *testing.T) {
 // pinned render at once, so a revoke drops the private catalog before the
 // next send re-pins (DESIGN §10.7) and a grant brings it back without a compaction.
 func TestBrainRebuildsOnTrustFlip(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
@@ -199,6 +202,7 @@ func TestBrainRebuildsOnTrustFlip(t *testing.T) {
 // memory lines; the cut markers name paths; the instruction sections' budget
 // is untouched by the render.
 func TestBrainCatalogCaps(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
@@ -246,6 +250,7 @@ func TestBrainCatalogCaps(t *testing.T) {
 // in trusted projects only, user globs in every project; three pointers a
 // result at most, the rest one aggregate line.
 func TestBrainPointers(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
@@ -471,6 +476,7 @@ func TestBrainAfterWrite(t *testing.T) {
 // scrub note, and the write set gains the entry a later file-mode apply of
 // the same session checks (DESIGN §10.4).
 func TestBrainWriteToolScrubs(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})
@@ -507,6 +513,7 @@ func TestBrainWriteToolScrubs(t *testing.T) {
 // rewrites, so a brain file a rename edits as a secondary target is scrubbed,
 // linted and joined to the write set, the notes one block (DESIGN §10.4).
 func TestBrainRenameScrub(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	defer func() { h.lsp.stopAll()() }()
 	h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})

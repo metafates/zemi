@@ -19,6 +19,7 @@ import (
 // name and refuses when there is none, never calling into the old
 // generation (DESIGN §4).
 func TestLuaToolAfterReload(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ reloaded, want string }{
 		{`zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "rain" end })`, "rain"},
 		{"", "weather: the tool is gone after a config reload"},
@@ -39,6 +40,7 @@ func TestLuaToolAfterReload(t *testing.T) {
 // TestLuaToolAskCarriesWholeInput: the ask's preview is the whole input, so
 // the user approves what will run.
 func TestLuaToolAskCarriesWholeInput(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -56,6 +58,7 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 // TestToolPreHandlerErrorRecorded: a tool.pre handler that raises lets the
 // call proceed, and one that raises or returns a bad shape shows in /errors.
 func TestToolPreHandlerErrorRecorded(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ body, want string }{
 		{`return ev.input.path:match("%.env$") and { decision = "deny" }`, ""},
 		{`return "deny"`, "deny"},
@@ -69,6 +72,7 @@ func TestToolPreHandlerErrorRecorded(t *testing.T) {
 }
 
 func TestLuaToolFailures(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.tool.add({
 		name = "ticket", description = "look up a ticket",
@@ -172,6 +176,7 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 // command runs meanwhile (here it is what ends the wait), and a reload ends
 // the wait at once with a tool error (DESIGN §4).
 func TestLuaToolWaitFreesInterpreter(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ act, want string }{
 		{"command", "hi"},
 		{"reload", "reload"},
@@ -255,6 +260,7 @@ func TestToolPostRewrite(t *testing.T) {
 // TestTurnTelemetry: a Lua tool's run:progress shows on its row, and each
 // model call of the turn emits agent.step with its tool calls.
 func TestTurnTelemetry(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
 		zemi.tool.add({ name = "fetch3", description = "fetch", execute = function(_, run)

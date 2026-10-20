@@ -26,6 +26,7 @@ import (
 // takes writes without asking, and memory edits apply only when autonomy
 // lets them.
 func TestAgentSelfAccess(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.ProjectDir = outsideTemp(t)
 	h.agents.sessionID = "s1"
@@ -185,6 +186,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 // TestLuaToolCeiling: a script the ceiling stops is told so, not "context
 // canceled", and a table error value reads as JSON.
 func TestLuaToolCeiling(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	old := luaToolCeiling
@@ -212,6 +214,7 @@ func TestLuaToolCeiling(t *testing.T) {
 // TestLuaToolPath: a script file is read the way the read tool reads it,
 // and a path that is not a script is refused.
 func TestLuaToolPath(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	outside := filepath.Join(outsideTemp(t), "x.lua")
@@ -289,6 +292,7 @@ func TestLuaToolReloads(t *testing.T) {
 // pipeline a direct call takes, only what the script prints comes back, and a
 // script that only drives tools asks nobody.
 func TestLuaToolDrivesTools(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	file := filepath.Join(h.Dirs.ProjectDir, "a.txt")

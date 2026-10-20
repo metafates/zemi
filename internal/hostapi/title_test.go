@@ -12,6 +12,7 @@ import (
 // turns keep it. The title call carries the provider's body fields like a
 // turn does.
 func TestAutoTitle(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "c", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", body = { service_tier = "flex" }, models = { { id = "m" } } })
@@ -43,6 +44,7 @@ func TestAutoTitle(t *testing.T) {
 // TestHeadlessTurnNamesNoTitle: the session keeps its first line as the
 // title, stored whole since every screen cuts it to fit.
 func TestHeadlessTurnNamesNoTitle(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "Parser Fix")
 	h.reflectMu.Lock() // no detached reflector in this test

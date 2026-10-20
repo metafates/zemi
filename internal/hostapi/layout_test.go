@@ -19,6 +19,7 @@ import (
 // UI loads is the one runtime/lua/zemi/tui/layout.lua sets, so a change to
 // either cannot quietly draw another screen.
 func TestDefaultLayoutMatchesShipped(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t) // boots zemi.tui, which requires tui/layout.lua
 	if h.layout.Load() == nil {
 		t.Fatal("the shipped tui/layout.lua set no layout")

@@ -10,6 +10,7 @@ import (
 // TestErrorLog: recorded errors raise the badge, the log keeps only the
 // newest errLogMax, keeps a repeat once at its later time, and opening /errors clears the badge.
 func TestErrorLog(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)

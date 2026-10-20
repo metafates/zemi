@@ -21,6 +21,7 @@ var undocumented = map[string]string{}
 // action or slash command is missing from every builtin skill, so zemi's
 // knowledge of itself cannot drift silently.
 func TestSkillsCoverSurface(t *testing.T) {
+	t.Parallel()
 	text := skillsText(t)
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{
@@ -56,6 +57,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 // TestBuiltinSkillDescriptionsFitIndex: a builtin description over the cap
 // would fail discovery and vanish from the index.
 func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
 	if err := h.materializeBuiltinSkills(); err != nil {
@@ -86,6 +88,7 @@ func TestBuiltinSkillsFitTheSkillTool(t *testing.T) {
 // prompt names exists in the skill that names it, and every builtin skill's
 // SKILL.md routes to every file beside it.
 func TestBuiltinSkillReferences(t *testing.T) {
+	t.Parallel()
 	bodies := builtinSkillBodies(t)
 	h, _ := newTestHost(t)
 	// the lua tool names its file by the synced path

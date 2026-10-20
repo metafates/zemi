@@ -49,6 +49,7 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 // names the zemi skill files it follows by a path the read tool opens, which
 // holds with the skill switched off.
 func TestCommandSendsTypedLine(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
@@ -113,6 +114,7 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 // TestMaxStepsSetting: agent.max_steps reaches both runners the host builds,
 // the send's own and every run's, so one low value stops a subagent too.
 func TestMaxStepsSetting(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "")
 	if _, err := h.Settings.SetQuiet("agent.max_steps", 7.0); err != nil {
@@ -146,6 +148,7 @@ func TestMaxStepsSetting(t *testing.T) {
 }
 
 func TestProfileTemperatureReachesRunner(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	reflectStub(t, h, "")
 	runUser(t, r, `zemi.agent.profile.add("warm", { temperature = 0.3 })`)
@@ -169,6 +172,7 @@ func TestProfileTemperatureReachesRunner(t *testing.T) {
 // TestProviderBody: extra request-body fields are kept on the spec, and a
 // kind whose requests cannot carry them is refused where it is written.
 func TestProviderBody(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", api_key = "k",
@@ -187,6 +191,7 @@ func TestProviderBody(t *testing.T) {
 }
 
 func TestCheckToolNames(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.tool.add({ name = "ticket", description = "a ticket", execute = function() end })
@@ -349,6 +354,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 // never reach the model raises instead of registering (DESIGN §6.0), and
 // the builtin-name shadowing ban holds (DESIGN §6.4).
 func TestToolRegisterValidation(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 
 	for _, c := range []struct{ src, want string }{
@@ -431,6 +437,7 @@ func TestModelNamespace(t *testing.T) {
 // TestSessionNamespace covers the session surface: empty id before the
 // first send, title set, and store-backed session creation.
 func TestSessionNamespace(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 
 	runUser(t, r, `
@@ -461,6 +468,7 @@ func TestSessionNamespace(t *testing.T) {
 // turn with active and a cancellable scope held across the handoff, and
 // cancel is safe without a runner.
 func TestSteeringQueue(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	claim := func() *turnScope {
 		h.agents.mu.Lock()
@@ -578,6 +586,7 @@ func TestSteeringQueue(t *testing.T) {
 // markup alone, so the chat draws a notice row per head and the model's message
 // leaves no blank user row in the transcript.
 func TestJoinedReportsDrawHeads(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	headless := func(run string) string {
 		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"look around\">\nfound it\n</agent-report>\n</attached-files>"
@@ -611,6 +620,7 @@ func TestJoinedReportsDrawHeads(t *testing.T) {
 // second turn's prompt still carries the first exchange (system, context,
 // user, assistant, user), and both turns land in the transcript.
 func TestHistoryCarriesAcrossTurns(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	for _, text := range []string{"one", "two"} {
@@ -632,6 +642,7 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 // unanswered ask fails closed when no UI is attached, and an asker resolves
 // it (DESIGN §6.2).
 func TestPipelineForCheck(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	askEverything(t, r)
 	pipe := h.PipelineFor()
@@ -659,6 +670,7 @@ func TestPipelineForCheck(t *testing.T) {
 // TestStoreBackedState runs its steps in order against one global store:
 // a lower origin neither reads nor clobbers a user key (DESIGN §6.5).
 func TestStoreBackedState(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHostDB(t)
 	for _, step := range []struct {
 		name   string
@@ -771,6 +783,7 @@ func (f *fakeUI) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool
 // it: under ask autonomy the memory queues for review, and the answer says
 // so.
 func TestMemoryToolThroughPipeline(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
@@ -803,6 +816,7 @@ func TestMemoryToolThroughPipeline(t *testing.T) {
 // the chosen label comes back as the tool output; with no UI the pipeline
 // has no question hook, so the tool tells the model nobody can answer.
 func TestPipelineQuestionToolEndToEnd(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	ui := &fakeUI{qAnswer: "proceed", qOK: true}
 	h.SetUIHooks(ui)
@@ -839,6 +853,7 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 // TestPipelineTodos: todos round-trip through the store for the active
 // session.
 func TestPipelineTodos(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 
@@ -1032,6 +1047,7 @@ func TestTodoNag(t *testing.T) {
 // transcript entry carries tokens, thought time and elapsed time; plain
 // appended messages carry none.
 func TestTurnDoneRecordsStats(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sa := h.streamHooks()
 	sa.ReasoningDelta("pondering")
@@ -1104,6 +1120,7 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 // back to pending, so no row of the list reads as running while the agent is
 // idle; the rest of the model's list is kept as it wrote it.
 func TestTurnEndSettlesTodos(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	wrote := []store.Todo{
@@ -1147,6 +1164,7 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 // TestSendWithoutModelLeavesNoSession: a send that cannot resolve a model
 // fails before it creates a session row.
 func TestSendWithoutModelLeavesNoSession(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	if err := h.AgentSend("hi"); !errors.Is(err, ErrNoModel) {
 		t.Fatalf("AgentSend = %v, want ErrNoModel", err)
@@ -1159,6 +1177,7 @@ func TestSendWithoutModelLeavesNoSession(t *testing.T) {
 // TestTurnPricedWithProfileModel: a turn records the model it was built
 // with, so a profile's turn is not priced off the session default.
 func TestTurnPricedWithProfileModel(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	reflectStub(t, h, "ok")
 	runUser(t, r, `
@@ -1217,6 +1236,7 @@ func TestProviderModelNumbers(t *testing.T) {
 // not models.chat; compaction and a subagent without a model follow
 // models.chat, whatever the conversation runs on.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
@@ -1245,6 +1265,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 // TestEffortPicker: /effort lists the levels and the model's own, keys the
 // stored pick, and says what each sends on the conversation's model.
 func TestEffortPicker(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.Providers.Reset(agent.Catalog{Specs: []agent.Spec{{
 		ID: "a", Kind: agent.KindOpenAI, Builtin: true,
@@ -1283,6 +1304,7 @@ func TestEffortPicker(t *testing.T) {
 // TestActiveProfileKey: agent.profile picks the profile a send runs as,
 // whatever order config defined things in; an unknown name fails the send.
 func TestActiveProfileKey(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, src string
 		want      string // the resolved profile, "" for the shipped one
@@ -1373,6 +1395,7 @@ func TestPluginProfile(t *testing.T) {
 // explained only when nothing is usable; a configured id the provider does
 // not list is the selected row, which the reload toast also names.
 func TestModelPickerOdd(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -1422,6 +1445,7 @@ func TestModelPickerOdd(t *testing.T) {
 // key is its slot (models.<name>), and both pickers mark what the next send
 // runs on.
 func TestProfileSwitch(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -1500,6 +1524,7 @@ func TestProfileSwitch(t *testing.T) {
 // profile's context files as written, or the second build joins them to the
 // project directory twice and silently reads nothing.
 func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.agent.profile.add("p", { context = { files = { "NOTES.md" } } })`)
 	p, err := h.resolveProfile("p")
@@ -1516,6 +1541,7 @@ func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
 // TestConcurrentSendsQueue: two sends racing to start a turn run one after
 // the other, so the history keeps both messages.
 func TestConcurrentSendsQueue(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "ok")
 	errs := make(chan error, 2)
@@ -1546,6 +1572,7 @@ func TestConcurrentSendsQueue(t *testing.T) {
 // start, so the failed attempt's text and tool rows are dropped instead of
 // shown twice or as a failed call that never ran.
 func TestRetryRestreamsStep(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	epoch := h.trEpoch.Load()
@@ -1597,6 +1624,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 // thinking the failed attempt streamed, as it drops its text, so the thought
 // that settles is the retried step's own.
 func TestRunRetryDropsItsThought(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	hk := &subagentHooks{h: h, def: builtinAgents[0], run: run}
@@ -1615,6 +1643,7 @@ func TestRunRetryDropsItsThought(t *testing.T) {
 }
 
 func TestMaxOutput(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, vision = false } } })
@@ -1638,6 +1667,7 @@ func TestMaxOutput(t *testing.T) {
 // them, and the agent tool drops background, whose report a run that exits
 // at idle would throw away.
 func TestHeadlessToolsetDropsPrompts(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	names := func() map[string]bool {
 		out := map[string]bool{}
@@ -1680,6 +1710,7 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 // nothing answers to fails, since the tool it meant to drop may run under
 // another name.
 func TestProfileToolsUnknown(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	toolset, err := h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "shell"}})
 	if err != nil || !hasTool(toolset, "shell") || hasTool(toolset, "read") {
@@ -1800,6 +1831,7 @@ func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 // the conversation's tools, runs none of them, is billed, and leaves no row
 // behind; in the TUI it is a busy job esc cancels without a toast.
 func TestBtw(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	stepped := make(chan struct{})
 	m := &btwModel{scriptModel: &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
@@ -1865,6 +1897,7 @@ func TestBtw(t *testing.T) {
 }
 
 func TestRecap(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
 		t.Fatal(err)
@@ -1914,6 +1947,7 @@ func TestRecap(t *testing.T) {
 // the reply started joins the thought above it, live, in a subagent's run and
 // on resume alike, so the reply is never cut after its first word.
 func TestLateReasoningKeepsReplyWhole(t *testing.T) {
+	t.Parallel()
 	const want = "reasoning:pondering summary. | :Here's it"
 	rowsOf := func(tr []ChatMessage) string {
 		var out []string
@@ -1981,6 +2015,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 }
 
 func TestRunFrame(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.setTranscript("t", make([]ChatMessage, 5))
 	for _, c := range []struct {
@@ -2009,6 +2044,7 @@ func TestRunFrame(t *testing.T) {
 // turn marks nothing, so a foreground call in that turn waits as usual - which
 // is what the composer's send does every time it is idle.
 func TestTypedSendMarksOnlyAQueuedMessage(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	gate := make(chan struct{})

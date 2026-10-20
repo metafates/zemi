@@ -36,6 +36,7 @@ func waitIdle(t *testing.T, h *Host) {
 // streamed, and a resume rebuilds the same rows from the store. A report
 // riding the typed message draws under it.
 func TestResumeDrawsLiveRows(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
@@ -82,6 +83,7 @@ assistant/   "done"
 // ran, what it spent, when it ended - matches the live one after a resume,
 // which the stored message rows alone cannot carry.
 func TestResumeKeepsTurnStats(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
@@ -118,6 +120,7 @@ func TestResumeKeepsTurnStats(t *testing.T) {
 // turn), the session's counts and the context the last step used, which only
 // the provider counts.
 func TestResumeParity(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
@@ -204,6 +207,7 @@ func TestResumeParity(t *testing.T) {
 // so /prompt reads it before the first message instead of saying nothing was
 // assembled, and the context it shows is the one the session stored.
 func TestResumePinsThePrompt(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
@@ -252,6 +256,7 @@ func TestResumePinsThePrompt(t *testing.T) {
 // and the model history from the store, in order, and a stored session
 // can be deleted.
 func TestSessionLifecycle(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	// Hold the reflector lock so session close does not start a detached
@@ -381,6 +386,7 @@ func TestSessionLifecycle(t *testing.T) {
 // TestTurnRunningRefusals: what cannot run mid-turn is refused as a usage
 // error, which warns, never as a failure /errors records.
 func TestTurnRunningRefusals(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	h.agents.mu.Lock()
@@ -402,6 +408,7 @@ func TestTurnRunningRefusals(t *testing.T) {
 // as the tool ends, before its call's message, so a resumed session renders
 // it on that call and not on a later one a provider gave the same id.
 func TestResumeKeepsToolDiffs(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
@@ -446,6 +453,7 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 // the title is sanitized and clipped, the live transcript's title moves with
 // it, and an unknown id is named rather than renaming nothing.
 func TestRenameSession(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -488,6 +496,7 @@ func TestRenameSession(t *testing.T) {
 // TestSessionsRowsCarryTheMarker: every top-level session's picker row leads
 // with the marker its id derives, and an untitled one keeps its placeholder.
 func TestSessionsRowsCarryTheMarker(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -518,6 +527,7 @@ func TestSessionsRowsCarryTheMarker(t *testing.T) {
 // TestTerminalTitleNamesTheSession: the tab title leads with the marker the
 // session's id derives.
 func TestTerminalTitleNamesTheSession(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
 	if err := h.RenameSession("", "fix the flaky test"); err != nil {
@@ -533,6 +543,7 @@ func TestTerminalTitleNamesTheSession(t *testing.T) {
 // read, so the next edit is not refused; one touched after the session's
 // last message must be read again.
 func TestResumeSeedsReads(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
@@ -572,6 +583,7 @@ func TestResumeSeedsReads(t *testing.T) {
 // TestSeedReadsUsesTheRowThatReadIt: a file the user changed in the middle
 // of a session is not seeded, however many rows came after the change.
 func TestSeedReadsUsesTheRowThatReadIt(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	p := filepath.Join(t.TempDir(), "a.go")
 	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
@@ -602,6 +614,7 @@ func TestSeedReadsUsesTheRowThatReadIt(t *testing.T) {
 
 // TestForkKeepsTodos: /fork carries the todo list its history set.
 func TestForkKeepsTodos(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock() // no detached reflect run racing the teardown
 	defer h.reflectMu.Unlock()
@@ -624,6 +637,7 @@ func TestForkKeepsTodos(t *testing.T) {
 // TestPlanRowOutput: a plan row shows the verdict, not the text written for
 // the model, both live and after a resume.
 func TestPlanRowOutput(t *testing.T) {
+	t.Parallel()
 	const raw = "The user approved the plan. " + tools.ImplementPlan + "\nThe plan is saved at /p/s1.md."
 	const want = "approved, saved to /p/s1.md"
 	for name, got := range map[string]func() string{

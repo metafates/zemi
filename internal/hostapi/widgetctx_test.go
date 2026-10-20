@@ -21,6 +21,7 @@ import (
 // TestRelpath: a chat row writes a path under the working directory
 // relative to it and one elsewhere under home from ~, as ctx.cwd reads.
 func TestRelpath(t *testing.T) {
+	t.Parallel()
 	runUser(t, newTestHostUI(t).RT, `
 local relpath = require("zemi.tui.text").relpath
 for _, c in ipairs({
@@ -40,6 +41,7 @@ end
 // live, its thinking tail included, and the working rule clocks it; the
 // session's stream, queue and todos stay out of it.
 func TestViewedRunIsTheLiveOne(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
 	const src = `string.format("%s|%s|%d|%d|%d|%s|%s|%s", ctx.agent_active and "active" or "idle",
@@ -102,6 +104,7 @@ func TestViewedRunIsTheLiveOne(t *testing.T) {
 // streams, so the chat can cache the rows it drew of it. The session reports
 // none of its own: its rows are the epoch's.
 func TestViewedRunRevision(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
 	const src = `tostring(ctx.view_revision)`
@@ -181,6 +184,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 // the rail, never folded into a digest, the thought whole only with
 // --reasoning; the splash stays out of it.
 func TestPrintedRender(t *testing.T) {
+	t.Parallel()
 	h := newTestHostUI(t)
 	rows := []ChatMessage{
 		{Role: "assistant", Kind: RowReasoning, Text: "hmm", Stat: &TurnStat{ThoughtMS: 1200}},
@@ -253,6 +257,7 @@ func TestPrintedRender(t *testing.T) {
 // TestWidgetCtxLazy: the built-on-read fields work inside render, and a
 // ctx kept past it keeps what render read and reads nil for the rest.
 func TestWidgetCtxLazy(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	h.AppendMessage("user", "hi")
 	runUser(t, r, `
@@ -322,6 +327,7 @@ func TestConvertSegments(t *testing.T) {
 // leaves odd shapes to them, and converts a line table it saw in the last
 // render only once.
 func TestTableSegments(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		local kept = { { text = "kept" } }
@@ -373,6 +379,7 @@ func TestTableSegments(t *testing.T) {
 // TestInstructionsCached: ctx.instructions reads the instruction files once,
 // not per render, and again after a trust change.
 func TestInstructionsCached(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkills(t)
 	h.SetProjectTrusted(true)
 	runUser(t, r, `zemi.ui.widget.add({ id = "inc", region = "header", render = function(ctx)
@@ -405,6 +412,7 @@ func TestInstructionsCached(t *testing.T) {
 // TestWidgetCtxRecentMarks: the splash's recent rows lead each title with the
 // session's marker, derived from its id.
 func TestWidgetCtxRecentMarks(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	sid := store.ShortID()
 	if err := h.DB.CreateSession(sid, "", "named", ""); err != nil {

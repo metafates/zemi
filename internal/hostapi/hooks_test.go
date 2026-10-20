@@ -114,6 +114,7 @@ func TestClaudeSideYieldsToZemiManifest(t *testing.T) {
 // unsupported hook entries do not, and the MCP servers register under the
 // plugin prefix.
 func TestClaudeHooksLoad(t *testing.T) {
+	t.Parallel()
 	hooks := `{"hooks":{
 		"PostToolUse":[{"matcher":"Bash|Edit","hooks":[{"type":"command","command":"true"}]}],
 		"Stop":[{"hooks":[{"type":"command","command":"true"}]}],
@@ -185,6 +186,7 @@ func TestHookMatcher(t *testing.T) {
 // plugin vars in its environment, the plugin root as its directory and the
 // Claude payload on stdin.
 func TestClaudeHookChild(t *testing.T) {
+	t.Parallel()
 	dst := t.TempDir()
 	envPath, cwdPath, inPath := filepath.Join(dst, "env"), filepath.Join(dst, "cwd"), filepath.Join(dst, "in")
 	drainPath := filepath.Join(dst, "drained")
@@ -349,6 +351,7 @@ func TestClaudePluginLayers(t *testing.T) {
 // TestSessionEndHookSeesEndingSession: the close consult names the session
 // that ended, not the live one the swap already put in place.
 func TestSessionEndHookSeesEndingSession(t *testing.T) {
+	t.Parallel()
 	dst := t.TempDir()
 	inPath := filepath.Join(dst, "in")
 	hooks := fmt.Sprintf(`{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"cat > %s"}]}]}}`, inPath)
@@ -374,6 +377,7 @@ func TestSessionEndHookSeesEndingSession(t *testing.T) {
 // A capture landing while a pin build is in flight (pin.key still empty)
 // invalidates that build, so the text reaches the session's next send.
 func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
+	t.Parallel()
 	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"sleep 0.4; echo late text"}]}]}}`
 	h, _ := claudeFixHost(t, hooks, "{}")
 	h.agents.mu.Lock()
@@ -409,6 +413,7 @@ func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
 
 // The stored context is capped: a chatty hook cannot grow the prompt.
 func TestCaptureContextCapped(t *testing.T) {
+	t.Parallel()
 	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"awk 'BEGIN{for(i=0;i<40000;i++)printf \"x\"}'"}]}]}}`
 	h, _ := claudeFixHost(t, hooks, "{}")
 	h.agents.mu.Lock()
@@ -433,6 +438,7 @@ func TestCaptureContextCapped(t *testing.T) {
 // SessionStart matchers name the start's source, not a tool: a resume-only
 // hook stays quiet on a startup capture.
 func TestSessionStartMatcher(t *testing.T) {
+	t.Parallel()
 	hooks := `{"hooks":{"SessionStart":[
 		{"matcher":"resume","hooks":[{"type":"command","command":"echo resumed"}]},
 		{"matcher":"startup","hooks":[{"type":"command","command":"echo started"}]}]}}`

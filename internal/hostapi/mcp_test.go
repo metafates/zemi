@@ -29,6 +29,7 @@ import (
 // back is one script call away, zemi.tool.list() names it, and the script
 // gets its whole output where a direct call is cut.
 func TestLuaToolDrivesDeferredMCP(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	defer h.mcp.stopParked()
 	defer h.mcp.park()
@@ -101,6 +102,7 @@ print(#names, names[1], names[#names])
 // way the model does: filtered by enabled_tools and disabled_tools, gated by
 // the permission mode, through a reload, a restart and an expired sign-in.
 func TestMCPBridge(t *testing.T) {
+	t.Parallel()
 	var expired atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if expired.Load() {
@@ -259,6 +261,7 @@ func TestMCPBridge(t *testing.T) {
 // own and ends in one summary toast; a refusal fails its server alone and
 // never starts one that did not ask.
 func TestMCPSignInAll(t *testing.T) {
+	t.Parallel()
 	good, bad := &mcptest.Auth{}, &mcptest.Auth{}
 	goodSrv := httptest.NewServer(good.Handler())
 	defer goodSrv.Close()
@@ -369,6 +372,7 @@ func TestMCPMedia(t *testing.T) {
 // TestMCPStoppedStartSilent: a server replaced or reloaded while it starts
 // keeps its stopped status and records no error when its start fails.
 func TestMCPStoppedStartSilent(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	s := &mcpServer{name: "gone", spec: mcpSpec{Command: "/nonexistent/mcp"}, status: "stopped", stopped: true}
 	h.startMCP(s)

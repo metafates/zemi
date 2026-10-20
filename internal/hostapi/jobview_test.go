@@ -13,6 +13,7 @@ import (
 // TestJobsScreen: /jobs lists what runs before what ended, times both, and
 // stops every job at once; a job's view is its own output, live.
 func TestJobsScreen(t *testing.T) {
+	t.Parallel()
 	h, _ := newLoopHost(t)
 	dir := t.TempDir()
 

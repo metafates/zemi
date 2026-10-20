@@ -16,6 +16,7 @@ import (
 )
 
 func TestFriendlyError(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	h.Providers.Reset(agent.Catalog{Specs: []agent.Spec{{ID: "b", Kind: agent.KindOpenAI, KeyEnv: "B_KEY"}}, Keys: map[string]string{"b": "k"}})
 	retry := func(err error) error { return &fantasy.RetryError{Errors: []error{err}} }

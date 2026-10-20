@@ -20,6 +20,7 @@ import (
 // either return shape, and one that raises or returns an unknown level, a
 // number included, reports as an error row rather than taking the whole page down.
 func TestHealthLuaChecks(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
 		zemi.health.add("disk", function() return "replaced" end)
@@ -59,6 +60,7 @@ func TestHealthLuaChecks(t *testing.T) {
 // TestHealthListFromLua: list() answers on the interpreter goroutine, where
 // the queue luaHealthRows uses would deadlock, and runs registered checks.
 func TestHealthListFromLua(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHostDB(t)
 	runUser(t, r, `
 		zemi.health.add("disk", function() return { level = "warn", detail = "low" } end)
@@ -84,6 +86,7 @@ func TestHealthAction(t *testing.T) {
 // TestHealthActionCoversRuns: every Run a check sets names a label, so the
 // row it belongs to keeps its detail action.
 func TestHealthActionCoversRuns(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range h.goHealthRows() {
 		if _, _, ok := healthAction(c.Run); c.Run != "" && !ok {
@@ -93,6 +96,7 @@ func TestHealthActionCoversRuns(t *testing.T) {
 }
 
 func TestHealthChecks(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.agents.reflectErr = fmt.Errorf("%w: no JSON object in the output", errNoProposal)
 	runUser(t, h.RT, `
@@ -129,6 +133,7 @@ func TestHealthChecks(t *testing.T) {
 // &
 // action opens /memory.
 func TestHealthBrainRow(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	_, private := h.brainParts()
@@ -156,6 +161,7 @@ func TestHealthBrainRow(t *testing.T) {
 // the context row warns only about a model whose unknown window costs
 // something, the conversation's and the agents'.
 func TestHealthModelRows(t *testing.T) {
+	t.Parallel()
 	const ab = `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m", context_window = 100000 } } })
 		zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m" } } })
 		zemi.model.set("a/m")
@@ -210,6 +216,7 @@ func TestHealthModelRows(t *testing.T) {
 // TestHealthMCPRow: only ready servers read as ready; a starting one is
 // named, one that failed or stopped warns, and a sign-in wait says so.
 func TestHealthMCPRow(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		statuses      []ServiceStatus
 		level, detail string
@@ -233,6 +240,7 @@ func TestHealthMCPRow(t *testing.T) {
 // TestWaitMCP: the wait ends when the last server leaves "starting", or
 // when its context ends.
 func TestWaitMCP(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	s := &mcpServer{status: "starting"}
 	h.mcp.servers["a"] = s

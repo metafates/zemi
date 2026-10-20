@@ -73,6 +73,7 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 // TestSkillsEnabledDefaults covers §10.5: a skill starts enabled and the
 // skill index the model sees lists enabled skills only.
 func TestSkillsEnabledDefaults(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	writeSkill(t, h.userSkillsDir(), "rare", "used once a year", "")
@@ -105,6 +106,7 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 // TestSkillItemsShowTheBody: /skills offers the instructions and the file
 // itself, but for a builtin skill, whose file zemi rewrites on every start.
 func TestSkillItemsShowTheBody(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
@@ -132,6 +134,7 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 // TestSkillsEnableGate covers the origin gate: user origin flips the
 // state, a project-origin chunk is refused, unknown names are refused.
 func TestSkillsEnableGate(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
@@ -159,6 +162,7 @@ func TestSkillsEnableGate(t *testing.T) {
 // user skill's zemi-skill.lua runs in the user hooks step. The
 // skill must exist before boot (production lays down dirs before boot).
 func TestSkillsUserHooksStep(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkillsNoBoot(t)
 	writeSkill(t, h.userSkillsDir(), "booted", "user", `
 		zemi.command.add("booted-cmd", function() end, { desc = "from user hook" })
@@ -293,6 +297,7 @@ func TestSkillCommands(t *testing.T) {
 // the memory queue, decide accepts or rejects, and only a user or builtin
 // origin may decide.
 func TestLearnListAndDecide(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkills(t)
 	h.Settings.SetQuiet("memory.autonomy", "ask")
 	seedSession(t, h)
@@ -335,6 +340,7 @@ func TestLearnListAndDecide(t *testing.T) {
 // as typed and the skill without frontmatter behind the marker, $ARGUMENTS
 // filled, ahead of piped stdin; /skills use reaches a disabled skill too.
 func TestSkillsUse(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkillsNoBoot(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	for name, body := range map[string]string{
@@ -415,6 +421,7 @@ func lastUserText(t *testing.T, h *Host) string {
 // user skill keeps its name, a skill written later waits for the next
 // trust decision, and an untrusted project adds none.
 func TestProjectSkills(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "deploy", "the user's deploy", "")
 	h.syncSkills()
@@ -482,6 +489,7 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 // TestAgentsHomeSkills: ~/.agents/skills adds user skills, body only, that
 // lose a name clash to <config>/skills.
 func TestAgentsHomeSkills(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostSkillsNoBoot(t)
 	h.Dirs.AgentsHome = t.TempDir()
 	agents := h.agentsSkillsDir()
@@ -507,6 +515,7 @@ func TestAgentsHomeSkills(t *testing.T) {
 // TestRecipes: the steps share one host, in order. The pinned prompt lists
 // the recipes it was built with; the skill tool resolves them live.
 func TestRecipes(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "deploy", "the user's deploy", "")
 	writeSkill(t, h.userSkillsDir(), "ship", "the user's ship", "")

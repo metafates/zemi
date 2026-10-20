@@ -29,6 +29,7 @@ func TestExpandPromptArgs(t *testing.T) {
 // running it sends the expanded body behind the typed line, so only what
 // the user typed reads as their words; piped stdin stays behind it too.
 func TestMarkdownCommandSends(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()
 	dir := filepath.Join(h.Dirs.ConfigHome, "commands")
@@ -71,6 +72,7 @@ func TestMarkdownCommandSends(t *testing.T) {
 // TestProjectMarkdownCommands: a trusted repository's .agents/commands load
 // as project commands; .claude/commands is not read.
 func TestProjectMarkdownCommands(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	for _, c := range []struct{ dir, name string }{{".agents", "atest"}, {".claude", "ctest"}} {

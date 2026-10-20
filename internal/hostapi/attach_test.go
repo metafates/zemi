@@ -22,6 +22,7 @@ import (
 // TestExpandAttachments: project files referenced with @ attach; files
 // outside the project, missing ones and symlinks leading out of it do not.
 func TestExpandAttachments(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	proj := h.Dirs.ProjectDir
 	write := func(path, body string) {
@@ -91,6 +92,7 @@ func TestExpandAttachments(t *testing.T) {
 // copy winning over a project file of the same name, while a name with a
 // separator is the project's and one climbing out attaches nothing.
 func TestChipAttachment(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	name, err := h.saveDrop("notes.txt", []byte("dropped copy"))
@@ -121,6 +123,7 @@ func TestChipAttachment(t *testing.T) {
 // file's place nor skip its read check. A path an @ word would not read back
 // whole, or that no token carries, keeps the form that does.
 func TestAttachLabel(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	for _, c := range []struct{ rel, want string }{
@@ -166,6 +169,7 @@ func TestAttachLabel(t *testing.T) {
 
 // TestDropsSweptAfterTTL: idle drop copies age out, one attached again stays.
 func TestDropsSweptAfterTTL(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	name, err := h.saveDrop("keep.txt", []byte("keep"))
@@ -197,6 +201,7 @@ func TestDropsSweptAfterTTL(t *testing.T) {
 // TestImageAttachment: an @image becomes a file part after the text, with a
 // note naming it behind the marker.
 func TestImageAttachment(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	png := tinyPNG()
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
@@ -224,6 +229,7 @@ func TestImageAttachment(t *testing.T) {
 // its own name, a directory its path, and a bare chip name cannot
 // climb out of the drops directory.
 func TestAttachPath(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 	out := t.TempDir()

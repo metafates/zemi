@@ -114,6 +114,7 @@ func reasoningParts(text string) []fantasy.StreamPart {
 // subagent: its report returns as the tool result, the tool row keeps the
 // progress detail, and the run is a child session hidden from the list.
 func TestAgentToolRunsSubagent(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
@@ -185,6 +186,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 // AgentStream, or a golden silently draws the live turn's zero instead. The
 // skips are the fields the read derives rather than holds.
 func TestSeedStreamSeedsEveryField(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	s := StreamSnapshot{
 		Active: true, ByLoop: true, Text: "t", Reasoning: "r", Thinking: true,
@@ -221,6 +223,7 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 // run's own thinking time, like a session's, so a run read back from the
 // store (/agents) shows it.
 func TestSubagentStoresThinkingTime(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return thoughtModel{gap: 5 * time.Millisecond}, nil }
 	def, err := h.agentDef("explore")
@@ -283,6 +286,7 @@ func (thoughtModel) Model() string    { return "script-1" }
 // reported something returns that partial report with the error, instead of
 // throwing the finished work away.
 func TestSubagentFailureKeepsReport(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
@@ -414,6 +418,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 // package's instruction file, and none of them uses up the main
 // conversation's one delivery.
 func TestSubagentInstructions(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetProjectTrusted(true)
 	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
@@ -449,6 +454,7 @@ func TestSubagentInstructions(t *testing.T) {
 // provider cache serves it, and each is told its own directory in the pad in
 // its task.
 func TestSubagentOwnDir(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.agents.sessionID = "s1"
 	var systems []string
@@ -479,6 +485,7 @@ func TestSubagentOwnDir(t *testing.T) {
 // TestSubagentReportTruncated: a runaway report is cut before it lands in
 // the caller's context, and the whole text waits in the scratchpad.
 func TestSubagentReportTruncated(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -592,6 +599,7 @@ func TestAgentDefs(t *testing.T) {
 // models.chat. A reference config does not know is refused with the roles
 // and the configured models.
 func TestSubagentModelChoice(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.provider.add({
 		id = "myllm", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k",
@@ -625,6 +633,7 @@ func TestSubagentModelChoice(t *testing.T) {
 // TestSubagentMemoryKeepsItsSession: a memory a run writes after the user
 // moved to another session carries the run's own session as provenance.
 func TestSubagentMemoryKeepsItsSession(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Settings.SetQuiet("memory.autonomy", "auto")
 	h.SetProjectTrusted(true)
@@ -655,6 +664,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 // user's first, opening the ones that are files. A background job is no
 // agent: /jobs has it.
 func TestAgentsList(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
@@ -732,6 +742,7 @@ func TestAgentsList(t *testing.T) {
 // TestUpdateToolReportsAFailedSend: a child whose line never reached the
 // caller is told so, instead of reading "Sent to the caller." forever.
 func TestUpdateToolReportsAFailedSend(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t) // no model: the parent's send refuses
 	h.SetUIHooks(&fakeUI{})
 	run, _ := h.newRun(t.Context(), AgentDef{Name: "general"}, "d", "look", true)
@@ -785,6 +796,7 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 // the turn after the step, so the write that already ran stays in the
 // history and the store instead of vanishing with a failed step.
 func TestHaltKeepsTheStep(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("tool.pre", function(ev) if ev.tool == "glob" then return { decision = "halt", reason = "stop" } end end)`)
 	file := filepath.Join(h.Dirs.ProjectDir, "new.txt")
@@ -835,6 +847,7 @@ func pinState(h *Host) string {
 // row of its own rather than as something the user typed, and leaves the
 // pinned prompt and tools, which the provider caches, alone.
 func TestAgentUpdateReachesTheCaller(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	var marks [2]string // the pinned prefix at the child's call, and at the caller's next step
@@ -883,6 +896,7 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 // TestAgentMessageKeepsThePin: a caller's steer on a running agent rides the
 // child's queue, never the pinned prefix.
 func TestAgentMessageKeepsThePin(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{}) // a detached run is a TUI feature
 	sid := seedSession(t, h)
@@ -957,6 +971,7 @@ func TestSubagentUpdatePrompt(t *testing.T) {
 // and then its task. That prefix is what makes the provider read the
 // conversation from its cache instead of writing it out again.
 func TestForkContinuesTheCallersPrefix(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()
 	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
@@ -1080,6 +1095,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 // them all. The fork's first request sends that same array - the names the
 // caller's request offered - not the one this run would build for itself.
 func TestForkOffersTheCallersTools(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(mcptest.Handler())
 	defer srv.Close()
 	h, r := newTestHostDB(t)
@@ -1151,6 +1167,7 @@ func TestForkOffersTheCallersTools(t *testing.T) {
 // words that tell it what it is, and the refusal is stored in its own session
 // like any other tool result, so it reads it and does the work itself.
 func TestForkKnowsItIsAFork(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
@@ -1323,6 +1340,7 @@ func TestForkRefusals(t *testing.T) {
 // on the run: the call answers with the background text, the run stays live,
 // and its report arrives as exactly one message.
 func TestAgentToolHandsOff(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
@@ -1377,6 +1395,7 @@ func TestAgentToolHandsOff(t *testing.T) {
 // TestForegroundEscStopsTheRun: esc cancels the call's own context, and the run
 // waiting on it must stop - the arm the agent tool shares with a workflow call.
 func TestForegroundEscStopsTheRun(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
@@ -1404,6 +1423,7 @@ func TestForegroundEscStopsTheRun(t *testing.T) {
 // TestAgentToolStopsARun: the caller kills a running run with send_to and
 // stop; a stopped run reports nothing, and stopping it again names no run.
 func TestAgentToolStopsARun(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
@@ -1459,6 +1479,7 @@ func TestAgentToolStopsARun(t *testing.T) {
 }
 
 func TestForegroundRunPanicAnswersTheCall(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)

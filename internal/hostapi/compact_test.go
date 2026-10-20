@@ -19,6 +19,7 @@ import (
 // the system prompt and tool schemas every prompt carries, not only the
 // messages that survived.
 func TestContextEstimateCountsPrompt(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "ok")
 	h.reflectMu.Lock()
@@ -44,6 +45,7 @@ func TestContextEstimateCountsPrompt(t *testing.T) {
 // TestSummaryKeptWhenCutOff: a summary the model cut at the output limit is
 // used with a note, instead of dropping the history unsummarized.
 func TestSummaryKeptWhenCutOff(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "## Goal\nship it")
 	m.cutReply = true
@@ -62,6 +64,7 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 // TestCompactNowCancels: esc during /compact stops the summary call instead
 // of leaving the agent busy until the model answers.
 func TestCompactNowCancels(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "") // an empty reply starts no title call
 	m.block.Store(int64(time.Minute))
@@ -80,6 +83,7 @@ func TestCompactNowCancels(t *testing.T) {
 // becomes the session's resume point, and /resume rebuilds summary + tail
 // without showing the tail twice.
 func TestCompaction(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	h.reflectMu.Lock() // no detached reflect racing the DB teardown
@@ -296,6 +300,7 @@ func TestOverflowRecovery(t *testing.T) {
 // TestCompactionStopsAfterFailures: auto compaction gives up for the
 // session after compactMaxFails failures in a row.
 func TestCompactionStopsAfterFailures(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "") // an empty reply starts no title call
 	m.err = errors.New("summarizer down")
@@ -350,6 +355,7 @@ func TestTailStart(t *testing.T) {
 // TestCompactThreshold: the trigger is agent.compact_at percent of the
 // window, never under half of it, and nothing on an unknown window.
 func TestCompactThreshold(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
 		window, at, want int64

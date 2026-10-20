@@ -969,6 +969,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 // reads it at a step boundary, so a call started after that drain waits for its
 // run instead of handing it off.
 func TestSpentSignalDoesNotDetachCall(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
@@ -1010,6 +1011,7 @@ func TestSpentSignalDoesNotDetachCall(t *testing.T) {
 // TestEndedRunIsNotHandedOff: a run that already ended cannot be handed off, so
 // its report stays the caller's - delivered exactly once, and never lost.
 func TestEndedRunIsNotHandedOff(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
@@ -1035,6 +1037,7 @@ func TestEndedRunIsNotHandedOff(t *testing.T) {
 // foreground workflow call, and the user's own message still reaches the next
 // step instead of waiting for the run - the deadlock the handoff exists for.
 func TestTurnReadsTheUsersMessageWhileARunWaits(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	gate := make(chan struct{})
@@ -1129,6 +1132,7 @@ func reportRows(h *Host, id string) int {
 }
 
 func TestWorkflowBackgroundReports(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -1166,6 +1170,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 // and a run the user started in /workflows is in the answer with the id it
 // acts on, a session with none says so.
 func TestWorkflowToolListsRuns(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	release := make(chan struct{})
@@ -1271,6 +1276,7 @@ func TestWorkflowUserStart(t *testing.T) {
 // TestWorkflowCancel: cancelling the context stops a script that is
 // waiting on agents or spinning in Lua.
 func TestWorkflowCancel(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -1293,6 +1299,7 @@ func TestWorkflowCancel(t *testing.T) {
 // TestWorkflowPanicEnds: a panic under the scheduler ends the run as failed,
 // so it holds back no rewind or queued report.
 func TestWorkflowPanicEnds(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
 	f, err := h.startFlow(t.Context(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(*flowRun) {
@@ -1308,6 +1315,7 @@ func TestWorkflowPanicEnds(t *testing.T) {
 }
 
 func TestWorkflowFileStartingWithDashesIsNotFrontmatter(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()
 	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
@@ -1324,6 +1332,7 @@ func TestWorkflowFileStartingWithDashesIsNotFrontmatter(t *testing.T) {
 }
 
 func TestSavedWorkflows(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()
 	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
@@ -1447,6 +1456,7 @@ func TestReviewTargetsACommit(t *testing.T) {
 // earlier phase, so a refresh never moves an open detail to another agent,
 // and a queued one opens like a started one, so enter's hint stays put.
 func TestFlowViewIDs(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	f := &flowRun{id: "0000000a", description: "d", status: RunRunning, limit: 1}
 	add := func(desc, phase string) {

@@ -92,6 +92,7 @@ func str(v any) string {
 // TestMessagesRun: with a run on screen, the picker lists that run's rows,
 // not the session's, and it is what a bare /copy opens.
 func TestMessagesRun(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
 	h.reflectMu.Lock()

@@ -100,6 +100,7 @@ func TestRoleModel(t *testing.T) {
 // builtin role or a provider/model id and nothing else, and a name another
 // origin holds is refused until a more trusted one takes it back.
 func TestModelTargetNames(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, rolesProvider+`
 		zemi.config.set("models.titles", "a/small")
@@ -242,6 +243,7 @@ func TestModelTargetProfileKey(t *testing.T) {
 // does not list is named there rather than failing the slot's first run. A
 // classify slot holds a decisions model by design, which is no turn.
 func TestModelTargetHealth(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	runUser(t, r, rolesProvider+
 		`zemi.model.add("clf", { desc = "the classifier", model = "a/nope" })`+
@@ -261,6 +263,7 @@ func TestModelTargetHealth(t *testing.T) {
 // the profiles after them, /model opens its list on what an empty key means,
 // and the slot's model is pickable from a profile's row too.
 func TestModelTargetUI(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -345,6 +348,7 @@ func TestModelTargetUI(t *testing.T) {
 // call (§10); it is refused for the kinds that do not take one and for a value
 // that is not a mode.
 func TestProviderObjectMode(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.provider.add({ id = "o", kind = "openai_compat", base_url = "http://x", object_mode = "text", models = { { id = "m" } } })`)
 	spec, ok := h.Providers.Lookup("o")
@@ -364,6 +368,7 @@ func TestProviderObjectMode(t *testing.T) {
 
 // TestSetModelArgs: /model's grammar. The cases share one host, in order.
 func TestSetModelArgs(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)

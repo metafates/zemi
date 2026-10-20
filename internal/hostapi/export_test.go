@@ -17,6 +17,7 @@ import (
 // TestExportAndFork: a finished exchange exports as markdown, /copy takes
 // a reply with no code blocks at once, and a fork switches to a new session holding the same conversation.
 func TestExportAndFork(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
 	h.reflectMu.Lock() // no detached reflector racing the session switch
@@ -81,6 +82,7 @@ func TestExportAndFork(t *testing.T) {
 // bad ones fail, and a bare /copy over a reply with code blocks opens the
 // messages picker, where one block can be picked.
 func TestCopyReply(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reply := "Two:\n\n```go\nx := 1\n```\n\n~~~\ny\n~~~"
 	reflectStub(t, h, reply)
@@ -111,6 +113,7 @@ func TestCopyReply(t *testing.T) {
 // TestCopyRunReply: with a run's transcript in view, /copy takes the run's
 // last reply, not the session's.
 func TestCopyRunReply(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
 	h.reflectMu.Lock()
@@ -225,6 +228,7 @@ func TestCodeBlocks(t *testing.T) {
 // TestTurnExtras: a successful edit keeps its diff under the tool row, a
 // failed one does not, and todo writes reach the widget snapshot.
 func TestTurnExtras(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sa := h.streamHooks()
 	sa.ToolCallStart("e1", "edit", `{"path":"a.go","old_string":"x","new_string":"y"}`)
@@ -272,6 +276,7 @@ func TestToolLabel(t *testing.T) {
 }
 
 func TestPendingRowLabel(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHost(t)
 	s := &streamAdapter{h: h}
 	s.ToolCallPending("1", "shell")
@@ -327,6 +332,7 @@ func TestToolSummary(t *testing.T) {
 // TestCost: Go's fmtCost and the widgets' text.cost agree, and a cost under
 // half a cent reads as one, not as free.
 func TestCost(t *testing.T) {
+	t.Parallel()
 	r := newTestHostUI(t).RT
 	for _, c := range []struct {
 		usd  float64
@@ -343,6 +349,7 @@ func TestCost(t *testing.T) {
 // TestContextPct: /cost and the statusline read one percent, and 79.5 is
 // the same 79 in both (a threshold reads the number, not a rounded copy).
 func TestContextPct(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in, window int64
 		want       float64
@@ -387,6 +394,7 @@ func TestTokens(t *testing.T) {
 // TestUsageBreaksThePromptDown: the fixed prompt rides every request, so
 // /usage says what it is made of instead of one aggregate context line.
 func TestUsageBreaksThePromptDown(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "")
 	ui := &fakeUI{}
@@ -420,6 +428,7 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 // TestPromptCommandShowsTheText: /prompt shows the assembled system
 // prompt, and says so before anything assembled one.
 func TestPromptCommandShowsTheText(t *testing.T) {
+	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "")
 	ui := &fakeUI{}

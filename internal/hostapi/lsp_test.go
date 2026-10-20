@@ -154,6 +154,7 @@ func TestLSPTool(t *testing.T) {
 // TestLSPConfig: user config replaces a builtin by name with its own args
 // and settings, disables one, and list shows what the project can use.
 func TestLSPConfig(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHostDB(t)
 	defer func() { h.lsp.stopAll()() }()
 	runUser(t, r, `
@@ -425,6 +426,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 // query syncs with nothing marked, and the first sync re-reads the whole
 // listing, so a server's start-time copy does not stand forever.
 func TestLSPSyncFromGit(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}

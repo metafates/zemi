@@ -17,6 +17,7 @@ var starterCall = regexp.MustCompile(`zemi\.[a-z_][a-z_.]*[a-z_]`)
 // users read, and it is all comments, so nothing else catches a member a
 // rename took away. Reading one raises with the members the namespace has.
 func TestStarterInitNamesLiveAPI(t *testing.T) {
+	t.Parallel()
 	_, r := newTestHost(t)
 	names := starterCall.FindAllString(config.StarterInit, -1)
 	slices.Sort(names)
@@ -36,6 +37,7 @@ func TestStarterInitNamesLiveAPI(t *testing.T) {
 // builtin whose key this machine does not export is silent, and the role
 // ids are in the catalog, so a catwalk bump that renames them fails here.
 func TestStarterInitProviderBlock(t *testing.T) {
+	t.Parallel()
 	h, r := newTestHost(t)
 	c := agent.LoadCatalog(h.Dirs.DataHome, func(string) string { return "x" })
 	h.Builtin.Store(&c)
