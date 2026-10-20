@@ -729,6 +729,16 @@ func rowAnchor(row []hostapi.Segment) int {
 	return 0
 }
 
+// rowCall is the transcript row of the call a rail row draws, 0 for none.
+func rowCall(row []hostapi.Segment) int {
+	for _, s := range row {
+		if s.Call != 0 {
+			return s.Call
+		}
+	}
+	return 0
+}
+
 // unitAt is the anchor of the unit a transcript row is drawn in: the row's
 // own when a row carries it, else the nearest anchor before it, which is how
 // a notice inside a folded burst or a call inside its run's digest finds the
@@ -746,12 +756,32 @@ func unitAt(lines [][]hostapi.Segment, n int) int {
 	return best
 }
 
-// unitRows is the rows an anchor covers, first to last, or -1 when no row
-// carries it.
+// unitRows is the rows a named transcript row draws, first to last: the
+// rows of the call it is, when a rail drew it, else the message's. -1 when
+// no row carries it.
 func unitRows(lines [][]hostapi.Segment, anchor int) (from, to int) {
+	if from, to := callRows(lines, anchor); from >= 0 {
+		return from, to
+	}
 	from, to = -1, -1
 	for i, row := range lines {
 		if rowAnchor(row) != anchor {
+			continue
+		}
+		if from < 0 {
+			from = i
+		}
+		to = i
+	}
+	return from, to
+}
+
+// callRows are the rows one call of a rail draws, head and lines under it,
+// or -1 when no row names that call.
+func callRows(lines [][]hostapi.Segment, call int) (from, to int) {
+	from, to = -1, -1
+	for i, row := range lines {
+		if rowCall(row) != call {
 			continue
 		}
 		if from < 0 {

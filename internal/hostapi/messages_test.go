@@ -47,9 +47,9 @@ func TestMessagesTurns(t *testing.T) {
 	}
 }
 
-// TestMessagesTurnRows: a turn lists its messages in order and its rail,
-// each naming the chat row it stands for, and a row with a choice of things
-// to do opens them one level down.
+// TestMessagesTurnRows: a turn lists its messages in order and each activity
+// run as one row, the rail the chat folds, which opens its calls a level
+// down; a message row with a choice of things to do opens them the same way.
 func TestMessagesTurnRows(t *testing.T) {
 	t.Parallel()
 	tr := []ChatMessage{
@@ -86,11 +86,10 @@ func TestMessagesTurnRows(t *testing.T) {
 	}
 	want := []row{
 		{"ping", "", 1},
-		{"hmm", "", 2},
-		{"run the tests", "err", 3},
+		{"2 steps", "err", 2},
 		{"the tests fail", "", 4},
 		{"plugin updated", "note", 5},
-		{"find the widget", "ok", 6},
+		{"1 step", "", 6},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rows = %+v", got)
@@ -112,15 +111,41 @@ func TestMessagesTurnRows(t *testing.T) {
 	if prompt["id"] != "m1" || !slices.Equal(actions(prompt), []string{"messages view 1", "rewind m1"}) {
 		t.Errorf("prompt = %v", prompt)
 	}
-	if reply := o.Items[3].(map[string]any); !slices.Equal(actions(reply), []string{"messages view 4"}) {
+	if reply := o.Items[2].(map[string]any); !slices.Equal(actions(reply), []string{"messages view 4"}) {
 		t.Errorf("reply = %v", reply)
 	}
-	if run := o.Items[5].(map[string]any); !slices.Equal(actions(run), []string{"agents view a1b2c3d4"}) {
-		t.Errorf("run digest = %v", run)
+	// a run says what failed, and its row opens the rail alone
+	rail := o.Items[1].(map[string]any)
+	if rail["desc"] != "1 failure" || rail["run"] != "messages rail 2" || rail["verb"] != "open" || rail["actions"] != nil {
+		t.Errorf("rail = %v", rail)
 	}
 	// the next turn's prompt is no row of this one
 	if strings.Contains(fmt.Sprint(o.Items), "next turn") {
 		t.Error("the turn reached past its own rows")
+	}
+
+	// the rail's own list walks its calls, and the chat draws that run whole
+	if err := h.openMessagesRail(2); err != nil {
+		t.Fatal(err)
+	}
+	r := ui.opened[len(ui.opened)-1]
+	if r.ID != "messages rail 2" || r.Title != "Messages / Turn 1 activity" || r.Rail != 2 || !r.Follow {
+		t.Fatalf("rail view: %s %q rail=%d", r.ID, r.Title, r.Rail)
+	}
+	var calls []row
+	for _, it := range r.Items {
+		m := it.(map[string]any)
+		anchor, _ := m["anchor"].(int)
+		calls = append(calls, row{str(m["text"]), str(m["mark"]), anchor})
+	}
+	if !slices.Equal(calls, []row{{"hmm", "", 2}, {"run the tests", "err", 3}}) {
+		t.Errorf("calls = %+v", calls)
+	}
+	if got := actions(r.Items[1].(map[string]any)); !slices.Equal(got, []string{"call 3"}) {
+		t.Errorf("call actions = %v", got)
+	}
+	if err := h.openMessagesRail(9); err == nil {
+		t.Error("a row that opens no rail opened one")
 	}
 }
 

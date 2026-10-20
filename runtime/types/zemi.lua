@@ -223,6 +223,7 @@ function debug.traceback(msg) end
 ---@field fade? number 0 to 1: how far the segment's colors sink toward the surface it sits on (the canvas, or a box's panel). A scrolled view fades its own edge rows; a widget sets this where it clips a block itself, as the chat does to a thinking tail rolling up.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
 ---@field anchor? integer On every row of a unit's message, the readout under a reply aside: the transcript row the unit starts at, counted as `ctx.transcript` is (1-based). A list with `follow` set scrolls the chat to the row its selected item names and bands every row sharing it.
+---@field call? integer On every row a call or a thought of a rail draws: that transcript row. A list naming one call bands its rows alone, which is how the messages picker's rail view marks the call it walks.
 ---@field sticky? boolean|"section"|"end" On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first rows as chrome, in the `Pinned` group on the panel across the view's width, and a click on it scrolls back there. `true` heads a turn and starts the pinned stack anew, `"section"` heads a part of that turn and pins under it, and `"end"` marks the section's last row, where its pin ends. Example: `{ text = "> ", sticky = true }`.
 
 --- A widget row: the segments it is drawn from, left to right.
@@ -889,6 +890,7 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
+---@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view): the chat draws that run whole while it is up.
 ---@field emoji string The session's marker emoji, derived from its id; "" before the first send.
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.

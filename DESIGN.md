@@ -2176,11 +2176,15 @@ rides the `memories.md` line and its ledger entries.
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it),
   so no widget can hide what the model actually received. `/messages` is the
-  map of it (`alt+m`): a builtin list, a section per turn, a row per prompt,
-  reply, notice, error or command, a reply's code blocks hanging under it and
-  a run's row opening that run. Prompt and reply rows lead with the speaker's
-  kind glyph, `▌` in the accent and `◆` in dim, and the state rows keep their
-  marks. It follows the chat: moving the selection scrolls the transcript to
+  map of it (`alt+m`): a builtin list of turns, each opening on the rows it
+  held (a prompt, reply, notice, error or command) with `l`, and its whole
+  activity as one row saying how many steps it took, as the chat draws that
+  rail folded. `l` on that row opens the rail's own list, one row per call and
+  thought, and the chat draws that run whole while it is up: no row of it
+  stays behind the rail's own `… N earlier`, each call keeps its body folded,
+  and the call the list names is the one banded. Prompt and reply rows lead
+  with the speaker's kind glyph, `▌` in the accent and `◆` in dim, and the
+  state rows keep their marks. It follows the chat: moving the selection scrolls the transcript to
   the row the item names, centers the message in the view when the whole of it
   fits (else its first row just under the pinned header) and bands every row
   of it, the scrollbar column and a reply's readout aside; `enter` closes the

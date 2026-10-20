@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -34,14 +35,18 @@ func TestUnitAt(t *testing.T) {
 	}
 }
 
+// banded reports whether a composed row carries the picker's band.
+func banded(s hostapi.Segment) bool { return s.Fill == hostapi.FillBand }
+
 // bandedChatRows is the text of the chat rows the picker's message is banded
 // on, as the last frame drew them.
 func bandedChatRows(app *App) []string {
 	chat := app.scrolls["chat"]
 	var out []string
 	for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
-		if row := app.lastRows[y]; len(row) > 0 && row[0].Fill == hostapi.FillBand {
-			out = append(out, strings.TrimSpace(hostapi.SegsText(row)))
+		// the chat's first cell, so a box drawn over the rows is no band here
+		if row := dropCells(app.lastRows[y], chat.rect.Min.X); len(row) > 0 && banded(row[0]) {
+			out = append(out, strings.TrimSpace(hostapi.SegsText(app.lastRows[y])))
 		}
 	}
 	return out
@@ -579,5 +584,77 @@ func TestMessagesTree(t *testing.T) {
 	pump()
 	if n := len(app.overlays); n != 0 {
 		t.Fatalf("%d overlays after esc", n)
+	}
+}
+
+// TestMessagesRail: a turn's activity is one row in the turn view, the rail
+// the chat folds; l opens its calls, the chat draws that run whole and bands
+// the call the list names, and going back folds it again.
+func TestMessagesRail(t *testing.T) {
+	t.Parallel()
+	app, host := messagesApp(t)
+	host.AppendMessage("user", "walk the rail")
+	for _, tool := range []struct{ name, text, label string }{
+		{"read", "a.go", "read a"},
+		{"grep", "Parse", "find Parse"},
+		{"shell", "go test ./...", "run the tests"},
+	} {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool.name, Text: tool.text, Label: tool.label, Status: "ok"})
+	}
+	appendReply(host, "all green", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	pump := func() {
+		for range 3 {
+			for app.Pump() {
+			}
+			app.Frame() // a compose settles the follow state the widget reads
+			app.renderSync(t)
+		}
+		app.Frame()
+	}
+	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
+	frame := func() string { return ansi.Strip(app.Frame()) }
+	// folded, the run is its digest alone
+	if !strings.Contains(frame(), "1 file, 1 pattern, 1 command") || strings.Contains(frame(), "read a") {
+		t.Fatalf("the settled run is not folded:\n%s", frame())
+	}
+	if err := host.MessagesCommand("turn 1"); err != nil {
+		t.Fatal(err)
+	}
+	pump()
+	// the turn's activity is one row: the run folds into it
+	press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	pump()
+	if got := top().items[top().visible[top().selected]].row.Text; got != "3 steps" {
+		t.Fatalf("the turn's selected row is %q, want the run's", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump()
+	if id, n := top().o.ID, len(top().visible); id != "messages rail 2" || n != 3 {
+		t.Fatalf("rail view: %q, %d rows", id, n)
+	}
+	// the run draws whole, and only the picked call's row is banded
+	for _, want := range []string{"read a", "find Parse", "run the tests"} {
+		if !strings.Contains(frame(), want) {
+			t.Fatalf("the rail did not unfold %q:\n%s", want, frame())
+		}
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "read a") {
+		t.Fatalf("banded %q, want the picked call alone", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	pump()
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
+		t.Fatalf("banded %q after a step, want the next call", got)
+	}
+	// back to the turn folds the run again, the band on its one row
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	pump()
+	if strings.Contains(frame(), "read a") {
+		t.Fatalf("the run stayed open:\n%s", frame())
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "· ") {
+		t.Fatalf("banded %q, want the run's row", got)
 	}
 }

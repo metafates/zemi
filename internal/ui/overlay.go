@@ -187,10 +187,13 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		return
 	}
 	st := a.overlayState(o)
-	// a following list opens where the reader is, not on its first row; any
-	// other menu reopens on the row it was left on
+	// a following list opens where the reader is, not on its first row, but a
+	// rail's own list opens on the rail the reader just opened; any other
+	// menu reopens on the row it was left on
 	if o.Follow {
-		st.selected = a.followRow(&st)
+		if o.Rail == 0 { // a rail's list starts at the rail itself
+			st.selected = a.followRow(&st)
+		}
 		st.followed = st.selectedAnchor()
 		if chat := a.scrolls[a.scrollDef]; chat != nil {
 			// a pick whose row the view does not show (a turn's prompt over
@@ -305,12 +308,18 @@ func (st *overlayState) selectedAnchor() int {
 // wheel all land here, and the paint carries it out. Its selection is also
 // the message the paint bands.
 func (a *App) syncFollow() {
-	a.highlight = 0
+	a.highlight, a.rail = 0, 0
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].o.Follow {
 		return
 	}
 	st := &a.overlays[i]
+	if r := st.o.Rail; r != a.rail {
+		a.rail = r
+		// the chat draws that run whole only once it renders again, and a
+		// level opening is no reason to wait out a tick
+		a.bump()
+	}
 	if a.highlight = st.selectedAnchor(); a.highlight == 0 {
 		return
 	}

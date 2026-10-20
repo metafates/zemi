@@ -80,6 +80,9 @@ type App struct {
 	// highlight is the transcript row the open messages picker selects, whose
 	// rows the paint bands; 0 when nothing follows.
 	highlight int
+	// rail is the activity run the open list walks call by call, which the
+	// chat draws whole so each call it names has a row; 0 when none.
+	rail int
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
@@ -703,6 +706,7 @@ func (a *App) uiState() hostapi.UIState {
 		Time: a.timeStr, Frame: a.frame(),
 		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt", RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
+		Rail: a.rail,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
 		st.Ended = a.turnEnded
@@ -1136,7 +1140,7 @@ const modalFade = 0.7
 // map dims the chat around what it is looking at, which is why it can be seen.
 func (a *App) fadeRows(rows [][]hostapi.Segment) {
 	for i, row := range rows {
-		if a.highlight > 0 && rowAnchor(row) == a.highlight {
+		if a.highlight > 0 && (rowAnchor(row) == a.highlight || rowCall(row) == a.highlight) {
 			continue
 		}
 		for k, s := range row {

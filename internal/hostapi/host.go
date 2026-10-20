@@ -138,6 +138,10 @@ type Overlay struct {
 	// and band that message's rows while it is open: enter keeps the place,
 	// esc puts the region back where it found it
 	Follow bool
+	// Rail is the transcript row opening the activity run the chat draws
+	// whole while this list is up, 0 for none: a rail's own list walks its
+	// calls, and the run under them has to be open to show them
+	Rail int
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text. A Go screen's prompt
@@ -1279,7 +1283,10 @@ type Segment struct {
 	// Anchor is the transcript row a rendered row draws: a following
 	// overlay's row names the same number to scroll the region here
 	Anchor int
-	Bar    bool // Go only: a viewport's scrollbar cell, drawn in the viewport's right border, a separator column behind it standing down
+	// Call is the transcript row of the call or thought a rail's row draws,
+	// so a list naming one call bands its rows and no other's
+	Call int
+	Bar  bool // Go only: a viewport's scrollbar cell, drawn in the viewport's right border, a separator column behind it standing down
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
 	Fill Fill
@@ -1460,6 +1467,9 @@ func segment(field func(string) any, widget string) Segment {
 	seg.Soft = field("soft_wrap") == true
 	if n, ok := field("anchor").(float64); ok {
 		seg.Anchor = int(n)
+	}
+	if n, ok := field("call").(float64); ok {
+		seg.Call = int(n)
 	}
 	switch field("sticky") {
 	case true:
@@ -1654,6 +1664,7 @@ type UIState struct {
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
 	Focus          string  // the drawn layout node taking keys, "" for the composer
+	Rail           int     // the activity run the chat draws whole, 0 for none
 	Printed        *Printed
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
@@ -1742,6 +1753,9 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
+	if state.Rail > 0 {
+		tb.RawSetString("rail", glua.LNumber(state.Rail))
+	}
 	tb.RawSetString("emoji", glua.LString(SessionMark(h.AgentSessionID())))
 	// the tail's render leaves the pending row's inputs out: the rows printed
 	// above it drew it once, and the tail draws it under them

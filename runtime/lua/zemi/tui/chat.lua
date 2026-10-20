@@ -27,6 +27,9 @@ local units = {}
 local units_key = ""
 ---@type { count: integer, lines: zemi.Line[], n: integer, active: boolean, replying: boolean, block: string? }?
 local settled
+-- the activity run a list walks open (the messages picker's rail view): a
+-- render that opens or closes one cannot reuse the settled lines
+local rail_open
 
 -- The folds a click opens in place, by index: a step's calls (a summary row,
 -- not an action), a run's whole rail and a notice or queued burst. A call or
@@ -513,9 +516,12 @@ local function builder(ctx, width)
 	---@param last integer
 	---@param opened boolean
 	function B.fold(list, first, last, opened)
+		-- the messages picker's rail view names this run: it draws whole, so
+		-- every call the list walks has a row to band
+		local full = (ctx.rail or 0) == first
 		local digest = fmt.digest(list, first, last)
 		if digest == "" then
-			B.rail(list, first, last, {})
+			B.rail(list, first, last, { full = full })
 			return
 		end
 		local head = opened and "section" or nil
@@ -527,7 +533,7 @@ local function builder(ctx, width)
 		if not opened then return end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
-		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil })
+		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil, full = full })
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
@@ -577,7 +583,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.open draws every row and thought of the run starting at run; o.unroll draws a thought as its text.
+	---@param o { open: boolean?, full: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.open draws every row and thought of the run starting at run with its bodies; o.full draws every row of it with the bodies folded; o.unroll draws a thought as its text.
 	function B.rail(list, first, last, o)
 		frame()
 		local at = #B.lines
@@ -589,7 +595,7 @@ local function builder(ctx, width)
 		-- printed run lists everything
 		local key = o.live and 0 or o.run or first
 		local n = #B.heads - RAIL_KEEP
-		if o.open or ctx.headless or n < 2 then return end
+		if o.open or o.full or ctx.headless or n < 2 then return end
 		local label, click = foldRow(whole[key], n, "more:" .. key)
 		if not whole[key] then
 			for _ = at + 1, B.heads[n + 1] - 1 do
@@ -606,10 +612,21 @@ local function builder(ctx, width)
 	B.heads = {}
 	local function head() B.heads[#B.heads + 1] = #B.lines + 1 end
 
+	-- The rows a call or a thought draws carry its transcript index, so a
+	-- list naming one call (a rail's own) bands those rows alone.
+	---@param at integer
+	---@param idx integer
+	local function markCall(at, idx)
+		for k = at, #B.lines do
+			local row = B.lines[k]
+			if row[1] then row[1].call = idx end
+		end
+	end
+
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, unroll: boolean? }
+	---@param o { open: boolean?, full: boolean?, live: boolean?, run: integer?, unroll: boolean? }
 	function B.steps(list, first, last, o)
 		---@param t zemi.tui.Tool
 		local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
@@ -630,11 +647,13 @@ local function builder(ctx, width)
 			head()
 			if t.kind == "reasoning" then
 				local click = "call:" .. idx
+				local at = #B.lines + 1
 				if o.unroll and (t.text or "") ~= "" then
 					B.reasoning(t.text, nil, click)
 				else
 					B.thought(t.thought or 0, click, o.open and t.text or nil)
 				end
+				markCall(at, idx)
 				i = i + 1
 			elseif grouped(t) and not lone then
 				---@type zemi.tui.Tool[]
@@ -645,18 +664,22 @@ local function builder(ctx, width)
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
 				B.group(group, "step:" .. idx)
-				if o.open or steps[idx] then
+				if o.open or o.full or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
+						local at = #B.lines + 1
 						B.tool(g, o.live and -n or n, {
 							open = o.open,
 							nest = k == #group and "└ " or "├ ",
 						})
+						markCall(at, o.live and -n or n)
 					end
 				end
 				i = i + #group
 			else
+				local at = #B.lines + 1
 				B.tool(t, idx, { open = o.open })
+				markCall(at, idx)
 				i = i + 1
 			end
 		end
@@ -890,6 +913,9 @@ zemi.ui.widget.add({
 		}, "|")
 		local reset = key ~= units_key
 		if reset then counts = {} end
+		if (ctx.rail or 0) ~= (rail_open or 0) then
+			rail_open, settled = ctx.rail or 0, nil
+		end
 		-- a printed run is a snapshot and reports epoch 0: only the session and
 		-- a shown run cache their rows
 		local cacheable = epoch ~= 0 or ctx.view ~= nil
@@ -933,6 +959,7 @@ zemi.ui.widget.add({
 				-- the live turn's own run and a printed run read whole; every
 				-- other run folds, the one an agent view shows included
 				if ctx.headless or first == live_first then return "rail" end
+				if (ctx.rail or 0) == first then return "unfold" end
 				return unfolded[first] and "unfold" or "fold"
 			end
 			local deadline = cacheable and os.clock() + 0.03
