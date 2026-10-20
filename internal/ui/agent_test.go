@@ -1975,7 +1975,7 @@ func TestConfigEdit(t *testing.T) {
 		path, prefill, typed, desc, toast string
 	}{
 		{"editor.command", "", "vim", "this run  vim", ""},
-		{"ui.composer.history", "50", "x", "default   50", "ui.composer.history is a number"},
+		{"agent.max_steps", "200", "x", "default   200", "agent.max_steps is a number"},
 	} {
 		app.runCommand("config", "")
 		app.runCommand("config", "edit "+c.path)

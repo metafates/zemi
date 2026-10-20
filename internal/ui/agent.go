@@ -734,9 +734,9 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 // text every 2s, each rune blending the segment's color toward Normal by
 // its distance to the band center. Blends are quantized to 8 steps so the
 // sgr style cache stays small.
-func shimmer(thm themeResolver, anim bool, frame int, seg hostapi.Segment) []hostapi.Segment {
+func shimmer(thm themeResolver, frame int, seg hostapi.Segment) []hostapi.Segment {
 	dim, fg := thm.style(seg.HL).Fg, thm.style("Normal").Fg
-	if !anim || dim == nil || fg == nil {
+	if dim == nil || fg == nil {
 		return []hostapi.Segment{{Text: seg.Text, HL: seg.HL}}
 	}
 	const band = 3.0
@@ -759,7 +759,7 @@ func shimmer(thm themeResolver, anim bool, frame int, seg hostapi.Segment) []hos
 // shimmer segment becomes one per rune carrying the band's blend, a spin one
 // steps its spinner glyph to frame. It reports whether a spin mark was
 // drawn, so the frame clock keeps stepping while one is on screen.
-func segEffects(thm themeResolver, anim bool, frame int, segs []hostapi.Segment) ([]hostapi.Segment, bool) {
+func segEffects(thm themeResolver, frame int, segs []hostapi.Segment) ([]hostapi.Segment, bool) {
 	i := slices.IndexFunc(segs, func(s hostapi.Segment) bool { return s.Effect != "" })
 	if i < 0 {
 		return segs, false
@@ -769,7 +769,7 @@ func segEffects(thm themeResolver, anim bool, frame int, segs []hostapi.Segment)
 	for _, s := range segs[i:] {
 		switch s.Effect {
 		case "shimmer":
-			for _, r := range shimmer(thm, anim, frame, s) {
+			for _, r := range shimmer(thm, frame, s) {
 				r.Over, r.Fill, r.Fade, r.OnPanel = s.Over, s.Fill, s.Fade, s.OnPanel
 				out = append(out, r)
 			}

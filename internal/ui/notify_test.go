@@ -143,29 +143,24 @@ func TestWindowTitle(t *testing.T) {
 	t.Parallel()
 	running := func(app *App) { app.turnActive = true }
 	for _, c := range []struct {
-		name  string
-		still bool // ui.animations off
-		set   func(*App)
-		msgs  []tea.Msg
-		at    time.Duration
-		want  string
+		name string
+		set  func(*App)
+		msgs []tea.Msg
+		at   time.Duration
+		want string
 	}{
-		{"idle", false, nil, nil, 0, "zemi"},
-		{"running", false, running, nil, 0, "⠋ zemi"},
-		{"running 100 ms on", false, running, nil, 100 * time.Millisecond, "⠋ zemi"},
-		{"running 200 ms on", false, running, nil, 200 * time.Millisecond, "⠙ zemi"},
-		{"animations off holds still", true, running, nil, 200 * time.Millisecond, "⠋ zemi"},
-		{"asking", false, func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
-		{"done away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
-		{"failed away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},
-		{"seen once focused", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}, tea.FocusMsg{}}, 0, "zemi"},
-		{"done here", false, nil, []tea.Msg{turnDoneMsg{}, frameTickMsg{}}, 0, "zemi"},
-		{"cancelled away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}, frameTickMsg{}}, 0, "zemi"},
+		{"idle", nil, nil, 0, "zemi"},
+		{"running", running, nil, 0, "⠋ zemi"},
+		{"running 100 ms on", running, nil, 100 * time.Millisecond, "⠋ zemi"},
+		{"running 200 ms on", running, nil, 200 * time.Millisecond, "⠙ zemi"},
+		{"asking", func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
+		{"done away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
+		{"failed away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},
+		{"seen once focused", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}, tea.FocusMsg{}}, 0, "zemi"},
+		{"done here", nil, []tea.Msg{turnDoneMsg{}, frameTickMsg{}}, 0, "zemi"},
+		{"cancelled away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}, frameTickMsg{}}, 0, "zemi"},
 	} {
-		app, host := notifyApp(t)
-		if _, err := host.Settings.SetQuiet("ui.animations", !c.still); err != nil {
-			t.Fatal(err)
-		}
+		app, _ := notifyApp(t)
 		app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
 		for _, m := range c.msgs {
 			app.Update(m)

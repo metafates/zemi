@@ -14,7 +14,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -271,26 +270,16 @@ func (c *composerState) delWord() {
 
 func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
-// multiline reports whether newline insertion is allowed.
-func (a *App) multiline() bool { return a.host.Settings.Bool(config.KeyUIComposerMultiline) }
+const historyCap = 50
 
-// historySize reads the history cap; 0 disables.
-func (a *App) historySize() int {
-	return min(max(a.host.Settings.Int(config.KeyUIComposerHistory), 0), 1000)
-}
-
-func (c *composerState) pushHistory(text string, cap int) {
-	if cap <= 0 {
-		c.history, c.histIdx = nil, 0
-		return
-	}
+func (c *composerState) pushHistory(text string) {
 	if n := len(c.history); n > 0 && c.history[n-1] == text {
 		c.histIdx = n
 		return
 	}
 	c.history = append(c.history, text)
-	if len(c.history) > cap {
-		c.history = c.history[len(c.history)-cap:]
+	if len(c.history) > historyCap {
+		c.history = c.history[len(c.history)-historyCap:]
 	}
 	c.histIdx = len(c.history)
 }
@@ -301,18 +290,17 @@ func (c *composerState) pushHistory(text string, cap int) {
 // NOTE: reads them on the key loop; one capped query is small enough
 // (upgrade: load it in the background at boot).
 func (a *App) seedHistory() {
-	n := a.historySize()
-	if a.histLoaded || n <= 0 {
+	if a.histLoaded {
 		return
 	}
 	a.histLoaded = true
-	stored := a.host.InputHistory(n)
+	stored := a.host.InputHistory(historyCap)
 	c := &a.composer
 	// what this run typed is stored too; keep one copy, in store order
 	c.history = slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) })
 	c.history = append(c.history, stored...)
-	if len(c.history) > n {
-		c.history = c.history[len(c.history)-n:]
+	if len(c.history) > historyCap {
+		c.history = c.history[len(c.history)-historyCap:]
 	}
 	c.histIdx = len(c.history)
 }

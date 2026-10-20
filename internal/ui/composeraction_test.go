@@ -17,8 +17,8 @@ import (
 func TestComposerRecallPastMultiline(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 12)
-	app.composer.pushHistory("old", 100)
-	app.composer.pushHistory("a\nb", 100)
+	app.composer.pushHistory("old")
+	app.composer.pushHistory("a\nb")
 	up := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.composerKey("up", up) // empty composer: recall the newest
 	if app.composer.text != "a\nb" {
@@ -37,8 +37,8 @@ func TestComposerRecallPastMultiline(t *testing.T) {
 func TestComposerActions(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 60, 12)
-	app.composer.pushHistory("first", 100)
-	app.composer.pushHistory("second", 100)
+	app.composer.pushHistory("first")
+	app.composer.pushHistory("second")
 	runLua(t, app, `zemi.composer.history_prev()
 		zemi.composer.history_prev()`)
 	if app.composer.text != "first" {

@@ -217,7 +217,7 @@ function debug.traceback(msg) end
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
 ---@field link? string The URL the text stands for: drawn as a terminal hyperlink and opened by a click. Only `http`, `https` and `mailto` are kept; a markdown link and a bare URL in a reply set it.
----@field effect? "shimmer"|"spin" `shimmer`: a bright band sweeps across the text every frame, blending `hl` toward Normal. `spin`: the first glyph steps through the running spinner, `zemi.ui.marks.spin`'s. Both static with ui.animations off.
+---@field effect? "shimmer"|"spin" `shimmer`: a bright band sweeps across the text every frame, blending `hl` toward Normal. `spin`: the first glyph steps through the running spinner, `zemi.ui.marks.spin`'s.
 ---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
 ---@field fade? number 0 to 1: how far the segment's colors sink toward the surface it sits on (the canvas, or a box's panel). A scrolled view fades its own edge rows; a widget sets this where it clips a block itself, as the chat does to a thinking tail rolling up.
@@ -893,7 +893,7 @@ function zemi.event.stats() end
 ---@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view): the chat draws that run whole while it is up.
 ---@field emoji string The session's marker emoji, derived from its id; "" before the first send.
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
----@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
+---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean }[] Every job the user waits on that is not a turn (/btw, a plugin install, the reflector, a recap, compaction), newest first: each one's label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer

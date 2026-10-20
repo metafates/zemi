@@ -191,7 +191,7 @@ func (a *App) submitComposer() {
 	a.followStage()
 	// !command runs in the user's shell; the output joins the next message
 	if cmd, ok := strings.CutPrefix(text, "!"); ok && strings.TrimSpace(cmd) != "" {
-		a.composer.pushHistory(text, a.historySize())
+		a.composer.pushHistory(text)
 		a.clearComposer()
 		a.host.RunShell(cmd)
 		return
@@ -229,7 +229,7 @@ func (a *App) sendMessage(text string) {
 		return
 	}
 	draft := a.composer.text
-	a.composer.pushHistory(text, a.historySize())
+	a.composer.pushHistory(text)
 	a.clearComposer()
 	if id := a.host.ViewedAgent(); id != "" {
 		if a.host.MessageAgent(id, text) == nil {

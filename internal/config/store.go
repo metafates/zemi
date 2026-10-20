@@ -18,33 +18,27 @@ type Key string
 
 // The builtin keys, in the order defineDefaults declares them.
 const (
-	KeyModelsChat           Key = "models.chat"
-	KeyModelsAgents         Key = "models.agents"
-	KeyModelsTitles         Key = "models.titles"
-	KeyModelsCompact        Key = "models.compact"
-	KeyModelsMemory         Key = "models.memory"
-	KeyModelsFavorites      Key = "models.favorites"
-	KeyProvidersBuiltin     Key = "providers.builtin"
-	KeyUITheme              Key = "ui.theme"
-	KeyUIAnimations         Key = "ui.animations"
-	KeyAgentEffort          Key = "agent.effort"
-	KeyAgentProfile         Key = "agent.profile"
-	KeySessionAutoTitle     Key = "session.auto_title"
-	KeySessionRecap         Key = "session.recap"
-	KeyAgentCompactAt       Key = "agent.compact_at"
-	KeyAgentMaxBackground   Key = "agent.max_background"
-	KeyAgentMaxSteps        Key = "agent.max_steps"
-	KeyLSPAuto              Key = "lsp.auto"
-	KeyEditorCommand        Key = "editor.command"
-	KeyKeymapLeader         Key = "keymap.leader"
-	KeyUIMouse              Key = "ui.mouse"
-	KeyUINotify             Key = "ui.notify"
-	KeyUIProgress           Key = "ui.progress"
-	KeyUIComposerMultiline  Key = "ui.composer.multiline"
-	KeyUIComposerHistory    Key = "ui.composer.history"
-	KeyUICompletionFiles    Key = "ui.completion.files"
-	KeyUICompletionMaxItems Key = "ui.completion.max_items"
-	KeyMemoryAutonomy       Key = "memory.autonomy"
+	KeyModelsChat         Key = "models.chat"
+	KeyModelsAgents       Key = "models.agents"
+	KeyModelsTitles       Key = "models.titles"
+	KeyModelsCompact      Key = "models.compact"
+	KeyModelsMemory       Key = "models.memory"
+	KeyModelsFavorites    Key = "models.favorites"
+	KeyProvidersBuiltin   Key = "providers.builtin"
+	KeyUITheme            Key = "ui.theme"
+	KeyAgentEffort        Key = "agent.effort"
+	KeyAgentProfile       Key = "agent.profile"
+	KeySessionAutoTitle   Key = "session.auto_title"
+	KeySessionRecap       Key = "session.recap"
+	KeyAgentCompactAt     Key = "agent.compact_at"
+	KeyAgentMaxBackground Key = "agent.max_background"
+	KeyAgentMaxSteps      Key = "agent.max_steps"
+	KeyLSPAuto            Key = "lsp.auto"
+	KeyEditorCommand      Key = "editor.command"
+	KeyKeymapLeader       Key = "keymap.leader"
+	KeyUIMouse            Key = "ui.mouse"
+	KeyUINotify           Key = "ui.notify"
+	KeyMemoryAutonomy     Key = "memory.autonomy"
 )
 
 // ModelKey is the key a model target's own model is set at (models.<name>).
@@ -152,7 +146,6 @@ func (s *Store) defineDefaults() {
 		{Path: KeyModelsFavorites, Kind: KindList, Default: []string{}, Desc: "the models /model lists first, marked with f (provider/model ids)"},
 		{Path: KeyProvidersBuiltin, Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: KeyUITheme, Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
-		{Path: KeyUIAnimations, Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: KeyAgentProfile, Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
 		{Path: KeySessionAutoTitle, Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
@@ -165,11 +158,6 @@ func (s *Store) defineDefaults() {
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: KeyUINotify, Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks what shows on this machine (/health names it)"},
-		{Path: KeyUIProgress, Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
-		{Path: KeyUIComposerMultiline, Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter)"},
-		{Path: KeyUIComposerHistory, Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
-		{Path: KeyUICompletionFiles, Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
-		{Path: KeyUICompletionMaxItems, Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},
 		{Path: KeyMemoryAutonomy, Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores them at once, ask queues them for /memory"},
 	}
 	for _, def := range defaults {

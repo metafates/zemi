@@ -14,7 +14,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/term"
 
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -28,9 +27,8 @@ func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, frame int,
 	var b strings.Builder
 	normal := t.style("Normal").Fg
 	canvas := t.canvas()
-	anim := t.host != nil && t.host.Settings.Bool(config.KeyUIAnimations)
 	for _, line := range lines {
-		line, _ = segEffects(t, anim, frame, line)
+		line, _ = segEffects(t, frame, line)
 		for _, s := range line {
 			if s.Text == "" {
 				continue
@@ -112,7 +110,7 @@ func (v *RunView) Tails() bool { return v.on() && v.size != nil }
 func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
 
 // frame is the run view's tick of the frame clock (frameClock).
-func (v *RunView) frame() int { return frameClock(v.h, v.now) }
+func (v *RunView) frame() int { return frameClock(v.now) }
 
 // stageWidth is the width the chat regions draw at: the stage node's max in
 // the layout in force, the width the TUI centers the chat inside, else the

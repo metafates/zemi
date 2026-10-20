@@ -588,10 +588,10 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	runUser(t, r, `
 		zemi.config.set("memory.autonomy", "auto")
 
-		zemi.config.set("ui.composer.history", 42)
+		zemi.config.set("agent.max_steps", 42)
 	`)
-	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != 42.0 {
-		t.Fatalf("ui.composer.history = %v, want 42", v)
+	if v, ok := h.Settings.Get("agent.max_steps"); !ok || v != 42.0 {
+		t.Fatalf("agent.max_steps = %v, want 42", v)
 	}
 }
 
@@ -683,20 +683,20 @@ func TestConfigSet(t *testing.T) {
 	}
 	// a bool row draws its switch after its source, and its description is
 	// the preview
-	h.cfgNow = map[config.Key][]any{config.KeyUIAnimations: {false}}
+	h.cfgNow = map[config.Key][]any{config.KeyUIMouse: {false}}
 	for _, c := range []struct {
 		step func()
 		on   bool
 		desc string
 	}{
-		{func() { h.Settings.SetQuiet(config.KeyUIAnimations, false) }, false, "init.lua"},
-		{func() { h.configSet(config.KeyUIAnimations, "on") }, true, "this run"},
+		{func() { h.Settings.SetQuiet(config.KeyUIMouse, false) }, false, "init.lua"},
+		{func() { h.configSet(config.KeyUIMouse, "on") }, true, "this run"},
 		{func() { h.cfgNow = nil }, true, "default"},
 	} {
 		c.step()
 		items := h.configItems()
-		row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.animations" })].(map[string]any)
-		if desc, _ := row["desc"].(string); row["on"] != c.on || desc != c.desc || !strings.Contains(row["preview"].(string), "animate") {
+		row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.mouse" })].(map[string]any)
+		if desc, _ := row["desc"].(string); row["on"] != c.on || desc != c.desc || !strings.Contains(row["preview"].(string), "drag to select") {
 			t.Errorf("bool row: on %v, desc %q, preview %q; want %v, %q", row["on"], desc, row["preview"], c.on, c.desc)
 		}
 	}
@@ -723,12 +723,12 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.config.watch("ui.completion.files", function(nv, ov)
+		zemi.config.watch("ui.mouse", function(nv, ov)
 			assert(ov == true, "old=" .. tostring(ov))
 			assert(nv == false, "new=" .. tostring(nv))
 			zemi.config.set("editor.command", "watched")
 		end)
-		zemi.config.set("ui.completion.files", false)
+		zemi.config.set("ui.mouse", false)
 		assert(not pcall(zemi.config.watch, "agent.mdoel", function() end), "a watch on an unknown key must raise")
 	`)
 	if v, ok := h.Settings.Get("editor.command"); !ok || v != "watched" {

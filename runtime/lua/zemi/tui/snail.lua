@@ -1,7 +1,7 @@
 -- zemi's mascot: a snail whose shell is the "@", one cell off the rule's left
 -- end. Text only, and only the
 -- shell takes a color, the Snail group's. It stays at the left end of the rule: the state shows in
--- its eyes, stepped by the 50ms frame clock (still with ui.animations off).
+-- its eyes, stepped by the 50ms frame clock.
 ---@class zemi.tui.snail
 local M = {}
 
