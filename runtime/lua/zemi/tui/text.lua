@@ -83,8 +83,8 @@ function M.hint(noun, cmd, click, hl)
 end
 
 --- What the session still waits on as one row: the runs and jobs of other
---- work, the jobs the user waits on, and a compaction. Static text, so an
---- hour-long job holds no frame clock; nil when nothing pends.
+--- work, the jobs the user waits on, and a compaction. Its labels breathe,
+--- so the row ticks the frame clock while it lives; nil when nothing pends.
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.Line?
 function M.pending(ctx)
@@ -111,7 +111,7 @@ function M.pending(ctx)
 	local row = { { text = mark.glyph .. " ", hl = mark.hl, copy = false, hover = false } }
 	for i, part in ipairs(parts) do
 		if i > 1 then row[#row + 1] = { text = " · ", hl = "Dim", copy = false, hover = false } end
-		row[#row + 1] = { text = part, hl = "Dim" }
+		row[#row + 1] = { text = part, hl = "Dim", effect = "shimmer" }
 	end
 	return row
 end

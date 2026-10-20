@@ -115,7 +115,7 @@ local function lastRow(ctx, room)
 		if used >= room then break end
 		local text = fmt.clip(s.text, room - used)
 		used = used + zemi.ui.width(text)
-		row[#row + 1] = { text = text, hl = s.hl, hover = s.hover, copy = s.copy }
+		row[#row + 1] = { text = text, hl = s.hl, hover = s.hover, copy = s.copy, effect = s.effect }
 	end
 	return row
 end

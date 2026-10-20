@@ -2328,7 +2328,15 @@ func TestPendingRow(t *testing.T) {
 		want string
 	}{
 		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
-		{"compaction", func(h *hostapi.Host) { h.SeedStream(hostapi.StreamSnapshot{Active: true, Compacting: true}) }, "⧗ compacting the conversation"},
+		{
+			// a turn's clock is running under the summary, which is no reason
+			// for the chat to draw the turn's own wait row under it
+			"compaction",
+			func(h *hostapi.Host) {
+				h.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Compacting: true})
+			},
+			"⧗ compacting the conversation",
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -2342,10 +2350,42 @@ func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
 	app, host := bootAgentApp(t, 100, 24)
 	seedTodos(t, host, []store.Todo{{Content: "step one", Status: "pending"}})
 	work(host)
-	rows := chatRows(t, app, 80)
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 20, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := make([]string, 0, len(lines))
+	var row []hostapi.Segment
+	for _, l := range lines {
+		r := strings.TrimRight(hostapi.SegsText(l), " ")
+		rows = append(rows, r)
+		if r == want {
+			row = l
+		}
+		if strings.Contains(r, "thinking") {
+			t.Fatalf("the chat drew a thinking row too: %q", r)
+		}
+	}
 	at, todos := slices.Index(rows, want), slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "Todos ") })
 	if at < 0 || todos < 0 || at > todos {
 		t.Fatalf("want %q above the todos header, at %d of %d:\n%s", want, at, todos, strings.Join(rows, "\n"))
+	}
+	if row[0].Effect != "" || !slices.ContainsFunc(row[1:], func(s hostapi.Segment) bool { return s.Effect == "shimmer" }) {
+		t.Fatalf("the row's label breathes and its mark does not: %v", row)
+	}
+}
+
+// TestShimmerHoldsTheFrameClock: a drawn breathing label moves by itself, so
+// the tick stays on the frame clock while one is on screen.
+func TestShimmerHoldsTheFrameClock(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 24)
+	segs := []hostapi.Segment{{Text: "checking health", Effect: "shimmer"}}
+	if _, moved := segEffects(app.thm, 50, segs); !moved {
+		t.Fatal("a breathing label does not hold the frame clock")
+	}
+	if _, moved := segEffects(app.thm, 0, segs); moved {
+		t.Fatal("a label at frame 0 moves the clock")
 	}
 }
 

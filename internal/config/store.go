@@ -18,7 +18,6 @@ type Key string
 
 // The builtin keys, in the order defineDefaults declares them.
 const (
-<<<<<<< HEAD
 	KeyModelsChat         Key = "models.chat"
 	KeyModelsAgents       Key = "models.agents"
 	KeyModelsTitles       Key = "models.titles"
@@ -33,41 +32,12 @@ const (
 	KeySessionRecap       Key = "session.recap"
 	KeyAgentCompactAt     Key = "agent.compact_at"
 	KeyAgentMaxBackground Key = "agent.max_background"
-	KeyAgentMaxSteps      Key = "agent.max_steps"
 	KeyLSPAuto            Key = "lsp.auto"
 	KeyEditorCommand      Key = "editor.command"
 	KeyKeymapLeader       Key = "keymap.leader"
 	KeyUIMouse            Key = "ui.mouse"
 	KeyUINotify           Key = "ui.notify"
 	KeyMemoryAutonomy     Key = "memory.autonomy"
-=======
-	KeyModelsChat           Key = "models.chat"
-	KeyModelsAgents         Key = "models.agents"
-	KeyModelsTitles         Key = "models.titles"
-	KeyModelsCompact        Key = "models.compact"
-	KeyModelsMemory         Key = "models.memory"
-	KeyModelsFavorites      Key = "models.favorites"
-	KeyProvidersBuiltin     Key = "providers.builtin"
-	KeyUITheme              Key = "ui.theme"
-	KeyUIAnimations         Key = "ui.animations"
-	KeyAgentEffort          Key = "agent.effort"
-	KeyAgentProfile         Key = "agent.profile"
-	KeySessionAutoTitle     Key = "session.auto_title"
-	KeySessionRecap         Key = "session.recap"
-	KeyAgentCompactAt       Key = "agent.compact_at"
-	KeyAgentMaxBackground   Key = "agent.max_background"
-	KeyLSPAuto              Key = "lsp.auto"
-	KeyEditorCommand        Key = "editor.command"
-	KeyKeymapLeader         Key = "keymap.leader"
-	KeyUIMouse              Key = "ui.mouse"
-	KeyUINotify             Key = "ui.notify"
-	KeyUIProgress           Key = "ui.progress"
-	KeyUIComposerMultiline  Key = "ui.composer.multiline"
-	KeyUIComposerHistory    Key = "ui.composer.history"
-	KeyUICompletionFiles    Key = "ui.completion.files"
-	KeyUICompletionMaxItems Key = "ui.completion.max_items"
-	KeyMemoryAutonomy       Key = "memory.autonomy"
->>>>>>> no-max-steps
 )
 
 // ModelKey is the key a model target's own model is set at (models.<name>).
