@@ -2797,7 +2797,7 @@ Skill format (agentskills.io compatible, crush parity):
 skills/
   local-integration/
     SKILL.md            # yaml frontmatter: name, description, user-invocable,
-                        # disable-model-invocation, argument-hint; body = instructions
+                        # argument-hint; body = instructions
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
@@ -2817,10 +2817,10 @@ description in context and the full body on demand through the `skill`
 tool. A skill whose frontmatter says `user-invocable: true` is also the
 command `/<name>`, registered after every other command under the
 skill's origin, never over a builtin command or one of its own origin,
-and over a less trusted one by the registry's origin rule;
-`disable-model-invocation: true` keeps it out of the index and the skill
-tool, and makes it a command unless `user-invocable: false`. Recipes take
-neither. `/skills` browses, toggles (toggling a skill with a command
+and over a less trusted one by the registry's origin rule. Every
+enabled skill is in the index and the skill tool: Claude's
+`disable-model-invocation` is accepted and ignored. Recipes take neither
+command field. `/skills` browses, toggles (toggling a skill with a command
 reloads config, which rebuilds the commands) and uses them (a row's
 detail carries the whole body and opens it in the editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin).

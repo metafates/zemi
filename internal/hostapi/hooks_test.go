@@ -324,7 +324,7 @@ func TestClaudePluginLayers(t *testing.T) {
 		t.Fatalf("fix-greet: %+v", greet)
 	}
 	pr := skills["fix-pr"]
-	if pr.Name == "" || pr.UserInvocable || pr.DisableModelInvocation || pr.File == "" || pr.Description != "Draft a PR description" {
+	if pr.Name == "" || pr.UserInvocable || pr.File == "" || pr.Description != "Draft a PR description" {
 		t.Fatalf("fix-pr: %+v", pr)
 	}
 	if c := h.Commands.Lookup("fix-pr"); c == nil || c.Path != skillFile(pr) {

@@ -135,8 +135,9 @@ and drops the pinned prompt. Invariants:
   step after user init.lua, as user origin; enabling later does not run it.
 - **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
   over a builtin or same-origin command and over a less trusted one by `mayReplace`
-  (`addSkillCommand`; a toggle reloads config to rebuild it); `disable-model-invocation` leaves
-  `modelSkills`, which feeds the index and the skill tool; recipes ignore both.
+  (`addSkillCommand`; a toggle reloads config to rebuild it); the index and the skill tool take
+  every enabled skill, so Claude's `disable-model-invocation` hides nothing; recipes ignore the
+  command fields.
 
 ## Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 

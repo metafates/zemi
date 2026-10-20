@@ -193,12 +193,12 @@ func skillNote(s skill.Skill) string {
 	return ""
 }
 
-// skillIndex is what the skill tool may load (modelSkills).
+// skillIndex is what the skill tool may load: every enabled skill.
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
 	// recipes are read live: one written this session loads at once, while
 	// the pinned prompt keeps the list it was built with
-	for _, s := range h.modelSkills() {
+	for _, s := range h.enabledSkills() {
 		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data, Note: skillNote(s)})
 	}
 	return out
@@ -208,12 +208,6 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 func (h *Host) enabledSkills() []skill.Skill {
 	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skill.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
 	return append(enabled, h.projectOnlySkills()...)
-}
-
-// modelSkills is what the model may load: the enabled skills but the ones
-// kept for the user (disable-model-invocation).
-func (h *Host) modelSkills() []skill.Skill {
-	return slices.DeleteFunc(h.enabledSkills(), func(s skill.Skill) bool { return s.DisableModelInvocation })
 }
 
 // recipesDir holds a project.s recipes: skills private to this machine, kept
@@ -327,7 +321,7 @@ const skillDescMax = 240
 // prompt stays the same in every project.
 func (h *Host) skillsIndexPrompt() (mine, project string) {
 	var lines [2]strings.Builder
-	for _, s := range h.modelSkills() {
+	for _, s := range h.enabledSkills() {
 		i := 0
 		if !s.Source.Stored() {
 			i = 1
@@ -663,7 +657,7 @@ func (h *Host) skillItems() []any {
 // through its command.
 func (h *Host) usedBy(s skill.Skill, on bool) string {
 	var who []string
-	if on && !s.DisableModelInvocation {
+	if on {
 		who = append(who, "the model")
 	}
 	if h.hasSkillCommand(s) {

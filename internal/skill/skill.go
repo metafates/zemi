@@ -64,11 +64,10 @@ type Skill struct {
 	// body, set for a Claude-layout plugin's entries, "" for everything else.
 	File       string
 	Root, Data string
-	// UserInvocable: the skill is also /<name>. A skill the model may not
-	// load is the user's, so it is one unless its frontmatter says otherwise.
-	UserInvocable          bool
-	DisableModelInvocation bool
-	ArgumentHint           string
+	// UserInvocable: the skill is also /<name>, a command its frontmatter
+	// asks for; the model loads every skill either way.
+	UserInvocable bool
+	ArgumentHint  string
 }
 
 // maxNameLen caps a name: a skill's directory, a workflow file, a
@@ -110,8 +109,7 @@ func Parse(dir string, source Source, prefix string) (Skill, error) {
 		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", base, fm.Name)
 	}
 	if source != Recipe { // a recipe is the model's own procedure
-		sk.DisableModelInvocation, sk.ArgumentHint = fm.DisableModelInvocation, string(fm.ArgumentHint)
-		sk.UserInvocable = fm.DisableModelInvocation
+		sk.ArgumentHint = string(fm.ArgumentHint)
 		if fm.UserInvocable != nil {
 			sk.UserInvocable = *fm.UserInvocable
 		}
@@ -166,11 +164,10 @@ func SplitFrontmatter(s string) (block, body string, err error) {
 }
 
 type front struct {
-	Name                   string `yaml:"name"`
-	Description            string `yaml:"description"`
-	UserInvocable          *bool  `yaml:"user-invocable"`
-	DisableModelInvocation bool   `yaml:"disable-model-invocation"`
-	ArgumentHint           Hint   `yaml:"argument-hint"`
+	Name          string `yaml:"name"`
+	Description   string `yaml:"description"`
+	UserInvocable *bool  `yaml:"user-invocable"`
+	ArgumentHint  Hint   `yaml:"argument-hint"`
 }
 
 // Hint is argument-hint, which Claude Code's docs write as a flow list

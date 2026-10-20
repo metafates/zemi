@@ -78,19 +78,21 @@ func TestParseErrors(t *testing.T) {
 
 func TestParseInvocation(t *testing.T) {
 	cases := []struct {
-		name, extra  string
-		source       Source
-		user, hidden bool
-		hint         string
-		wantErr      bool
+		name, extra string
+		source      Source
+		user        bool
+		hint        string
+		wantErr     bool
 	}{
 		{name: "plain", source: User},
 		{name: "user-invocable", extra: "user-invocable: true", source: User, user: true},
-		{name: "hidden from the model is a command", extra: "disable-model-invocation: true", source: User, user: true, hidden: true},
-		{name: "hidden and no command", extra: "disable-model-invocation: true\nuser-invocable: false", source: User, hidden: true},
+		{name: "no command unless asked", extra: "user-invocable: false", source: User},
+		// Claude's key for a user-only skill is ignored: the model loads
+		// every skill, and it asks for a command on its own
+		{name: "the model-invocation key is ignored", extra: "disable-model-invocation: true", source: User},
 		{name: "hint", extra: "argument-hint: <pr>", source: Plugin, hint: "<pr>"},
 		{name: "hint as a flow list", extra: "argument-hint: [pr-number]", source: User, hint: "[pr-number]"},
-		{name: "a recipe takes neither", extra: "user-invocable: true\ndisable-model-invocation: true\nargument-hint: <x>", source: Recipe},
+		{name: "a recipe takes neither", extra: "user-invocable: true\nargument-hint: <x>", source: Recipe},
 		{name: "quoted bool", extra: `user-invocable: "true"`, source: User, wantErr: true},
 	}
 	for _, c := range cases {
@@ -101,7 +103,7 @@ func TestParseInvocation(t *testing.T) {
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err=%v", err)
 			}
-			if err == nil && (sk.UserInvocable != c.user || sk.DisableModelInvocation != c.hidden || sk.ArgumentHint != c.hint) {
+			if err == nil && (sk.UserInvocable != c.user || sk.ArgumentHint != c.hint) {
 				t.Fatalf("got %+v", sk)
 			}
 		})

@@ -215,8 +215,9 @@ func TestSkillCommands(t *testing.T) {
 	}{
 		{name: "plain", write: user("d"), indexed: true, used: "the model"},
 		{name: "asks for a command", write: user(asks), indexed: true, cmd: lua.OriginUser, used: mine},
-		{name: "hidden from the model is a command", write: user("d\ndisable-model-invocation: true"), cmd: lua.OriginUser, used: "/x"},
-		{name: "hidden and no command", write: user("d\ndisable-model-invocation: true\nuser-invocable: false"), used: "/skills use only"},
+		// the model loads every skill: Claude's key hides nothing
+		{name: "the model-invocation key is ignored", write: user("d\ndisable-model-invocation: true"), indexed: true, used: "the model"},
+		{name: "asks for no command", write: user("d\nuser-invocable: false"), indexed: true, used: "the model"},
 		{name: "a builtin command stays", skill: "skills", write: func(h *Host) { writeSkill(t, h.userSkillsDir(), "skills", asks, "") }, indexed: true, other: lua.OriginBuiltin, err: "skills: /skills is already a builtin command", used: "the model; /skills is another command"},
 		{name: "a markdown command of its origin stays", write: both(user(asks), userCmd), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
 		{name: "a lua command of its origin stays", write: both(user(asks), func(h *Host) {
@@ -229,7 +230,7 @@ func TestSkillCommands(t *testing.T) {
 		{name: "a trusted project skill", write: project, indexed: true, cmd: lua.OriginProject, used: mine},
 		{name: "an untrusted project skill", write: project, untrusted: true},
 		{name: "a recipe takes neither field", write: func(h *Host) {
-			writeSkill(t, h.recipesDir(), "x", "d\ndisable-model-invocation: true\nuser-invocable: true", "")
+			writeSkill(t, h.recipesDir(), "x", "d\nuser-invocable: true", "")
 		}, indexed: true, used: "the model"},
 		{name: "off puts back the command it displaced", write: both(user(asks), projectCmd), toggle: []bool{false}, other: lua.OriginProject, used: "/skills use only"},
 		{name: "on brings it back", write: user(asks), toggle: []bool{false, true}, indexed: true, cmd: lua.OriginUser, used: mine},
