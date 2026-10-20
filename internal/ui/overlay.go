@@ -1183,14 +1183,15 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 }
 
 // bodyParts lays a view's parts out: a run of parts naming a Fill stands as
-// one well, one padding above and below it and no gap between its parts, so
-// a command and what it answered read as one box with two surfaces.
+// one well, a padding row above each of its parts and one below the last, so
+// a command and what it answered read as one box with two surfaces and air
+// between them.
 func (a *App) bodyParts(parts []hostapi.BodyPart, w int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	for i, p := range parts {
 		well, held := p.Fill != hostapi.FillAuto, i > 0 && parts[i-1].Fill != hostapi.FillAuto
 		switch {
-		case well && !held:
+		case well: // one above the first part, one over each after it
 			rows = append(rows, wellPad(p.Fill, w))
 		case !well && i > 0:
 			if held {

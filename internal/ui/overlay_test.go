@@ -1750,8 +1750,8 @@ func TestOverlayStepsAlongRail(t *testing.T) {
 }
 
 // TestBodyPartsWell: parts naming a surface stand as one well - a padding
-// row above and below, no gap between them, each part on its own surface -
-// while a part outside it keeps its gap and its own look.
+// row above each, one below the last, each on its own surface - while a part
+// outside it keeps its gap and its own look.
 func TestBodyPartsWell(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
@@ -1768,10 +1768,11 @@ func TestBodyPartsWell(t *testing.T) {
 		fills = append(fills, row[0].Fill)
 	}
 	want := []hostapi.Fill{
-		hostapi.FillCanvas, // the well's top padding and the command
+		hostapi.FillCanvas, // the command's padding and the command
 		hostapi.FillCanvas,
-		hostapi.FillWell, // what it answered, no blank row between
-		hostapi.FillWell, // its bottom padding
+		hostapi.FillWell, // what it answered: its padding, its row, its padding
+		hostapi.FillWell,
+		hostapi.FillWell,
 		hostapi.FillAuto, // the gap before a part outside the well
 	}
 	if len(fills) < len(want) || !slices.Equal(fills[:len(want)], want) {

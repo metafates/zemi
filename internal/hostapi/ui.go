@@ -597,7 +597,8 @@ type Field struct{ Name, Value string }
 // BodyPart is one part of a view's body, drawn in the form its text is
 // written in: markdown, a unified diff ("diff"), a language to highlight it
 // as, or "" for plain text. A part with a Fill joins the well its neighbours
-// with one make: one padding, no gap, each on its own surface.
+// with one make: a padding row above each part, one below the last, and each
+// on its own surface.
 type BodyPart struct {
 	Text string
 	Lang string

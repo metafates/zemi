@@ -1973,10 +1973,10 @@ rides the `memories.md` line and its ledger entries.
   or a language to highlight it as - and a body its work rewrites (`Live`)
   keeps the reader's place, or follows its tail while they never scrolled.
   A part that names a surface stands in a well: consecutive ones share one
-  well, a padding row above and below and no gap between them, so a call's
+  well, a padding row above each and one below the last, so a call's
   command (the canvas, sunk into the box) and what it answered (the well,
-  a step above the box) read as one box with two surfaces, as `/jobs view`
-  draws it too. A `status` field colors the status
+  a step above the box) read as one box with two surfaces and air between
+  them, as `/jobs view` draws it too. A `status` field colors the status
   words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
