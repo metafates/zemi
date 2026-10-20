@@ -251,6 +251,7 @@ func TestSessionStartCapture(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			timeout := ""
 			if c.name == "a hook the timeout killed" {
 				timeout = `"timeout":1,`

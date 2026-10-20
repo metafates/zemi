@@ -185,6 +185,7 @@ func TestCompactionMidTurn(t *testing.T) {
 		{"esc during the summary reads as interrupted", nil, true, 1, "cancelled"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			m := reflectStub(t, h, "ok")
 			m.err = c.summaryErr
@@ -263,6 +264,7 @@ func TestOverflowRecovery(t *testing.T) {
 		{"keeps the request verbatim", true, 1, 4, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			m := reflectStub(t, h, "ok")
 			h.reflectMu.Lock()

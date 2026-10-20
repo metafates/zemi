@@ -537,6 +537,7 @@ func TestMemoryGate(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
@@ -657,6 +658,7 @@ func TestMemoryListActions(t *testing.T) {
 		{"undo goes newest first, edits included", []string{"accept pp1dp1dp", "pp1dp1dp=run make check before a push", "reject pp2ep2ep", "move mm2bm2bm", "forget mm1am1am"}, "?project:pp4gp4gp:the build runs with make check, ?user:pp3fp3fp:forget:short replies, project:mm2bm2bm:learned:2:short replies, project:pp1dp1dp:user:new:run make check before a push, user:mm3cm3cm:learned:3:the build runs with make check"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			for n, m := range []*store.Memory{
 				{ID: "mm1am1am", Scope: "project", Text: "deploy by hand", Origin: store.OriginUser},
@@ -744,6 +746,7 @@ func TestEditMemory(t *testing.T) {
 		{"suggestion reworded is kept as yours", "pp1dp1dp", "deploy with make ship", "deploy with make ship"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			seedSession(t, h)
 			for _, m := range []*store.Memory{
@@ -873,6 +876,7 @@ func TestMemoryFileMode(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			h.SetProjectTrusted(true)
 			sid := seedSession(t, h)
@@ -902,6 +906,7 @@ func TestMemoryFileMode(t *testing.T) {
 	}
 
 	t.Run("under ask the overwrite gate names a foreign file and a stale one", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
@@ -942,6 +947,7 @@ func TestMemoryFileMode(t *testing.T) {
 	})
 
 	t.Run("the write entry keeps the prior bytes for rewind", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
@@ -1162,6 +1168,7 @@ func TestPromoteMemory(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, sid, _ := setup(t)
 			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			m := tc.seed(t, h)
@@ -1179,6 +1186,7 @@ func TestPromoteMemory(t *testing.T) {
 	}
 
 	t.Run("accept writes and undo restores the line and the file", func(t *testing.T) {
+		t.Parallel()
 		h, _, _ := setup(t)
 		h.Settings.SetQuiet("memory.autonomy", "ask")
 		m := seedLine(t, h, "project", store.OriginUser, "deploy by hand")
@@ -1210,6 +1218,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("an edited file survives the undo, the line comes back", func(t *testing.T) {
+		t.Parallel()
 		h, _, _ := setup(t)
 		h.Settings.SetQuiet("memory.autonomy", "ask")
 		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
@@ -1236,6 +1245,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("a replace between accept and undo makes the undo a no-op", func(t *testing.T) {
+		t.Parallel()
 		h, _, _ := setup(t)
 		h.Settings.SetQuiet("memory.autonomy", "ask")
 		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
@@ -1268,6 +1278,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("a replace of a promoted id proceeds and names the file", func(t *testing.T) {
+		t.Parallel()
 		h, _, _ := setup(t)
 		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
 		msg, err := call(h, "sess0001", m.ID, "out.md", "d", "r")
@@ -1284,6 +1295,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("a name promoted in both partitions rewinds both files", func(t *testing.T) {
+		t.Parallel()
 		h, sid, private := setup(t)
 		private1 := seedLine(t, h, "project", store.OriginLearned, "a private fact")
 		if _, err := call(h, sid, private1.ID, "same.md", "d", "r"); err != nil {
@@ -1313,6 +1325,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("rewind restores the line and deletes the file", func(t *testing.T) {
+		t.Parallel()
 		h, sid, private := setup(t)
 		m := seedLine(t, h, "project", store.OriginLearned, "a plain fact")
 		if _, err := call(h, sid, m.ID, "out.md", "d", "r"); err != nil {
@@ -1329,6 +1342,7 @@ func TestPromoteMemory(t *testing.T) {
 	})
 
 	t.Run("a ledger-only promote undone in its session stays ledger-only under rewind", func(t *testing.T) {
+		t.Parallel()
 		h, sid, private := setup(t)
 		h.Settings.SetQuiet("memory.autonomy", "ask")
 		archived := cutOldest(t, h, "project")
@@ -1400,6 +1414,7 @@ func TestMemorySearch(t *testing.T) {
 	}
 
 	t.Run("a live hit and an archived hit, by text and by id", func(t *testing.T) {
+		t.Parallel()
 		h, _, private := setup(t)
 		seedLine(t, h, "project", store.OriginLearned, "the deploy script lives in bin/deploy")
 		archived := ""
@@ -1424,6 +1439,7 @@ func TestMemorySearch(t *testing.T) {
 	})
 
 	t.Run("a forgotten id and a frozen row stay out", func(t *testing.T) {
+		t.Parallel()
 		h, _, private := setup(t)
 		m := seedLine(t, h, "project", store.OriginLearned, "a forgotten fact")
 		if err := brain.Forget(private, "seed", m.ID, time.Now()); err != nil {
@@ -1439,6 +1455,7 @@ func TestMemorySearch(t *testing.T) {
 	})
 
 	t.Run("the cap holds and a hit re-enters through replaces", func(t *testing.T) {
+		t.Parallel()
 		h, _, private := setup(t)
 		var archived string
 		for i := range 12 {
@@ -1468,6 +1485,7 @@ func TestMemorySearch(t *testing.T) {
 	})
 
 	t.Run("an empty query refuses", func(t *testing.T) {
+		t.Parallel()
 		h, _, _ := setup(t)
 		if _, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Query: "   "}); err == nil {
 			t.Fatal("an empty query must fail")

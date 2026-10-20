@@ -79,6 +79,7 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 		{"a row after the join", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h := newTestHostUI(t)
 			hk := h.streamHooks()
 			hk.ReasoningDelta("ponder")

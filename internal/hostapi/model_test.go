@@ -74,6 +74,7 @@ func TestRoleModel(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHost(t)
 			if c.err != "" {
 				runExpectErr(t, r, rolesProvider+c.config, c.err)

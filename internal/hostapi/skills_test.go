@@ -231,6 +231,7 @@ func TestSkillCommands(t *testing.T) {
 		{name: "on brings it back", write: user(asks), toggle: []bool{false, true}, indexed: true, cmd: lua.OriginUser, used: mine},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostSkillsNoBoot(t)
 			c.write(h)
 			h.SetProjectTrusted(!c.untrusted)

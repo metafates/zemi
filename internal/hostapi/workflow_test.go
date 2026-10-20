@@ -807,6 +807,7 @@ func TestWorkflowWait(t *testing.T) {
 		{name: "esc stops waiting, not the run", esc: true, want: "Stopped waiting", stillLive: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			h.SetUIHooks(&fakeUI{})
 			seedSession(t, h)
@@ -898,6 +899,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			if c.hooks {
 				h.SetUIHooks(&fakeUI{})
@@ -1221,6 +1223,7 @@ func TestWorkflowUserStart(t *testing.T) {
 		{"headless it holds the agent until the report's turn ends", false, []string{"Workflow ", "ok"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			if c.ui {
 				h.SetUIHooks(&fakeUI{})

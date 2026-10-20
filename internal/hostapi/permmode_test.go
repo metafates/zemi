@@ -122,6 +122,7 @@ func TestAskFIFO(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHost(t)
 			opened := make(chan struct{})
 			ui := &fakeUI{}

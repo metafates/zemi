@@ -68,6 +68,7 @@ func TestModelAsk(t *testing.T) {
 		{name: "a reload cancels it", origin: lua.OriginUser, reload: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostPlugin(t, `["model"]`)
 			sid := seedSession(t, h)
 			m := &askModel{reflectStubModel: &reflectStubModel{}, asked: make(chan struct{}), release: make(chan struct{}), gone: make(chan struct{})}

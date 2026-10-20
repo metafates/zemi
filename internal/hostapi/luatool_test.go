@@ -264,6 +264,7 @@ func TestLuaToolReloads(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHost(t)
 			h.SetProjectTrusted(true)
 			changed := c.changed

@@ -348,6 +348,7 @@ func TestReflectApply(t *testing.T) {
 		{name: "a bad scope is skipped", doc: `{"memories":[{"scope":"galaxy","text":"` + fact + `"}]}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			h.Settings.SetQuiet("memory.autonomy", cmp.Or(c.autonomy, "auto"))
 			h.SetProjectTrusted(true)
@@ -491,6 +492,7 @@ func TestReflectPrompt(t *testing.T) {
 		}, want: []string{"## Instructions: AGENTS.md\nrun make check before committing"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			sid := seedSession(t, h)
 			seedTranscript(t, h, sid)
@@ -883,6 +885,7 @@ func TestReflectTrigger(t *testing.T) {
 		}, calls: 1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			sid := seedSession(t, h)
 			m := reflectStub(t, h, `{"memories":[]}`)

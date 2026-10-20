@@ -233,6 +233,7 @@ func TestToolPostRewrite(t *testing.T) {
 		{"a failing handler leaves it", `zemi.event.on("tool.post", function() error("boom") end)`, "", "x"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHost(t)
 			runUser(t, r, `zemi.tool.add({ name = "echo", description = "echo", execute = function() return "x" end })`+c.user)
 			if c.project != "" {

@@ -275,6 +275,7 @@ func TestPluginsStep(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			tmp, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
@@ -792,6 +793,7 @@ func TestPluginToolCall(t *testing.T) {
 		{name: "a read-only run may not call it", readOnly: true, denied: "read-only agent"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostPlugin(t, `["tool"]`)
 			ui := &fakeUI{askAllowed: true, askBy: tools.ByUser}
 			h.SetUIHooks(ui)

@@ -30,6 +30,7 @@ func TestPluginText(t *testing.T) {
 		{name: "a plugin's rewrite", origin: lua.OriginPlugin, src: rewrite, rewrite: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostPlugin(t, `["agent"]`)
 			reflectStub(t, h, "ok")
 			if !c.headless {

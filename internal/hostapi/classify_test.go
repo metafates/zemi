@@ -172,6 +172,7 @@ func TestClassifyAsk(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			f := newEndpoint(t, func(string) string { return c.reply })
 			h, r := newTestHostDB(t)
 			sid := seedSession(t, h)

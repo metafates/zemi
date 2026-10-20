@@ -243,6 +243,7 @@ func TestRewindSnapshotEdges(t *testing.T) {
 		{name: "partly aged out", firstAge: store.CheckpointTTL + time.Hour, want: "v1", warn: "1 of those turn"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			real := filepath.Join(h.Dirs.ProjectDir, "f.txt")
 			link := filepath.Join(h.Dirs.ProjectDir, "link.txt")
@@ -352,6 +353,7 @@ func TestRewindShellSymlink(t *testing.T) {
 		{name: "created", path: "new", run: func(dir string) error { return os.Symlink("a.txt", filepath.Join(dir, "new")) }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			dir := h.Dirs.ProjectDir
 			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644)

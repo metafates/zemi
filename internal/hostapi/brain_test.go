@@ -426,6 +426,7 @@ func TestBrainAfterWrite(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			h.Dirs.DataHome = t.TempDir()
 			_, private := h.brainParts()

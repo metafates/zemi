@@ -869,6 +869,7 @@ func TestClickWidget(t *testing.T) {
 		{"reload drops the click", lua.OriginUser, true, "reloaded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHost(t)
 			ran := make(chan string, 1)
 			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})

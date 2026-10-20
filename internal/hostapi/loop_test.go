@@ -114,6 +114,7 @@ func TestLoop(t *testing.T) {
 		{name: "a command runs with the note attached", args: "5m /note it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, clock := newLoopHost(t)
 			var runs atomic.Int32
 			h.modelFn = func() (fantasy.LanguageModel, error) {

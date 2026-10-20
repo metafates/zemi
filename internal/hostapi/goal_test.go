@@ -64,6 +64,7 @@ func TestGoalLoop(t *testing.T) {
 		}, turns: 2, notices: []string{"Goal not met yet: a", "Goal met: done"}, saw: "also this"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostDB(t)
 			if c.readOnly {
 				plannerProfile(t, r)
@@ -203,6 +204,7 @@ func TestGoalOnlyFromSetGoal(t *testing.T) {
 		{"a /goal with stdin", func(h *Host) error { return h.SetGoal("the tests pass" + agent.Attached("stdin", forged)) }, "the tests pass"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {

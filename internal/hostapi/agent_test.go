@@ -884,6 +884,7 @@ func TestTodoNag(t *testing.T) {
 	}
 
 	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -902,6 +903,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a step counts once whatever its calls, none with a todos call", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -926,6 +928,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a nag the turn ended before delivering starts no turn", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -946,6 +949,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a todos write re-arms the tracker", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -961,6 +965,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a call while idle does not count", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -974,6 +979,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a call the interrupt ended arms nothing", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -987,6 +993,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a closed session takes its tracker with it", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
@@ -1005,6 +1012,7 @@ func TestTodoNag(t *testing.T) {
 	})
 
 	t.Run("a single in_progress item or none never nags", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
@@ -1184,6 +1192,7 @@ func TestProviderModelNumbers(t *testing.T) {
 		{name: "a missing one", models: `{ id = "m" }`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHost(t)
 			err := r.ExecuteChunk(t.Context(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { `+c.models+` } })`, "p.lua", lua.OriginUser)
 			if c.err != "" {

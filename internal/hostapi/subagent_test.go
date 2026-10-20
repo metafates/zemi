@@ -343,6 +343,7 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, 0, 0, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			h, _ := newTestHostDB(t)
 			sends := 0
 			model := &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
@@ -377,6 +378,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 		{"forgetting a memory the user saved", tools.ToolMemory},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, r := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
@@ -1197,6 +1199,7 @@ func TestForkKnowsItIsAFork(t *testing.T) {
 // in words the caller and the model can act on.
 func TestForkRefusals(t *testing.T) {
 	t.Run("a run cannot fork", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		run := func(agent string) error {
 			ctx := context.WithValue(t.Context(), runKey{}, &agentRun{agent: agent})
@@ -1211,6 +1214,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a fork cannot be detached", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		h.SetUIHooks(&fakeUI{})
 		tool := h.agentTool(h.PipelineFor())
@@ -1220,6 +1224,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a detached run keeps its origin", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		def, err := h.agentDef(forkAgent)
 		if err != nil {
@@ -1245,6 +1250,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a fork needs the turn that is running", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		want := "continues the turn that is running"
 		if _, err := h.forkSetup(t.Context(), &agentRun{}, nil, "p"); err == nil || !strings.Contains(err.Error(), want) {
@@ -1265,6 +1271,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a forgotten fork cannot be continued", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		if err := h.DB.CreateSession("forgotten", "gone", "the task", forkAgent); err != nil {
 			t.Fatal(err)
@@ -1278,6 +1285,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("agents/fork.md is ignored", func(t *testing.T) {
+		t.Parallel()
 		h, _ := newTestHostDB(t)
 		h.Dirs.ConfigHome = t.TempDir()
 		dir := filepath.Join(h.Dirs.ConfigHome, "agents")
@@ -1303,6 +1311,7 @@ func TestForkRefusals(t *testing.T) {
 		}
 	})
 	t.Run("a tool the caller sent is gone", func(t *testing.T) {
+		t.Parallel()
 		if _, err := pickTools(nil, []fantasy.ToolInfo{{Name: "read"}}); err == nil || !strings.Contains(err.Error(), "no tool is named read") {
 			t.Fatalf("a fork missing a caller tool = %v", err)
 		}
