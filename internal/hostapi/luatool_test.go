@@ -186,7 +186,6 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 // TestLuaToolCeiling: a script the ceiling stops is told so, not "context
 // canceled", and a table error value reads as JSON.
 func TestLuaToolCeiling(t *testing.T) {
-	t.Parallel()
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	old := luaToolCeiling
