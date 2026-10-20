@@ -385,7 +385,7 @@ func (h *Host) hasSkillCommand(s skill.Skill) bool {
 // addSkillCommand makes a skill that asks for it the command /<name>. It
 // yields to a builtin command and to one of its own origin: a file in
 // commands/ or a zemi.command.add says "I want /x", a flag in a skill an
-// installer wrote does not. A less trusted holder is replaced.
+// installer wrote does not. Any other holder is replaced.
 func (h *Host) addSkillCommand(s skill.Skill, gen Gen) {
 	origin := lua.Origin(s.Source)
 	old := h.Commands.Lookup(s.Name)
@@ -583,12 +583,20 @@ func listDesc(s string) string {
 	return s
 }
 
-// sortBySource puts rows in the section order every list shares, the most
-// trusted origin first: user, builtin, plugin, project, then a recipe,
-// which no origin names.
+// sourceOrder is the section order every list shares: user, builtin, plugin,
+// project, then a recipe, which no origin names.
+var sourceOrder = []lua.Origin{lua.OriginUser, lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject}
+
+// sortBySource puts rows in that order.
 func sortBySource[T any, S ~string](rows []T, source func(T) S) {
+	pos := func(s S) int {
+		if i := slices.Index(sourceOrder, lua.Origin(s)); i >= 0 {
+			return i
+		}
+		return len(sourceOrder)
+	}
 	slices.SortStableFunc(rows, func(a, b T) int {
-		return cmp.Compare(lua.Origin(source(b)).Rank(), lua.Origin(source(a)).Rank())
+		return cmp.Compare(pos(source(a)), pos(source(b)))
 	})
 }
 
@@ -705,13 +713,7 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	enable := func(L *glua.LState, on bool) int {
-		name := L.CheckString(1)
-		verb := "enable"
-		if !on {
-			verb = "disable"
-		}
-		h.refuseBelowUser(L, "skills."+verb)
-		return luaResult(L, h.setSkillEnabled(name, on))
+		return luaResult(L, h.setSkillEnabled(L.CheckString(1), on))
 	}
 	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int { return enable(L, true) }))
 	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int { return enable(L, false) }))

@@ -272,7 +272,8 @@ var suspendingProto = func() *glua.FunctionProto {
 	if err != nil {
 		panic(err)
 	}
-	proto, err := glua.Compile(chunk, OriginBuiltin.ChunkName("wait"))
+	// host, so effective() reads through it like the Go function it wraps
+	proto, err := glua.Compile(chunk, OriginHost.ChunkName("wait"))
 	if err != nil {
 		panic(err)
 	}

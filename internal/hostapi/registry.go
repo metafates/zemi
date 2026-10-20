@@ -55,23 +55,19 @@ type bindKey struct {
 
 func (b *KeyBinding) slot() bindKey { return bindKey{b.Focus, b.Key, b.List} }
 
-// mayReplace refuses a registration or removal by a less trusted origin
-// than the holder's, and one plugin's over another's: both rank as plugin,
-// so the later would silently replace or drop the first. owner is
-// Host.PluginOf; a bare registry (tests) has none and checks the rank only.
+// mayReplace refuses one plugin's registration or removal over another's: both
+// carry OriginPlugin, so the later would silently replace or drop the first
+// with nothing to attribute it to. owner is Host.PluginOf; a bare registry
+// (tests) has none and allows every registration.
 func mayReplace(owner func(string) string, what string, old lua.Origin, oldPath string, by lua.Origin, byPath string) error {
-	switch {
-	case old.Rank() > by.Rank():
-		return fmt.Errorf("%s is registered by %s config", what, old)
-	case owner != nil && old == lua.OriginPlugin && by == lua.OriginPlugin && owner(oldPath) != owner(byPath):
+	if owner != nil && old == lua.OriginPlugin && by == lua.OriginPlugin && owner(oldPath) != owner(byPath) {
 		return fmt.Errorf("%s is registered by plugin %s, not %s", what, owner(oldPath), owner(byPath))
 	}
 	return nil
 }
 
-// KeymapRegistry stores one binding per key and focus with origin
-// precedence (user > builtin > plugin > project) and last-writer-wins
-// within one origin (DESIGN §6.2).
+// KeymapRegistry stores one binding per key and focus; the last registration
+// wins (DESIGN §6.2).
 type KeymapRegistry struct {
 	mu       sync.RWMutex
 	bindings map[bindKey]*KeyBinding
@@ -83,9 +79,9 @@ func NewKeymapRegistry() *KeymapRegistry {
 	return &KeymapRegistry{bindings: map[bindKey]*KeyBinding{}}
 }
 
-// Set binds or rebinds a key; a key bound by a more trusted origin is
-// refused. A focused binding sits over the global ones, so it may not take
-// a key or sequence a more trusted global binding holds.
+// Set binds or rebinds a key; the last registration wins. A focused binding
+// sits over the global ones, and a key fires before the longer sequences it
+// starts, so overlapping one shadows it (or is dead).
 func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	if b.Key == "" {
 		return errors.New("keymap: key is required")
@@ -138,15 +134,14 @@ func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string, list bool
 }
 
 // Lookup finds the binding for a key while focus has the keys: the focused
-// node's own, unless a more trusted global binding holds the key.
+// node's own, else the global one.
 func (r *KeymapRegistry) Lookup(focus, key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	g := r.bindings[bindKey{"", key, false}]
-	if s := r.bindings[bindKey{focus, key, false}]; focus != "" && s != nil && (g == nil || s.Origin.Rank() >= g.Origin.Rank()) {
+	if s := r.bindings[bindKey{focus, key, false}]; focus != "" && s != nil {
 		return s
 	}
-	return g
+	return r.bindings[bindKey{"", key, false}]
 }
 
 // ListAlias is the list alias bound to key, nil when none: the key loop
@@ -288,8 +283,8 @@ type Widget struct {
 	lines, spare map[*glua.LTable][]Segment
 }
 
-// WidgetRegistry stores widgets with cross-origin id collision rules
-// (§11): the lower-trust origin loses, last-writer-wins within one origin.
+// WidgetRegistry stores widgets by id; the last registration wins, but one
+// plugin's may not replace another's (mayReplace).
 type WidgetRegistry struct {
 	mu      sync.RWMutex
 	widgets map[string]*Widget
@@ -378,8 +373,8 @@ type EventHandler struct {
 	Once   bool // removed before its first call
 }
 
-// EventRegistry stores event subscriptions. Handler ids collide across
-// origins with the lower-trust origin losing (§11).
+// EventRegistry stores event subscriptions; a handler id registers again in
+// its list's place, under mayReplace.
 type EventRegistry struct {
 	mu       sync.RWMutex
 	handlers map[string][]*EventHandler // event -> handlers in registration order
@@ -560,14 +555,9 @@ func (r *ThemeRegistry) Get(name string) *Theme {
 	return r.themes[name]
 }
 
-// Light is base's "<name>-light" twin, nil unless its origin could replace
-// base itself: less trusted code must not pick what a light terminal draws.
+// Light is base's "<name>-light" twin, the last registration winning.
 func (r *ThemeRegistry) Light(base *Theme) *Theme {
-	t := r.Get(base.Name + "-light")
-	if t == nil || mayReplace(r.owner, "", base.Origin, base.Path, t.Origin, t.Path) != nil {
-		return nil
-	}
-	return t
+	return r.Get(base.Name + "-light")
 }
 
 func (r *ThemeRegistry) List() []*Theme {

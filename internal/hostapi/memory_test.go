@@ -583,26 +583,25 @@ func TestMemoryGate(t *testing.T) {
 	}
 }
 
-// TestMemoryDelOriginGate pins the review guard: model and plugin
-// origins may never delete through Lua; user origin may.
-func TestMemoryDelOriginGate(t *testing.T) {
+// TestMemoryDel: project code deletes through Lua as the user does, and an
+// unknown id is nil, err.
+func TestMemoryDel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 	m := &store.Memory{Scope: "project", Text: "old note about the pipeline", ProvenanceSessionID: "seed", Origin: store.OriginLearned}
 	seedMemory(t, h, m)
-	err := r.ExecuteChunk(t.Context(), `zemi.memory.del("`+m.ID+`")`, "model.lua", lua.OriginProject)
-	if err == nil || !strings.Contains(err.Error(), "only user config") {
-		t.Fatalf("model origin allowed: %v", err)
+	err := r.ExecuteChunk(t.Context(), `assert(zemi.memory.del("`+m.ID+`"))`, "model.lua", lua.OriginProject)
+	if err != nil {
+		t.Fatalf("project code: %v", err)
+	}
+	if live, _ := h.memoryList(false); slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
+		t.Fatal("forget left the memory live")
 	}
 	runUser(t, r, `
 		local ok, err = zemi.memory.del("nope")
 		assert(ok == nil and err:find("no such memory"), tostring(err))
-		assert(zemi.memory.del("`+m.ID+`"))
 	`)
-	if live, _ := h.memoryList(false); slices.ContainsFunc(live, func(x *store.Memory) bool { return x.ID == m.ID }) {
-		t.Fatal("forget left the memory live")
-	}
 }
 
 // covers §10.7: the session's prompt carries the memories it started with

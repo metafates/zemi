@@ -50,7 +50,7 @@ func wantRaise(t *testing.T, sb *Sandbox, src, want string) {
 
 func TestSandboxStrippedSurface(t *testing.T) {
 	sb := newTestSandbox(t)
-	sb.SetPrint(func(origin, line string) {})
+	sb.SetPrint(func(line string) {})
 	mustRun(t, sb, `
 		assert(rawset == nil, "rawset present")
 		assert(rawequal == nil, "rawequal present")
@@ -116,62 +116,22 @@ func TestSandboxFrozenTables(t *testing.T) {
 	`)
 }
 
-// TestSandboxSetmetatable: code below builtin may install only its own Lua
-// functions as handlers, for every event: a Go, builtin or user function
-// would run as whoever triggers the event. A later write to the metatable
-// swaps nothing in.
+// TestSandboxSetmetatable: setmetatable takes tables only, a later write to
+// the metatable reaches the handlers, and getmetatable hands back that table.
 func TestSandboxSetmetatable(t *testing.T) {
-	origin := OriginPlugin
-	sb, err := NewSandbox(func(*glua.LState) Origin { return origin }, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(sb.L.Close)
-	fnOf := func(o Origin) glua.LValue {
-		fn, err := sb.CompileChunk(`return function() return "handled" end`, o.ChunkName("f.lua"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		sb.L.Push(fn)
-		sb.L.Call(0, 1)
-		defer sb.L.Pop(1)
-		return sb.L.Get(-1)
-	}
-	builtin, user := fnOf(OriginBuiltin), fnOf(OriginUser)
-	for _, c := range []struct {
-		origin    Origin
-		src, want string // want "" runs clean
-	}{
-		{OriginPlugin, `setmetatable({}, { __index = tostring })`, "__index must be a Lua function of this plugin's own code"},
-		{OriginPlugin, `setmetatable({}, { __call = builtin })`, "__call must be"},
-		{OriginPlugin, `setmetatable({}, { __newindex = user })`, "__newindex must be"},
-		{OriginProject, `setmetatable({}, { __eq = tostring })`, "__eq must be a Lua function of this project's own code"},
-		{OriginPlugin, `setmetatable({}, { __tostring = builtin })`, "__tostring must be"},
-		{OriginPlugin, `setmetatable({}, { __gc = tostring })`, "__gc must be"},
-		{OriginPlugin, `setmetatable(1, {})`, "table expected"},
-		{OriginPlugin, `
-			local mt = { __index = function() return "own" end }
-			local t = setmetatable({}, mt)
-			mt.__index, mt.__call = tostring, tostring
-			assert(t.x == "own" and not pcall(t) and getmetatable(t) == mt, "a later write reached the handlers")
-			setmetatable(t, nil)
-			local locked = setmetatable({}, { __metatable = "locked" })
-			assert(getmetatable(locked) == "locked" and not pcall(setmetatable, locked, {}), "lock lost")`, ""},
-		{OriginUser, `assert(setmetatable({}, { __index = builtin }).x == "handled")`, ""},
-	} {
-		origin = c.origin
-		fn, err := sb.CompileChunk("local builtin, user = ...\n"+c.src, c.origin.ChunkName("t.lua"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		sb.L.Push(fn)
-		sb.L.Push(builtin)
-		sb.L.Push(user)
-		err = sb.L.PCall(2, 0, nil)
-		if got := fmt.Sprint(err); c.want == "" && err != nil || c.want != "" && !strings.Contains(got, c.want) {
-			t.Errorf("%s: got %v, want %q", c.src, err, c.want)
-		}
-	}
+	sb := newTestSandbox(t)
+	mustRun(t, sb, `
+		local mt = { __index = function() return "own" end }
+		local t = setmetatable({}, mt)
+		assert(t.x == "own" and getmetatable(t) == mt, "metatable not installed")
+		mt.__index = function() return "second" end
+		assert(t.x == "second", "a later write did not reach the handler")
+		setmetatable(t, nil)
+		assert(t.x == nil, "metatable not cleared")
+		local locked = setmetatable({}, { __metatable = "locked" })
+		assert(getmetatable(locked) == "locked" and not pcall(setmetatable, locked, {}), "lock lost")
+	`)
+	wantRaise(t, sb, `setmetatable(1, {})`, "table expected")
 }
 
 func TestSandboxChunkEnv(t *testing.T) {
@@ -512,9 +472,7 @@ func BenchmarkCheckIntegrity(b *testing.B) {
 	}
 }
 
-func TestSandboxTracebackCollapsesFrames(t *testing.T) {
-	// debug.traceback exists and returns a string; full redaction is a
-	// UI concern, here we pin the API shape.
+func TestSandboxTraceback(t *testing.T) {
 	sb := newTestSandbox(t)
 	mustRun(t, sb, `
 		assert(type(debug.traceback("msg")) == "string", "traceback not a string")

@@ -209,7 +209,7 @@ applied one. A store made before goose only gains its version table: the baselin
   against its question - an unknown label, a probability outside 0..1, a question the reply
   left out, a score outside its levels, a body that is not JSON are errors, never a nearest
   match - and `classifyQuestions` raises on a state or a question no model could be asked. The
-  call is gated as `lua.classify.ask` (project code may not call a model at all), billed to the
+  call is gated as `lua.classify.ask` (a plugin needs `model` in its uses), billed to the
   live session, and waits `classifyTimeout`, a minute. A `decisions` model is never resolved as
   a chat model: only the slots `zemi.model.add(name, { classify = true })` made take one.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
@@ -219,13 +219,12 @@ applied one. A store made before goose only gains its version table: the baselin
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields
   without the effort; the reflector bills the session it read, closed or not.
 - **The active profile is a config key.** `agent.profile` names what `resolveProfile("")`
-  runs (`default` is the shipped shape), so only user config writes it and a reload keeps a
+  runs (`default` is the shipped shape), so the user's config writes it and a reload keeps a
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send. A profile is defined with `zemi.agent.profile.add` (user or
-  plugin origin; project code may not - prompt authorship is their lever, not a
-  project's): a `-name` denylist or an
+  fails the send. A profile is defined with `zemi.agent.profile.add` from any origin, the
+  last definition of a name winning: a `-name` denylist or an
   allowlist of tools, so a new tool is in the default set until a profile drops it. An allowed
   name no tool has is an `/errors` entry; a `-name` no tool has fails the send, since the tool
   it meant to drop may run under another name (`profileTools`).
@@ -423,7 +422,8 @@ applied one. A store made before goose only gains its version table: the baselin
 - **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance required,
   `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
   `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
-  `memory.autonomy` is user config only.
+  `memory.autonomy` is set through `zemi.config.set`, which passes the Lua-call gate like any
+  other key.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema plus
   the `plugins.<name>.*` keys a plugin registers while it loads (`zemi.config.add`, `Store.Add`;
   plugin code names its own by the bare key, `settingPath`;

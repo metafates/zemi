@@ -87,7 +87,7 @@ func NewPluginTest(log *slog.Logger, classes lua.PathClasses, dirs config.Dirs, 
 	t.ui = &testUI{h: h}
 	h.test = t
 	h.SetUIHooks(t.ui)
-	rt.SetPrintHook(func(_, line string) {
+	rt.SetPrintHook(func(line string) {
 		t.mu.Lock()
 		t.prints = append(t.prints, line)
 		t.mu.Unlock()
@@ -1009,10 +1009,10 @@ func (u *testUI) RefreshOverlay(id string, build func() Overlay) {
 
 // CloseOverlay runs the overlay's on_close off the interpreter, as the UI's
 // worker does.
-func (u *testUI) CloseOverlay(id string, origin lua.Origin) {
+func (u *testUI) CloseOverlay(id string) {
 	u.mu.Lock()
 	i := slices.IndexFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
-	if i < 0 || origin != lua.OriginUser && origin != lua.OriginBuiltin && origin != u.overlays[i].Origin {
+	if i < 0 {
 		u.mu.Unlock()
 		return
 	}

@@ -9,7 +9,7 @@
 --- no C modules. Filesystem, network and processes go through `zemi.fs`,
 --- `zemi.http` and `zemi.job`, each behind the permission gate.
 ---
---- Error convention: misuse (a bad argument, a call an origin may not make)
+--- Error convention: misuse (a bad argument, a call a render may not make)
 --- raises; a runtime failure of a synchronous call returns `nil, err`;
 --- asynchronous work reports through its callback or handle.
 
@@ -92,8 +92,8 @@ function rawget(table, index) end
 ---@return any
 function select(index, ...) end
 
---- In plugin and project code a handler must be that code's own Lua function (for a plugin,
---- one of its own plugin), and the handlers are read at the call.
+--- A metatable takes any handler, Lua or Go, and the handlers are read at the call: a handler
+--- runs as the code that triggers it.
 ---@generic T: table
 ---@param table T
 ---@param metatable? table
@@ -184,7 +184,7 @@ function debug.traceback(msg) end
 ---@alias zemi.Origin
 ---| "user"     # ~/.config/zemi
 ---| "builtin"  # shipped with zemi
----| "plugin"   # <data>/plugins/{installed,local}/<name>; code runs as the least trusted function on its stack
+---| "plugin"   # <data>/plugins/{installed,local}/<name>; a call runs as the innermost file on its stack
 ---| "project"  # <repo>/.agents
 
 ---@alias zemi.Level
@@ -206,8 +206,8 @@ function debug.traceback(msg) end
 ---| "learned"  # the model or the reflector proposed it
 
 --- The regions the default layout draws, plus "exit", which no layout draws: its
---- widgets print once to the shell after zemi quits, foreground colors only, and code
---- below builtin may not add one. A layout may draw any other name.
+--- widgets print once to the shell after zemi quits, foreground colors only. A layout
+--- may draw any other name.
 ---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|"exit"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
@@ -281,8 +281,8 @@ function zemi.config.set(path, value) end
 --- plugin, keeps a pick across starts, takes `zemi.config.set` from the
 --- user's init.lua, and leaves when the plugin is turned off. Plugins load
 --- before the user's init.lua, so read it with `zemi.config.get` where it is
---- used, or watch it, never once at load. Plugin origin only; raises past
---- load, or for a default the kind or choices refuse. Never a secret:
+--- used, or watch it, never once at load. Raises past load, or for a default
+--- the kind or choices refuse. Never a secret:
 --- /config shows it, the store keeps it in plain text and any code, the
 --- model's Lua included, reads it; a key comes from the environment through
 --- `zemi.env.get` in the user's init.lua.
@@ -324,7 +324,7 @@ function zemi.config.schema() end
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
 ---@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
----@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with. User or builtin origin only.
+---@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with.
 
 ---@class zemi.Keymap
 ---@field key string
@@ -371,13 +371,12 @@ zemi.keymap = {}
 --- terminal never reports ("ctrl-q", "control+q") or zemi keeps (ctrl+c)
 --- raises rather than binding something nothing can press, and so does a
 --- sequence that starts with a printable key without `opts.focus`, since
---- the composer takes those. Setting
---- the same key again from the same origin rebinds it; a key (or a prefix
---- or extension of a key sequence) a more trusted origin bound raises.
+--- the composer takes those. Setting the same key again rebinds it, whoever
+--- bound it first: the last registration wins, and a key that starts a longer
+--- sequence shadows it.
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
---- the keys its bindings come first, then the global ones, unless a more
---- trusted global binding holds the key. It may not take a key a more
---- trusted global binding holds. The composer's own editing keys (ctrl+a,
+--- the keys its bindings come first, then the global ones. The composer's own
+--- editing keys (ctrl+a,
 --- ctrl+e, ctrl+u, ctrl+w, home, end) bind like any other, and the composer
 --- then no longer gets them.
 ---
@@ -388,12 +387,11 @@ zemi.keymap = {}
 --- those. enter, esc, tab, shift+tab, space and backspace raise.
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
---- zemi.composer.insert <text> (these user or builtin origin only),
+--- zemi.composer.insert <text>,
 --- zemi.ui.help, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
 --- zemi.ui.focus.set [id],
---- zemi.ui.focus.{next,prev} and zemi.agent.profile.{next,prev}
---- (user or builtin origin only).
+--- zemi.ui.focus.{next,prev} and zemi.agent.profile.{next,prev}.
 ---
 --- ```lua
 --- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
@@ -405,7 +403,7 @@ zemi.keymap = {}
 ---@param opts? zemi.KeymapOpts
 function zemi.keymap.set(key, action, opts) end
 
---- Unbind a key the caller's origin or a less trusted one set, not another plugin's. A key
+--- Unbind a key whatever bound it, but not another plugin's. A key
 --- nothing bound is `false`, not an error, so a reload unbinds idempotently.
 ---@param key string
 ---@param opts? { focus?: string, list?: boolean }
@@ -472,7 +470,7 @@ function zemi.command.del(name) end
 ---@param name string
 ---@param args? string
 ---@return true|nil ok
----@return string|nil err Not a command, bad arguments, the command's own error, or a command the caller's origin may not run (a Go command below builtin, a more trusted origin's Lua command).
+---@return string|nil err Not a command, bad arguments, or the command's own error.
 function zemi.command.run(name, args) end
 
 ---@return zemi.Command[]
@@ -646,8 +644,7 @@ zemi.event = {}
 --- and on `permission.request` `{ decision = "ask" }` to run zemi's ask path.
 --- A `tool.post` handler runs as a task and may return `{ output = "..." }`
 --- to replace what the model gets.
---- `app.quit` vetoes from project code are ignored. A plugin needs `perm`
---- in its `uses` to subscribe to `permission.request`.
+--- A plugin needs `perm` in its `uses` to subscribe to `permission.request`.
 ---
 --- ```lua
 --- zemi.event.on("composer.submit", function(ev)
@@ -1080,7 +1077,7 @@ zemi.ui.widget = {}
 ---@param spec zemi.WidgetSpec
 function zemi.ui.widget.add(spec) end
 
---- Remove a widget the caller's origin or a less trusted one registered, not another plugin's.
+--- Remove a widget whatever registered it, but not another plugin's.
 ---@param id string
 ---@return boolean removed false when no widget has that id
 function zemi.ui.widget.del(id) end
@@ -1197,8 +1194,8 @@ function zemi.ui.widget.list() end
 zemi.ui.layout = {}
 
 --- Replace the screen layout (DESIGN §8). The shipped UI sets the default
---- (tui/layout.lua) and user config may replace it; plugin and
---- project code are refused. Raises on a malformed layout: an unknown
+--- (tui/layout.lua) and any later call replaces it. Raises on a malformed
+--- layout: an unknown
 --- kind or field, no composer or two, a region drawn twice, a duplicate id,
 --- a bad size, min over max, more than 64 nodes or 8 levels. `/reload`
 --- keeps the old layout until the replay sets one; a replay that sets none
@@ -1227,7 +1224,7 @@ zemi.ui.focus = {}
 
 --- Set the terminal tab's title (escapes stripped, whitespace collapsed);
 --- nil gives it back to zemi, which names it after the session. A reload
---- that does not set it again gives it back too. User or builtin origin only.
+--- that does not set it again gives it back too.
 --- zemi puts its turn mark (a spinner, `?`, `✓` or `✗`) ahead of the text.
 ---@param text? string
 function zemi.ui.title(text) end
@@ -1252,14 +1249,13 @@ function zemi.ui.redraw() end
 --- `id`, as the zemi.ui.scroll.* host actions do: for a click or a handler.
 --- A "top" or "bottom" issued before the node's rows arrive applies after the
 --- next layout, and "top" holds until the node scrolls again.
---- User or builtin origin only; raises inside render.
+--- Raises inside render.
 ---@param action zemi.ScrollAction
 ---@param id? string
 function zemi.ui.scroll(action, id) end
 
 --- Give the keys to a focusable node of the layout, or to the composer with
---- nil. Raises when the layout has no focusable node with that id. User or
---- builtin origin only, like zemi.ui.layout.set.
+--- nil. Raises when the layout has no focusable node with that id.
 ---@param id? string
 function zemi.ui.focus.set(id) end
 
@@ -1268,10 +1264,10 @@ function zemi.ui.focus.set(id) end
 function zemi.ui.focus.get() end
 
 --- Move the focus to the next drawn focusable node, the composer counting
---- as one, in tree order and then float order. User or builtin origin only.
+--- as one, in tree order and then float order.
 function zemi.ui.focus.next() end
 
---- Move the focus back one. User or builtin origin only.
+--- Move the focus back one.
 function zemi.ui.focus.prev() end
 
 ---@class zemi.ui.theme
@@ -1279,7 +1275,7 @@ zemi.ui.theme = {}
 
 --- Register a palette; every highlight group and the Go chrome draw in it
 --- once `ui.theme` names it. A "<name>-light" theme draws on a light terminal
---- when the same or a more trusted origin (the same plugin) added it.
+--- when it is registered.
 ---
 --- ```lua
 --- zemi.ui.theme.add("mine", { bg = "#1e1e2e", fg = "#cdd6f4", accent = "#89b4fa", ok = "#a6e3a1", warn = "#f9e2af", danger = "#f38ba8" })
@@ -1371,7 +1367,6 @@ zemi.ui.hl = {}
 
 --- Define one highlight group for every theme, replacing the shipped
 --- definition: its colors name palette roles, so it follows a theme switch.
---- User or builtin origin only.
 ---@param group string
 ---@param spec zemi.HLSpec
 function zemi.ui.hl.set(group, spec) end
@@ -1710,8 +1705,8 @@ function zemi.model.del(name) end
 
 --- Switch the model the conversation runs on: the active profile's slot when
 --- it has one, else models.chat. Raises for a provider nobody registered; an
---- id the provider does not list is taken and warned about. User or builtin
---- origin only. A call made after boot is kept for later starts, like
+--- id the provider does not list is taken and warned about. A call made after
+--- boot is kept for later starts, like
 --- `zemi.config.set`. An explicitly named target is plain config:
 --- `zemi.config.set("models.titles", id)`.
 ---@param id string
@@ -1731,8 +1726,7 @@ function zemi.model.set(id) end
 
 --- One tool-less model call, run off the interpreter and billed to the live
 --- session; a reload cancels it. A plugin's own call settles where its
---- manifest declares `model` (one it does not declare is refused, not asked);
---- project code raises.
+--- manifest declares `model` (one it does not declare is refused, not asked).
 ---
 --- ```lua
 --- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
@@ -1809,7 +1803,7 @@ zemi.classify = {}
 --- answers is reported back, and a strategy that fails does not settle
 --- anything for the next one.
 ---
---- A plugin's own call settles where its manifest declares `model`; project code raises. The
+--- A plugin's own call settles where its manifest declares `model`. The
 --- provider's key is read in Go.
 ---
 --- ```lua
@@ -1872,9 +1866,9 @@ zemi.agent = {}
 ---@class zemi.agent.profile
 zemi.agent.profile = {}
 
---- Define a named profile (model, prompt, tool set). User, builtin or plugin
---- origin; project code may not. The `agent.profile` config key names the
---- active one, and `/profile` or ctrl+t switches it.
+--- Define a named profile (model, prompt, tool set). The `agent.profile`
+--- config key names the active one, and `/profile` or ctrl+t switches it;
+--- one a plugin defines dies with the plugin.
 ---@param name string
 ---@param spec zemi.ProfileSpec
 function zemi.agent.profile.add(name, spec) end
@@ -1907,7 +1901,7 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. User or builtin origin only; a reload cancels it.
+--- Run a subagent off the interpreter. a reload cancels it.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -1951,8 +1945,7 @@ zemi.workflow = {}
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state. Config Lua, user or builtin origin
---- only; a reload cancels it.
+--- Run a workflow in its own Lua state; a reload cancels it.
 --- ```lua
 --- zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
 --- ```
@@ -2033,12 +2026,12 @@ function zemi.session.messages() end
 ---@return zemi.SessionInfo[]
 function zemi.session.list(opts) end
 
---- User or builtin origin only.
+---
 ---@return true|nil ok
 ---@return string|nil err
 function zemi.session.new() end
 
---- User or builtin origin only.
+---
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
@@ -2048,7 +2041,7 @@ function zemi.session.resume(id) end
 function zemi.session.todos() end
 
 --- Restore the files a turn changed and cut the conversation back to the
---- message with this id. User or builtin origin only.
+--- message with this id.
 ---@param message_id string
 ---@return integer|nil restored
 ---@return string|nil err
@@ -2079,7 +2072,7 @@ zemi.composer = {}
 
 --- Register a completion source. Accepting a row puts its text after the
 --- trigger, or in place of the argument, followed by a space. Raises on a
---- bad spec or an id a more trusted origin registered.
+--- bad spec or an id another plugin registered.
 ---
 --- ```lua
 --- zemi.composer.complete({
@@ -2094,32 +2087,30 @@ function zemi.composer.complete(spec) end
 ---@return zemi.ComposerState
 function zemi.composer.get() end
 
---- User or builtin origin only.
+---
 ---@param text string
 ---@param cursor? integer -1, the default, puts the cursor at the end.
 function zemi.composer.set(text, cursor) end
 
---- User or builtin origin only.
+---
 ---@param text string
 function zemi.composer.insert(text) end
 
---- Submit the draft, as if enter was pressed. User or builtin origin only.
+--- Submit the draft, as if enter was pressed.
 function zemi.composer.submit() end
 
---- The previous sent message, like up on a one-line draft. User or builtin
---- origin only.
+--- The previous sent message, like up on a one-line draft.
 function zemi.composer.history_prev() end
 
---- The next sent message, back to an empty draft past the newest. User or
---- builtin origin only.
+--- The next sent message, back to an empty draft past the newest.
 function zemi.composer.history_next() end
 
 --- Paste the clipboard: an image becomes an attachment token, text is
---- inserted (ctrl+v). User or builtin origin only.
+--- inserted (ctrl+v).
 function zemi.composer.paste() end
 
 --- Open the draft in the user's editor (ctrl+g when no keymap starts with
---- it). User or builtin origin only.
+--- it).
 function zemi.composer.edit() end
 
 -- zemi.perm
@@ -2139,8 +2130,8 @@ function zemi.composer.edit() end
 ---@class zemi.perm
 zemi.perm = {}
 
---- Ask the user through zemi's permission overlay. Plugin origin only, and
---- only from a task; the manifest's `uses` naming `perm` is the consent. A
+--- Ask the user through zemi's permission overlay. Only from a task; a
+--- plugin needs the manifest's `uses` naming `perm`. A
 --- headless run answers "deny" and records the ask.
 ---
 --- ```lua
@@ -2158,7 +2149,7 @@ function zemi.perm.ask(spec) end
 ---@field description string What the model reads to decide when to call it. Required.
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
 ---@field required? string[] Which of `input`'s parameters the model must send.
----@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project code.
+---@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache.
 ---@field execute fun(args: table, run: zemi.ToolRun): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It runs as a task: a handle's `wait` in it suspends it and frees the interpreter.
 ---@field timeout_ms? integer Wall time for one call, waits included; 60000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.
@@ -2181,19 +2172,19 @@ function zemi.perm.ask(spec) end
 ---| "rewrite"
 
 --- What a `tool.pre` handler returns: "deny" refuses the call, "halt" also
---- ends the turn, "rewrite" merges `input` into the call's input (ignored
---- for project code). nil lets the call through.
+--- ends the turn, "rewrite" merges `input` into the call's input. nil lets
+--- the call through.
 ---@class zemi.ToolVeto
 ---@field decision zemi.ToolVerdict
 ---@field reason? string
 ---@field input? table
 
---- What a `tool.post` handler returns to replace the output the model gets
---- (ignored for project code); nil keeps it.
+--- What a `tool.post` handler returns to replace the output the model gets;
+--- nil keeps it.
 ---@class zemi.ToolPostResult
 ---@field output string
 
---- One of `pre` and `post` is required. Not available to project code.
+--- One of `pre` and `post` is required.
 ---@class zemi.ToolOverride
 ---@field pre? fun(ev: zemi.ToolPreEvent): zemi.ToolVeto?
 ---@field post? fun(ev: zemi.ev.ToolPost): zemi.ToolPostResult? Runs after the global `tool.post` handlers, as a task.
@@ -2525,9 +2516,8 @@ function zemi.timer.every(ms, fn) end
 -- zemi.state and zemi.env
 
 --- A persisted key-value store, global to zemi. Values round-trip as JSON.
---- Each plugin and project code get their own key space and never see
---- another's, user or builtin keys; user config sees every key, stored as
---- `plugin:<name>:<key>` and `project:<key>` for those.
+--- Each plugin gets its own key space and never sees another's: its keys are
+--- stored as `plugin:<name>:<key>`. Every other origin shares the one space.
 ---@class zemi.state
 zemi.state = {}
 
@@ -2611,7 +2601,6 @@ zemi.memory.scope = {}
 --- the autonomy gate, so it is stored or queued for review, never written
 --- blindly. User config writes its own memory (origin user) and works
 --- before the first message; the model's Lua tool writes a learned one.
---- Raises for project code.
 ---@param text string
 ---@param opts? zemi.MemoryOpts
 ---@return zemi.MemoryAddResult|nil res
@@ -2623,8 +2612,7 @@ function zemi.memory.add(text, opts) end
 ---@return string|nil err
 function zemi.memory.list(include_superseded) end
 
---- Delete a memory by id. User or builtin
---- origin only.
+--- Delete a memory by id.
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
@@ -2649,7 +2637,7 @@ function zemi.learn.list() end
 ---| "accept"
 ---| "reject"
 
---- Decide one proposal by id. User or builtin origin only.
+--- Decide one proposal by id.
 ---@param id string
 ---@param action zemi.LearnAction
 ---@return true|nil ok
@@ -2676,7 +2664,7 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- Enable a disabled skill. User or builtin origin only.
+--- Enable a disabled skill.
 ---@param name string
 ---@return true|nil ok
 ---@return string|nil err
@@ -2787,7 +2775,7 @@ zemi.health = {}
 
 --- Add a row to /health. The check runs under the 50 ms handler deadline
 --- and may return a detail string instead of a table. Adding a name again
---- replaces its row; a name a more trusted origin holds raises. `zemi health`
+--- replaces its row, but not another plugin's. `zemi health`
 --- runs it right after boot, before work started on `app.ready` has
 --- reported, so a row over such state says it is not read yet.
 ---

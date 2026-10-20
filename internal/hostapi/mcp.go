@@ -650,14 +650,10 @@ func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy
 func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// add(name, { command, args, env, url, headers, client_id,
-	// client_secret, callback_port, enabled_tools, disabled_tools, timeout }): user config
-	// only, like providers.
+	// client_secret, callback_port, enabled_tools, disabled_tools, timeout }).
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		opts := L.CheckTable(2)
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
-		}
 		spec := mcpSpec{
 			Command: rawString(L, opts, "command"), Args: rawStrings(L, opts, "args"), Env: rawStringMap(L, opts, "env"),
 			URL: rawString(L, opts, "url"), Headers: rawStringMap(L, opts, "headers"),

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestJobStartFailure: a command that cannot start is a runtime failure,
@@ -73,12 +71,6 @@ func TestFsDataDir(t *testing.T) {
 	`)
 	file := filepath.Join(h.Dirs.DataHome, "lua", "notes", "a.txt")
 	if _, err := os.Stat(file); err != nil {
-		t.Fatal(err)
-	}
-	err := r.ExecuteChunk(t.Context(), `
-		assert(not pcall(zemi.fs.data_dir, "notes"), "data_dir")`,
-		"p.lua", lua.OriginPlugin)
-	if err != nil {
 		t.Fatal(err)
 	}
 }

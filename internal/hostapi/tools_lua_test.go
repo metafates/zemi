@@ -3,8 +3,6 @@ package hostapi
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -110,66 +108,19 @@ func TestLuaToolFailures(t *testing.T) {
 	}
 }
 
-func TestToolRegCollision(t *testing.T) {
-	cases := []struct {
-		name      string
-		old, new  lua.Origin
-		wantError bool
-	}{
-		{"higher origin replaces", lua.OriginPlugin, lua.OriginUser, false},
-		{"same origin last writer wins", lua.OriginUser, lua.OriginUser, false},
-		{"lower origin refused", lua.OriginUser, lua.OriginProject, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r := newToolReg()
-			if err := r.add(&luaTool{Name: "search", Origin: c.old}); err != nil {
-				t.Fatal(err)
-			}
-			err := r.add(&luaTool{Name: "search", Origin: c.new})
-			want := c.new
-			if c.wantError {
-				want = c.old
-			}
-			if (err != nil) != c.wantError || r.byName["search"].Origin != want {
-				t.Fatalf("err=%v, kept %s, want %s", err, r.byName["search"].Origin, want)
-			}
-		})
-	}
-}
-
-// TestDeferredCallbackKeepsOrigin: a callback runs later under the origin
-// that handed it over, so project code cannot launder a refused call
-// through one (DESIGN §9).
+// TestDeferredCallbackKeepsOrigin: a callback runs later as the code that
+// handed it over, so the override it registers is attributed to that code.
 func TestDeferredCallbackKeepsOrigin(t *testing.T) {
-	cases := map[string]string{
-		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("shell", { pre = function() end }) end)`,
-		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("shell", { pre = function() end }) end)`,
+	h, r := newTestHost(t)
+	if err := r.ExecuteChunk(t.Context(), `zemi.timer.after(0, function() zemi.tool.override("shell", { pre = function() end }) end)`, "project-chunk", lua.OriginProject); err != nil {
+		t.Fatal(err)
 	}
-	for name, src := range cases {
-		t.Run(name, func(t *testing.T) {
-			h, r := newTestHost(t)
-			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "f.txt"), nil, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if err := r.ExecuteChunk(t.Context(), src, "project-chunk", lua.OriginProject); err != nil {
-				t.Fatal(err)
-			}
-			waitFor(t, func() error {
-				h.errs.mu.Lock()
-				defer h.errs.mu.Unlock()
-				for _, e := range h.errs.entries {
-					if strings.Contains(e.msg, "project origin may not register") {
-						return nil
-					}
-				}
-				return fmt.Errorf("callback was not refused: %+v", h.errs.entries)
-			})
-			if len(h.luaTools.overridesFor("shell")) != 0 || len(h.luaTools.list()) != 0 {
-				t.Fatal("project callback registered a tool or override")
-			}
-		})
-	}
+	waitFor(t, func() error {
+		if o := h.luaTools.overridesFor("shell"); len(o) == 1 && o[0].Origin == lua.OriginProject {
+			return nil
+		}
+		return fmt.Errorf("callback not attributed: %+v", h.luaTools.overridesFor("shell"))
+	})
 }
 
 // TestLuaToolWaitFreesInterpreter: execute waiting on a job suspends, so a
@@ -234,7 +185,7 @@ func TestToolPostRewrite(t *testing.T) {
 		{"the payload", `zemi.event.on("tool.post", function(ev)
 			return { output = table.concat({ ev.tool, tostring(ev.ok), type(ev.ms), ev.output }, " ") }
 		end)`, "", "echo true number x"},
-		{"a project return is ignored", "", `zemi.event.on("tool.post", function() return { output = "planted" } end)`, "x"},
+		{"a project return applies", "", `zemi.event.on("tool.post", function() return { output = "planted" } end)`, "planted"},
 		{"a failing handler leaves it", `zemi.event.on("tool.post", function() error("boom") end)`, "", "x"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

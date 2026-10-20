@@ -1544,9 +1544,6 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		onDone, _ := arg[*glua.LFunction](L, 2, "zemi.agent.run")
-		// agents act with the user's tools and permissions: only user config
-		// (and shipped code) may start them from Lua
-		h.refuseBelowUser(L, "agent.run")
 		prompt := rawString(L, spec, "prompt")
 		if strings.TrimSpace(prompt) == "" {
 			L.RaiseError("zemi.agent.run: prompt is required")

@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -173,21 +172,15 @@ func (a *App) RefreshOverlay(id string, build func() hostapi.Overlay) {
 }
 
 // CloseOverlay posts the close: waiting on the UI goroutine from the
-// interpreter could deadlock. An origin that neither opened the overlay nor
-// outranks it closes nothing, and the close runs on_close, so a picker's
-// callback always answers.
-func (a *App) CloseOverlay(id string, origin lua.Origin) {
+// interpreter could deadlock. The close runs on_close, so a picker's callback
+// always answers.
+func (a *App) CloseOverlay(id string) {
 	a.do(func() {
 		i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id })
 		if i < 0 {
 			return
 		}
-		o := a.overlays[i].o
-		if !mayClose(origin, o) {
-			a.log.Debug("overlay close refused", "origin", "ui", "id", id, "from", string(origin))
-			return
-		}
-		a.cancelOverlay(o)
+		a.cancelOverlay(a.overlays[i].o)
 	})
 }
 

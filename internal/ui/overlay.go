@@ -15,7 +15,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -176,10 +175,10 @@ const noMatches = "No matches."
 func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, hostapi.ChromeHint, w) }
 
 // openOverlay pushes an overlay, or replaces the open one with its id in
-// place when o's origin may close it; Lua rendered its items when it opened,
-// so the key loop never calls Lua for them.
+// place; Lua rendered its items when it opened, so the key loop never calls
+// Lua for them.
 func (a *App) openOverlay(o hostapi.Overlay) {
-	if i := a.overlayIndex(o.ID); i >= 0 && mayClose(o.Origin, a.overlays[i].o) {
+	if i := a.overlayIndex(o.ID); i >= 0 {
 		a.replaceOverlay(i, o)
 		a.refreshDetail(i)
 		return
@@ -227,11 +226,6 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		}
 	}
 	a.pushToast(slog.LevelError, "Not in "+o.Title, "/"+o.Confirm+" runs it without asking")
-}
-
-// mayClose also gates replacing o by id.
-func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
-	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
 }
 
 // followRow is the row a following list opens on: the message the view was
@@ -418,12 +412,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	}
 	// only builtin and user lists run commands, so a plugin's label cannot
 	// disguise one
-	runs := o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser
 	for i := range o.Keys { // a desc keeps its spaces, as a row's does: "pause " is as wide as "resume"
 		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), oneLine.Replace(sanitize.String(o.Keys[i].Desc))
-		if !runs {
-			o.Keys[i].Run = ""
-		}
 	}
 	// an item's fields reach the screen only as its detail view's, which is here
 	o.Fields = slices.Clone(o.Fields)
@@ -442,10 +432,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
 		r.Desc, r.Key, r.Section, r.Verb = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
 		r.Hotkey = sanitize.Line(r.Hotkey)
-		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview) // Detail is the detail view's Body, sanitized there
-		if !runs {
-			r.Run = ""
-		}
+		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview)                          // Detail is the detail view's Body, sanitized there
 		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, mark: markSeg(r.Mark), row: r} // a newline would break the box
 		if r.Switch || r.Locked {
 			it.key = switchSeg(r.On, r.Locked)

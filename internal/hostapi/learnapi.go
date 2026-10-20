@@ -39,7 +39,6 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("decide", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
 		action := L.CheckString(2)
-		h.refuseBelowUser(L, "learn.decide")
 		if !slices.Contains(learnActions, action) {
 			L.RaiseError("zemi.learn.decide: action must be accept or reject")
 		}

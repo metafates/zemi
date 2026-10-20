@@ -1112,9 +1112,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		text := L.CheckString(1)
 		opts := L.OptTable(2, L.NewTable())
 		o := h.RT.CurrentOrigin(L)
-		if o.Rank() <= lua.OriginProject.Rank() {
-			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
-		}
 		scope := cmp.Or(store.Scope(rawString(L, opts, "scope")), store.ScopeProject)
 		if !slices.Contains(store.Scopes, scope) {
 			L.RaiseError("zemi.memory.add: scope must be project or user")
@@ -1157,7 +1154,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		h.refuseBelowUser(L, "memory.del")
 		var err error
 		if p, m, lerr := h.locateMemory(id); lerr == nil {
 			err = brain.Forget(p, cmp.Or(h.AgentSessionID(), "user"), m.ID, h.now())

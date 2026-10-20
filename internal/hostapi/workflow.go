@@ -1675,7 +1675,7 @@ func (h *Host) workflowCommands() []*Command {
 					}
 					// the chat shows the transcript; esc reopens the view
 					for _, o := range []string{"workflow:" + id, "workflows"} {
-						h.hooks().CloseOverlay(o, lua.OriginBuiltin)
+						h.hooks().CloseOverlay(o)
 					}
 					return nil
 				}
@@ -1711,7 +1711,7 @@ func (h *Host) workflowCommands() []*Command {
 					next, err := rerun()
 					if err == nil {
 						// the new run's view in the old one's place, where its keys act on it
-						h.hooks().CloseOverlay("workflow:"+id, lua.OriginBuiltin)
+						h.hooks().CloseOverlay("workflow:" + id)
 						err = h.openFlow(next)
 					}
 					if err != nil {
@@ -1985,9 +1985,6 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		onDone, _ := arg[*glua.LFunction](L, 2, "zemi.workflow.run")
-		// agents act with the user's tools and permissions: only user config
-		// (and shipped code) may start them from Lua
-		h.refuseBelowUser(L, "workflow.run")
 		src := rawString(L, spec, "script")
 		if name := rawString(L, spec, "name"); name != "" {
 			s, err := h.workflowSource(name)

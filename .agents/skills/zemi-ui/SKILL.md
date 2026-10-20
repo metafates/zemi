@@ -20,7 +20,7 @@ places can cover or dim one. A content-sized node's height is the most rows it c
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. No layout draws the `exit` region: `App.Farewell` renders
 it once after `p.Run` returns cleanly (nothing while a boot step waits, which no dispatcher
-would answer) and main prints it to the shell. Code below builtin may not add to it: its text
+would answer) and main prints it to the shell. Its text
 lands outside zemi's chrome, beside the resume command a user copies (`ctx.resume`, which
 `hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag). A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
@@ -44,9 +44,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   palette and completion popups keep their keys before keymaps are consulted; a `list = true`
   binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go), but for a move a typed
   line edits with while one types (`lineKey`, `App.typing`). A focused node
-  takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: `{ focus = id }` bindings
-  first unless a more trusted global binding holds the key; unbound keys drop and an unbound
-  esc returns the keys.
+  takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: a `{ focus = id }` binding
+  first, else the global one; unbound keys drop and an unbound esc returns the keys.
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeAllMotion` (unless `ui.mouse =
   false`) so the wheel scrolls the transcript (the altscreen buffer has no native scrollback)
   and plain motion drives hover. `App.target` is the one hit test for clicks and hover, so a

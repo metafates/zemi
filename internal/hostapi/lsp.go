@@ -792,12 +792,9 @@ func (h *Host) noLSP(path string) error {
 func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// add(name, { command, args, env, filetypes = { "go" }, settings, init_options }):
-	// user config only. A name matching a builtin replaces it.
+	// a name matching a builtin replaces it.
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, opts := L.CheckString(1), L.CheckTable(2)
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.lsp.add: only user config may add language servers")
-		}
 		def := lspDef{Name: name, Command: rawString(L, opts, "command"), Args: rawStrings(L, opts, "args"), Env: rawStringMap(L, opts, "env")}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")
@@ -826,9 +823,6 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	// del(name): never start this server (a builtin, or one added above).
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.lsp.del: only user config may drop language servers")
-		}
 		h.lsp.mu.Lock()
 		h.lsp.disabled.Add(name)
 		h.lsp.mu.Unlock()

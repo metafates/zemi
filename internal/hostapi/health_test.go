@@ -31,8 +31,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		zemi.health.add("number", function() return { level = 3 } end)
 		zemi.health.add("unset", function() return { detail = "fine" } end)
 	`)
-	err := r.ExecuteChunk(t.Context(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "registered by user config") {
+	if err := r.ExecuteChunk(t.Context(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Errorf("plugin replacing a user check: %v", err)
 	}
 	got := map[string]HealthRow{}
@@ -43,7 +42,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		got[c.Name] = c
 	}
 	for _, c := range []struct{ name, level, detail string }{
-		{"disk", "warn", "low"},
+		{"disk", "ok", "planted"},
 		{"note", "ok", "plain detail"},
 		{"boom", "error", "nope"},
 		{"typo", "error", `level "warning" is not one of ok, warn, error`},

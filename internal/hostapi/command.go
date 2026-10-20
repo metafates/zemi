@@ -123,24 +123,12 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		if cmd.GoFn != nil {
-			// a Go-owned command acts with the user's authority (/export
-			// writes a file, /reload reloads config), so only the user's own
-			// config and zemi's own code may run one: plugin, project and
-			// model code go through their own gated APIs instead
-			if o := h.RT.CurrentOrigin(L); o != lua.OriginUser && o != lua.OriginBuiltin {
-				return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run /%s", o, name))
-			}
 			h.GoSafe("command "+name, func() {
 				if err := cmd.GoFn(h, args); err != nil {
 					h.CommandFailed(name, err)
 				}
 			})
 			return luaResult(L, nil)
-		}
-		// the body runs under the command's origin, so a lower caller would
-		// borrow that authority with arguments it picks
-		if o := h.RT.CurrentOrigin(L); cmd.Origin.Rank() > o.Rank() {
-			return luaResult(L, fmt.Errorf("zemi.command.run: %s code may not run %s command /%s", o, cmd.Origin, name))
 		}
 		_, err := h.callFn(L, luaCaller{gen: cmd.Gen, origin: cmd.Origin, path: cmd.Path}, cmd.Fn, 0, lua.FromGo(L, commandArgs(args)))
 		return luaResult(L, err)

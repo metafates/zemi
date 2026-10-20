@@ -405,30 +405,23 @@ boot box (§8). Everything a user owns (trust, plugins,
 recorded for `/errors` and the boot goes on. Agents and workflows are read when
 used: the user's, then the builtin ones, then each plugin's, then the
 project's under the current decision; the first of a name wins. Project config loads late with
-flagged reduced trust: its registrations are tagged `origin = "project"`
-(shown in the UI and logs), and
-its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
-`zemi.tool.override` (same rewrite capability, same denial), no
-`zemi.provider.add`, no `zemi.agent.profile.add` and no `agent.profile`
-config write (prompt authorship is a stronger lever than any
-`tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
-injection, no `zemi.memory.add`, no `zemi.model.set`,
-no `zemi.command.run` of a more trusted origin's command (its body runs
-under that origin), no keymap that is a prefix or an extension of a more trusted
-binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
-(builtin ids are reserved; last-writer-wins applies only within one
-origin; cross-origin profile id collisions are refused, §11).
+its registrations tagged `origin = "project"` (shown in the UI and logs).
+Origin is a label, never a privilege: any origin calls the same host API with
+the same rights, and a collision goes to the last registration (one plugin
+still cannot replace another's, §11). What stays is the trust mechanism and
+the manifest: a plugin may call only what its `uses` declares, a project's
+files load only when it is trusted, and a builtin tool name stays reserved
+(builtin ids are names, not privilege).
 `load`/`loadstring` stay available to every origin: a chunk they build
 runs as the loading origin (its chunk name is re-tagged, so a forged name
-does not stick) under the same denylist.
+does not stick).
 
-Runtimepath, in order: a trusted project's `.agents` (for project code
-only), `~/.config/zemi`, then the one enabled plugin named like the
-module's first segment: `require("x.y")` searches only plugin `x`'s
-`.zemi/lua/`, so no plugin shadows another's modules, and plugin `x`'s own
-code searches its root before the config dir. The plugin roots are the ones
-the plugins step loaded, fixed for the generation, so a disabled plugin's
-files never resolve.
+Runtimepath, in order: a trusted project's `.agents`, `~/.config/zemi`, then
+the one enabled plugin named like the module's first segment: `require("x.y")`
+searches plugin `x`'s `.zemi/lua/` after the config dir, so a plugin shadows
+no another's modules. Any origin may require from any of these trees. The
+plugin roots are the ones the plugins step loaded, fixed for the generation,
+so a disabled plugin's files never resolve.
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `.zemi/init.lua` as plugin origin; it runs
@@ -624,19 +617,15 @@ skills, agents and workflows are not exercised.
   the `package` library is not opened (`package.loaded` and
   `package.loaders` would hand out the unfrozen stdlib and run files from
   `package.path`): `require` is Go-owned and resolves through a Go-side
-  cache, so no Lua-side table can proxy another origin's modules.
-- `./x` and `../x` resolve next to the calling file and stay in its tree:
-  its origin class, and for plugin code its own plugin. A plugin's file
-  resolves only from that plugin, so neither `..` nor a symlink reaches
-  another plugin's code or a disabled one's.
+  cache, so no Lua-side table can stand in for a module's table.
+- `./x` and `../x` resolve next to the calling file and stay in its tree,
+  and for plugin code in its own plugin. A plugin's file resolves only from
+  that plugin, so neither `..` nor a symlink reaches another plugin's code
+  or a disabled one's.
 - A module runs once per generation, keyed by its resolved file (a dotted
-  and a relative name share it). Code below the file's origin gets its own
-  instance run under its own origin, one per plugin, so it cannot plant
-  functions that more trusted code or another plugin later calls. A
-  builtin module for lower code, and one plugin's module for another
-  plugin, is the owner's instance behind a deep read-only view: the
-  requirer can neither patch it nor rerun it. What a module keeps in its
-  table is readable that way; a secret stays in a local.
+  and a relative name share it), whatever requires it, so the table it
+  returns is the one every caller reads, and what it keeps in that table is
+  readable and writable by all of them; a secret stays in a local.
 
 Sandbox (what userland gets):
 
@@ -644,9 +633,8 @@ Sandbox (what userland gets):
   bypassing the `zemi.fs` gate); `load`/`loadstring` kept (Lua
   source only; gopher-lua has no bytecode loader at all, which makes the
   classic bytecode-execution hole a non-issue); `table`, `string`, `math`,
-  `coroutine`, minimal `debug` (`traceback` only, with frames from other
-  origins collapsed to their origin label), `os.time` / `os.date` /
-  `os.clock`.
+  `coroutine`, minimal `debug` (`traceback` only, every frame named),
+  `os.time` / `os.date` / `os.clock`.
 - Removed: `io`, `os.execute`, `os.remove`/`rename`/`exit`, `os.getenv`
   (use `zemi.env.get`), `os.setenv` (env mutation subverts the §9 env
   gates),
@@ -661,9 +649,8 @@ Sandbox (what userland gets):
   whose `__index` reads that frozen surface; the environment itself is
   `__metatable`-locked, and `_G` resolves to the chunk environment, so
   `_G.x = y` hits the chunk's own raising `__newindex`. A patch of
-  `pcall` or `string.format` by one origin cannot intercept calls made by
-  Lua of another origin (assignment into the shared tables raises, like
-  the `zemi` binding).
+  `pcall` or `string.format` by loaded code fails the same way
+  (assignment into the shared tables raises, like the `zemi` binding).
 - `print` routes to the log and, when called from a handler, to `zemi.log`.
 - All filesystem/net/subprocess access is via `zemi.fs` / `zemi.http` /
   `zemi.job`, each permissioned at its call (see §9).
@@ -671,40 +658,36 @@ Sandbox (what userland gets):
   inherit the origin and the environment of the loading chunk (the same
   raising `__newindex` and `__index` chain; they never receive the
   interpreter's global table), and the embedded
-  `runtime/lua/**` stdlib runs as a distinct `builtin` origin, so a
-  static-scan denylist cannot be dodged by building source at runtime.
-  A file's origin comes from a directory-class map Go applies to its
+  `runtime/lua/**` stdlib runs as a distinct `builtin` origin. A file's
+  origin comes from a directory-class map Go applies to its
   `EvalSymlinks`-resolved path (a symlink is classified by what it
   resolves to, so an alias cannot borrow another class):
   `~/.config/zemi/**` is user, `~/.local/share/zemi/plugins/**` is
   plugin, `<repo>/.agents/**` is project, embedded `runtime/**` is
-  builtin. A resolved path in no class is refused at load. Origin never follows the requirer: a
-  module under `plugins/...` stays plugin origin and a project module
-  stays project origin even when `init.lua` requires it, so untrusted
-  code cannot ride the boot phase under a user badge.
-- The code a call runs as is the least trusted of the frame the host
-  entry pushed (a registration's origin) and every Lua function on the
-  call stack, the threads that resumed it included; builtin functions are
-  transparent, and chunks compile with no tail calls, which would drop
-  their caller's frame. A metamethod runs with no frame of the code that
-  set it, so `setmetatable` (tables only) lets code below builtin install
-  only Lua functions of its own origin or lower as handlers, and plugin
-  code only its own plugin's, copied at the call: a Go, builtin, user or
-  other plugin's function behind `obj.setup`, `obj()` or `==` would run
-  as the code that triggered it, and a plugin module may export no Go
-  function at all (`require` refuses the module), since `obj:method()`
-  would hand the module table to it as its caller. So a plugin's `setup()`
-  that user `init.lua` calls runs as that plugin, a user handler that a project's `zemi.event.emit` runs
-  inline runs as the project, and registrations capture the origin and
-  file of the code making them. A plugin is named by its directory under
+  builtin. Origin never follows the requirer: a module under `plugins/...`
+  stays plugin origin and a project module stays project origin even when
+  `init.lua` requires it. Origin is a label (the overlay badge, the error
+  and traceback chunk names, `zemi.state` keys): it grants nothing.
+- The code a call runs as is the innermost Lua file on the call stack, the
+  threads that resumed it included, so a plugin's `setup()` that user
+  `init.lua` calls runs as that plugin and a user callback the plugin calls
+  runs as user; a chunk with no file of its own (a task's scratch source, a
+  `loadstring` chunk) takes the frame the host entry pushed. Chunks compile
+  with no tail calls, which would drop their caller's frame. A metamethod
+  leaves no frame of the code that set it, so a handler behind `obj.setup`,
+  `obj()` or `==` runs as the code that triggers it; `setmetatable` (tables
+  only) installs it as given, and a Go function handed out as a value runs
+  as its caller, with the module table as its first argument when it is
+  called as a method. Registrations capture the origin and file of the code
+  making them. A plugin is named by its directory under
   `installed/` or `local/`: that name scopes its `zemi.state` keys
   (`plugin:<name>:<key>`), its permission principal (`plugin:<name>`) and
   its overlay badge (plugin code with no file of its plugin on the stack,
   such as a user module a plugin required, called from user code, has no
-  name, and the calls that need one raise), and two plugins cannot replace each other's command,
-  keymap, widget, theme, event handler, tool, completion source, health
-  row or config watch (the first by name keeps it; within one plugin the
-  last writer wins).
+  name, and the calls that need one raise), and one plugin cannot replace another's
+  command, keymap, widget, theme, event handler, tool, completion source,
+  health row or config watch (the first by name keeps it; everything else
+  is the last writer's).
 - Boundary caps: values crossing the Lua <-> Go marshal are capped (string
   16 MB, table depth 64), cycles are refused with an error,
   and every Go function exposed to Lua runs under `recover`, so a Go panic
@@ -735,9 +718,7 @@ the binary's API version is `zemi.api.version`.
   `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a call a render may not
-  make, an origin that may not make the call) and a permission gate
-  that does not allow always raise. One exception: `zemi.command.run`
-  returns `nil, err` when the caller's origin may not run the command.
+  make) and a permission gate that does not allow always raise.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
   `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
   `zemi.ui.theme`, `zemi.config`), `set`
@@ -784,8 +765,8 @@ so a runtime pick (`/model`, `/effort`, `/profile`, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
-`memory.autonomy` (§10.4) is one of them: user config may raise it, project
-and plugin code may not, and the model's `lua` tool asks before any such call.
+`memory.autonomy` (§10.4) is one of them, and a call that raises it from
+Lua passes the `lua.config.set` ask like any other.
 
 A runtime pick outlives the process: the global store keeps it per key as
 `config:<path>`, one row each, so two windows never lose each other's picks,
@@ -844,9 +825,7 @@ There are no editor modes, so a binding is just a key: the composer has
 the keys unless a focusable layout node does (below), and commands are
 slash commands typed in it. A binding with `{ focus = "<node id>" }` works
 only while that node has the keys, and may be a plain letter there; it
-comes before the global bindings unless a more trusted global binding
-holds the key, and it may not take a key or sequence a more trusted
-global binding holds, so a plugin panel cannot shadow the user's keys.
+comes before the global bindings while that node has the keys.
 A binding with `{ list = true }` is a list alias: while a list, a
 composer popup or a prompt has the keys, its key makes the move its action
 names (`down`, `ctrl+d`, ...), swapped in Go before the list sees it, so a
@@ -854,8 +833,7 @@ list never waits on Lua; while a line types (the draft under a popup, a
 filter, a typed answer) a move the line edits with, `home` or
 `end`, is not swapped and the key keeps its own meaning. It is one
 non-printable key other than the ones lists answer with (enter, esc, tab,
-shift+tab, space, backspace), and only user config binds one, since it
-reaches the permission prompt. This is neovim's `pumvisible()` mapping as
+shift+tab, space, backspace). This is neovim's `pumvisible()` mapping as
 data.
 Key notation
 matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
@@ -865,13 +843,12 @@ host-API call, and executes under the principal of the config that
 bound it (a principal is what an operation is attributed to: `model` or
 the origin of the running Lua, see §9; attribution follows the
 registration origin of the running handler, never the keypress).
-Binding precedence across origins is `user > builtin > plugin > project`;
-last-writer-wins applies only within one origin, so the project config
-loading last cannot shadow a user binding (nor bind a prefix or an
-extension of a more trusted key sequence), and `zemi.keymap.del` unmaps
-keys set by the caller's origin or a less trusted one (user config can
-remove shipped defaults; a plugin cannot remove user keys) and reports
-whether there was a binding. The actions behind cancel-turn and
+Any origin binds any key: the last registration wins, so the project
+config loading last shadows a user binding, and a key that starts a longer
+sequence shadows or is dead, whichever came later. `zemi.keymap.del`
+unmaps a key whatever bound it (user config can remove shipped defaults,
+and a plugin can remove a user key) and reports whether there was a
+binding. The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
 exact, case-sensitive, non-abbreviable `/reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed
@@ -919,7 +896,7 @@ prefixes, and every emitted event carries its emitter's origin in
 `ev.from` (Lua emissions carry the emitting origin; host-emitted events
 carry `from = "host"`), so a handler can tell a plugin's emission from
 the user's own. A Lua emission runs its handlers inline, so a handler runs
-as the less trusted of itself and its emitter (§5).
+as its own file (§5).
 
 Vetoable events share one return contract. Return `nil` for "no objection";
 otherwise return a decision table:
@@ -965,9 +942,9 @@ zemi.agent.profile.add("coder", {
 -- read_only makes a profile a planning agent: the project is read-only to it
 -- and the pipeline denies writes and confines commands; its turn ends in a
 -- plan the user approves, asks changes to, or saves to start later. A plugin
--- registers profiles the same way (project code may not), so a planner can
--- ship as a plugin; the switch stays the user's (a /profile pick, ctrl+t, or
--- their own command or keymap):
+-- or a project registers profiles the same way, so a planner can ship as a
+-- plugin; the switch stays the user's (a /profile pick, ctrl+t, or their own
+-- command or keymap):
 zemi.agent.profile.add("planner", { read_only = true })
 zemi.command.add("plan", function() zemi.config.set("agent.profile", "planner") end)
 
@@ -985,7 +962,6 @@ zemi.agent.run({ agent = "explore", prompt = "...",              -- subagent,
 zemi.agent.list()                    -- the agent definitions and their source
 
 zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
-                                         -- (user origin only)
 
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's slot:
@@ -1032,9 +1008,9 @@ under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. A subagent never gets `agent`, `workflow`, `todos`, `question`,
-`plan` or `lua`, so it starts no subagent of its own, and `zemi.agent.run`
-is refused to every origin but user and builtin: an agent acts with the
-user's tools and permissions. The reflector is not a subagent (§10.3).
+`plan` or `lua`, so it starts no subagent of its own. `zemi.agent.run`
+from Lua starts one with the same tools and permissions the caller's turn
+has. The reflector is not a subagent (§10.3).
 Nesting stays bounded because only a live turn starts a fork, and a fork
 cannot fork again: a run it delegates to is a leaf like any other.
 
@@ -1171,17 +1147,13 @@ the first provider the user added, else the first usable builtin in
 catalog order (anthropic, openai, gemini, ...): a user typed theirs,
 while a builtin's key may be exported for other tools.
 
-`zemi.provider.add` and `zemi.provider.del` require a user-owned registration origin: Lua
-from a plugin or a project cannot call them (the
-mechanical check is the origin). A user provider's key comes from user config
-(`zemi.env.get`) and is never
-exposed back to Lua.
+`zemi.provider.add` and `zemi.provider.del` take any caller: a provider's key
+comes from `zemi.env.get` and is never exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `chat`), run off the interpreter and billed to the live session.
-It costs money, and the manifest's `uses` naming `model` is what consents to it (§9); project
-code may not call it, and a reload cancels it. `zemi.agent.send` from a plugin
-settles the same way; project code may not send at all. A plugin's text reaches the model
+It costs money, and the manifest's `uses` naming `model` is what consents to it (§9);
+a reload cancels it. `zemi.agent.send` from a plugin settles the same way. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
 named after the plugin, so it is never the user's words (§10.4).
 `zemi run` refuses a
@@ -1231,7 +1203,7 @@ cannot get a verdict asks the user rather than guessing. Every answer is
 validated against its question - an unknown label, a probability outside
 0..1, a question the response left out, a score outside its levels and a body
 that is not JSON are errors, never a nearest match. The call is gated as
-`lua.classify.ask` (project code may not call a model at all) and billed to the
+`lua.classify.ask` (a plugin needs `model` in its uses) and billed to the
 live session like `zemi.model.ask`, and the provider's key is read in Go.
 
 `/goal <condition>` gives a session a finish line. The message carries abrief naming the condition, and storing it sets the goal (a `goal` row after
@@ -1431,11 +1403,12 @@ zemi.state.set("recent.model", "anthropic/x")     -- persisted kv, global scope
 zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 ```
 
-`zemi.state` keys from plugin and project code are stored under a
-`plugin:<name>:` or `project:` prefix the chunk never sees, so each plugin
-and the project have their own space and cannot read or overwrite another's,
-user or builtin keys; user and builtin code see the whole store, the others'
-keys included. A plugin's keys go when its directory does (§5).
+`zemi.state` keys from plugin code are stored under a
+`plugin:<name>:` prefix the chunk never sees, so each plugin has its own
+space and cannot read or overwrite another plugin's; every other origin
+shares one store, so the user's config, the project's and the model's Lua
+read and write the same keys. A plugin's keys go when its directory does
+(§5).
 
 Async I/O returns handles (§6.0 convention): `h:wait()` in a task or pass
 callbacks; a reload stops the jobs, timers, HTTP requests, model asks,
@@ -1498,7 +1471,7 @@ UI extensibility contract:
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
   `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
   and Go solves and paints every frame (§8), plus an overlay stack. No layout draws the
-  `exit` region: its widgets, user or builtin only, print once to the shell after zemi quits, foreground colors
+  `exit` region: its widgets print once to the shell after zemi quits, foreground colors
   only (the shipped `exit` widget prints the session, the command that resumes it and the cost). The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/tui/` (one module per part), replaceable by id. The module is
   `zemi.tui`, since `require("zemi.ui")` returns the frozen host namespace, whose `theme`
@@ -1581,14 +1554,14 @@ UI extensibility contract:
   prompt text. The shipped ones are whorl (and whorl-light) plus ports of
   Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
   rose-pine, kanagawa, one, everforest and github, most with a `-light`
-  twin, which draws on a light terminal when an origin that could replace the
-  theme itself added it, so no less trusted code swaps what the user picked;
+  twin, which draws on a light terminal when it is registered, its theme
+  itself included;
   `ui.theme` names one: `zemi.config.set` takes any name, since a plugin's
   or the project's theme may be added after it, and a name no theme answers
   to once boot is done draws whorl and is an `/errors` entry; `/config`
   refuses one, and `/theme` picks one with the list open, enter on a row
   repainting the screen in it as the preview. The groups are defined once, for every theme, by the shipped
-  `theme.lua` through `zemi.ui.hl.set`, and user config's `hl.set` replaces
+  `theme.lua` through `zemi.ui.hl.set`, and any later `hl.set` replaces
   one. The palette's `bg` is the app's canvas, which every group without a
   fill of its own sits on and which OSC 11 gives the terminal too
   (reset on every exit), while a `bg` on `Normal` recolors its text alone; every box
@@ -1615,9 +1588,8 @@ UI extensibility contract:
   lightness (a grey) or hue falls in, bright when light, stepping to the
   grey past its background when the two would be one color. `zemi.ui.hl.get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
-  (same or less trusted origin), shipped ones included. `zemi.ui.hl.set` and
-  `ui.theme` are user or shipped code only: any origin may add a theme, but
-  only those pick one or restyle a group.
+  shipped ones included. `zemi.ui.hl.set` restyles a group for every theme
+  and `ui.theme` picks one, from any origin: the last write stands.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question and plan prompts) -> the topmost overlay (Lua, or Go-built
@@ -1636,10 +1608,9 @@ UI extensibility contract:
   every key still goes through normal keymap dispatch, so a panel costs no
   Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
   composer hides its cursor and popups while a node has the keys. The
-  `zemi.ui.focus.*` calls and the keys that bind them are user or shipped
-  code only, like setting the layout: a focused node takes every key, so a
-  lower origin could route the user's typing to its own keymaps. A key the user presses still runs
-  whatever bound it.
+  `zemi.ui.focus.*` calls and the keys that bind them are open to any
+  origin, like setting the layout, and a key the user presses runs whatever
+  bound it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, matched fuzzily as you type and ranked best first, a name the
   typed one begins leading; `up`/`down`
@@ -1713,20 +1684,17 @@ list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
 a snapshot the UI publishes and edits it applies on its own goroutine;
 edits from user config only, since a submitted line reaches slash
 commands and `!shell` and a paste reads the clipboard; the same actions are
-`zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`add(name, fn)`,
+`zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.perm` (`ask`, plugin origin only, §9).
+and `zemi.perm` (`ask`, a plugin needs `perm` in its uses, §9).
 
-`zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
-registration origin: the model can propose, but a
-plugin-registered keymap or command invoking them is refused; the trust
-anchor is a human keypress on a binding the user's own config registered.
-They gate like the registration APIs in §9 (refusal, never an ask) for
-origins that may not register.
+`zemi.learn.decide` and `zemi.skills.enable` are open to any origin: the
+proposal queue and the enabled set are the user's to change, and the
+capability model that matters is the manifest's `uses`, not who calls.
 
 ## 7. Storage (SQLite)
 
@@ -1912,8 +1880,7 @@ rides the `memories.md` line and its ledger entries.
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping the filter and the
-  selection on its row wherever the rebuild moved it, when
-  the opener may close it (user, builtin or its own origin). Go parses each
+  selection on its row wherever the rebuild moved it, whoever opens it. Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
   (a list item's `id` is its own data). A detail view's rows are actions
@@ -2031,9 +1998,8 @@ rides the `memories.md` line and its ledger entries.
   past 124 cells, and in it the header, then the stage, the chat column, centered
   past 100 cells and a row above the
   composer's frame, the composer's rules running wider than the stage so their
-  widgets fit; the working rule's key and clock sit at its right end. User config may replace the layout, plugin and
-  project code may not (a layout can
-  hide what they show). `/reload` keeps drawing the old layout until the replay sets
+  widgets fit; the working rule's key and clock sit at its right end. Any origin may replace the layout, the last one
+  set winning. `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default as it boots
   (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
@@ -2772,7 +2738,7 @@ by the next startup sweep, since the session still has unseen messages.
   its edit entries under the partition lock, so the ledger's hash trail
   stays honest.
 
-Autonomy is one knob that only user config sets:
+Autonomy is one knob:
 
 ```
 memory.autonomy = "auto"      -- memories the model or the reflector propose
@@ -2817,13 +2783,13 @@ description in context and the full body on demand through the `skill`
 tool. A skill whose frontmatter says `user-invocable: true` is also the
 command `/<name>`, registered after every other command under the
 skill's origin, never over a builtin command or one of its own origin,
-and over a less trusted one by the registry's origin rule. Every
-enabled skill is in the index and the skill tool: Claude's
-`disable-model-invocation` is accepted and ignored. Recipes take neither
-command field. `/skills` browses, toggles (toggling a skill with a command
+and over any other by the registry's last-writer rule. Every enabled
+skill is in the index and the skill tool: Claude's
+`disable-model-invocation` is accepted and ignored, and the command fields
+are the skill's own. `/skills` browses, toggles (toggling a skill with a command
 reloads config, which rebuilds the commands) and uses them (a row's
 detail carries the whole body and opens it in the editor). Discovery lists only `enabled` skills to the model, and enable
-goes through the host API (`zemi.skills.enable`, user or builtin origin).
+goes through the host API (`zemi.skills.enable`, any origin).
 
 A trusted project's skills (`.agents/skills` at the repository root, the
 dir other agents read) join
@@ -2920,8 +2886,8 @@ Context
 files are injected verbatim, and only in a trusted project (§5); an
 untrusted one gets the user's `<config>/AGENTS.md` alone. A pull can
 still change a trusted repository's files, which the trust decision
-accepts like its build scripts. `agent.assemble` handlers
-(user, builtin and plugin origin) add sections: each returns a string or
+accepts like its build scripts. `agent.assemble` handlers add sections:
+each returns a string or
 `{ title, text }`, capped at 16 KiB per section and 64 KiB in all, rendered
 below the built-in sections; no handler can drop the brain section, the
 skills index, or the untrusted-content framing.
@@ -2962,14 +2928,13 @@ the AfterWrite hook scrubs what the user approves.
   "… N more lines", and "/errors" after it when the error is recorded
   there. With no UI a warning or an error prints to stderr as
   "zemi: <title>: <body>".
-- Registration conflicts (duplicate widget id, keymap collision) warn at
-  load with origin path, last-writer-wins within one origin, like nvim's
-  plugin loading noise but structured. Cross-origin id collisions are
-  refused with the lower-trust origin losing, and one plugin can neither
+- Registration conflicts (duplicate widget id, keymap collision) log at
+  load with origin path, the last registration winning, like nvim's plugin
+  loading noise but structured. One plugin can neither
   replace nor remove another's: event-handler ids, profile
-  ids, builtin tool names, command names, and widget ids, so project
-  config, loaded last, cannot replace a user safety hook, a user
-  profile, a user command, or the shipped chat widget. Command names
+  ids, builtin tool names, command names, and widget ids. Builtin tool
+  names and command names are reserved, so no later registration shadows
+  them and `/reload`/`/RELOAD` cannot diverge. Command names
   collide case-insensitively: a registration whose name differs from an
   existing command only by case is refused, so `/reload`/`/RELOAD`
   cannot shadow the reserved `/reload`. MCP tools are named

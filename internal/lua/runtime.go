@@ -39,7 +39,7 @@ type Runtime struct {
 	cur       atomic.Pointer[Generation]
 	seq       atomic.Int64
 
-	printHook  func(origin, line string)
+	printHook  func(line string)
 	reloadMu   sync.Mutex
 	clock      Clock
 	wholeTasks bool
@@ -93,8 +93,8 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 // Clock is the clock Lua reads.
 func (r *Runtime) Clock() Clock { return r.clock }
 
-// SetPrintHook routes Lua print() to the host (origin-tagged).
-func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
+// SetPrintHook routes Lua print() to the host.
+func (r *Runtime) SetPrintHook(fn func(line string)) {
 	r.printHook = fn
 }
 
@@ -127,10 +127,9 @@ func (r *Runtime) PushFrame(L *glua.LState, origin Origin, path string) func() {
 	return g.pushFrame(origin, path)
 }
 
-// CurrentOrigin returns the origin of the code running on L: the least
-// trusted of the top frame (a host entry pushes the registration origin)
-// and the Lua functions on the call stack, so a plugin's setup() that user
-// init.lua calls still runs as the plugin.
+// CurrentOrigin returns the origin of the code running on L: the innermost
+// Lua file on the call stack, so a plugin's setup() that user init.lua calls
+// still runs as the plugin.
 func (r *Runtime) CurrentOrigin(L *glua.LState) Origin {
 	return r.effective(L).origin
 }
@@ -140,16 +139,14 @@ func (r *Runtime) CurrentPath(L *glua.LState) string {
 	return r.effective(L).path
 }
 
-// effective walks the Lua functions on L's stack and on the threads that
-// resumed it, innermost first. Builtin functions are transparent, so a
-// builtin module calling a user callback leaves it user. The path is the
-// top frame's when it is a file of the lowest origin, else the outermost
-// such file (not a loadstring chunk, nor a user module a plugin required):
-// plugin a calling plugin b's function runs as a, whoever called a.
+// effective names the code running on L: the innermost Lua file on L's stack
+// or on the threads that resumed it, since a chunk keeps the origin it was
+// compiled with. A chunk whose source names no file (a generated one, an
+// embedded module's relative path) keeps its origin and takes the path of the
+// frame the host entry pushed.
 // NOTE: O(stack depth) per call; caching per frame push is the upgrade.
 func (r *Runtime) effective(L *glua.LState) frame {
 	top := genOf(L).top()
-	best, pinned := top, r.paths.Classify(top.path) == top.origin
 	for th := L; th != nil; th = th.Parent {
 		for lvl := 0; ; lvl++ {
 			dbg, ok := th.GetStack(lvl)
@@ -160,16 +157,16 @@ func (r *Runtime) effective(L *glua.LState) frame {
 				continue
 			}
 			o, path := splitChunkName(dbg.Source)
-			switch {
-			case o.Rank() == 0 || o == OriginBuiltin || o.Rank() > best.origin.Rank():
-			case o.Rank() < best.origin.Rank():
-				best, pinned = frame{o, path}, false
-			case !pinned && r.paths.Classify(path) == o:
-				best.path = path
+			if o == "" || o == OriginHost {
+				continue
 			}
+			if r.paths.Classify(path) != o {
+				path = top.path // no file of its own: name it by the entry's
+			}
+			return frame{o, path}
 		}
 	}
-	return best
+	return top
 }
 
 // The stack is touched only by the goroutine running the generation's
@@ -269,9 +266,9 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	if err != nil {
 		return nil, err
 	}
-	sb.SetPrint(func(origin, line string) {
+	sb.SetPrint(func(line string) {
 		if r.printHook != nil {
-			r.printHook(origin, line)
+			r.printHook(line)
 		}
 	})
 	gen := &Generation{
@@ -505,16 +502,12 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 // EvalFileInline loads and runs a file on the caller's interpreter turn:
 // for use from inside a namespace call, which already runs on the
 // interpreter goroutine (Do would deadlock there). The path is
-// symlink-resolved and must classify to a known origin; the origin
-// argument must match the classification, so a caller cannot launder a
-// chunk through a higher-trust origin. ctx stops it at its next opcode.
+// symlink-resolved; origin only labels the chunk. ctx stops it at its next
+// opcode.
 func (r *Runtime) EvalFileInline(ctx context.Context, L *glua.LState, path string, origin Origin) error {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
-	}
-	if class := r.paths.Classify(resolved); class != origin {
-		return fmt.Errorf("refusing %s: resolves to %q origin, not %q", resolved, class, origin)
 	}
 	data, err := os.ReadFile(resolved)
 	if err != nil {
@@ -546,7 +539,7 @@ func (r *Runtime) Require(gen *Generation, L *glua.LState, name string) (glua.LV
 	if strings.HasPrefix(name, "zemi.") {
 		// zemi.* resolves to the Go preload or the embedded stdlib only;
 		// userland cannot shadow it (DESIGN §5).
-		return r.loadModule(gen, L, "embedded:"+name, name, OriginBuiltin, func() ([]byte, string, error) {
+		return r.loadModule(gen, "embedded:"+name, name, OriginBuiltin, func() ([]byte, string, error) {
 			return r.readEmbedded(name)
 		})
 	}
@@ -554,50 +547,15 @@ func (r *Runtime) Require(gen *Generation, L *glua.LState, name string) (glua.LV
 	if err != nil {
 		return glua.LNil, err
 	}
-	return r.loadModule(gen, L, path, name, origin, func() ([]byte, string, error) {
+	return r.loadModule(gen, path, name, origin, func() ([]byte, string, error) {
 		data, err := os.ReadFile(path)
 		return data, path, err
 	})
 }
 
-// loadModule runs a module once per generation and requirer, keyed by its
-// resolved file, so "app.util" and "./util" naming one file share one
-// instance. A requirer below the file's origin gets its own instance run
-// under the requirer's origin, one per plugin: a shared table would let
-// lower code plant functions that higher-origin callbacks, or another
-// plugin, later call. Builtin modules for lower origins, and one plugin's
-// modules for another plugin, are the exception: the requirer shares the
-// owner's instance through a read-only view, so it can neither patch it
-// nor rerun it (rerunning zemi.tui would re-register the UI).
-func (r *Runtime) loadModule(gen *Generation, L *glua.LState, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
-	req := r.CurrentOrigin(L)
-	lower := req != OriginHost && req.Rank() < origin.Rank()
-	view := lower && origin == OriginBuiltin
-	switch {
-	case lower && !view:
-		if req == OriginPlugin {
-			key += "|" + r.requirerRoot(gen, L)
-		}
-		origin = req
-	case req == OriginPlugin && origin == OriginPlugin:
-		view = gen.pluginRoot(key) != r.requirerRoot(gen, L)
-	}
-	key += "|" + string(origin)
-	if !view {
-		return r.moduleInstance(gen, key, name, origin, read)
-	}
-	if cached, ok := gen.modules[key+"|view"]; ok {
-		return cached, nil
-	}
-	mod, err := r.moduleInstance(gen, key, name, origin, read)
-	if tb, ok := mod.(*glua.LTable); ok && err == nil {
-		mod = gen.SB.readOnlyView(tb, string(origin)+" module "+name)
-		gen.modules[key+"|view"] = mod
-	}
-	return mod, err
-}
-
-func (r *Runtime) moduleInstance(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
+// loadModule runs a module once per generation, keyed by its resolved file,
+// so "app.util" and "./util" naming one file share one instance.
+func (r *Runtime) loadModule(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
 	if cached, ok := gen.modules[key]; ok {
 		return cached, nil
 	}
@@ -614,39 +572,8 @@ func (r *Runtime) moduleInstance(gen *Generation, key, name string, origin Origi
 	if err != nil {
 		return glua.LNil, err
 	}
-	if origin == OriginPlugin {
-		if at := exportsGo(mod, "", map[*glua.LTable]bool{}); at != "" {
-			return glua.LNil, fmt.Errorf("plugin module %q exports the Go function %s: wrap it in a Lua function", name, at)
-		}
-	}
 	gen.modules[key] = mod
 	return mod, nil
-}
-
-// exportsGo names the first Go function reachable from a plugin module's
-// value, or "". A Go function handed out as a plain value runs as its
-// caller with no frame of the plugin, so require("p"):setup() with setup =
-// zemi.state.set would write state as the caller, not the plugin.
-func exportsGo(v glua.LValue, at string, seen map[*glua.LTable]bool) string {
-	switch v := v.(type) {
-	case *glua.LFunction:
-		if v.IsG {
-			return cmp.Or(at, "it returns")
-		}
-	case *glua.LTable:
-		if seen[v] {
-			return ""
-		}
-		seen[v] = true
-		var found string
-		v.ForEach(func(k, e glua.LValue) {
-			if found == "" {
-				found = exportsGo(e, at+"."+k.String(), seen)
-			}
-		})
-		return found
-	}
-	return ""
 }
 
 func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
@@ -667,9 +594,9 @@ type cand struct{ base, root string }
 
 // findModule resolves a module name to a symlink-resolved file. Relative
 // names ("./util", "../lib/x") resolve against the requiring file and must
-// stay inside its origin's tree; dotted names search the runtimepath's code
-// dirs. A plugin's file resolves only from its own enabled plugin, so neither
-// ".." nor a symlink reaches another plugin's code or a disabled one's.
+// stay inside its tree; dotted names search the runtimepath's code dirs. A
+// plugin's file resolves only from its own enabled plugin, so neither ".."
+// nor a symlink reaches another plugin's code or a disabled one's.
 func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (string, Origin, error) {
 	var cands []cand
 	var from string
@@ -755,12 +682,10 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 }
 
 // runtimepath lists the code directories a dotted require of rel searches, in
-// order: the project's .agents for project code only (user and plugin requires
-// never resolve into a repository's untrusted files), the config home, then
-// the enabled plugin named like rel's first segment, first for that plugin's
-// own code. A plugin keeps its modules with the rest of its Lua under CodeDir.
-// No plugin shadows another's modules. The embedded runtime is consulted
-// separately (DESIGN §5).
+// order: the project's .agents, the config home, then the enabled plugin named
+// like rel's first segment, first for that plugin's own code. Any requirer
+// searches every tree. A plugin keeps its modules with the rest of its Lua
+// under CodeDir. The embedded runtime is consulted separately (DESIGN §5).
 func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []cand {
 	head, _, _ := strings.Cut(rel, string(filepath.Separator))
 	var out []cand
@@ -774,9 +699,6 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []can
 		out, own = append(out, cand{pluginCode(own), own}), ""
 	}
 	for _, want := range []Origin{OriginProject, OriginUser} {
-		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
-			continue
-		}
 		for _, c := range r.paths {
 			if c.Origin == want && c.Prefix != "" {
 				out = append(out, cand{filepath.Join(c.Prefix, "lua"), ""})

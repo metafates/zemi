@@ -255,72 +255,18 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	return s, nil
 }
 
-// handlersKey marks a metatable setMetatable copied; true when the original
-// had no __metatable lock, so setmetatable may replace it.
-const handlersKey = "__zemi_handlers"
-
 // setMetatable is setmetatable for tables only: gopher-lua's would set the
-// metatable of every number, boolean or function. Code below builtin may
-// install only Lua functions of its own origin or lower as handlers: a Go or
-// builtin function leaves no frame of that origin, so an event user code
-// triggers (obj.setup, obj(), obj == x) would run it as user (DESIGN §5).
-// The handlers are copied, so a later write to mt cannot swap one in, and
-// getmetatable still returns mt.
-// A Go function handed out as a plain value would run as its caller too,
-// which is why a plugin module may not export one (exportsGo).
+// metatable of every number, boolean or function. getmetatable returns mt
+// itself.
 func (s *Sandbox) setMetatable(L *glua.LState) int {
 	obj := L.CheckTable(1)
 	L.CheckTypes(2, glua.LTNil, glua.LTTable)
-	if cur, ok := obj.Metatable.(*glua.LTable); ok && cur.RawGetString("__metatable") != glua.LNil && cur.RawGetString(handlersKey) != glua.LTrue {
+	if cur, ok := obj.Metatable.(*glua.LTable); ok && cur.RawGetString("__metatable") != glua.LNil {
 		L.RaiseError("cannot change a protected metatable")
 	}
-	mt := L.Get(2)
-	if tb, ok := mt.(*glua.LTable); ok && s.originOf != nil {
-		if o := s.originOf(L); o.Rank() > 0 && o.Rank() < OriginBuiltin.Rank() {
-			mt = copyHandlers(L, tb, o)
-		}
-	}
-	L.SetMetatable(obj, mt)
+	L.SetMetatable(obj, L.Get(2))
 	L.SetTop(1)
 	return 1
-}
-
-// copyHandlers copies mt's events, refusing a handler that would not run as o
-// or, for plugin code, as the setter's own plugin.
-func copyHandlers(L *glua.LState, mt *glua.LTable, o Origin) *glua.LTable {
-	cp := L.NewTable()
-	bad := ""
-	g := genOf(L)
-	own := ""
-	if g != nil {
-		own = g.pluginRoot(g.rt.CurrentPath(L))
-	}
-	mt.ForEach(func(k, v glua.LValue) {
-		event, ok := k.(glua.LString)
-		if !ok || !strings.HasPrefix(string(event), "__") {
-			return
-		}
-		if fn, ok := v.(*glua.LFunction); ok {
-			fo, path := OriginHost, ""
-			if !fn.IsG {
-				fo, path = splitChunkName(fn.Proto.SourceName)
-			}
-			if fo.Rank() == 0 || fo.Rank() > o.Rank() || g != nil && g.pluginRoot(path) != own {
-				bad = string(event)
-			}
-		}
-		cp.RawSet(k, v)
-	})
-	if bad != "" {
-		L.RaiseError("setmetatable: %s must be a Lua function of this %s's own code, not a Go, builtin, more trusted or other plugin's one, which would run as the code that triggers it", bad, o)
-	}
-	lock := mt.RawGetString("__metatable")
-	cp.RawSetString(handlersKey, glua.LBool(lock == glua.LNil))
-	if lock == glua.LNil {
-		lock = mt
-	}
-	cp.RawSetString("__metatable", lock)
-	return cp
 }
 
 // bindContext gives thread th the context of L, the thread resuming it.
@@ -505,15 +451,10 @@ func (s *Sandbox) date(L *glua.LState) int {
 	return 1
 }
 
-// SetPrint installs the host-routed print: output goes to the log sink
-// with the currently running origin (DESIGN §5).
-func (s *Sandbox) SetPrint(fn func(origin, line string)) {
+// SetPrint installs the host-routed print: output goes to the log sink.
+func (s *Sandbox) SetPrint(fn func(line string)) {
 	printFn := s.L.NewFunction(func(L *glua.LState) int {
-		origin := OriginHost
-		if s.originOf != nil {
-			origin = s.originOf(L)
-		}
-		fn(string(origin), joinArgs(L, " "))
+		fn(joinArgs(L, " "))
 		return 0
 	})
 	s.frozen.RawSetString("print", printFn)
@@ -614,33 +555,6 @@ func (s *Sandbox) deepProtect(tbl *glua.LTable, path string) {
 		s.deepProtect(e.tb, joined)
 		tbl.RawSet(e.key, s.protectNamespace(e.tb, "namespace "+joined, joined))
 	}
-}
-
-// readOnlyView is protectTable applied lazily down a tree: every table read
-// through it comes back as a proxy too, and the real tables stay writable
-// for the code that owns them.
-func (s *Sandbox) readOnlyView(tb *glua.LTable, what string) *glua.LTable {
-	proxies := map[*glua.LTable]*glua.LTable{}
-	var wrap func(*glua.LTable) *glua.LTable
-	wrap = func(real *glua.LTable) *glua.LTable {
-		if p, ok := proxies[real]; ok {
-			return p
-		}
-		mt := s.lockedMeta(what)
-		mt.RawSetString("__index", s.L.NewFunction(func(L *glua.LState) int {
-			v := L.GetTable(real, L.Get(2))
-			if t, ok := v.(*glua.LTable); ok {
-				v = wrap(t)
-			}
-			L.Push(v)
-			return 1
-		}))
-		p := s.L.NewTable()
-		s.L.SetMetatable(p, mt)
-		proxies[real] = p
-		return p
-	}
-	return wrap(tb)
 }
 
 // realTableOf resolves a protected proxy to the table its __index reads.
@@ -973,8 +887,8 @@ func (s *Sandbox) callerChunk(L *glua.LState) (*glua.LTable, Origin) {
 	return caller.Env, origin
 }
 
-// debugTraceback renders the stack with frames from other origins collapsed
-// to their origin label (DESIGN §5).
+// debugTraceback renders the stack as gopher-lua's does, with every frame's
+// file named.
 func (s *Sandbox) debugTraceback(L *glua.LState) int {
 	msg := L.OptString(1, "")
 	var b strings.Builder
@@ -983,21 +897,12 @@ func (s *Sandbox) debugTraceback(L *glua.LState) int {
 		b.WriteString("\n")
 	}
 	b.WriteString("stack traceback:")
-	cur := Origin("")
-	if s.originOf != nil {
-		cur = s.originOf(L)
-	}
 	for lvl := 1; ; lvl++ {
 		dbg, ok := L.GetStack(lvl)
 		if !ok {
 			break
 		}
-		frameOrigin, detail := frameInfo(L, dbg)
-		if frameOrigin != cur && frameOrigin != OriginHost && frameOrigin != "" {
-			b.WriteString("\n\t[" + string(frameOrigin) + "]")
-			continue
-		}
-		if detail != "" {
+		if detail := frameInfo(L, dbg); detail != "" {
 			b.WriteString("\n\t" + detail)
 		}
 	}
@@ -1005,23 +910,23 @@ func (s *Sandbox) debugTraceback(L *glua.LState) int {
 	return 1
 }
 
-func frameInfo(L *glua.LState, dbg *glua.Debug) (Origin, string) {
+func frameInfo(L *glua.LState, dbg *glua.Debug) string {
 	fn, err := L.GetInfo("Snlf", dbg, glua.LNil)
 	if err != nil {
-		return "", ""
+		return ""
 	}
 	f, ok := fn.(*glua.LFunction)
 	if !ok {
-		return "", ""
+		return ""
 	}
 	if f.IsG {
 		name := ""
 		if dbg.Name != "" {
 			name = " in Go function '" + dbg.Name + "'"
 		}
-		return OriginHost, "<go>" + name
+		return "<go>" + name
 	}
-	origin, rest := splitChunkName(f.Proto.SourceName)
+	_, rest := splitChunkName(f.Proto.SourceName)
 	lineStr := ""
 	if dbg.CurrentLine > 0 {
 		lineStr = fmt.Sprintf(":%d", dbg.CurrentLine)
@@ -1030,7 +935,7 @@ func frameInfo(L *glua.LState, dbg *glua.Debug) (Origin, string) {
 	if name == "" {
 		name = "?"
 	}
-	return origin, fmt.Sprintf("%s%s in function '%s'", rest, lineStr, name)
+	return fmt.Sprintf("%s%s in function '%s'", rest, lineStr, name)
 }
 
 func splitChunkName(source string) (Origin, string) {

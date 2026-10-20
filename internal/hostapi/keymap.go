@@ -174,10 +174,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			b.RHS = RHS{Fn: v}
 		case glua.LString:
 			if list {
-				// an alias reaches the permission and trust prompts
-				if b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
-					L.RaiseError("zemi.keymap.set: only user config may bind list keys")
-				}
 				b.RHS = RHS{Move: string(v)}
 				break
 			}
@@ -187,18 +183,6 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			}
 			if rhs.Command == "" && rhs.API == "" {
 				L.RaiseError("zemi.keymap.set: %q is neither a command nor a host action", string(v))
-			}
-			// Loosening permissions is the user's call: a plugin or project
-			// key must not flip the profile (its prompt and tool set) on an
-			// innocent-looking press, nor submit, fill or paste the
-			// clipboard into the composer, whose line reaches slash
-			// commands and !shell, nor move the focus, which routes every
-			// later key to the node it picked.
-			if (rhs.Command == "profile" ||
-				strings.HasPrefix(rhs.API, "zemi.agent.profile.") ||
-				strings.HasPrefix(rhs.API, "zemi.composer.") || strings.HasPrefix(rhs.API, "zemi.ui.focus.")) &&
-				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
-				L.RaiseError("zemi.keymap.set: only user config may bind profile, composer or focus actions")
 			}
 			b.RHS = rhs
 		default:

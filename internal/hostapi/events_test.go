@@ -131,7 +131,7 @@ func TestHostEmitsAreCatalogued(t *testing.T) {
 
 // TestEmitKeepsNameAndFrom: a payload cannot rename an event or claim
 // another origin, and a user handler a project emission runs inline runs as
-// the project.
+// its own file.
 func TestEmitKeepsNameAndFrom(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("user.y", function(ev) zemi.state.set("ev", ev.from .. " " .. ev.name) end)`)
@@ -141,57 +141,8 @@ func TestEmitKeepsNameAndFrom(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `zemi.event.emit("user.y", { "a", "b" })`, "p.lua", lua.OriginProject); err == nil {
 		t.Fatal("a sequence payload did not raise")
 	}
-	if v, _ := h.GlobalDB.GetKV("project:ev"); v != `"project user.y"` {
+	if v, _ := h.GlobalDB.GetKV("ev"); v != `"project user.y"` {
 		t.Fatalf("handler saw %s", v)
-	}
-}
-
-// TestLuaAgentsNeedUserConfig: project code cannot act with
-// the user's authority from Lua.
-func TestLuaAgentsNeedUserConfig(t *testing.T) {
-	h, r := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	runUser(t, r, `zemi.command.add("usercmd", function() end)`)
-	h.Commands.Add(&Command{Name: "gocmd", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
-	for _, name := range []string{"mode", "profile"} {
-		h.Commands.Add(&Command{Name: name, GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin})
-	}
-	t.Setenv("ZEMI_TEST_API_KEY", "k")
-	for _, src := range []string{
-		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
-		`zemi.agent.send("x")`, `zemi.agent.profile.add("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
-		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
-		`zemi.session.new()`, `zemi.session.resume("x")`, `zemi.session.rewind("x")`,
-		`zemi.memory.add("x")`,
-		`zemi.model.set("p/m")`, `assert(zemi.command.run("usercmd"))`,
-		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
-		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`,
-		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
-		`zemi.config.set("agent.profile", "planner")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
-		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.del("gopls")`,
-		`zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`,
-		`assert(zemi.command.run("gocmd"))`,
-		`zemi.keymap.set("<leader>y", "profile")`,
-		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`,
-	} {
-		if err := r.ExecuteChunk(t.Context(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") {
-			t.Errorf("%s from project: %v", src, err)
-		}
-	}
-	if err := r.ExecuteChunk(t.Context(), `assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`, "p.lua", lua.OriginProject); err != nil {
-		t.Errorf("project env.get: %v", err)
-	}
-	runUser(t, r, `
-		zemi.config.set("agent.profile", "planner")
-		zemi.lsp.del("gopls")
-		zemi.keymap.set("<leader>y", "zemi.agent.profile.next")
-		assert(zemi.command.run("gocmd"))
-		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
-	if err := r.ExecuteChunk(t.Context(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
-		t.Fatal(err)
-	}
-	if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
-		t.Errorf("project app.quit deny = %+v, want ignored", res)
 	}
 }
 
@@ -394,8 +345,7 @@ func TestToolPreRewrite(t *testing.T) {
 		wantDecision tools.PreVerdict
 		wantCommand  string
 	}{
-		{"user rewrite applies", lua.OriginUser, rewriteRm, "rewrite", "rm -rf x"},
-		{"project rewrite ignored", lua.OriginProject, rewriteRm, "", ""},
+		{"a rewrite applies", lua.OriginUser, rewriteRm, "rewrite", "rm -rf x"},
 		{"rewrite rechecked by an earlier deny", lua.OriginUser, denyRm + "\n" + rewriteRm, "deny", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {

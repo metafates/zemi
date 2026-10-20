@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -10,7 +9,7 @@ import (
 )
 
 // TestComposerActions: the composer's history and insert run from Lua and
-// from keymap strings, and only user config may bind them.
+// from keymap strings, whatever registered the key.
 // TestComposerRecallPastMultiline: an up arrow recalls history even when a
 // recalled message is multiline - once the cursor reaches the top line (or
 // the text is a single line), the next up keeps iterating instead of being
@@ -51,8 +50,7 @@ func TestComposerActions(t *testing.T) {
 	if app.composer.text != "second!" {
 		t.Fatalf("history_next and the insert key: %q", app.composer.text)
 	}
-	err := host.RT.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+u", "zemi.composer.submit")`, "p.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "only user config") {
+	if err := host.RT.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+u", "zemi.composer.submit")`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin bound a composer action: %v", err)
 	}
 }

@@ -216,24 +216,17 @@ func (h *Host) Layout() *Layout {
 }
 
 // layoutNamespace is zemi.ui.layout: set, get and rects. One layout exists
-// at a time. The shipped UI sets it and user config may replace it; lower
-// origins are refused, since a layout can hide everything they would show.
-// A reload keeps drawing the old layout until the replay sets one, and one
-// that sets none falls back to DefaultLayout (ForceReload).
+// at a time, and the last one set wins. A reload keeps drawing the old layout
+// until the replay sets one, and one that sets none falls back to
+// DefaultLayout (ForceReload).
 func (h *Host) layoutNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		o := h.RT.CurrentOrigin(L)
-		if o != lua.OriginUser && o != lua.OriginBuiltin {
-			L.RaiseError("zemi.ui.layout.set: only user config may set the layout, not %s code", o)
-		}
 		raw := luaToGoChecked(L, 1, "zemi.ui.layout.set")
 		lay, err := parseLayout(raw)
 		if err != nil {
 			L.RaiseError("zemi.ui.layout.set: %v", err)
-		}
-		if cur := h.layout.Load(); cur != nil && cur.gen == h.currentGen() && o.Rank() < cur.origin.Rank() {
-			L.RaiseError("zemi.ui.layout.set: %s config set the layout; %s code may not replace it", cur.origin, o)
 		}
 		h.layout.Store(&layoutSet{layout: lay, raw: raw, origin: o, gen: h.currentGen()})
 		h.dropStaleFocus()
@@ -326,13 +319,9 @@ func (h *Host) dropStaleFocus() {
 }
 
 // focusNamespace is zemi.ui.focus: set(id?), get(), next() and prev().
-// Moving the focus is gated like zemi.ui.layout.set: the focused node takes
-// every key, so lower origins could otherwise route the user's typing to
-// their own keymaps. Only user config sets the layout the ids come from.
 func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "ui.focus.set")
 		if err := h.focusNode(L.OptString(1, "")); err != nil {
 			L.RaiseError("zemi.ui.focus.set: %v", err)
 		}
@@ -348,7 +337,6 @@ func (h *Host) focusNamespace(L *glua.LState) *glua.LTable {
 	}))
 	for name, step := range map[string]int{"next": 1, "prev": -1} {
 		tb.RawSetString(name, L.NewFunction(func(L *glua.LState) int {
-			h.refuseBelowUser(L, "ui.focus."+name)
 			_ = h.cycleFocus(step)
 			return 0
 		}))

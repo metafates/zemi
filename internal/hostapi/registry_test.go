@@ -17,10 +17,9 @@ func bind(key, focus string, origin lua.Origin) *KeyBinding {
 	return &KeyBinding{Key: key, Focus: focus, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
 }
 
-// TestKeymapRegistry: set rebinds within and above an origin, lower trust is
-// refused for set and del, a focused binding cannot take what a more trusted
-// global one holds, lookup prefers the focused binding unless a more trusted
-// global one holds the key, and list keeps registration order.
+// TestKeymapRegistry: set rebinds any key (the last registration wins), a
+// focused binding sits beside the global one, lookup prefers the focused one,
+// and list keeps registration order.
 func TestKeymapRegistry(t *testing.T) {
 	r := NewKeymapRegistry()
 	for _, s := range []struct {
@@ -30,20 +29,14 @@ func TestKeymapRegistry(t *testing.T) {
 	}{
 		{"builtin default", "tab", "", lua.OriginBuiltin, true},
 		{"user overrides builtin", "tab", "", lua.OriginUser, true},
-		{"project cannot override user", "tab", "", lua.OriginProject, false},
-		{"builtin cannot override user", "tab", "", lua.OriginBuiltin, false},
+		{"a project key rebinds it", "tab", "", lua.OriginProject, true},
 		{"plugin key", "x", "", lua.OriginPlugin, true},
 		{"plugin rebinds its own", "x", "", lua.OriginPlugin, true},
 		{"user sequence", "ctrl+g s", "", lua.OriginUser, true},
-		{"project cannot bind a user sequence's prefix", "ctrl+g", "", lua.OriginProject, false},
-		{"project cannot extend a user key", "tab x", "", lua.OriginProject, false},
+		{"a prefix of a sequence", "ctrl+g", "", lua.OriginProject, true},
 		{"empty key", "", "", lua.OriginUser, false},
 		{"plugin focused key", "k", "todo", lua.OriginPlugin, true},
-		{"plugin cannot focus-bind a user global key", "tab", "todo", lua.OriginPlugin, false},
-		{"plugin cannot focus-bind a user sequence's prefix", "ctrl+g", "todo", lua.OriginPlugin, false},
 		{"user focused key over its own global one", "tab", "todo", lua.OriginUser, true},
-		{"user global key over a plugin focused one", "k", "", lua.OriginUser, true},
-		{"project focused key in another node", "tab", "tree", lua.OriginProject, false},
 	} {
 		if err := r.Set(bind(s.key, s.focus, s.origin)); (err == nil) != s.ok {
 			t.Fatalf("%s: err=%v", s.name, err)
@@ -54,10 +47,10 @@ func TestKeymapRegistry(t *testing.T) {
 		want       lua.Origin // "" for no binding
 		wantFocus  string
 	}{
-		{"", "tab", lua.OriginUser, ""},
+		{"", "tab", lua.OriginProject, ""},
 		{"todo", "tab", lua.OriginUser, "todo"},
-		{"tree", "tab", lua.OriginUser, ""},
-		{"todo", "k", lua.OriginUser, ""}, // the more trusted global binding wins
+		{"tree", "tab", lua.OriginProject, ""},
+		{"todo", "k", lua.OriginPlugin, "todo"},
 		{"", "j", "", ""},
 	} {
 		got := r.Lookup(l.focus, l.key)
@@ -68,23 +61,20 @@ func TestKeymapRegistry(t *testing.T) {
 	if !r.IsPrefix("todo", "ctrl+g") || r.IsPrefix("todo", "k") {
 		t.Fatal("IsPrefix should see global sequences from a focused node")
 	}
-	if all := r.List(); len(all) != 6 || all[0].Key != "tab" || all[4].Key != "tab" || all[4].Focus != "todo" {
+	if all := r.List(); len(all) != 6 || all[0].Key != "tab" || all[5].Focus != "todo" {
 		t.Fatalf("List = %+v", all)
 	}
 	for _, d := range []struct {
 		name, key, focus string
-		origin           lua.Origin
-		removed, wantErr bool
+		removed          bool
 	}{
-		{"plugin cannot delete a user key", "tab", "", lua.OriginPlugin, false, true},
-		{"user deletes a plugin key", "x", "", lua.OriginUser, true, false},
-		{"deleting twice is not an error", "x", "", lua.OriginUser, false, false},
-		{"user deletes its own", "tab", "", lua.OriginUser, true, false},
-		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false, false},
-		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true, false},
+		{"a plugin deletes a global key", "x", "", true},
+		{"deleting twice is not an error", "x", "", false},
+		{"a focused key is not the global one", "k", "tree", false},
+		{"deleting a focused key", "k", "todo", true},
 	} {
-		removed, err := r.Del(d.origin, "", d.focus, d.key, false)
-		if removed != d.removed || (err != nil) != d.wantErr {
+		removed, err := r.Del(lua.OriginPlugin, "", d.focus, d.key, false)
+		if removed != d.removed || err != nil {
 			t.Fatalf("%s: removed=%v err=%v", d.name, removed, err)
 		}
 	}
@@ -101,8 +91,8 @@ func TestKeymapRegistry(t *testing.T) {
 	if b := r.ListAlias("ctrl+j"); b == nil || b.RHS.Move != "down" || r.ListAlias("ctrl+k") != nil || r.Lookup("", "ctrl+j").List {
 		t.Fatalf("ListAlias = %+v", b)
 	}
-	if err := r.Set(alias(lua.OriginPlugin)); err == nil {
-		t.Fatal("a plugin replaced a user list alias")
+	if err := r.Set(alias(lua.OriginPlugin)); err != nil {
+		t.Fatalf("a plugin rebinds a list alias: %v", err)
 	}
 	if removed, _ := r.Del(lua.OriginUser, "", "", "ctrl+j", true); !removed || r.ListAlias("ctrl+j") != nil || r.Lookup("", "ctrl+j") == nil {
 		t.Fatal("deleting the alias must leave the global binding")
@@ -121,8 +111,8 @@ func TestCommandCaseCollision(t *testing.T) {
 		return r.Add(&Command{Name: name, Fn: noopFn, Origin: origin})
 	}
 
-	// The reserved-name guard chain: a plugin cannot shadow :Reload via a
-	// case variant; only identical-name same-or-higher trust replaces.
+	// The reserved-name guard chain: a case variant never shadows :Reload; an
+	// identical name replaces.
 	if _, err := add("Reload", lua.OriginBuiltin); err != nil {
 		t.Fatalf("builtin :Reload: %v", err)
 	}
@@ -141,7 +131,7 @@ func TestCommandCaseCollision(t *testing.T) {
 		t.Fatalf("Lookup must be case-insensitive: %+v", got)
 	}
 
-	// Equal rank, identical name: LWW replaces.
+	// An identical name replaces, whatever registered it.
 	replacement := &Command{Name: "Reload", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin}
 	if _, err := r.Add(replacement); err != nil {
 		t.Fatalf("same-origin identical-name re-add: %v", err)
@@ -150,17 +140,11 @@ func TestCommandCaseCollision(t *testing.T) {
 		t.Fatal("identical-name replacement did not apply")
 	}
 
-	// Lower trust cannot replace.
-	if _, err := add("Reload", lua.OriginProject); err == nil {
-		t.Fatal("lower-trust re-registration must be refused")
+	if _, err := add("Reload", lua.OriginProject); err != nil {
+		t.Fatalf("project replacement of a builtin command: %v", err)
 	}
-
-	// Higher trust identical name may replace.
-	if _, err := add("Reload", lua.OriginUser); err != nil {
-		t.Fatalf("user replacement of builtin command: %v", err)
-	}
-	if got := r.Lookup("RELOAD"); got.Origin != lua.OriginUser {
-		t.Fatalf("user replacement did not apply: %+v", got)
+	if got := r.Lookup("RELOAD"); got.Origin != lua.OriginProject {
+		t.Fatalf("project replacement did not apply: %+v", got)
 	}
 
 	if _, err := add("", lua.OriginUser); err == nil {
@@ -231,8 +215,8 @@ func TestEventRegistry(t *testing.T) {
 }
 
 // TestPluginOwnership: one plugin neither replaces nor removes another's
-// registration, and replaces and removes its own from any of its files; a
-// project neither replaces nor removes the user's.
+// registration, and replaces and removes its own from any of its files; every
+// other origin replaces and removes whatever it likes.
 func TestPluginOwnership(t *testing.T) {
 	owner := func(p string) string { name, _, _ := strings.Cut(p, "/"); return name }
 	const pl, user, proj = lua.OriginPlugin, lua.OriginUser, lua.OriginProject
@@ -328,11 +312,11 @@ func TestPluginOwnership(t *testing.T) {
 		if err := o.add(user, "init.lua"); err != nil {
 			t.Fatalf("%s: user adds over a plugin: %v", c.name, err)
 		}
-		if err := o.add(proj, ".agents/init.lua"); err == nil || !strings.Contains(err.Error(), "registered by user config") {
+		if err := o.add(proj, ".agents/init.lua"); err != nil {
 			t.Fatalf("%s: project replaces the user's: %v", c.name, err)
 		}
 		if o.del != nil {
-			if ok, err := o.del(proj, ".agents/init.lua"); ok || err == nil {
+			if ok, err := o.del(proj, ".agents/init.lua"); !ok || err != nil {
 				t.Fatalf("%s: project removes the user's: %v %v", c.name, ok, err)
 			}
 		}

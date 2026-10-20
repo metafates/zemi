@@ -19,12 +19,13 @@ func TestPermAsk(t *testing.T) {
 		name   string
 		origin lua.Origin
 		uses   string
+		owner  string // whose code the overlay names as asking
 		err    string
 	}{
-		{name: "user code may not ask", origin: lua.OriginUser, uses: `["perm"]`, err: "user code may not ask the user"},
-		{name: "project code may not ask", origin: lua.OriginProject, uses: `["perm"]`, err: "project code may not ask the user"},
+		{name: "user code asks", origin: lua.OriginUser, uses: `["perm"]`, owner: "user"},
+		{name: "project code asks", origin: lua.OriginProject, uses: `["perm"]`, owner: "project"},
 		{name: "the manifest must declare perm", origin: lua.OriginPlugin, uses: `["job"]`, err: `declares no "perm"`},
-		{name: "a plugin's ask, answered by the user", origin: lua.OriginPlugin, uses: `["perm"]`},
+		{name: "a plugin's ask, answered by the user", origin: lua.OriginPlugin, uses: `["perm"]`, owner: "plugin:a"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostPlugin(t, c.uses)
@@ -41,8 +42,8 @@ func TestPermAsk(t *testing.T) {
 				t.Fatal(err)
 			}
 			ui := h.hooks().(*fakeUI)
-			if len(ui.asked) != 1 || ui.asked[0].Subject != "fs.write" || ui.asked[0].Owner != "plugin:a" {
-				t.Fatalf("the overlay saw %+v, want one fs.write ask from plugin:a", ui.asked)
+			if len(ui.asked) != 1 || ui.asked[0].Subject != "fs.write" || ui.asked[0].Owner != c.owner {
+				t.Fatalf("the overlay saw %+v, want one fs.write ask from %s", ui.asked, c.owner)
 			}
 		})
 	}

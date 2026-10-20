@@ -50,54 +50,48 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
 
 ## require and the origin model (internal/lua/runtime.go, origin.go, registries)
 
-Modules are cached per generation by resolved file and requirer: a requirer below the file's
-origin gets its own instance run under its own origin, one per plugin, so project or plugin code
-cannot plant functions into a table that higher-origin callbacks or another plugin call; a
-builtin module for lower code and one plugin's module for another plugin are the owner's
-instance behind a deep read-only view. Dotted names search each candidate root's code dir
-(`<root>/lua`, `<plugin>/.zemi/lua`) over the runtimepath:
-the project's `.agents` first but only when the requirer is project code, user, then the one
-plugin the plugins step loaded (`lua.Generation.Plugins`, resolved, fixed per generation) named
-like the first segment, which that plugin's own code searches first: a plugin answers only its
-own names, so none shadows another's. `./x` and `../x` resolve against the calling function's
-chunk name, which is why file chunks are compiled with their absolute path, and must stay in
-that file's origin tree and, for plugin code, its own plugin; a plugin file resolves only
-inside an enabled plugin, so a symlink or `..` cannot run a disabled one.
-`load`/`loadstring` tag their chunks with the running origin and never keep an absolute name,
-so neither can be forged.
+Origin is a label, never a privilege: it tags chunk names for errors and tracebacks, the overlay
+badge, a plugin's state keys and its permission principal, and every origin calls the same host
+API with the same rights. Modules are cached per generation by resolved file alone: one instance
+per file whatever requires it, so every requirer shares that table. Dotted names search each
+candidate root's code dir (`<root>/lua`, `<plugin>/.zemi/lua`) over the runtimepath:
+the project's `.agents`, then the user's `~/.config/zemi`, then the one plugin the plugins step
+loaded (`lua.Generation.Plugins`, resolved, fixed per generation) named like the first segment,
+which that plugin's own code searches first. Any requirer may use any tree. `./x` and `../x`
+resolve against the calling function's chunk name, which is why file chunks are compiled with
+their absolute path, and must stay in that file's tree and, for plugin code, its own plugin; a
+plugin file resolves only inside an enabled plugin, so a symlink or `..` cannot run a disabled
+one. `load`/`loadstring` tag their chunks with the running origin and never keep an absolute
+name, so neither can be forged.
 
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus each
 subdirectory of it in `Dirs.UserTrees`, so a symlinked
-`skills` or `lua` still resolves as user) > `builtin` (embedded runtime/) > `plugin`
-(`<data>/plugins`) > `project` (<repo>/.agents). The code a call runs as
-(`Runtime.CurrentOrigin`, `CurrentPath`) is the least trusted of the frame the host entry pushed
-and every Lua function on the stack, resumers included, builtin ones transparent: a plugin's
-`setup()` that init.lua calls runs as the plugin, and a user handler a project's
-`zemi.event.emit` runs inline runs as the project; chunks compile with no tail calls, which
-would drop a frame. A metamethod leaves no frame of the code that set it, so the sandbox's
-`setmetatable` (tables only) lets code below builtin install only its own origin's Lua
-functions as handlers, and a plugin only its own plugin's, copied at the call, and a plugin module
-that exports a Go function fails to require (`exportsGo`: `obj:method()` would run it as the caller
-with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`, DESIGN §5):
-`plugin.Scan` lists `installed/` and `local/` minus `disabled`, sorted by name, and the same
-pick, fixed for the generation (`Host.pluginDirs`), gives the plugins' skills, agents, markdown
-commands and workflows; a plugin's own Lua sits under `.zemi` (`plugin.CodeDir`: init.lua, lua/,
-tests/, workflows/, plugin.json), and one still keeping it at its root is refused
+`skills` or `lua` still resolves as user), `builtin` (embedded runtime/), `plugin`
+(`<data>/plugins`) or `project` (<repo>/.agents). The code a call runs as
+(`Runtime.CurrentOrigin`, `CurrentPath`) is the innermost Lua file on the stack, resumers
+included: a plugin's `setup()` that init.lua calls runs as the plugin, and a callback that file
+calls runs as itself; a chunk with no file of its own (a task's scratch source, a `loadstring`
+chunk) takes the frame the host entry pushed. Chunks compile with no tail calls, which would
+drop a frame, and the `Suspending` wrapper is tagged `host` so it reads through like the Go
+function it wraps. A metamethod leaves no frame of the code that set it, so a handler behind
+`obj.setup`, `obj()` or `==` runs as the code that triggers it; `setmetatable` (tables only)
+installs it as given, and a Go function handed out as a value runs as its caller, with the module
+table as its first argument when called as a method. Plugins (hostapi/plugins.go, `PluginsStep`,
+DESIGN §5): `plugin.Scan` lists `installed/` and `local/` minus `disabled`, sorted by name, and
+the same pick, fixed for the generation (`Host.pluginDirs`), gives the plugins' skills, agents,
+markdown commands and workflows; a plugin's own Lua sits under `.zemi` (`plugin.CodeDir`:
+init.lua, lua/, tests/, workflows/, plugin.json), and one still keeping it at its root is refused
 (`plugin.OldLayout`) rather than loading nothing. A gone or reinstalled plugin's `zemi.state`
-keys are dropped
-(`sweepPluginState`). `Host.PluginOf` names a plugin by its directory: its state keys are
-`plugin:<name>:<key>`, its state principal and its overlay badge `plugin:<name>`
-(`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
-collision is **refused** with the higher-trust origin winning; within one origin it is
-last-writer-wins, except that one plugin can neither replace nor remove another's command, keymap,
-widget, theme, event handler, tool, completion source, health row or config watch (`mayReplace`, which every add and remove runs). Project origin additionally cannot register providers or builtin
-tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
-events. A keymap that is a prefix or an extension of a more trusted key is refused,
-`zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that
-origin), overlays can be closed only by user, builtin or the origin that opened
-them, and `app.quit` denials from project handlers are ignored. When adding a
-registry, follow `internal/hostapi/registry.go`.
-
+keys are dropped (`sweepPluginState`). `Host.PluginOf` names a plugin by its directory: its state
+keys are `plugin:<name>:<key>`, its state principal and its overlay badge `plugin:<name>`
+(`Host.principal` raises for plugin code with no file of its plugin on the stack). Registries
+enforce the one collision rule left (`mayReplace`, which every add and remove runs): **the last
+registration wins**, except that one plugin can neither replace nor remove another's command,
+keymap, widget, theme, event handler, tool, completion source, health row or config watch. No
+origin can emit host-owned events. A plugin's manifest (`uses`) is the capability model: a gated
+call a plugin makes without its declared word is refused, and registering a
+`permission.request` handler or calling `zemi.perm.ask` needs `perm`. When adding a registry,
+follow `internal/hostapi/registry.go`.
 ## Skills (internal/skill, internal/hostapi/skills.go)
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
@@ -125,16 +119,15 @@ lines and tells the model what will not load. `/skills` and its commands read th
 `/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one
 and drops the pinned prompt. Invariants:
 
-- **Only user or builtin origin may enable/disable** (`refuseBelowUser` gate at the Lua
-  namespace boundary - NOT inside the Go helper; off-interpreter goroutines read `OriginHost`,
-  which would defeat a Go-side gate). A disabled skill leaves the index but `/skills use` still
-  sends it (the body rides behind `agent.AttachMarker`, like a markdown command's).
+- **Any origin may enable/disable** (`zemi.skills.enable`). A disabled skill leaves the index
+  but `/skills use` still sends it (the body rides behind `agent.AttachMarker`, like a markdown
+  command's).
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning); bodies load on demand via the `skill` tool.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
   step after user init.lua, as user origin; enabling later does not run it.
 - **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
-  over a builtin or same-origin command and over a less trusted one by `mayReplace`
+  over a builtin or same-origin command and over any other by `mayReplace`
   (`addSkillCommand`; a toggle reloads config to rebuild it); the index and the skill tool take
   every enabled skill, so Claude's `disable-model-invocation` hides nothing; recipes ignore the
   command fields.

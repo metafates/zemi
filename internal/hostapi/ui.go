@@ -40,11 +40,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if n, ok := opt[glua.LNumber](L, tb, "priority"); ok {
 			w.Priority = float64(n)
 		}
-		// the exit region prints to the shell, outside zemi's chrome, beside the
-		// resume command a user copies
-		if w.Region == RegionExit && w.Origin.Rank() < lua.OriginBuiltin.Rank() {
-			L.RaiseError("zemi.ui.widget.add: only user config draws the exit region")
-		}
 		w.Render, _ = opt[*glua.LFunction](L, tb, "render")
 		w.OnClick, _ = opt[*glua.LFunction](L, tb, "on_click")
 		if _, err := h.Widgets.Add(w); err != nil {
@@ -199,7 +194,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	overlay.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
 		if ui := h.hooks(); ui != nil {
-			ui.CloseOverlay(id, h.RT.CurrentOrigin(L))
+			ui.CloseOverlay(id)
 		}
 		return 0
 	}))
@@ -340,8 +335,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	// { fg, bg, sp, bold, italic, underline, reverse, brighten, replace },
 	// colors as palette roles, hex or ANSI names, or { link = "Group" }.
 	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		// the groups draw the shipped UI, so only it and the user define them
-		h.refuseBelowUser(L, "ui.hl.set")
 		group := L.CheckString(1)
 		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl.set", tableArg(L, 2, "zemi.ui.hl.set")))
 		h.refresh()
@@ -424,7 +417,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 
 	// scroll(action, id?) is the zemi.ui.scroll.* host actions for a click.
 	tb.RawSetString("scroll", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "ui.scroll")
 		kind := ScrollAction(L.CheckString(1))
 		if !slices.Contains(scrollActions, kind) {
 			L.ArgError(1, strings.Join(strs(scrollActions), ", "))
@@ -436,7 +428,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	// title(text?) sets the terminal tab's title; nil gives it back to the
 	// session. A reload that does not set it again gives it back too.
 	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "ui.title")
 		text := sanitize.Line(L.OptString(1, ""))
 		if text == "" {
 			h.title.Store(nil)

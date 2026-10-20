@@ -40,10 +40,8 @@ type UIHooks interface {
 	// RefreshOverlay replaces the open overlay id with what build returns,
 	// calling build only while it is open: for a screen a clock refreshes.
 	RefreshOverlay(id string, build func() Overlay)
-	// CloseOverlay closes an overlay and runs its on_close, but only for a
-	// caller of user or builtin origin or the origin that opened it: a
-	// project timer must not dismiss the errors it caused.
-	CloseOverlay(id string, origin lua.Origin)
+	// CloseOverlay closes an overlay and runs its on_close.
+	CloseOverlay(id string)
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
 	Refresh()
@@ -1147,10 +1145,6 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 				case err != nil:
 					h.logHandlerError(hd, err)
 				default:
-					// a repo may not keep the user from quitting
-					if name == EventAppQuit && hd.Origin.Rank() <= lua.OriginProject.Rank() {
-						break
-					}
 					tb, decision, bad := vetoDecision(ret, allowed...)
 					switch {
 					case bad != "":
@@ -2100,21 +2094,6 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 		h.refresh()
 		_ = failed(err)
 	}))
-}
-
-// refuseBelowUser raises unless user config or shipped code is calling:
-// the call acts with the user's authority, like command.run's Go commands.
-// hint, when given, says what lower-trust code can do instead.
-func (h *Host) refuseBelowUser(L *glua.LState, what string, hint ...string) {
-	o := h.RT.CurrentOrigin(L)
-	if o == lua.OriginUser || o == lua.OriginBuiltin {
-		return
-	}
-	msg := fmt.Sprintf("zemi.%s: only user config may call this, not %s code", what, o)
-	if len(hint) > 0 && hint[0] != "" {
-		msg += "; " + hint[0]
-	}
-	L.RaiseError("%s", msg)
 }
 
 // boot step: register all zemi.* namespaces on a fresh generation
