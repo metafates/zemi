@@ -97,25 +97,18 @@ func TestMessagesTurnRows(t *testing.T) {
 			t.Errorf("row %d = %+v, want %+v", i+1, got[i], want[i])
 		}
 	}
-	// every row's keys act on it from the list; a prompt names the row r
-	// rewinds to
-	keys := func(it OverlayItem) []string {
-		var runs []string
-		for _, k := range it.Keys {
-			runs = append(runs, k.Run)
-		}
-		return runs
-	}
+	// every row stands for its place in the chat: enter goes there, l opens
+	// the view or run under it, and a prompt names the row r rewinds to
 	prompt := o.Items[0]
-	if prompt.ID != "m1" || !slices.Equal(keys(prompt), []string{"messages view 1"}) {
+	if prompt.ID != "m1" || prompt.Run != "messages view 1" || prompt.Verb != VerbGo || prompt.Keys != nil {
 		t.Errorf("prompt = %+v", prompt)
 	}
-	if reply := o.Items[2]; !slices.Equal(keys(reply), []string{"messages view 4"}) {
+	if reply := o.Items[2]; reply.Run != "messages view 4" || reply.Verb != VerbGo {
 		t.Errorf("reply = %+v", reply)
 	}
 	// a run reads the same whatever it did, and its row opens the rail alone
 	rail := o.Items[1]
-	if rail.Mark != "" || rail.Desc != "" || rail.Run != "messages rail 2" || rail.Verb != "open" || rail.Keys != nil {
+	if rail.Mark != "" || rail.Desc != "" || rail.Run != "messages rail 2" || rail.Verb != VerbGo || rail.Keys != nil {
 		t.Errorf("rail = %+v", rail)
 	}
 	// the next turn's prompt is no row of this one
@@ -138,12 +131,12 @@ func TestMessagesTurnRows(t *testing.T) {
 	if !slices.Equal(calls, []row{{"hmm", "", 2}, {"run the tests", "err", 3}}) {
 		t.Errorf("calls = %+v", calls)
 	}
-	if got := keys(r.Items[1]); !slices.Equal(got, []string{"call 3"}) {
-		t.Errorf("call keys = %v", got)
+	if call := r.Items[1]; call.Run != "call 3" || call.Verb != VerbGo || call.Keys != nil {
+		t.Errorf("call = %+v", call)
 	}
-	// a call that started a job opens it from its view, never by a second o
-	if row := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "sleep 9", Job: "job-1"}); len(row.Keys) != 1 || row.Keys[0].Run != "call 3" {
-		t.Errorf("a call with a job: %+v", row.Keys)
+	// a call that started a job opens it from its view, and no key names it here
+	if call := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "sleep 9", Job: "job-1"}); call.Run != "call 3" || call.Verb != VerbGo || call.Keys != nil {
+		t.Errorf("a call with a job: %+v", call)
 	}
 	if err := h.openMessagesRail(9); err == nil {
 		t.Error("a row that opens no rail opened one")

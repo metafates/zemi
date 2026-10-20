@@ -609,25 +609,21 @@ func TestMessagesTree(t *testing.T) {
 		}
 		t.Fatalf("%d overlays after l, %q at %d, want %d; lastSel %v keys %v byRow %v", n, id, top().selected, turnRow, app.lastSel, keys, app.byRow)
 	}
-	// a message's key reads it over this level; esc comes back to it as it was
+	// l reads the message over this level; esc comes back to it as it was
 	row := top().selected
-	press(t, app, tea.KeyPressMsg{Code: 'o', Text: "o"})
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	waitPrompt(t, app, func() bool { return strings.HasPrefix(top().o.ID, "messages view ") })
 	pump()
 	if id := top().o.ID; !strings.HasPrefix(id, "messages view ") {
-		t.Fatalf("o opened %q: %v", id, ids())
+		t.Fatalf("l opened %q: %v", id, ids())
 	}
-	t.Logf("after o: %v", ids())
+	t.Logf("after l: %v", ids())
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
 	pump()
 	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" || top().selected != row {
 		t.Fatalf("esc on the view: %d overlays, %q at %d: %v", n, id, top().selected, ids())
 	}
-	// l on a leaf is nothing, enter is the place itself: the menu closes
-	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	pump()
-	if n := len(app.overlays); n != 2 {
-		t.Fatalf("l on a leaf opened a level: %v", ids())
-	}
+	// enter is the place itself, whichever level it is on: the menu closes
 	chat := app.scrolls["chat"]
 	chatTop, want := chat.top, top().selectedAnchor()
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -777,14 +773,14 @@ func TestMessagesRail(t *testing.T) {
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q after a step, want the next call", got)
 	}
-	// a screen a call opens sits over the list: the chat keeps the run open
-	// and bands the row under it, and esc comes back to the same preview
+	// l opens the call's own screen over the list: the chat keeps the run
+	// open and bands the row under it, and esc comes back to the same preview
 	row := top().selected
-	press(t, app, tea.KeyPressMsg{Code: 'o', Text: "o"})
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	waitPrompt(t, app, func() bool { return top().o.ID == "call:3" })
 	pump()
 	if id := top().o.ID; id != "call:3" || !strings.Contains(frame(), "read a") {
-		t.Fatalf("o opened %q with the run folded:\n%s", id, frame())
+		t.Fatalf("l opened %q with the run folded:\n%s", id, frame())
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q under the call's view, want the picked call", got)
@@ -797,13 +793,20 @@ func TestMessagesRail(t *testing.T) {
 	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "find Parse") {
 		t.Fatalf("banded %q after esc, want the picked call", got)
 	}
-	// enter on a call keeps the rail open where the preview put it: closing
-	// would fold the run out from under the row it names
+	// enter is the row's place in the chat, never a level down: this level
+	// closes on the call it named, the chat keeping that place
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	pump()
-	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages rail 2" || !strings.Contains(frame(), "find Parse") {
-		t.Fatalf("enter on a call: %d overlays, %q, frame:\n%s", n, id, frame())
+	if n, id := len(app.overlays), top().o.ID; n != 1 || id != "messages turn 1" {
+		t.Fatalf("enter on a call left %d overlays, %q", n, id)
 	}
+	if got := app.scrolls["chat"].focus; got != 3 {
+		t.Fatalf("the chat kept %d as its place, want the call's row 3", got)
+	}
+	if err := host.MessagesCommand("rail 2"); err != nil {
+		t.Fatal(err)
+	}
+	pump()
 	// back to the turn folds the run again, the band on its one row. The
 	// list waits for the chat to render it folded, so no frame shows the run
 	// open with the list gone: the fold lands first, the close after it.

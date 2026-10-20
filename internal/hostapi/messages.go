@@ -228,7 +228,7 @@ func (h *Host) messagesOverlay(tr []ChatMessage) Overlay {
 		head := clipRunes(cmp.Or(messageHead(text), "(untitled turn)"), 60)
 		item := OverlayItem{
 			Text: head, Desc: strings.Join(desc, " · "), Anchor: t.first,
-			Verb: VerbOpen, Run: "messages turn " + strconv.Itoa(t.first),
+			Verb: VerbGo, Run: "messages turn " + strconv.Itoa(t.first),
 			Row: []Segment{{Text: "▌ ", HL: "UserMsg"}, {Text: head}},
 		}
 		if text != "" {
@@ -374,7 +374,7 @@ type msgRun struct {
 func railRow(run msgRun) OverlayItem {
 	text := pluralCount(len(run.rows), "step", "steps")
 	return OverlayItem{
-		Text: text, Anchor: run.first, Verb: VerbOpen,
+		Text: text, Anchor: run.first, Verb: VerbGo,
 		Run: "messages rail " + strconv.Itoa(run.first), Row: []Segment{{Text: text}},
 	}
 }
@@ -413,16 +413,17 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	if m.Kind == RowReasoning {
 		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 40), "✻"
 	}
+	// enter is the row's place in the chat, l the view or run under it; the
+	// job a call started opens from that view, so no key names it twice
 	switch {
 	case m.Run != "" && m.Tool == "workflow":
-		item.Keys = []ItemKey{viewKey("open the run", "workflows view "+m.Run)}
+		item.Run = "workflows view " + m.Run
 	case m.Run != "":
-		item.Keys = []ItemKey{viewKey("open the run", "agents view "+m.Run)}
+		item.Run = "agents view " + m.Run
 	default:
-		// the job a call started opens from its view, which is where the row
-		// goes: one o, one level down, so the footer never names two
-		item.Keys = []ItemKey{viewKey("open the view", "call "+strconv.Itoa(idx))}
+		item.Run = "call " + strconv.Itoa(idx)
 	}
+	item.Verb = VerbGo
 	if n := lineCount(m.Output); m.Output != "" && n > 1 {
 		item.Desc = pluralCount(n, "line", "lines")
 	}
@@ -480,19 +481,13 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 	if text != "" {
 		item.Copy = text
 	}
-	item.Keys = []ItemKey{viewKey("read it", "messages view "+strconv.Itoa(idx))}
+	item.Run, item.Verb = "messages view "+strconv.Itoa(idx), VerbGo
 	if mark := markFor(m); mark != "" {
 		item.Mark, item.Row = mark, []Segment{{Text: head}}
 		return item
 	}
 	item.Row = []Segment{{Text: glyph + " ", HL: hl}, {Text: head}}
 	return item
-}
-
-// viewKey is the key that opens what a row reads as: its screen sits over the
-// list, which stays so esc comes back to it.
-func viewKey(desc, run string) ItemKey {
-	return ItemKey{Key: "o", Desc: desc, Run: run, Verb: VerbOpen}
 }
 
 // markFor is the mark a row carries, so a failed call reads as one in the

@@ -2192,12 +2192,13 @@ rides the `memories.md` line and its ledger entries.
   reader is, the way muffin opens on the symbol under the cursor, not on its
   first row: the levels down to the row the view's middle draws come up
   together, turns then the turn then its rail, and `h` walks back up, each
-  level on the row it was left on, while `esc` closes the whole menu. A
-  level's row with no level under it takes `enter` for the place itself: the
-  menu closes and the chat stays there, and `l` does nothing; a call of a
-  rail is the exception, since the run folds away with the list, so enter
-  keeps it open where the preview put it. What a row offers is its flat keys,
-  `o` to read it whole, `j` for its job, `r` to rewind a prompt. The list is
+  level on the row it was left on, while `esc` closes the whole menu. `l` is
+  the one way down a level: a row's own view or the run its keys open. `enter`
+  on a row of any level is the place itself - the menu closes and the chat
+  stays there, the run folding under it - so enter answers "open in chat"
+  everywhere. What a row offers past that is its flat keys, `r` to rewind a
+  prompt; a call's job opens from its view, never by a second key on the
+  list. The list is
   a window on the transcript, not a copy of it: a row that lands while it is
   open shows there at once, and a level the transcript no longer holds (a
   rewind, a compaction) closes. Prompt and reply rows lead with the

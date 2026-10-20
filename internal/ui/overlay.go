@@ -1137,8 +1137,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if verb != hostapi.VerbToggle && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
-			if st.o.OnSelect != nil && (hasView(r) || r.Run != "") {
-				// enter picks the row: l is the way into what it opens
+			if (verb == hostapi.VerbGo || st.o.OnSelect != nil) && (hasView(r) || r.Run != "") {
+				// enter is the row itself: l is the way into what it opens
 				hints = append(hints, hintPair{"l", "open"})
 			}
 		}
