@@ -414,10 +414,10 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
-	head := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 40)
+	head := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 60)
 	glyph, hl := "│", "Dim"
 	if m.Kind == RowReasoning {
-		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 40), "✻"
+		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 60), "✻"
 	}
 	// enter is the row's place in the chat, l the view or run under it; the
 	// job a call started opens from that view, so no key names it twice
@@ -456,13 +456,13 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 	var head, desc string
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
-		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 40), "▌", "UserMsg"
+		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 60), "▌", "UserMsg"
 		if m.ID != "" {
 			item.ID = m.ID // r rewinds to it; the list's key checks the rows
 		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
-		head, glyph, hl = clipRunes(messageHead(text), 40), "◆", "Dim"
+		head, glyph, hl = clipRunes(messageHead(text), 60), "◆", "Dim"
 		if n := lineCount(text); n > 1 {
 			desc = pluralCount(n, "line", "lines")
 		}
@@ -473,7 +473,7 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 		if text == "" {
 			return OverlayItem{}
 		}
-		head, glyph = clipRunes(messageHead(text), 40), "·"
+		head, glyph = clipRunes(messageHead(text), 60), "·"
 		if m.Kind == RowError {
 			glyph = "✗"
 		}
