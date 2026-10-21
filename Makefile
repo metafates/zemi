@@ -46,10 +46,10 @@ first-run: build
 		-u ZEMI_CONFIG_HOME -u ZEMI_DATA_HOME -u ZEMI_STATE_HOME -u ZEMI_CACHE_HOME HOME="$$t" "$(CURDIR)/bin/zemi" $(ARGS)
 
 test:
-	go test ./...
+	go test -timeout 300s ./...
 
 race:
-	go test -race ./...
+	go test -race -timeout 600s ./...
 
 # coverage of every package by every test (hostapi's drive store, tools and
 # agent through the real flow); the total prints and bin/cover.out stays for
@@ -75,7 +75,7 @@ fmt:
 
 # regenerate internal/ui/testdata/*.golden, then review the diff
 golden:
-	go test ./internal/ui -update
+	go test -timeout 300s ./internal/ui -update
 
 # type-check runtime/ Lua against runtime/types; skipped without the binary
 luals:
