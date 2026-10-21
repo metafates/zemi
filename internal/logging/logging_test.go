@@ -34,12 +34,14 @@ func TestPruneKeepsNewestLogs(t *testing.T) {
 
 func TestLogIsOneLine(t *testing.T) {
 	dir := t.TempDir()
-	l, closeLog := New(dir)
+	l, _, path, closeLog := New(dir)
 	forged := "\nERROR forged\x1b[31m\u009b\x9b\u202e\t"
 	l.Info("msg"+forged, "origin", "lua"+forged, "k"+forged, "v"+forged, "error", errors.New("e"+forged))
 	closeLog()
-	names, _ := filepath.Glob(filepath.Join(dir, "*.log"))
-	data, err := os.ReadFile(names[0])
+	if path == "" || !strings.HasSuffix(path, ".log") {
+		t.Fatalf("no log file path: %q", path)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}

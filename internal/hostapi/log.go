@@ -12,6 +12,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -83,7 +84,8 @@ func (h *Host) messages() []msgEntry {
 	return slices.Clone(l.entries)
 }
 
-// OpenLogs runs /logs: the recent print and zemi.log lines, newest first.
+// OpenLogs runs /logs: the recent print and zemi.log lines, newest first,
+// and the launch log file to tail.
 func (h *Host) OpenLogs() error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -93,8 +95,11 @@ func (h *Host) OpenLogs() error {
 	for _, e := range slices.Backward(h.messages()) {
 		b.WriteString(e.at.Format(time.TimeOnly) + " " + e.source + "  " + e.text + "\n")
 	}
+	if h.logPath != "" {
+		b.WriteString("log file: " + perm.TildePath(h.logPath) + "\n")
+	}
 	o := Overlay{ID: "logs", Title: "Logs", Origin: lua.OriginBuiltin, Body: strings.TrimRight(b.String(), "\n")}
-	if o.Body == "" {
+	if len(h.messages()) == 0 {
 		o.Empty = "Nothing printed since zemi started."
 	}
 	ui.OpenOverlay(o)

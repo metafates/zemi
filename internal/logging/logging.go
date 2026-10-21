@@ -14,21 +14,24 @@ import (
 const keepLogs = 20
 
 // New returns a logger writing one record per line to a new file under
-// dir, and the func that closes the file; with no dir, or no file, the
-// logger discards. The text handler quotes any key or value holding a
-// newline, an escape or another unprintable rune, so Lua and the model
-// cannot forge a record or reach the terminal of whoever reads the file.
-func New(dir string) (*slog.Logger, func()) {
+// dir, the level var its handler reads, the file's path, and the func that
+// closes the file; with no dir, or no file, the logger discards. The text
+// handler quotes any key or value holding a newline, an escape or another
+// unprintable rune, so Lua and the model cannot forge a record or reach the
+// terminal of whoever reads the file.
+func New(dir string) (*slog.Logger, *slog.LevelVar, string, func()) {
 	if dir == "" || os.MkdirAll(dir, 0o755) != nil {
-		return slog.New(slog.DiscardHandler), func() {}
+		return slog.New(slog.DiscardHandler), &slog.LevelVar{}, "", func() {}
 	}
 	prune(dir, keepLogs)
 	path := filepath.Join(dir, time.Now().Format("2006-01-02_150405")+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		return slog.New(slog.DiscardHandler), func() {}
+		return slog.New(slog.DiscardHandler), &slog.LevelVar{}, "", func() {}
 	}
-	return slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug})), func() { _ = f.Close() }
+	var level slog.LevelVar
+	level.Set(slog.LevelDebug)
+	return slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: &level})), &level, path, func() { _ = f.Close() }
 }
 
 // prune deletes all but the newest keep log files. The name is a

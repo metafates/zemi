@@ -321,6 +321,8 @@ func (h *Host) modelAsk(L *glua.LState) int {
 // outlive it.
 func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	cost := h.turnCost(modelID, u)
+	h.Log.Debug("model call", "origin", "model", "model", modelID, "session", sid,
+		"in", billedInput(u), "out", u.OutputTokens, "cache_read", u.CacheReadTokens, "cost", cost)
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.sessionID == sid {

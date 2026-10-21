@@ -450,6 +450,10 @@ type Host struct {
 	Log      *slog.Logger
 	Settings *config.Store
 	Dirs     config.Dirs
+	// logLevel is the file log's level, moved live by the log.level key;
+	// nil in hosts that own no log file. logPath is that file, for /logs.
+	logLevel *slog.LevelVar
+	logPath  string
 
 	// Agent core (DESIGN §6.3). DB is the project store, GlobalDB
 	// the state-dir store.

@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"encoding/json/v2"
+	"log/slog"
 	"reflect"
 	"regexp"
 	"slices"
@@ -144,6 +145,7 @@ func (h *Host) cfgSettle() {
 			h.Log.Warn("settle failed", "origin", "config", "path", path, "error", err)
 		}
 	}
+	h.applyLogLevel() // settle may have moved log.level back to its pick
 }
 
 // cfgSource says where path's live value comes from: "init.lua" when it is
@@ -185,9 +187,30 @@ func (h *Host) cfgBase(path config.Key) (v any, set bool) {
 func (h *Host) writeSetting(path config.Key, v any) ([]config.WatchFired, error) {
 	fired, err := h.Settings.SetQuiet(path, v)
 	if err == nil {
+		if path == config.KeyLogLevel {
+			h.applyLogLevel()
+		}
 		h.keepPick(path)
 	}
 	return fired, err
+}
+
+// applyLogLevel moves the file log to the log.level key's value.
+func (h *Host) applyLogLevel() {
+	if h.logLevel == nil {
+		return
+	}
+	if lv, ok := config.LogLevel(h.Settings.Str(config.KeyLogLevel)); ok {
+		h.logLevel.Set(lv)
+	}
+}
+
+// UseLogFile points the host at the launch log's level var and path; the
+// boot owns the file, the host applies log.level to it (the saved pick,
+// which loadPicks set without firing a write, included).
+func (h *Host) UseLogFile(level *slog.LevelVar, path string) {
+	h.logLevel, h.logPath = level, path
+	h.applyLogLevel()
 }
 
 // keepPick keeps path's live value in the global store for the next start,

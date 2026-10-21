@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -303,6 +304,11 @@ func runOf(ctx context.Context) *agentRun {
 // session that started it.
 func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt string, progress func(string)) (text string, err error) {
 	defer func() {
+		if err != nil {
+			h.Log.Warn("subagent run failed", "origin", "agents", "agent", def.Name, "run", run.id, "error", errString(err))
+		} else {
+			h.Log.Info("subagent run done", "origin", "agents", "agent", def.Name, "run", run.id)
+		}
 		run.finish(h, err)
 		run.cancel()
 		h.refresh()
@@ -320,6 +326,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		return "", err
 	}
 	runner, modelID, pipe := setup.runner, setup.modelID, setup.pipe
+	h.Log.Info("subagent run started", "origin", "agents", "agent", def.Name, "run", run.id,
+		"parent", run.parent, "prompt", clipLine(sanitize.String(prompt), 120))
 
 	run.mu.Lock()
 	sid, calls := run.sessionID, run.calls

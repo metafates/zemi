@@ -99,6 +99,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
+	s.h.Log.Debug("tool call start", "origin", "agent", "tool", name, "id", id)
 	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
@@ -174,6 +175,17 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 	s.h.setCallRow(id, rowMeta{Status: row.Status, Run: row.Run, Job: row.Job})
 	s.h.agentStream()
 	s.h.recordToolCall(s.h.AgentSessionID(), row, ok)
+	if !ok {
+		s.h.Log.Warn("tool call failed", "origin", "agent", "tool", name, "id", id,
+			"status", string(row.Status), "error", clipLine(output, 200))
+	} else {
+		var ms int64
+		if !row.Started.IsZero() {
+			ms = s.h.now().Sub(row.Started).Milliseconds()
+		}
+		s.h.Log.Info("tool call", "origin", "agent", "tool", name, "id", id,
+			"status", string(row.Status), "ms", ms)
+	}
 	if name == tools.ToolTodos {
 		ag.mu.Lock()
 		ag.todoTouched = true
@@ -250,6 +262,18 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if strings.TrimSpace(text) != "" {
 		h.persistTurnStat(sid, stat)
 	}
+	cost := h.turnCost(model, usage)
+	switch {
+	case errors.Is(err, context.Canceled):
+		h.Log.Info("turn cancelled", "origin", "agent", "model", model,
+			"in", billedInput(usage), "out", usage.OutputTokens, "ms", stat.ElapsedMS)
+	case err != nil:
+		h.Log.Warn("turn failed", "origin", "agent", "model", model,
+			"in", billedInput(usage), "out", usage.OutputTokens, "ms", stat.ElapsedMS, "error", errString(err))
+	default:
+		h.Log.Info("turn done", "origin", "agent", "model", model,
+			"in", billedInput(usage), "out", usage.OutputTokens, "cost", cost, "ms", stat.ElapsedMS)
+	}
 	ui := h.hooks()
 	if ui != nil {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
@@ -267,7 +291,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	} else {
 		payload := map[string]any{"session": sid, "model": model, "usage": map[string]any{
 			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
-			"cost": h.turnCost(model, usage),
+			"cost": cost,
 		}}
 		h.EmitAsync(EventAgentFinish, payload)
 		h.consultHooks(EventAgentFinish, nil)

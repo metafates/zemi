@@ -216,6 +216,7 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 		host.RecordMessage("print", line)
 	})
 	host.Version = versionString()
+	log.Info("zemi starting", "origin", "boot", "version", host.Version, "project", dirs.ProjectDir)
 	if o.dir != "" {
 		host.ResumeDir = dirs.ProjectDir // absolute: -C ran first
 	}
@@ -260,11 +261,16 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 	if inert {
 		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
 	}
-	log, closeLog := logging.New(logDir)
+	log, level, path, closeLog := logging.New(logDir)
 	host, trust := newHost(hostDirs, log, o)
+	host.UseLogFile(level, path)
 	// the saved decision reads this run's dirs, which an inert boot did not open
 	trust.dirs = dirs
-	return host, trust, log, func() { closeLog(); release() }, nil
+	return host, trust, log, func() {
+		host.Log.Info("zemi stopped")
+		closeLog()
+		release()
+	}, nil
 }
 
 // bootHeadless boots zemi with no TUI, for zemi run and zemi health; done

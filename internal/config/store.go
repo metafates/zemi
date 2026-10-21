@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"reflect"
@@ -37,6 +38,7 @@ const (
 	KeyKeymapLeader       Key = "keymap.leader"
 	KeyUIMouse            Key = "ui.mouse"
 	KeyUINotify           Key = "ui.notify"
+	KeyLogLevel           Key = "log.level"
 	KeyMemoryAutonomy     Key = "memory.autonomy"
 )
 
@@ -126,6 +128,25 @@ const (
 
 var notifyStyles = []string{NotifyAuto, NotifyOSC, NotifyNative, NotifyBell, NotifyOff}
 
+// The log levels log.level takes, in rising order.
+var logLevels = []string{"debug", "info", "warn", "error"}
+
+// LogLevel parses a log.level value; ok is false for anything else, which
+// the key's choices already refuse.
+func LogLevel(v string) (lvl slog.Level, ok bool) {
+	switch v {
+	case "debug":
+		return slog.LevelDebug, true
+	case "info":
+		return slog.LevelInfo, true
+	case "warn":
+		return slog.LevelWarn, true
+	case "error":
+		return slog.LevelError, true
+	}
+	return 0, false
+}
+
 func NewStore() *Store {
 	s := &Store{
 		values: map[Key]any{},
@@ -156,6 +177,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: KeyUINotify, Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks what shows on this machine (/health names it)"},
+		{Path: KeyLogLevel, Kind: KindString, Default: "debug", Choices: logLevels, Desc: "what the launch log file (~/.local/state/zemi/logs) records: debug, info, warn or error"},
 		{Path: KeyMemoryAutonomy, Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores them at once, ask queues them for /memory"},
 	}
 	for _, def := range defaults {

@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -91,6 +92,57 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 		p.Veto = func(Request) string { return VetoAsk }
 	}
 	return p, &asked
+}
+
+// TestGateLogsDecisions: Check records every decision, its level and who
+// decided, and nothing else.
+func TestGateLogsDecisions(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		wire     func(*Pipeline)
+		req      Request
+		wantPart []string
+	}{
+		{
+			"a read settles on its own", func(p *Pipeline) {},
+			Request{Tool: ToolRead, Subject: perm.SubjectRead, Arg: "/x"},
+			[]string{"level=DEBUG", "by=default", "allowed=true"},
+		},
+		{
+			"an action runs by default", func(p *Pipeline) {},
+			Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"},
+			[]string{"level=DEBUG", "by=default", "allowed=true"},
+		},
+		{"a veto denial is a warning", func(p *Pipeline) {
+			p.Ask = func(Request) (bool, string) { return false, "" }
+			p.Veto = func(Request) string { return VetoDeny }
+		}, Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false"}},
+		{"the user's answer is info", func(p *Pipeline) {
+			p.Ask = func(Request) (bool, string) { return true, ByUser }
+			p.Veto = func(Request) string { return VetoAsk }
+		}, Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
+		{
+			"a read-only denial is a warning", func(p *Pipeline) { p.ReadOnly = func() bool { return true } },
+			Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"},
+			[]string{"level=WARN", `by="read-only agent"`, "allowed=false"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			p := &Pipeline{Log: slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+			c.wire(p)
+			p.Check(c.req)
+			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+			if len(lines) != 1 || !strings.Contains(lines[0], `msg="tool gate"`) {
+				t.Fatalf("one tool gate record wanted, got:\n%s", buf.String())
+			}
+			for _, part := range c.wantPart {
+				if !strings.Contains(lines[0], part) {
+					t.Fatalf("%s not in the record:\n%s", part, lines[0])
+				}
+			}
+		})
+	}
 }
 
 // TestVetoGate pins where the permission.request veto sits in Check: after

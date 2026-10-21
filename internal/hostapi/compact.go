@@ -291,6 +291,7 @@ func (h *Host) setCompacting(on bool) {
 // clears old tool output and stops there when that is enough; otherwise
 // everything but a verbatim tail is summarized, merging an earlier summary.
 func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus string) error {
+	h.Log.Info("compacting", "origin", "agent", "reason", reason, "messages", len(runner.History))
 	history := runner.History
 	window := h.AgentStream().CtxWindow
 	threshold := h.compactThreshold(window)

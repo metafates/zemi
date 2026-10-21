@@ -680,6 +680,8 @@ func (h *Host) agentSend(text string) (queued bool, err error) {
 		ag.steering = append(ag.steering, text)
 		ag.mu.Unlock()
 		h.refresh()
+		h.Log.Debug("message steered into the running turn", "origin", "agent",
+			"text", clipLine(sanitize.String(text), 120))
 		return true, nil
 	}
 	// Held from here on: building the prompt waits on the interpreter, and a
@@ -758,6 +760,8 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
+	h.Log.Info("send", "origin", "agent", "profile", h.Settings.Str(config.KeyAgentProfile),
+		"session", h.AgentSessionID(), "text", clipLine(sanitize.String(text), 120))
 
 	// the profile this turn ran as: a switch to a read-only agent mid-turn
 	// must not nudge the reply the replaced agent wrote
@@ -2848,6 +2852,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pre:        h.toolPreHook(),
 		Ask:        h.askHook(),
 		Veto:       h.vetoHook(),
+		Log:        h.Log,
 		Checkpoint: h.checkpointFile,
 		AfterWrite: h.afterWrite,
 		Changes:    h.shellChanges,

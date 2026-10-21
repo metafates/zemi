@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"os"
@@ -190,6 +191,9 @@ type Pipeline struct {
 	// without an asker (a Lua call from the actor goroutine) cannot
 	// survive the veto's own interpreter round-trip.
 	Veto func(req Request) string
+	// Log records every gate decision: allowed by default at debug, a user
+	// or event decision at info, a refusal at warn; nil = silent.
+	Log *slog.Logger
 	// Post runs the tool.post events after a call the gate let through or
 	// refused, and returns the output the model gets; nil = none.
 	Post func(ctx context.Context, pad, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
@@ -311,11 +315,30 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 	return v
 }
 
-// Check decides one request. A read-only agent's actions deny, its writes
-// in the scratchpad aside; the permission.request veto settles next (a
-// denial refuses, an ask decision runs the ask path); what survives runs.
+// Check decides one request and logs the decision: a read-only agent's
+// actions deny, its writes in the scratchpad aside; the permission.request
+// veto settles next (a denial refuses, an ask decision runs the ask path);
+// what survives runs.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.ReadOnly, req.Script = p.ReadOnly != nil && p.ReadOnly(), p.Script
+	v := p.check(req)
+	if p.Log != nil {
+		level := slog.LevelDebug
+		switch {
+		case !v.Allowed:
+			level = slog.LevelWarn
+		case v.DecidedBy != ByDefault:
+			level = slog.LevelInfo
+		}
+		p.Log.Log(context.Background(), level, "tool gate",
+			"tool", req.Tool, "subject", req.Subject, "arg", truncLine(req.Arg),
+			"by", v.DecidedBy, "allowed", v.Allowed, "reason", v.Reason)
+	}
+	return v
+}
+
+// check answers a request whose pipeline fields (ReadOnly, Script) are set.
+func (p *Pipeline) check(req Request) Verdict {
 	if !req.Action() {
 		return Verdict{Allowed: true, DecidedBy: ByDefault}
 	}

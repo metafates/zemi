@@ -51,6 +51,7 @@ A definition is a target as well: `models.<profile>` overrides the `model` a pro
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.
 - `keymap.leader`: what `<leader>` stands for in keymaps (`ui.md`).
 - `lsp.auto`: under MCP and language servers.
+- `log.level`: what the launch log file records, `debug` (default), `info`, `warn` or `error`; one file per start under `~/.local/state/zemi/logs`, newest 20 kept (`/logs` names the current one).
 
 - `agent.compact_at`: the percent of the model's context window auto compaction waits for (80, never under half the window); `100` leaves only `/compact` and a provider's too-long refusal. Every model divides by its own `context_window`.
 - `agent.max_background`, `session.auto_title`, `session.recap`, `ui.theme` and `ui.mouse`: the schema's description covers them.
