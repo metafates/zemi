@@ -195,7 +195,15 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	a.byRow = false
 	if o.Follow {
 		if sel := a.lastSel[o.ID]; !byRow || sel == "" {
-			st.selected = a.followRow(&st)
+			// an open that names its row (OpenAt) brings the selection the
+			// host computed for it: the levels one open puts up move the chat
+			// as they open, and a level deriving the place from the moved chat
+			// would land on the parent level's pick, not the reader's row
+			if o.OpenAt > 0 {
+				st.selected = max(0, min(o.Selected, len(st.visible)-1))
+			} else {
+				st.selected = a.followRow(&st)
+			}
 		} else if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
 			st.selected = n
 		}

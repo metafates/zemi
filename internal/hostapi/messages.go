@@ -54,25 +54,32 @@ func (h *Host) MessagesCommand(args string) error {
 
 // OpenMessages lists the conversation where the reader is: the deepest level
 // holding their place, the way muffin opens on the symbol under the cursor.
-// A row the chat draws from no turn opens the list of turns.
+// A row the chat draws from no turn opens the list of turns. The row derives
+// once, before any level opens: the levels then pin it (OpenAt), since each
+// one's open moves the chat the next would read.
 func (h *Host) OpenMessages() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	tr := h.viewedTranscript()
-	ui.OpenOverlay(h.messagesOverlay(tr))
-	first, run := messagesAt(tr, ui.ChatRow())
+	row := ui.ChatRow()
+	list := h.messagesOverlay(tr, row)
+	list.OpenAt = row
+	ui.OpenOverlay(list)
+	first, run := messagesAt(tr, row)
 	if first == 0 {
 		h.trackMessages("messages")
 		return nil
 	}
 	ids := []string{"messages", "messages turn " + strconv.Itoa(first)}
-	if o, ok := h.messagesTurnOverlay(tr, first); ok {
+	if o, ok := h.messagesTurnOverlay(tr, first, row); ok {
+		o.OpenAt = row
 		ui.OpenOverlay(o)
 	}
 	if run != 0 {
-		if o, ok := h.messagesRailOverlay(tr, run); ok {
+		if o, ok := h.messagesRailOverlay(tr, run, row); ok {
+			o.OpenAt = row
 			ui.OpenOverlay(o)
 			ids = append(ids, o.ID)
 		}
@@ -115,20 +122,21 @@ func (h *Host) refreshMessages() {
 }
 
 // messagesLevel builds one of the picker's levels from a transcript, ok false
-// for an id it no longer holds.
+// for an id it no longer holds. A refresh keeps whatever the reader selected,
+// so it names no row to open on.
 func (h *Host) messagesLevel(id string, tr []ChatMessage) (Overlay, bool) {
 	if _, rail, ok := strings.Cut(id, " rail "); ok { // a turn's rail level
 		if n, err := strconv.Atoi(rail); err == nil {
-			return h.messagesRailOverlay(tr, n)
+			return h.messagesRailOverlay(tr, n, 0)
 		}
 		return Overlay{}, false
 	}
 	switch {
 	case id == "messages":
-		return h.messagesOverlay(tr), true
+		return h.messagesOverlay(tr, 0), true
 	case strings.HasPrefix(id, "messages turn "):
 		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages turn ")); err == nil {
-			return h.messagesTurnOverlay(tr, n)
+			return h.messagesTurnOverlay(tr, n, 0)
 		}
 	}
 	return Overlay{}, false
@@ -199,13 +207,17 @@ func messagesTurns(tr []ChatMessage) []msgTurn {
 }
 
 // messagesOverlay is /messages: one row per turn, the prompt it opens on
-// first, and what it held after it.
-func (h *Host) messagesOverlay(tr []ChatMessage) Overlay {
+// first, and what it held after it. The row the reader was at, when given,
+// selects the turn holding it.
+func (h *Host) messagesOverlay(tr []ChatMessage, at int) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
 	}
 	for _, t := range messagesTurns(tr) {
+		if at > 0 && o.Selected == 0 && slices.Contains(t.rows, at) {
+			o.Selected = len(o.Items)
+		}
 		m := tr[t.first-1]
 		text := strings.TrimSpace(m.Text)
 		var desc []string
@@ -275,7 +287,7 @@ func (h *Host) openMessagesTurn(first int) error {
 	if err != nil {
 		return err
 	}
-	o, ok := h.messagesTurnOverlay(h.viewedTranscript(), first)
+	o, ok := h.messagesTurnOverlay(h.viewedTranscript(), first, 0)
 	if !ok {
 		return Usagef("the chat shows no turn at row %d", first)
 	}
@@ -286,7 +298,8 @@ func (h *Host) openMessagesTurn(first int) error {
 
 // messagesTurnOverlay is one turn's rows: its prompt, replies, notices,
 // commands and errors, and its activity run folded into the row l opens.
-func (h *Host) messagesTurnOverlay(tr []ChatMessage, first int) (Overlay, bool) {
+// The row the reader was at, when given, selects the element holding it.
+func (h *Host) messagesTurnOverlay(tr []ChatMessage, first, at int) (Overlay, bool) {
 	var turn msgTurn
 	for _, t := range messagesTurns(tr) {
 		if t.first == first {
@@ -302,6 +315,13 @@ func (h *Host) messagesTurnOverlay(tr []ChatMessage, first int) (Overlay, bool) 
 		Empty: "This turn held nothing.",
 	}
 	for _, e := range turnElements(tr, turn.rows) {
+		if at > 0 && o.Selected == 0 {
+			if e.run != nil && slices.Contains(e.run.rows, at) {
+				o.Selected = len(o.Items)
+			} else if e.run == nil && e.idx == at {
+				o.Selected = len(o.Items)
+			}
+		}
 		var item OverlayItem
 		if e.run != nil {
 			item = railRow(*e.run)
@@ -327,7 +347,7 @@ func (h *Host) openMessagesRail(first int) error {
 	if err != nil {
 		return err
 	}
-	o, ok := h.messagesRailOverlay(h.viewedTranscript(), first)
+	o, ok := h.messagesRailOverlay(h.viewedTranscript(), first, 0)
 	if !ok {
 		return Usagef("the chat shows no rail at row %d", first)
 	}
@@ -338,7 +358,8 @@ func (h *Host) openMessagesRail(first int) error {
 
 // messagesRailOverlay is one activity run call by call: the rail the turn
 // view folds into a row, whose run the chat draws whole while this is up.
-func (h *Host) messagesRailOverlay(tr []ChatMessage, first int) (Overlay, bool) {
+// The row the reader was at, when given, selects the call holding it.
+func (h *Host) messagesRailOverlay(tr []ChatMessage, first, at int) (Overlay, bool) {
 	for _, t := range messagesTurns(tr) {
 		for _, e := range turnElements(tr, t.rows) {
 			if e.run == nil || e.run.first != first {
@@ -352,6 +373,9 @@ func (h *Host) messagesRailOverlay(tr []ChatMessage, first int) (Overlay, bool) 
 				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
 			}
 			for _, idx := range e.run.rows {
+				if at > 0 && o.Selected == 0 && idx == at {
+					o.Selected = len(o.Items)
+				}
 				o.Items = append(o.Items, messageCallRow(idx, tr[idx-1]))
 			}
 			return o, true

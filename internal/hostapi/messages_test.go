@@ -24,7 +24,7 @@ func TestMessagesTurns(t *testing.T) {
 		{Role: fantasy.MessageRoleAssistant, Text: "twice"},
 	}
 	h, _ := newTestHost(t)
-	o := h.messagesOverlay(tr)
+	o := h.messagesOverlay(tr, 0)
 	if o.ID != "messages" || o.Title != "Messages" || !o.Follow || o.Anchor != OverlayBottomRight {
 		t.Fatalf("list: %s %q follow=%v anchor=%q", o.ID, o.Title, o.Follow, o.Anchor)
 	}

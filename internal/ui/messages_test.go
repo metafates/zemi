@@ -792,6 +792,7 @@ func TestMessagesTree(t *testing.T) {
 	}
 	pump()
 	// the reader sits at the tail: the level of that turn, under the turns
+	t.Logf("open: ids=%v turns-sel=%d turns-at=%d", ids(), app.overlays[0].selected, app.overlays[0].o.OpenAt)
 	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" {
 		t.Fatalf("%d overlays, top %q", n, id)
 	}
@@ -805,6 +806,11 @@ func TestMessagesTree(t *testing.T) {
 	if n, id := len(app.overlays), top().o.ID; n != 1 || id != "messages" {
 		t.Fatalf("%d overlays after h, %q", n, id)
 	}
+	t.Logf("after h: ids=%v sel=%d anchor=%d", ids(), top().selected, top().selectedAnchor())
+	for app.Pump() {
+	}
+	app.Frame()
+	t.Logf("after h pump2: ids=%v sel=%d", ids(), top().selected)
 	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	pump()
 	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages turn 3" || top().selected != turnRow {

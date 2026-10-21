@@ -141,6 +141,12 @@ type Overlay struct {
 	// and band that message's rows while it is open: enter keeps the place,
 	// esc puts the region back where it found it
 	Follow bool
+	// OpenAt is the transcript row the reader was at when the open was
+	// made, pinned by a host that opens several levels of one list: the
+	// levels the open itself puts up move the chat, and a level deriving
+	// its selection from the moved chat would open on the parent's pick
+	// instead of the reader's row. 0 derives from the chat as usual.
+	OpenAt int
 	// Rail is the transcript row opening the activity run the chat draws
 	// whole while this list is up, 0 for none: a rail's own list walks its
 	// calls, and the run under them has to be open to show them
