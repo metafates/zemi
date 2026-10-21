@@ -285,11 +285,11 @@ func (h *Host) callStep(n int) (prev, next string) {
 	// of one steps along the run still being written, not a snapshot of
 	// whatever had settled when it opened
 	if n < 0 {
-		if k := -n; k <= len(h.AgentStream().Tools) {
-			if k > 1 {
+		if live := len(h.AgentStream().Tools); -n <= live {
+			if k := -n; k > 1 {
 				prev = "call " + strconv.Itoa(-(k - 1))
 			}
-			if k < len(h.AgentStream().Tools) {
+			if k := -n; k < live {
 				next = "call " + strconv.Itoa(-(k + 1))
 			}
 			return prev, next
