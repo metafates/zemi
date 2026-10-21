@@ -47,10 +47,14 @@ func (h *Host) openCall(n int) error {
 		return Usagef("row %d is not a call", n)
 	}
 	h.msgMu.Lock()
-	h.callRow = n
+	h.callRow, h.callID = n, row.CallID
 	h.msgMu.Unlock()
 	ui.OpenOverlay(h.callView(n, row, took))
-	h.watchCall(n)
+	// a live view follows the turn as it is written; a settled one is put
+	// right by the transcript hook when the rows it steps along land
+	if n < 0 || row.Status == CallRun || row.Status == CallWait {
+		h.watchCall(n)
+	}
 	return nil
 }
 
@@ -65,11 +69,45 @@ func (h *Host) refreshCall() {
 	if ui == nil || n == 0 {
 		return
 	}
-	row, took, ok := h.chatRow(n)
+	row, took, ok := h.callRowAt(n)
 	if !ok {
 		return
 	}
 	ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
+}
+
+// callRowAt is the row a call view shows: a live call while its tool is in
+// the stream, and the row it settles at once the turn lands. It reads the
+// transcript alone, so a turn's flush, which holds the agent lock, can call
+// it: the row a view stepped to is never a live one there.
+func (h *Host) callRowAt(n int) (ChatMessage, time.Duration, bool) {
+	if n > 0 {
+		return h.chatRow(n)
+	}
+	if m := h.settledRow(n); m > 0 {
+		return h.chatRow(m)
+	}
+	return ChatMessage{}, 0, false
+}
+
+// settledRow is the transcript row the live call at n landed at, 0 while it
+// still runs or the view has moved on: a turn settles its calls under the
+// agent lock, so this reads the transcript and the id the view opened on.
+func (h *Host) settledRow(n int) int {
+	h.msgMu.Lock()
+	id, tracked := h.callID, h.callRow
+	h.msgMu.Unlock()
+	// a live call is a session turn's: a run on screen has none, and a turn
+	// settles under the agent lock, which this path must never take
+	if id == "" || tracked != n || h.viewedRun() != nil {
+		return 0
+	}
+	for i, m := range h.Session().Transcript {
+		if m.CallID == id {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // chatRow is the row the chat draws at n: the live turn's calls, the rows of
@@ -84,7 +122,7 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 		}
 		t := s.Tools[i]
 		return ChatMessage{
-			Kind: RowTool, Tool: t.Name, Text: t.Input, Label: t.Label,
+			Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label,
 			Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
 		}, time.Since(t.Started), true
 	}
@@ -247,14 +285,21 @@ func (h *Host) callStep(n int) (prev, next string) {
 	// of one steps along the run still being written, not a snapshot of
 	// whatever had settled when it opened
 	if n < 0 {
-		live := len(h.AgentStream().Tools)
-		if k := -n; k > 1 {
-			prev = "call " + strconv.Itoa(-(k - 1))
+		if k := -n; k <= len(h.AgentStream().Tools) {
+			if k > 1 {
+				prev = "call " + strconv.Itoa(-(k - 1))
+			}
+			if k < len(h.AgentStream().Tools) {
+				next = "call " + strconv.Itoa(-(k + 1))
+			}
+			return prev, next
 		}
-		if k := -n; k < live {
-			next = "call " + strconv.Itoa(-(k + 1))
+		// the turn landed since the view opened: it steps along the rows the
+		// calls settled at
+		if m := h.settledRow(n); m > 0 {
+			return h.callStep(m)
 		}
-		return prev, next
+		return "", ""
 	}
 	tr := h.viewedTranscript()
 	if n < 1 || n > len(tr) {

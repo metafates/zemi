@@ -481,7 +481,8 @@ type Host struct {
 	// where it is open
 	msgMu     sync.Mutex
 	msgLevels []string
-	callRow   int
+	callRow   int    // the row the open call view shows
+	callID    string // that call's id, which names the row it settles at
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.

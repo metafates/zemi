@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
@@ -218,5 +219,33 @@ func TestCallViewFollowsTheTranscript(t *testing.T) {
 	}
 	if got := rebuilt[len(rebuilt)-1].Next; got != "call 4" {
 		t.Fatalf("the refreshed view steps to %q, want the call that landed", got)
+	}
+}
+
+// TestRefreshMessagesUnderTheTurnLock: a turn settles its rows under the
+// agent lock and refreshes the picker there, so nothing that hook reaches may
+// take that lock again - a live call's view maps to the row it lands on
+// through the transcript alone.
+func TestRefreshMessagesUnderTheTurnLock(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	h.AppendMessage("user", "ping")
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{{ID: "call_1", Name: "shell", Input: "sleep 9", Status: CallRun}}})
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openCall(-1); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		h.agents.mu.Lock()
+		h.refreshMessages()
+		h.agents.mu.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refreshMessages deadlocks under the agent lock a turn's flush holds")
 	}
 }
