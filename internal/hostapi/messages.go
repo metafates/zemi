@@ -240,7 +240,7 @@ func (h *Host) messagesOverlay(tr []ChatMessage, at int) Overlay {
 		if steps > 0 {
 			desc = append(desc, pluralCount(steps, "step", "steps"))
 		}
-		head := clipRunes(cmp.Or(messageHead(text), "(untitled turn)"), 60)
+		head := cmp.Or(messageHead(text), "(untitled turn)")
 		item := OverlayItem{
 			Text: head, Desc: strings.Join(desc, " · "), Anchor: t.first,
 			Verb: VerbGo, Run: "messages turn " + strconv.Itoa(t.first),
@@ -438,10 +438,10 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
-	head := clipRunes(cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool), 60)
+	head := cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool)
 	glyph, hl := "│", "Dim"
 	if m.Kind == RowReasoning {
-		head, glyph = clipRunes(cmp.Or(m.Label, messageHead(text), "thought"), 60), "✻"
+		head, glyph = cmp.Or(m.Label, messageHead(text), "thought"), "✻"
 	}
 	// enter is the row's place in the chat, l the view or run under it; the
 	// job a call started opens from that view, so no key names it twice
@@ -480,13 +480,13 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 	var head, desc string
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
-		head, glyph, hl = clipRunes(cmp.Or(messageHead(text), "(empty prompt)"), 60), "▌", "UserMsg"
+		head, glyph, hl = cmp.Or(messageHead(text), "(empty prompt)"), "▌", "UserMsg"
 		if m.ID != "" {
 			item.ID = m.ID // r rewinds to it; the list's key checks the rows
 		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
-		head, glyph, hl = clipRunes(messageHead(text), 60), "◆", "Dim"
+		head, glyph, hl = messageHead(text), "◆", "Dim"
 		if n := lineCount(text); n > 1 {
 			desc = pluralCount(n, "line", "lines")
 		}
@@ -497,7 +497,7 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 		if text == "" {
 			return OverlayItem{}
 		}
-		head, glyph = clipRunes(messageHead(text), 60), "·"
+		head, glyph = messageHead(text), "·"
 		if m.Kind == RowError {
 			glyph = "✗"
 		}

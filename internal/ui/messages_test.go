@@ -52,6 +52,36 @@ func bandedChatRows(app *App) []string {
 	return out
 }
 
+// TestMessagesRowsTrimAtTheBox: a row the popup can show whole is not cut,
+// and one wider than it is cut once, at the box's width, wide runes included.
+func TestMessagesRowsTrimAtTheBox(t *testing.T) {
+	for _, c := range []struct {
+		name, text string
+		wantCut    bool
+	}{
+		{"fits whole", strings.Repeat("a", 70), false},
+		{"wider than the box", strings.Repeat("a", 220), true},
+		{"wide runes wider than the box", strings.Repeat("汉", 80), true},
+	} {
+		app, host := bootAgentApp(t, 120, 30)
+		host.AppendMessage("user", c.text)
+		if err := host.MessagesCommand("turn 1"); err != nil {
+			t.Fatal(err)
+		}
+		for app.Pump() {
+		}
+		st := &app.overlays[len(app.overlays)-1]
+		row := app.overlayBox(st, 120, 30)[1]
+		text, width := hostapi.SegsText(row), hostapi.SegsWidth(row)
+		if n := strings.Count(text, "…"); n != map[bool]int{true: 1, false: 0}[c.wantCut] {
+			t.Fatalf("%s: %d ellipses in %q", c.name, n, text)
+		}
+		if c.wantCut && width <= 68 { // the old 60-rune clip drew 68 cells here
+			t.Fatalf("%s: cut at %d cells, want the box's width: %q", c.name, width, text)
+		}
+	}
+}
+
 // fillOneTurn fills one turn: its prompt and 30 replies, so a turn's own
 // rows are a long conversation, each one a message the chat draws.
 func fillOneTurn(host *hostapi.Host) {
