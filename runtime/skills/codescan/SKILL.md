@@ -37,3 +37,17 @@ end
 ```
 
 A hit carries only its own line, so when the value you need sits a few lines away, read that file once and print the lines around `h.line`. `zemi.fs.read` answers `nil, err` for a directory or a missing file: check the value before using it, and print what went wrong instead of rerunning the script unchanged. When the output changes the question, the task needed exploring rather than a script, so go back to grep and reads.
+
+The same mechanical edit across many files is one script too: pick the files, read each (a script's read marks it seen, so its own write is accepted), transform and write, and print each file that changed. Lua patterns here: `%-` escapes, `%d`, `%s*`. When the change is hard to undo, print the would-be counts first, check them, then run again with the write in.
+
+```lua
+for _, f in ipairs(zemi.fs.glob("internal/*/*.go")) do
+  local src = zemi.fs.read(f)
+  if src and src:find("oldAPI()", 1, true) then
+    zemi.fs.write(f, (src:gsub("oldAPI%(%)", "newAPI()")))
+    print(f)
+  end
+end
+```
+
+A write refused with "changed since you read it" means something else touched the file between the read and the write: rerun the script so it reads fresh, never write blind. When the edit needs the model's judgment per file, it is not mechanical: stop the script after the counts and edit those files with the edit tool.
