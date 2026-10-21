@@ -173,8 +173,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case modalPerm:
 		pa := a.permAsk
-		if pa.answer == nil || a.fresh(pa.opened) {
+		if pa == nil {
 			return nil
+		}
+		// a draft under the box takes printable keys, backspace and its
+		// enter, and re-arms the grace per key: the y, n and t of a message
+		// typed under a waiting ask never answer it
+		if !a.composer.empty() {
+			if keyText(msg) != "" || key == "enter" || key == "backspace" || key == "delete" {
+				pa.opened = a.now()
+				return a.composerKey(key, msg)
+			}
+		} else if pa.answer == nil || a.fresh(pa.opened) {
+			return nil // keys typed as the box opened are still in flight
 		}
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
@@ -191,7 +202,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			for _, c := range choices {
 				if c.key == key || key == "o" && c.key == "y" {
 					a.choosePerm(c)
+					return nil
 				}
+			}
+			// a printable key starts a draft while the ask waits, so a
+			// message typed under the box is never lost
+			if keyText(msg) != "" {
+				pa.opened = a.now()
+				return a.composerKey(key, msg)
 			}
 		}
 	case modalPlan:

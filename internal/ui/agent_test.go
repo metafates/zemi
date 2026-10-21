@@ -1554,6 +1554,43 @@ func TestPromptKeyGrace(t *testing.T) {
 	}
 }
 
+// TestPromptKeysUnderDraft: a draft under a waiting ask takes typing, and
+// the y, n and t of the message type too; the ask answers only once the
+// draft is gone and the grace of the last key has passed.
+func TestPromptKeysUnderDraft(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan string, 1)
+	go func() {
+		_, by := app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
+		done <- by
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.program = tea.NewProgram(nil)
+	app.composer.text, app.composer.cursor = "do ", 3 // typing as the box opened
+	now := app.now().Add(permGrace + time.Millisecond)
+	app.now = func() time.Time { return now }
+	typeKey := func(key string) {
+		now = now.Add(time.Millisecond)
+		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+	}
+	typeKey("n")
+	typeKey("o") // "o" is the y alias: under a draft it types
+	if app.composer.text != "do no" || len(done) != 0 {
+		t.Fatalf("typing under a waiting ask drafted %q, want %q and no answer", app.composer.text, "do no")
+	}
+	app.clearComposer()
+	typeKey("y") // an empty composer inside the grace of the cleared draft
+	if len(done) != 0 {
+		t.Fatalf("y inside the re-armed grace answered the ask")
+	}
+	now = now.Add(permGrace + time.Millisecond)
+	typeKey("y")
+	if got := <-done; got != "user:once" {
+		t.Errorf("y on an empty composer answered %q, want user:once", got)
+	}
+}
+
 // TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {

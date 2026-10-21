@@ -2351,7 +2351,9 @@ rides the `memories.md` line and its ledger entries.
   Then the command, diff or input, then the choices, a vertical list with their
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
-  down move, enter picks the highlighted one. Every Go-owned prompt
+  down move, enter picks the highlighted one. Typing drafts into the composer
+  while the box waits and re-arms the grace per key, so the `y`, `n` and `t` of a
+  message never answer; on an empty composer past the grace they answer as keys. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
   last, and under them its one field, a note on the pick that `n` focuses or the typed
   answer, drawn always so focusing it moves nothing; a batch's Submit tab, whose one
