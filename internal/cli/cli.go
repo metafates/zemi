@@ -180,10 +180,18 @@ func newRoot(o *options, launch func(options) int) *cobra.Command {
 		Use:   "zemi [prompt...]",
 		Short: "zemi - a terminal coding agent",
 		Long: `
-╭────╮                  ·
-│╭──╮│  ╷╷  ━━┓ ┏━┓ ┏┳┓ ╻
-│╰──╯│╭─┴┴╮ ┏━┛ ┣━┛ ┃┃┃ ┃
-╰────╯╯   ╵ ┗━━ ┗━━ ╹╹╹ ╹
+    #%@@%#+
+  #%##%#@@@%#+ @%#
+ #*=::   =*###* #%#%#
++*=:    %   ***- -#%@@
+++=:  ##*:-  ++-   +###
+ ++ @@*+-:   =-:    #%#
+   %@#*:     :::-  =@@*
+  #%#-  **%%#     %@%*=
+  #*=    +#%#@%@%%#%#:
+  **==-     *##%**+
+   ++=++++**
+      --==-
 @zemi a terminal coding agent
 
 With no command zemi opens the TUI; a prompt is sent as the first message,
