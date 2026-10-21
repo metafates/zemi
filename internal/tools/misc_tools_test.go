@@ -318,7 +318,14 @@ func TestJobToolsLifecycle(t *testing.T) {
 	t.Chdir(dir)
 	p.Jobs = NewJobs()
 	changed := make(chan struct{}, 8)
-	p.Jobs.OnChange = func() { changed <- struct{}{} }
+	// non-blocking: the hooks outlive the asserts that drain it, and a
+	// blocked send would hang the tool call itself
+	p.Jobs.OnChange = func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	}
 	start := toolNamed(t, "job_start", p)
 	read := toolNamed(t, "job_read", p)
 	list := toolNamed(t, "job_list", p)
@@ -394,11 +401,25 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("read chatty: %+v", resp)
 	}
 
+	// a waitless read of a quiet running job rides to the exit instead of
+	// making the model poll one roundtrip per quiet stretch
+	resp = call(t, start, `{"command":"sleep 1.5; echo done-slow"}`)
+	if resp.IsError {
+		t.Fatalf("start slow: %+v", resp)
+	}
+	j = p.Jobs.List()[4]
+	began = time.Now()
+	resp = call(t, read, `{"id":"`+j.ID+`"}`)
+	if took := time.Since(began); resp.IsError || !strings.Contains(resp.Content, "exited (0)") ||
+		!strings.Contains(resp.Content, "done-slow") || took > 10*time.Second {
+		t.Fatalf("waitless read of a quiet job: %+v after %s", resp, took)
+	}
+
 	resp = call(t, start, `{"command":"sleep 30"}`)
 	if resp.IsError {
 		t.Fatalf("start sleep: %+v", resp)
 	}
-	j = p.Jobs.List()[4]
+	j = p.Jobs.List()[5]
 	resp = call(t, kill, `{"id":"`+j.ID+`"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "killed") {
 		t.Fatalf("kill: %+v", resp)

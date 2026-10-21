@@ -29,6 +29,40 @@ const JobHandoff = "moved to the background as "
 // NOTE: a build that pauses longer returns early and costs another read.
 const jobSettle = 2 * time.Second
 
+// A waitless read of a quiet running job holds for these instead of making
+// the model poll one roundtrip per quiet stretch: a build that bursts output
+// rides to its exit, a silent server answers after the hold.
+const (
+	jobQuietHold = 10 * time.Second
+	jobQuietCap  = 20 * time.Second
+)
+
+// waitJob holds until the job exits, its output has been quiet for quiet,
+// or the cap or the turn's cancel fires.
+func waitJob(ctx context.Context, j *Job, quiet, cap time.Duration) {
+	deadline := time.NewTimer(cap)
+	defer deadline.Stop()
+	tick := time.NewTicker(250 * time.Millisecond)
+	defer tick.Stop()
+	seen, moved := j.unread(), time.Now()
+	for j.Running() {
+		select {
+		case now := <-tick.C:
+			if n := j.unread(); n != seen {
+				seen, moved = n, now
+				continue
+			}
+			if seen == 0 || now.Sub(moved) < quiet {
+				continue
+			}
+		case <-j.done:
+		case <-ctx.Done():
+		case <-deadline.C:
+		}
+		return
+	}
+}
+
 // Job is one managed background process.
 type Job struct {
 	ID       string
@@ -350,30 +384,18 @@ func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolR
 	// chatty build costs one model step, not one per burst; the turn's
 	// cancel still wins
 	if in.WaitMS > 0 {
-		deadline := time.After(time.Duration(min(in.WaitMS, 600_000)) * time.Millisecond)
-		tick := time.NewTicker(250 * time.Millisecond)
-		defer tick.Stop()
-		seen, moved := j.unread(), time.Now()
-		for j.Running() {
-			select {
-			case now := <-tick.C:
-				if n := j.unread(); n != seen {
-					seen, moved = n, now
-					continue
-				}
-				if seen == 0 || now.Sub(moved) < jobSettle {
-					continue
-				}
-			case <-j.done:
-			case <-ctx.Done():
-			case <-deadline:
-			}
-			break
-		}
+		waitJob(ctx, j, jobSettle, time.Duration(min(in.WaitMS, 600_000))*time.Millisecond)
+	} else if j.Running() {
+		waitJob(ctx, j, jobQuietHold, jobQuietCap)
 	}
 	out, errOut, running, errText := j.since()
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s\n", j.ID, j.Status())
+	if running {
+		// the read already held through a quiet stretch: a job this long
+		// wants one wait_ms, not another poll
+		b.WriteString("still running: pass wait_ms to hold the read until it exits\n")
+	}
 	if errText != "" {
 		fmt.Fprintf(&b, "error: %s\n", errText)
 	}
