@@ -2187,7 +2187,9 @@ rides the `memories.md` line and its ledger entries.
   rail folded. `l` on that row opens the rail's own list, one row per call and
   thought, and the chat draws that run whole while it is up: no row of it
   stays behind the rail's own `… N earlier`, each call keeps its body folded,
-  and the call the list names is the one banded, the run this turn is still
+  and the call the list names is the one banded and kept in view as the run
+  opens under it, the view growing down rather than sliding to the tail, the
+  run this turn is still
   adding to included: its calls are open whole while the list is up and go
   back to the short tail a live rail keeps once it closes. It opens where the
   reader is, the way muffin opens on the symbol under the cursor, not on its

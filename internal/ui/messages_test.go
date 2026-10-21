@@ -174,6 +174,55 @@ func TestMessagesOpenKeepsThePick(t *testing.T) {
 	}
 }
 
+// TestMessagesRailKeepsThePick: /messages opened on a run's digest draws that
+// run whole, and the run grows under the row its level names: the pick stays
+// on screen, the view growing down with the run instead of sliding to the
+// tail with its top carried off.
+func TestMessagesRailKeepsThePick(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 24)
+	for i := range 4 {
+		host.AppendMessage("user", fmt.Sprintf("question %d", i))
+		appendReply(host, strings.Repeat("a reply that wraps. ", 10), hostapi.TurnStat{})
+	}
+	host.AppendMessage("user", "a long run please")
+	for i := 1; i <= 20; i++ {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: fmt.Sprintf("f%d.go", i), Label: fmt.Sprintf("read %d", i), Status: "ok"})
+	}
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	// the chat sits at its tail, the run the last thing it draws folded
+	if !chat.follow {
+		t.Fatalf("the chat is not at its tail: top %d, %d rows", chat.top, chat.rows)
+	}
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		for app.Pump() {
+		}
+		app.Frame()
+		app.renderSync(t)
+	}
+	app.Frame()
+	top := &app.overlays[len(app.overlays)-1]
+	if !strings.HasSuffix(top.o.ID, " rail 10") || top.o.Rail != 10 {
+		t.Fatalf("opened %q, want the run's level", top.o.ID)
+	}
+	pick := top.selectedAnchor()
+	from, to := unitRows(chat.lines, pick)
+	if from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+		t.Fatalf("the picked call %d is off screen: rows %d..%d of view %d..%d", pick, from, to, chat.top, chat.top+chat.viewH)
+	}
+	if chat.rows <= 28 {
+		t.Fatalf("the run did not grow under the pick: %d rows", chat.rows)
+	}
+	if chat.follow {
+		t.Fatal("the view slid to the tail instead of staying on the pick")
+	}
+}
+
 // TestMessagesOpenOnBlank: the blank row a message is set off from the one
 // before it by is no message either, and it hands over to the message under
 // it - the row the chat names there - so a reader who scrolled past a prompt

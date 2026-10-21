@@ -665,6 +665,15 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 	}
 	st.clamp()
+	// the pick of the top following list stays in view while it is up: a rail
+	// its level walks grows under the row it names, and a view pinned to the
+	// tail would carry that row off the top as the run opened. Only a paint
+	// whose rows changed, so a scroll of the chat is never yanked back
+	if a.highlight > 0 && jumped == 0 && st.rows != prevRows {
+		if from, to := unitRows(lines, a.highlight); from >= 0 && (from < st.top || to >= st.top+st.viewH) {
+			st.top, st.follow = jumpTop(lines, from, to, st.viewH), false
+		}
+	}
 	if jumped > 0 {
 		st.placed = st.top
 	}
