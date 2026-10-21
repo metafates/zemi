@@ -803,6 +803,23 @@ func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) e
 	return WriteFile(path, data, mode)
 }
 
+// ScriptRead reads a whole file for a model's Lua script and records it as
+// seen at the bytes it returned, as a read call does: the script may then
+// write the file on them (ScriptWrite). A user or plugin script reads raw.
+func (p *Pipeline) ScriptRead(path perm.Path) ([]byte, error) {
+	f, fi, err := OpenRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	p.markRead(path.String(), fi)
+	return b, nil
+}
+
 // ScriptWrite writes a file a model's Lua script changed, on the terms a
 // write call takes: a file this session has not read, or one that changed
 // since, is refused rather than overwritten, the old bytes are checkpointed

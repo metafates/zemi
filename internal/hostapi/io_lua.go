@@ -411,12 +411,20 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	tb.RawSetString("read", L.NewFunction(func(L *glua.LState) int {
-		f, _, err := tools.OpenRegular(resolve(L, "read", false, false))
-		if err != nil {
-			return luaResult(L, err)
+		read := func(path perm.Path) ([]byte, error) {
+			// the model's script reads as a read call does, so its writes
+			// see those bytes (ScriptWrite); user and plugin code reads raw
+			if h.modelLuaScript(L) != "" {
+				return h.PipelineFor().ScriptRead(path)
+			}
+			f, _, err := tools.OpenRegular(path)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			return io.ReadAll(f)
 		}
-		defer f.Close()
-		b, err := io.ReadAll(f)
+		b, err := read(resolve(L, "read", false, false))
 		if err != nil {
 			return luaResult(L, err)
 		}

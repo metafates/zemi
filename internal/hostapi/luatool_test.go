@@ -347,6 +347,15 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if out := run(edit); !strings.Contains(out, "edited") {
 		t.Fatalf("the edit after a script's write read stale: %q", out)
 	}
+	// a script's own read marks the file, so one script may read, transform
+	// and write a file it never opened with the read tool
+	rf := filepath.Join(h.Dirs.ProjectDir, "r.txt")
+	os.WriteFile(rf, []byte("one\ntwo\n"), 0o600)
+	if out := run(`local s = assert(zemi.fs.read(` + strconv.Quote(rf) + `))
+		local ok, err = zemi.fs.write(` + strconv.Quote(rf) + `, (s:gsub("one", "ONE")))
+		print(ok, err, zemi.fs.read(` + strconv.Quote(rf) + `))`); !strings.HasPrefix(out, "true\tnil\tONE") {
+		t.Fatalf("a script's read did not mark the file: %q", out)
+	}
 
 	// a shell command runs, and its output comes back whole
 	if out := run(`local o, e = zemi.tool.call("shell", { command = "cat ` + file + `" }):wait() print(e or o)`); !strings.Contains(out, "hello") || len(ui.asked) != 0 {
