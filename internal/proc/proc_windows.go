@@ -20,9 +20,10 @@ func killGroup(pid int) {
 }
 
 // Shell is the shell that runs the model's command lines: a Git for Windows
-// bash where there is one, else cmd, which knows nothing POSIX. System32's
-// bash.exe is the WSL launcher, whose /mnt paths do not match zemi's, so it
-// is refused. Looked up once, on PATH like every program zemi runs by name.
+// bash where there is one, else pwsh or powershell, else cmd, which knows
+// nothing POSIX. System32's bash.exe is the WSL launcher, whose /mnt paths
+// do not match zemi's, so it is refused. Looked up once, on PATH like every
+// program zemi runs by name.
 var Shell = sync.OnceValue(func() string {
 	system32 := filepath.Join(os.Getenv("SystemRoot"), "System32") + string(os.PathSeparator)
 	for _, name := range []string{"sh", "bash"} {
@@ -34,6 +35,11 @@ var Shell = sync.OnceValue(func() string {
 		path := filepath.Join(dir, "bin", "bash.exe")
 		if _, err := os.Stat(path); err == nil {
 			return path
+		}
+	}
+	for _, name := range []string{"pwsh", "powershell"} {
+		if _, err := exec.LookPath(name); err == nil {
+			return name
 		}
 	}
 	return "cmd"
@@ -55,16 +61,20 @@ func gitRoots() []string {
 
 // ShellCommand is Command running line with Shell.
 func ShellCommand(line string) *exec.Cmd {
-	if s := Shell(); s == "cmd" {
-		return Command("cmd", "/c", line)
-	}
-	return Command(Shell(), "-c", line)
+	return ShellCommandContext(context.Background(), line)
 }
 
 // ShellCommandContext is ShellCommand cancelled as a group when ctx is.
 func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
-	if s := Shell(); s == "cmd" {
-		return CommandContext(ctx, "cmd", "/c", line)
+	s := Shell()
+	if s == "cmd" {
+		return CommandContext(ctx, s, "/c", line)
 	}
-	return CommandContext(ctx, Shell(), "-c", line)
+	if s == "pwsh" || s == "powershell" {
+		// NOTE: Windows PowerShell 5.1 -Command exits 0 after a failed native
+		// command, so the tail hands the real exit code back.
+		return CommandContext(ctx, s, "-NoProfile", "-NonInteractive", "-Command",
+			line+"; if (-not $?) { exit 1 }; exit $LASTEXITCODE")
+	}
+	return CommandContext(ctx, s, "-c", line)
 }
