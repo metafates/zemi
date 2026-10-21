@@ -207,13 +207,14 @@ func TestCompactionMidTurn(t *testing.T) {
 			// fields it and the model share move atomically
 			var elapsed atomic.Int64
 			m.during = func() {
-				// the title's call comes after the turn
+				// the title's call comes before the turn's first stream, so
+				// only the summary's call, inside the compaction, acts here
 				if s := h.AgentStream(); s.Compacting {
 					elapsed.Store(int64(s.Elapsed))
-				}
-				if c.cancel {
-					h.AgentCancel()
-					m.block.Store(int64(time.Second))
+					if c.cancel {
+						h.AgentCancel()
+						m.block.Store(int64(time.Second))
+					}
 				}
 			}
 			sender(t, h)("go")
