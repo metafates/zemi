@@ -87,6 +87,7 @@ func (h *Host) OpenMessages() error {
 // closes. It reads the session, never the agent's stream: a caller may hold
 // that lock.
 func (h *Host) refreshMessages() {
+	h.refreshCall()
 	ui := h.hooks()
 	if ui == nil || h.viewedRun() != nil {
 		return

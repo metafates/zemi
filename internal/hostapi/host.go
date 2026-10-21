@@ -476,10 +476,12 @@ type Host struct {
 	view     *agentRun // the agent run the chat shows instead of the session, nil for none
 	viewBack string    // the command that reopens the screen view came from
 
-	// msgMu guards the messages picker's levels opened in this session: a
-	// transcript that grows rebuilds them where they are open
+	// msgMu guards the messages picker's levels opened in this session, and
+	// the call view on top of them: a transcript that grows rebuilds each
+	// where it is open
 	msgMu     sync.Mutex
 	msgLevels []string
+	callRow   int
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.

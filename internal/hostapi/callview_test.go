@@ -98,6 +98,27 @@ func TestCallView(t *testing.T) {
 	if live.ID != "call:-1" || !live.Live || fieldOf(live, "status") != "running" {
 		t.Fatalf("the live call's view = %+v", live)
 	}
+	// one live call, then a second: the view steps along the run still being
+	// written, not along the rows that had settled when it opened
+	if live.Next != "" || live.Prev != "" {
+		t.Fatalf("one live call stepped to %q and %q", live.Prev, live.Next)
+	}
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{Name: "shell", Input: "sleep 9", Status: CallRun},
+		{Name: "read", Input: "a.go", Status: CallRun},
+	}})
+	if err := h.openCall(-1); err != nil {
+		t.Fatal(err)
+	}
+	if first := ui.opened[len(ui.opened)-1]; first.Prev != "" || first.Next != "call -2" {
+		t.Fatalf("the first live call steps to %q and %q", first.Prev, first.Next)
+	}
+	if err := h.openCall(-2); err != nil {
+		t.Fatal(err)
+	}
+	if last := ui.opened[len(ui.opened)-1]; last.Prev != "call -1" || last.Next != "" {
+		t.Fatalf("the second live call steps to %q and %q", last.Prev, last.Next)
+	}
 	if err := h.openCall(99); err == nil || !strings.Contains(err.Error(), "no row 99") {
 		t.Fatalf("row 99: %v, want a refusal", err)
 	}
@@ -167,5 +188,35 @@ func TestSkillBody(t *testing.T) {
 	}
 	if got := h.skillBody(ChatMessage{Kind: RowTool, Tool: tools.ToolRead, Text: "mine"}); got != "" {
 		t.Fatalf("a read is no skill: %q", got)
+	}
+}
+
+// TestCallViewFollowsTheTranscript: a call view's step targets come from the
+// transcript, so a row that lands after the view opened is one at once,
+// without the reader reopening it.
+func TestCallViewFollowsTheTranscript(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	h.AppendMessage("user", "ping")
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "a.go", Status: CallOK})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "b.go", Status: CallOK})
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openCall(3); err != nil { // the run's last call: nowhere to step
+		t.Fatal(err)
+	}
+	if got := ui.overlays(); got[len(got)-1].Next != "" {
+		t.Fatalf("the last call's view steps to %q", got[len(got)-1].Next)
+	}
+	// the turn settles one more call: the open view grows a step target
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "c.go", Status: CallOK})
+	ui.mu.Lock()
+	rebuilt, ids := slices.Clone(ui.rebuilt), slices.Clone(ui.refreshed)
+	ui.mu.Unlock()
+	if len(rebuilt) == 0 || !slices.Contains(ids, "call:3") {
+		t.Fatalf("the open view was not refreshed: %v", ids)
+	}
+	if got := rebuilt[len(rebuilt)-1].Next; got != "call 4" {
+		t.Fatalf("the refreshed view steps to %q, want the call that landed", got)
 	}
 }

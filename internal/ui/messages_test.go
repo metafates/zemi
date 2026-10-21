@@ -174,6 +174,64 @@ func TestMessagesOpenKeepsThePick(t *testing.T) {
 	}
 }
 
+// TestMessagesCallStepsTheRail: a call view opened from a rail steps along
+// it, and the rail steps with it, so going back from the view lands on the
+// call that was read and the chat bands it.
+func TestMessagesCallStepsTheRail(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 110, 34)
+	reloadUI(t, host)
+	host.AppendMessage("user", "walk the rail")
+	for i := 1; i <= 4; i++ {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: fmt.Sprintf("f%d.go", i), Label: fmt.Sprintf("read %d", i), Status: "ok"})
+	}
+	appendReply(host, "all green", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	pump := func() {
+		for range 3 {
+			for app.Pump() {
+			}
+			app.Frame()
+			app.renderSync(t)
+		}
+		app.Frame()
+	}
+	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
+	label := func() string { return top().items[top().visible[top().selected]].label }
+	if err := host.MessagesCommand("turn 1"); err != nil {
+		t.Fatal(err)
+	}
+	pump()
+	press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"}) // the rail row
+	pump()
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"}) // the rail level
+	pump()
+	press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"}) // read 2
+	pump()
+	if got := label(); got != "read 2" {
+		t.Fatalf("the rail opened on %q", got)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"}) // its view
+	pump()
+	if id := top().o.ID; id != "call:3" {
+		t.Fatalf("the view is %q", id)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}) // step to read 3
+	pump()
+	if id := top().o.ID; id != "call:4" {
+		t.Fatalf("the stepped view is %q", id)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	pump()
+	if id, got := top().o.ID, label(); id != "messages turn 1 rail 2" || got != "read 3" {
+		t.Fatalf("back on %q with %q selected, want read 3", id, got)
+	}
+	if got := bandedChatRows(app); len(got) != 1 || !strings.Contains(got[0], "read 3") {
+		t.Fatalf("banded %q, want the call the view stepped to", got)
+	}
+}
+
 // TestMessagesRailKeepsThePick: /messages opened on a run's digest draws that
 // run whole, and the run grows under the row its level names: the pick stays
 // on screen, the view growing down with the run instead of sliding to the

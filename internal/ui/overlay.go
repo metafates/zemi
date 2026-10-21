@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -453,8 +454,17 @@ func (a *App) refreshDetail(i int) {
 	n.body, n.size = d.body, d.size
 }
 
-// itemKey names an item across rebuilds: its id, else its text.
-func itemKey(r hostapi.OverlayItem) string { return cmp.Or(r.ID, r.Text) }
+// itemKey names an item across rebuilds: its id, its transcript row (a list
+// of one turn's rows repeats labels), else its text.
+func itemKey(r hostapi.OverlayItem) string {
+	switch {
+	case r.ID != "":
+		return r.ID
+	case r.Anchor > 0:
+		return "row " + strconv.Itoa(r.Anchor)
+	}
+	return r.Text
+}
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// Every string here is Lua's (or a model's, through a Go builder):
@@ -707,6 +717,35 @@ func (a *App) closeMenu(st *overlayState) {
 	a.closeOverlayByID(root)
 }
 
+// stepUnder moves the level a call view stepped over onto the row the view
+// now shows, so going back lands on the call that was read, not the one the
+// level was opened on.
+func (a *App) stepUnder(run string) {
+	row, err := strconv.Atoi(strings.TrimPrefix(run, "call "))
+	if err != nil {
+		return
+	}
+	// the step closes this view and opens the next one on a worker, so the
+	// level to move is the one a following list is: the nearest below
+	i := len(a.overlays) - 1
+	for i >= 0 && !a.overlays[i].o.Follow {
+		i--
+	}
+	if i < 0 {
+		return
+	}
+	under := &a.overlays[i]
+	for k, idx := range under.visible {
+		if under.items[idx].row.Anchor != row {
+			continue
+		}
+		if under.selected != k {
+			under.selected, under.armed, under.keyArmed = k, false, ""
+		}
+		return
+	}
+}
+
 // overlayKey routes keys to the topmost overlay; text is what the key types
 // (printable keys filter the list).
 func (a *App) overlayKey(key, text string) tea.Cmd {
@@ -732,10 +771,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
-	// a view opened from a rail steps along it in place
+	// a view opened from a rail steps along it in place, and the level under
+	// it steps with it: the view and the list name one row
 	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
 		a.closeOverlayByID(o.ID)
 		a.runOverlayRow(hostapi.OverlayItem{Run: run})
+		a.stepUnder(run)
 		return nil
 	}
 	declared := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key })

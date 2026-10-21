@@ -46,11 +46,30 @@ func (h *Host) openCall(n int) error {
 	if row.Kind != RowTool && row.Kind != RowReasoning {
 		return Usagef("row %d is not a call", n)
 	}
+	h.msgMu.Lock()
+	h.callRow = n
+	h.msgMu.Unlock()
 	ui.OpenOverlay(h.callView(n, row, took))
-	if row.Status == CallRun || row.Status == CallWait {
-		h.watchCall(n)
-	}
+	h.watchCall(n)
 	return nil
+}
+
+// refreshCall rebuilds the call view open, if any: the rows it steps along
+// and the status it shows come from a transcript that just grew, and a call
+// that settled after the view opened is a step target at once.
+func (h *Host) refreshCall() {
+	h.msgMu.Lock()
+	n := h.callRow
+	h.msgMu.Unlock()
+	ui := h.hooks()
+	if ui == nil || n == 0 {
+		return
+	}
+	row, took, ok := h.chatRow(n)
+	if !ok {
+		return
+	}
+	ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
 }
 
 // chatRow is the row the chat draws at n: the live turn's calls, the rows of
@@ -91,7 +110,10 @@ func (h *Host) watchCall(n int) {
 		if ui := h.hooks(); ui != nil {
 			ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
 		}
-		return row.Status == CallRun || row.Status == CallWait
+		// a live view keeps up with the run it steps along; a settled one
+		// has nothing to say until the transcript grows, and refreshCall
+		// takes it then
+		return n < 0 || row.Status == CallRun || row.Status == CallWait
 	})
 }
 
@@ -168,9 +190,7 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 			parts = append(parts, BodyPart{Text: m.Detail, Fill: FillWell})
 		}
 	}
-	if n > 0 {
-		o.Prev, o.Next = callStep(h.viewedTranscript(), n)
-	}
+	o.Prev, o.Next = h.callStep(n)
 	if m.Job != "" {
 		fields = append(fields, Field{Name: "job", Value: m.Job})
 		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "open job", Run: "jobs view " + m.Job})
@@ -222,7 +242,21 @@ func (h *Host) skillBody(m ChatMessage) string {
 // call rows the chat draws as one unit between two messages, so ctrl+j and
 // ctrl+k walk it. A run digest is no call view (it opens its run), so a step
 // passes over it.
-func callStep(tr []ChatMessage, n int) (prev, next string) {
+func (h *Host) callStep(n int) (prev, next string) {
+	// the live turn's calls are named by negative rows, -1 its first: a view
+	// of one steps along the run still being written, not a snapshot of
+	// whatever had settled when it opened
+	if n < 0 {
+		live := len(h.AgentStream().Tools)
+		if k := -n; k > 1 {
+			prev = "call " + strconv.Itoa(-(k - 1))
+		}
+		if k := -n; k < live {
+			next = "call " + strconv.Itoa(-(k + 1))
+		}
+		return prev, next
+	}
+	tr := h.viewedTranscript()
 	if n < 1 || n > len(tr) {
 		return "", ""
 	}

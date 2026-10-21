@@ -2161,7 +2161,11 @@ rides the `memories.md` line and its ledger entries.
   with what it answered apart under it, a file change as the numbered diff,
   a thought as markdown, a question as the answers it got. `o` opens the job
   a command went on as, `y` copies the whole view, and one of a call that
-  still runs refreshes as it runs. The reply that ends an
+  still runs refreshes as it runs. `ctrl+j`/`ctrl+k` step to the next and the
+  previous row of the run, the live turn's calls among them, and the level the
+  view came from steps with it, so going back lands on the call that was
+  read; the view is rebuilt as the transcript grows, so a row that settles
+  is a step target at once. The reply that ends an
   exchange carries its readout: how long its turn ran, its tokens out and the
   clock; a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).

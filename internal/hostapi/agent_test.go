@@ -675,6 +675,8 @@ type fakeUI struct {
 	planAsked           int
 	mu                  sync.Mutex // guards opened: a status change opens off the test goroutine
 	opened              []Overlay
+	refreshed           []string
+	rebuilt             []Overlay
 	closed              []string
 	closedLua           int
 	turnsDone           atomic.Int32
@@ -692,7 +694,14 @@ func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.mu.Unlock()
 }
 
-func (f *fakeUI) RefreshOverlay(string, func() Overlay) {}
+func (f *fakeUI) RefreshOverlay(id string, build func() Overlay) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshed = append(f.refreshed, id)
+	if build != nil {
+		f.rebuilt = append(f.rebuilt, build())
+	}
+}
 
 func (f *fakeUI) overlays() []Overlay {
 	f.mu.Lock()
