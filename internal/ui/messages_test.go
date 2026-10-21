@@ -174,6 +174,53 @@ func TestMessagesOpenKeepsThePick(t *testing.T) {
 	}
 }
 
+// TestMessagesOpenOnBlank: the blank row a message is set off from the one
+// before it by is no message either, and it hands over to the message under
+// it - the row the chat names there - so a reader who scrolled past a prompt
+// opens on the reply, never back on that prompt.
+func TestMessagesOpenOnBlank(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 12)
+	fillChat(host)
+	host.AppendMessage("user", "the prompt")
+	appendReply(host, strings.Repeat("the reply wraps on and on. ", 40), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	prompt := -1
+	for i, row := range chat.lines {
+		if strings.HasPrefix(hostapi.SegsText(row), "▌ the prompt") {
+			prompt = i
+		}
+	}
+	if prompt < 0 || prompt+2 >= len(chat.lines) || rowAnchor(chat.lines[prompt+1]) != 0 || rowAnchor(chat.lines[prompt+2]) == 0 {
+		t.Fatalf("no blank row under the prompt: %d of %d lines", prompt, len(chat.lines))
+	}
+	if chat.rows <= chat.viewH {
+		t.Fatalf("the chat does not scroll: %d rows, %d high", chat.rows, chat.viewH)
+	}
+	// the blank is the row the view's middle draws
+	delete(app.pendingScroll, "chat")
+	chat.top, chat.focus, chat.follow = max(prompt+1-(chat.viewH-1)/2, 0), 0, false
+	app.Frame()
+	place := app.chatRow()
+	if place == 0 || place == 1 {
+		t.Fatalf("the chat names row %d at the blank under the prompt", place)
+	}
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	top := &app.overlays[len(app.overlays)-1]
+	if got := top.selectedAnchor(); got != place {
+		t.Fatalf("opened on row %d (%q), the chat is at %d", got, top.items[top.visible[top.selected]].label, place)
+	}
+	if got := top.items[top.visible[top.selected]].label; !strings.Contains(got, "the reply") {
+		t.Fatalf("opened on %q, want the reply under the blank", got)
+	}
+}
+
 // TestMessagesOpenOnRun: a run of calls is no message the list names, so a
 // view whose top row is the run's digest hands over to the message under it,
 // never back to the reply above, which may be many rows away.
@@ -208,8 +255,12 @@ func TestMessagesOpenOnRun(t *testing.T) {
 		t.Fatalf("no digest row to scroll to, or the chat does not scroll: %d, %d rows", digest, chat.rows)
 	}
 	delete(app.pendingScroll, "chat")
-	chat.top, chat.focus, chat.follow = digest, 0, false
+	// the digest is the row the view's middle draws
+	chat.top, chat.focus, chat.follow = max(digest-(chat.viewH-1)/2, 0), 0, false
 	app.Frame()
+	if got := app.chatRow(); got == 0 {
+		t.Fatalf("no place over the digest at %d, chat top %d", digest, chat.top)
+	}
 	if err := host.OpenMessages(); err != nil {
 		t.Fatal(err)
 	}

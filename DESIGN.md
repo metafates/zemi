@@ -2192,7 +2192,10 @@ rides the `memories.md` line and its ledger entries.
   back to the short tail a live rail keeps once it closes. It opens where the
   reader is, the way muffin opens on the symbol under the cursor, not on its
   first row: the levels down to the row the view's middle draws come up
-  together, turns then the turn then its rail, and `h` walks back up, each
+  together, turns then the turn then its rail, and each level opens on the
+  row that place names - a blank line between two messages hands over to the
+  one under it, the row the chat itself resolves there - so a level and the
+  chat always say the same message, and `h` walks back up, each
   level on the row it was left on, while `esc` closes the whole menu: a
   level's id is its parent's and its own, so a rail is the turn's child and
   the menu closes whole from any of them. `l` is

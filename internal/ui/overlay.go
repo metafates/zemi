@@ -256,6 +256,16 @@ func (a *App) followRow(st *overlayState) int {
 	if chat == nil {
 		return n - 1
 	}
+	// the chat's place is one row, whoever asks: the host opened this level
+	// there, and a level naming it lands on it, so a blank row between two
+	// messages resolves the way the chat draws it, down to the next message
+	if place := a.chatRow(); place > 0 {
+		for k, idx := range st.visible {
+			if st.items[idx].row.Anchor == place {
+				return k
+			}
+		}
+	}
 	// the place a jump left holds only while the view sits where it left it:
 	// any scroll moves the top, and the view's middle names the message then,
 	// so a message the reader scrolled away from the middle stops being the
