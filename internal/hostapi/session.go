@@ -482,7 +482,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		// live turn flushed it; reasoning never cuts a reply (ReasoningDelta)
 		replyText := func() {
 			if s := strings.TrimSpace(text.String()); s != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Stat: &TurnStat{Ended: row.CreatedAt / 1000}})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s})
 				reply = len(tr) - 1
 				text.Reset()
 			}

@@ -115,6 +115,27 @@ func TestResumeKeepsTurnStats(t *testing.T) {
 	}
 }
 
+// TestResumeMidTurnReplyHasNoStat: text streamed before a call resumes
+// without a stat, as the live turn flushed it; only the turn's own readout
+// (TestResumeKeepsTurnStats) may draw a stats row under a reply.
+func TestResumeMidTurnReplyHasNoStat(t *testing.T) {
+	t.Parallel()
+	parts, err := json.Marshal(fantasy.Message{
+		Role: fantasy.MessageRoleAssistant,
+		Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: "checking"},
+			fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "read", Input: "{}"},
+		},
+	}, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tr := historyFrom([]*store.Message{{Role: "assistant", PartsJSON: string(parts)}})
+	if len(tr) != 2 || tr[0].Text != "checking" || tr[0].Stat != nil {
+		t.Fatalf("mid-turn reply resumed as %+v, want no stat", tr[0])
+	}
+}
+
 // TestResumeParity: after /new and a resume the session reads as it did when
 // it was left - the rows a model message does not hold (a !command, a failed
 // turn), the session's counts and the context the last step used, which only
