@@ -127,6 +127,53 @@ func TestMessagesOpenAtGap(t *testing.T) {
 	open()
 }
 
+// TestMessagesOpenKeepsThePick: the levels of the picker open on the message
+// the reader sees and leave the chat there. A jump the turns list asked for
+// (to a turn's first row) must not outlive the turn level whose own row is in
+// view: the chat would land on the prompt, and the next open would pick it.
+func TestMessagesOpenKeepsThePick(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 16)
+	fillOneTurn(host)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	pump := func() {
+		for range 3 {
+			for app.Pump() {
+			}
+			app.Frame()
+			app.renderSync(t)
+		}
+		app.Frame()
+	}
+	for range 4 {
+		press(t, app, tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	}
+	pump()
+	if chat.top == 0 {
+		t.Fatalf("the chat did not scroll: top %d", chat.top)
+	}
+	for n := range 3 {
+		if err := host.OpenMessages(); err != nil {
+			t.Fatal(err)
+		}
+		pump()
+		top := &app.overlays[len(app.overlays)-1]
+		pick := top.selectedAnchor()
+		if from, to := unitRows(chat.lines, pick); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+			t.Fatalf("open %d: the picked row %d is off screen, rows %d..%d of view %d..%d", n, pick, from, to, chat.top, chat.top+chat.viewH)
+		}
+		if pick == 1 {
+			t.Fatalf("open %d landed on the turn's prompt with the chat at row %d", n, app.readRow)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+		pump()
+		press(t, app, tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+		pump()
+	}
+}
+
 // TestMessagesOpenOnRun: a run of calls is no message the list names, so a
 // view whose top row is the run's digest hands over to the message under it,
 // never back to the reply above, which may be many rows away.

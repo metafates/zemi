@@ -200,6 +200,10 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		}
 		st.followed = st.selectedAnchor()
 		if chat := a.scrolls[a.scrollDef]; chat != nil {
+			// the level opened last says where the chat goes: a jump the level
+			// under it asked for (the turn of a row, while this one's row is
+			// already in view) must not land the chat on that level's row
+			delete(a.pendingAnchor, a.scrollDef)
 			// a pick whose row the view does not show (a turn's prompt over
 			// the tail) is brought into view as any move would
 			if from, to := unitRows(chat.lines, st.followed); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
