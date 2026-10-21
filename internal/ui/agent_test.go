@@ -2600,6 +2600,27 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 	}
 }
 
+// TestEllipsizeSegsWordBoundary: the ellipsis follows a whole word. A word
+// the cut splits is dropped, one the cut left whole stays, so no row ends
+// short of its width when the cut landed at a word's end.
+func TestEllipsizeSegsWordBoundary(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, text string
+		w          int
+		want       string
+	}{
+		{"a word the cut splits is dropped", "alpha beta gamma delta", 13, "alpha beta…"},
+		{"a word the cut left whole stays", "alpha beta widths. more", 18, "alpha beta widths…"},
+		{"a word too long to drop keeps its cut", "alpha supercalifragilisticexpialidocious", 25, "alpha supercalifragilist…"},
+		{"a path holding no space keeps its cut", "internal/ui/agent.go", 12, "internal/ui…"},
+	} {
+		if got := hostapi.SegsText(ellipsizeSegs([]hostapi.Segment{{Text: c.text}}, c.w)); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestStreamEventsCoalesce(t *testing.T) {
 	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: slog.New(slog.DiscardHandler), focused: true, now: time.Now}
 	for range 3 * hookQueueSize {

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -430,7 +431,7 @@ func cutBar(r []hostapi.Segment) (row, bar []hostapi.Segment) {
 const clipFragment = 12
 
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
-// when one is close. Trailing blanks are padding and cut without one.
+// when the cut splits one. Trailing blanks are padding and cut without one.
 func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	if w < 2 || ansi.StringWidth(strings.TrimRight(hostapi.SegsText(segs), " ")) <= w {
 		return truncateSegs(segs, w)
@@ -438,14 +439,35 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	out := truncateSegs(segs, w-1)
 	if n := len(out); n > 0 {
 		last := out[n-1]
-		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= clipFragment {
+		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= clipFragment && cutSplitWord(segs, len(out), last.Text) {
 			last.Text = strings.TrimRight(last.Text[:i], " ,;:-·.")
+		} else {
+			last.Text = strings.TrimRight(last.Text, " ,;:-·.")
 		}
 		dots := last
 		dots.Text = "…"
 		out = append(out[:n-1:n-1], last, dots)
 	}
 	return out
+}
+
+// cutSplitWord reports whether the cut left the fragment after the last
+// space partial: the text goes on with a word character where the kept text
+// stops. One the cut left whole stays, so a fitting word is not dropped.
+func cutSplitWord(segs []hostapi.Segment, kept int, text string) bool {
+	if kept > len(segs) {
+		return false
+	}
+	orig := segs[kept-1].Text
+	if len(orig) > len(text) {
+		r, _ := utf8.DecodeRuneInString(orig[len(text):])
+		return unicode.IsLetter(r) || unicode.IsDigit(r)
+	}
+	if kept < len(segs) { // the cut fell at the segment's end: the word may go on in the next one
+		r, _ := utf8.DecodeRuneInString(segs[kept].Text)
+		return unicode.IsLetter(r) || unicode.IsDigit(r)
+	}
+	return false
 }
 
 // tailSegs cuts segs wider than w cells from the left behind an ellipsis,
