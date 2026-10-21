@@ -66,7 +66,7 @@ isolation. A run that must not touch the machine goes in a container or a VM.
 
 At a prompt `y` allows once, `n` denies, and `t` denies and stops the turn so the user can say what to do instead.
 
-Model tool names, for the `tools` of a profile or agent: `shell`, `read`, `write`, `edit`, `glob`, `grep`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `update` (subagent definitions only, and not a fork's: see `agents.md`), `mcp_<server>_<tool>`, `tool_search` (past ten MCP tools their schemas leave the request and the model loads them through it) and tools added from Lua.
+Model tool names, for the `tools` of a profile or agent: `shell`, `verify` (a shell command whose exit 0 ends the turn), `read`, `write`, `edit`, `glob`, `grep`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `update` (subagent definitions only, and not a fork's: see `agents.md`), `mcp_<server>_<tool>`, `tool_search` (past ten MCP tools their schemas leave the request and the model loads them through it) and tools added from Lua.
 
 Planning is a read-only profile: with `read_only = true` every action is denied - writes, commands, Lua tools - and the turn ends in a plan the user approves (implemented in the next turn), asks changes to, or saves to start later. Nothing ships one: define it with `zemi.agent.profile.add("planner", { read_only = true })` in `init.lua` (a plugin may too, `plugins.md`), then `/profile planner` or ctrl+t.
 

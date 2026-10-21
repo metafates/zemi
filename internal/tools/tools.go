@@ -34,6 +34,7 @@ import (
 // uses these, so renaming a tool is one line, not a recount of literals.
 const (
 	ToolShell       = "shell"
+	ToolVerify      = "verify"
 	ToolRead        = "read"
 	ToolWrite       = "write"
 	ToolEdit        = "edit"
@@ -812,6 +813,12 @@ Chain dependent steps with &&.`,
 			shellArgs{},
 			shellRequests,
 			typed(runShell)),
+
+		mk(ToolVerify, `Run the command that decides the task is done: exit 0 ends the turn with the result as your last word, no reply after it - what the user must read goes in about. A failed run returns its output and the turn continues. The whole deciding run belongs in this one call, chained with &&, not split between shell and verify. Same terms as shell.`,
+			false,
+			verifyArgs{},
+			shellRequests,
+			typed(runVerify)),
 
 		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			readArgs{},

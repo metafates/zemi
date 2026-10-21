@@ -64,6 +64,30 @@ func TestShellTimeoutBecomesJob(t *testing.T) {
 	}
 }
 
+// TestVerifyStops: the tool that decides the task is done ends the turn on
+// exit 0 only - a failed run and a handoff to a job both continue the loop.
+func TestVerifyStops(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{Jobs: NewJobs()}
+	for _, c := range []struct {
+		name, command string
+		stop, isErr   bool
+	}{
+		{"exit 0", "echo green", true, false},
+		{"exit 1", "echo red >&2; exit 1", false, true},
+		{"handoff", "echo started; sleep 30", false, false},
+	} {
+		res, err := runVerify(t.Context(), p, verifyArgs{Command: c.command, TimeoutMS: 400})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if res.StopTurn != c.stop || res.IsError != c.isErr {
+			t.Fatalf("%s: stop %v isErr %v: %q", c.name, res.StopTurn, res.IsError, res.Content)
+		}
+	}
+	runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"})
+}
+
 // TestShellOrphanIsNotAnError: a command that leaves a child holding the
 // pipe exited 0; the child is stopped and named, not reported as a failure.
 func TestShellOrphanIsNotAnError(t *testing.T) {

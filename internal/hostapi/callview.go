@@ -161,6 +161,7 @@ var callTitles = map[string]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
 	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill", tools.ToolLSP: "Lookup",
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
+	tools.ToolVerify: "Verify",
 }
 
 // callWords say where a call stands, beside its mark.
