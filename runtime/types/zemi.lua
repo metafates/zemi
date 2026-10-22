@@ -2036,6 +2036,8 @@ function zemi.session.id() end
 function zemi.session.title() end
 
 ---@param title string
+---@return true|nil ok
+---@return string|nil err
 function zemi.session.rename(title) end
 
 ---@return zemi.StoredMessage[]
