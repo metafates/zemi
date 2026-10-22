@@ -105,11 +105,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 	for k, v := range p.Headers {
 		httpReq.Header.Set(k, v)
 	}
-	client := p.HTTP
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(httpReq)
+	resp, err := p.HTTP.Do(httpReq)
 	if err != nil {
 		return Result{}, err
 	}

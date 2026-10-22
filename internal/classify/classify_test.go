@@ -137,7 +137,7 @@ func TestProtocolAnswersRejected(t *testing.T) {
 		_, _ = w.Write([]byte("no key"))
 	}))
 	t.Cleanup(bad.Close)
-	_, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Protocol: &Protocol{BaseURL: bad.URL}})
+	_, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Protocol: &Protocol{BaseURL: bad.URL, HTTP: bad.Client()}})
 	if err == nil || !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "no key") {
 		t.Errorf("err = %v, want the provider's status and body", err)
 	}
