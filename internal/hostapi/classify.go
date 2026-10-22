@@ -20,7 +20,7 @@ import (
 )
 
 // classifyTimeout is how long a classify call may take: a small job, so it
-// waits a minute rather than the ten a model ask may.
+// waits a minute rather than the ten minutes a model ask may.
 const classifyTimeout = time.Minute
 
 // classifyAsk is zemi.classify.ask({ model, state, questions, timeout }):
