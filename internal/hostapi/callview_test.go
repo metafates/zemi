@@ -99,11 +99,8 @@ func TestCallView(t *testing.T) {
 	if live.ID != "call:-1" || !live.Live || fieldOf(live, "status") != "running" {
 		t.Fatalf("the live call's view = %+v", live)
 	}
-	// one live call, then a second: the view steps along the run still being
-	// written, not along the rows that had settled when it opened
-	if live.Next != "" || live.Prev != "" {
-		t.Fatalf("one live call stepped to %q and %q", live.Prev, live.Next)
-	}
+	// two live calls: the view steps along the run still being written, and
+	// back into the rows the turn settled before it
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{Name: "shell", Input: "sleep 9", Status: CallRun},
 		{Name: "read", Input: "a.go", Status: CallRun},
@@ -111,7 +108,7 @@ func TestCallView(t *testing.T) {
 	if err := h.openCall(-1); err != nil {
 		t.Fatal(err)
 	}
-	if first := ui.opened[len(ui.opened)-1]; first.Prev != "" || first.Next != "call -2" {
+	if first := ui.opened[len(ui.opened)-1]; first.Prev != "call 6" || first.Next != "call -2" {
 		t.Fatalf("the first live call steps to %q and %q", first.Prev, first.Next)
 	}
 	if err := h.openCall(-2); err != nil {
@@ -125,6 +122,63 @@ func TestCallView(t *testing.T) {
 	}
 	if err := h.openCall(0); err == nil || !strings.Contains(err.Error(), "no row 0") {
 		t.Fatalf("row 0: %v, want a refusal", err)
+	}
+}
+
+// TestCallStepCrossesIntoTheLiveTurn: the turn settles its calls into the
+// transcript's tail while its later ones still stream, so one rail runs
+// through both and a step crosses the boundary both ways.
+func TestCallStepCrossesIntoTheLiveTurn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	h.AppendMessage("user", "go")
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{{Name: "shell", Input: "sleep 9", Status: CallRun}}})
+	// the live calls are the turn's first: no settled row to step to yet
+	if prev, next := h.callStep(-1); prev != "" || next != "" {
+		t.Fatalf("the lone live call steps to %q and %q", prev, next)
+	}
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "a.go", Status: CallOK})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "b.go", Status: CallOK})
+	if o := h.callView(3, mustRow(t, h, 3), 0); o.Prev != "call 2" || o.Next != "call -1" {
+		t.Fatalf("the last settled call steps to %q and %q", o.Prev, o.Next)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openCall(-1); err != nil {
+		t.Fatal(err)
+	}
+	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call 3" || o.Next != "" {
+		t.Fatalf("the first live call steps to %q and %q", o.Prev, o.Next)
+	}
+	// a live call that went on as an agent run is a run row: a step passes
+	// over it, both ways
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{Name: "agent", Run: "r1", Status: CallRun},
+		{Name: "read", Input: "c.go", Status: CallRun},
+	}})
+	if err := h.openCall(-2); err != nil {
+		t.Fatal(err)
+	}
+	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call 3" || o.Next != "" {
+		t.Fatalf("the call past a run row steps to %q and %q", o.Prev, o.Next)
+	}
+	if err := h.openCall(-1); err != nil {
+		t.Fatal(err)
+	}
+	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call 3" || o.Next != "call -2" {
+		t.Fatalf("the run row's view steps to %q and %q", o.Prev, o.Next)
+	}
+	// a shown run has no live stream: the crossing is gated off both ways
+	h.tMu.Lock()
+	h.view = &agentRun{id: "r1", status: RunDone, tr: []ChatMessage{
+		{Role: "user", Text: "look"}, {Kind: RowTool, Tool: "read", Text: "a.go", Status: CallOK},
+	}}
+	h.tMu.Unlock()
+	if o := h.callView(2, mustRow(t, h, 2), 0); o.Prev != "" || o.Next != "" {
+		t.Fatalf("a run's row steps to %q and %q", o.Prev, o.Next)
+	}
+	if prev, _ := h.callStep(-1); prev != "" {
+		t.Fatalf("a live view under a run steps back to %q", prev)
 	}
 }
 

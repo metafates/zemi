@@ -278,19 +278,51 @@ func (h *Host) skillBody(m ChatMessage) string {
 
 // callStep names the views around row n in its rail: the run of thinking and
 // call rows the chat draws as one unit between two messages, so ctrl+j and
-// ctrl+k walk it. A run digest is no call view (it opens its run), so a step
-// passes over it.
+// ctrl+k walk it. The turn settles its calls into the transcript's tail while
+// it still writes the later ones, so the settled rows and the live calls are
+// one rail and a step crosses between them. A run digest is no call view (it
+// opens its run), so a step passes over one, settled or live.
 func (h *Host) callStep(n int) (prev, next string) {
+	tr := h.viewedTranscript()
+	s := h.AgentStream()
+	// a shown run has no live stream of its own, so the live calls are steps
+	// of the session's rail alone
+	cross := h.viewedRun() == nil && s.Active
+	rail := func(i int) bool { return tr[i].Kind == RowTool || tr[i].Kind == RowReasoning }
+	step := func(i int) string {
+		switch {
+		case !rail(i), tr[i].Kind == RowTool && tr[i].Run != "":
+			return ""
+		}
+		return "call " + strconv.Itoa(i+1)
+	}
+	back := func(from int) string {
+		for i := from; i >= 0 && rail(i); i-- {
+			if cmd := step(i); cmd != "" {
+				return cmd
+			}
+		}
+		return ""
+	}
 	// the live turn's calls are named by negative rows, -1 its first: a view
 	// of one steps along the run still being written, not a snapshot of
 	// whatever had settled when it opened
 	if n < 0 {
-		if live := len(h.AgentStream().Tools); -n <= live {
-			if k := -n; k > 1 {
-				prev = "call " + strconv.Itoa(-(k - 1))
+		if k := -n; k <= len(s.Tools) {
+			for j := k - 2; j >= 0; j-- {
+				if s.Tools[j].Run == "" {
+					prev = "call " + strconv.Itoa(-j-1)
+					break
+				}
 			}
-			if k := -n; k < live {
-				next = "call " + strconv.Itoa(-(k + 1))
+			if prev == "" && cross {
+				prev = back(len(tr) - 1)
+			}
+			for j := k; j < len(s.Tools); j++ {
+				if s.Tools[j].Run == "" {
+					next = "call " + strconv.Itoa(-j-1)
+					break
+				}
 			}
 			return prev, next
 		}
@@ -301,28 +333,25 @@ func (h *Host) callStep(n int) (prev, next string) {
 		}
 		return "", ""
 	}
-	tr := h.viewedTranscript()
 	if n < 1 || n > len(tr) {
 		return "", ""
 	}
-	rail := func(i int) bool { return tr[i].Kind == RowTool || tr[i].Kind == RowReasoning }
-	step := func(i int) string {
-		switch {
-		case !rail(i), tr[i].Kind == RowTool && tr[i].Run != "":
-			return ""
-		}
-		return "call " + strconv.Itoa(i+1)
-	}
-	for i := n - 2; i >= 0 && rail(i); i-- {
-		if cmd := step(i); cmd != "" {
-			prev = cmd
-			break
-		}
-	}
-	for i := n; i < len(tr) && rail(i); i++ {
+	prev = back(n - 2)
+	var i int
+	for i = n; i < len(tr) && rail(i); i++ {
 		if cmd := step(i); cmd != "" {
 			next = cmd
 			break
+		}
+	}
+	// the walk ran to the transcript's end: the rail runs on into the calls
+	// the turn is still writing
+	if i == len(tr) && cross {
+		for j := range s.Tools {
+			if s.Tools[j].Run == "" {
+				next = "call " + strconv.Itoa(-j-1)
+				break
+			}
 		}
 	}
 	return prev, next
