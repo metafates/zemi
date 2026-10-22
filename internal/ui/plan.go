@@ -113,7 +113,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	act := choiceRows(p.choices(), p.sel, inner, true)
 	hints := []hintPair{pickHint, {key: "esc", verb: "dismiss"}}
 	if p.typing {
-		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner)}
+		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner, "")}
 		hints = []hintPair{sendHint, {key: "esc", verb: "back"}}
 	}
 	// the full width a modal may take: the plan wraps there once, and typing

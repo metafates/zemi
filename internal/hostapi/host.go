@@ -155,9 +155,11 @@ type Overlay struct {
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text. A Go screen's prompt
 	// sets Run instead, a command the text is appended to; Lua never sets it.
-	Input   bool
-	Default string
-	Run     string
+	// Placeholder shows dim in the empty line, what submitting it would mean.
+	Input       bool
+	Default     string
+	Placeholder string
+	Run         string
 
 	// Reload makes a list a toggle list: enter and space run the row's "run"
 	// command or on_select and rebuild the items, keeping the overlay open.
@@ -2227,7 +2229,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.131.0"))
+	api.RawSetString("version", glua.LString("0.132.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

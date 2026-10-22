@@ -113,27 +113,50 @@ func (h *Host) configSection(name string) bool {
 }
 
 // configSections is /config's root: one row per section of the schema, in
-// schema order, over the two actions.
+// schema order, over the two actions. The preview names the keys, so the
+// reader knows what falls where before falling in.
 func (h *Host) configSections() []OverlayItem {
 	counts := map[string]int{}
 	var order []string
+	keys := map[string][]string{}
 	for _, s := range h.Settings.Schema() {
-		seg, _, _ := strings.Cut(string(s.Path), ".")
+		seg, rest, _ := strings.Cut(string(s.Path), ".")
 		if counts[seg]++; counts[seg] == 1 {
 			order = append(order, seg)
 		}
+		keys[seg] = append(keys[seg], rest)
 	}
 	items := []OverlayItem{
 		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting off its default, as the zemi.config.set lines init.lua would write"},
 		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
 	}
 	for _, sec := range order {
+		desc, ok := sectionDesc[sec]
+		if !ok {
+			desc = pluralCount(counts[sec], "setting", "settings")
+		}
 		items = append(items, OverlayItem{
-			Text: sourceSection(sec), Desc: pluralCount(counts[sec], "setting", "settings"),
+			Text: sourceSection(sec), Desc: desc, Preview: strings.Join(keys[sec], ", "),
 			Verb: VerbOpen, Run: "config " + sec,
 		})
 	}
 	return items
+}
+
+// sectionDesc is the line a /config section row reads by, per first path
+// segment of the schema.
+var sectionDesc = map[string]string{
+	"models":    "the model each job runs on",
+	"providers": "the builtin providers and their keys",
+	"ui":        "the theme, the mouse and alerts",
+	"agent":     "profile, effort and compaction",
+	"session":   "naming sessions and the idle recap",
+	"lsp":       "language servers and when they start",
+	"editor":    "the editor zemi opens",
+	"keymap":    "the key <leader> stands for",
+	"log":       "what the launch log records",
+	"memory":    "how memories are proposed and stored",
+	"plugins":   "settings the plugins register",
 }
 
 func (h *Host) setting(path config.Key) (config.Setting, error) {
@@ -284,6 +307,26 @@ func configPicker(path config.Key) string {
 	return "config edit " + string(path)
 }
 
+// settingGhost is what an empty input means for the setting, shown dim in
+// the prompt: a bare enter sets exactly that.
+func settingGhost(s config.Setting) string {
+	//nolint:exhaustive // a bool edits on a switch, a list has no prompt
+	switch s.Kind {
+	case config.KindDuration:
+		if d, _ := s.Default.(string); d != "" {
+			return "default " + d
+		}
+		return "empty = off"
+	case config.KindNumber:
+		return "default " + showSetting(s.Default)
+	case config.KindString:
+		if d, _ := s.Default.(string); d != "" {
+			return "default " + d
+		}
+	}
+	return ""
+}
+
 // configChoices is what /config edit offers for path; "" is the default.
 func (h *Host) configChoices(path config.Key) []string {
 	//nolint:exhaustive // a model target's key is no builtin constant
@@ -317,7 +360,7 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 		if !ok {
 			text = luaLiteral(v) // a number as /config set reads it
 		}
-		ui.OpenOverlay(Overlay{ID: "config edit", Title: string(path), Origin: lua.OriginBuiltin, Input: true, Default: text, Run: "config set " + string(path)})
+		ui.OpenOverlay(Overlay{ID: "config edit", Title: string(path), Origin: lua.OriginBuiltin, Input: true, Default: text, Placeholder: settingGhost(s), Run: "config set " + string(path)})
 		return nil
 	}
 	items, sel := h.pickItems(path)

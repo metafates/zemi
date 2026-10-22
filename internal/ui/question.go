@@ -438,7 +438,7 @@ func (st *qState) field(q tools.Question, w int) []hostapi.Segment {
 	row := []hostapi.Segment{{Text: fmt.Sprintf("%-8s", name), HL: hostapi.ChromeHint}}
 	switch {
 	case st.typing:
-		row = append(row, st.input.inputRow(w-8)...)
+		row = append(row, st.input.inputRow(w-8, "")...)
 	case tail:
 		row = append(row, text...)
 	default:

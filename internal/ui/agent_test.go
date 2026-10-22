@@ -2104,6 +2104,57 @@ func TestConfigEdit(t *testing.T) {
 	}
 }
 
+// TestConfigEditErrorStays: a refused value wraps inside the width the box
+// opened at, so the frame never jumps sideways, and the ghost of an empty
+// line names what a bare enter would set.
+func TestConfigEditErrorStays(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 20)
+	reloadUI(t, host)
+	app.runCommand("config", "")
+	app.runCommand("config", "edit session.recap")
+	for app.Pump() {
+	}
+	for range 12 {
+		app.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	app.Frame() // the box draws and keeps its width
+	before := app.overlays[len(app.overlays)-1].size
+	// the cursor block sits on the ghost's first cell, so its escape splits the word
+	if !strings.Contains(app.Frame(), "efault 3m") {
+		t.Fatal("the emptied line shows no ghost")
+	}
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}) // typing takes the line back
+	if strings.Contains(app.Frame(), "efault 3m") {
+		t.Fatal("the ghost outlived the first key")
+	}
+	for range 2 {
+		app.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	for _, r := range "soon" {
+		app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if err := app.overlays[len(app.overlays)-1].inputErr; err == "" {
+		t.Fatal("the refused value named no error")
+	}
+	frame := app.Frame()
+	if got := app.overlays[len(app.overlays)-1].size; got.w != before.w {
+		t.Fatalf("the box widened %+v from %+v on the error", got, before)
+	}
+	// the message wraps to the box's rows: its tail is on a line of its own
+	// and no drawn line carries the whole message
+	lines := strings.Split(frame, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "duration like 90s or 3m") && strings.Contains(line, `not "soon"`) {
+			t.Fatal("the error drew unwrapped")
+		}
+	}
+	if !slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, `"soon"`) }) {
+		t.Fatal("the error's tail is not drawn")
+	}
+}
+
 // TestKeySequence: ctrl+x then t runs a <leader>t binding without typing
 // the t; a key that breaks the sequence reaches the composer.
 func TestKeySequence(t *testing.T) {

@@ -1072,6 +1072,7 @@ function zemi.event.stats() end
 ---@class zemi.InputOpts
 ---@field prompt? string
 ---@field default? string
+---@field placeholder? string Shown dim in the empty line, what submitting it would mean.
 
 ---@class zemi.ui
 zemi.ui = {}

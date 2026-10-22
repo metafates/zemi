@@ -1107,11 +1107,20 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w))}
-		if st.inputErr != "" {
-			body = append(body, []hostapi.Segment{{Text: ansi.Truncate(st.inputErr, inner, "…"), HL: hostapi.ChromeDanger}})
+		inW := min(inner, st.size.w)
+		if st.size.w == 0 { // measuring: the line draws at its natural width
+			inW = min(inner, 40)
 		}
-		body = append(body, nil, hint(inner, sendHint, hintPair{key: "esc", verb: "close"}))
+		body := [][]hostapi.Segment{st.input.inputRow(inW, st.o.Placeholder)}
+		if st.inputErr != "" {
+			// the error takes the blank row between the line and the hints,
+			// wrapped to the width the box keeps, so a long one costs height
+			// and never widens or shifts the frame
+			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: st.inputErr, HL: hostapi.ChromeDanger}}, min(inner, max(st.size.w, 20)))...)
+		} else {
+			body = append(body, nil)
+		}
+		body = append(body, hint(inner, sendHint, hintPair{key: "esc", verb: "close"}))
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list with previews reads as text; a detail view widens to its

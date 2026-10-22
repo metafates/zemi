@@ -459,9 +459,13 @@ func spaced(segs []hostapi.Segment) []hostapi.Segment {
 
 // inputRow is a one-line text field at least 40 cells wide: "> " and the
 // text with its cursor, scrolled so the cursor stays inside width cells and
-// cut to them, so typing never widens the box drawn around it.
-func (c *composerState) inputRow(width int) []hostapi.Segment {
+// cut to them, so typing never widens the box drawn around it. An empty
+// line shows ghost dim under the cursor, what submitting it would mean.
+func (c *composerState) inputRow(width int, ghost string) []hostapi.Segment {
 	segs := cursorSegs([]rune(c.text), c.cursor, "")
+	if c.text == "" && ghost != "" {
+		segs = cursorSegs([]rune(ghost), 0, "Dim")
+	}
 	if over := 2 + hostapi.SegsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}

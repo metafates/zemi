@@ -180,7 +180,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.131.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.132.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -699,11 +699,31 @@ func TestConfigSet(t *testing.T) {
 	if root < 0 || sections[root].Run != "config session" || sections[root].Verb != VerbOpen {
 		t.Fatalf("the session row = %+v, want open running config session", sections[root])
 	}
+	if sections[root].Desc == "" || sections[root].Preview != "auto_title, recap" {
+		t.Errorf("the session row reads %q, %q; want a description over its keys", sections[root].Desc, sections[root].Preview)
+	}
 	if n := len(h.configItems("session")); n != 2 {
 		t.Errorf("the session section holds %d keys, want auto_title and recap", n)
 	}
 	if !h.configSection("models") || h.configSection("set") {
 		t.Error("configSection matches a schema segment only")
+	}
+	// an empty input's ghost is what a bare enter would set
+	for _, c := range []struct {
+		path, want string
+	}{
+		{"session.recap", "default 3m"},
+		{"agent.compact_idle", "empty = off"},
+		{"agent.max_background", "default 4"},
+		{"editor.command", ""},
+	} {
+		s, err := h.setting(config.Key(c.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := settingGhost(s); got != c.want {
+			t.Errorf("%s ghost %q, want %q", c.path, got, c.want)
+		}
 	}
 	// a bool row draws its switch after its source, and its description is
 	// the preview

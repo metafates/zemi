@@ -1883,8 +1883,10 @@ rides the `memories.md` line and its ledger entries.
   the list stays open, and again when an overlay stacked on it closes, a
   detail view only after it ran something, so a picker opened from it shows its pick at once,
   as does a Go screen's one-line prompt (`/config edit`), whose command runs with the typed
-  text before it closes, a refused value keeping the prompt open with the
-  error the command named,
+  text before it closes, a refused value keeping the prompt open, the error
+  wrapped into the blank row the box keeps under the line, so the frame never
+  moves sideways, and an empty line showing dim what submitting it would
+  mean (the key's default, or that it turns the key off),
   and after a reload; a row that fills the composer closes the list, which would keep
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id

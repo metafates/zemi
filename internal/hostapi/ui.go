@@ -240,20 +240,22 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 
 	// input(opts, on_confirm): a one-line prompt in the shape of
 	// vim.ui.input. on_confirm(text) runs on enter, on_confirm(nil) on esc;
-	// opts.prompt titles it, opts.default prefills it.
+	// opts.prompt titles it, opts.default prefills it, opts.placeholder
+	// shows dim in the empty line.
 	tb.RawSetString("input", L.NewFunction(func(L *glua.LState) int {
 		opts := L.OptTable(1, L.NewTable())
 		cb := L.CheckFunction(2)
 		o := Overlay{
-			ID:       fmt.Sprintf("input:%d", h.selectSeq.Add(1)),
-			Title:    rawString(L, opts, "prompt"),
-			Origin:   h.RT.CurrentOrigin(L),
-			Path:     h.RT.CurrentPath(L),
-			Gen:      h.currentGen(),
-			Input:    true,
-			Default:  rawString(L, opts, "default"),
-			OnSelect: cb,
-			OnClose:  cb,
+			ID:          fmt.Sprintf("input:%d", h.selectSeq.Add(1)),
+			Title:       rawString(L, opts, "prompt"),
+			Origin:      h.RT.CurrentOrigin(L),
+			Path:        h.RT.CurrentPath(L),
+			Gen:         h.currentGen(),
+			Input:       true,
+			Default:     rawString(L, opts, "default"),
+			Placeholder: rawString(L, opts, "placeholder"),
+			OnSelect:    cb,
+			OnClose:     cb,
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
