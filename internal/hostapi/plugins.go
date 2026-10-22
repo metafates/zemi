@@ -159,7 +159,7 @@ func pickPlugins(ps []plugin.Plugin, pluginsRoot string) (run []plugin.Plugin, r
 		case p.Local && installed.Has(p.Name):
 			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
 		case err != nil:
-			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a dangling link, which loads nothing; it may have left its marketplace; delete it or install it again")})
+			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a dangling link, which loads nothing; it may have left its marketplace; delete it, then install it again")})
 		case isLink && !strings.HasPrefix(target, pluginsRoot+string(filepath.Separator)):
 			why := "a link out of the plugins tree, which zemi does not load; install it from its marketplace instead"
 			if p.Local {
