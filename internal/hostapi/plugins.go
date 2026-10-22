@@ -147,7 +147,7 @@ func pickPlugins(ps []plugin.Plugin, pluginsRoot string) (run []plugin.Plugin, r
 		if isLink {
 			target, err = filepath.EvalSymlinks(p.Dir)
 		}
-		// a link's layout is its target's, read through the link
+		// the old layout is refused for a real dir only; a link skips it
 		var old error
 		if err == nil && !isLink && fi.IsDir() {
 			old = plugin.OldLayout(p.Dir)
