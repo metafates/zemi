@@ -8,6 +8,7 @@ package hostapi
 
 import (
 	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -110,6 +111,14 @@ func (h *Host) settledRow(n int) int {
 	return 0
 }
 
+// streamRow is a live call as the chat draws it, with how long it has run.
+func streamRow(t StreamTool, took time.Duration) (ChatMessage, time.Duration) {
+	return ChatMessage{
+		Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label,
+		Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
+	}, took
+}
+
 // chatRow is the row the chat draws at n: the live turn's calls, the rows of
 // the run the chat shows, else the session's. took is how long a live call
 // has run, 0 for a settled one, since no row records that.
@@ -121,10 +130,8 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 			return ChatMessage{}, 0, false
 		}
 		t := s.Tools[i]
-		return ChatMessage{
-			Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label,
-			Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
-		}, time.Since(t.Started), true
+		row, took := streamRow(t, time.Since(t.Started))
+		return row, took, true
 	}
 	tr := h.Session().Transcript
 	if run := h.viewedRun(); run != nil {
@@ -158,7 +165,7 @@ func (h *Host) callWatchTick(n int) bool {
 	if !live {
 		return false
 	}
-	row, took, ok := h.chatRow(n)
+	row, took, ok := h.callViewRow(n)
 	if !ok || n < 0 && !h.AgentActive() {
 		return false
 	}
@@ -169,6 +176,32 @@ func (h *Host) callWatchTick(n int) bool {
 	// has nothing to say until the transcript grows, and refreshCall
 	// takes it then
 	return n < 0 || row.Status == CallRun || row.Status == CallWait
+}
+
+// callViewRow is the row the open call view shows: the call it opened for,
+// found by its id in the live stream - a flush prunes settled calls out of
+// the stream, so the index the view opened at names a later call afterwards
+// - and, once it settles, at the transcript row it landed at. The stream
+// read takes the agent lock: this runs on the watcher, never under it.
+func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool) {
+	if n > 0 {
+		return h.chatRow(n)
+	}
+	h.msgMu.Lock()
+	id := h.callID
+	h.msgMu.Unlock()
+	if id == "" { // an unnamed call (a seeded stream): the index is all there is
+		return h.chatRow(n)
+	}
+	s := h.AgentStream()
+	if i := slices.IndexFunc(s.Tools, func(t StreamTool) bool { return t.ID == id }); i >= 0 {
+		row, took = streamRow(s.Tools[i], time.Since(s.Tools[i].Started))
+		return row, took, true
+	}
+	if m := h.settledRow(n); m > 0 {
+		return h.chatRow(m)
+	}
+	return ChatMessage{}, 0, false
 }
 
 // callTitles name a call's view by what it is, not by the verb its row reads

@@ -254,6 +254,39 @@ func TestCallWatcherSuperseded(t *testing.T) {
 	}
 }
 
+// TestCallViewFollowsItsCall: a live call view stays on the call it opened
+// for as the turn writes on - a flush prunes settled calls out of the
+// stream, so the index the view opened at names a later call afterwards.
+func TestCallViewFollowsItsCall(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	ui := h.hooks().(*fakeUI)
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{ID: "call_1", Name: "shell", Input: "make build", Status: CallRun},
+		{ID: "call_2", Name: "read", Input: "a.go", Status: CallRun},
+	}})
+	if err := h.openCall(-2); err != nil { // the last action
+		t.Fatal(err)
+	}
+	// the first call settles and a third starts: the flush prunes the
+	// settled prefix, so call_2 moves to the front of the stream
+	h.agents.mu.Lock()
+	h.agents.tools[0].Status = CallOK
+	h.flushOutput(TurnStat{})
+	h.agents.tools = append(h.agents.tools, StreamTool{ID: "call_3", Name: "read", Input: "b.go", Status: CallRun})
+	h.agents.mu.Unlock()
+	h.watchCall(-2)
+	if !h.callWatchTick(-2) {
+		t.Fatal("the view's watcher stopped while its call still runs")
+	}
+	ui.mu.Lock()
+	got := ui.rebuilt[len(ui.rebuilt)-1]
+	ui.mu.Unlock()
+	if got.Title != "Read" || len(got.Fields) == 0 || fieldOf(got, "file") != "a.go" {
+		t.Fatalf("the view swapped to %q (%+v), want the call it opened for", got.Title, got.Fields)
+	}
+}
+
 // TestSkillBody: a skill's view reads the whole file, not the cut rows a
 // transcript keeps, so the procedure is there to read.
 func TestSkillBody(t *testing.T) {
