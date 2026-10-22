@@ -1045,13 +1045,6 @@ func editError(src, old string, n int, where string) string {
 	return "old_string not found in " + where + "; read the file again and copy the text exactly"
 }
 
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
 const (
 	globMaxFiles   = 200
 	grepMaxMatches = 100
