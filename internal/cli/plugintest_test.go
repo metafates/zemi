@@ -16,7 +16,7 @@ import (
 	"github.com/metafates/zemi/runtime"
 )
 
-// TestPluginsTest runs zemi plugins test on testdata/plugins/demo, whose
+// TestPluginsTest runs zemi plugin test on testdata/plugins/demo, whose
 // test files hold the passing cases and one case per kind of failure, and
 // on plugins a row writes; it reads the output and the exit status, and
 // checks that nothing outside the run's temp dir changed.
@@ -219,10 +219,10 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", ".zemi/tests/pass.lua"}, cancel: true, code: 130, want: ""},
 		{name: "Lua left at the plugin root is refused", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			".zemi/init.lua": "", ".zemi/tests/a.lua": `zemi.test("a", function() end)`, "workflows/w.lua": "-- d\nreturn 1",
-		}, want: "zemi: plugins test: <plugin>: workflows is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under .zemi/\n"},
+		}, want: "zemi: plugin test: <plugin>: workflows is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under .zemi/\n"},
 		{
 			name: "no such plugin", args: []string{"<plugin>/missing"}, code: 1,
-			want: "zemi: plugins test: lstat <plugin>/missing: no such file or directory\n",
+			want: "zemi: plugin test: lstat <plugin>/missing: no such file or directory\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {

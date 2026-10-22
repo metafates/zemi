@@ -1,4 +1,4 @@
-// plugintest.go is zemi.test, the namespace only a zemi plugins test boot
+// plugintest.go is zemi.test, the namespace only a zemi plugin test boot
 // registers (DESIGN §5): one throwaway zemi per case, on a fake clock, whose
 // gated calls only test.stub answers, and drivers that run what the plugin
 // registered the way zemi runs it.
@@ -38,7 +38,7 @@ import (
 // the same on every machine.
 var testEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// PluginTest is one boot of zemi plugins test: the test file it evaluates,
+// PluginTest is one boot of zemi plugin test: the test file it evaluates,
 // the case it runs, and what that case left for the report.
 type PluginTest struct {
 	// Cases are the file's zemi.test calls in order, filled as it runs.

@@ -21,24 +21,24 @@ import (
 	"github.com/metafates/zemi/internal/plugin"
 )
 
-// newPluginPrompt rides behind /plugins new and modifyPluginPrompt behind
-// /plugins modify; the procedure lives in the zemi skill.
+// newPluginPrompt rides behind /plugin new and modifyPluginPrompt behind
+// /plugin modify; the procedure lives in the zemi skill.
 const (
 	newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
 	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
 )
 
-// pluginsCommands is /plugins: the zemi plugins verbs, new and modify, which
+// pluginsCommands is /plugin: the zemi plugin verbs, new and modify, which
 // send the agent a prompt, and toggle and open.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
-		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
+		Name: "plugin", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
 		GoFn: (*Host).pluginsCommand,
-		GoComplete: SubcommandCompleter([]string{"new", "modify", "marketplace", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "modify", "marketplace", "install", "add", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			switch sub {
 			case "new", "check":
 				return nil
-			case "install":
+			case "install", "add":
 				// the entries a registered marketplace lists, as install types them
 				ms, _ := plugin.Marketplaces(h.Dirs)
 				var out []string
@@ -63,7 +63,7 @@ func (h *Host) pluginsCommands() []*Command {
 	}}
 }
 
-// pluginsCommand is /plugins; new and modify send the line as typed,
+// pluginsCommand is /plugin; new and modify send the line as typed,
 // newlines included, with their prompt riding behind it.
 func (h *Host) pluginsCommand(line string) error {
 	typed, stdin := agent.CutAttached(line)
@@ -83,10 +83,10 @@ func (h *Host) pluginsCommand(line string) error {
 	case verb == "open":
 		return noUI
 	default:
-		return fmt.Errorf("%w; zemi plugins manages them from the shell", noUI)
+		return fmt.Errorf("%w; zemi plugin manages them from the shell", noUI)
 	}
 	send := func(prompt string) error {
-		return h.AgentSend("/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin)
+		return h.AgentSend("/plugin " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin)
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again
@@ -95,7 +95,7 @@ func (h *Host) pluginsCommand(line string) error {
 		usage = "marketplace " + args[1] // the subverb's own grammar
 	}
 	background := func(label string, fn func(ctx context.Context) error) {
-		h.GoSafe("plugins "+verb, func() {
+		h.GoSafe("plugin "+verb, func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			stop := cancel
@@ -107,7 +107,7 @@ func (h *Host) pluginsCommand(line string) error {
 				return fn(ctx)
 			}()
 			if err != nil && ctx.Err() == nil {
-				h.CommandFailed("plugins", pluginsErr(usage, err))
+				h.CommandFailed("plugin", pluginsErr(usage, err))
 				if errors.Is(err, plugin.ErrUsage) {
 					return
 				}
@@ -117,7 +117,7 @@ func (h *Host) pluginsCommand(line string) error {
 	}
 	switch {
 	case len(args) == 0:
-		h.GoSafe("plugins", func() { h.openPlugins(ui, false, "") })
+		h.GoSafe("plugin", func() { h.openPlugins(ui, false, "") })
 	case verb == "toggle" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -156,12 +156,12 @@ func (h *Host) pluginsCommand(line string) error {
 		if err != nil {
 			return err
 		}
-		line := "plugins delete " + p.Name + " --yes"
+		line := "plugin delete " + p.Name + " --yes"
 		return AskFirst(line, "zemi "+line, func(confirm string) error {
 			if noUI != nil {
 				return noUI
 			}
-			h.GoSafe("plugins", func() { h.openPlugins(ui, false, confirm) })
+			h.GoSafe("plugin", func() { h.openPlugins(ui, false, confirm) })
 			return nil
 		})
 	case verb == "enable" || verb == "disable":
@@ -172,7 +172,7 @@ func (h *Host) pluginsCommand(line string) error {
 		if err := plugin.Run(context.Background(), h.Dirs, args, io.Discard); err != nil {
 			return pluginsErr(usage, err)
 		}
-		h.GoSafe("plugins", func() { h.openPlugins(ui, true, "") })
+		h.GoSafe("plugin", func() { h.openPlugins(ui, true, "") })
 		return nil
 	case verb == "marketplace" && len(args) > 1:
 		sub := args[1]
@@ -212,17 +212,17 @@ func (h *Host) pluginsCommand(line string) error {
 			}
 			return err
 		})
-	case verb == "install" || verb == "update" || verb == "delete":
+	case verb == "install" || verb == "add" || verb == "update" || verb == "delete":
 		// the last word names the busy line either way
-		name := "plugins"
+		name := "plugin"
 		if len(args) > 1 {
 			name = plugin.Name(args[len(args)-1])
 		}
-		label := map[string]string{"install": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
+		label := map[string]string{"install": "Installing ", "add": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
 		background(label, func(ctx context.Context) error {
 			var out strings.Builder
 			err := plugin.Run(ctx, h.Dirs, args, &out)
-			title := map[string]string{"install": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
+			title := map[string]string{"install": "Plugin installed", "add": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
 			body := strings.TrimSpace(out.String())
 			if body == plugin.UpToDate {
 				title, body = body, ""
@@ -241,18 +241,18 @@ func (h *Host) pluginsCommand(line string) error {
 }
 
 // pluginsErr turns a usage error into verb's own grammar, which fits a
-// toast, or the whole of it for a verb /plugins does not take.
+// toast, or the whole of it for a verb /plugin does not take.
 func pluginsErr(verb string, err error) error {
 	if !errors.Is(err, plugin.ErrUsage) {
 		return err
 	}
-	all := strings.TrimPrefix(plugin.ErrUsage.Error(), "usage: plugins ") + " | new [what it does] | modify <name> [what to change] | toggle <name> | open <name>"
+	all := strings.TrimPrefix(plugin.ErrUsage.Error(), "usage: plugin ") + " | new [what it does] | modify <name> [what to change] | toggle <name> | open <name>"
 	for form := range strings.SplitSeq(all, " | ") {
 		if form == verb || strings.HasPrefix(form, verb+" ") {
-			return Usagef("usage: /plugins %s", form)
+			return Usagef("usage: /plugin %s", form)
 		}
 	}
-	return Usagef("usage: /plugins %s", all)
+	return Usagef("usage: /plugin %s", all)
 }
 
 // pluginNamed finds a plugin by name, a local one first.
@@ -267,7 +267,7 @@ func (h *Host) pluginNamed(name string) (plugin.Plugin, error) {
 	return plugin.Plugin{}, Usagef("no plugin is named %q", name)
 }
 
-// openPlugins opens /plugins, or replaces the open list in place; a refresh
+// openPlugins opens /plugin, or replaces the open list in place; a refresh
 // after a slow action opens nothing once the user closed it, and confirm arms
 // the action that runs it (Overlay.Confirm). It reads git, so it never runs
 // on the key loop.
@@ -285,11 +285,11 @@ func (h *Host) pluginItems() []OverlayItem {
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the plugins", err.Error())
 	}
-	install := OverlayItem{Text: "Install a plugin", Verb: VerbFill, Fill: "/plugins install "}
+	install := OverlayItem{Text: "Install a plugin", Verb: VerbFill, Fill: "/plugin install "}
 	if len(ps) == 0 && err == nil {
 		install.Desc = "no plugins yet"
 	}
-	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugins new "}, install, {Text: "Check for updates", Verb: VerbRun, Run: "plugins check"}}
+	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install, {Text: "Check for updates", Verb: VerbRun, Run: "plugin check"}}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
@@ -323,21 +323,21 @@ func (h *Host) pluginItems() []OverlayItem {
 			if strings.Contains(p.Latest, "new commit") || strings.HasPrefix(p.Latest, "updated in the marketplace (") {
 				label = "update"
 			}
-			keys = append(keys, ItemKey{Key: "u", Desc: label, Run: "plugins update " + p.Name})
+			keys = append(keys, ItemKey{Key: "u", Desc: label, Run: "plugin update " + p.Name})
 		}
 		if p.Enabled {
-			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: "plugins disable " + p.Name})
+			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: "plugin disable " + p.Name})
 		} else {
-			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: "plugins enable " + p.Name})
+			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: "plugin enable " + p.Name})
 		}
-		keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "plugins open " + p.Name})
+		keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "plugin open " + p.Name})
 		if p.Local {
-			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugins modify " + p.Name + " "})
+			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugin modify " + p.Name + " "})
 		}
-		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugins delete " + p.Name + " --yes"})
+		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name + " --yes"})
 		items = append(items, OverlayItem{
 			Text: p.Name, Desc: strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
-			Section: section, On: new(p.Enabled), Run: "plugins toggle " + p.Name,
+			Section: section, On: new(p.Enabled), Run: "plugin toggle " + p.Name,
 			Detail: pluginDetail(p), Keys: keys,
 			Fields: fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
 				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
@@ -357,7 +357,7 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 	if len(ms) == 0 {
 		if err == nil {
 			*items = append(*items, OverlayItem{
-				Text: "Add a marketplace", Verb: VerbFill, Fill: "/plugins marketplace add ",
+				Text: "Add a marketplace", Verb: VerbFill, Fill: "/plugin marketplace add ",
 				Section: "Marketplaces", Desc: "none registered",
 			})
 		}
@@ -374,8 +374,8 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 			Detail: marketplaceDetail(m),
 			Fields: fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
 			Keys: []ItemKey{
-				{Key: "u", Desc: "update", Run: "plugins marketplace update " + m.Name},
-				{Key: "x", Desc: "remove", Danger: true, Run: "plugins marketplace remove " + m.Name},
+				{Key: "u", Desc: "update", Run: "plugin marketplace update " + m.Name},
+				{Key: "x", Desc: "remove", Danger: true, Run: "plugin marketplace remove " + m.Name},
 			},
 		})
 	}
@@ -398,7 +398,7 @@ func marketplaceDetail(m plugin.MarketplaceInfo) string {
 	if len(lines) == 0 {
 		return "Its manifest lists no plugins."
 	}
-	return "Installed with /plugins install <name>@" + m.Name + ":\n" + strings.Join(lines, "\n")
+	return "Installed with /plugin install <name>@" + m.Name + ":\n" + strings.Join(lines, "\n")
 }
 
 // pluginGloss is what each declared name grants, for the detail pane: the same

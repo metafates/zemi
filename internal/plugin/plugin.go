@@ -2,8 +2,8 @@
 // in installed/, directories the user develops in place in local/, and the
 // names turned off in disabled. Plugins come from a marketplace, whose
 // clones live in marketplaces/ as the cache installs and copies update
-// from. It runs no Lua and needs no Host, so the /plugins command and the
-// zemi plugins CLI share it.
+// from. It runs no Lua and needs no Host, so the /plugin command and the
+// zemi plugin CLI share it.
 package plugin
 
 import (
@@ -114,7 +114,7 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 const netTimeout = 2 * time.Minute
 
 // ErrUsage is Run's error for a verb or arguments it does not take.
-var ErrUsage = errors.New("usage: plugins marketplace add <url> | marketplace list | marketplace remove <name> | marketplace update [name] | install <name>[@<marketplace>] | update [name...] | check | enable <name> | disable <name> | delete <name>")
+var ErrUsage = errors.New("usage: plugin marketplace add <source> | marketplace list | marketplace remove <name> | marketplace update [name] | install <name>[@<marketplace>] | update [name...] | check | enable <name> | disable <name> | delete <name>")
 
 // List reads every plugin, local ones first, each group by name, with the
 // marketplace each install came from. It runs only local git reads.
@@ -176,8 +176,12 @@ func Code(name string) bool {
 
 // OldLayout is why a plugin in the layout before CodeDir cannot load, nil for
 // one that keeps its Lua where zemi reads it: that root entry is what the
-// loader no longer reaches.
+// loader no longer reaches. A Claude-layout plugin without zemi's code dir
+// has no zemi layout; its root files are its own.
 func OldLayout(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, CodeDir)); err != nil && IsClaude(dir) {
+		return nil
+	}
 	for _, name := range []string{"init.lua", "lua", "tests", "workflows"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return fmt.Errorf("%s is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under %s/", name, CodeDir)
@@ -196,17 +200,118 @@ func Name(url string) string {
 	return strings.TrimSuffix(path.Base(strings.TrimRight(url, "/")), ".git")
 }
 
-// installURL resolves an install source: a local path (as git tells it from
-// host:path) is made absolute, since git would resolve a relative one
-// against the plugins tree; a URL-like flag is refused early.
-func installURL(url string) (string, error) {
-	if strings.HasPrefix(url, "-") {
-		return "", fmt.Errorf("%q is not a git URL", url)
+// marketplaceSource resolves a `marketplace add` argument the way Claude and
+// codex type one: a local directory, an ssh or https git URL, or GitHub
+// shorthand owner/repo, with an optional #ref or @ref suffix.
+func marketplaceSource(arg string) (url, ref string, err error) {
+	s := strings.TrimSpace(arg)
+	if s == "" {
+		return "", "", errors.New("the marketplace source is empty")
 	}
-	if i := strings.IndexByte(url, ':'); i < 0 || strings.Contains(url[:i], "/") {
-		return filepath.Abs(url)
+	// #ref pins any source; @ref only a non-local one, so ./dir@x and
+	// git@host:path keep their meaning
+	if base, r, ok := strings.Cut(s, "#"); ok {
+		s, ref = base, strings.TrimSpace(r)
+	} else if !looksLikeLocalPath(s) && !strings.Contains(s, "://") && !isSSHURL(s) {
+		base, r, _ := strings.Cut(s, "@")
+		s, ref = base, strings.TrimSpace(r)
 	}
-	return url, nil
+	switch {
+	case looksLikeLocalPath(s):
+		if ref != "" {
+			return "", "", fmt.Errorf("%s: a ref pins a git source only", arg)
+		}
+		if rest, ok := strings.CutPrefix(s, "~/"); ok {
+			if home, err := os.UserHomeDir(); err == nil {
+				s = filepath.Join(home, rest)
+			}
+		}
+		if url, err = filepath.Abs(s); err != nil {
+			return "", "", err
+		}
+		if fi, err := os.Lstat(url); err == nil && !fi.IsDir() {
+			return "", "", fmt.Errorf("%s is not a directory", url)
+		}
+		return url, "", nil
+	case isSSHURL(s), strings.HasPrefix(s, "http://"), strings.HasPrefix(s, "https://"),
+		strings.HasPrefix(s, "file://"):
+		return normalizeGitURL(s), ref, nil
+	case githubShorthand(s):
+		return "https://github.com/" + s + ".git", ref, nil
+	}
+	return "", "", fmt.Errorf("%s is not a marketplace source: expected owner/repo, a git URL, or a local directory", arg)
+}
+
+// looksLikeLocalPath reports the shapes a marketplace add reads as a
+// directory: absolute, ./ ../ . .. ~/ and the Windows drive and UNC forms.
+func looksLikeLocalPath(s string) bool {
+	return filepath.IsAbs(s) || s == "." || s == ".." ||
+		strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") ||
+		strings.HasPrefix(s, "~/") || windowsAbs(s)
+}
+
+// windowsAbs reports the absolute shapes Windows users type, which a colon
+// would otherwise read as a git URL.
+func windowsAbs(s string) bool {
+	if len(s) >= 3 && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z') &&
+		s[1] == ':' && (s[2] == '\\' || s[2] == '/') {
+		return true
+	}
+	return strings.HasPrefix(s, `\\`)
+}
+
+// isSSHURL reports ssh:// and the scp-like user@host:path, where the part
+// before the colon holds no slash.
+func isSSHURL(s string) bool {
+	if strings.HasPrefix(s, "ssh://") {
+		return true
+	}
+	at, colon := strings.IndexByte(s, '@'), strings.IndexByte(s, ':')
+	return at >= 0 && colon > at && !strings.Contains(s[:colon], "/")
+}
+
+// normalizeGitURL strips trailing slashes and completes a github.com https
+// URL to its clone form, so the shorthand and the URL are one source.
+func normalizeGitURL(s string) string {
+	s = strings.TrimRight(s, "/")
+	if strings.HasPrefix(s, "https://github.com/") && !strings.HasSuffix(s, ".git") {
+		return s + ".git"
+	}
+	return s
+}
+
+// githubShorthand reports whether s is owner/repo, both segments of
+// [A-Za-z0-9._-]: what expands to https://github.com/<s>.git.
+func githubShorthand(s string) bool {
+	owner, repo, ok := strings.Cut(s, "/")
+	if !ok || strings.Contains(repo, "/") {
+		return false
+	}
+	return segment(owner) && segment(repo)
+}
+
+func segment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// sourceDisplay renders a marketplace's source with its ref pin, the shape
+// the add argument names it by.
+func sourceDisplay(source, ref string) string {
+	if ref == "" {
+		return source
+	}
+	return source + "#" + ref
 }
 
 // cloneRepo clones url into the dot dir tmp; a failed clone removes it.
@@ -369,20 +474,29 @@ func Check(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 		if !exists(dir) {
 			continue // its clone is gone; there is nothing to compare against
 		}
+		ref := mf.Marketplaces[mkt].Ref
 		nctx, cancel := context.WithTimeout(ctx, netTimeout)
-		_, err := git(nctx, dir, "fetch", "--quiet", "--tags")
+		fetch := []string{"fetch", "--quiet", "--tags"}
+		if ref != "" {
+			fetch = append(fetch, "origin", ref)
+		}
+		_, err := git(nctx, dir, fetch...)
 		cancel()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("marketplace %s: %w", mkt, err))
 			continue
 		}
-		m, err := readMarketplaceRef(ctx, dir)
+		m, err := readMarketplaceRef(ctx, dir, ref)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("marketplace %s: %w", mkt, err))
 			continue
 		}
+		remote := "origin/HEAD"
+		if ref != "" {
+			remote = "FETCH_HEAD"
+		}
 		head, _ := git(ctx, dir, "rev-parse", "HEAD")
-		origin, _ := git(ctx, dir, "rev-parse", "origin/HEAD")
+		origin, _ := git(ctx, dir, "rev-parse", remote)
 		moved := head != "" && origin != "" && head != origin
 		for _, i := range copies[mkt] {
 			reg := mf.Installs[ps[i].Name]
@@ -441,7 +555,7 @@ const UpToDate = "Plugins up to date"
 // MarketplacesUpToDate is what marketplace update prints when no clone moved.
 const MarketplacesUpToDate = "marketplaces up to date"
 
-// Run runs one verb of the zemi plugins CLI, which /plugins shares; each
+// Run runs one verb of the zemi plugin CLI, which /plugin shares; each
 // prints plain lines a toast can show.
 func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -461,7 +575,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			return updateMarketplaces(ctx, d, rest[1:], out)
 		}
 		return ErrUsage
-	case verb == "install" && len(rest) == 1:
+	case (verb == "install" || verb == "add") && len(rest) == 1:
 		arg := rest[0]
 		// <entry>@<marketplace> installs an entry of a registered
 		// marketplace; a git URL with a user part, git@host:path, never
@@ -475,7 +589,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			return err
 		}
 		if !nameRe.MatchString(arg) {
-			return fmt.Errorf("%s is not a plugin name: zemi installs plugins from marketplaces; add one with plugins marketplace add <url>", arg)
+			return fmt.Errorf("%s is not a plugin name: zemi installs plugins from marketplaces; add one with plugin marketplace add <source>", arg)
 		}
 		return installBare(ctx, d, arg, out)
 	case verb == "update":
@@ -582,6 +696,7 @@ type marketplaceFile struct {
 
 type marketplaceReg struct {
 	Source string    `json:"source"`
+	Ref    string    `json:"ref,omitempty"` // a ref pin the clone updates along
 	Added  time.Time `json:"added"`
 }
 
@@ -684,7 +799,7 @@ func Marketplaces(d config.Dirs) ([]MarketplaceInfo, error) {
 	out := make([]MarketplaceInfo, 0, len(f.Marketplaces))
 	for _, name := range slices.Sorted(maps.Keys(f.Marketplaces)) {
 		reg := f.Marketplaces[name]
-		info := MarketplaceInfo{Name: name, Source: reg.Source, Added: reg.Added}
+		info := MarketplaceInfo{Name: name, Source: sourceDisplay(reg.Source, reg.Ref), Added: reg.Added}
 		if m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", name)); err == nil {
 			for _, e := range m.Plugins {
 				info.Entries = append(info.Entries, MarketplaceEntry{Name: e.Name, Version: e.Version, Description: e.Description})
@@ -719,9 +834,9 @@ func listMarketplaces(d config.Dirs, out io.Writer) error {
 
 // addMarketplace clones a marketplace repo into the cache and registers it
 // under the name its manifest declares: the zemi one, else Claude's
-// sanitized. A re-add of the same source just refreshes the clone.
-func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Writer) error {
-	source, err := installURL(url)
+// sanitized. A re-add of the same source and ref just refreshes the clone.
+func addMarketplace(ctx context.Context, d config.Dirs, arg string, out io.Writer) error {
+	source, ref, err := marketplaceSource(arg)
 	if err != nil {
 		return err
 	}
@@ -738,6 +853,12 @@ func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Write
 	defer os.RemoveAll(tmp)
 	if err := cloneRepo(ctx, source, tmp); err != nil {
 		return err
+	}
+	if ref != "" {
+		// the pin holds for the marketplace's life: update fetches this ref
+		if _, err := git(ctx, tmp, "checkout", "--quiet", ref); err != nil {
+			return err
+		}
 	}
 	m, err := ReadMarketplace(tmp)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -756,8 +877,9 @@ func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Write
 	if err != nil {
 		return err
 	}
-	if old, ok := f.Marketplaces[name]; ok && old.Source != source {
-		return fmt.Errorf("marketplace %s is already registered from %s, not %s", name, old.Source, source)
+	if old, ok := f.Marketplaces[name]; ok && (old.Source != source || old.Ref != ref) {
+		return fmt.Errorf("marketplace %s is already registered from %s, not %s",
+			name, sourceDisplay(old.Source, old.Ref), sourceDisplay(source, ref))
 	}
 	if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
 		return err
@@ -770,7 +892,7 @@ func addMarketplace(ctx context.Context, d config.Dirs, url string, out io.Write
 		if f.Marketplaces == nil {
 			f.Marketplaces = map[string]marketplaceReg{}
 		}
-		f.Marketplaces[name] = marketplaceReg{Source: source, Added: time.Now().UTC()}
+		f.Marketplaces[name] = marketplaceReg{Source: source, Ref: ref, Added: time.Now().UTC()}
 		if err := f.save(d); err != nil {
 			return err
 		}
@@ -842,7 +964,7 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 			errs = append(errs, fmt.Errorf("marketplace %s has no clone", name))
 			continue
 		}
-		changed, err := pullMarketplace(ctx, dir)
+		changed, err := pullMarketplace(ctx, dir, f.Marketplaces[name].Ref)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("marketplace %s: %w", name, err))
 			continue
@@ -877,7 +999,7 @@ func installBare(ctx context.Context, d config.Dirs, name string, out io.Writer)
 		return err
 	}
 	if len(f.Marketplaces) == 0 {
-		return errors.New("no marketplace is registered: zemi installs plugins from marketplaces; add one with plugins marketplace add <url>")
+		return errors.New("no marketplace is registered: zemi installs plugins from marketplaces; add one with plugin marketplace add <source>")
 	}
 	var found, skipped []string
 	for _, mkt := range slices.Sorted(maps.Keys(f.Marketplaces)) {
@@ -906,13 +1028,13 @@ func installBare(ctx context.Context, d config.Dirs, name string, out io.Writer)
 		}
 		return err
 	case len(found) > 1:
-		return fmt.Errorf("several marketplaces list %s: %s; name one with plugins install <name>@<marketplace>", name, strings.Join(found, ", "))
+		return fmt.Errorf("several marketplaces list %s: %s; name one with plugin install <name>@<marketplace>", name, strings.Join(found, ", "))
 	default:
 		msg := fmt.Sprintf("no marketplace lists %q (searched %s)", name, strings.Join(slices.Sorted(maps.Keys(f.Marketplaces)), ", "))
 		if len(skipped) > 0 {
 			msg += "; skipped " + strings.Join(skipped, ", ")
 		}
-		return fmt.Errorf("%s; zemi installs plugins from marketplaces: add one with plugins marketplace add <url>", msg)
+		return fmt.Errorf("%s; zemi installs plugins from marketplaces: add one with plugin marketplace add <source>", msg)
 	}
 }
 
@@ -942,14 +1064,21 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 	if err := free(d, name); err != nil {
 		return Plugin{}, err
 	}
-	switch e.Source.Kind {
+	// a relative source at the root is the marketplace's own repo: a copy of
+	// it would carry the clone's .git, so it installs as a git-kind clone of
+	// the repo the marketplace was added from, along its ref pin
+	kind, url, ref := e.Source.Kind, e.Source.URL, e.Source.Ref
+	if kind == SourceRelative && filepath.Clean(e.Source.Dir) == "." {
+		kind, url, ref = SourceGit, f.Marketplaces[mkt].Source, f.Marketplaces[mkt].Ref
+	}
+	switch kind {
 	case SourceGit, SourceURL, SourceGithub:
 		tmp := filepath.Join(d.PluginsRoot(), "installed", "."+name+".tmp")
-		if err := cloneRepo(ctx, e.Source.URL, tmp); err != nil {
+		if err := cloneRepo(ctx, url, tmp); err != nil {
 			return Plugin{}, err
 		}
 		defer os.RemoveAll(tmp)
-		if err := checkoutRepo(ctx, tmp, e.Source.Ref, e.Source.SHA); err != nil {
+		if err := checkoutRepo(ctx, tmp, ref, e.Source.SHA); err != nil {
 			return Plugin{}, err
 		}
 		synthed, err := e.synthManifest(tmp)
@@ -1059,7 +1188,7 @@ func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string
 	if !exists(dir) {
 		return false, fmt.Errorf("marketplace %s is not installed", mkt)
 	}
-	changed, err := pullMarketplace(ctx, dir)
+	changed, err := pullMarketplace(ctx, dir, mf.Marketplaces[mkt].Ref)
 	if err != nil {
 		return false, fmt.Errorf("marketplace %s: %w", mkt, err)
 	}
@@ -1128,28 +1257,41 @@ func refreshInstall(d config.Dirs, name string, reg installReg) error {
 }
 
 // pullMarketplace fetches the marketplace clone and hard-resets it to the
-// remote's default branch; the clone is a cache, so local state is dropped.
-// It reports whether the reset moved HEAD, the movement a versionless entry
-// has to show for an update.
-func pullMarketplace(ctx context.Context, dir string) (bool, error) {
+// remote's default branch, or to the ref the row pins, dropping local state:
+// the clone is a cache. It reports whether the reset moved HEAD, the
+// movement a versionless entry has to show for an update.
+func pullMarketplace(ctx context.Context, dir, ref string) (bool, error) {
 	nctx, cancel := context.WithTimeout(ctx, netTimeout)
 	defer cancel()
-	if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
+	fetch := []string{"fetch", "--quiet", "--tags"}
+	if ref != "" {
+		fetch = append(fetch, "origin", ref)
+	}
+	if _, err := git(nctx, dir, fetch...); err != nil {
 		return false, err
 	}
 	// the reset is local and finishes even when the update is cancelled
 	ctx = context.WithoutCancel(ctx)
 	was, _ := git(ctx, dir, "rev-parse", "HEAD")
-	if _, err := git(ctx, dir, "reset", "--quiet", "--hard", "origin/HEAD"); err != nil {
+	to := "origin/HEAD"
+	if ref != "" {
+		to = "FETCH_HEAD"
+	}
+	if _, err := git(ctx, dir, "reset", "--quiet", "--hard", to); err != nil {
 		return false, err
 	}
 	now, _ := git(ctx, dir, "rev-parse", "HEAD")
 	return was != now, nil
 }
 
-// readMarketplaceRef reads the marketplace manifest off the fetched
-// origin/HEAD instead of the clone's working tree, which a reset would move.
-func readMarketplaceRef(ctx context.Context, dir string) (Marketplace, error) {
+// readMarketplaceRef reads the marketplace manifest off the fetched remote
+// (the pinned ref, else origin/HEAD) instead of the clone's working tree,
+// which a reset would move.
+func readMarketplaceRef(ctx context.Context, dir, ref string) (Marketplace, error) {
+	at := "origin/HEAD"
+	if ref != "" {
+		at = "FETCH_HEAD"
+	}
 	for _, c := range []struct {
 		file string
 		kind MarketplaceKind
@@ -1157,13 +1299,13 @@ func readMarketplaceRef(ctx context.Context, dir string) (Marketplace, error) {
 		{ZemiMarketplaceFile, KindZemi},
 		{ClaudeMarketplaceFile, KindClaude},
 	} {
-		raw, err := git(ctx, dir, "show", "origin/HEAD:"+c.file)
+		raw, err := git(ctx, dir, "show", at+":"+c.file)
 		if err != nil {
 			continue
 		}
 		return readMarketplace(jsontext.Value(raw), c.kind)
 	}
-	return Marketplace{}, fmt.Errorf("neither %s nor %s on origin/HEAD", ZemiMarketplaceFile, ClaudeMarketplaceFile)
+	return Marketplace{}, fmt.Errorf("neither %s nor %s on %s", ZemiMarketplaceFile, ClaudeMarketplaceFile, at)
 }
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {

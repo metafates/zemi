@@ -46,7 +46,7 @@ type Runtime struct {
 }
 
 // Clock is the time Lua sees: os.time, os.date and os.clock read it, and
-// the host runs zemi.timer on it. zemi plugins test gives its zemi a fake one.
+// the host runs zemi.timer on it. zemi plugin test gives its zemi a fake one.
 type Clock interface {
 	Now() time.Time
 	AfterFunc(d time.Duration, f func()) (stop func() bool)

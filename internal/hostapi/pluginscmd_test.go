@@ -18,7 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
-// pluginsUI hands the lists /plugins opens and the toasts it shows to the
+// pluginsUI hands the lists /plugin opens and the toasts it shows to the
 // test, from whichever goroutine sends them.
 type pluginsUI struct {
 	fakeUI
@@ -31,7 +31,7 @@ func (u *pluginsUI) Notify(level slog.Level, title, body string) {
 	u.notes <- notifyName(level) + ": " + title + ": " + body
 }
 
-// TestPluginsCommand runs /plugins verbs in order over one plugin tree and
+// TestPluginsCommand runs /plugin verbs in order over one plugin tree and
 // reads the list each one leaves, with the toasts it showed.
 func TestPluginsCommand(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -84,22 +84,22 @@ func TestPluginsCommand(t *testing.T) {
 		err        string // a usage error, which opens nothing
 		want, not  []string
 	}{
-		{name: "a verb /plugins does not take", args: "frob", err: "| toggle <name> | open <name>"},
-		{name: "toggle without a name names its own grammar", args: "toggle", err: "usage: /plugins toggle <name>"},
+		{name: "a verb /plugin does not take", args: "frob", err: "| toggle <name> | open <name>"},
+		{name: "toggle without a name names its own grammar", args: "toggle", err: "usage: /plugin toggle <name>"},
 		{
 			name: "the list", args: "",
 			want: []string{
-				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
+				"text:Install a plugin verb:fill", "run:plugin check text:Check for updates verb:run",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
-				"[version 0.1.0]", "on:true run:plugins toggle a section:Local text:a",
-				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugins disable a",
-				"danger:true desc:delete key:x run:plugins delete a --yes",
+				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
+				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugin disable a",
+				"danger:true desc:delete key:x run:plugin delete a --yes",
 			},
 			not: []string{"key:u"},
 		},
 		{
 			name: "toggle flips the switch before any reload", args: "toggle a", reload: true,
-			want: []string{"on:false run:plugins toggle a", "[status off]", "desc:enable key:e run:plugins enable a"},
+			want: []string{"on:false run:plugin toggle a", "[status off]", "desc:enable key:e run:plugin enable a"},
 		},
 		{name: "delete a local plugin", args: "delete b --yes", want: []string{"info: Plugin deleted: b"}, not: []string{"text:b"}},
 		{
@@ -107,7 +107,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Marketplace added: marketplace test added (1 plugins)",
 				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
-				"desc:update key:u run:plugins marketplace update test", "danger:true desc:remove key:x run:plugins marketplace remove test",
+				"desc:update key:u run:plugin marketplace update test", "danger:true desc:remove key:x run:plugin marketplace remove test",
 			},
 		},
 		{
@@ -115,13 +115,13 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
-				"danger:true desc:delete key:x run:plugins delete x --yes",
+				"danger:true desc:delete key:x run:plugin delete x --yes",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
 		{name: "update with nothing newer", args: "update", want: []string{"info: Plugins up to date: ", "text:x"}, not: []string{"Plugin updated"}},
 	} {
-		if err := h.RunCommand(t.Context(), "plugins", c.args); c.err != "" {
+		if err := h.RunCommand(t.Context(), "plugin", c.args); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
 				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
 			}
@@ -154,8 +154,8 @@ func TestPluginsCommand(t *testing.T) {
 		}
 	}
 	// the install completer offers the entries the registered marketplaces list
-	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins install ")); !strings.Contains(got, "x@test") {
-		t.Errorf("/plugins install completes %s, want x@test", got)
+	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugin install ")); !strings.Contains(got, "x@test") {
+		t.Errorf("/plugin install completes %s, want x@test", got)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestPluginsOpen(t *testing.T) {
 	edited := make(chan string, 1)
 	h.SetUIHooks(&fakeUI{edit: func(path string) { edited <- path }})
 	for name, want := range map[string]string{"lua": "lua/" + plugin.InitFile, "skills": "skills"} {
-		if err := h.RunCommand(t.Context(), "plugins", "open "+name); err != nil {
+		if err := h.RunCommand(t.Context(), "plugin", "open "+name); err != nil {
 			t.Fatal(err)
 		}
 		if got := <-edited; got != filepath.Join(dirs.PluginsRoot(), "local", want) {
@@ -185,10 +185,10 @@ func TestPluginsOpen(t *testing.T) {
 }
 
 // TestPluginsSend: the list offers New plugin first and a local plugin's
-// detail Modify, and /plugins modify, headless too, sends the typed line with the plugin's
+// detail Modify, and /plugin modify, headless too, sends the typed line with the plugin's
 // prompt behind it and lets auto mode edit that local plugin and nothing
 // else, and refuses an installed or a symlinked one; TestCommandSendsTypedLine
-// covers /plugins new.
+// covers /plugin new.
 func TestPluginsSend(t *testing.T) {
 	for _, c := range []struct {
 		args     string
@@ -197,11 +197,11 @@ func TestPluginsSend(t *testing.T) {
 		link     bool     // the data dir is reached through a symlink
 		headless bool     // no UI, as under zemi run
 	}{
-		{args: "modify mine add a flag\nand a test", sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
+		{args: "modify mine add a flag\nand a test", sent: []string{`/plugin modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
 		{args: "modify mine", link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
 		{args: "modify linked", err: "linked is a symlink"},
-		{args: "modify", err: "usage: /plugins modify <name> [what to change]"},
+		{args: "modify", err: "usage: /plugin modify <name> [what to change]"},
 		{args: "modify mine in zemi run", headless: true, sent: []string{"Change my zemi plugin mine in "}},
 	} {
 		t.Run(c.args, func(t *testing.T) {
@@ -225,11 +225,11 @@ func TestPluginsSend(t *testing.T) {
 				h.SetUIHooks(&fakeUI{})
 			}
 			items := dumpItems(h.pluginItems())
-			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "modify with zemi") != 1 {
+			if !strings.Contains(items, "fill:/plugin new  text:New plugin verb:fill") || strings.Count(items, "modify with zemi") != 1 {
 				t.Fatalf("items: %s", items)
 			}
-			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins modify ")); got != "[mine]" {
-				t.Fatalf("/plugins modify completes %s", got)
+			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugin modify ")); got != "[mine]" {
+				t.Fatalf("/plugin modify completes %s", got)
 			}
 			os.Symlink("mine", filepath.Join(data, "plugins", "local", "linked"))
 			err := h.pluginsCommand(c.args)

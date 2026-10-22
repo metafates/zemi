@@ -64,15 +64,15 @@ one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, whi
 `RunCommand` names ("/help needs the TUI", status 1); `/btw` claims the agent like
 `/compact`, so `zemi run` waits on it and ctrl+c cancels it.
 
-`zemi plugins [verb]` (`pluginsCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
+`zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
-so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
+so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugin` (hostapi/plugincmd.go) takes the same verbs plus `toggle`,
 `open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (under
 `zemi run` too) pointing at the zemi skill's plugins.md. A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it).
 
-`zemi plugins test <name|dir> [pattern]` (internal/cli/plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
+`zemi plugin test <name|dir> [pattern]` (internal/cli/plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
 plugin's `.zemi/tests/*.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
 copies the plugin into temp dirs (`copyPlugin`: `.zemi` whole with the layer dirs, nothing else
 of the root, no `node_modules`, a link only when relative and inside, capped), and boots one zemi per case in this
@@ -84,7 +84,7 @@ first boot collects the case names. `proc.Refuse` makes the process start nothin
 only a `test.stub` reply passes, standing in for the transport at the call site, and a `false`
 reply refuses the call. The assertions are the builtin module
 `zemi.test.assert`. `zemi.test` exists only there
-(`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
+(`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugin/demo`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
 boot no model can run opens the `/model` picker once (`Host.OfferModel`, after the flags

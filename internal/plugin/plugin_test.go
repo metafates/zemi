@@ -163,7 +163,7 @@ func TestPlugins(t *testing.T) {
 		{name: "a local plugin's name", args: []string{"install", "loc@demo-market"}, want: "already named loc", err: true},
 		{name: "a URL is no longer a door", args: []string{"install", "file://" + tagged}, want: "marketplace add", err: true},
 		{name: "a remote helper is never run", args: []string{"install", "ext::sh -c touch% " + marker}, want: "marketplace add", err: true},
-		{name: "a plaintext transport is refused", args: []string{"marketplace", "add", "git://127.0.0.1/x"}, want: "not allowed", err: true},
+		{name: "a plaintext transport is refused", args: []string{"marketplace", "add", "git://127.0.0.1/x"}, want: "not a marketplace source", err: true},
 		{name: "a clone that fails leaves nothing", args: []string{"marketplace", "add", "file://" + tmp + "/nope"}, want: "clone", err: true},
 		{
 			name:   "check sees the same major first",
@@ -289,6 +289,56 @@ func TestPlugins(t *testing.T) {
 	}
 }
 
+// TestMarketplaceSource walks the grammar a `marketplace add` argument
+// takes, the one Claude and codex type.
+func TestMarketplaceSource(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	os.MkdirAll(home, 0o755)
+	t.Setenv("HOME", home)
+	dir := filepath.Join(tmp, "mkt")
+	os.MkdirAll(dir, 0o755)
+	wd, _ := os.Getwd()
+	os.WriteFile(filepath.Join(tmp, "one.json"), []byte("{}"), 0o644)
+	for _, c := range []struct {
+		name, arg, url, ref, err string
+	}{
+		{name: "shorthand", arg: "DietrichGebert/ponytail", url: "https://github.com/DietrichGebert/ponytail.git"},
+		{name: "shorthand with a #ref", arg: "o/r#v1.2", url: "https://github.com/o/r.git", ref: "v1.2"},
+		{name: "shorthand with an @ref", arg: "o/r@main", url: "https://github.com/o/r.git", ref: "main"},
+		{name: "a github https url completes", arg: "https://github.com/o/r", url: "https://github.com/o/r.git"},
+		{name: "a github url with a trailing slash", arg: "https://github.com/o/r/", url: "https://github.com/o/r.git"},
+		{name: "another host stays", arg: "https://gitlab.com/o/r", url: "https://gitlab.com/o/r"},
+		{name: "an scp-like ssh url", arg: "git@github.com:o/r", url: "git@github.com:o/r"},
+		{name: "an ssh url with a ref", arg: "git@github.com:o/r#v2", url: "git@github.com:o/r", ref: "v2"},
+		{name: "another user's ssh url", arg: "deploy@gitlab.com:g/p.git", url: "deploy@gitlab.com:g/p.git"},
+		{name: "ssh scheme", arg: "ssh://git@host/o/r", url: "ssh://git@host/o/r"},
+		{name: "a file url is a git url", arg: "file://" + dir, url: "file://" + dir},
+		{name: "an absolute dir", arg: dir, url: dir},
+		{name: "a relative dir", arg: "./mkt", url: filepath.Join(wd, "mkt")},
+		{name: "a tilde dir", arg: "~/mkt", url: filepath.Join(home, "mkt")},
+		{name: "a url ref", arg: "https://x.io/m.git#v1", url: "https://x.io/m.git", ref: "v1"},
+		{name: "a ref refuses a local path", arg: dir + "#v1", err: "a ref pins a git source only"},
+		{name: "a file source is refused", arg: filepath.Join(tmp, "one.json"), err: "not a directory"},
+		{name: "a bare word is no source", arg: "ponytail", err: "not a marketplace source"},
+		{name: "three segments", arg: "o/r/sub", err: "not a marketplace source"},
+		{name: "a bad shorthand segment", arg: "o/r x", err: "not a marketplace source"},
+		{name: "a git scheme is no source", arg: "git://127.0.0.1/x", err: "not a marketplace source"},
+		{name: "empty", arg: "  ", err: "empty"},
+	} {
+		url, ref, err := marketplaceSource(c.arg)
+		if c.err != "" {
+			if err == nil || !strings.Contains(err.Error(), c.err) {
+				t.Errorf("%s: err = %v, want %q", c.name, err, c.err)
+			}
+			continue
+		}
+		if err != nil || url != c.url || ref != c.ref {
+			t.Errorf("%s: = %q, %q, %v, want %q, %q", c.name, url, ref, err, c.url, c.ref)
+		}
+	}
+}
+
 // TestMarketplace walks one marketplace tree through the CLI verbs, in
 // order: the repos register, their entries install by their own kind's
 // matching, copies update from pulled clones, a check reads the fetched ref
@@ -404,6 +454,40 @@ func TestMarketplace(t *testing.T) {
 	gitIn(bad, "init", "-q")
 	gitIn(bad, "add", ".")
 	gitIn(bad, "commit", "-qm", "init")
+
+	// a marketplace repo whose stable branch a pin holds the clone to; main
+	// moves ahead of it, so only the pin explains what the clone shows
+	pinned := filepath.Join(tmp, "src", "pinned")
+	write(t, pinned, map[string]string{
+		".claude-plugin/marketplace.json": `{"name": "pinned-mkt", "plugins": [{"name": "p-one", "source": "./p", "version": "1.0.0"}]}`,
+		"p/commands/one.md":               "one",
+	})
+	gitIn(pinned, "init", "-q", "-b", "main")
+	gitIn(pinned, "add", ".")
+	gitIn(pinned, "commit", "-qm", "init")
+	gitIn(pinned, "branch", "stable")
+	write(t, pinned, map[string]string{"p/commands/main.md": "main"})
+	gitIn(pinned, "add", ".")
+	gitIn(pinned, "commit", "-qam", "main moves")
+	gitIn(pinned, "checkout", "-q", "stable")
+	write(t, pinned, map[string]string{
+		".claude-plugin/marketplace.json": `{"name": "pinned-mkt", "plugins": [{"name": "p-one", "source": "./p", "version": "1.1.0"}]}`,
+		"p/commands/two.md":               "two",
+	})
+	gitIn(pinned, "add", ".")
+	gitIn(pinned, "commit", "-qam", "stable two")
+	gitIn(pinned, "checkout", "-q", "main")
+
+	// a marketplace whose one entry is the repo itself
+	rootsrc := filepath.Join(tmp, "src", "rootsrc")
+	write(t, rootsrc, map[string]string{
+		".claude-plugin/marketplace.json": `{"name": "rootsrc-mkt", "plugins": [{"name": "root-one", "source": "./", "version": "1.0.0"}]}`,
+		".zemi/init.lua":                  "-- the root plugin\n",
+	})
+	gitIn(rootsrc, "init", "-q")
+	gitIn(rootsrc, "add", ".")
+	gitIn(rootsrc, "commit", "-qm", "init")
+
 	bump := func(relOne, entryManifest, subOne, gitOne string) {
 		write(t, mkt, map[string]string{".claude-plugin/marketplace.json": manifest(relOne, entryManifest, subOne, gitOne)})
 		gitIn(mkt, "commit", "-qam", "bump")
@@ -836,6 +920,70 @@ func TestMarketplace(t *testing.T) {
 				}
 				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", "ghost")); err == nil {
 					t.Error("the clone is still there")
+				}
+			},
+		},
+		{
+			name: "a ref pins the clone to its branch",
+			args: []string{"marketplace", "add", "file://" + pinned + "#stable"},
+			want: "marketplace pinned-mkt added (1 plugins)",
+			check: func(t *testing.T) {
+				dir := filepath.Join(d.PluginsRoot(), "marketplaces", "pinned-mkt")
+				if _, err := os.Lstat(filepath.Join(dir, "p", "commands", "two.md")); err != nil {
+					t.Fatal("the pin did not check stable out:", err)
+				}
+				if _, err := os.Lstat(filepath.Join(dir, "p", "commands", "main.md")); err == nil {
+					t.Error("the checkout took the default branch")
+				}
+				ms, _ := Marketplaces(d)
+				if !slices.ContainsFunc(ms, func(m MarketplaceInfo) bool { return m.Name == "pinned-mkt" && m.Source == "file://"+pinned+"#stable" }) {
+					t.Errorf("the row lost its pin: %+v", ms)
+				}
+			},
+		},
+		{
+			name: "another ref of a taken name is refused",
+			args: []string{"marketplace", "add", "file://" + pinned + "#main"},
+			want: "already registered from file://" + pinned + "#stable", err: true,
+		},
+		{name: "an install reads the pinned clone", args: []string{"install", "p-one@pinned-mkt"}, want: "\np-one 1.1.0\n"},
+		{
+			name: "a check reads the pinned ref off the fetch",
+			before: func() {
+				gitIn(pinned, "checkout", "-q", "stable")
+				write(t, pinned, map[string]string{"p/commands/three.md": "three"})
+				gitIn(pinned, "add", ".")
+				gitIn(pinned, "commit", "-qam", "three")
+				gitIn(pinned, "checkout", "-q", "main")
+			},
+			args: []string{"check"},
+			want: "p-one updated in the marketplace (pinned-mkt)",
+		},
+		{
+			name: "a marketplace update follows the pin",
+			args: []string{"marketplace", "update", "pinned-mkt"},
+			want: "marketplace pinned-mkt updated",
+			check: func(t *testing.T) {
+				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", "pinned-mkt", "p", "commands", "three.md")); err != nil {
+					t.Error("the update did not take the pinned ref:", err)
+				}
+			},
+		},
+		{
+			name: "a marketplace of one root entry registers",
+			args: []string{"marketplace", "add", rootsrc}, want: "marketplace rootsrc-mkt added (1 plugins)",
+		},
+		{
+			name: "an entry that is the marketplace's own repo clones",
+			args: []string{"install", "root-one@rootsrc-mkt"},
+			check: func(t *testing.T) {
+				dir := filepath.Join(d.PluginsRoot(), "installed", "root-one")
+				if _, err := os.Lstat(filepath.Join(dir, ".git")); err != nil {
+					t.Fatal(err)
+				}
+				prov, ok := MarketplaceOf(d, "root-one")
+				if !ok || prov.Kind != kindGit || prov.Version != "1.0.0" {
+					t.Errorf("provenance: %+v, %v", prov, ok)
 				}
 			},
 		},

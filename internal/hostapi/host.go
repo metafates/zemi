@@ -173,7 +173,7 @@ type Overlay struct {
 }
 
 // ServiceStatus is where an MCP server, a language server or a plugin
-// stands: the status word of /mcp, /lsp, /plugins, /health and zemi.*.list.
+// stands: the status word of /mcp, /lsp, /plugin, /health and zemi.*.list.
 type ServiceStatus string
 
 const (
@@ -539,7 +539,7 @@ type Host struct {
 	agents     *agentHost
 	luaTools   *toolReg
 	stops      *stopReg
-	// test is set, before boot, only in a zemi plugins test zemi
+	// test is set, before boot, only in a zemi plugin test zemi
 	test *PluginTest
 
 	// memUndo reverses the /memory list's actions, newest last; opening the

@@ -130,7 +130,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
-  (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start,
+  (`/btw`, `/plugin` network work, `/model update`, `/health`, the reflector, an MCP start,
   the idle recap) holds a `Host.Busy` entry: `ctx.busy` is the list of
   them, newest first, the chat's pending row names the oldest as one part (`and N more`
   when more run), the working rule draws

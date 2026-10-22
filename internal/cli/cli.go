@@ -252,7 +252,7 @@ and stderr lists them at the end.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(run, sessionsCommand(o), projectsCommand(o), pluginsCommand(o), modelsCommand(o), health)
+	root.AddCommand(run, sessionsCommand(o), projectsCommand(o), pluginCommand(o), modelsCommand(o), health)
 	return root
 }
 
@@ -422,9 +422,9 @@ func nargs(maxN int) cobra.PositionalArgs {
 	}
 }
 
-// pluginsCommand is zemi plugins: no Lua boot, TUI, trust or store, so it
+// pluginCommand is zemi plugin: no Lua boot, TUI, trust or store, so it
 // works beside a running TUI, whose config watcher reloads on the change.
-func pluginsCommand(o *options) *cobra.Command {
+func pluginCommand(o *options) *cobra.Command {
 	yes := false
 	var asJSON *bool
 	// git clones and fetches: an interrupt stops them and exits with 130
@@ -439,10 +439,10 @@ func pluginsCommand(o *options) *cobra.Command {
 		dirs := o.dirs
 		var err error
 		switch {
-		case c.Name() == "plugins":
+		case c.Name() == "plugin":
 			var ps []plugin.Plugin
 			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
-				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins marketplace add <url> adds one")
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugin marketplace add <source> adds one")
 			}
 			printPlugins(c.OutOrStdout(), ps, *asJSON)
 		case c.Parent().Name() == "marketplace":
@@ -456,7 +456,7 @@ func pluginsCommand(o *options) *cobra.Command {
 		return err
 	}
 	cmd := &cobra.Command{
-		Use:   "plugins",
+		Use:   "plugin",
 		Short: "list plugins: name, version, on or off, source",
 		Args:  cobra.NoArgs,
 		RunE:  run,
@@ -466,14 +466,15 @@ func pluginsCommand(o *options) *cobra.Command {
 		use, short string
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
+		aliases    []string
 	}{
-		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), nil},
-		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins},
-		{"check", "fetch, then list the updates", cobra.NoArgs, nil},
-		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins},
-		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins},
+		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), nil, []string{"add"}},
+		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins, nil},
+		{"check", "fetch, then list the updates", cobra.NoArgs, nil, nil},
+		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins, nil},
+		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins, nil},
 	} {
-		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
+		cmd.AddCommand(&cobra.Command{Use: v.use, Aliases: v.aliases, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
 	}
 	// the only doors installs come through: a marketplace registered here,
 	// then its entries installed by name
@@ -487,7 +488,7 @@ func pluginsCommand(o *options) *cobra.Command {
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
 	}{
-		{"add <url>", "register a repo that holds a marketplace manifest", nargs(1), nil},
+		{"add <source>", "register a marketplace repo: owner/repo, a git URL, or a local path", nargs(1), nil},
 		{"list", "show each marketplace and the entries it lists", cobra.NoArgs, nil},
 		{"remove <name>", "drop a marketplace and its clone", nargs(1), completeMarketplaces},
 		{"update [name]", "pull one or all marketplace clones", cobra.MaximumNArgs(1), completeMarketplaces},
@@ -503,7 +504,7 @@ func pluginsCommand(o *options) *cobra.Command {
 		Short:             "delete a plugin and its files; asks first",
 		Args: cobra.MatchAll(nargs(1), func(_ *cobra.Command, args []string) error {
 			if !yes && !term.IsTerminal(os.Stdin.Fd()) {
-				return fmt.Errorf("plugins delete: stdin is not a terminal to ask on; pass --yes to delete %s", args[0])
+				return fmt.Errorf("plugin delete: stdin is not a terminal to ask on; pass --yes to delete %s", args[0])
 			}
 			return nil
 		}),

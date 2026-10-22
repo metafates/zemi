@@ -193,6 +193,7 @@ func TestReadClaudeMarketplace(t *testing.T) {
 			"name": "Demo", "owner": {"name": "o", "url": "https://o"},
 			"$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
 			"metadata": {"whatever": 1},
+			"renames": {"old": "Hub"},
 			"plugins": [
 				{"name": "Rel", "source": "./p/rel", "version": "1.0.0", "author": {"name": "a"}, "category": "x", "strict": false},
 				{"name": "Git", "source": {"source": "git", "url": "https://x/y.git", "ref": "main", "sha": "abc"}},
@@ -240,11 +241,17 @@ func TestReadClaudeMarketplace(t *testing.T) {
 	if e := es["Rel"]; e.Strict {
 		t.Errorf("Rel: strict %v, want false", e.Strict)
 	}
+	// an old name the manifest renamed picks its entry; a live name wins
+	if e, ok := m.find("old"); !ok || e.Name != "Hub" {
+		t.Errorf("find(old): %+v, %v", e, ok)
+	}
+	if _, ok := m.find("Rel"); !ok {
+		t.Error("find(Rel) went through the renames")
+	}
 
 	for _, c := range []struct{ name, json, want string }{
 		{"a relative source needs the dot", `{"name": "m", "plugins": [{"name": "p", "source": "nope"}]}`, `must start with "./"`},
 		{"a relative source stays inside the clone", `{"name": "m", "plugins": [{"name": "p", "source": "./../../secret"}]}`, "stay inside the marketplace"},
-		{"a source may not be the clone root", `{"name": "m", "plugins": [{"name": "p", "source": "./"}]}`, "stay inside the marketplace"},
 		{"a git-subdir path stays inside the clone", `{"name": "m", "plugins": [{"name": "p", "source": {"source": "git-subdir", "url": "https://x/y.git", "path": "../../etc"}}]}`, "stay inside the marketplace"},
 		{"a git-subdir path names no path", `{"name": "m", "plugins": [{"name": "p", "source": {"source": "git-subdir", "url": "https://x/y.git"}}]}`, "stay inside the marketplace"},
 		{"a source names no kind", `{"name": "m", "plugins": [{"name": "p", "source": {"url": "https://x"}}]}`, "names no kind"},
@@ -256,6 +263,12 @@ func TestReadClaudeMarketplace(t *testing.T) {
 		if _, err := ReadMarketplace(dir); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want it to hold %q", c.name, err, c.want)
 		}
+	}
+	// the clone root is a source: it installs as a git-kind clone, not a copy
+	root := t.TempDir()
+	write(t, root, map[string]string{".claude-plugin/marketplace.json": `{"name": "m", "plugins": [{"name": "p", "source": "./"}]}`})
+	if m, err := ReadMarketplace(root); err != nil || m.Plugins[0].Source != (ClaudeSource{Kind: SourceRelative, Dir: "./"}) {
+		t.Errorf("the clone root as a source: %v, %+v", err, m.Plugins[0].Source)
 	}
 	if _, err := ReadMarketplace(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a missing marketplace.json: %v", err)

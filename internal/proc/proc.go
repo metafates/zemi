@@ -60,14 +60,14 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 }
 
 // ErrRefused is every start's error while a Refuse holds.
-var ErrRefused = errors.New("zemi plugins test starts no process")
+var ErrRefused = errors.New("zemi plugin test starts no process")
 
 var refusing atomic.Int32
 
 // Refuse makes every start fail, zemi.s own git included, until each release it returned has run, so one runner ending
 // never lifts another's.
 // NOTE: process wide: a zemi not under test in the same process starts
-// nothing either meanwhile. zemi plugins test is a process of its own.
+// nothing either meanwhile. zemi plugin test is a process of its own.
 func Refuse() (release func()) {
 	refusing.Add(1)
 	return sync.OnceFunc(func() { refusing.Add(-1) })

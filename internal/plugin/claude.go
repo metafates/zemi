@@ -462,8 +462,9 @@ func replaceNamed(servers []ClaudeMCPServer, s ClaudeMCPServer) []ClaudeMCPServe
 	return append(servers, s)
 }
 
-// readJSONFile reads a JSON data file of a plugin, at most 64 KB, with
-// readHead's regular-file guard: a clone may hold a link to /dev/zero.
+// readJSONFile reads a JSON data file of a plugin or a marketplace, at most
+// 4 MB, with readHead's regular-file guard: a clone may hold a link to
+// /dev/zero. The official marketplace's manifest is past 190 KB.
 func readJSONFile(path string) jsontext.Value {
 	lfi, err := os.Lstat(path)
 	if err != nil || !lfi.Mode().IsRegular() {
@@ -477,7 +478,7 @@ func readJSONFile(path string) jsontext.Value {
 	if fi, err := f.Stat(); err != nil || !os.SameFile(lfi, fi) {
 		return nil
 	}
-	data, _ := io.ReadAll(io.LimitReader(f, 64<<10))
+	data, _ := io.ReadAll(io.LimitReader(f, 4<<20))
 	return jsontext.Value(data)
 }
 
@@ -538,6 +539,7 @@ type MarketplacePlugin struct {
 type Marketplace struct {
 	Name    string
 	Kind    MarketplaceKind
+	Renames map[string]string // an old entry name -> its current one
 	Plugins []MarketplacePlugin
 }
 
@@ -548,6 +550,13 @@ func (m Marketplace) find(name string) (MarketplacePlugin, bool) {
 	if m.Kind == KindClaude {
 		want := SanitizeName(name)
 		match = func(e MarketplacePlugin) bool { return SanitizeName(e.Name) == want }
+		if !slices.ContainsFunc(m.Plugins, match) {
+			// an old name the manifest renamed still picks its entry
+			if to := m.Renames[name]; to != "" {
+				name = to
+				match = func(e MarketplacePlugin) bool { return SanitizeName(e.Name) == SanitizeName(to) }
+			}
+		}
 	}
 	i := slices.IndexFunc(m.Plugins, match)
 	if i < 0 {
@@ -583,8 +592,9 @@ func ReadMarketplace(dir string) (Marketplace, error) {
 // one stricter about names and validated on uses here, at the boundary.
 func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, error) {
 	var j struct {
-		Name  string `json:"name"`
-		Owner struct {
+		Name    string            `json:"name"`
+		Renames map[string]string `json:"renames"`
+		Owner   struct {
 			Name  string `json:"name"`
 			Email string `json:"email"`
 			URL   string `json:"url"`
@@ -613,7 +623,7 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 	if err := json.Unmarshal(raw, &j); err != nil {
 		return Marketplace{}, err
 	}
-	m := Marketplace{Name: j.Name, Kind: kind}
+	m := Marketplace{Name: j.Name, Kind: kind, Renames: j.Renames}
 	if kind == KindZemi && !nameRe.MatchString(m.Name) {
 		return Marketplace{}, fmt.Errorf("%q is not a marketplace name: lowercase letters, digits, '_' and '-'", m.Name)
 	}
@@ -644,12 +654,17 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 	return m, nil
 }
 
-// localIn guards a source path that must resolve inside the marketplace
-// clone: one that climbs out - or is the clone root itself, whose .git a
-// copy must not carry - would put foreign code in the plugin tree.
+// climbsOut reports whether a source path resolves outside the repo root.
+func climbsOut(dir string) bool {
+	return !filepath.IsLocal(filepath.Clean(dir))
+}
+
+// localIn guards a git-subdir path, which installs as a copy: one that
+// climbs out - or is the repo root itself, whose .git a copy must not
+// carry - would put foreign code in the plugin tree. A relative source at
+// the root is allowed; it installs as a git-kind clone instead.
 func localIn(name, dir string) error {
-	c := filepath.Clean(dir)
-	if c == "." || !filepath.IsLocal(c) {
+	if climbsOut(dir) || filepath.Clean(dir) == "." {
 		return fmt.Errorf("plugin %s: source path %q must stay inside the marketplace", name, dir)
 	}
 	return nil
@@ -663,8 +678,8 @@ func claudeSource(name string, raw jsontext.Value) (ClaudeSource, error) {
 		if !strings.HasPrefix(rel, "./") {
 			return ClaudeSource{}, fmt.Errorf("plugin %s: source %q must start with %q", name, rel, "./")
 		}
-		if err := localIn(name, rel); err != nil {
-			return ClaudeSource{}, err
+		if climbsOut(rel) {
+			return ClaudeSource{}, fmt.Errorf("plugin %s: source path %q must stay inside the marketplace", name, rel)
 		}
 		return ClaudeSource{Kind: SourceRelative, Dir: rel}, nil
 	}

@@ -20,7 +20,7 @@ pane, where the caller's environment is not forwarded, and from fish, which does
 real keys); `zemi-safe` is for tests (no keys, a fake model).
 
 Nor type `zemi` in a pane's shell: that is the owner's installed binary on the real config.
-When the model under test must find `zemi` on `PATH` (`zemi plugins test`), put a wrapper
+When the model under test must find `zemi` on `PATH` (`zemi plugin test`), put a wrapper
 that execs `zemi-safe` first on the pane's `PATH`.
 
 ```sh

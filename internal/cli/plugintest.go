@@ -34,7 +34,7 @@ const (
 // startsAtLine is a message that already names file:line.
 var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 
-// testPlugins is zemi plugins test <name|dir> [pattern] (DESIGN §5): every
+// testPlugins is zemi plugin test <name|dir> [pattern] (DESIGN §5): every
 // case of the plugin's tests/*.lua whose "file: name" holds pattern
 // runs in a zemi of its own, booted here from temp dirs that hold a copy of
 // the plugin and nothing else. It prints the failures and a summary line and
@@ -43,7 +43,7 @@ var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 // drives them, so no case can.
 func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
-		fmt.Fprintln(stderr, "zemi: plugins test:", err)
+		fmt.Fprintln(stderr, "zemi: plugin test:", err)
 		return 1
 	}
 	pattern := ""

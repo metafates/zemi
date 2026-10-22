@@ -81,7 +81,7 @@ func TestGoldenPlugins(t *testing.T) {
 		app.renderSync(t)
 		t.Run(name, func(t *testing.T) { golden.RequireEqual(t, app.Frame()) })
 	}
-	if err := host.RunCommand(ctx, "plugins", ""); err != nil {
+	if err := host.RunCommand(ctx, "plugin", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })

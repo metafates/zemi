@@ -31,7 +31,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`, `research`,
   `hunt`, `brainstorm` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
   `new <what it should do>` sends the line with a prompt pointing at the New workflow steps
-  in `workflows.md`, as `/agents new` and `/plugins new` do. They
+  in `workflows.md`, as `/agents new` and `/plugin new` do. They
   run in their **own** gopher-lua state on a host goroutine, never on the interpreter (DESIGN
   §4): a coroutine per branch, `zemi.workflow.agent`/`parallel` yield and the scheduler resumes
   them as subagents finish. Invariants: the script sees only base/string/table/math,
@@ -163,7 +163,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   server by name at every step, wraps the step in a `Busy` job esc-esc aborts, keeps the
   5-minute cap per server, and ends in one summary toast; it never starts a server that
   has not asked for a sign-in. `ServiceStatus` (host.go) is the
-  one status word of `/mcp`, `/lsp`, `/plugins`, `/health` and `zemi.mcp.list`/`zemi.lsp.list`,
+  one status word of `/mcp`, `/lsp`, `/plugin`, `/health` and `zemi.mcp.list`/`zemi.lsp.list`,
   colored by the UI's `statusHL`, a map the exhaustive linter keeps complete. Test against
   `internal/mcp/mcptest` - the fake's `Auth` gate answers 401 until a sign-in completes.
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file, and only in

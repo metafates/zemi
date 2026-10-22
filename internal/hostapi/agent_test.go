@@ -64,7 +64,7 @@ func TestCommandSendsTypedLine(t *testing.T) {
 		file  string
 	}{
 		{"/init", h.InitProject, ""},
-		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }, "plugins.md"},
+		{"/plugin new show cost", func() error { return h.pluginsCommand("new show cost") }, "plugins.md"},
 		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs") }, "agents.md"},
 		{"/workflows new hunts a flake", func() error { return h.workflowCommands()[0].GoFn(h, "new hunts a flake") }, "workflows.md"},
 		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }, "debug.md"},

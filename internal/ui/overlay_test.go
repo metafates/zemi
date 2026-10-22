@@ -743,10 +743,10 @@ func TestOverlayNavigation(t *testing.T) {
 		},
 		{
 			"a fill row closes a toggle list, so the composer has the keys",
-			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "Install", Verb: "install", Fill: "/plugins install "}}, Reload: func() []hostapi.OverlayItem { return nil }},
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "Install", Verb: "install", Fill: "/plugin install "}}, Reload: func() []hostapi.OverlayItem { return nil }},
 			[]string{"enter"},
 			func(a *App) string {
-				return fail(len(a.overlays) == 0 && a.composer.text == "/plugins install ", fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text))
+				return fail(len(a.overlays) == 0 && a.composer.text == "/plugin install ", fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text))
 			},
 		},
 		{

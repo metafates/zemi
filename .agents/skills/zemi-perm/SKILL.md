@@ -65,5 +65,5 @@ bounds a hung wait. A plain `exec.Command` here is a bug (a cancelled pipeline o
 turn forever). The exceptions: the user's editor, which needs the controlling terminal a new
 session drops, and `relaunch` (internal/cli/boot.go), the exec that replaces zemi with `zemi -C <dir>` once the
 TUI restored the terminal and the children `proc.KillAll` killed were reaped. `proc.Refuse`
-makes every start fail while it holds (`zemi plugins test`), and `proc.Shell` resolves the
+makes every start fail while it holds (`zemi plugin test`), and `proc.Shell` resolves the
 shell once, on PATH.

@@ -449,19 +449,35 @@ toggle, an install, an update and a delete each reload; a marketplace
 clone's index is unwatched, since updating it changes no installed plugin,
 whose reload the `marketplaces.json` write carries.
 
-`/plugins` and `zemi plugins` manage the tree through `internal/plugin`,
+`/plugin` and `zemi plugin` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua. Every install comes from a marketplace:
-`marketplace add <url>` clones a repo holding a marketplace manifest into
+`marketplace add <source>` clones a repo holding a marketplace manifest into
 `marketplaces/<name>/`, named by the manifest - `.zemi/marketplace.json`, or
 Claude's `.claude-plugin/marketplace.json`, the zemi one read when a repo
 holds both; a repo holding neither is refused with both files named, the
 same name and source re-adds by re-cloning the cache, and a different
-source under a taken name is refused naming both. `marketplace list` shows each
+source or ref under a taken name is refused naming both; a manifest's
+`renames` map lets an old entry name pick its entry when no current one
+matches. The source is the
+shape Claude and codex type: a local directory (absolute, `./`, `../`,
+`~/`, `.` and `..`, Windows drives and UNC), an ssh or https git URL (a
+github.com https one completed with `.git`, trailing slashes dropped,
+`file://` a git URL), or GitHub shorthand `owner/repo`, each with an
+optional `#ref` or `@ref` suffix; anything else is refused, and a ref on a
+local path is refused, since git pins nothing there. A relative source at
+the marketplace root (`source: "./"`, the repo itself the plugin) installs
+as a git-kind clone of the repo the marketplace was added from, since a
+copy would carry the clone's `.git`. The pin holds for the
+marketplace's life: the clone is checked out at the ref when added, the
+registry row keeps it, and `marketplace update` and `check` fetch and read
+that ref (reset `FETCH_HEAD`) instead of floating to `origin/HEAD`.
+`marketplace list` shows each
 marketplace with its source and entries; `marketplace update [name]` pulls
 one or all clones, naming what moved and the installs now behind it;
 `marketplace remove <name>` is refused while a copy install still updates
 from it, and drops the rows of git-kind installs, which keep working from
-their own clones. `install <name>[@<marketplace>]` installs one entry: a
+their own clones. `install <name>[@<marketplace>]` (`add` too) installs one
+entry: a
 relative source is copied into `installed/` as a plain dir, a git one is
 cloned into a dot dir, checked out at the highest `vX.Y.Z` tag and renamed
 into place, and the install's row in `plugins/marketplaces.json` keeps the
@@ -477,15 +493,15 @@ marketplace clone and re-copies, marketplaces grouped so one update pulls
 each once, the re-copy and the save skipped when nothing moved; an install
 with no row is the legacy plain clone, updated by its own git. A git-kind
 entry's ref or sha pin is install-time: update floats within the repo's own
-tags, and a marketplace repin needs delete and install. `check` fetches the
+tags, and a marketplace repin needs remove and add. `check` fetches the
 clones and, for copies, fetches each marketplace holding copy installs
 without resetting its clone, reading the manifest off the fetched ref, so
 the list names each update from local refs: a version move as
 `<ver> -> <ver>`, a versionless entry's movement as `updated in the
 marketplace (<name>)`; `enable`, `disable` and `delete` (an installed
 plugin, else the local plugin; a symlink loses the
-link only; `zemi plugins delete` asks first, and needs `--yes` off a
-terminal). `zemi plugins` runs without the TUI or trust, and without the
+link only; `zemi plugin delete` asks first, and needs `--yes` off a
+terminal). `zemi plugin` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
 after `--`. A plugin may carry a manifest, `.zemi/plugin.json` in its code
 dir:
@@ -530,7 +546,7 @@ pinned prompt it lands after so the next send rebuilds with it. A reload
 never re-runs it, a message sent within the capture window gets it on the
 next send, a headless one-shot may never see it, and a `SessionEnd` hook
 does not fire on process quit (nothing calls closeSession there).
-`/plugins` is a toggle list built off the key loop, local plugins first,
+`/plugin` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version, the
 marketplace it came from (none for a local plugin or a legacy clone) and its
 description; its detail names the source, the load status, the manifest's
@@ -541,8 +557,8 @@ registered marketplace, its source and entry count in the row, the clone
 manifest's entries in its detail, `u` updating the clone and `x` removing
 the marketplace, refused with the plugins whose copies still update from
 it; none registered, the section's one row fills
-`/plugins marketplace add `. Four
-verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
+`/plugin marketplace add `. Four
+verbs need the screen, so only `/plugin` takes them: `toggle <name>`,
 `open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
 `new [what it should do]`, the list's first row, and `modify <name> [what
 to change]`, which a local plugin's detail fills; the last two send the
@@ -550,7 +566,7 @@ agent a short prompt pointing at the zemi skill's plugins.md, where the
 procedure lives. `modify` refuses an installed plugin, since the agent
 never writes there.
 
-`zemi plugins test <name|dir> [pattern]` runs a plugin's
+`zemi plugin test <name|dir> [pattern]` runs a plugin's
 `.zemi/tests/*.lua` so an agent writing one tests it without a user's session.
 Each top-level file there is a test file, and one that declares no case
 fails: code the files share goes in a subdirectory (`.zemi/tests/lib/`, loaded
@@ -1048,7 +1064,7 @@ opened with. Its task says what it is, so a model does not spend steps asking
 for what only a live turn can give it.
 `/agents new` has the main agent write a definition: it sends the typed
 line with a short prompt pointing at the New agent steps in the zemi skill.
-Each ready prompt (`/agents new`, `/workflows new`, `/plugins new` and
+Each ready prompt (`/agents new`, `/workflows new`, `/plugin new` and
 `modify`, `/errors ask`)
 names its zemi skill files by path (`zemiSkillDir`), SKILL.md, whose rules
 every change follows, then the task's own, which the read tool opens
@@ -1924,17 +1940,17 @@ rides the `memories.md` line and its ledger entries.
   or wheel that moves the selection, disarms and then acts; a screen's own
   danger key (a workflow view's `x`) waits the same way, and any click or
   wheel drops it. A destructive command typed without the `--yes` its key's
-  run ends in (`/plugins delete x`, `/skills delete x`, `/sessions delete
+  run ends in (`/plugin delete x`, `/skills delete x`, `/sessions delete
   <id>`, `/mcp sign-out x`) asks the same way: its screen opens on that row
   with that key armed (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row
   the list does not hold (a session past the 50 it shows), a toast names the
   `--yes` form; `/memory forget <id>` opens `/memory` on that memory, its
   Forget key armed. In `zemi run` such a command refuses, naming the command
-  that runs it without asking (`zemi plugins delete x --yes`). `j`, `k`, `/`,
+  that runs it without asking (`zemi plugin delete x --yes`). `j`, `k`, `/`,
   `y` and `Y` are the list's own and cannot be keys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`,
-  `/plugins`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
-  action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
+  `/plugin`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
+  action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugin`, `/workflows`
   and a workflow's view also rebuild in place when a server, a run or a
   slow action changes their state off the key loop (`Overlay.Refresh`, for
   a run a 1 s ticker's `RefreshOverlay` that lives only as long as some run
@@ -2312,7 +2328,7 @@ rides the `memories.md` line and its ledger entries.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
-  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for; switch restarts zemi there))
+  `/lsp`, `/plugin`, `/projects` (the projects zemi keeps state for; switch restarts zemi there))
   and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
   its own click opens, listed in /help and out of the palette's default list.
   `/jobs` is the background processes on a screen of their own, apart from
@@ -2462,7 +2478,7 @@ rides the `memories.md` line and its ledger entries.
   `compactions`, `denied` (each `tool`, `subject`, `arg`, `reason`, `why`) and
   `tools` (`id`, `tool`, `input`, `status` and `error` per call that ended).
   `zemi sessions` (`-a` for every project, `search <words>` across all of
-  them), `zemi projects`, `zemi plugins` and `zemi health` take `--json` too,
+  them), `zemi projects`, `zemi plugin` and `zemi health` take `--json` too,
   one object per row:
 
   | command | fields per row |
@@ -2470,7 +2486,7 @@ rides the `memories.md` line and its ledger entries.
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd`; `-a` adds `project` |
   | `zemi sessions search` | `id`, `title`, `updated`, `project`, `hits`, `match` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
-  | `zemi plugins` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
+  | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
