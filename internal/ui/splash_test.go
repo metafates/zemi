@@ -82,10 +82,10 @@ func TestSplashFitsShortChat(t *testing.T) {
 		h         int
 		want, not []string
 	}{
-		{24, []string{"3m ago", "v1", "+#%#@%@%%#%#:", "● Tip"}, nil},
-		{23, []string{"v1", "+#%#@%@%%#%#:", "● Tip"}, []string{"3m ago"}},
-		{19, []string{"+#%#@%@%%#%#:", "● Tip"}, []string{"v1"}},
-		{17, []string{"zemi", "● Tip"}, []string{"+#%#@%@%%#%#:"}},
+		{25, []string{"3m ago", "v1", "+#%#@%@%%#%#:", "● Tip"}, nil},
+		{24, []string{"v1", "+#%#@%@%%#%#:", "● Tip"}, []string{"3m ago"}},
+		{20, []string{"+#%#@%@%%#%#:", "● Tip"}, []string{"v1"}},
+		{18, []string{"zemi", "● Tip"}, []string{"+#%#@%@%%#%#:"}},
 	} {
 		app, _ := bootAgentAppPinned(t, 80, c.h)
 		runLua(t, app, `
@@ -133,7 +133,7 @@ func TestSplashTip(t *testing.T) {
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
 		{"a first session", `recent = {}`, `● Tip  !git status runs in your shell; the output rides your next prompt`, "!git status", true},
 	}
-	for _, h := range []int{30, 22} {
+	for _, h := range []int{31, 23} {
 		app, _ := bootAgentApp(t, 100, h)
 		logo := [2]int{-1, -1}
 		for _, c := range cases {
@@ -188,7 +188,7 @@ func TestSplashTakesBootWork(t *testing.T) {
 		logo bool // a chat with room for the logo and the pending row
 	}{
 		{80, 24, true},
-		{40, 8, false},
+		{40, 9, false},
 	} {
 		t.Run(fmt.Sprintf("%dx%d", c.w, c.h), func(t *testing.T) {
 			t.Parallel()

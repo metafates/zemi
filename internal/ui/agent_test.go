@@ -685,7 +685,7 @@ func TestTurnStats(t *testing.T) {
 				out = append(out, strings.Join(strings.Fields(row), " "))
 			}
 		}
-		return out[:len(out)-3] // the composer
+		return out[:len(out)-4] // the composer and the statusline row
 	}
 	host.AppendMessage("user", "fix it")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1,2 +1,2 @@\n-old\n+new\n keep"})
@@ -913,7 +913,7 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"Run this command?", "workflow 7c2"},
 		},
 		{
-			"facts survive a short screen", 80, 16,
+			"facts survive a short screen", 80, 17,
 			hostapi.PermRequest{
 				Subject: "tool.shell", Arg: strings.Repeat("rm -rf build && go build ./...\n", 20),
 				Reason: "this may delete many files", Description: "Rebuild from a clean tree",
@@ -1778,7 +1778,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 				out = append(out, strings.Join(strings.Fields(row), " "))
 			}
 		}
-		return out[:len(out)-3] // the composer
+		return out[:len(out)-4] // the composer and the statusline row
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	app.AgentStream()
@@ -2209,9 +2209,9 @@ func TestToolRows(t *testing.T) {
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	// the rail keeps every row's mark at column 2: nothing but the bar starts
-	// a row (the composer's last three aside)
+	// a row (the composer's last three rows and the statusline row aside)
 	rows := strings.Split(frame, "\r\n")
-	for _, r := range rows[:len(rows)-3] {
+	for _, r := range rows[:len(rows)-4] {
 		if r = strings.TrimSpace(r); r != "" && !strings.HasPrefix(r, "│") && !strings.HasPrefix(r, "▌") {
 			t.Fatalf("a rail row starts off the bar: %q\n%s", r, frame)
 		}
@@ -2521,7 +2521,7 @@ func TestTodoRowsFollowTheLiveItem(t *testing.T) {
 	}{
 		{
 			name: "long list",
-			h:    40,
+			h:    41,
 			live: "in_progress", last: "pending",
 			want: []string{"… 1 more todo above", "✓ step 02", "▸ step 13", "… 1 more todo"},
 			gone: []string{"step 01", "step 14"},
@@ -2538,7 +2538,7 @@ func TestTodoRowsFollowTheLiveItem(t *testing.T) {
 		{
 			// nothing in progress: the window starts at the first item
 			name: "nothing in progress",
-			h:    40,
+			h:    41,
 			live: "done", last: "pending",
 			want: []string{"✓ step 01", "✓ step 12", "… 2 more todos"},
 			gone: []string{"step 14"},
