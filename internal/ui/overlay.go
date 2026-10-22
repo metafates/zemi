@@ -649,7 +649,9 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 		a.reloadOverlay(o, nil)
 		return
 	}
-	a.closeOverlayByID(o.ID)
+	// a view's keys act on the row from its list, so they close the list the
+	// same way the key does from it; the view's id is the list's plus #detail
+	a.closeOverlayByID(strings.TrimSuffix(o.ID, "#detail"))
 }
 
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,

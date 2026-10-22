@@ -1586,7 +1586,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 	pressKeys(app, "r")
 	for app.Pump() {
 	}
-	if ran != "res 1" || len(app.overlays) != 1 || app.overlays[0].o.ID != "s" {
+	if ran != "res 1" || len(app.overlays) != 0 {
 		t.Errorf("a key in the view: ran %q, %d open", ran, len(app.overlays))
 	}
 
