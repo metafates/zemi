@@ -2775,7 +2775,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("usage", L.NewFunction(func(L *glua.LState) int {
 		s := h.AgentStream()
-		out := usageTable(L, s)
+		out := usageTable(L, s, h.modelPriced(h.turnModelID()))
 		contextTable(L, s).ForEach(func(k, v glua.LValue) { out.RawSetString("context_"+k.String(), v) })
 		L.Push(out)
 		return 1

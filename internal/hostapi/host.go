@@ -1845,7 +1845,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		lt.RawSetString("runs", glua.LNumber(l.Runs))
 		tb.RawSetString("loop", lt)
 	}
-	tb.RawSetString("usage", usageTable(L, stream))
+	tb.RawSetString("usage", usageTable(L, stream, h.modelPriced(h.turnModelID())))
 	tb.RawSetString("context", contextTable(L, stream))
 	tb.RawSetString("transcript_count", glua.LNumber(len(transcript)))
 	if view != nil { // absent while the session shows
@@ -2072,13 +2072,17 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 }
 
 // usageTable is the session token tally for widgets (DESIGN §8): totals
-// across all turns of this session.
-func usageTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
-	u := L.CreateTable(0, 4)
+// across all turns of this session. priced says the conversation's model
+// declares prices, however the tally gathered it: the statusline's cost
+// hides without it, a side call on a priced model is not a price the
+// conversation's own shows.
+func usageTable(L *glua.LState, s StreamSnapshot, priced bool) *glua.LTable {
+	u := L.CreateTable(0, 5)
 	u.RawSetString("in", glua.LNumber(s.SessionIn))
 	u.RawSetString("out", glua.LNumber(s.SessionOut))
 	u.RawSetString("total", glua.LNumber(s.SessionIn+s.SessionOut))
 	u.RawSetString("cost", glua.LNumber(s.SessionCost))
+	u.RawSetString("priced", glua.LBool(priced))
 	return u
 }
 

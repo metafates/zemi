@@ -231,7 +231,13 @@ local right = {
 	{
 		"cost",
 		42,
-		function(ctx) return fmt.cost((ctx.usage or {}).cost) end,
+		-- the session's tally may carry a side call on a priced model; the
+		-- widget shows a price only when the conversation's own model has one
+		function(ctx)
+			local u = ctx.usage or {}
+			if not u.priced then return nil end
+			return fmt.cost(u.cost)
+		end,
 	},
 }
 for _, part in ipairs(right) do

@@ -828,6 +828,7 @@ function zemi.event.stats() end
 ---@field out integer
 ---@field total integer
 ---@field cost number
+---@field priced? boolean The session tally only: the conversation's model declares prices, which is what a cost widget shows.
 
 ---@class zemi.ContextUsage
 ---@field tokens integer

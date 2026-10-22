@@ -473,7 +473,8 @@ registry row keeps it, and `marketplace update` and `check` fetch and read
 that ref (reset `FETCH_HEAD`) instead of floating to `origin/HEAD`.
 `marketplace list` shows each
 marketplace with its source and entries; `marketplace update [name]` pulls
-one or all clones, naming what moved and the installs now behind it;
+one or all clones and re-copies the copy installs that update from it, so a
+pull moves the installed plugins by itself;
 `marketplace remove <name>` is refused while a copy install still updates
 from it, and drops the rows of git-kind installs, which keep working from
 their own clones. `install <name>[@<marketplace>]` (`add` too) installs one

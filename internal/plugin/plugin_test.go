@@ -919,7 +919,7 @@ func TestMarketplace(t *testing.T) {
 			},
 		},
 		{
-			name: "a marketplace update pulls once and names the installs behind it",
+			name: "a marketplace update pulls once and refreshes the installs behind it",
 			before: func() {
 				// upstream grows the very path the install's synthesized
 				// manifest occupies, so the checkout would refuse without
@@ -931,11 +931,11 @@ func TestMarketplace(t *testing.T) {
 				bump("1.3.0", "0.3.0", "0.2.0", "0.6.0")
 			},
 			args: []string{"marketplace", "update", "demo-market"},
-			want: "behind it: entry-manifest, loose, own-manifest, rel-one, sub-one",
+			want: "entry-manifest updated loose updated own-manifest updated rel-one updated sub-one updated",
 			check: func(t *testing.T) {
 				b, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "installed", "rel-one", ".claude-plugin", "plugin.json"))
-				if err != nil || strings.Contains(string(b), "0.6.0") {
-					t.Errorf("the marketplace update touched an install: %q, %v", b, err)
+				if err != nil || !strings.Contains(string(b), "1.3.0") {
+					t.Errorf("the marketplace update did not refresh the install: %q, %v", b, err)
 				}
 			},
 		},

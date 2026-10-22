@@ -345,6 +345,10 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 	}
 	for _, sp := range spans {
 		rows[sp.y] = restyle(rows[sp.y], sp.lo, sp.hi, func(s *hostapi.Segment) {
+			if s.Link != "" { // a link lights alone on a body row: it is what acts
+				s.Over = "Hover"
+				return
+			}
 			if !s.NoHover { // a body row says it acts with the pointer alone
 				style(s)
 			}
@@ -499,6 +503,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return list(n, &st.sel, func() { a.questionKey("enter", "") })
 	case top == modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
+		if under.Hit == 0 && under.Link != "" {
+			// a link in the body, a detail view's README: the list's rows
+			// still act first
+			spans, ok := at(func(s hostapi.Segment) bool { return s.Link == under.Link })
+			return firstRow(spans), func() { a.openLink(under.Link) }, ok
+		}
 		var open func()
 		if len(st.visible) > 0 && st.enterVerb(st.visible[st.selected]) != "" {
 			open = func() { a.overlayKey("enter", "") }

@@ -722,3 +722,41 @@ func TestLinkClickOpens(t *testing.T) {
 		t.Fatalf("cut row: %q", tight)
 	}
 }
+
+// TestLinkClickOpensInOverlay: a link in an overlay's body, a detail view's
+// README, opens too; a list row the click lands on still acts first.
+func TestLinkClickOpensInOverlay(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 16)
+	url := "https://example.com/docs"
+	app.openOverlay(hostapi.Overlay{
+		ID: "d", Title: "Detail", Origin: lua.OriginBuiltin,
+		Body: "read https://example.com/docs online",
+	})
+	app.lastRows = [][]hostapi.Segment{{{Text: "read "}, {Text: "example.com/docs", Link: url}}}
+	var got string
+	was := openURL
+	openURL = func(u string) error { got = u; return nil }
+	defer func() { openURL = was }()
+	clickAt(app, 6, 0)
+	if got != url {
+		t.Fatalf("click in an overlay opened %q, want %q", got, url)
+	}
+}
+
+// TestLinkHoverLights: hover underlines a link's cells on a body row that
+// stays quiet otherwise, and leaves the row's text unlit.
+func TestLinkHoverLights(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 16)
+	url := "https://example.com/docs"
+	app.lastRows = [][]hostapi.Segment{{{Text: "see "}, {Text: "the docs", Link: url, NoHover: true}}}
+	app.hovering = true
+	app.hoverX, app.hoverY = 6, 0
+	rows := [][]hostapi.Segment{{{Text: "see "}, {Text: "the docs", Link: url, NoHover: true}}}
+	app.highlightHover(rows)
+	if rows[0][0].Over != "" {
+		t.Errorf("the plain text lit: %q", rows[0][0].Over)
+	}
+	if rows[0][1].Over != "Hover" {
+		t.Errorf("the link did not light: %q", rows[0][1].Over)
+	}
+}

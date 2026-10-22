@@ -53,7 +53,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   highlight always means a click acts; only an item's non-blank or background-painted cells are
   a target, and lists scroll at the edge instead of recentering, so a click does not move the
   row under the pointer. `Segment.NoHover` marks a row that acts without lighting up, which is
-  how chat body rows stay quiet. Selection and clicks are zemi's own (internal/ui/mouse.go): a
+  how chat body rows stay quiet; a link on a body row is the exception, the
+  one thing acting there, and lights alone on hover. Selection and clicks are zemi's own (internal/ui/mouse.go): a
   drag copies the last frame's segments inside the pane or box it started in (`App.selClip`:
   the top modal's text cells, a composer popup's, else a layout leaf or float), leaving out `Segment.NoCopy` cells (decoration) and
   rejoining a row that ends in a `Segment.Soft` one with the next. `hostapi.WrapSegs` sets

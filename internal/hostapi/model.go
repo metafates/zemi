@@ -629,6 +629,13 @@ func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 		float64(u.CacheReadTokens)*m.CostPer1MCacheRead) / 1e6
 }
 
+// modelPriced reports whether the model declares prices: what the cost
+// widget shows.
+func (h *Host) modelPriced(id string) bool {
+	m, _ := h.modelSpec(id)
+	return m.CostPer1MIn > 0 || m.CostPer1MOut > 0
+}
+
 // contextWindow is the model spec's window, 0 when it names none (unknown:
 // no percent readout, no auto compaction).
 func (h *Host) contextWindow(modelID string) int64 {

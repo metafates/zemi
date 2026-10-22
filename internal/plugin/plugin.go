@@ -683,7 +683,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		var errs []error
 		moved := false
 		for _, mkt := range slices.Sorted(maps.Keys(groups)) {
-			m, err := updateCopies(ctx, d, mkt, groups[mkt], mf, out)
+			m, err := updateCopies(ctx, d, mkt, groups[mkt], mf, out, false)
 			moved = moved || m
 			if err != nil {
 				errs = append(errs, err)
@@ -1063,14 +1063,21 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 		}
 		moved = true
 		fmt.Fprintf(out, "marketplace %s updated\n", name)
-		var behind []string
+		// the pull is what an update of the marketplace's copy installs was
+		// waiting for: re-copy them from the clone it just moved
+		var copies []string
 		for _, pname := range slices.Sorted(maps.Keys(f.Installs)) {
 			if reg := f.Installs[pname]; reg.Marketplace == name && reg.Kind != kindGit {
-				behind = append(behind, pname)
+				copies = append(copies, pname)
 			}
 		}
-		if len(behind) > 0 {
-			fmt.Fprintf(out, "  behind it: %s\n", strings.Join(behind, ", "))
+		if len(copies) == 0 {
+			continue
+		}
+		if m, err := updateCopies(ctx, d, name, copies, f, out, true); err != nil {
+			errs = append(errs, err)
+		} else {
+			moved = moved || m
 		}
 	}
 	if !moved && len(errs) == 0 {
@@ -1269,17 +1276,21 @@ func placeCopy(ctx context.Context, d config.Dirs, mkt string, e MarketplacePlug
 	return p, nil
 }
 
-// updateCopies re-copies the named copies from one marketplace clone,
-// pulled once for the group; a pull that moved nothing and an entry whose
-// version is unchanged re-copy and record nothing.
-func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string, mf marketplaceFile, out io.Writer) (bool, error) {
+// updateCopies re-copies the named copies from one marketplace clone, pulled
+// once for the group unless changed says the caller pulled it already; a pull
+// that moved nothing and an entry whose version is unchanged re-copy and
+// record nothing.
+func updateCopies(ctx context.Context, d config.Dirs, mkt string, names []string, mf marketplaceFile, out io.Writer, changed bool) (bool, error) {
 	dir := filepath.Join(d.PluginsRoot(), "marketplaces", mkt)
 	if !exists(dir) {
 		return false, fmt.Errorf("marketplace %s is not installed", mkt)
 	}
-	changed, err := pullMarketplace(ctx, dir, mf.Marketplaces[mkt].Ref)
-	if err != nil {
-		return false, fmt.Errorf("marketplace %s: %w", mkt, err)
+	if !changed {
+		c, err := pullMarketplace(ctx, dir, mf.Marketplaces[mkt].Ref)
+		if err != nil {
+			return false, fmt.Errorf("marketplace %s: %w", mkt, err)
+		}
+		changed = c
 	}
 	m, err := ReadMarketplace(dir)
 	if err != nil {
