@@ -161,11 +161,14 @@ func protocolAnswers(questions map[string]Question, got map[string]protocolAnswe
 func (a protocolAnswer) answer(q Question) (Answer, error) {
 	switch q.Type {
 	case TypeBool:
-		if a.Type != noul || a.Noul == nil {
+		if a.Type != noul {
 			return Answer{}, fmt.Errorf("want a %s answer, got type %q", noul, a.Type)
 		}
-		p, err := probability(*a.Noul)
-		if err != nil {
+		if a.Noul == nil {
+			return Answer{}, fmt.Errorf("the %s answer carries no probability", noul)
+		}
+		p := *a.Noul
+		if err := probability(p); err != nil {
 			return Answer{}, err
 		}
 		return Answer{Type: TypeBool, Value: p > 0.5, Probability: &p}, nil
@@ -182,18 +185,20 @@ func (a protocolAnswer) answer(q Question) (Answer, error) {
 		}
 		return Answer{Type: TypeChoice, Choice: a.Choice, Probabilities: probs, Confidence: confidence(slices.Collect(maps.Values(probs)))}, nil
 	case TypeScore:
-		if a.Type != string(TypeScore) || a.Score == nil {
+		if a.Type != string(TypeScore) {
 			return Answer{}, fmt.Errorf("want a score answer, got type %q", a.Type)
+		}
+		if a.Score == nil {
+			return Answer{}, fmt.Errorf("the score answer carries no level")
 		}
 		if err := q.checkScore(*a.Score); err != nil {
 			return Answer{}, err
 		}
 		if a.Confidence != nil {
-			c, err := probability(*a.Confidence)
-			if err != nil {
+			if err := probability(*a.Confidence); err != nil {
 				return Answer{}, err
 			}
-			return Answer{Type: TypeScore, Score: a.Score, Confidence: &c}, nil
+			return Answer{Type: TypeScore, Score: a.Score, Confidence: a.Confidence}, nil
 		}
 		return Answer{Type: TypeScore, Score: a.Score}, nil
 	}
@@ -212,7 +217,7 @@ func probabilities(labels []string, got map[string]float64) (map[string]float64,
 		if !ok {
 			continue
 		}
-		if _, err := probability(p); err != nil {
+		if err := probability(p); err != nil {
 			return nil, fmt.Errorf("%s: %w", l, err)
 		}
 		out[l] = p
@@ -225,11 +230,11 @@ func probabilities(labels []string, got map[string]float64) (map[string]float64,
 	return out, nil
 }
 
-func probability(p float64) (float64, error) {
+func probability(p float64) error {
 	if p < 0 || p > 1 {
-		return 0, fmt.Errorf("probability %v is outside 0..1", p)
+		return fmt.Errorf("probability %v is outside 0..1", p)
 	}
-	return p, nil
+	return nil
 }
 
 // confidence is how one-sided a distribution is: 1 for a unanimous answer, 0

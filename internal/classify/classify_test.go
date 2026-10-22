@@ -110,9 +110,11 @@ func TestProtocolAnswersRejected(t *testing.T) {
 	}{
 		{"an answer outside 0..1", `{"answers": {"danger": {"type": "noul", "noul": 1.4}}}`, "probability 1.4 is outside 0..1", nil},
 		{"an answer of another type", `{"answers": {"danger": {"type": "bool", "noul": 0.5}}}`, `want a noul answer, got type "bool"`, nil},
+		{"an answer with no probability", `{"answers": {"danger": {"type": "noul"}}}`, "the noul answer carries no probability", nil},
 		{"a label the question has not", `{"answers": {"action": {"type": "choice", "choice": "maybe"}}}`, `answered "maybe", which is not one of allow, ask, deny`, one("action")},
 		{"a probability for a label it has not", `{"answers": {"action": {"type": "choice", "choice": "deny", "probabilities": {"deny": 0.6, "later": 0.4}}}}`, `answered a probability for "later"`, one("action")},
 		{"a score outside its levels", `{"answers": {"risk": {"type": "score", "score": 7}}}`, "score 7 is outside 0..2", one("risk")},
+		{"a score with no level", `{"answers": {"risk": {"type": "score"}}}`, "the score answer carries no level", one("risk")},
 		{"no answer at all", `{"answers": {}}`, `the provider answered no "danger"`, one("danger")},
 	} {
 		t.Run(c.name, func(t *testing.T) {
