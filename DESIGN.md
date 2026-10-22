@@ -305,8 +305,9 @@ Directories (XDG; Windows keeps the same roots under the user's home,
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  plugins/installed/<name>/  plugins installed from a marketplace entry: a copy of a relative
-                          source, or a clone of a git one; their code under .zemi/: init.lua loaded,
+  plugins/installed/<name>/  plugins installed from a marketplace entry: a relative symlink into
+                          the marketplace's clone, or into the entry's own clone under
+                          marketplaces/.cache; their code under .zemi/: init.lua loaded,
                           lua/<name>/ require()-able, tests/, workflows/, and plugin.json, the
                           manifest with its optional version, description and uses (§9);
                           skills|agents|commands/ as in the config dir
@@ -317,7 +318,7 @@ Directories (XDG; Windows keeps the same roots under the user's home,
                           `.zemi/marketplace.json` or Claude's `.claude-plugin/marketplace.json`,
                           the zemi one read when a repo holds both
   plugins/marketplaces.json  the registered marketplaces and, per installed plugin, the entry
-                          it was installed from, with the install's kind (copy or git) and id
+                          it was installed from, with the install's kind (link or cache) and id
   plugins/data/<name>/    a Claude-layout plugin's ${CLAUDE_PLUGIN_DATA}, where its hooks and
                           servers may keep state
   plugins/disabled        names turned off, one per line
@@ -554,16 +555,17 @@ never re-runs it, a message sent within the capture window gets it on the
 next send, a headless one-shot may never see it, and a `SessionEnd` hook
 does not fire on process quit (nothing calls closeSession there).
 `/plugin` is a toggle list built off the key loop, local plugins first,
-each row's state first (`failed`, an update), then its version, the
+each row's state first (`failed`), then its version, the
 marketplace it came from (none for a local plugin or a legacy clone) and its
 description; its detail names the source, the load status, the manifest's
 `uses` and what the plugin registered, and the git and marketplace verbs run
 on a goroutine that refreshes the list when they end, unless the user closed
 it meanwhile. Under the plugin rows a Marketplaces section lists each
-registered marketplace, its source and entry count in the row, the clone
-manifest's entries in its detail, `u` updating the clone and `x` removing
-the marketplace, refused with the plugins whose copies still update from
-it; none registered, the section's one row fills
+registered marketplace, its entry count in the row, enter opening a
+drill-down whose info row names the source and whose rows are the clone
+manifest's entries, `u` updating the clone and `x` removing the
+marketplace on both, the remove refused with the plugins whose installs
+still update from it; none registered, the section's one row fills
 `/plugin marketplace add `. Four
 verbs need the screen, so only `/plugin` takes them: `toggle <name>`,
 `open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
