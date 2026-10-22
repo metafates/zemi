@@ -563,6 +563,16 @@ func (a *App) Frame() string {
 	if a.width <= 0 || a.height <= 0 {
 		return "zemi starting…"
 	}
+	// a reload's window has the old generation's widgets and theme purged,
+	// and a frame drawn there flashes without them: keep the last one until
+	// the new generation draws, like a reload keeps the old layout
+	if a.host.RT.Reloading() {
+		a.frameMu.Lock()
+		defer a.frameMu.Unlock()
+		if a.lastFrame != "" {
+			return a.lastFrame
+		}
+	}
 	return a.compose(a.width, a.height)
 }
 

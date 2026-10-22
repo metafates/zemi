@@ -312,6 +312,11 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 // in, over and over.
 func (r *Runtime) Booting() bool { return r.booting.Load() }
 
+// Reloading reports the window where the old generation is retired and the
+// new one is not up: its registrations are purged, so a screen drawn here
+// would lose its widgets and theme.
+func (r *Runtime) Reloading() bool { return r.reloading.Load() }
+
 // Do enqueues fn on the current generation and waits for the result.
 // ceiling == 0 selects the class default.
 func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Duration, fn Fn) ([]any, error) {
