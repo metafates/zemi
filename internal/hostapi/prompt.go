@@ -189,7 +189,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 
 // replyReminder closes the main agent's context message, where a small model
 // weighs it most; a subagent's report and a profile's own prompt keep theirs.
-const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for, unless they ask for detail or the change spans many files."
+const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for."
 
 // planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
 // the pipeline enforces it (Pipeline.ReadOnly), the prompt only saves wasted attempts.
