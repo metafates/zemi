@@ -633,7 +633,6 @@ func (h *Host) gitStatusSection(dir string) string {
 	out, err := h.git(dir, "status", "--short", "--branch")
 	if err != nil {
 		// dubious ownership and a missing git binary read the same as "no"
-		// otherwise; the row is computed once at boot, so its length is stable
 		return "Git repository: unknown (" + clipLine(err.Error(), 200) + ")"
 	}
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
