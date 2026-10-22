@@ -1539,8 +1539,8 @@ func toolSummary(tool, input string) string {
 		path, _ := m["path"].(string)
 		return path
 	}
-	// the lsp tool names what it does in "action"; without it a row would
-	// read as the whole body of what it is about to show
+	// a tool that names what it does in "action" reads as the action and
+	// what it acts on, not the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {
 		for _, k := range []string{"symbol", "path", "id"} {
 			if v, ok := m[k]; ok {

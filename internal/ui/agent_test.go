@@ -2803,7 +2803,7 @@ func TestPermTitle(t *testing.T) {
 		{hostapi.PermRequest{Tool: "read", Subject: "fs.read", Arg: "/etc/hosts"}, "Read this file?", "file /etc/hosts"},
 		{hostapi.PermRequest{Tool: "write", Subject: "fs.write", Arg: "/p/a.go"}, "Write this file?", "file a.go"},
 		{hostapi.PermRequest{Tool: "edit", Subject: "fs.write", Arg: "a.go"}, "Edit this file?", "file a.go"},
-		{hostapi.PermRequest{Tool: "lsp", Subject: "fs.write", Arg: "a.go"}, "Change this file?", "file a.go"},
+		{hostapi.PermRequest{Tool: "notes", Subject: "fs.write", Arg: "a.go"}, "Change this file?", "file a.go"},
 		{hostapi.PermRequest{Tool: "mcp_github_create_issue", Subject: "mcp.github", Arg: "create_issue"}, "Use create_issue from github?", ""},
 		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "script"}, "Run Lua inside zemi?", ""},
 		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "file x.lua"},

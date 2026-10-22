@@ -1356,9 +1356,6 @@ text instead of the `question` or `plan` tool is told so once, since a
 question or a report is no plan to approve),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
-`diagnostics` (language
-server errors and warnings for any file), `lsp` (definition, implementation,
-references, rename, file symbols, project-wide symbol search by name),
 `skill` (loads a SKILL.md body on demand), plus the
 five the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
@@ -2809,8 +2806,8 @@ by the next startup sweep, since the session still has unseen messages.
   frontmatter name that is not the directory's, a taken name, a body
   over the `skill` tool's cap). Rewind (§8) reverts a recipe written
   in the rewound turn like any other file.
-- A brain file the file tools write - write, edit, an LSP rename's
-  secondary targets - is an ordinary write, and so is Lua's
+- A brain file the file tools write - write, edit - is an
+  ordinary write, and so is Lua's
   `zemi.fs.write`: both pass the same gates, and the ask carries no reason
   of its own. Once approved the write gets the recipe
   treatment: the secret scrub runs after the write, the instruction-shape
