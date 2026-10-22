@@ -1834,12 +1834,20 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return out
 }
 
+// blank is the run of spaces a padded row slices: a strings.Repeat per row
+// costed a few hundred small allocations a frame.
+var blank = strings.Repeat(" ", 4096)
+
 func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	pad := w - hostapi.SegsWidth(segs)
 	if pad <= 0 {
 		return segs
 	}
+	text := blank[:min(pad, len(blank))]
+	if pad > len(blank) { // not a width a terminal reports
+		text = strings.Repeat(" ", pad)
+	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of
 	// leaving the terminal's background showing
-	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal"})
+	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: text, HL: "Normal"})
 }
