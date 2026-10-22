@@ -1513,8 +1513,8 @@ func (a *App) pills() []statusItem {
 
 // statusRow builds the one-row statusline: the left cluster, then the right
 // one aligned to the right edge (DESIGN §8).
-func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
-	left, right := a.statusClusters(w, leftRegion, rightRegion)
+func (a *App) statusRow(w int, n *hostapi.LayoutNode) []hostapi.Segment {
+	left, right := a.statusClusters(w, n)
 	out := append([]hostapi.Segment{}, left...)
 	if gap := max(0, w-hostapi.SegsWidth(left)-hostapi.SegsWidth(right)); gap > 0 {
 		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
@@ -1531,9 +1531,15 @@ type statusItem struct {
 // statusClusters are the statusline's two sides fitted into w cells, each
 // drawn from its outer edge in priority order, so a lasting widget sits
 // outermost and one that comes and goes never moves it: the left region's
-// widgets and the pills left to right, the right region's right to left.
-func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
-	return fitClusters(append(a.statusItems(leftRegion), a.pills()...), a.statusItems(rightRegion), w)
+// widgets and the pills left to right, the right region's right to left. The
+// pills join a node that carries the statusline, not every cluster: a bare
+// rule draws bare, and when no node carries it the bottom-left float does.
+func (a *App) statusClusters(w int, n *hostapi.LayoutNode) (left, right []hostapi.Segment) {
+	leftItems := a.statusItems(n.Left)
+	if n.Kind == hostapi.LayoutBar || n.Left != "" || n.Right != "" {
+		leftItems = append(leftItems, a.pills()...)
+	}
+	return fitClusters(leftItems, a.statusItems(n.Right), w)
 }
 
 // fitClusters joins the clusters, dropping the highest priority widget (the

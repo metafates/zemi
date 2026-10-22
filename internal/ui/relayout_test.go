@@ -218,3 +218,16 @@ zemi.ui.layout.set({
 		t.Fatalf("no statusline, yet the error pill is missing:\n%s", frame)
 	}
 }
+
+// TestErrorPillDrawsOnce: the default layout's bar carries the alarm pills,
+// and the composer's bare rule must not draw them again.
+func TestErrorPillDrawsOnce(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 20)
+	host.RecordError("test", "boom")
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if n := strings.Count(frame, "errors /errors"); n != 1 {
+		t.Fatalf("the error pill drew %d times, want once on the bar:\n%s", n, frame)
+	}
+}
