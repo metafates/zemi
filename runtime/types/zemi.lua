@@ -3008,9 +3008,8 @@ function zemi.test.answer(choice, action) end
 --- with the requests it answered as they arrive (`reqs[1].url`).
 --- A reply's fields and defaults: http `{ status = 200, body = "", headers = {} }`,
 --- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
---- model a string or `{ text }`, classify `{ answers = {...}, strategy = ... }`
---- (the whole result `zemi.classify.ask` hands back), send and write none (a
---- stubbed write
+--- model a string or `{ text }`, classify `{ answers = {...}, strategy = ... }`,
+--- send and write none (a stubbed write
 --- writes); an http or model reply `{ error = "..." }` fails at the
 --- transport. Any other field raises. The requests: http
 --- `{ method, url, headers, body }`, job `{ cmd, args, cwd }`, model

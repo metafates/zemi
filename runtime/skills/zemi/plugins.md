@@ -209,7 +209,7 @@ test.stub(subject, pattern?, reply?) -> requests
 test.eq(got, want)  test.neq(got, other)  test.contains(s, sub)  test.raises(fn, sub?) -> message
 ```
 
-Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields and their defaults: http `{ status = 200, body = "", headers = {} }`, job `{ code = 0, stdout = "", stderr = "" }`, model a string or `{ text }`, classify the whole result `{ strategy = "...", answers = { <question> = { value = true, probability = 0.9 } } }`; `{ error = "..." }` (http and model replies) fails at the transport. Plugin code can tell it is under test, so passing tests are no review of what it does. `.zemi/tests/branch.lua` for the plugin above:
+Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields and their defaults: http `{ status = 200, body = "", headers = {} }`, job `{ code = 0, stdout = "", stderr = "" }`, model a string or `{ text }`, classify `{ strategy = "...", answers = { <question> = { value = true, probability = 0.9 } } }`; `{ error = "..." }` (http and model replies) fails at the transport. Plugin code can tell it is under test, so passing tests are no review of what it does. `.zemi/tests/branch.lua` for the plugin above:
 
 ```lua
 local test = zemi.test
