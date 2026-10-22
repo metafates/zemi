@@ -2759,7 +2759,7 @@ by the next startup sweep, since the session still has unseen messages.
   `path` inside the partition's dir plus `content`; the reserved
   `memories.md` refuses ("the memory tool owns this file"), and the user
   partition refuses whole ("user-brain files are written with the file
-  tools; those writes ask"). The injected surfaces get the one-liner
+  tools"). The injected surfaces get the one-liner
   treatment: `description` and `read_if` are stripped and capped like a
   one-liner's text (shaped or oversized queues under `ask`), the secret
   scan and scrub
