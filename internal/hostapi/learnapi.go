@@ -1,6 +1,5 @@
-// learnapi.go is the zemi.learn namespace (DESIGN §6.7, §10): proposals and
-// decide cover memory proposals. decide needs user or builtin origin: the
-// model can propose, never decide.
+// learnapi.go is the zemi.learn namespace (DESIGN §6.7, §10): memory
+// proposals and deciding them.
 
 package hostapi
 

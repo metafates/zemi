@@ -323,7 +323,7 @@ func mcpToolName(server, tool string) string {
 
 // mcpReadOnly reports a tool the server marked read-only and not
 // destructive. It is the server's own word, which is the trust the user
-// already extends by adding the server (zemi.mcp.add is user config only).
+// already extends by adding the server.
 // mcpOfferedTool is one MCP tool a run gets, under the name a call uses.
 type mcpOfferedTool struct {
 	srv   *mcpServer

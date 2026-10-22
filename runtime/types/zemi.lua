@@ -264,8 +264,8 @@ zemi.config = {}
 ---@return any
 function zemi.config.get(path) end
 
---- Write a setting. User config only; raises for an unknown path, a wrong
---- kind or a value outside the key's `choices` (agent.effort, memory.autonomy).
+--- Write a setting. Raises for an unknown path; a wrong kind or a value outside
+--- the key's `choices` is recorded in /errors and the key keeps its default.
 --- A reload that writes the same value as the last load leaves the setting
 --- alone, so a runtime pick (/model, /effort) stays. A call made after boot
 --- (a keymap, a timer, an event handler) is a runtime pick: zemi keeps it for
@@ -1363,11 +1363,10 @@ function zemi.ui.input(opts, on_confirm) end
 ---@field line? integer 1-based line to start at
 ---@field title? string working-row label while the editor is open (default: the file name)
 
---- Open a file in the project dir, anywhere in a trusted repository (`zemi.project.root()`), or under
---- `zemi.fs.data_dir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
+--- Open a file in the user's editor (editor.command, $VISUAL, $EDITOR)
 --- fullscreen over zemi, and call on_done when it exits: on_done(),
---- or on_done(err) when it failed or exited non-zero.
---- Never blocks the interpreter. Raises for a path outside those.
+--- or on_done(err) when it failed or exited non-zero. A relative path
+--- resolves against the project dir. Never blocks the interpreter.
 ---
 --- ```lua
 --- zemi.ui.edit(zemi.fs.data_dir("notes") .. "/todo.md", { line = 1 }, function(err)
@@ -1650,7 +1649,7 @@ zemi.provider.kind = {}
 ---@field TEXT "text"
 zemi.provider.object_mode = {}
 
---- Register a provider and its models. User config only. An id a builtin
+--- Register a provider and its models. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
 --- base_url); the builtin ones are on while their key is exported. An unknown
 --- field on the spec or on a model entry raises.
@@ -1669,7 +1668,7 @@ function zemi.provider.add(spec) end
 
 --- Remove a provider, builtin or added; an id nothing registered is a
 --- no-op, so init.lua works on a machine where that key is not exported.
---- User config only. `providers.builtin = false` drops every builtin one.
+--- `providers.builtin = false` drops every builtin one.
 ---@param id string
 function zemi.provider.del(id) end
 
@@ -1900,7 +1899,7 @@ function zemi.agent.current() end
 --- the error is what can be known before it starts (no model yet); during
 --- a turn it joins at the next step. A plugin's own send settles where its
 --- manifest declares `agent`, and raises in `zemi run`; its text reaches the
---- model as the plugin's, never the user's words. Project code raises.
+--- model as the plugin's, never the user's words.
 ---@param text string
 ---@return true?, string?
 function zemi.agent.send(text) end
@@ -1921,7 +1920,7 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. a reload cancels it.
+--- Run a subagent off the interpreter. A reload cancels it.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -2037,6 +2036,8 @@ function zemi.session.id() end
 function zemi.session.title() end
 
 ---@param title string
+---@return true|nil ok
+---@return string|nil err
 function zemi.session.rename(title) end
 
 ---@return zemi.StoredMessage[]
@@ -2728,7 +2729,7 @@ function zemi.skills.disable(name) end
 ---@class zemi.mcp
 zemi.mcp = {}
 
---- Add an MCP server. User config only. Its tools arrive as
+--- Add an MCP server. Its tools arrive as
 --- `mcp_<server>_<tool>` and are gated as subject `mcp.<server>`.
 ---
 --- ```lua
@@ -2763,7 +2764,7 @@ function zemi.mcp.list() end
 ---@class zemi.lsp
 zemi.lsp = {}
 
---- Add a language server. User config only; it starts on the first
+--- Add a language server. It starts on the first
 --- matching file. Adding a builtin's name (gopls, pyright,
 --- typescript, clangd, rust-analyzer, luals) replaces it, which is how a
 --- builtin gets args, env or settings; `luals` also serves the Lua of your
@@ -2774,7 +2775,6 @@ zemi.lsp = {}
 function zemi.lsp.add(name, spec) end
 
 --- Never start this server: a builtin you do not want, or one added above.
---- User config only.
 ---@param name string
 function zemi.lsp.del(name) end
 

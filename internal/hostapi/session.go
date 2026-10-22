@@ -708,8 +708,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
-		_ = h.RenameSession("", L.CheckString(1))
-		return 0
+		return luaResult(L, h.RenameSession("", L.CheckString(1)))
 	}))
 	tb.RawSetString("messages", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
