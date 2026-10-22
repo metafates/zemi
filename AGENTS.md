@@ -91,7 +91,7 @@ A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 
 `make check` is what a change has to pass:
 
 ```
-make check              # go vet (host and windows) + go test + make luals + make stylua + make lint + a gofmt check, all must be clean
+make check              # gofmt, stylua, go vet (host and windows), make luals, make lint, then go test - fast failures first, tests last, all must be clean
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
 make stylua             # stylua --check over runtime/ and testdata/ (stylua.toml: tabs); a skip line without the binary
