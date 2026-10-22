@@ -2107,6 +2107,10 @@ rides the `memories.md` line and its ledger entries.
   the reader's rows do not move. `View`
   asks each visible region for its cached widget lines; a generation change
   renders every shown widget again, a resize the ones whose size moved.
+  A View with nothing changed behind it returns the frame it has instead of
+  composing again: the generation and the size gate it, and the changes that
+  move neither (the draft, a widget's lines, the toasts) mark the frame dirty
+  themselves.
 - **Chat transcript**: messages are stored as content blocks (text, tool
   call, tool result, reasoning); tool output is sanitized before render
   (see below); the default chat widget maps blocks to

@@ -236,6 +236,7 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 
 // publishComposer hands the draft to the host for zemi.composer.get.
 func (a *App) publishComposer() {
+	a.frameDirty = true // the draft edits here too: a paste, the editor
 	a.host.SetComposerSnapshot(a.composer.text, a.composer.cursor)
 }
 
