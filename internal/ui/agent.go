@@ -528,34 +528,39 @@ func switchSeg(on, locked bool) hostapi.Segment {
 // (nil keeps no position), which moves only when the selection leaves it.
 // Rows fit maxW cells when it is set, the bar included, and pad to at least
 // minW, with a key column always showing. Descriptions line up in one column
-// after the widest label that has one, set by all, the unfiltered list, so
-// filtering never moves it; when a row does not fit its description gives way
-// before any label is cut.
+// sized before the labels, over all, the unfiltered list, so filtering never
+// moves it: the description keeps its need and a long label ellipsizes, and
+// only a box too narrow for both puts every description under its label.
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{}             // row -> key column
 	cut, starts := set.Set[int]{}, set.Set[int]{} // rows a scrolled window may end after, and start at
 	var selTop, bandTop, selEnd int
-	labelW, keyW, tailDesc := 0, 0, 0
+	labelW, keyW, descNeeds := 0, 0, 0
 	for _, it := range all {
 		if it.desc != "" { // a row with no description needs no column
 			labelW = max(labelW, ansi.StringWidth(it.mark.Text+it.label))
-		}
-		if it.desc != "" && it.row.Tail {
-			tailDesc = max(tailDesc, ansi.StringWidth(it.desc))
+			descNeeds = max(descNeeds, ansi.StringWidth(it.desc))
 		}
 		if it.key.Text != "" {
 			keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
 		}
 	}
-	// too narrow for a description column beside the widest label, every
-	// description goes under its label instead of giving way
-	under := maxW > 0 && labelW > maxW-7
+	// the description column is measured over all before the labels, so
+	// filtering never moves it: both whole when they fit, else the
+	// description keeps its need (never under 20 cells) and a long label
+	// ellipsizes - a tail desc included, its room being the same floor that
+	// bounds the label; a box too narrow for that puts every description
+	// under its label instead
+	under := false
 	if maxW > 0 {
-		// the marker and the gap before a description take 2 cells each
-		labelW = max(min(labelW, maxW-4-keyW), 1)
-		if tailDesc > 0 { // a tail label cut further keeps its name, so it gives way first
-			labelW = max(min(labelW, maxW-4-keyW-tailDesc), min(labelW, 20))
+		avail := maxW - 4 - keyW // the marker and the gap take 2 cells each
+		switch {
+		case labelW+descNeeds <= avail:
+		case avail >= 32:
+			labelW = max(min(labelW, max(avail-descNeeds, 20)), 1)
+		default:
+			under = true
 		}
 	}
 	section := ""

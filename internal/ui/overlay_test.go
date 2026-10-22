@@ -1289,30 +1289,37 @@ func TestListDescUnderLabel(t *testing.T) {
 	}
 }
 
-// TestListDescColumn: descriptions start in one column, and a row that
-// does not fit gives way from its description, never its label or key.
+// TestListDescColumn: descriptions start in one column sized before the
+// labels: a row that does not fit gives way by the new rule, the description
+// keeping its need while a long label ellipsizes at the floor.
 func TestListDescColumn(t *testing.T) {
 	for _, c := range []struct {
 		name  string
+		w     int
 		items []listItem
 	}{
-		{"a long title with a short description", []listItem{
+		{"a long title gives the description its need", 52, []listItem{
 			{label: "a much longer session title here", desc: "now · short"},
 			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: tagSeg("current")},
 		}},
-		{"a picker keeps its ids whole", []listItem{
+		{"the model picker cuts labels at the floor on a narrow box", 52, []listItem{
 			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash · 1M · $0.14/$0.28"},
 			{label: "fake/m", desc: "128k", key: tagSeg("current")},
 			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
 		}},
-		{"a cut after a sentence ends in the bare ellipsis", []listItem{
+		{"a workflow run reads its metadata whole and cuts its long title", 92, []listItem{
+			{label: "Review the changes: a very long workflow description that runs past the box", desc: "done · abc12345 · 1/1 agents · 1.5k tok · 0.0s"},
+			{label: "short run", desc: "running · def67890 · 0 calls"},
+			{label: "tiny", desc: "queued"},
+		}},
+		{"a cut after a sentence ends in the bare ellipsis", 52, []listItem{
 			{label: "explore", desc: "read-only: finds how something works. Use it before editing"},
 		}},
 	} {
 		col := -1
-		for i, row := range listRowsW(c.items, c.items, 0, nil, 10, 0, 52) {
+		for i, row := range listRowsW(c.items, c.items, 0, nil, 10, 0, c.w) {
 			text, it := hostapi.SegsText(row), c.items[i]
-			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
+			if !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
 				t.Errorf("%s: row %q", c.name, text)
 			}
 			x := 0

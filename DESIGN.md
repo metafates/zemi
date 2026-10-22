@@ -1947,7 +1947,8 @@ rides the `memories.md` line and its ledger entries.
   so it sits last and its cells are trailing blanks while it is away. A
   toggle list, which can grow past its view, keeps scrolling's cells blank
   until it does, so the hint coming moves nothing. A narrow footer drops
-  scrolling and copy before the screen's keys. Every hint's label is a
+  scrolling and copy first, then the screen's own keys last first, and a
+  row's own key only once the screen has no key left. Every hint's label is a
   lowercase word or phrase, the verbs' grammar too: `h back`,
   `o open the view`, `y copy`, `esc close`. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
