@@ -1,0 +1,292 @@
+#!/bin/sh
+# zemi-lab: a throwaway zemi TUI in tmux against a fake model, plus commands to
+# drive and read it. Every lab is name-scoped (tree, tmux server, port), so
+# testers run in parallel with -n NAME. See SKILL.md next to this file.
+set -u
+
+usage() {
+	cat <<'U'
+usage: zemi-lab [-n name] command [args]
+
+  up [-x W -y H] [--theme T] [--asks] [--untrusted]
+                     build, throwaway tree, fake model, TUI, wait for boot
+  prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for idle
+  type TEXT          literal text into the composer, no Enter
+  send KEYS...       key names as tmux spells them (Enter, Escape, C-c)
+  wait [PATTERN]     until the screen stops changing, and PATTERN shows;
+                     `wait ask` waits for a permission ask
+  ask y|n|t          answer a permission ask until the box is gone
+  cap [-e] [FILE]    capture the whole pane (-e keeps colors)
+  size W H           resize the window
+  last               the fake model's last request body
+  db | logs | status | health [args...]
+  run [args...]      headless: zemi run through the same tree and model
+  attach             the lab in a real terminal
+  down [--keep]      kill the sessions and server, delete the tree
+U
+	exit 2
+}
+
+[ $# -ge 1 ] || usage
+NAME=zt
+while [ $# -ge 3 ] && [ "$1" = "-n" ]; do NAME=$2; shift 2; done
+CMD=$1; shift
+
+DIR=$(cd "$(dirname "$0")" && pwd)
+REPO=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || true)
+TREE=${ZEMI_LAB_TREE:-${TMPDIR:-/tmp}/zemi-lab-$NAME}
+SERVER=zl-$NAME
+SESSION=main
+ENVF=$TREE/.lab.env
+export TMUX_TMPDIR="${TMPDIR:-/tmp}"
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
+
+load() {
+	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
+	# shellcheck disable=SC1090
+	. "$ENVF"
+}
+
+cap() { tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true; }
+
+# wait_stable [pattern] [secs]: the app redraws nothing when idle, so three
+# identical captures mean settled; with a pattern, 0 once it shows, 1 when the
+# screen settled without it or never settled.
+wait_stable() {
+	PAT=${1:-} SECS=${2:-30}
+	i=0 prev="" same=0
+	while [ "$i" -lt $((SECS * 4)) ]; do
+		cur=$(cap)
+		if [ -n "$PAT" ] && printf '%s\n' "$cur" | grep -qF -- "$PAT"; then return 0; fi
+		if [ "$cur" = "$prev" ]; then same=$((same + 1)); else same=0; fi
+		if [ "$same" -ge 3 ]; then [ -z "$PAT" ] && return 0; return 1; fi
+		prev=$cur
+		i=$((i + 1))
+		sleep 0.25
+	done
+	return 1
+}
+
+free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
+
+cmd_up() {
+	W=140 H=40 THEME="" ASKS="" TRUST=--trust
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-x) W=$2; shift 2 ;;
+			-y) H=$2; shift 2 ;;
+			--theme) THEME=$2; shift 2 ;;
+			--asks) ASKS=1; shift ;;
+			--untrusted) TRUST=""; shift ;;
+			*) die "up: unknown flag $1" ;;
+		esac
+	done
+	[ -n "$REPO" ] || die "not inside the zemi repository; set ZEMI_BIN"
+
+	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
+	if [ -z "${ZEMI_BIN:-}" ]; then
+		say "building $BIN..."
+		make -C "$REPO" build >/dev/null || die "make build failed"
+	fi
+	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
+	[ -x "$BIN" ] || die "no zemi binary at $BIN"
+
+	tmux -L "$SERVER" kill-server 2>/dev/null || true
+	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
+	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
+	echo hello >"$TREE/proj/a.txt"
+
+	PORT=$(free_port) || die "python3 is needed"
+	{
+		echo 'zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT,'
+		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
+		echo '	models = { { id = "m", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 } } })'
+		echo 'zemi.config.set("models.chat", "fake/m")'
+		echo 'zemi.config.set("session.auto_title", false) -- else the title call overwrites last_request.json'
+		[ -n "$THEME" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
+	} >"$TREE/config/init.lua"
+
+	if [ -n "$ASKS" ]; then
+		mkdir -p "$TREE/data/plugins/local/askgate/.zemi"
+		{
+			echo '{"version":"0.1.0","description":"force the ask overlay on every action","uses":["perm"]}'
+		} >"$TREE/data/plugins/local/askgate/.zemi/plugin.json"
+		{
+			echo "-- force the ask overlay on every action"
+			echo 'zemi.event.on("permission.request", function() return { decision = "ask" } end)'
+		} >"$TREE/data/plugins/local/askgate/.zemi/init.lua"
+	fi
+
+	# the fake model runs as a tmux session, so it survives this command and
+	# dies with the lab; CWD is the tree, so its files never land in a repo
+	tmux -L "$SERVER" new-session -d -s fake -c "$TREE" \
+		"python3 '$DIR/fake_openai.py' $PORT '$TREE'" || die "tmux new-session failed"
+	i=0
+	while [ "$i" -lt 8 ]; do
+		tmux -L "$SERVER" has-session -t fake 2>/dev/null && break
+		i=$((i + 1))
+		sleep 0.25
+	done
+	tmux -L "$SERVER" has-session -t fake 2>/dev/null || {
+		tmux -L "$SERVER" capture-pane -t fake -p 2>/dev/null | grep -v '^ *$' | tail -5 >&2
+		die "the fake model died (port taken?)"
+	}
+
+	tmux -L "$SERVER" new-session -d -s "$SESSION" -x "$W" -y "$H" -c "$TREE/proj" \
+		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
+		die "tmux new-session failed"
+
+	i=0
+	while [ "$i" -lt 60 ]; do
+		case "$(cap)" in *"Ask anything"*) break ;; esac
+		i=$((i + 1))
+		sleep 0.5
+	done
+	[ "$i" -lt 60 ] || {
+		cap | grep -v '^ *$' | tail -10 >&2
+		die "zemi did not boot in 30s"
+	}
+
+	cat >"$ENVF" <<EOF
+LAB_NAME="$NAME"
+LAB_TREE="$TREE"
+LAB_SERVER="$SERVER"
+LAB_SESSION="$SESSION"
+LAB_PORT="$PORT"
+LAB_TRUST="$TRUST"
+EOF
+	say "lab $NAME up: $TREE, fake model 127.0.0.1:$PORT, tmux server $SERVER ($W x $H)"
+	say "  zemi-lab prompt 'call shell {\"command\":\"ls\",\"about\":\"list\"}'"
+	say "  zemi-lab cap | wait PATTERN | send Escape | ask y | db | logs | last | run | down"
+}
+
+cmd_prompt() {
+	[ $# -ge 1 ] || die "prompt: text"
+	case "$(cap)" in
+		*"Ask anything"*) ;;
+		*)
+			# a leftover draft glues onto the text; one C-c clears it (a second quits)
+			tmux -L "$SERVER" send-keys -t "$SESSION" C-c
+			sleep 0.3
+			case "$(cap)" in *"Ask anything"*) ;; *) die "the composer will not empty (an overlay is open?)" ;; esac
+			;;
+	esac
+	tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*"
+	tmux -L "$SERVER" send-keys -t "$SESSION" Enter
+	wait_stable "" 30 || die "the screen never settled after the prompt"
+}
+
+cmd_type() {
+	[ $# -ge 1 ] || die "type: text"
+	tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*"
+}
+
+cmd_send() {
+	[ $# -ge 1 ] || die "send: key names"
+	tmux -L "$SERVER" send-keys -t "$SESSION" "$@"
+}
+
+cmd_wait() {
+	case "${1:-}" in
+		ask) PAT="No, and tell zemi" ;;
+		*) PAT=${1:-} ;;
+	esac
+	wait_stable "$PAT" 30 && exit 0
+	[ -n "$PAT" ] && die "wait: '$PAT' never showed (the screen settled without it)"
+	die "wait: the screen kept changing for 30s"
+}
+
+cmd_ask() {
+	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
+	# the first key can land in the draft grace; resend until the box is gone
+	i=0
+	while [ "$i" -lt 10 ]; do
+		case "$(cap)" in
+			*"No, and tell zemi"*) tmux -L "$SERVER" send-keys -t "$SESSION" "$1"; sleep 0.5 ;;
+			*) exit 0 ;;
+		esac
+		i=$((i + 1))
+	done
+	die "the ask is still up after 10 tries"
+}
+
+cmd_cap() {
+	e="" out=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-e) e=-e ;;
+			-*) die "cap: -e or a file" ;;
+			*) out=$1 ;;
+		esac
+		shift
+	done
+	if [ -n "$out" ]; then
+		tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e >"$out" || die "capture failed"
+		say "$out"
+	else
+		exec tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e
+	fi
+}
+
+cmd_size() { [ $# -eq 2 ] || die "size: W H"; tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2"; }
+
+cmd_last() {
+	[ -f "$TREE/last_request.json" ] || die "no request yet (last_request.json is missing)"
+	cat "$TREE/last_request.json"
+}
+
+cmd_db() {
+	db=$(ls -t "$TREE"/state/projects/*/zemi.db 2>/dev/null | head -1) || true
+	[ -n "$db" ] && say "$db" || die "no zemi.db yet"
+}
+
+cmd_logs() {
+	log=$(ls -t "$TREE"/state/logs/* 2>/dev/null | head -1) || true
+	[ -n "$log" ] && say "$log" || die "no log yet"
+}
+
+cmd_status() {
+	load
+	say "lab $NAME: $TREE"
+	say "  fake model 127.0.0.1:$PORT, tmux server $SERVER"
+	tmux -L "$SERVER" list-sessions 2>/dev/null || say "  tmux server down"
+}
+
+cmd_health() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"; }
+
+# shellcheck disable=SC2086 # TRUST is empty or "--trust"; an empty quoted arg is not
+cmd_run() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" run $TRUST "$@" </dev/null; }
+
+cmd_down() {
+	keep=""
+	[ "${1:-}" = --keep ] && keep=1
+	tmux -L "$SERVER" kill-server 2>/dev/null || true
+	if [ -z "$keep" ]; then
+		case "$TREE" in
+			${TMPDIR:-/tmp}/* | /tmp/* | /private/tmp/*) rm -rf "$TREE" ;;
+			*) say "kept $TREE (outside the scratch dirs; delete by hand)" ;;
+		esac
+	fi
+}
+
+case "$CMD" in
+	up) cmd_up "$@" ;;
+	prompt) load; cmd_prompt "$@" ;;
+	type) load; cmd_type "$@" ;;
+	send) load; cmd_send "$@" ;;
+	wait) load; cmd_wait "$@" ;;
+	ask) load; cmd_ask "$@" ;;
+	cap) load; cmd_cap "$@" ;;
+	size) load; cmd_size "$@" ;;
+	last) load; cmd_last "$@" ;;
+	db) load; cmd_db "$@" ;;
+	logs) load; cmd_logs "$@" ;;
+	status) load; cmd_status "$@" ;;
+	health) load; cmd_health "$@" ;;
+	run) load; TRUST=${LAB_TRUST:---trust}; cmd_run "$@" ;;
+	attach) load; exec tmux -L "$SERVER" attach -t "$SESSION" ;;
+	down) cmd_down "$@" ;;
+	*) usage ;;
+esac

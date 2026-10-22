@@ -1,90 +1,101 @@
----
-name: zemi-tui-test
-description: "Load to check a UI or agent change end to end, capture a screen, or reproduce a bug Go tests cannot: the real binary in tmux against a fake model, in a throwaway config tree."
----
-
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
 pickers) or crosses the model loop (tools, permission asks, compaction, resume).
-Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not. Give every run its own server (`tmux -L <name>`): parallel testers share the default one, and killing it kills everyone's sessions.
+Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
 
-## 1. A throwaway tree, always
+## The lab: zemi-lab
 
-Never run `bin/zemi` bare: it opens the real `~/.config/zemi` and can save a trust decision
-or a session there. `zemi-safe` (next to this file) runs the binary with all four
-`ZEMI_*_HOME` dirs under one scratch tree (`~/.agents/skills` still loads from `HOME`, so
-a prompt capture can differ by machine); it is a script, so it also works inside a tmux
-pane, where the caller's environment is not forwarded, and from fish, which does not split
-`$VAR` into words. `make first-run` is for looking at a newcomer's screens (fresh `HOME`,
-real keys); `zemi-safe` is for tests (no keys, a fake model).
-
-Nor type `zemi` in a pane's shell: that is the owner's installed binary on the real config.
-When the model under test must find `zemi` on `PATH` (`zemi plugin test`), put a wrapper
-that execs `zemi-safe` first on the pane's `PATH`.
+`zemi-lab` (next to this file) is the whole procedure in one driver. `up` builds `bin/zemi`
+(`ZEMI_BIN` overrides, otherwise `make build`), makes a throwaway tree at
+`$TMPDIR/zemi-lab-<name>` (all four `ZEMI_*_HOME` dirs under it via `zemi-safe`, a git repo
+at `proj/`), starts `fake_openai.py` and a tmux session on its own server, and waits for the
+composer instead of sleeping. The pane gets truecolor with `NO_COLOR` unset; the fake
+server's files land in the tree, never in a repo. Every lab is name-scoped (tree, tmux
+server, port), so parallel testers take `-n <name>`.
 
 ```sh
-S=$PWD/.agents/skills/zemi-tui-test; T=/tmp/zt
-mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
-make build                       # or: go build -o $T/zemi . && export ZEMI_BIN=$T/zemi
+S=.agents/skills/zemi-tui-test
+$S/zemi-lab up                     # 140x40 TUI; --asks adds a gate plugin that forces the ask overlay
+$S/zemi-lab prompt 'call shell {"command":"ls","about":"list"}'
+$S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps SGR colors
+$S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
+$S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
+$S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the draft grace
+$S/zemi-lab size 60 15             # narrow and short layouts
+$S/zemi-lab run --json 'call read {"path":"a.txt"}'   # headless, same tree and model
+$S/zemi-lab db                     # this project's zemi.db; logs is the launch log
+$S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
 ```
 
-Testers running in parallel each take their own `$T`, tmux server name and port: on a shared
-port the other tester's server answers, and on a shared tree its `init.lua` loads.
+`prompt` clears a leftover draft first (one ctrl+c; a second would quit), types, sends
+Enter, and waits for the screen to settle - never a blind sleep. `up` flags: `-x W -y H`
+(default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
+prompt). `zemi-lab attach` sits at the lab in a real terminal.
 
-## 2. A fake model
+## The fake model
 
-`fake_openai.py` (next to this file) is a 40-line OpenAI-compatible server: streams a reply
-with a reasoning delta, or a tool call when the user message reads `call NAME {json}`, answers
-non-streaming requests (the object calls: classify, `zemi.model.ask`), and writes every request body to
-`last_request.json` so you can diff two consecutive requests byte for byte (prompt cache).
+`fake_openai.py` is a 40-line OpenAI-compatible server: it streams a reply with a reasoning
+delta, or calls a tool once when the user message reads `call NAME {json}`, and answers
+non-streaming requests (the object calls: classify, `zemi.model.ask`) with a plain
+completion. Every request body lands in `last_request.json` and `requests/NNN.json` under
+the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
+prints the latest. The generated init.lua sets `session.auto_title = false`, else the title
+request overwrites `last_request.json`.
+
+A permission ask needs a gate plugin - zemi never asks by design (DESIGN §9): `up --asks`
+installs one whose `permission.request` handler returns `{decision = "ask"}` (a plugin with
+`perm` in its `uses`), and it loads live within a second of a running lab.
+
+## Reading a screen
+
+- A permission ask is a prompt box under the chat; `y` yes, `n` no, `t` no and tell, or
+  click. Keys typed while it is up route to the composer first (draft grace), which is why
+  `ask` resends until the box is gone.
+- Compare captures for row shifts: the same state change must not add or remove a row
+  (house rule). Diff two captures with `diff <(...) <(...)`.
+- The pane title marks state: a spinner while a turn runs, `? ` while an ask is up -
+  `tmux -L zl-<name> display -p '#{pane_title}'`.
+- Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
+  row-range captures made a working app look hung three separate times.
+- A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
+  keys until 201~) while zemi stays healthy: `respawn-pane` revives it. The lab sends one
+  atomic call per command.
+- `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
+- Idle CPU: `ps -o %cpu -p $(pgrep -f "zemi --trust")` over 30 s must stay near 0.
+- Session rows, tool telemetry and usage are in the zemi.db `db` prints (SQLite).
+
+## Manual fallback
+
+When the lab does not fit (your own init.lua, another provider kind), do by hand what `up`
+does: `zemi-safe` (next to this file) runs any binary with all four `ZEMI_*_HOME` dirs under
+one tree - it is a script, so it works inside a tmux pane, where the caller's environment is
+not forwarded, and from fish, which does not split `$VAR` into words.
 
 ```sh
-(cd $T && python3 $S/fake_openai.py 18472 &) ; sleep 0.3
+T=$TMPDIR/zt; mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
+make build
+(cd $T && python3 .agents/skills/zemi-tui-test/fake_openai.py 18472 $T &) ; sleep 0.3
 cat > $T/config/init.lua <<'L'
 zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT,
 	api_key = "x", base_url = "http://127.0.0.1:18472/v1",
 	models = { { id = "m", context_window = 128000 } } })
 zemi.config.set("models.chat", "fake/m")
-zemi.config.set("session.auto_title", false) -- else the title request overwrites last_request.json
+zemi.config.set("session.auto_title", false)
 L
+tmux -L zt new-session -d -s zt -x 140 -y 40 -c $T/proj \
+  "env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$PWD/bin/zemi \
+   .agents/skills/zemi-tui-test/zemi-safe $T --trust"
+tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
 ```
 
-## 3. Drive it
+A detached tmux pane reports 256 colors; `env -u NO_COLOR ... COLORTERM=truecolor` (what
+the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `--profile` and `-m` apply
+after init.lua. Parallel testers each take their own `$T`, tmux server name and port: on a
+shared port the other tester's server answers, and on a shared tree its `init.lua` loads.
 
-```sh
-tmux -L zt new-session -d -s zt -x 140 -y 40 "cd $T/proj && $S/zemi-safe $T --trust"
-sleep 1.5; tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
-tmux -L zt send-keys -t zt "call shell {\"command\":\"ls\",\"about\":\"list\"}" Enter
-sleep 1; tmux -L zt capture-pane -t zt -p
-tmux -L zt send-keys -t zt "/model" Enter               # pickers, palettes, overlays
-tmux -L zt send-keys -t zt Escape
-tmux -L zt resize-window -t zt -x 60 -y 15              # narrow and short layouts
-tmux -L zt send-keys -t zt C-c C-c                      # quit
-tmux -L zt kill-session -t zt; pkill -f "fake_openai.py 18472"
-```
+## Clean up
 
-Headless checks need no tmux: `$S/zemi-safe $T health`, `$S/zemi-safe $T -C $T/proj run --trust
---json "call read {\"path\":\"a.txt\"}" </dev/null` (without `</dev/null` `zemi run` waits 3 s on a
-non-tty stdin). `--profile` and `-m` apply after `init.lua`.
-
-Colors: a pane gets 256 colors, since a detached tmux has no client to report RGB and
-`COLORTERM` is ignored under `TERM=tmux*`. For the theme's exact hues start the pane's command
-with `env TERM=xterm-256color COLORTERM=truecolor`; `capture-pane -e` then shows `38;2;r;g;b`.
-For the light palette add `zemi.config.set("ui.theme", "whorl-light")` to the tree's `init.lua`.
-
-## 4. Reading a screen
-
-- A permission ask is a prompt box under the chat; answer with the key its rows show
-  (`y` yes, `n` no, `t` no and tell) or click.
-- Compare captures for row shifts: the same state change must not add or remove a row
-  (house rule). Diff two captures with `diff <(...) <(...)`.
-- `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
-- Idle CPU: `ps -o %cpu -p $(pgrep -f "zemi --trust")` over 30 s must stay near 0.
-- Session rows, tool telemetry and usage are in `$T/state/projects/<hash>/zemi.db` (SQLite).
-
-## 5. Clean up
-
-Kill the tmux session and the server; leave nothing running. Delete `$T` when done: a stale
-tree with an old `init.lua` shape is the usual cause of a confusing second run, and each
-scratch binary is 100 MB.
+Kill the tmux session and the server; leave nothing running. Delete the tree when done: a
+stale tree with an old `init.lua` shape is the usual cause of a confusing second run, and
+each scratch binary is 100 MB. The lab's `down` does all three.

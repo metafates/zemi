@@ -2,20 +2,32 @@
 # A user message "call NAME {json}" makes the model call that tool once; anything
 # else gets a short streamed reply. Non-streaming requests (the object calls:
 # classify, zemi.model.ask) get a plain chat.completion. Every request body lands
-# in last_request.json.
-# usage: python3 fake_openai.py PORT
-import json, re, sys
+# in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json, so two
+# consecutive bodies diff byte for byte (prompt cache).
+# usage: python3 fake_openai.py PORT [OUTDIR]   (OUTDIR default: the CWD)
+import json, os, re, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+OUT = sys.argv[2] if len(sys.argv) > 2 else "."
+os.makedirs(os.path.join(OUT, "requests"), exist_ok=True)
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        open("last_request.json", "w").write(json.dumps(body, indent=1))
         last = body["messages"][-1]
         c = last.get("content") or ""
         text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
         m = last["role"] == "user" and re.search(r"call (\w+) (\{.*\})", text)
+        n = len(os.listdir(os.path.join(OUT, "requests"))) + 1
+        data = json.dumps(body, indent=1)
+        tmp = os.path.join(OUT, "requests/.%d.json" % n)
+        open(tmp, "w").write(data)
+        os.replace(tmp, os.path.join(OUT, "requests/%03d.json" % n))
+        tmp2 = os.path.join(OUT, ".last_request.tmp")
+        open(tmp2, "w").write(data)
+        os.replace(tmp2, os.path.join(OUT, "last_request.json"))
+        print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
         usage = {"prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050}
         if not body.get("stream"):
             msg = {"role": "assistant", "content": "done"}
