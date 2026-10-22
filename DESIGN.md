@@ -1901,8 +1901,8 @@ rides the `memories.md` line and its ledger entries.
   over it, so the chat keeps previewing the row that screen is about, and a
   row's second key on one letter raises, since a key runs one action; a `body` of styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
-  an item's `keys`, one character each, act on that row from the list and are
-  named in the footer of its view,
+  an item's `keys`, one character each, act on that row from the list or its
+  view, where the key closes the list, and are named in the footer of its view,
   an item's `preview` shows whole in a pane under the list while its row is
   selected, the pane as tall as the longest preview (4 rows at most, and the
   list 72 cells wide, like text), so moving never resizes the box, and the
@@ -1931,8 +1931,8 @@ rides the `memories.md` line and its ledger entries.
   (a list item's `id` is its own data). A row has one view: its fields and
   text, never a second one of buttons. What acts on it is its own `keys`, one
   character each (`fill`, `run`, or an `id` handed to the list's `on_action`),
-  which act on the selected row from the list and are named in its view's
-  footer; a key whose `run` opens a screen says `verb = "open"` and leaves the
+  which act on the selected row from the list or its view, where the key
+  closes the list, and are named in its view's footer; a key whose `run` opens a screen says `verb = "open"` and leaves the
   list under it, so esc comes back. Go screens key every operation by its
   verb's initial, one letter per act on a screen: `r` restart, resume or run,
   `a` ask or run with arguments, or `/mcp`'s sign in to all, `s` sign in or
@@ -2339,7 +2339,9 @@ rides the `memories.md` line and its ledger entries.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
-  `/lsp`, `/plugin`, `/projects` (the projects zemi keeps state for; switch restarts zemi there))
+  `/lsp`, `/plugin`, `/projects` (the projects zemi keeps state for; switch restarts zemi there)),
+  the boot's own (`/config` (§5), `/theme`, `/effort`, `/usage` (tokens and cost),
+  `/prompt` (the system prompt the model gets), `/init` (write AGENTS.md for this project))
   and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
   its own click opens, listed in /help and out of the palette's default list.
   `/jobs` is the background processes on a screen of their own, apart from
@@ -3047,7 +3049,7 @@ main.go                     the entry: one os.Exit
 internal/cli/               the front end: wiring, boot steps and the TUI launch
                             (boot.go), the command line (cli.go, cobra), zemi run:
                             the loop, the answer or the JSON events (run.go), zemi
-                            plugins test: the copy, a boot per case, the report
+                            plugin test: the copy, a boot per case, the report
                             (plugintest.go)
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:

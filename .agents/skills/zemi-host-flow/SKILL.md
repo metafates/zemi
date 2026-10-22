@@ -13,9 +13,9 @@ stdout, `--full` as `/export full`; `projectStore` opens the store through `stor
 sweeps nothing and takes no lock a running zemi waits on; `sessions -a` and `sessions search <words>` walk every
 project's store the same way through `hostapi.ListAllSessions`/`hostapi.FindSessions`, skipping one it cannot read), `projects` (`hostapi.ListProjects` with its
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
-`plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
+`plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
-`plugins`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
+`plugin`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 `zemi run --json` uses too. Their plain lines are colored only on a terminal (`paint` and `pad`
 over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot), with a
 header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as

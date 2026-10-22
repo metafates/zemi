@@ -1,4 +1,4 @@
--- The zemi plugins test boot's test.eq, neq, contains and raises, in Lua so
+-- The zemi plugin test boot's test.eq, neq, contains and raises, in Lua so
 -- they print values with zemi.util.inspect. diff walks tables in key order, a
 -- pair met again counting as equal so cycles end.
 local util = require("zemi.util")

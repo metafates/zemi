@@ -2848,9 +2848,9 @@ function zemi.project.root() end
 
 -- zemi.test
 
---- A plugin's tests: each top-level file in its `tests/` is a test file
---- (`tests/*.lua`), and code they share goes in a subdirectory
---- (`tests/lib/x.lua`, `require("./lib/x")`). Only a `zemi plugins test`
+--- A plugin's tests: each top-level file in its `.zemi/tests/` is a test file
+--- (`.zemi/tests/*.lua`), and code they share goes in a subdirectory
+--- (`.zemi/tests/lib/x.lua`, `require("./lib/x")`). Only a `zemi plugin test`
 --- boot has `zemi.test`; reading it anywhere else raises. Each case runs in
 --- a fresh zemi holding only the plugin, after the file's top level (where
 --- init.lua would run) and `app.ready`, on a clock at 2026-01-01 00:00 UTC
