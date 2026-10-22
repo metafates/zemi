@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -1452,9 +1453,15 @@ func pressArmed(armed *bool, key string) (confirmed, swallowed bool) {
 }
 
 // armedHint is the footer of a press that waits for a second one: what the
-// next press does, in the danger color, with the keys drawn as keys.
+// next press does, in the danger color, with the keys drawn as keys. The
+// label reads on after "again to", so its first letter drops and an
+// acronym's word stays whole (skills.go's listDesc keeps the same rule).
 func armedHint(w int, key, label string) []hostapi.Segment {
-	foot := hint(w, hintPair{key: key, verb: "again to " + strings.ToLower(label)}, hintPair{key: "esc", verb: "cancel"})
+	r, n := utf8.DecodeRuneInString(label)
+	if next, _ := utf8.DecodeRuneInString(label[n:]); n > 0 && !unicode.IsUpper(next) {
+		label = string(unicode.ToLower(r)) + label[n:]
+	}
+	foot := hint(w, hintPair{key: key, verb: "again to " + label}, hintPair{key: "esc", verb: "cancel"})
 	foot[1].HL = hostapi.ChromeDanger
 	return foot
 }
