@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"log/slog"
 	"os"
@@ -948,6 +949,19 @@ func TestFitImage(t *testing.T) {
 		png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h)))
 		return b.Bytes()
 	}
+	// a jpeg whose SOF declares 0x0, padded past imageMaxBytes so it reaches
+	// the shrink path
+	zero := func(pad int) []byte {
+		var b bytes.Buffer
+		jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, 8, 8)), nil)
+		d := b.Bytes()
+		for i := 2; i+9 < len(d) && d[i] == 0xff; i += 2 + int(d[i+2])<<8 + int(d[i+3]) {
+			if d[i+1] == 0xc0 {
+				clear(d[i+5 : i+9])
+			}
+		}
+		return append(d, make([]byte, pad)...)
+	}
 	for _, c := range []struct {
 		name, mt string
 		data     []byte
@@ -958,6 +972,7 @@ func TestFitImage(t *testing.T) {
 		{"garbage", "image/png", []byte("not a png"), "not a readable image"},
 		{"a big webp", "image/webp", make([]byte, imageMaxBytes+1), "over the 3750000 byte limit"},
 		{"too many pixels to decode", "image/png", encode(7000, 6000), "over the 40 megapixels"},
+		{"a 0x0 jpeg", "image/jpeg", zero(imageMaxBytes + 1), "no pixels to scale"},
 	} {
 		got := ""
 		data, mt, err := FitImage(c.data, c.mt)
