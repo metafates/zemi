@@ -999,9 +999,9 @@ func TestGoldenWaitRow(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
-// TestGoldenVerifyDone: a run that ended on a verify pass reads Done with the
-// check under it and its output's last lines below - the ending is visible,
-// not a silent stop.
+// TestGoldenVerifyDone: a run that ended on a verify pass folds the call into
+// the digest as a command and carries a green "done - <check> passed" row
+// under it, so the ending is visible however far the rail is folded.
 func TestGoldenVerifyDone(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "fix the flake in the fixture test")

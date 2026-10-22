@@ -301,7 +301,8 @@ local function builder(ctx, width)
 		---@type string[]
 		local commands = {}
 		for _, t in ipairs(group) do
-			if fmt.tool(t) == "shell" then
+			local name = fmt.tool(t)
+			if name == "shell" or name == "verify" then
 				commands[#commands + 1] = relpath(t.text or t.input or ""):gsub("%s+", " ")
 			end
 		end
@@ -373,7 +374,7 @@ local function builder(ctx, width)
 		local function fit(text, n) return open and text or fmt.clip(text, n) end
 		-- a command is highlighted where it is what the row reads, the head and
 		-- an opened row; collapsed under its label it stays a Dim detail
-		local code = name == "shell"
+		local code = (name == "shell" or name == "verify")
 				and input ~= ""
 				and (open or label == "")
 				and not dim
@@ -462,15 +463,13 @@ local function builder(ctx, width)
 				or t.status == "stopped"
 				or name == "question"
 				or name == "plan"
-				or name == "verify"
-				or (o.open and name == "shell")
+				or (o.open and (name == "shell" or name == "verify"))
 			)
 		then
 			local out = util.split(output, "\n")
 			-- a collapsed failure shows three lines where it says what went
 			-- wrong: a tool's first, a command's last (its stderr and exit
-			-- status); a passed verify's last lines are the word the run
-			-- ended on
+			-- status)
 			local err, tail = t.status == "err", name == "shell" or name == "verify"
 			local from, to = 1, #out
 			if (err or tail) and not open and #out > 3 then
@@ -532,6 +531,18 @@ local function builder(ctx, width)
 			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
 			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
 		})
+		-- a run that ended on its check says so under the digest, marked like
+		-- a report that came in green: the turn's last word is visible however
+		-- far the rail is folded
+		local final = list[last]
+		if final.kind == "tool" and fmt.tool(final) == "verify" and final.status == "ok" then
+			local what = relpath(final.text or ""):gsub("%s+", " ")
+			push({
+				bar(),
+				mark("ok", click),
+				{ text = fmt.clip("done - " .. what .. " passed", width - 4 - RAIL_EDGE), hl = "Dim", click = click },
+			})
+		end
 		if not opened then return end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
