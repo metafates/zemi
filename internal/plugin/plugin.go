@@ -58,10 +58,6 @@ type Plugin struct {
 	// Provides is what a Claude-layout plugin contributes beyond that
 	// vocabulary, display-only: CheckUses never sees it.
 	Provides []string
-
-	// revision is what the checkout is at, the tag else the short commit: what
-	// update compares, since a manifest version may stand still across one
-	revision string
 }
 
 // CodeDir is where a plugin keeps everything zemi runs or reads as code: its
@@ -1477,13 +1473,11 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p.URL, _ = git(ctx, dir, "config", "--get", "remote.origin.url")
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
 	if tag := highest(here, ""); tag != "" {
-		p.revision = tag
 		p.Version = cmp.Or(p.Version, tag)
 		return p
 	}
-	p.revision, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
 	if p.Version == "" {
-		p.Version = p.revision
+		p.Version, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
 	}
 	return p
 }
