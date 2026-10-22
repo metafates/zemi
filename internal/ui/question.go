@@ -68,7 +68,7 @@ func (a *App) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	ch := make(chan qAnswer, 1)
 	a.await(func() tea.Cmd {
 		a.question = &questionPrompt{qs: clean, states: states, answer: ch}
-		return a.notifyIfAway("zemi has a question: " + clean[0].Question)
+		return a.notifyIfAway("zemi: a question: " + clean[0].Question)
 	})
 	ans := <-ch
 	return ans.answers, ans.ok

@@ -53,7 +53,7 @@ func (a *App) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
 			profile: implementProfile,
 			answer:  ch,
 		}
-		return a.notifyIfAway("zemi has a plan to review")
+		return a.notifyIfAway("zemi: a plan to review")
 	})
 	ans := <-ch
 	return ans.v, ans.ok
