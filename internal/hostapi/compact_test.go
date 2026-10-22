@@ -78,6 +78,30 @@ func TestCompactNowCancels(t *testing.T) {
 	waitIdle(t, h)
 }
 
+// TestAutoCompact: the idle timer's compact runs like /compact when the
+// session has history, and sits silent on a fresh one.
+func TestAutoCompact(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "the user asked for a build fix; it passed")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	sender(t, h)("hi")
+	h.AutoCompact()
+	waitIdle(t, h)
+	tr := h.Session().Transcript
+	if last := tr[len(tr)-1]; last.Kind != RowCompact {
+		t.Fatalf("last row %v, want the compaction's summary row", last.Kind)
+	}
+
+	h2, _ := newTestHostDB(t)
+	reflectStub(t, h2, "should never be asked")
+	h2.AutoCompact()
+	if tr := h2.Session().Transcript; len(tr) != 0 {
+		t.Fatalf("a fresh session compacted: %d rows", len(tr))
+	}
+}
+
 // TestCompaction: a context past the threshold summarizes the history
 // before the next turn while the recent messages stay verbatim, the summary
 // becomes the session's resume point, and /resume rebuilds summary + tail

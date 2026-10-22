@@ -254,6 +254,28 @@ func (h *Host) CompactNow(focus string) error {
 	return nil
 }
 
+// AutoCompact is the agent.compact_idle timer's fire: like /compact, but
+// silent when there is nothing to compact, since nobody asked. The UI arms
+// it after a turn and fires it once the session has sat idle long enough.
+func (h *Host) AutoCompact() {
+	ag := h.agents
+	ag.mu.Lock()
+	runner := ag.runner
+	if ag.active || ag.compacting || runner == nil || len(runner.History) < 2 {
+		ag.mu.Unlock()
+		return
+	}
+	ag.beginTurn()
+	scope := h.claim()
+	ag.mu.Unlock()
+	h.refresh()
+	h.GoSafe("compaction", func() {
+		defer h.endTurnAfterPanic()
+		h.compactReporting(scope.ctx, runner, compactAuto, "")
+		h.handOff(scope)
+	})
+}
+
 // compactReporting compacts with the working row reading "Compacting"; a
 // failure is reported, the history stays whole, and it returns false.
 func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reason, focus string) bool {

@@ -1900,7 +1900,7 @@ func (h *Host) Recap(ctx context.Context) {
 }
 
 func (h *Host) recap(ctx context.Context) {
-	if !h.Settings.Bool(config.KeySessionRecap) {
+	if h.Settings.Duration(config.KeySessionRecap) <= 0 {
 		return
 	}
 	ag := h.agents

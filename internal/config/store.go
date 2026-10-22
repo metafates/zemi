@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Key is a config key's dotted path. Every path a caller names is a
@@ -32,6 +33,7 @@ const (
 	KeySessionAutoTitle   Key = "session.auto_title"
 	KeySessionRecap       Key = "session.recap"
 	KeyAgentCompactAt     Key = "agent.compact_at"
+	KeyAgentCompactIdle   Key = "agent.compact_idle"
 	KeyAgentMaxBackground Key = "agent.max_background"
 	KeyLSPAuto            Key = "lsp.auto"
 	KeyEditorCommand      Key = "editor.command"
@@ -72,13 +74,14 @@ func PluginKey(plugin, key string) Key { return Key("plugins." + plugin + "." + 
 type Kind string
 
 const (
-	KindString Kind = "string"
-	KindNumber Kind = "number"
-	KindBool   Kind = "bool"
-	KindList   Kind = "list" // a list of strings
+	KindString   Kind = "string"
+	KindNumber   Kind = "number"
+	KindBool     Kind = "bool"
+	KindList     Kind = "list"     // a list of strings
+	KindDuration Kind = "duration" // a Go duration ("3m", "90s"); "" means the default
 )
 
-var Kinds = []Kind{KindString, KindNumber, KindBool, KindList}
+var Kinds = []Kind{KindString, KindNumber, KindBool, KindList, KindDuration}
 
 // Setting describes one config key.
 type Setting struct {
@@ -169,8 +172,9 @@ func (s *Store) defineDefaults() {
 		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: KeyAgentProfile, Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
 		{Path: KeySessionAutoTitle, Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
-		{Path: KeySessionRecap, Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
+		{Path: KeySessionRecap, Kind: KindDuration, Default: "3m", Desc: "after a turn with tool calls, if there is no input for this long, add a one-line recap from a short model call on the cached conversation (billed to the session); 0 turns it off, empty for the 3m default"},
 		{Path: KeyAgentCompactAt, Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
+		{Path: KeyAgentCompactIdle, Kind: KindDuration, Default: "", Desc: "auto compact the conversation once it has sat idle this long after a turn, whatever its size (billed like /compact); 0 or empty leaves compaction to agent.compact_at, /compact and a provider's too-long refusal"},
 		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
 		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
@@ -269,6 +273,22 @@ func (s *Store) Str(path Key) string    { return s.value[string](path) }
 func (s *Store) Bool(path Key) bool     { return s.value[bool](path) }
 func (s *Store) Int(path Key) int       { return int(s.value[float64](path)) }
 func (s *Store) List(path Key) []string { return s.value[[]string](path) }
+
+// Duration reads a duration key: "" is the schema default, 0 is off. A stale
+// stored value of another kind (a bool, from before the key held a duration)
+// reads as the default too.
+func (s *Store) Duration(path Key) time.Duration {
+	v, _ := s.Get(path)
+	s2, _ := v.(string)
+	if s2 == "" {
+		s2, _ = s.Default(path).(string)
+	}
+	d, err := time.ParseDuration(s2)
+	if err != nil {
+		return 0
+	}
+	return d
+}
 
 func (s *Store) value[T any](path Key) T {
 	s.mu.RLock()
@@ -398,6 +418,18 @@ func checkKind(def Setting, val any) (any, error) {
 		val = f
 	case KindBool:
 		_, ok = val.(bool)
+	case KindDuration:
+		s, isStr := val.(string)
+		if !isStr {
+			ok = false
+			break
+		}
+		if s != "" {
+			if _, err := time.ParseDuration(s); err != nil {
+				return nil, &BadValueError{Path: def.Path, Want: "a duration like 90s or 3m, 0 for off", Got: s}
+			}
+		}
+		val = s
 	case KindList:
 		val, ok = stringList(val)
 	}

@@ -1894,8 +1894,8 @@ func TestRecap(t *testing.T) {
 	}{
 		{"a turn that ran a tool gets one, the first ever naming the key", turn(true), recap + "|off in /config"},
 		{"the next has no hint", func() {}, recap + "|"},
-		{"off in config", func() { _, _ = h.Settings.SetQuiet("session.recap", false) }, ""},
-		{"a reply-only turn is its own recap", func() { _, _ = h.Settings.SetQuiet("session.recap", true); turn(false)() }, ""},
+		{"off in config", func() { _, _ = h.Settings.SetQuiet("session.recap", "0") }, ""},
+		{"a reply-only turn is its own recap", func() { _, _ = h.Settings.SetQuiet("session.recap", "2m"); turn(false)() }, ""},
 		{"a row landing during the call makes it stale", func() {
 			turn(true)()
 			m.during = func() { h.AppendMessage(fantasy.MessageRoleUser, "back") }

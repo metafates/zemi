@@ -42,7 +42,6 @@ const (
 	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
-	recapDelay       = 3 * time.Minute        // idle after a turn before a recap: inside Anthropic's 5-minute cache
 	hookQueueSize    = 64
 )
 
@@ -150,9 +149,11 @@ type App struct {
 	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
 	colors     colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
 
-	// an idle recap: when one is due (zero for none), and the stop of one in flight
+	// an idle recap and an idle auto compact: when each is due (zero for
+	// none), and the stop of a recap in flight
 	recapAt   time.Time
 	recapStop context.CancelFunc
+	compactAt time.Time
 	// when the live session is due for the reflector: no input clears it,
 	// since typing without sending changes nothing it would read
 	reflectAt time.Time
@@ -640,6 +641,10 @@ func (a *App) onFrame() tea.Cmd {
 		a.recapAt = time.Time{}
 		a.host.Recap(ctx)
 	}
+	if !active && !a.compactAt.IsZero() && !a.now().Before(a.compactAt) {
+		a.compactAt = time.Time{}
+		a.host.AutoCompact()
+	}
 	if !active && !a.reflectAt.IsZero() && !a.now().Before(a.reflectAt) {
 		a.reflectAt = time.Time{}
 		a.host.ReflectLive()
@@ -669,7 +674,14 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	byLoop := a.host.AgentStream().ByLoop
 	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
 	if !byLoop {
-		a.recapAt = a.now().Add(recapDelay)
+		if d := a.host.Settings.Duration(config.KeySessionRecap); d > 0 {
+			a.recapAt = a.now().Add(d)
+		}
+	}
+	if d := a.host.Settings.Duration(config.KeyAgentCompactIdle); d > 0 {
+		// a loop keeps a session alive forever, and its history is what an
+		// idle compact is for; the timer only fires between runs
+		a.compactAt = a.now().Add(d)
 	}
 	// a failed turn too: a failed tool call is what the reflector learns most from
 	a.reflectAt = a.now().Add(hostapi.ReflectIdle)

@@ -3,6 +3,7 @@ package config
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // A reader of a path outside the schema gets the zero value: every writer
@@ -24,6 +25,28 @@ func TestStoreReadUnknownKey(t *testing.T) {
 	}
 }
 
+// A duration key resolves "" and a stale value of another kind to its
+// schema default, and 0 means off.
+func TestStoreDuration(t *testing.T) {
+	s := NewStore()
+	if got := s.Duration(KeySessionRecap); got != 3*time.Minute {
+		t.Fatalf("the default recap delay = %v", got)
+	}
+	if _, err := s.SetQuiet(KeySessionRecap, "0"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Duration(KeySessionRecap); got != 0 {
+		t.Fatalf("0 = %v, want off", got)
+	}
+	s.values[KeySessionRecap] = false // a pick kept before the key held a duration
+	if got := s.Duration(KeySessionRecap); got != 3*time.Minute {
+		t.Fatalf("a stale bool pick = %v, want the default", got)
+	}
+	if got := s.Duration("session.nonexistent"); got != 0 {
+		t.Fatalf("an unknown key = %v", got)
+	}
+}
+
 // A list key stores []string whatever handed it the entries (Lua and JSON
 // both hand []any), and a model key refuses a role name where an id belongs.
 func TestStoreKinds(t *testing.T) {
@@ -40,6 +63,11 @@ func TestStoreKinds(t *testing.T) {
 		{"a model key takes an id", KeyModelsChat, "a/b", "a/b", false},
 		{"a model key takes empty", KeyModelsChat, "", "", false},
 		{"a model key refuses a role", KeyModelsChat, "titles", nil, true},
+		{"a duration takes a go duration", KeySessionRecap, "90s", "90s", false},
+		{"a duration takes empty for the default", KeySessionRecap, "", "", false},
+		{"a duration takes 0 for off", KeySessionRecap, "0", "0", false},
+		{"a duration refuses a word", KeySessionRecap, "soon", nil, true},
+		{"a duration refuses a number", KeySessionRecap, 120, nil, true},
 	}
 	s := NewStore()
 	for _, c := range cases {

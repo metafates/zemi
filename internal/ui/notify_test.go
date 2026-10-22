@@ -79,10 +79,13 @@ func TestNotifyWhenAway(t *testing.T) {
 }
 
 // TestRecapWhenIdle: once the agent went idle from a turn, a recap starts
-// after recapDelay when the turn ended well with no input since, and the
-// next input stops it; the reflector runs after ReflectIdle whatever came.
+// after the session.recap delay when the turn ended well with no input
+// since, and the next input stops it; the reflector runs after ReflectIdle
+// whatever came. The recap delay comes from the config, so the test sets a
+// non-default one.
 func TestRecapWhenIdle(t *testing.T) {
 	t.Parallel()
+	const recapDelay = 4 * time.Minute
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
 		name           string
@@ -102,6 +105,9 @@ func TestRecapWhenIdle(t *testing.T) {
 		{"a loop's run", turnDoneMsg{}, nil, false, true, false, true},
 	} {
 		app, host := notifyApp(t)
+		if _, err := host.Settings.SetQuiet("session.recap", "4m"); err != nil {
+			t.Fatal(err)
+		}
 		start := time.Unix(1000, 0)
 		now := start
 		app.now = func() time.Time { return now }
@@ -133,6 +139,37 @@ func TestRecapWhenIdle(t *testing.T) {
 		if reflected := app.reflectAt.IsZero(); reflected != c.reflect {
 			t.Errorf("%s: reflected at ReflectIdle %v, want %v", c.name, reflected, c.reflect)
 		}
+	}
+}
+
+// TestCompactWhenIdle: a turn arms agent.compact_idle from the config, the
+// timer fires once the agent is idle for it, and a key set to 0 arms nothing.
+func TestCompactWhenIdle(t *testing.T) {
+	t.Parallel()
+	start := time.Unix(1000, 0)
+	app, host := notifyApp(t)
+	if _, err := host.Settings.SetQuiet("agent.compact_idle", "5m"); err != nil {
+		t.Fatal(err)
+	}
+	now := start
+	app.now = func() time.Time { return now }
+	app.Update(turnDoneMsg{})
+	app.Update(frameTickMsg{})
+	if got := app.compactAt.Sub(start); got != 5*time.Minute {
+		t.Fatalf("compactAt %v after the turn, want 5m", got)
+	}
+	now = start.Add(5 * time.Minute)
+	app.Update(frameTickMsg{})
+	if !app.compactAt.IsZero() {
+		t.Fatal("the timer did not fire at the deadline")
+	}
+
+	app, _ = notifyApp(t)
+	app.now = func() time.Time { return start }
+	app.Update(turnDoneMsg{})
+	app.Update(frameTickMsg{})
+	if !app.compactAt.IsZero() {
+		t.Fatal("the timer armed with the key off")
 	}
 }
 
