@@ -1827,7 +1827,7 @@ rides the `memories.md` line and its ledger entries.
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
   `waiting`, `headless`, `busy` (its newest entry, the job the user waits on)
   and `agent.retry`/`compacting`/`checking_goal`),
-  the statusline below. The mascot is always drawn and the frame's height
+  the statusline on a bar row below the box. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
   (`statusline.left` / `statusline.right` widgets ordered by
@@ -1849,7 +1849,7 @@ rides the `memories.md` line and its ledger entries.
   the reasoning effort, and, innermost
   until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
-  `"bottom-right"`: over the statusline, the border in line with the
+  `"bottom-right"`: above the statusline row, the border in line with the
   composer frame on the side of the pill that opened it: a Lua picker
   left, `/profile`, `/model`, `/effort` and `/usage` right; the box stands on
   the frame, whose top rule is its bottom border, the label that rule carries

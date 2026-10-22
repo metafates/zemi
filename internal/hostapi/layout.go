@@ -173,7 +173,7 @@ type Rect struct{ X, Y, Width, Height int }
 // shipped UI loads, or after a reload that set none). It matches the
 // shipped tui/layout.lua as it boots: the main column centered; in it the
 // header, the stage centered inside it, and the framed composer wider than
-// the stage, whose rules carry the mascot and the statusline.
+// the stage, the statusline on a bar row under it.
 var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 	{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 	{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 30, Max: 124, Children: []*LayoutNode{
@@ -186,7 +186,8 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size
 			}},
 			{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 		}},
-		{Kind: LayoutComposer, Placeholder: "Ask anything…", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
+		{Kind: LayoutComposer, Placeholder: "Ask anything…", Frame: true, Top: "working"},
+		{Kind: LayoutBar, Left: "statusline.left", Right: "statusline.right"},
 	}},
 	{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 }}}

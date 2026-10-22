@@ -1250,7 +1250,8 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 		_, _, rule := a.draftMode()
 		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), c, ruleAt(rows, c), false, cmp.Or(rule, hostapi.ChromeRule), w)
 	}
-	// NOTE: below the composer the popup does not stand on the statusline rule
+	// NOTE: below the composer the popup covers the statusline row: there is
+	// no rule under the frame for it to stand on
 	placeBox(rows, box, x, top, w)
 	return uv.Rect(x, top, hostapi.SegsWidth(box[0]), len(box))
 }

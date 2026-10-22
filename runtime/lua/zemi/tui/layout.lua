@@ -1,8 +1,9 @@
 -- The default screen layout (DESIGN §8). User config replaces it whole with
 -- its own zemi.ui.layout.set, or edits a copy from zemi.ui.layout.get().
 
--- The stage stays narrow enough to read; the composer's rules run wider by
--- SLACK cells, so the working block and the statusline keep their widgets.
+-- The stage stays narrow enough to read; the composer's frame runs wider by
+-- SLACK cells, so the working block and the statusline below it keep their
+-- widgets.
 local SLACK = 24
 
 -- the chat and a spacer, so the transcript's last row stands a row above the
@@ -57,16 +58,15 @@ local layout = {
 							{ kind = "spacer", size = "fill" },
 						},
 					},
-					-- the mascot lives on the top rule and the statusline on the bottom
-					-- one, so no agent state adds or removes a row
+					-- the mascot lives on the top rule and the statusline on the bar
+					-- below the box, so no agent state adds or removes a row
 					{
 						kind = "composer",
 						placeholder = "Ask anything…",
 						frame = true,
 						top = "working",
-						left = "statusline.left",
-						right = "statusline.right",
 					},
+					{ kind = "bar", left = "statusline.left", right = "statusline.right" },
 				},
 			},
 			{ kind = "spacer", size = "fill" },
