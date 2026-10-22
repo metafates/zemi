@@ -1429,10 +1429,10 @@ func TestSavedWorkflows(t *testing.T) {
 	}
 }
 
-// TestWorkflowViewKeepsTheList: viewing a workflow's agent closes the run's
-// view and keeps the workflows list open under it, so esc leaves the view,
-// the back command reopens the run view over the list, and h walks onto it.
-func TestWorkflowViewKeepsTheList(t *testing.T) {
+// TestWorkflowViewTakesTheMenusPlace: viewing a workflow's agent closes the
+// run's view and the workflows list with it, so the transcript shows whole;
+// esc restores them (the menu under the run view the back command reopens).
+func TestWorkflowViewTakesTheMenusPlace(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
@@ -1457,8 +1457,8 @@ return wf.agent("look")`})
 	if h.viewedRun() != run {
 		t.Fatalf("the chat shows %v, want the agent's run", h.viewedRun())
 	}
-	if !slices.Contains(ui.closed, "workflow:"+f.id) || slices.Contains(ui.closed, "workflows") {
-		t.Fatalf("closed %v, want the run's view gone and the list kept", ui.closed)
+	if !slices.Contains(ui.closed, "workflow:"+f.id) || !slices.Contains(ui.closed, "workflows") {
+		t.Fatalf("closed %v, want the run's view and the list gone", ui.closed)
 	}
 }
 

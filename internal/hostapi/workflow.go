@@ -1678,11 +1678,12 @@ func (h *Host) workflowCommands() []*Command {
 					if err := h.ViewAgentFrom(arg(2), "workflows view "+id, "workflows"); err != nil {
 						return err
 					}
-					// the chat shows the transcript with the list still open under
-					// it, as "agents view" leaves its list: esc leaves the view
-					// and the back command reopens the run view over the list,
-					// where h walks onto the list
-					h.hooks().CloseOverlay("workflow:" + id)
+					// the transcript takes the menu's place whole: the screens
+					// close, and esc restores them - the menu under the run
+					// view the back command reopens
+					for _, o := range []string{"workflow:" + id, "workflows"} {
+						h.hooks().CloseOverlay(o)
+					}
 					return nil
 				}
 				return h.openFlow(id)

@@ -1233,42 +1233,48 @@ func TestInterruptKeys(t *testing.T) {
 	}
 }
 
-// TestAgentViewEscTakesItsMenu: a menu left open under a shown run is the
-// view's context, so its esc goes to the view before it closes the menu,
-// while any other overlay's esc closes that overlay first.
-func TestAgentViewEscTakesItsMenu(t *testing.T) {
+// TestAgentViewEscRestoresItsMenus: esc on a shown run restores the menu the
+// view was raised from under the screen the back command reopens, so h walks
+// back down the chain the view closed.
+func TestAgentViewEscRestoresItsMenus(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 90, 16)
 	testStore(t, host)
+	open := func(id string) *hostapi.Command {
+		return &hostapi.Command{Name: id, GoFn: func(h *hostapi.Host, _ string) error {
+			ui, err := h.Screen()
+			if err != nil {
+				return err
+			}
+			ui.OpenOverlay(hostapi.Overlay{ID: id, Title: id, Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a row"}}})
+			return nil
+		}}
+	}
+	if _, err := host.Commands.Add(open("wmenu")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Commands.Add(open("backscreen")); err != nil {
+		t.Fatal(err)
+	}
 	agentID := store.ShortID()
 	if err := host.DB.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.ViewAgent(agentID); err != nil {
+	if err := host.ViewAgentFrom(agentID, "backscreen", "wmenu"); err != nil {
 		t.Fatal(err)
 	}
-	esc := tea.KeyPressMsg{Code: tea.KeyEscape}
-	// the view's own menu: esc leaves the view and keeps the menu
-	if err := host.ViewAgentFrom(agentID, "", "workflows"); err != nil {
-		t.Fatal(err)
-	}
-	app.openOverlay(hostapi.Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a run"}}})
-	app.Update(esc)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	for app.Pump() {
 	}
-	if host.ViewedAgent() != "" || len(app.overlays) != 1 || app.overlays[0].o.ID != "workflows" {
-		t.Fatalf("view %q, overlays %d, want the view left and the menu kept", host.ViewedAgent(), len(app.overlays))
+	if host.ViewedAgent() != "" {
+		t.Fatal("esc left the run on screen")
 	}
-	// another overlay over the view: esc closes that one, the view stays
-	if err := host.ViewAgentFrom(agentID, "", "workflows"); err != nil {
-		t.Fatal(err)
+	ids := []string{}
+	for _, st := range app.overlays {
+		ids = append(ids, st.o.ID)
 	}
-	app.openOverlay(hostapi.Overlay{ID: "other", Title: "Other", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a row"}}})
-	app.Update(esc)
-	for app.Pump() {
-	}
-	if host.ViewedAgent() == "" || len(app.overlays) != 1 || app.overlays[0].o.ID != "workflows" {
-		t.Fatalf("view %q, overlays %d, want the other box closed under the view", host.ViewedAgent(), len(app.overlays))
+	if !slices.Equal(ids, []string{"wmenu", "backscreen"}) {
+		t.Fatalf("overlays %v, want the menu restored under the back screen", ids)
 	}
 }
 
