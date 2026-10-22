@@ -613,6 +613,13 @@ type scrollState struct {
 	// it, and so does a submit or a click
 	focus  int
 	placed int
+	// band caches bandMessage's rows: two transcript scans and a clone of the
+	// line slice per paint while a following list is up, for rows that change
+	// only when the region re-renders (a fresh wrapped slice), the pick or the
+	// width does. bandSrc holds the rows the cache was built from, so a
+	// re-render's fresh slice can never sit at the old one's address.
+	band, bandSrc [][]hostapi.Segment
+	bandAt, bandW int
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -683,7 +690,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	// the picker's message is banded under the pins, which stay chrome
 	draw := lines
 	if n.ID == a.scrollDef && a.highlight > 0 {
-		draw = bandMessage(lines, a.highlight, w-1)
+		same := len(st.bandSrc) == len(lines) && (len(lines) == 0 || &st.bandSrc[0] == &lines[0])
+		if !same || st.bandAt != a.highlight || st.bandW != w-1 {
+			st.band = bandMessage(lines, a.highlight, w-1)
+			st.bandSrc, st.bandAt, st.bandW = lines, a.highlight, w-1
+		}
+		draw = st.band
 	}
 	rows := st.window(draw, w-1, n.Fade) // the bar keeps the region's last column
 	// the scrollbar keeps its own ground: the banded message runs to it and no
