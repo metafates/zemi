@@ -42,7 +42,7 @@ var listKeys = [][2]string{
 	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
 	{"ctrl+d, ctrl+u", "move half a page, or scroll the text"},
 	{"pgup, pgdown", "move a page"},
-	{"home, end", "first row, last row"},
+	{"home, end, ctrl+b", "first row, last row"},
 	{"/", "filter; enter keeps it, esc clears it"},
 	{"space", "toggle"},
 	{"y, Y", "copy the row, every row"},
@@ -390,7 +390,7 @@ func moveSel(sel *int, n, page int, key string) bool {
 		*sel += page
 	case "home", "ctrl+home", "g":
 		*sel = 0
-	case "end", "ctrl+end", "G":
+	case "end", "ctrl+b", "G":
 		*sel = n - 1
 	default:
 		if listMove(key) == 0 {

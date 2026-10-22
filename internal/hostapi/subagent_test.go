@@ -598,7 +598,7 @@ func TestAgentDefs(t *testing.T) {
 
 // TestSubagentModelChoice: a subagent's model comes from its definition's
 // reference, which may name a role, then models.agents, which follows
-// models.chat. A reference config does not know is refused with the roles
+// models.default. A reference config does not know is refused with the roles
 // and the configured models.
 func TestSubagentModelChoice(t *testing.T) {
 	t.Parallel()
@@ -608,16 +608,16 @@ func TestSubagentModelChoice(t *testing.T) {
 		models = { { id = "main" }, { id = "mini" } },
 	})`)
 	for _, c := range []struct {
-		def, chat, agents string
-		want              string
+		def, deflt, agents string
+		want               string
 	}{
 		{"", "", "", "myllm/main"}, // nothing set: the provider's default
 		{"", "myllm/mini", "", "myllm/mini"},
 		{"", "myllm/main", "myllm/mini", "myllm/mini"},
 		{"myllm/main", "myllm/mini", "myllm/mini", "myllm/main"},
-		{"chat", "myllm/main", "myllm/mini", "myllm/main"},
+		{"default", "myllm/main", "myllm/mini", "myllm/main"},
 	} {
-		h.Settings.SetQuiet("models.chat", c.chat)
+		h.Settings.SetQuiet("models.default", c.deflt)
 		h.Settings.SetQuiet("models.agents", c.agents)
 		if got := h.subagentModelID(AgentDef{Model: c.def}); got != c.want {
 			t.Errorf("%+v: got %q", c, got)
@@ -627,7 +627,7 @@ func TestSubagentModelChoice(t *testing.T) {
 	if desc := h.agentTool(nil).Info().Description; strings.Contains(desc, "myllm/main") {
 		t.Fatalf("description lists models: %q", desc)
 	}
-	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: chat, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
+	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: default, chat, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
 		t.Fatalf("unknown model: %v", err)
 	}
 }

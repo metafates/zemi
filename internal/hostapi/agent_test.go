@@ -379,8 +379,8 @@ func TestModelNamespace(t *testing.T) {
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads env vars")`)
 
 	runUser(t, r, `zemi.model.set("myllm/main")`)
-	if v, ok := h.Settings.Get("models.chat"); !ok || v != "myllm/main" {
-		t.Fatalf("models.chat=%v ok=%v", v, ok)
+	if v, ok := h.Settings.Get("models.default"); !ok || v != "myllm/main" {
+		t.Fatalf("models.default=%v ok=%v", v, ok)
 	}
 	runUser(t, r, `
 		local models = zemi.model.list()

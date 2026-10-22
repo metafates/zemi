@@ -126,6 +126,9 @@ func (c *composerState) delete() {
 		return
 	}
 	c.text = string(r[:c.cursor]) + string(r[c.cursor+1:])
+	if c.histIdx > len(c.history) {
+		c.histIdx = len(c.history)
+	}
 }
 
 func (c *composerState) left() {
@@ -218,11 +221,15 @@ func (c *composerState) typeKey(key, text string) {
 	}
 }
 
-// replace swaps the runes from start to the cursor for s.
+// replace swaps the runes from start to the cursor for s. Typing on the
+// clean slate makes it the live draft, so the walk continues from there.
 func (c *composerState) replace(start int, s string) {
 	r := c.runes()
 	c.text = string(r[:start]) + s + string(r[c.cursor:])
 	c.cursor = start + len([]rune(s))
+	if c.histIdx > len(c.history) {
+		c.histIdx = len(c.history)
+	}
 }
 
 func (c *composerState) wordLeft() {
@@ -270,6 +277,10 @@ func (c *composerState) delWord() {
 
 func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
+// The history walk: histIdx runs 0..len(history)+1, len(history) the live
+// draft and len(history)+1 the clean slate past it - ctrl+n reaches the
+// slate, ctrl+p walks back through the draft to the entries, and typing on
+// the slate makes it the live draft.
 const historyCap = 50
 
 func (c *composerState) pushHistory(text string) {
@@ -305,26 +316,39 @@ func (a *App) seedHistory() {
 	c.histIdx = len(c.history)
 }
 
-// histPrev recalls the older entry, saving the live draft.
+// histPrev recalls the older entry, saving the live draft; from the clean
+// slate it returns to the draft it left.
 func (c *composerState) histPrev() {
 	if c.histIdx == 0 {
 		return
 	}
-	if c.histIdx == len(c.history) {
+	switch c.histIdx - len(c.history) {
+	case 0:
 		c.draft = c.text
+	case 1:
+		c.histIdx--
+		c.text = c.draft
+		c.moveEnd()
+		return
 	}
 	c.histIdx--
 	c.text = c.history[c.histIdx]
 	c.moveEnd()
 }
 
-// histNext recalls the newer entry or restores the draft.
+// histNext recalls the newer entry; past the live draft it shows the clean
+// slate, and on the slate it does nothing.
 func (c *composerState) histNext() {
-	if c.histIdx >= len(c.history) {
+	if c.histIdx >= len(c.history)+1 {
 		return
 	}
-	c.histIdx++
 	if c.histIdx == len(c.history) {
+		c.draft = c.text
+	}
+	c.histIdx++
+	if c.histIdx == len(c.history)+1 {
+		c.text = ""
+	} else if c.histIdx == len(c.history) {
 		c.text = c.draft
 	} else {
 		c.text = c.history[c.histIdx]

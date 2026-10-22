@@ -115,11 +115,12 @@ func TestComposerHistory(t *testing.T) {
 	for _, s := range []string{"one", "two"} {
 		c.pushHistory(s)
 	}
-	// past either end a recall stays put
+	// past either end a recall stays put, and ctrl+n past the draft reaches
+	// the clean slate once and stops there
 	for i, step := range []struct {
 		recall func()
 		want   string
-	}{{c.histPrev, "two"}, {c.histPrev, "one"}, {c.histPrev, "one"}, {c.histNext, "two"}, {c.histNext, "draft"}, {c.histNext, "draft"}} {
+	}{{c.histPrev, "two"}, {c.histPrev, "one"}, {c.histPrev, "one"}, {c.histNext, "two"}, {c.histNext, "draft"}, {c.histNext, ""}, {c.histNext, ""}, {c.histPrev, "draft"}, {c.histPrev, "two"}} {
 		if step.recall(); c.text != step.want {
 			t.Fatalf("step %d: %q, want %q", i, c.text, step.want)
 		}

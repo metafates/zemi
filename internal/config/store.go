@@ -21,6 +21,7 @@ type Key string
 // The builtin keys, in the order defineDefaults declares them.
 const (
 	KeyModelsChat         Key = "models.chat"
+	KeyModelsDefault      Key = "models.default"
 	KeyModelsAgents       Key = "models.agents"
 	KeyModelsTitles       Key = "models.titles"
 	KeyModelsCompact      Key = "models.compact"
@@ -161,7 +162,8 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: KeyModelsChat, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
+		{Path: KeyModelsDefault, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model the conversation runs on and every role left empty follows (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
+		{Path: KeyModelsChat, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model the conversation runs on when set, ahead of the default role's (provider/model; empty follows models.default)"},
 		{Path: KeyModelsAgents, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
 		{Path: KeyModelsTitles, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
 		{Path: KeyModelsCompact, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},

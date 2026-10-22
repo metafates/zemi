@@ -168,7 +168,7 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 	for _, name := range []string{"answers", "refused"} {
 		t.Run(name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
-			h.Settings.SetQuiet("models.chat", "stub/m")
+			h.Settings.SetQuiet("models.default", "stub/m")
 			m := reflectStub(t, h, "ok")
 			h.reflectMu.Lock()
 			defer h.reflectMu.Unlock()

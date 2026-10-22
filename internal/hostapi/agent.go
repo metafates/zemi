@@ -295,24 +295,35 @@ func (h *Host) readOnly() bool {
 
 // currentModelID picks the model the main conversation runs on: the slot the
 // active profile names, or the profile's own model for a one-off run
-// (zemi.model.ask, a subagent) that sets no name.
+// (zemi.model.ask, a subagent) that sets no name. The conversation prefers
+// its chat pick, then a default profile shape's own model, then the default
+// role every slot follows.
 func (h *Host) currentModelID(p *Profile) string {
 	switch {
 	case p == nil:
 		return h.roleModel("chat")
 	case p.Name == "":
 		return p.Model
+	case p.Name == "default":
+		return cmp.Or(h.Settings.Str(config.KeyModelsChat), h.modelRef(p.Model), h.roleModel("default"))
 	}
 	return h.roleModel(p.Name)
 }
 
+// conversationModel is the model the conversation runs on, whatever profile
+// is active.
+func (h *Host) conversationModel() string {
+	p, _ := h.resolveProfile("")
+	return h.currentModelID(p)
+}
+
 // ConversationTarget is the slot a pick for the conversation writes: the
-// active profile's own, else chat. default has no slot of its own, and
-// neither does the shipped shape, so both are chat.
+// active profile's own, else the default role every slot follows. A profile
+// named default has no key of its own, so it picks the default role too.
 func (h *Host) ConversationTarget() string {
 	p, _ := h.resolveProfile("")
 	if p == nil || p.Name == "default" {
-		return "chat"
+		return "default"
 	}
 	return p.Name
 }
@@ -2019,7 +2030,10 @@ func (h *Host) OpenModelPicker(name string) error {
 
 // followRow is a target's list head: what it runs on with no pick of its own.
 func (h *Host) followRow(name, run string) OverlayItem {
-	head := OverlayItem{Text: "Follow the chat model", Desc: h.roleModel("chat"), Run: run + "chat"}
+	if name == "default" { // the root: nothing to follow but the provider
+		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run}
+	}
+	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel("default"), Run: run + "default"}
 	t, _ := h.target(name)
 	switch {
 	case t == nil || t.def() == "":
@@ -2032,10 +2046,12 @@ func (h *Host) followRow(name, run string) OverlayItem {
 }
 
 func (h *Host) modelPicker(name string) Overlay {
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
+	// a model id is the row's identity and the descs run long, so the lists
+	// take the whole screen and nothing trims to a menu's width
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Wide: true, Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
-	run, cur := "model ", h.roleModel(h.ConversationTarget())
+	run, cur := "model ", h.conversationModel()
 	switch name {
 	case "":
 		o.Items = []OverlayItem{
@@ -2058,12 +2074,6 @@ func (h *Host) modelPicker(name string) Overlay {
 	classifier := h.classifies(name)
 	// a favorited model heads the list, in the order the key holds them
 	favs := h.Settings.List(config.KeyModelsFavorites)
-	favRank := func(id string) int {
-		if i := slices.Index(favs, id); i >= 0 {
-			return i
-		}
-		return math.MaxInt
-	}
 	type modelRow struct {
 		id   string
 		item OverlayItem
@@ -2088,11 +2098,16 @@ func (h *Host) modelPicker(name string) Overlay {
 			rows = append(rows, modelRow{id, item})
 		}
 	}
-	slices.SortStableFunc(rows, func(a, b modelRow) int { return cmp.Compare(favRank(a.id), favRank(b.id)) })
-	for _, r := range rows {
-		if favRank(r.id) != math.MaxInt {
-			r.item.Section = "Favorites"
+	// a favorited model heads the list as a copy of itself: the row also
+	// stays in its provider's section below, where its provider groups it
+	for _, id := range favs {
+		if i := slices.IndexFunc(rows, func(r modelRow) bool { return r.id == id }); i >= 0 {
+			fav := rows[i].item
+			fav.Section = "Favorites"
+			o.Items = append(o.Items, fav)
 		}
+	}
+	for _, r := range rows {
 		o.Items = append(o.Items, r.item)
 	}
 	// the selection opens on the model the slot runs
@@ -2151,23 +2166,24 @@ func (h *Host) toggleModelFavorite(id, name string) {
 	}
 }
 
-// ownRoles names the targets config gave a model of their own, chat apart: it
-// is the conversation's slot, not one leaving the chat model.
+// ownRoles names the roles and targets config gave a model of their own,
+// chat and the default root apart: they are the picks that leave the shared
+// model.
 func (h *Host) ownRoles() []string {
 	var own []string
-	for _, n := range h.targetNames()[1:] {
-		if h.Settings.Str(config.ModelKey(n)) != "" {
+	for _, n := range h.targetNames() {
+		if n != "chat" && n != "default" && h.Settings.Str(config.ModelKey(n)) != "" {
 			own = append(own, n)
 		}
 	}
 	return own
 }
 
-// rolesDesc is the desc of /model's row opening the roles: which roles leave the chat model.
+// rolesDesc is the desc of /model's row opening the roles: which roles leave the default model.
 func rolesDesc(own []string) string {
 	switch n := len(own); n {
 	case 0:
-		return "every role on the chat model"
+		return "every role on the default model"
 	case 1:
 		return own[0] + " on its own model"
 	default:
@@ -2190,13 +2206,12 @@ func (h *Host) OpenModelRoles() error {
 }
 
 // modelRoleItems is /model roles: the conversation's slot first, then the
-// roles, then the profiles. default and the shipped shape have no key of their
-// own, so row one is the chat slot for them, named for what the conversation
-// is; a profile row one shows is never repeated.
+// roles, then the profiles. A profile named default has no key of its own,
+// so its row is the default slot; a profile row one shows is never repeated.
 func (h *Host) modelRoleItems() []OverlayItem {
 	slot := h.ConversationTarget()
 	first, firstDesc := slot, roles[0].Desc
-	if p, _ := h.resolveProfile(""); p != nil {
+	if p, _ := h.resolveProfile(""); p != nil && p.Name != "default" {
 		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
 	}
 	items := []OverlayItem{{
@@ -2234,13 +2249,16 @@ func (h *Host) modelSlotRow(name, desc string) OverlayItem {
 // slotTag is what a row shows past the model id: the default a slot with no
 // pick of its own falls back to.
 func (h *Host) slotTag(name string) string {
+	if name == "default" { // the root: what runs when nothing is set anywhere
+		return h.Providers.Default()
+	}
 	if h.Settings.Str(config.ModelKey(name)) != "" {
 		return ""
 	}
 	if def := h.targetDef(name); def != "" {
 		return h.modelRef(def)
 	}
-	return "follows chat"
+	return "follows default"
 }
 
 // modelDesc is the picker's second column: display name, context window
@@ -2355,10 +2373,10 @@ func (h *Host) CompleteModel(lead, line string) []string {
 	first = append(first, h.targetNames()...)
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
-		case sub == "chat":
+		case sub == "chat" || sub == "default":
 			return ids
 		case h.isTarget(sub):
-			return append([]string{"chat"}, ids...)
+			return append([]string{"default"}, ids...)
 		}
 		return nil
 	})(h, lead, line)
@@ -2620,6 +2638,9 @@ func (h *Host) effortDesc(model, level string) string {
 // profileDesc is a /profile row: the model the profile runs on and what it
 // changes.
 func (h *Host) profileDesc(name string) string {
+	if name == "default" { // the shipped shape runs what the conversation runs
+		return h.slotLine("chat", h.profileSlotDesc(name))
+	}
 	return h.slotLine(name, h.profileSlotDesc(name))
 }
 

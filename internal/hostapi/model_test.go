@@ -30,12 +30,17 @@ func TestRoleModel(t *testing.T) {
 	}{
 		{
 			name: "nothing set runs the provider default",
-			want: map[string]string{"conversation": "a/big", "chat": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big"},
+			want: map[string]string{"conversation": "a/big", "default": "a/big", "chat": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big"},
 		},
 		{
-			name:   "unset targets follow chat",
+			name:   "the default pick moves every role",
+			config: `zemi.config.set("models.default", "a/small")`,
+			want:   map[string]string{"conversation": "a/small", "default": "a/small", "chat": "a/small", "agents": "a/small", "titles": "a/small", "compact": "a/small", "memory": "a/small"},
+		},
+		{
+			name:   "a chat pick pins the conversation, the roles stay on default",
 			config: `zemi.config.set("models.chat", "a/small")`,
-			want:   map[string]string{"conversation": "a/small", "chat": "a/small", "agents": "a/small", "titles": "a/small", "compact": "a/small", "memory": "a/small"},
+			want:   map[string]string{"conversation": "a/small", "chat": "a/small", "default": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big"},
 		},
 		{
 			name:   "a set target wins",
@@ -60,7 +65,7 @@ func TestRoleModel(t *testing.T) {
 		{
 			name:   "a defined default profile runs the conversation",
 			config: `zemi.agent.profile.add("default", { model = "a/small" })`,
-			want:   map[string]string{"conversation": "a/small", "default": "a/small", "titles": "a/big"},
+			want:   map[string]string{"conversation": "a/small", "default": "a/big", "chat": "a/big", "titles": "a/big"},
 		},
 		{
 			name:   "and the chat pick wins over its model",
@@ -114,7 +119,7 @@ func TestModelTargetNames(t *testing.T) {
 		{"a dotted name", `zemi.model.add("a.b", { desc = "x" })`, `name "a.b" must be a lowercase letter`},
 		{"no desc", `zemi.model.add("x", { model = "a/big" })`, "desc is what /model roles shows"},
 		{"a typo'd key", `zemi.model.add("x", { desc = "x", model_id = "a/big" })`, `spec: unknown field "model_id"`},
-		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (chat, agents, titles, compact, memory) or a provider/model id`},
+		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (default, chat, agents, titles, compact, memory) or a provider/model id`},
 		{"another target as its model", `zemi.model.add("x", { desc = "x", model = "clf" })`, `model "clf" must name a builtin role`},
 		{"a profile named after a role", `zemi.agent.profile.add("titles", {})`, `"titles" is a builtin role`},
 		{"a profile naming another target", `zemi.agent.profile.add("p", { model = "clf" })`, `model "clf" must name a builtin role`},
@@ -274,13 +279,13 @@ func TestModelTargetUI(t *testing.T) {
 	for _, it := range rows {
 		got = append(got, it.Text)
 	}
-	if want := []string{"chat", "agents", "titles", "compact", "memory", "clf", "cheap"}; !slices.Equal(got, want) {
+	if want := []string{"default", "chat", "agents", "titles", "compact", "memory", "clf", "cheap"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
-	if row := rows[5]; row.Desc != "a/small · the classifier" {
+	if row := rows[6]; row.Desc != "a/small · the classifier" {
 		t.Errorf("clf row %+v", row)
 	}
-	if row := rows[6]; row.Desc != "a/small · every tool" || row.Key != "a/small" {
+	if row := rows[7]; row.Desc != "a/small · every tool" || row.Key != "a/small" {
 		t.Errorf("cheap row %+v (its spec model is what the row tags)", row)
 	}
 	// the active profile takes row one, and its own row is not repeated
@@ -317,12 +322,12 @@ func TestModelTargetUI(t *testing.T) {
 		t.Errorf("cheap's first row %+v", head)
 	}
 	// a profile named default is row one under its own name, but what it opens
-	// is the conversation's slot, chat
+	// is the conversation's slot, the default role
 	runUser(t, r, `zemi.agent.profile.add("default", { model = "a/small" }) zemi.config.set("agent.profile", "default")`)
 	if err := h.OpenModelRoles(); err != nil {
 		t.Fatal(err)
 	}
-	if row := ui.opened[len(ui.opened)-1].Items[0]; row.Text != "default" || row.Run != "model chat" || row.Key != "" {
+	if row := ui.opened[len(ui.opened)-1].Items[0]; row.Text != "default" || row.Run != "model default" || row.Key != "" {
 		t.Errorf("row one under a defined default %+v", row)
 	}
 	// and the list a bare /model opens marks the model the conversation runs
@@ -379,7 +384,7 @@ func TestSetModelArgs(t *testing.T) {
 		{"chat", "model chat", "", "", ""},
 		{"roles", "model roles", "", "", ""},
 		{"titles", "model titles", "", "", ""},
-		{"a/small", "", "models.chat", "a/small", ""},
+		{"a/small", "", "models.default", "a/small", ""},
 		{"titles a/big", "", "models.titles", "a/big", ""},
 		{"titles chat", "", "models.titles", "", ""},
 		{"titles nope/x", "", "", "", `provider "nope" is not registered`},
@@ -405,14 +410,14 @@ func TestSetModelArgs(t *testing.T) {
 			t.Errorf("%q refreshed %v, want an open /model", c.args, ui.opened[n:])
 		}
 	}
-	// the roles list tags what follows chat, and zemi.model.list says what runs where
+	// the roles list tags what follows default, and zemi.model.list says what runs where
 	roles := ui.opened[2].Items
-	if k := roles[2].Key; k != "follows chat" {
+	if k := roles[2].Key; k != "follows default" {
 		t.Errorf("titles row key %q", k)
 	}
 	for _, c := range []struct{ line, want string }{
-		{"/model ", "roles update chat agents titles compact memory a/big a/small"},
-		{"/model titles ", "chat a/big a/small"},
+		{"/model ", "roles update default chat agents titles compact memory a/big a/small"},
+		{"/model titles ", "default a/big a/small"},
 		{"/model chat ", "a/big a/small"},
 		{"/model a/big ", ""},
 	} {
@@ -424,7 +429,7 @@ func TestSetModelArgs(t *testing.T) {
 	}
 	runUser(t, r, `zemi.config.set("models.memory", "a/big")
 		for _, m in ipairs(zemi.model.list()) do
-			local want = m.id == "a/big" and "memory" or "chat,agents,titles,compact"
+			local want = m.id == "a/big" and "chat,memory" or "default,agents,titles,compact"
 			assert(table.concat(m.roles, ",") == want, m.id .. ": " .. table.concat(m.roles, ","))
 		end`)
 }
@@ -503,5 +508,17 @@ func TestModelFavorites(t *testing.T) {
 	key := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "f" })]
 	if !key.Applies(OverlayItem{ID: "a/big"}) || key.Applies(OverlayItem{Text: "Choose a model per role"}) {
 		t.Error("f acts on a row that names no model")
+	}
+	// a favorite is a copy at the head: its provider's section keeps the row
+	h.toggleModelFavorite("a/small", "")
+	o = h.modelPicker("")
+	var sections []string
+	for _, it := range o.Items {
+		if it.Text == "small" {
+			sections = append(sections, it.Section)
+		}
+	}
+	if !slices.Equal(sections, []string{"Favorites", "a · no API key"}) {
+		t.Errorf("the favorite reads %v, want the head copy and the provider row", sections)
 	}
 }

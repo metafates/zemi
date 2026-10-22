@@ -338,9 +338,11 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 }
 
 // roles are the kinds of model work config names a model for, as
-// models.<name>, in the order /model roles lists them.
+// models.<name>, in the order /model roles lists them. default is the root:
+// the conversation and every role left unset run on it.
 var roles = []modelRole{
-	{"chat", "the conversation"},
+	{"default", "the conversation, and every role left unset"},
+	{"chat", "the conversation, when it leaves the default"},
 	{"agents", "subagents"},
 	{"titles", "session titles"},
 	{"compact", "summaries"},
@@ -438,10 +440,10 @@ func (h *Host) targetNames() []string {
 	return names
 }
 
-// isTarget reports whether name names a model slot. default is not one: /model
-// sets the conversation's slot as chat.
+// isTarget reports whether name names a model slot. default is one now: it is
+// the root every slot follows.
 func (h *Host) isTarget(name string) bool {
-	if name == "" || name == "default" {
+	if name == "" {
 		return false
 	}
 	if isRole(name) {
@@ -452,18 +454,18 @@ func (h *Host) isTarget(name string) bool {
 }
 
 // roleModel is the model id a slot runs on: its key, the model it was
-// registered with, models.chat, then the first usable provider's default
+// registered with, models.default, then the first usable provider's default
 // (nothing is written to config, so a reload cannot fight the fallback).
-// default is the conversation's own slot, so models.chat wins over the shape it
-// was registered with. "" when nothing can run.
+// default is the root: its key, then the provider default. "" when nothing
+// can run.
 func (h *Host) roleModel(name string) string {
 	if name == "default" {
-		return cmp.Or(h.Settings.Str(config.KeyModelsChat), h.modelRef(h.targetDef(name)), h.Providers.Default())
+		return cmp.Or(h.Settings.Str(config.KeyModelsDefault), h.Providers.Default())
 	}
 	if v := h.Settings.Str(config.ModelKey(name)); v != "" {
 		return v
 	}
-	return cmp.Or(h.modelRef(h.targetDef(name)), h.Settings.Str(config.KeyModelsChat), h.Providers.Default())
+	return cmp.Or(h.modelRef(h.targetDef(name)), h.Settings.Str(config.KeyModelsDefault), h.Providers.Default())
 }
 
 // modelRef resolves a model reference, a target name or a provider/model id. A
@@ -535,7 +537,7 @@ func (h *Host) checkTargetName(name string, by lua.Origin, byPath string, profil
 	switch {
 	case !targetName.MatchString(name):
 		return fmt.Errorf("name %q must be a lowercase letter, then up to 31 lowercase letters, digits, _ and -", name)
-	case isRole(name):
+	case isRole(name) && name != "default":
 		return fmt.Errorf("%q is a builtin role", name)
 	case !profile && name == "default":
 		return fmt.Errorf("%q is a shipped profile", name)
