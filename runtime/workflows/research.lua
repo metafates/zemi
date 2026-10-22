@@ -13,7 +13,7 @@ local angles = {
 	{
 		"explore",
 		"the trade-offs",
-		"Look for the options and their costs, in this repository and on the web: what each one buys, what it gives up, and which fits here. ",
+		"Look for the options and their costs, in this repository: what each one buys, what it gives up, and which fits here. ",
 	},
 }
 
