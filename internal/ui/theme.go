@@ -111,6 +111,8 @@ func chromeStyles(p *hostapi.Palette) map[string]uv.Style {
 		hostapi.ChromeDiffCtxNum: {Fg: p.Dim},
 		hostapi.ChromeSelection:  {Attrs: uv.AttrReverse},
 		hostapi.ChromeHover:      {Underline: uv.UnderlineSingle},
+		// Host:Dim paints what a modal sinks behind it: the rule grey, so the
+		// backdrop reads as a shape under the box, not as dim text to read
 		hostapi.ChromeDim:        {Fg: p.Rule},
 	}
 }
