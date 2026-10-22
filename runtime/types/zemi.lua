@@ -1607,13 +1607,15 @@ function zemi.log.list() end
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
 ---@alias zemi.ModelRole
----| "chat"     # the conversation
+---| "default"  # the conversation, and every role left unset
+---| "chat"     # the conversation, when it leaves the default
 ---| "agents"   # subagents
 ---| "titles"   # session titles
 ---| "compact"  # summaries
 ---| "memory"   # the reflector
 
 ---@alias zemi.ModelTarget
+---| "default"  # the root every role follows
 ---| "chat"     # the conversation
 ---| "agents"   # subagents
 ---| "titles"   # session titles
@@ -1625,7 +1627,7 @@ function zemi.log.list() end
 ---@field id string "provider/model".
 ---@field display string
 ---@field has_key boolean
----@field roles zemi.ModelTarget[] The model targets that run on this model. "chat" is models.chat, also while the active profile runs the conversation on its own model.
+---@field roles zemi.ModelTarget[] The model targets that run on this model. "default" is models.default, "chat" models.chat.
 
 ---@class zemi.provider
 zemi.provider = {}
@@ -1677,6 +1679,7 @@ function zemi.provider.list() end
 zemi.model = {}
 
 ---@class zemi.model.role
+---@field DEFAULT "default"
 ---@field CHAT "chat"
 ---@field AGENTS "agents"
 ---@field TITLES "titles"

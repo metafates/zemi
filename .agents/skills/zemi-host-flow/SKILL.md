@@ -188,13 +188,15 @@ applied one. A store made before goose only gains its version table: the baselin
 
 ## Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
-- **Models are targets.** `models.chat` runs the conversation; `models.agents` (subagents with
-  no model of their own), `models.titles`, `models.compact`, `models.memory` (the
-  reflector) and every `models.<profile>` each fall back to it while empty (`roleModel`). Nothing falls
+- **Models are targets.** `models.default` is the root: the conversation and every role left
+  unset run on it. `models.chat` is the conversation when it leaves the default; `models.agents`
+  (subagents with no model of their own), `models.titles`, `models.compact`, `models.memory`
+  (the reflector) and every `models.<profile>` each fall back to it while empty (`roleModel`). Nothing falls
   back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
   `models.*` value is `""` or an id with a `/` (`config.set` refuses a bare word), so targets
   never nest. A profile is a target: its definition's `model` is the slot's default and
-  `models.<name>` overrides it, while `models.chat` moves the conversation and no other slot. A
+  `models.<name>` overrides it, while a bare `/model` pick writes the default role (the active
+  profile's own slot when it has one) and no other slot. A
   slot `zemi.model.add` registered is a target like the roles, with no shape of its own
   (`addTarget`; the registry lives in `agentHost.targets` under its own leaf mutex, cleared by
   `PurgeGeneration`). Anything that takes a model — a profile, an agent definition, a workflow —
