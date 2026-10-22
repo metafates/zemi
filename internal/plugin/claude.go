@@ -641,9 +641,16 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 	if kind == KindZemi && !nameRe.MatchString(m.Name) {
 		return Marketplace{}, fmt.Errorf("%q is not a marketplace name: lowercase letters, digits, '_' and '-'", m.Name)
 	}
+	installs := map[string]string{} // install name -> the first entry named it
 	for _, e := range j.Plugins {
 		if e.Name == "" {
 			return Marketplace{}, errors.New("a plugin entry without a name")
+		}
+		if in := (MarketplacePlugin{Kind: kind, Name: e.Name}).installName(); in != "" {
+			if prev, dup := installs[in]; dup {
+				return Marketplace{}, fmt.Errorf("plugins %s and %s both install as %s", prev, e.Name, in)
+			}
+			installs[in] = e.Name
 		}
 		if kind == KindZemi {
 			if !nameRe.MatchString(e.Name) {
