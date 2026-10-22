@@ -71,7 +71,7 @@ func TestMessagesRowsTrimAtTheBox(t *testing.T) {
 		for app.Pump() {
 		}
 		st := &app.overlays[len(app.overlays)-1]
-		row := app.overlayBox(st, 120, 30)[1]
+		row := app.overlayBox(st, 120, 30, true)[1]
 		text, width := hostapi.SegsText(row), hostapi.SegsWidth(row)
 		if n := strings.Count(text, "…"); n != map[bool]int{true: 1, false: 0}[c.wantCut] {
 			t.Fatalf("%s: %d ellipses in %q", c.name, n, text)

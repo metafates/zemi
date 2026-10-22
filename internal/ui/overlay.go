@@ -1091,8 +1091,9 @@ func listRowsCap(h int) int { return max(min(h-4, 3*h/5, listRowsMax), 3) }
 
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
 // §8): the body, then the list, then the keys that act on the selection.
-// h is the height the box may take.
-func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
+// h is the height the box may take, top whether it is the stack's frontmost
+// box, the only one its h back names.
+func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segment {
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
@@ -1233,7 +1234,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			scroll = []hintPair{scrollGap}
 		}
 		esc := map[bool]string{true: "back", false: "close"}[st.back]
-		if !st.back && len(a.overlays) > 1 {
+		if top && !st.back && len(a.overlays) > 1 {
 			hints = append(hints, hintPair{"h", "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)

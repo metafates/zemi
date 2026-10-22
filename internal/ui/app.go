@@ -1003,11 +1003,13 @@ func (a *App) compose(w, h int) string {
 		if i+1 < len(a.overlays) && (a.overlays[i+1].back || a.overlays[i].o.Follow) {
 			continue // a view drawn over a browse replaces the level below it
 		}
-		if ov := &a.overlays[i]; ov.o.Anchor != "" {
-			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight
+		ov := &a.overlays[i]
+		top := i == len(a.overlays)-1
+		if ov.o.Anchor != "" {
+			box, right := a.overlayBox(ov, area.Dx(), area.Dy(), top), ov.o.Anchor == hostapi.OverlayBottomRight
 			modals = append(modals, func() { a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, hostapi.ChromeRule, w) })
 		} else {
-			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
+			splice(a.overlayBox(ov, area.Dx(), area.Dy(), top))
 		}
 	}
 	if a.trust != nil {

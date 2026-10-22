@@ -138,13 +138,13 @@ func TestOverlayFilter(t *testing.T) {
 		{"a typing filter takes the key", hostapi.Overlay{Items: keyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},
 		{"a row's key acts on the selected row", hostapi.Overlay{Items: keyed}, runes("jj3"), func(a *App) string { return closedWith(a, "gamma three") }},
 		{"/ on a list of fewer than filterMin rows is inert and draws no filter row", hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}}}, runes("/"), func(a *App) string {
-			if box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)); strings.Contains(box, "filter") {
+			if box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true)); strings.Contains(box, "filter") {
 				return box
 			}
 			return state(a, false, "", 2, 0)
 		}},
 		{"a section name narrows to its rows and drops the other header", hostapi.Overlay{Items: models}, runes("/anthropic"), func(a *App) string {
-			if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
+			if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true)), "openai") {
 				return fmt.Sprint(v)
 			}
 			return ""
@@ -158,7 +158,7 @@ func TestOverlayFilter(t *testing.T) {
 		}},
 		{"a render_item row keeps its spaces, so the highlight lands on what matched", hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "x"}, {Text: "q1"}, {Text: "q2"}, {Text: "q3"}, {Text: "q4"}, {Text: "sonnet", Row: []hostapi.Segment{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}}}, runes("/net"), func(a *App) string {
 			var lit []string
-			for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
+			for _, row := range a.overlayBox(&a.overlays[0], 80, 20, true) {
 				for _, s := range row {
 					if s.HL == "Host:Title" && s.Text != "› " && strings.Contains(fmt.Sprint(row), "●") {
 						lit = append(lit, s.Text)
@@ -493,7 +493,7 @@ func TestOverlayWidthIsFixed(t *testing.T) {
 		{Text: "short", Keys: []hostapi.ItemKey{{Key: "c", Desc: "Change", Run: "nope"}}},
 		{Text: "long", Keys: []hostapi.ItemKey{{Key: "c", Desc: "Change", Run: "nope"}, {Key: "o", Desc: "Open the file in the editor now", Run: "nope"}, {Key: "x", Desc: "Delete it", Danger: true, Run: "nope"}}},
 	}})
-	width := func() int { return hostapi.SegsWidth(app.overlayBox(&app.overlays[0], 120, 30)[0]) }
+	width := func() int { return hostapi.SegsWidth(app.overlayBox(&app.overlays[0], 120, 30, true)[0]) }
 	opened := width()
 	pressKeys(app, "j")
 	if got := width(); got != opened {
@@ -574,7 +574,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Empty: "Nothing to see."},
 			[]string{"enter"},
 			func(a *App) string {
-				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "Nothing to see.") {
+				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true)), "Nothing to see.") {
 					return "no empty line"
 				}
 				return ""
@@ -585,7 +585,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Body: "header", Empty: "Nothing cached yet."},
 			nil,
 			func(a *App) string {
-				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
+				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true))
 				return fail(strings.Contains(box, "header") && strings.Contains(box, "Nothing cached yet."), box)
 			},
 		},
@@ -594,7 +594,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []hostapi.OverlayItem{detail()}, Reload: func() []hostapi.OverlayItem { return nil }},
 			nil,
 			func(a *App) string {
-				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
+				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true))
 				return map[bool]string{true: box}[strings.Contains(box, "toggle")]
 			},
 		},
@@ -634,7 +634,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "trust", Detail: "trusted: ~/x"}}},
 			[]string{"enter"},
 			func(a *App) string {
-				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
+				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20, true))
 				return fail(strings.Contains(box, "trusted: ~/x"), box)
 			},
 		},
@@ -643,7 +643,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "mcp", Detail: "prose", Fields: []hostapi.Field{{Name: "status", Value: "ready"}}}}},
 			[]string{"enter"},
 			func(a *App) string {
-				if box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20)); !strings.Contains(box, "{ready Host:Ok") {
+				if box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20, true)); !strings.Contains(box, "{ready Host:Ok") {
 					return box
 				}
 				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
@@ -655,7 +655,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Title: "A long parent title", Items: []hostapi.OverlayItem{{Text: strings.Repeat("x", 50), Detail: "d"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}, {Text: "f"}, {Text: "g"}}},
 			[]string{"enter"},
 			func(a *App) string {
-				list, detail := a.overlayBox(&a.overlays[0], 120, 20), a.overlayBox(&a.overlays[1], 120, 20)
+				list, detail := a.overlayBox(&a.overlays[0], 120, 20, false), a.overlayBox(&a.overlays[1], 120, 20, true)
 				if len(detail) >= len(list) || hostapi.SegsWidth(detail[0]) <= hostapi.SegsWidth(list[0]) || strings.Contains(hostapi.SegsText(detail[0]), "…") {
 					return fmt.Sprintf("list %d rows %d wide, detail %d rows %q", len(list), hostapi.SegsWidth(list[0]), len(detail), hostapi.SegsText(detail[0]))
 				}
@@ -669,7 +669,7 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				body := func(w int) string {
 					var out []string
-					for _, r := range a.overlayBox(&a.overlays[1], w, 20) {
+					for _, r := range a.overlayBox(&a.overlays[1], w, 20, true) {
 						out = append(out, hostapi.SegsText(r))
 					}
 					return strings.Join(out, "\n")
@@ -687,10 +687,10 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				d := &a.overlays[1]
 				d.o.Body = strings.Repeat("line\n", 60)
-				before := hostapi.SegsWidth(a.overlayBox(d, 80, 20)[0])
+				before := hostapi.SegsWidth(a.overlayBox(d, 80, 20, true)[0])
 				a.wheel(0, 0, 1)
 				d.selected = 1
-				if after := hostapi.SegsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
+				if after := hostapi.SegsWidth(a.overlayBox(d, 80, 20, true)[0]); d.body.top != 1 || after != before {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
 				return ""
@@ -872,7 +872,7 @@ func TestOverlayNavigation(t *testing.T) {
 				if a.overlayKey("x", "x"); ran != "" || len(a.overlays) != 1 {
 					return "the first press ran " + ran
 				}
-				if foot := hostapi.SegsText(a.overlayBox(&a.overlays[0], 80, 20)[3]); !strings.Contains(foot, "x again to stop workflow") {
+				if foot := hostapi.SegsText(a.overlayBox(&a.overlays[0], 80, 20, true)[3]); !strings.Contains(foot, "x again to stop workflow") {
 					return "footer " + foot
 				}
 				o.Refresh = true
@@ -886,7 +886,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "x"}}, Wide: true},
 			nil,
 			func(a *App) string {
-				a.overlayBox(&a.overlays[0], 120, 30)
+				a.overlayBox(&a.overlays[0], 120, 30, true)
 				return fail(a.overlays[0].size.w == boxInner(120), fmt.Sprintf("%d cells wide", a.overlays[0].size.w))
 			},
 		},
@@ -927,7 +927,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Title: "a\nb", Empty: "p\nq"},
 			nil,
 			func(a *App) string {
-				for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
+				for _, row := range a.overlayBox(&a.overlays[0], 80, 20, true) {
 					if strings.Contains(hostapi.SegsText(row), "\n") {
 						return fmt.Sprintf("row %q holds a newline", hostapi.SegsText(row))
 					}
@@ -947,7 +947,7 @@ func TestOverlayNavigation(t *testing.T) {
 			c.o.Origin = cmp.Or(c.o.Origin, lua.OriginBuiltin)
 			a.openOverlay(c.o)
 			for _, k := range c.keys {
-				a.overlayBox(&a.overlays[len(a.overlays)-1], 80, 20) // keys act on the box drawn
+				a.overlayBox(&a.overlays[len(a.overlays)-1], 80, 20, true) // keys act on the box drawn
 				a.overlayKey(k, "")
 			}
 			if msg := c.check(a); msg != "" {
@@ -1011,6 +1011,28 @@ func TestOverlayArrowKeys(t *testing.T) {
 	}
 }
 
+// TestOverlayHintsAreTheFrontmostBox: a covered screen keeps its own footer
+// and loses the stack's h back, which names the top overlay's keys alone.
+func TestOverlayHintsAreTheFrontmostBox(t *testing.T) {
+	t.Parallel()
+	a, _ := bootAgentApp(t, 80, 24)
+	a.openOverlay(hostapi.Overlay{ID: "j", Title: "Jobs", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "job", Detail: "the job's view"}}})
+	a.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "other", Detail: "stacked over it"}}})
+	covered, top := a.overlayBox(&a.overlays[0], 80, 20, false), a.overlayBox(&a.overlays[1], 80, 20, true)
+	cf, tf := hostapi.SegsText(covered[len(covered)-2]), hostapi.SegsText(top[len(top)-2])
+	if strings.Contains(cf, "h back") {
+		t.Errorf("covered box footer %q", cf)
+	}
+	if !strings.Contains(cf, "enter open") || !strings.Contains(cf, "y copy") || !strings.Contains(cf, "esc close") {
+		t.Errorf("covered box lost its own keys: %q", cf)
+	}
+	if !strings.Contains(tf, "h back") {
+		t.Errorf("top box footer %q", tf)
+	}
+}
+
 // TestOverlayHints: the footer names only keys that act on the selection,
 // with one verb per act of enter's in every list.
 func TestOverlayHints(t *testing.T) {
@@ -1023,7 +1045,7 @@ func TestOverlayHints(t *testing.T) {
 		a.openOverlay(o)
 		// "/" types, "=" is a kept query
 		a.overlays[0].active, a.overlays[0].query = filter == "/", strings.TrimPrefix(filter, "=")
-		box := a.overlayBox(&a.overlays[0], 80, 20)
+		box := a.overlayBox(&a.overlays[0], 80, 20, true)
 		if len(box) > 20 {
 			t.Errorf("%d rows do not fit 20", len(box))
 		}
@@ -1087,7 +1109,7 @@ func TestListAlias(t *testing.T) {
 		}},
 		{"an alias of ctrl+d moves half a page", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: many})
-			a.overlayBox(&a.overlays[0], 80, 20)
+			a.overlayBox(&a.overlays[0], 80, 20, true)
 		}, "ctrl+f", func(a *App) string {
 			st := a.overlays[0]
 			want := max(st.view.pageItems(len(st.visible))/2, 1)
@@ -1165,12 +1187,12 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	}
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, hostapi.OverlayItem{Text: "a much longer row than the others", Desc: "x"})})
 	st := &app.overlays[0]
-	box := app.overlayBox(st, 80, 40)
+	box := app.overlayBox(st, 80, 40, true)
 	if len(box) > listRowsCap(40)+4 {
 		t.Fatalf("a 16-row list took %d of 40 rows", len(box))
 	}
 	st.selected = 15
-	if !strings.Contains(fmt.Sprint(app.overlayBox(st, 80, 40)), "item 14") {
+	if !strings.Contains(fmt.Sprint(app.overlayBox(st, 80, 40, true)), "item 14") {
 		t.Fatal("the last row does not scroll into view")
 	}
 	st.selected = 0
@@ -1178,7 +1200,7 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
 		st.apply()
-		got := app.overlayBox(st, 80, 40)
+		got := app.overlayBox(st, 80, 40, true)
 		if hostapi.SegsWidth(got[0]) != hostapi.SegsWidth(box[0]) || len(got) != len(box) {
 			t.Fatalf("filter %q: %dx%d, want %dx%d", q, hostapi.SegsWidth(got[0]), len(got), hostapi.SegsWidth(box[0]), len(box))
 		}
@@ -1212,7 +1234,7 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 	} {
 		c.step()
 		before := st.rows
-		app.overlayBox(st, map[bool]int{true: 60, false: 80}[c.name == "resize"], 20)
+		app.overlayBox(st, map[bool]int{true: 60, false: 80}[c.name == "resize"], 20, true)
 		if built := before == nil || &before[0] != &st.rows[0]; built != c.built {
 			t.Errorf("%s: rows built %v, want %v", c.name, built, c.built)
 		}
@@ -1357,7 +1379,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 		{Text: "a", Row: []hostapi.Segment{{Text: "red", HL: "ToastErr", Click: "reload"}, {Text: " plain"}}},
 		{Text: "b", Row: []hostapi.Segment{{Text: "a label far too long for a forty cell wide box", HL: "Title"}}},
 	}, Selected: 1})
-	rows := app.overlayBox(&app.overlays[0], 40, 20)
+	rows := app.overlayBox(&app.overlays[0], 40, 20, true)
 	first, second := rows[1], rows[2]
 	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Host:Value" {
 		t.Fatalf("first row: %+v", first)
@@ -1378,7 +1400,7 @@ func TestOverlayTailLabel(t *testing.T) {
 			{Text: path, Tail: true, Desc: "undecided · 1 session · 5m ago", Key: "current"},
 		}})
 		var text string
-		for _, r := range app.overlayBox(&app.overlays[0], w, 20) {
+		for _, r := range app.overlayBox(&app.overlays[0], w, 20, true) {
 			text += hostapi.SegsText(r) + "\n"
 		}
 		if !strings.Contains(text, "…") || !strings.Contains(text, "on/alpha") || !strings.Contains(text, "5m ago") {
@@ -1397,12 +1419,12 @@ func TestOverlayBodyLines(t *testing.T) {
   items = { { text = "a", detail = "**bold**" } } })
 assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that is no list of lines must raise")`)
 	st := &app.overlays[0]
-	row := app.overlayBox(st, 60, 16)[1]
+	row := app.overlayBox(st, 60, 16, true)[1]
 	if st.o.Body != "red plain\ntwo\n" || row[1].Text != "red" || row[1].HL != "Danger" || row[1].Click != "" {
 		t.Fatalf("body %q, row %+v", st.o.Body, row)
 	}
 	pressKeys(app, "enter")
-	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(hostapi.SegsText(app.overlayBox(&d, 60, 16)[1]), "*") {
+	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(hostapi.SegsText(app.overlayBox(&d, 60, 16, true)[1]), "*") {
 		t.Fatalf("detail: %+v", d.o)
 	}
 }
@@ -1447,7 +1469,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { desc =
 assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = "y" } } } } }), "a key the list takes itself must raise")
 assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = "ab" } } } } }), "a key of several characters must raise")`)
 	footer := func() string {
-		box := app.overlayBox(&app.overlays[len(app.overlays)-1], 90, 16)
+		box := app.overlayBox(&app.overlays[len(app.overlays)-1], 90, 16, true)
 		return hostapi.SegsText(box[len(box)-2])
 	}
 	for _, c := range []struct {
@@ -1744,9 +1766,9 @@ func TestListPreview(t *testing.T) {
 	} {
 		app, _ := bootAgentApp(t, 60, 30)
 		runLua(t, app, `zemi.ui.overlay.open({ id = "p", items = { { text = "a", preview = "`+short+`" }, { text = "b", preview = "`+long+`" }, { text = "c" }, { text = "d" }, { text = "e" } } })`)
-		rows := len(app.overlayBox(&app.overlays[0], 60, 30))
+		rows := len(app.overlayBox(&app.overlays[0], 60, 30, true))
 		pressKeys(app, c.keys...)
-		box := app.overlayBox(&app.overlays[0], 60, 30)
+		box := app.overlayBox(&app.overlays[0], 60, 30, true)
 		// the pane's first row stays put above the footer, a filter or not
 		pane, top := hostapi.SegsText(slices.Concat(box[len(box)-6:len(box)-3]...)), strings.TrimLeft(hostapi.SegsText(box[len(box)-6]), "│ ")
 		name := strings.Join(c.keys, " ")
