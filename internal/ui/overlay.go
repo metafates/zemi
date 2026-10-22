@@ -433,6 +433,9 @@ func (st *overlayState) selectedRow() hostapi.OverlayItem {
 // selectedItem is the item the selected row was read from, zero when nothing
 // is selected.
 func (st *overlayState) selectedItem() hostapi.OverlayItem {
+	if st.back {
+		return st.item
+	}
 	if st.selected >= len(st.visible) {
 		return hostapi.OverlayItem{}
 	}
@@ -542,11 +545,20 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 
 // rowKey is the key of the selected row that answers to key: zero (an empty
 // Key) in a view, with no row, or when the row offers none.
+// rowKey is the key of the selected row that answers to key: zero (an empty
+// ItemKey) when none. A detail view carries the keys of the row it opened
+// from, so what acts on the row acts on its view.
 func (st *overlayState) rowKey(key string) hostapi.ItemKey {
-	if st.back || len(st.visible) == 0 || len([]rune(key)) != 1 {
+	var keys []hostapi.ItemKey
+	if st.back {
+		keys = st.item.Keys
+	} else if len(st.visible) > 0 {
+		keys = st.items[st.visible[st.selected]].row.Keys
+	}
+	if len([]rune(key)) != 1 {
 		return hostapi.ItemKey{}
 	}
-	for _, k := range st.items[st.visible[st.selected]].row.Keys {
+	for _, k := range keys {
 		if k.Key == key {
 			return k
 		}
@@ -1376,13 +1388,19 @@ func (st *overlayState) hintKeys() []hintPair {
 		}
 		add(k.Key, k.Desc, false)
 	}
-	if !st.back && len(st.visible) > 0 {
-		for _, k := range st.selectedRow().Keys {
-			if slices.ContainsFunc(st.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == k.Key }) {
-				continue
-			}
-			add(k.Key, k.Desc, true)
+	// the keys of the row: the selected one in a list, the row the view
+	// opened from in a detail
+	row := hostapi.OverlayItem{}
+	if st.back {
+		row = st.item
+	} else if len(st.visible) > 0 {
+		row = st.selectedRow()
+	}
+	for _, k := range row.Keys {
+		if slices.ContainsFunc(st.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == k.Key }) {
+			continue
 		}
+		add(k.Key, k.Desc, true)
 	}
 	return out
 }

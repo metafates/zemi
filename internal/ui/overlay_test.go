@@ -1573,6 +1573,23 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 		t.Fatalf("a key that closes: ran %q, %d open", ran, len(app.overlays))
 	}
 
+	// the view acts on its row's keys, and names them: i installs from a
+	// plugin entry's detail
+	app.overlays, ran = nil, ""
+	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{
+		{Text: "s1", Detail: "about s1", Keys: []hostapi.ItemKey{{Key: "r", Desc: "Resume", Run: "res 1"}}},
+	}})
+	pressKeys(app, "enter")
+	if foot := footer(); !strings.Contains(foot, "r Resume") || !strings.Contains(foot, "esc back") {
+		t.Errorf("a view's footer: %q, want the row's keys beside esc back", foot)
+	}
+	pressKeys(app, "r")
+	for app.Pump() {
+	}
+	if ran != "res 1" || len(app.overlays) != 1 || app.overlays[0].o.ID != "s" {
+		t.Errorf("a key in the view: ran %q, %d open", ran, len(app.overlays))
+	}
+
 	// a destructive command typed without --yes selects its row and arms the
 	// key that runs it
 	app.overlays, ran = nil, ""
