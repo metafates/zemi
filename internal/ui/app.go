@@ -591,7 +591,9 @@ func (a *App) viewFrame() string {
 	if a.width <= 0 || a.height <= 0 {
 		return "zemi starting…"
 	}
-	if !a.host.RT.Reloading() && !a.frameDirty && a.drawn == (renderKey{gen: a.frameGen, width: a.width, height: a.height}) {
+	// a frame that drew something moving by itself (a.spun) is never clean:
+	// its effects step at the tick with nothing else bumping
+	if !a.host.RT.Reloading() && !a.frameDirty && !a.spun && a.drawn == (renderKey{gen: a.frameGen, width: a.width, height: a.height}) {
 		a.frameMu.Lock()
 		defer a.frameMu.Unlock()
 		return a.lastFrame

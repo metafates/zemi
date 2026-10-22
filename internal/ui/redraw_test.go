@@ -192,6 +192,17 @@ func TestFrameCache(t *testing.T) {
 	if frame := ansi.Strip(app.View().Content); strings.Contains(frame, "saved") {
 		t.Fatalf("an expired toast stayed:\n%s", frame)
 	}
+
+	// a frame that drew something moving by itself is never clean: its
+	// shimmer steps with the frame clock though nothing else changed
+	app.onWidgetRendered(widgetRender{id: "chat", lines: [][]hostapi.Segment{{{Text: "breathing", HL: "Dim", Effect: hostapi.EffectShimmer}}}, width: 78, height: 12, gen: app.frameGen})
+	app.View()
+	app.now = func() time.Time { return time.UnixMilli(50) }
+	slow := app.View().Content
+	app.now = func() time.Time { return time.UnixMilli(100) }
+	if fast := app.View().Content; fast == slow {
+		t.Fatal("a shimmering frame stopped moving")
+	}
 }
 
 // TestComposerGrowResizesSplash: the frames drawn between the composer
