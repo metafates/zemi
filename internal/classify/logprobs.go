@@ -37,17 +37,19 @@ const systemPrompt = "You answer questions about the state." +
 	" them, judge the state as it is."
 
 // logprobsAsk answers each question with one prompt whose next token is its
-// label.
+// label. The state renders once: every prompt of the call carries the same
+// bytes, which is what a provider's prompt cache serves.
 func logprobsAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 	answers := make(map[string]Answer, len(req.Questions))
 	var usage fantasy.Usage
+	state := renderJSON(req.State)
 	for _, name := range sortedKeys(req.Questions) {
 		q := req.Questions[name]
 		labels, keys, err := q.labelTokens()
 		if err != nil {
 			return Result{Strategy: StrategyLogprobs, Usage: usage}, err
 		}
-		answer, used, err := logprobsAnswer(ctx, chat, req, name, q, labels, keys)
+		answer, used, err := logprobsAnswer(ctx, chat, req, state, name, q, labels, keys)
 		usage = add(usage, used)
 		if err != nil {
 			return Result{Strategy: StrategyLogprobs, Usage: usage}, fmt.Errorf("%s: %w", name, err)
@@ -86,13 +88,15 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 
 // logprobsAnswer is one question's call: the prompt asks for the label, and the
 // answer is read off the token probabilities. A label outside the readout is
-// retried deeper, and then it is an error.
-func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q Question, labels, keys []string) (Answer, fantasy.Usage, error) {
+// retried deeper, and then it is an error. The prompt does not depend on the
+// depth, so it is built once and only the readout grows.
+func logprobsAnswer(ctx context.Context, chat Chat, req Request, state, name string, q Question, labels, keys []string) (Answer, fantasy.Usage, error) {
 	var usage fantasy.Usage
 	var last error
+	prompt := logprobsPrompt(req, state, name, q, labels)
 	for _, k := range readoutDepth {
 		res, err := chat.Model.Generate(ctx, fantasy.Call{
-			Prompt:          []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(logprobsPrompt(req, name, q, labels))},
+			Prompt:          []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(prompt)},
 			ProviderOptions: chat.Logprobs(chat.Options, k),
 			Headers:         chat.Headers,
 		})
@@ -175,8 +179,7 @@ func labelProbabilities(got []TokenLogprob, labels []string) (probs []float64, m
 // model knows what is asked, the second with the questions in view, and
 // everything before the last question is the same for all of them, so a prompt
 // cache serves the whole call.
-func logprobsPrompt(req Request, name string, q Question, labels []string) string {
-	state := renderJSON(req.State)
+func logprobsPrompt(req Request, state, name string, q Question, labels []string) string {
 	names := sortedKeys(req.Questions)
 	intro := "Task: answer the following question about the state."
 	if len(names) > 1 {
