@@ -368,7 +368,7 @@ func TestClaudeProvides(t *testing.T) {
 	} {
 		dir := t.TempDir()
 		write(t, dir, c.files)
-		if got := claudeProvides(dir); !slices.Equal(got, c.want) {
+		if got := claudeProvides(dir, readHead(filepath.Join(dir, ClaudeManifestFile))); !slices.Equal(got, c.want) {
 			t.Errorf("%s: provides %v, want %v", c.name, got, c.want)
 		}
 	}

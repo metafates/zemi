@@ -77,7 +77,9 @@ function it wraps. A metamethod leaves no frame of the code that set it, so a ha
 `obj.setup`, `obj()` or `==` runs as the code that triggers it; `setmetatable` (tables only)
 installs it as given, and a Go function handed out as a value runs as its caller, with the module
 table as its first argument when called as a method. Plugins (hostapi/plugins.go, `PluginsStep`,
-DESIGN §5): `plugin.Scan` lists `local/` then `installed/` minus `disabled`, and
+DESIGN §5): `plugin.Scan` lists `local/` then `installed/` (an installed
+plugin is a symlink into its marketplace's material; `pickPlugins` follows a
+link only inside the plugins tree) minus `disabled`, and
 the same pick, fixed for the generation (`Host.pluginDirs`, sorted by name in `pickPlugins`),
 gives the plugins' skills, agents,
 markdown commands and workflows; a plugin's own Lua sits under `.zemi` (`plugin.CodeDir`:

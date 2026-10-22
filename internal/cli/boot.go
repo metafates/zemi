@@ -345,6 +345,7 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 	}
 	var last atomic.Pointer[string]
 	mark = func() { last.Store(new(fingerprint())) }
+	h.SetConfigMark(mark)
 	h.SetReload(func() error {
 		mark()
 		if err := h.ForceReload(context.Background(), steps); err != nil {
@@ -368,16 +369,18 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 }
 
 // pluginRoots are what the watcher reads of the plugins tree: every local
-// plugin whole, and for a clone only its git index, which install, update
-// and delete move, so a big installed tree costs no walk. marketplaces.json
-// carries the provenance of copy installs, which have no git index to watch,
-// and each marketplace clone's manifest is what its entries read, so an
-// update in one session moves another's fingerprint too.
+// plugin whole, and for an install only the material behind its link, whose
+// pull moves it - a marketplace clone's manifest and FETCH_HEAD (which every
+// fetch rewrites, a code-only commit included) and each cache clone's
+// FETCH_HEAD. marketplaces.json carries the rows, which installs and
+// deletes move.
 func pluginRoots(root string) []string {
 	idx, _ := filepath.Glob(filepath.Join(root, "installed", "[^.]*", ".git", "index"))
 	mkt, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".zemi", "marketplace.json"))
 	claude, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".claude-plugin", "marketplace.json"))
-	return append(append(append(idx, mkt...), claude...),
+	fetched, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".git", "FETCH_HEAD"))
+	cache, _ := filepath.Glob(filepath.Join(root, "marketplaces", plugin.CacheDirName, "*", "*", ".git", "FETCH_HEAD"))
+	return append(append(append(append(append(idx, mkt...), claude...), fetched...), cache...),
 		filepath.Join(root, "local"),
 		filepath.Join(root, "disabled"),
 		filepath.Join(root, "marketplaces.json"),
@@ -718,6 +721,27 @@ func (tg *trustGate) command() func() {
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
 	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })
+	updateLast := sync.OnceFunc(func() {
+		h.GoSafe("plugin auto-update", func() {
+			ctx := context.WithoutCancel(context.Background())
+			auto := h.Settings.Bool(config.KeyPluginsAutoUpdate)
+			news, moved, err := plugin.AutoUpdate(ctx, h.Dirs, auto)
+			switch {
+			case err != nil:
+				h.Notify(slog.LevelWarn, "Could not update the plugins", err.Error())
+			case len(news) > 0 && auto:
+				h.Notify(slog.LevelInfo, "Plugins updated", strings.Join(news, "; "))
+			case len(news) > 0:
+				h.Notify(slog.LevelInfo, "Plugin updates available", strings.Join(news, "; "))
+			case moved:
+			default:
+				// a fetch that moved nothing still rewrote the clones'
+				// FETCH_HEAD, which the watcher reads: the quiet run is not
+				// a config change
+				h.MarkConfig()
+			}
+		})
+	})
 	return lua.BootStep{
 		Name: hostapi.EventAppReady,
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -729,8 +753,11 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 			h.EmitOnState(g.L, hostapi.EventAppReady, nil)
 			// idle sessions are reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3)
+			// and the marketplace pull runs off the boot too; a headless
+			// run stays quiet, its stderr is the work
 			if reflect {
 				reflectLast()
+				updateLast()
 			}
 			return nil
 		},

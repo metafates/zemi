@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -55,7 +56,13 @@ func (h *Host) PluginsStep() lua.BootStep {
 				// plugin's saved tokens with it
 				h.sweepPluginState(ps)
 			}
-			run, loads := pickPlugins(ps)
+			if err := plugin.EnsureLinks(h.Dirs); err != nil {
+				h.Log.Warn("installs not re-linked", "origin", "plugins", "error", err)
+			}
+			if err == nil {
+				ps, err = plugin.Scan(h.Dirs)
+			}
+			run, loads := pickPlugins(ps, h.pluginsRoot())
 			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: set.Set[string]{}}
 			hooks := map[string][]hookEntry{}
 			for i, p := range run {
@@ -68,7 +75,8 @@ func (h *Host) PluginsStep() lua.BootStep {
 				grant.uses[p.Name] = p.Uses
 				// zemi's own tree wins: a plugin carrying .zemi loads none of
 				// the Claude side (its servers, hooks and name prefixes)
-				if !plugin.IsClaude(root) {
+				raw := plugin.ClaudeRaw(h.Dirs, root)
+				if raw == nil {
 					continue
 				}
 				if _, err := os.Stat(filepath.Join(root, plugin.CodeDir)); err == nil {
@@ -85,7 +93,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 				if mkErr := os.MkdirAll(data, 0o755); mkErr != nil {
 					h.Log.Warn("plugin data dir not created", "origin", "plugins", "plugin", p.Name, "error", mkErr)
 				}
-				m, rerr := plugin.ReadClaude(root, data)
+				m, rerr := plugin.ReadClaudeRaw(root, data, raw)
 				if rerr != nil {
 					h.Log.Warn("claude manifest unread, its servers and hooks skipped", "origin", "plugins", "plugin", p.Name, "error", rerr)
 					continue
@@ -116,8 +124,14 @@ func (h *Host) PluginsStep() lua.BootStep {
 }
 
 // pickPlugins sorts the enabled plugins by name and splits them into those
-// the loader runs and those it refuses, with why.
-func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad) {
+// the loader runs and those it refuses, with why. An installed symlink runs
+// when its target stays inside the plugins tree, where origin classifies its
+// files as plugin code; a link pointing out would run under nobody's class.
+// The root is resolved, since the target is.
+func pickPlugins(ps []plugin.Plugin, pluginsRoot string) (run []plugin.Plugin, refused []pluginLoad) {
+	if r, err := filepath.EvalSymlinks(pluginsRoot); err == nil {
+		pluginsRoot = r
+	}
 	installed := set.Set[string]{}
 	for _, p := range ps {
 		if !p.Local {
@@ -128,9 +142,14 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 	for _, p := range ps {
 		fi, err := os.Lstat(p.Dir)
 		uses := plugin.CheckUses(p.Uses)
-		// a link reads as its target, so its layout is not this plugin's to check
+		isLink := err == nil && fi.Mode()&fs.ModeSymlink != 0
+		var target string
+		if isLink {
+			target, err = filepath.EvalSymlinks(p.Dir)
+		}
+		// a link's layout is its target's, read through the link
 		var old error
-		if err == nil && fi.IsDir() {
+		if err == nil && !isLink && fi.IsDir() {
 			old = plugin.OldLayout(p.Dir)
 		}
 		switch {
@@ -139,10 +158,14 @@ func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad)
 			refused = append(refused, pluginLoad{p.Name, p.Dir, uses})
 		case p.Local && installed.Has(p.Name):
 			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
-		case err == nil && !fi.IsDir():
-			// origin is classified on resolved paths, so its files would be
-			// nobody's
-			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
+		case err != nil:
+			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a dangling link, which loads nothing; it may have left its marketplace; delete it or install it again")})
+		case isLink && !strings.HasPrefix(target, pluginsRoot+string(filepath.Separator)):
+			why := "a link out of the plugins tree, which zemi does not load; install it from its marketplace instead"
+			if p.Local {
+				why = "a link out of the plugins tree, which zemi does not load; keep it in " + filepath.Dir(p.Dir) + " as a real directory"
+			}
+			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New(why)})
 		case old != nil:
 			refused = append(refused, pluginLoad{p.Name, p.Dir, old})
 		default:
@@ -162,7 +185,7 @@ func PluginDir(d config.Dirs, name string) (string, error) {
 	for i := range ps {
 		ps[i].Enabled = true
 	}
-	run, refused := pickPlugins(ps)
+	run, refused := pickPlugins(ps, d.PluginsRoot())
 	for _, p := range run {
 		if p.Name == name {
 			return p.Dir, nil

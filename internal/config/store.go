@@ -37,6 +37,7 @@ const (
 	KeyAgentCompactIdle   Key = "agent.compact_idle"
 	KeyAgentHandoff       Key = "agent.handoff_compact"
 	KeyAgentMaxBackground Key = "agent.max_background"
+	KeyPluginsAutoUpdate  Key = "plugins.auto_update"
 	KeyLSPAuto            Key = "lsp.auto"
 	KeyEditorCommand      Key = "editor.command"
 	KeyKeymapLeader       Key = "keymap.leader"
@@ -180,6 +181,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyAgentCompactIdle, Kind: KindDuration, Default: "", Desc: "auto compact the conversation once it has sat idle this long after a turn, whatever its size (billed like /compact); 0 or empty leaves compaction to agent.compact_at, /compact and a provider's too-long refusal"},
 		{Path: KeyAgentHandoff, Kind: KindString, Default: "ask", Choices: []string{"ask", "on", "off"}, Desc: "when the model or profile changed since the last step, the next send would resend the whole conversation with no cache to read: ask offers a compact on the previous model first (once per change, ~50k context tokens up), on always compacts without asking, off sends as is"},
 		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
+		{Path: KeyPluginsAutoUpdate, Kind: KindBool, Default: true, Desc: "pull every registered marketplace once a day when zemi's UI opens, in the background, moving the plugins installed from them; false only fetches and tells you a marketplace has updates, pulling stays yours with plugin marketplace update"},
 		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},

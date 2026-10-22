@@ -72,8 +72,8 @@ so an agent's command cannot delete a plugin. `test` is the one verb that boots 
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it), and a busy line names what it acts on (`marketplaceLabel`: the source for add, whose clone decides the name, the argument for the rest). Enter on a
 marketplace row opens its drill-down (`/plugin marketplace <name>`, TUI-only): the
-marketplace's update and remove, then one row per entry, install on the ones missing,
-update on the ones installed; its `Reload` rebuilds it after its own actions, and an
+marketplace's update and remove, then one row per entry, install on the ones missing
+(the installed ones carry no key: they move with the marketplace's pull); its `Reload` rebuilds it after its own actions, and an
 unreadable manifest is named on the row (`MarketplaceInfo.Err`), never shown as no plugins.
 
 `zemi plugin test <name|dir> [pattern]` (internal/cli/plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
@@ -104,8 +104,9 @@ network at boot. Each builtin is on only while its key is exported, one without 
 Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
 trees (`setReload`, `Host.SetReload`; past dot-directories (a plugin's `.zemi` aside),
 `node_modules` and the editor configs zemi writes itself, `.luarc.json` and `.emmyrc.json`, plus
-the local plugins, the plugins' `disabled` file, `marketplaces.json`, each installed
-clone's git index and each marketplace clone's manifest,
+the local plugins, the plugins' `disabled` file, `marketplaces.json`, each
+marketplace clone's manifest and `FETCH_HEAD` (the pull's fingerprint, a
+code-only commit included) and each cache clone's `FETCH_HEAD`,
 `pluginRoots`;
 an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
 baseline every reload moves. Once a second while no turn is active the watcher calls

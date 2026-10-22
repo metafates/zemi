@@ -662,9 +662,11 @@ type Host struct {
 	reloadSeq  uint64
 	reloadDone chan struct{}
 	// reload and changed are main's (SetReload): a reload that moves the
-	// baseline changed compares against, set before boot and never after
+	// baseline changed compares against, set before boot and never after;
+	// configMark is the baseline reset itself (SetConfigMark)
 	reload      func() error
 	changed     func() bool
+	configMark  func()
 	reloadCheck sync.Mutex
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
@@ -2243,6 +2245,19 @@ func (h *Host) currentGen() Gen { return Gen(h.gen.Load()) }
 // disk since the last one. Call it before boot.
 func (h *Host) SetReload(reload func() error, changed func() bool) {
 	h.reload, h.changed = reload, changed
+}
+
+// SetConfigMark hands the host the watcher's baseline reset, for a caller
+// outside the package that rewrites watched files without meaning a change.
+func (h *Host) SetConfigMark(mark func()) { h.configMark = mark }
+
+// MarkConfig makes the current config trees the baseline the watcher
+// compares against: the plugin sweep's fetch rewrites files the watcher
+// reads whether anything moved or not.
+func (h *Host) MarkConfig() {
+	if h.configMark != nil {
+		h.configMark()
+	}
 }
 
 // Reload runs the reload now, for callers off the interpreter (the typed

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -31,11 +30,11 @@ const (
 // send the agent a prompt, and toggle and open.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
-		Name: "plugin", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
+		Name: "plugin", NArgs: NArgsAny, Desc: "install plugins from marketplaces and turn them on or off",
 		GoFn: (*Host).pluginsCommand,
-		GoComplete: SubcommandCompleter([]string{"new", "modify", "marketplace", "install", "add", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "modify", "marketplace", "install", "add", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			switch sub {
-			case "new", "check":
+			case "new":
 				return nil
 			case "install", "add":
 				// the entries a registered marketplace lists, as install types them
@@ -144,9 +143,6 @@ func (h *Host) pluginsCommand(line string) error {
 		if !p.Local {
 			return Usagef("%s is an installed plugin, and the agent changes only local ones: delete it and ask the agent to clone it into the local plugins directory", p.Name)
 		}
-		if fi, err := os.Lstat(p.Dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-			return Usagef("%s is a symlink, which zemi does not load: move the plugin into %s, then modify it", p.Name, perm.TildePath(filepath.Dir(p.Dir)))
-		}
 		// the user asked for the change: in ask mode the gate still shows
 		// each edit, and that ask is the consent
 		return send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
@@ -196,37 +192,19 @@ func (h *Host) pluginsCommand(line string) error {
 			}
 			return err
 		})
-	case verb == "check" && len(args) == 1:
-		background("Checking plugins", func(ctx context.Context) error {
-			ps, err := plugin.Check(ctx, h.Dirs)
-			var names []string
-			for _, p := range ps {
-				if p.Latest != "" {
-					names = append(names, p.Name)
-				}
-			}
-			if len(names) > 0 {
-				h.Notify(slog.LevelInfo, "Updates available", strings.Join(names, ", "))
-			} else if err == nil {
-				h.Notify(slog.LevelInfo, plugin.UpToDate, "")
-			}
-			return err
-		})
-	case verb == "install" || verb == "add" || verb == "update" || verb == "delete":
+	case verb == "install" || verb == "add" || verb == "delete":
 		// the last word names the busy line either way
 		name := "plugin"
 		if len(args) > 1 {
 			name = plugin.Name(args[len(args)-1])
 		}
-		label := map[string]string{"install": "Installing ", "add": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
+		label := map[string]string{"install": "Installing ", "add": "Installing ", "delete": "Deleting "}[verb] + name
 		background(label, func(ctx context.Context) error {
 			var out strings.Builder
 			err := plugin.Run(ctx, h.Dirs, args, &out)
-			title := map[string]string{"install": "Plugin installed", "add": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
+			title := map[string]string{"install": "Plugin installed", "add": "Plugin installed", "delete": "Plugin deleted"}[verb]
 			body := strings.TrimSpace(out.String())
-			if body == plugin.UpToDate {
-				title, body = body, ""
-			} else if verb == "delete" && err == nil {
+			if verb == "delete" && err == nil {
 				body = args[1]
 			}
 			if err == nil || body != "" {
@@ -300,16 +278,13 @@ func (h *Host) pluginItems() []OverlayItem {
 	if len(ps) == 0 && err == nil {
 		install.Desc = "no plugins yet"
 	}
-	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install, {Text: "Check for updates", Verb: VerbRun, Run: "plugin check"}}
+	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
 		var desc []string
 		if status == StatusFailed {
 			desc = append(desc, string(status))
-		}
-		if p.Latest != "" {
-			desc = append(desc, "update "+p.Latest)
 		}
 		source, section, version, errText := p.URL, "Installed", p.Version, ""
 		if p.Local {
@@ -329,13 +304,6 @@ func (h *Host) pluginItems() []OverlayItem {
 			errText = loadErr.Error()
 		}
 		var keys []ItemKey
-		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {
-			label := "update to " + p.Latest
-			if strings.Contains(p.Latest, "new commit") || strings.HasPrefix(p.Latest, "updated in the marketplace (") {
-				label = "update"
-			}
-			keys = append(keys, ItemKey{Key: "u", Desc: label, Run: "plugin update " + p.Name})
-		}
 		if p.Enabled {
 			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: "plugin disable " + p.Name})
 		} else {
@@ -347,7 +315,7 @@ func (h *Host) pluginItems() []OverlayItem {
 		}
 		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name + " --yes"})
 		readme := plugin.Readme(p.Dir)
-		fields := fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
+		fields := fieldList("source", source, "status", string(status), "version", version,
 			"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "))
 		// metadata the row shows only when it has it; with a README the
 		// description and grants move here from the prose it replaces
@@ -411,7 +379,7 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 
 // marketplaceItemsOf builds a marketplace's drill-down: an info row, the
 // marketplace's own actions, then one row per entry its manifest lists,
-// sectioned by the category each names, what install and update pick from.
+// sectioned by the category each names, what install picks from.
 func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	ms, err := plugin.Marketplaces(h.Dirs)
 	if err != nil {
@@ -478,8 +446,8 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 					item.Fields = append(item.Fields, f)
 				}
 			}
-			if p, ok := installed[e.Name]; ok {
-				item.Keys = []ItemKey{{Key: "u", Desc: "update", Run: "plugin update " + p}}
+			if _, ok := installed[e.Name]; ok {
+				item.Keys = nil // an installed one moves with its marketplace's update
 			} else {
 				run := "plugin install " + e.Name + "@" + name
 				item.Keys = []ItemKey{{Key: "i", Desc: "install", Run: run}}

@@ -333,15 +333,15 @@ func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Comple
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// completePlugins offers the plugin names: every argument of update, the
-// first of the other verbs, and test's first may be a directory too.
+// completePlugins offers the plugin names: the first argument of the verbs
+// that take one, and test's first may be a directory too.
 func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	directive := cobra.ShellCompDirectiveNoFileComp
 	if c.Name() == "test" {
 		directive = cobra.ShellCompDirectiveDefault
 	}
 	dirs, err := completionDirs(c)
-	if err != nil || c.Name() != "update" && len(args) > 0 {
+	if err != nil || len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	ps, _ := plugin.Scan(dirs)
@@ -486,8 +486,6 @@ func pluginCommand(o *options) *cobra.Command {
 		aliases    []string
 	}{
 		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), completeEntries, []string{"add"}},
-		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins, nil},
-		{"check", "fetch, then list the updates", cobra.NoArgs, nil, nil},
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins, nil},
 		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins, nil},
 	} {

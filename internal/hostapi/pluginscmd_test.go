@@ -91,7 +91,7 @@ func TestPluginsCommand(t *testing.T) {
 		{
 			name: "the list", args: "",
 			want: []string{
-				"text:Install a plugin verb:fill", "run:plugin check text:Check for updates verb:run",
+				"text:Install a plugin verb:fill",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
 				"[author me]", "[homepage https://a]", "detail:# a",
@@ -134,15 +134,14 @@ func TestPluginsCommand(t *testing.T) {
 		},
 		{
 			name: "the drill-down marks an entry installed", args: "marketplace test",
-			want: []string{"desc:installed as x", "desc:update key:u run:plugin update x"},
+			want: []string{"desc:installed as x"},
 			not:  []string{"key:i run:plugin install x@test"},
 		},
 		{
 			name: "the drill-down of a marketplace nobody registered", args: "marketplace frob",
 			want: []string{"text:Marketplace removed", "desc:no marketplace is named frob"},
 		},
-		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
-		{name: "update with nothing newer", args: "update", want: []string{"info: Plugins up to date: ", "text:x"}, not: []string{"Plugin updated"}},
+		{name: "an unknown verb names its grammar", args: "check", want: []string{"usage: /plugin"}, err: "usage"},
 	} {
 		if err := h.RunCommand(t.Context(), "plugin", c.args); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
@@ -228,8 +227,8 @@ func TestPluginsOpen(t *testing.T) {
 // TestPluginsSend: the list offers New plugin first and a local plugin's
 // detail Modify, and /plugin modify, headless too, sends the typed line with the plugin's
 // prompt behind it and lets auto mode edit that local plugin and nothing
-// else, and refuses an installed or a symlinked one; TestCommandSendsTypedLine
-// covers /plugin new.
+// else, and refuses an installed one; TestCommandSendsTypedLine covers
+// /plugin new.
 func TestPluginsSend(t *testing.T) {
 	for _, c := range []struct {
 		args     string
@@ -241,7 +240,6 @@ func TestPluginsSend(t *testing.T) {
 		{args: "modify mine add a flag\nand a test", sent: []string{`/plugin modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
 		{args: "modify mine", link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
-		{args: "modify linked", err: "linked is a symlink"},
 		{args: "modify", err: "usage: /plugin modify <name> [what to change]"},
 		{args: "modify mine in zemi run", headless: true, sent: []string{"Change my zemi plugin mine in "}},
 	} {

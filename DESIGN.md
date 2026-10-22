@@ -437,17 +437,25 @@ and the builtin ones win a name, a name two plugins ship goes to the first
 and `/errors` names both, and a skill a plugin ships never runs a
 `zemi-skill.lua`. A plugin that fails does not stop the rest; each one's error goes
 to `/errors` and the `/health` plugins row counts it. A local plugin named
-like an installed one does not load, nor does a symlinked plugin dir (its
-files would resolve outside the plugin class). The step also drops the
+like an installed one does not load; neither does a symlink whose target
+leaves the plugins tree, where origin would classify its files under
+nobody's class - an installed install's link points into the tree and runs
+as the plugin, a dangling one is named as the removal it needs. The step
+also drops the
 `zemi.state` keys of a plugin whose directory is gone or holds another
 install: the install's id comes from its `marketplaces.json` row, else from
 the clone's `.git`, and the key `plugin:<name>` keeps the one that wrote
 them. The one-second config
 watcher reads `local/` whole, `.zemi` included, the `disabled` file,
-`marketplaces.json` and each installed clone's git index, so an edit, a
-toggle, an install, an update and a delete each reload; a marketplace
-clone's index is unwatched, since updating it changes no installed plugin,
-whose reload the `marketplaces.json` write carries.
+`marketplaces.json`, each marketplace clone's manifest and `FETCH_HEAD`, and
+each cache clone's `FETCH_HEAD`, so an edit, a toggle, an install, a delete
+and - the point of the links - every marketplace pull reload; a pull that
+only moved code moves `FETCH_HEAD`, so the installed plugins follow without
+a manifest change. `readyStep`'s once-per-process work ends with the daily
+sweep: when `marketplaces.json`'s last one is a day old, zemi pulls every
+registered marketplace in the background (`plugins.auto_update`, on by
+default - off only fetches and toasts which marketplaces have updates, the
+pull stays the user's), and toasts the news; a headless run sweeps nothing.
 
 `/plugin` and `zemi plugin` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua. Every install comes from a marketplace:
@@ -466,40 +474,38 @@ github.com https one completed with `.git`, trailing slashes dropped,
 optional `#ref` or `@ref` suffix; anything else is refused, and a ref on a
 local path is refused, since git pins nothing there. A relative source at
 the marketplace root (`source: "./"`, the repo itself the plugin) installs
-as a git-kind clone of the repo the marketplace was added from, since a
-copy would carry the clone's `.git`. The pin holds for the
+as a link at the clone root, the plugin's files and the marketplace's
+manifest one repo. The pin holds for the
 marketplace's life: the clone is checked out at the ref when added, the
-registry row keeps it, and `marketplace update` and `check` fetch and read
+registry row keeps it, and `marketplace update` and the sweep fetch and read
 that ref (reset `FETCH_HEAD`) instead of floating to `origin/HEAD`.
 `marketplace list` shows each
 marketplace with its source and entries; `marketplace update [name]` pulls
-one or all clones and re-copies the copy installs that update from it, so a
-pull moves the installed plugins by itself;
-`marketplace remove <name>` is refused while a copy install still updates
-from it, and drops the rows of git-kind installs, which keep working from
-their own clones. `install <name>[@<marketplace>]` (`add` too) installs one
-entry: a
-relative source is copied into `installed/` as a plain dir, a git one is
-cloned into a dot dir, checked out at the highest `vX.Y.Z` tag and renamed
-into place, and the install's row in `plugins/marketplaces.json` keeps the
-marketplace, the entry, the version, the kind and the id; a bare name
+one or all clones, and the pulls are what an install update is: the
+installed plugins are symlinks into the material, so the pull moves them
+itself, and the row refreshes when the entry's version moved;
+`marketplace remove <name>` is refused while any install still links into
+the marketplace's material. `install <name>[@<marketplace>]` (`add` too)
+installs one
+entry as a symlink in `installed/`: a relative source links into the
+marketplace clone (the root one at the clone itself), a git one links into
+the entry's own clone under `marketplaces/.cache/<marketplace>/<name>`,
+held at the entry's ref or sha pin, or its highest `vX.Y.Z` tag when the
+entry pins nothing, and the install's row in `plugins/marketplaces.json`
+keeps the marketplace, the entry, the version, the kind, the id and - the
+sidecar a symlink cannot carry - the entry's `uses` and, when the source
+holds no manifest of its own, the entry itself as one, which the loader
+reads instead of a file. The installs of the copy model re-link on the next
+boot or `plugin` verb (`EnsureLinks`, no network: a relative copy into the
+clone, a legacy git clone into the cache), and a subtree copy of another
+repo re-links at its next marketplace update, which makes the clone it
+needs. A bare name
 searches every registered marketplace, installing the one match, listing
 the candidates when several carry it and hinting `marketplace add` when
 none does, and a URL or a path is refused with the same hint - there is no
-install from a git URL. `update [name...]` routes by the row's kind: a
-git-kind install fetches, then moves a tag within its major version, a
-branch to the highest tag when that tag is ahead of it, or else a branch
-fast-forward, and refreshes its recorded version; a copy pulls its
-marketplace clone and re-copies, marketplaces grouped so one update pulls
-each once, the re-copy and the save skipped when nothing moved; an install
-with no row is the legacy plain clone, updated by its own git. A git-kind
-entry's ref or sha pin is install-time: update floats within the repo's own
-tags, and a marketplace repin needs remove and add. `check` fetches the
-clones and, for copies, fetches each marketplace holding copy installs
-without resetting its clone, reading the manifest off the fetched ref, so
-the list names each update from local refs: a version move as
-`<ver> -> <ver>`, a versionless entry's movement as `updated in the
-marketplace (<name>)`; `enable`, `disable` and `delete` (an installed
+install from a git URL. There is no per-plugin `update`: the marketplace's
+pull is the update, and the daily sweep runs it for every marketplace.
+`enable`, `disable` and `delete` (an installed
 plugin, else the local plugin; a symlink loses the
 link only; `zemi plugin delete` asks first, and needs `--yes` off a
 terminal). `zemi plugin` runs without the TUI or trust, and without the
@@ -508,7 +514,7 @@ after `--`. A plugin may carry a manifest, `.zemi/plugin.json` in its code
 dir:
 `{ "version": "1.2.0", "description": "...", "uses": ["model", "http"] }`,
 every field optional, which is what a list shows in place of the
-checked-out tag (else the short commit) and `.zemi/init.lua`'s first line; `uses`
+marketplace entry's version and `.zemi/init.lua`'s first line; `uses`
 is the set of host capabilities the plugin's code calls, and what §9 makes
 the switch grant. It never names the plugin: the directory does,
 in the settings keys, the principals and every verb.

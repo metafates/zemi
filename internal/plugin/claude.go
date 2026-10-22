@@ -120,10 +120,22 @@ type claudeManifestJSON struct {
 // ${CLAUDE_PLUGIN_DATA} stands for. A missing manifest is the zero manifest,
 // its components still read; a malformed one is an error carrying the zero
 // manifest, for the caller to log and load nothing from.
+// ReadClaude reads the Claude manifest of the plugin in dir, its components
+// resolved against dir and its ${CLAUDE_PLUGIN_DATA} against dataDir.
 func ReadClaude(dir, dataDir string) (ClaudeManifest, error) {
+	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile)))
+}
+
+// ReadClaudeRaw is ReadClaude with the manifest bytes given instead of read
+// from the file: an entry-carried manifest, whose source dir has none.
+func ReadClaudeRaw(dir, dataDir string, raw []byte) (ClaudeManifest, error) {
+	return readClaude(dir, dataDir, raw)
+}
+
+func readClaude(dir, dataDir string, raw []byte) (ClaudeManifest, error) {
 	var m ClaudeManifest
 	var j claudeManifestJSON
-	if raw := readHead(filepath.Join(dir, ClaudeManifestFile)); raw != nil {
+	if raw != nil {
 		if err := json.Unmarshal(raw, &j); err != nil {
 			return ClaudeManifest{}, err
 		}
@@ -740,47 +752,11 @@ func (e MarketplacePlugin) manifestJSON() ([]byte, error) {
 	})
 }
 
-// synthManifest writes the entry as the plugin's manifest in dir when the
-// dir holds no manifest of its own: the entry is then the manifest, uses
-// included. It reports whether it wrote one.
-func (e MarketplacePlugin) synthManifest(dir string) (bool, error) {
-	if exists(filepath.Join(dir, ManifestFile)) || exists(filepath.Join(dir, ClaudeManifestFile)) {
-		return false, nil
-	}
-	var file string
-	var b []byte
-	var err error
-	if e.Kind == KindZemi {
-		file = ManifestFile
-		var author jsontext.Value
-		if e.Author.Name != "" {
-			author, _ = json.Marshal(e.Author)
-		}
-		b, err = json.Marshal(struct {
-			Version     string         `json:"version,omitempty"`
-			Description string         `json:"description,omitempty"`
-			Homepage    string         `json:"homepage,omitempty"`
-			Author      jsontext.Value `json:"author,omitempty"`
-			Uses        []string       `json:"uses,omitempty"`
-		}{e.Version, e.Description, e.Homepage, author, e.Uses})
-	} else {
-		file = ClaudeManifestFile
-		b, err = e.manifestJSON()
-	}
-	if err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(file)), 0o755); err != nil {
-		return false, err
-	}
-	return true, os.WriteFile(filepath.Join(dir, file), b, 0o644)
-}
-
 // claudeProvides summarizes what a Claude-layout plugin contributes, for
 // display: the layered dirs' component counts, the MCP servers and the hook
 // events. Not a Uses list - CheckUses would refuse every word here.
-func claudeProvides(dir string) []string {
-	m, err := ReadClaude(dir, "")
+func claudeProvides(dir string, raw []byte) []string {
+	m, err := ReadClaudeRaw(dir, "", raw)
 	if err != nil {
 		return nil
 	}

@@ -796,3 +796,56 @@ func TestPluginToolCall(t *testing.T) {
 		})
 	}
 }
+
+// TestPickPluginsLinks walks the loader's link rule: an installed link into
+// the plugins tree runs, one pointing out does not, a dangling one names
+// itself, and a local link gets its own advice.
+func TestPickPluginsLinks(t *testing.T) {
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(tmp, "plugins")
+	inside := filepath.Join(root, "marketplaces", "m", "plugins", "one")
+	os.MkdirAll(inside, 0o755)
+	os.WriteFile(filepath.Join(inside, plugin.InitFile), nil, 0o644)
+	outside := filepath.Join(tmp, "elsewhere")
+	os.MkdirAll(outside, 0o755)
+
+	link := func(name, target string) {
+		t.Helper()
+		os.MkdirAll(filepath.Join(root, "installed"), 0o755)
+		if err := os.Symlink(target, filepath.Join(root, "installed", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link("in", inside)
+	link("out", outside)
+	link("gone", filepath.Join(root, "marketplaces", "m", "plugins", "deleted"))
+	os.MkdirAll(filepath.Join(root, "local"), 0o755)
+	os.Symlink(outside, filepath.Join(root, "local", "loc"))
+	os.Symlink(inside, filepath.Join(root, "local", "loc-in"))
+
+	for _, c := range []struct {
+		name string
+		p    plugin.Plugin
+		want string // in the refusal, empty for a run
+	}{
+		{name: "an installed link inside the tree runs", p: plugin.Plugin{Enabled: true, Name: "in", Dir: filepath.Join(root, "installed", "in")}},
+		{name: "an installed link out of the tree is refused", p: plugin.Plugin{Enabled: true, Name: "out", Dir: filepath.Join(root, "installed", "out")}, want: "a link out of the plugins tree"},
+		{name: "a dangling link names itself", p: plugin.Plugin{Enabled: true, Name: "gone", Dir: filepath.Join(root, "installed", "gone")}, want: "a dangling link"},
+		{name: "a local link out of the tree gets local advice", p: plugin.Plugin{Enabled: true, Name: "loc", Dir: filepath.Join(root, "local", "loc"), Local: true}, want: "keep it in " + filepath.Join(root, "local")},
+		{name: "a local link inside the tree runs", p: plugin.Plugin{Enabled: true, Name: "loc-in", Dir: filepath.Join(root, "local", "loc-in"), Local: true}},
+	} {
+		run, refused := pickPlugins([]plugin.Plugin{c.p}, root)
+		if c.want == "" {
+			if len(run) != 1 || len(refused) != 0 {
+				t.Errorf("%s: run %v, refused %+v, want it to run", c.name, run, refused)
+			}
+			continue
+		}
+		if len(run) != 0 || len(refused) != 1 || !strings.Contains(refused[0].err.Error(), c.want) {
+			t.Errorf("%s: run %v, refused %+v, want %q", c.name, run, refused, c.want)
+		}
+	}
+}
