@@ -12,6 +12,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -192,6 +193,128 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 			}
 			if s, _ := summaryOf(h.agents.runner.History[0]); s != "ok" {
 				t.Fatalf("summary %q", s)
+			}
+		})
+	}
+}
+
+// TestHandoffGate: a send whose pinned prefix changed since the last step
+// offers a compact on the previous model once, when the context is big
+// enough; sending as is keeps the whole history, compacting replaces it
+// with the summary and the tail, and a switch back never asks.
+func TestHandoffGate(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.Settings.SetQuiet("models.default", "stub/m")
+	m := reflectStub(t, h, "ok")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	send := sender(t, h)
+	ui := &fakeUI{qOK: true, qAnswer: "Send as is"}
+	h.SetUIHooks(ui)
+	send(strings.Repeat("x", 80_000))
+	h.agents.mu.Lock()
+	h.agents.lastIn = 90_000 // the gate's floor is 50k
+	ag := h.agents
+	ag.mu.Unlock()
+
+	// a switch back to the model that sent the last step never asks
+	h.Settings.SetQuiet("models.default", "stub/m2")
+	h.Settings.SetQuiet("models.default", "stub/m")
+	send("back")
+	if len(ui.qAsked) != 0 {
+		t.Fatalf("a switch back asked: %v", ui.qAsked[0].Question)
+	}
+
+	// under the floor: no ask, though the key changed
+	h.Settings.SetQuiet("models.default", "stub/m2")
+	ag.mu.Lock()
+	ag.lastIn = 10_000
+	ag.mu.Unlock()
+	send("small")
+	if len(ui.qAsked) != 0 {
+		t.Fatalf("a small context asked")
+	}
+
+	// the change asks once, and sending as is keeps the whole history
+	ag.mu.Lock()
+	ag.lastIn = 90_000
+	ag.mu.Unlock()
+	h.Settings.SetQuiet("models.default", "stub/m3")
+	send("ask me")
+	if len(ui.qAsked) != 1 || !strings.Contains(ui.qAsked[0].Question, "stub/m3") {
+		t.Fatalf("the ask names the models: %+v", ui.qAsked)
+	}
+	if got := m.prompts[len(m.prompts)-1]; len(got) < 6 {
+		t.Fatalf("the as-is send is not the whole history: %d messages", len(got))
+	}
+	send("again")
+	if len(ui.qAsked) != 1 {
+		t.Fatalf("asked twice for one change")
+	}
+
+	// compacting on the old model hands the summary to the new one
+	ag.mu.Lock()
+	ag.lastIn = 90_000
+	ag.mu.Unlock()
+	h.Settings.SetQuiet("models.default", "stub/m4")
+	ui.qAnswer = "Compact, then send"
+	send("handoff")
+	if n := len(ui.qAsked); n != 2 {
+		t.Fatalf("the second change asked %d times", n-1)
+	}
+	aside := m.prompts[len(m.prompts)-2]
+	if !strings.HasPrefix(concatText(aside[len(aside)-1].Content), compactNote[:60]) {
+		t.Fatalf("the summary did not ride the old model's history: %d messages", len(aside))
+	}
+	got := m.prompts[len(m.prompts)-1]
+	if s, _ := summaryOf(got[2]); s != "ok" {
+		t.Fatalf("the handoff send opens on the summary: %v", got)
+	}
+	for _, msg := range got {
+		if strings.Contains(concatText(msg.Content), strings.Repeat("x", 1000)) {
+			t.Fatalf("the handoff send resends the big history")
+		}
+	}
+}
+
+// TestHandoffModes pins the config: off never asks, on compacts silently.
+func TestHandoffModes(t *testing.T) {
+	for _, c := range []struct {
+		mode     string
+		answer   string
+		wantAsk  bool
+		wantCall int // the model calls the second send makes
+	}{
+		{"off", "", false, 1},
+		{"on", "", false, 2},
+		{"ask", "Send as is", true, 1},
+	} {
+		t.Run(c.mode+"/"+c.answer, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Settings.SetQuiet("models.default", "stub/m")
+			m := reflectStub(t, h, "ok")
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			send := sender(t, h)
+			ui := &fakeUI{qOK: true, qAnswer: c.answer}
+			h.SetUIHooks(ui)
+			send(strings.Repeat("x", 80_000))
+			h.agents.mu.Lock()
+			h.agents.lastIn = 90_000
+			h.agents.mu.Unlock()
+			h.Settings.SetQuiet("models.default", "stub/m2")
+			h.Settings.SetQuiet(config.KeyAgentHandoff, c.mode)
+			calls := len(m.prompts)
+			send("one")
+			if got := len(ui.qAsked) > 0; got != c.wantAsk {
+				t.Fatalf("asked = %v, want %v", got, c.wantAsk)
+			}
+			if n := len(m.prompts) - calls; n != c.wantCall {
+				for _, p := range m.prompts[calls:] {
+					t.Logf("call: %d messages, last %q", len(p), concatText(p[len(p)-1].Content)[:min(80, len(concatText(p[len(p)-1].Content)))])
+				}
+				t.Fatalf("%d model calls after the switch, want %d", n, c.wantCall)
 			}
 		})
 	}

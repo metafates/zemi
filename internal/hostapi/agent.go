@@ -161,6 +161,12 @@ type agentHost struct {
 	pin      promptPin
 	pinDrops int
 	pinMu    sync.Mutex
+	// lastSent is the pin key of the last completed step: the prefix the
+	// provider holds in cache. A send whose key differs would resend the
+	// whole conversation, which handoffGate offers to compact first;
+	// handoffAsked is the key it already asked about.
+	lastSent     string
+	handoffAsked string
 	// ctx is the context message the live session last stored: a resume
 	// loads it, a drop point clears it
 	ctx contextRow
@@ -754,6 +760,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	if err != nil {
 		return fail(err)
 	}
+	h.handoffGate(scope, h.currentModelID(p))
 
 	ag.mu.Lock()
 	// The runner is rebuilt per send (model and tools may have changed, the

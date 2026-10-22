@@ -243,8 +243,12 @@ applied one. A store made before goose only gains its version table: the baselin
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
-  unknown window means no auto compaction. When `models.compact` is the runner's model
-  (`ag.turnModel`, "" for the bare runner a resume or rewind leaves) the summary is asked
+  unknown window means no auto compaction. A send whose pin key moved since the last step
+  (`ag.lastSent`, stamped at `StepDone`) first offers `handoffGate`'s compact on the previous
+  model, once per change and past `handoffMinTokens` (`agent.handoff_compact`): the summary
+  rides the old model's warm prefix. When `models.compact` is the runner's model
+  (`ag.turnModel`, "" for the bare runner a resume or rewind leaves) - or the reason is the
+  handoff - the summary is asked
   through `Runner.Aside` after the whole unpruned history, with a note naming how many
   messages stay as the verbatim tail (`summarizeAside`, `compactNote`), so it reads the
   prefix the last step just cached; a separate compact model, an overflow (the whole

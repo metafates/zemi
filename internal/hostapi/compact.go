@@ -36,6 +36,7 @@ const (
 	compactAuto     = "auto"
 	compactOverflow = "overflow"
 	compactManual   = "manual"
+	compactHandoff  = "handoff"
 
 	// compactTailRole marks stored copies of the messages a compaction kept:
 	// resume reads them, the transcript, rewind, export and the reflector skip them.
@@ -276,6 +277,92 @@ func (h *Host) AutoCompact() {
 	})
 }
 
+// handoffMinTokens: below this a cold resend costs cents and a summary call
+// costs more than it saves.
+const handoffMinTokens = 50_000
+
+// handoffGate offers a compact on the previous model before the first send
+// whose prefix the provider cannot read from cache - the model or the
+// pinned prompt changed since the last step, so the whole conversation
+// would resend. Switching back never asks: the key matches the last sent
+// one again. It runs before Send swaps the runner, so the summary rides the
+// old model's warm prefix and the handoff send carries summary and tail.
+// scope is the send's own: the ask and the summary call cancel with it.
+func (h *Host) handoffGate(scope *turnScope, newModel string) {
+	ag := h.agents
+	ag.mu.Lock()
+	from, key, last := ag.turnModel, ag.pin.key, ag.lastSent
+	asked, in := ag.handoffAsked == key, ag.lastIn
+	ag.mu.Unlock()
+	if from == "" || last == "" || last == key || asked || in < handoffMinTokens {
+		return
+	}
+	compactIt := h.Settings.Str(config.KeyAgentHandoff) == "on"
+	if !compactIt {
+		if h.Settings.Str(config.KeyAgentHandoff) == "off" {
+			return
+		}
+		ui := h.hooks()
+		if ui == nil { // no one to ask: send as is
+			return
+		}
+		answers, ok := ui.AskQuestion([]tools.Question{{
+			Type:     tools.TypeSingle,
+			Header:   "Model handoff",
+			Question: h.handoffNote(from, newModel, in),
+			Options: []tools.QuestionOption{
+				{Label: "Compact, then send", Recommended: true, Description: "a summary on " + from + "'s warm cache, the next send starts at the summary and the last messages"},
+				{Label: "Send as is", Description: "the whole conversation resends on " + newModel + " with no cache to read"},
+			},
+		}})
+		compactIt = ok && len(answers) == 1 && len(answers[0].Picked) == 1 && answers[0].Picked[0] == "Compact, then send"
+	}
+	ag.mu.Lock()
+	ag.handoffAsked = key
+	runner := ag.runner
+	ag.mu.Unlock()
+	if !compactIt || runner == nil || len(runner.History) < 2 {
+		return // dismissed, or nothing to compact
+	}
+	// the send's own scope covers the summary call: esc cancels both
+	h.compactReporting(scope.ctx, runner, compactHandoff, "")
+}
+
+// handoffNote is the ask's body: what resending the context costs as is,
+// what the compact route costs, from the model specs' prices.
+func (h *Host) handoffNote(from, to string, in int64) string {
+	window := h.contextWindow(from)
+	tail := tailKeep(h.compactThreshold(window))
+	h.agents.mu.Lock()
+	prompt := h.agents.promptTokens
+	h.agents.mu.Unlock()
+	handoff := tail + 4_000 + prompt
+	return fmt.Sprintf("The conversation ran on %s; the next send rebuilds it on **%s**: %s.\n\nCompact on %s first: the summary reads its warm cache (%s) and the handoff send starts at %s.",
+		from, to, handoffCost(in, h.modelPrice(to, true)),
+		from, handoffCost(in, h.modelPrice(from, false)), handoffCost(handoff, h.modelPrice(to, true)))
+}
+
+// handoffCost renders one input pass over tokens on a model's prices: what
+// the provider would bill for reading them with no cache to reuse. "" when
+// the spec names no prices.
+func handoffCost(tokens int64, per1M float64) string {
+	if per1M <= 0 {
+		return fmt.Sprintf("≈%dk tokens", tokens/1000)
+	}
+	return fmt.Sprintf("≈%dk tokens ≈ $%.2f", tokens/1000, float64(tokens)*per1M/1e6)
+}
+
+// modelPrice is what one input token costs on modelID, the cache write a
+// first send pays included when write says so.
+func (h *Host) modelPrice(modelID string, write bool) float64 {
+	m, _ := h.modelSpec(modelID)
+	per := m.CostPer1MIn
+	if write {
+		per += m.CostPer1MCacheWrite
+	}
+	return per
+}
+
 // compactReporting compacts with the working row reading "Compacting"; a
 // failure is reported, the history stays whole, and it returns false.
 func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reason, focus string) bool {
@@ -317,7 +404,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	history := runner.History
 	window := h.AgentStream().CtxWindow
 	threshold := h.compactThreshold(window)
-	if reason != compactManual {
+	if reason != compactManual && reason != compactHandoff {
 		pruned, freed := pruneToolOutput(history, threshold, false)
 		h.agents.mu.Lock()
 		used := h.agents.lastIn - freed
@@ -362,7 +449,9 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	h.agents.mu.Lock()
 	model := h.agents.turnModel
 	h.agents.mu.Unlock()
-	if model != "" && model == h.roleModel("compact") && reason != compactOverflow {
+	// the handoff's summary rides the old model's warm prefix whatever the
+	// compact role names: that cache read is the saving it exists for
+	if model != "" && (model == h.roleModel("compact") || reason == compactHandoff) && reason != compactOverflow {
 		out, err = h.summarizeAside(ctx, runner, len(tail), model, focus)
 	}
 	if errors.Is(err, errNoSummary) || contextTooLarge(err) {

@@ -55,6 +55,7 @@ A definition is a target as well: `models.<profile>` overrides the `model` a pro
 
 - `agent.compact_at`: the percent of the model's context window auto compaction waits for (80, never under half the window); `100` leaves only `/compact` and a provider's too-long refusal. Every model divides by its own `context_window`.
 - `agent.compact_idle`: a duration; when set, /compact's summary runs on its own once the session has sat idle this long after a turn, so a long session you left stays lean.
+- `agent.handoff_compact`: when the model or profile changed since the last step, the next send would resend the whole conversation with no cache to read; `ask` (the default) offers a compact on the previous model first, once per change and only past ~50k context tokens, `on` always compacts, `off` sends as is.
 - `agent.max_background`, `session.auto_title`, `session.recap` (a duration; `0` turns the recap off), `ui.theme` and `ui.mouse`: the schema's description covers them.
 
 ## Permissions

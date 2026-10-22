@@ -1273,6 +1273,15 @@ out of the repository or to a secret sends nothing. Subagents build
 their prompt once per run; a fork sends the caller's own text and tools
 instead, which is the cache it reads (§10.7).
 
+A send whose prefix the provider cannot read from cache - the model or
+the pinned prompt changed since the last step - resends the whole
+conversation. Past ~50k context tokens the send first offers a compact
+on the previous model (`agent.handoff_compact`: `ask`, the default, once
+per change; `on` always; `off` never): the summary rides the old model's
+warm prefix, and the handoff send carries the summary and the verbatim
+tail. Switching back to the pair that sent the last step never asks,
+since its cache still holds.
+
 ### 6.4 Tools
 
 ```lua

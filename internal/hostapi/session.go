@@ -330,6 +330,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
+	ag.lastSent, ag.handoffAsked = "", ""
 	ag.brain, ag.brainGlobs, ag.pin = "", nil, promptPin{}
 	ag.hookCtx = ""      // the new session captures its own
 	ag.brainWrites = nil // the new session inherits no file this one wrote
