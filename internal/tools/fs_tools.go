@@ -248,6 +248,10 @@ func FitImage(data []byte, mt string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("not a readable image: %w", err)
 	}
+	// a zero side divides boxScale by zero
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return nil, "", fmt.Errorf("a %dx%d image, no pixels to scale", cfg.Width, cfg.Height)
+	}
 	long := max(cfg.Width, cfg.Height)
 	if long <= imageMaxSide && len(data) <= imageMaxBytes {
 		return data, mt, nil
