@@ -61,7 +61,7 @@ end
 local TIPS = {
 	{ "!git status", "fill !git status", " runs in your shell; the output rides your next prompt" },
 	{ "@", "fill @", " attaches a project file to the prompt" },
-	{ "/btw ", "fill /btw ", " asks a side question the session does not keep" },
+	{ "/btw ", "fill /btw ", " asks a side question the conversation does not keep" },
 	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
 	{ "/review", "fill /review", " has several agents review your changes" },
 	{ "alt+m", nil, " jumps to an earlier message" },

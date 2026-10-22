@@ -53,9 +53,6 @@ local groups = {
 	TodoMark = { link = "Accent" },
 	TodoDone = { link = "Ok" },
 	TodoActive = { fg = "fg", bold = true },
-	StatusUsage = { link = "Dim" },
-	StatusUsageWarn = { link = "Warn" },
-	StatusUsageErr = { link = "Danger", bold = true },
 	-- the statusline's plan marker: a read-only agent plans, and nothing
 	-- else on screen shows it is on
 	ModePlan = { link = "Ok" },

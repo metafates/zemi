@@ -500,10 +500,12 @@ local function builder(ctx, width)
 					to = 3
 				end
 			end
-			-- the host's own cut stands for the lines it dropped
+			-- the host's own cut stands for the lines it dropped; NOTE: the
+			-- marker's wording restates hostapi.MoreLines, so a Go change
+			-- stops the count and a cut reads as one line
 			local hidden = 0
 			for i = 1, #out do
-				local n = out[i]:match("^… (%d+) more lines$")
+				local n = out[i]:match("^… (%d+) more lines?$")
 				if i < from or i > to then hidden = hidden + (n and tonumber(n) or 1) end
 			end
 			local cut = "… " .. fmt.count(hidden, "more line", "more lines")

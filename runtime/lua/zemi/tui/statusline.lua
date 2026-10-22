@@ -78,11 +78,13 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local flows, agents = ctx.workflows_running or 0, ctx.agents_running or 0
 		if flows == 0 and agents == 0 then return {} end
+		local n = flows > 0 and flows or agents
+		local word = flows > 0 and "workflow" or "agent"
 		---@type zemi.Line
-		local line = fmt.hint("⧗ " .. (flows > 0 and flows or agents), flows > 0 and "/workflows" or "/agents")
+		local line = fmt.hint("⧗ " .. n, word .. (n > 1 and "s" or ""), word .. "s")
 		if flows > 0 and agents > 0 then
 			line[#line + 1] = { text = " · ", hl = "Dim" }
-			for _, seg in ipairs(fmt.hint(tostring(agents), "/agents")) do
+			for _, seg in ipairs(fmt.hint(tostring(agents), agents == 1 and "agent" or "agents", "agents")) do
 				line[#line + 1] = seg
 			end
 		end
@@ -101,7 +103,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if (ctx.jobs_running or 0) == 0 then return {} end
-		return { fmt.hint("⚙ " .. ctx.jobs_running, "/jobs") }
+		return { fmt.hint("⚙ " .. ctx.jobs_running, ctx.jobs_running == 1 and "job" or "jobs", "jobs") }
 	end,
 })
 
@@ -116,7 +118,7 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local n = ctx.pending_memory or 0
 		if n == 0 then return {} end
-		return { fmt.hint(tostring(n), "/memory") }
+		return { fmt.hint(tostring(n), n == 1 and "memory" or "memories", "memory") }
 	end,
 })
 
