@@ -224,6 +224,36 @@ func fieldOf(o Overlay, name string) string {
 	return ""
 }
 
+// TestCallWatcherSuperseded: one watcher serves the open call view, so
+// stepping through live calls never piles watchers up whose clustered ticks
+// blink the view's timer.
+func TestCallWatcherSuperseded(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	ui := h.hooks().(*fakeUI)
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{Name: "shell", Input: "sleep 9", Status: CallRun},
+		{Name: "read", Input: "a.go", Status: CallRun},
+	}})
+	h.watchCall(-1)
+	h.watchCall(-2)
+	if h.callWatchTick(-1) {
+		t.Fatal("the superseded watcher keeps ticking")
+	}
+	if !h.callWatchTick(-2) {
+		t.Fatal("the open view's watcher stopped")
+	}
+	rebuilt := 0
+	for _, id := range ui.refreshed {
+		if id == "call:-2" {
+			rebuilt++
+		}
+	}
+	if rebuilt != 1 { // the one live tick rebuilt its own view alone
+		t.Fatalf("the ticks rebuilt %d views: %v", rebuilt, ui.refreshed)
+	}
+}
+
 // TestSkillBody: a skill's view reads the whole file, not the cut rows a
 // transcript keeps, so the procedure is there to read.
 func TestSkillBody(t *testing.T) {

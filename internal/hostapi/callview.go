@@ -138,21 +138,37 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 
 // watchCall keeps an open call view current while the call runs: its output
 // and its mark change in place. A live row's index names another call once
-// the next turn starts, so the ticker stops with the turn.
+// the next turn starts, so the ticker stops with the turn. One watcher
+// serves the open view: the next watchCall supersedes it, and a watcher the
+// host no longer serves stops, so stepping through live calls never piles
+// watchers up whose clustered ticks blink the view's timer.
 func (h *Host) watchCall(n int) {
-	h.overlayTicker("call view", nil, func() bool {
-		row, took, ok := h.chatRow(n)
-		if !ok || n < 0 && !h.AgentActive() {
-			return false
-		}
-		if ui := h.hooks(); ui != nil {
-			ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
-		}
-		// a live view keeps up with the run it steps along; a settled one
-		// has nothing to say until the transcript grows, and refreshCall
-		// takes it then
-		return n < 0 || row.Status == CallRun || row.Status == CallWait
-	})
+	h.msgMu.Lock()
+	h.callServe = n
+	h.msgMu.Unlock()
+	h.overlayTicker("call view", nil, func() bool { return h.callWatchTick(n) })
+}
+
+// callWatchTick is the live call view watcher's tick: it rebuilds the view
+// while it is the one the host serves and reports whether to keep ticking.
+func (h *Host) callWatchTick(n int) bool {
+	h.msgMu.Lock()
+	live := h.callServe == n
+	h.msgMu.Unlock()
+	if !live {
+		return false
+	}
+	row, took, ok := h.chatRow(n)
+	if !ok || n < 0 && !h.AgentActive() {
+		return false
+	}
+	if ui := h.hooks(); ui != nil {
+		ui.RefreshOverlay("call:"+strconv.Itoa(n), func() Overlay { return h.callView(n, row, took) })
+	}
+	// a live view keeps up with the run it steps along; a settled one
+	// has nothing to say until the transcript grows, and refreshCall
+	// takes it then
+	return n < 0 || row.Status == CallRun || row.Status == CallWait
 }
 
 // callTitles name a call's view by what it is, not by the verb its row reads

@@ -494,6 +494,8 @@ type Host struct {
 	msgLevels []string
 	callRow   int    // the row the open call view shows
 	callID    string // that call's id, which names the row it settles at
+	callServe int    // the row the live call view's watcher serves, so an
+	// opened view supersedes the last watcher instead of adding one
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
