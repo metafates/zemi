@@ -13,6 +13,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -335,6 +336,115 @@ func TestPlanNudgeFollowsTheTurn(t *testing.T) {
 	defer mu.Unlock()
 	if len(sent) < 2 || sent[1] != "what next?" {
 		t.Fatalf("the model saw %q", sent)
+	}
+}
+
+// TestPlanApprovalCompacts: implementing an approved plan whose turn filled
+// the context summarizes on the planner's warm prefix (silently under on,
+// behind an ask that names the prompt change under the default), and the
+// implementation send opens at the summary and the tail instead of resending
+// the planner's whole run.
+func TestPlanApprovalCompacts(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		handoff string // "" leaves the default ask
+		answer  string
+		wantAsk string // the ask's header, "" for none
+	}{
+		{"on compacts silently", "on", "", ""},
+		{"the default ask names the prompt change", "", "Compact, then send", "Prompt changed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, r := newTestHostDB(t)
+			plannerProfile(t, r)
+			h.Settings.SetQuiet("models.default", "stub/m")
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			if c.handoff != "" {
+				h.Settings.SetQuiet(config.KeyAgentHandoff, c.handoff)
+			}
+			ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}, qOK: c.answer != "", qAnswer: c.answer}
+			h.SetUIHooks(ui)
+			if err := h.SetProfile("planner"); err != nil {
+				t.Fatal(err)
+			}
+			h.agents.mu.Lock()
+			h.agents.ctxWin = 100_000
+			h.agents.mu.Unlock()
+			// the planner's steps read 90k of context, past the gate's 50k
+			// floor; the implementation's read nothing, so the compaction
+			// judges as working
+			big := strings.Repeat("x", 80_000)
+			script := func(_, last string, toolResult bool) []fantasy.StreamPart {
+				switch {
+				case strings.HasPrefix(last, compactNote[:60]):
+					return textParts("ok")
+				case toolResult || strings.Contains(last, "approved the plan"):
+					parts := textParts("working")
+					if toolResult { // the planner's last step: the gate reads its usage
+						parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 90_000}
+					}
+					return parts
+				default:
+					parts := toolCallParts("c1", "plan", `{"plan":"# The plan\nstep one"}`)
+					parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 90_000}
+					return parts
+				}
+			}
+			var mu sync.Mutex
+			var prompts [][]fantasy.Message
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: script, record: func(call fantasy.Call) {
+					mu.Lock()
+					prompts = append(prompts, call.Prompt)
+					mu.Unlock()
+				}}, nil
+			}
+			if err := h.AgentSend(big); err != nil {
+				t.Fatal(err)
+			}
+			waitIdle(t, h)
+
+			wantAsks := 0
+			if c.wantAsk != "" {
+				wantAsks = 1
+			}
+			if len(ui.qAsked) != wantAsks {
+				t.Fatalf("asked %d times, want %d", len(ui.qAsked), wantAsks)
+			}
+			if c.wantAsk != "" && (ui.qAsked[0].Header != c.wantAsk || !strings.Contains(ui.qAsked[0].Question, "The prompt changed")) {
+				t.Fatalf("ask: %q / %q", ui.qAsked[0].Header, ui.qAsked[0].Question)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(prompts) != 3 {
+				t.Fatalf("%d prompts, want the planner's turn, the summary aside and the implementation", len(prompts))
+			}
+			aside, impl := prompts[1], prompts[2]
+			if !strings.HasPrefix(concatText(aside[len(aside)-1].Content), compactNote[:60]) {
+				t.Fatalf("the summary did not ride the planner's history: %d messages", len(aside))
+			}
+			if !slices.ContainsFunc(aside, func(m fantasy.Message) bool {
+				return strings.Contains(concatText(m.Content), big)
+			}) {
+				t.Fatal("the summary call did not read the planner's warm prefix")
+			}
+			if s, _ := summaryOf(impl[2]); s != "ok" {
+				t.Fatalf("the implementation send opens on the summary: %d messages", len(impl))
+			}
+			for _, msg := range impl {
+				if strings.Contains(concatText(msg.Content), big) {
+					t.Fatal("the implementation send resends the planner's history")
+				}
+			}
+			if got := h.Settings.Str(config.KeyAgentProfile); got != "default" {
+				t.Fatalf("the implementation ran as %q", got)
+			}
+			if h.agents.compactFails != 0 {
+				t.Fatalf("the compaction judged as failed %d times", h.agents.compactFails)
+			}
+		})
 	}
 }
 

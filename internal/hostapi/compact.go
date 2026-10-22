@@ -306,10 +306,14 @@ func (h *Host) handoffGate(scope *turnScope, newModel string) {
 		if ui == nil { // no one to ask: send as is
 			return
 		}
+		header, note := "Model handoff", h.handoffNote(from, newModel, in)
+		if from == newModel { // the pinned prompt moved, not the model: a plan approval, a profile switch
+			header, note = "Prompt changed", h.repinNote(from, in)
+		}
 		answers, ok := ui.AskQuestion([]tools.Question{{
 			Type:     tools.TypeSingle,
-			Header:   "Model handoff",
-			Question: h.handoffNote(from, newModel, in),
+			Header:   header,
+			Question: note,
 			Options: []tools.QuestionOption{
 				{Label: "Compact, then send", Recommended: true, Description: "a summary on " + from + "'s warm cache, the next send starts at the summary and the last messages"},
 				{Label: "Send as is", Description: "the whole conversation resends on " + newModel + " with no cache to read"},
@@ -340,6 +344,21 @@ func (h *Host) handoffNote(from, to string, in int64) string {
 	return fmt.Sprintf("The conversation ran on %s; the next send rebuilds it on **%s**: %s.\n\nCompact on %s first: the summary reads its warm cache (%s) and the handoff send starts at %s.",
 		from, to, handoffCost(in, h.modelPrice(to, true)),
 		from, handoffCost(in, h.modelPrice(from, false)), handoffCost(handoff, h.modelPrice(to, true)))
+}
+
+// repinNote is handoffNote for a prompt change on the same model (a plan
+// approval, a profile switch): the model's cache of the old prefix is dead
+// either way, and the compact route reads it once more before it goes.
+func (h *Host) repinNote(model string, in int64) string {
+	window := h.contextWindow(model)
+	tail := tailKeep(h.compactThreshold(window))
+	h.agents.mu.Lock()
+	prompt := h.agents.promptTokens
+	h.agents.mu.Unlock()
+	handoff := tail + 4_000 + prompt
+	return fmt.Sprintf("The prompt changed, so the next send rebuilds the whole conversation on **%s** with no cache to read: %s.\n\nCompact first: the summary reads the warm cache (%s) and the send starts at %s.",
+		model, handoffCost(in, h.modelPrice(model, true)),
+		handoffCost(in, h.modelPrice(model, false)), handoffCost(handoff, h.modelPrice(model, true)))
 }
 
 // handoffCost renders one input pass over tokens on a model's prices: what
