@@ -30,7 +30,7 @@ const contextBudget = 32 << 10
 
 // defaultSystemPrompt is the shipped prompt (no profile configured).
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
-	ask, read, care, denied, code, verify := askingPrompt, readPrompt, carePrompt, deniedPrompt, "", ""
+	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
 	if h.hooks() == nil {
 		ask, care, denied = headlessAskingPrompt, headlessCarePrompt, headlessDeniedPrompt
 	}
@@ -43,10 +43,7 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	if hasTool(toolset, tools.ToolLua) {
 		code = codemodePrompt
 	}
-	if hasTool(toolset, tools.ToolVerify) {
-		verify = " Run it with the verify tool, whose pass ends the turn."
-	}
-	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Verify}", verify, "{Rules}", toolRules).Replace(basePrompt)
+	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
 }
 
 // carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}; a
@@ -89,7 +86,7 @@ Most requests are small: find the code, read the part that matters, make the cha
 - Deliver the whole of what was asked, and in existing code nothing more: no cleanup around a fix, no features, abstractions, options, comments or docs nobody asked for. Match the style and libraries already here; confirm a library is used before using it.
 - Something new (a page, a demo, a document) is the opposite: make it complete and good-looking, in the form its name implies (a landing page is a web page, not a README section), with a real visual direction and the details a person would expect without asking.
 - Fix root causes. Read the whole error before changing approach, never repeat an identical failing call, and do not drop a sound approach after one failure. A fix the repo's own docs contradict is not a fix. Do not fix unrelated bugs and failing tests; name one in a line if it matters.
-- Verify with the one narrowest check that covers the change - the repo's own tests or check script first, when it has them - and stop once it passes: no second run.{Verify} Add no tooling the project lacks and no tests for a trivial change.
+- Verify with the one narrowest check that covers the change - the repo's own tests or check script first, when it has them - and stop once it passes: no second run. Add no tooling the project lacks and no tests for a trivial change.
 - A question needs only the code that answers it: answer as soon as what you read settles it.
 - Report results as they are: say so when a check failed or did not run. Never invent output or file contents, and never end a turn by promising to do something.
 

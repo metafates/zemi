@@ -142,11 +142,6 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		switch {
 		case m.Kind == hostapi.RowTool:
 			evs = f.call(evs, asCall(m))
-			// a verify that passed is the turn's last word: with no message
-			// after it, its output is what the run prints
-			if m.Tool == tools.ToolVerify && m.Status == hostapi.CallOK {
-				f.done.Result = m.Output
-			}
 		case m.Role != fantasy.MessageRoleAssistant:
 		case m.Kind == hostapi.RowMessage:
 			f.done.Result = m.Text

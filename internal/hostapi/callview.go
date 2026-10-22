@@ -161,7 +161,6 @@ var callTitles = map[string]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
 	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill", tools.ToolLSP: "Lookup",
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
-	tools.ToolVerify: "Verify",
 }
 
 // callWords say where a call stands, beside its mark.
@@ -205,7 +204,7 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		if m.Label != "" {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
-		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolVerify || m.Tool == tools.ToolLua) && m.Text != "" {
+		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolLua) && m.Text != "" {
 			// a command is code, so it heads the body rather than the facts,
 			// and sinks into the well its answer lifts out of
 			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash", Fill: FillCanvas})

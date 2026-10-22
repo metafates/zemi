@@ -301,8 +301,7 @@ local function builder(ctx, width)
 		---@type string[]
 		local commands = {}
 		for _, t in ipairs(group) do
-			local name = fmt.tool(t)
-			if name == "shell" or name == "verify" then
+			if fmt.tool(t) == "shell" then
 				commands[#commands + 1] = relpath(t.text or t.input or ""):gsub("%s+", " ")
 			end
 		end
@@ -374,7 +373,7 @@ local function builder(ctx, width)
 		local function fit(text, n) return open and text or fmt.clip(text, n) end
 		-- a command is highlighted where it is what the row reads, the head and
 		-- an opened row; collapsed under its label it stays a Dim detail
-		local code = (name == "shell" or name == "verify")
+		local code = name == "shell"
 				and input ~= ""
 				and (open or label == "")
 				and not dim
@@ -463,16 +462,16 @@ local function builder(ctx, width)
 				or t.status == "stopped"
 				or name == "question"
 				or name == "plan"
-				or (o.open and (name == "shell" or name == "verify"))
+				or (o.open and name == "shell")
 			)
 		then
 			local out = util.split(output, "\n")
 			-- a collapsed failure shows three lines where it says what went
 			-- wrong: a tool's first, a command's last (its stderr and exit
-			-- status)
-			local err, tail = t.status == "err", name == "shell" or name == "verify"
+			-- status); a click shows the rest
+			local err, tail = t.status == "err", name == "shell"
 			local from, to = 1, #out
-			if (err or tail) and not open and #out > 3 then
+			if err and not open and #out > 3 then
 				if tail then
 					from = #out - 2
 				else
@@ -531,40 +530,11 @@ local function builder(ctx, width)
 			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
 			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
 		})
-		-- a run that ended on its check closes with its own chat entry after
-		-- the block, marked like a report that came in green: the turn's last
-		-- word is an entry of its own, never a row of the rail. It names what
-		-- the check was and opens the call's view.
-		local final = list[last]
-		local ended = final.kind == "tool" and fmt.tool(final) == "verify" and final.status == "ok"
-		local function doneEntry()
-			B.gap("note")
-			local what = final.label ~= "" and final.label or relpath(final.text or "")
-			local click = "call:" .. last
-			local mk = mark("ok")
-			mk.click = click
-			push({
-				mk,
-				{
-					text = fmt.clip("done - " .. (what:gsub("%s+", " ")) .. " passed", width - 4),
-					hl = "Dim",
-					click = click,
-				},
-			})
-		end
-		if not opened then
-			if ended then doneEntry() end
-			return
-		end
+		if not opened then return end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
 		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil, full = full })
-		if ended then
-			doneEntry()
-			B.lines[#B.lines][1].sticky = "end"
-		elseif #B.lines > at then
-			B.lines[#B.lines][1].sticky = "end"
-		end
+		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any

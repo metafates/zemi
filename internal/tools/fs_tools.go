@@ -202,24 +202,6 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 	return changed(fantasy.NewTextResponse(b.String()))
 }
 
-// verifyArgs is the verify tool's input and its schema source.
-type verifyArgs struct {
-	About     string `json:"about,omitempty" desc:"what the check does in 5-10 words, shown to the user, e.g. Run the unit tests."`
-	Command   string `json:"command"`
-	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
-}
-
-// runVerify runs the command that decides the task is done: exit 0 ends the
-// turn with the check as the last word, a failure or a handoff to a job
-// returns the output and the loop continues.
-func runVerify(ctx context.Context, p *Pipeline, in verifyArgs) (fantasy.ToolResponse, error) {
-	resp, err := runShell(ctx, p, shellArgs(in))
-	if err == nil && !resp.IsError && !strings.Contains(resp.Content, JobHandoff) {
-		resp.StopTurn = true
-	}
-	return resp, nil
-}
-
 // ShellFailure is why a failed command failed, for a reader that has only the
 // result text (zemi run's --json error): the last line runShell writes a
 // reason on, else the command's own last output line. A response carries no
