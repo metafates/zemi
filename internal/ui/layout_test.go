@@ -245,3 +245,26 @@ func TestJoin(t *testing.T) {
 		}
 	}
 }
+
+// TestUnitSpans: the one-walk index answers what unitRows(unitAt()) scans
+// for, an undrawn anchor's fallback included.
+func TestUnitSpans(t *testing.T) {
+	row := func(anchor, call int) []hostapi.Segment {
+		return []hostapi.Segment{{Text: "row", Anchor: anchor, Call: call}}
+	}
+	lines := make([][]hostapi.Segment, 12)
+	lines[1] = row(1, 0)
+	for i := 4; i <= 6; i++ { // a rail: every row carries the run's anchor, its own call
+		lines[i] = row(4, i)
+	}
+	lines[8], lines[9] = row(8, 0), row(8, 0)
+	lines[10] = row(10, 0)
+	sp := indexUnits(lines)
+	for _, n := range []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11} {
+		wantFrom, wantTo := unitRows(lines, unitAt(lines, n))
+		from, to := sp.rows(n)
+		if from != wantFrom || to != wantTo {
+			t.Errorf("anchor %d: rows(%d, %d), want (%d, %d)", n, from, to, wantFrom, wantTo)
+		}
+	}
+}

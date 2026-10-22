@@ -815,6 +815,60 @@ func callRows(lines [][]hostapi.Segment, call int) (from, to int) {
 	return from, to
 }
 
+// unitSpans indexes the lines once for a list of anchors: the rows each
+// anchor draws as a message and as a call of a rail, where unitRows and
+// unitAt would scan the lines per anchor.
+type unitSpans struct {
+	msg, call map[int][2]int
+	anchors   []int // the anchors with message rows, ascending
+}
+
+func indexUnits(lines [][]hostapi.Segment) unitSpans {
+	sp := unitSpans{msg: map[int][2]int{}, call: map[int][2]int{}}
+	for i, row := range lines {
+		if at := rowAnchor(row); at > 0 {
+			if s, ok := sp.msg[at]; ok {
+				s[1] = i
+				sp.msg[at] = s
+			} else {
+				sp.msg[at] = [2]int{i, i}
+				sp.anchors = append(sp.anchors, at)
+			}
+		}
+		if c := rowCall(row); c != 0 {
+			if s, ok := sp.call[c]; ok {
+				s[1] = i
+				sp.call[c] = s
+			} else {
+				sp.call[c] = [2]int{i, i}
+			}
+		}
+	}
+	slices.Sort(sp.anchors)
+	return sp
+}
+
+// rows is the span an anchor draws, unitRows(unitAt(lines, n)) without the
+// scans: a call's rows when a rail row names it, else the message's, else
+// the nearest drawn anchor before it.
+func (sp unitSpans) rows(n int) (from, to int) {
+	if s, ok := sp.call[n]; ok {
+		return s[0], s[1]
+	}
+	if s, ok := sp.msg[n]; ok {
+		return s[0], s[1]
+	}
+	pos, _ := slices.BinarySearch(sp.anchors, n)
+	if pos == 0 {
+		return -1, -1
+	}
+	if s, ok := sp.call[sp.anchors[pos-1]]; ok {
+		return s[0], s[1]
+	}
+	s := sp.msg[sp.anchors[pos-1]]
+	return s[0], s[1]
+}
+
 // jumpTop is where a following list puts the view for a unit's rows: the
 // middle of the view when the whole message fits, else its first row, which
 // then has to stand below the pinned headers that draw over the view's start.
