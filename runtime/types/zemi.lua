@@ -1363,11 +1363,10 @@ function zemi.ui.input(opts, on_confirm) end
 ---@field line? integer 1-based line to start at
 ---@field title? string working-row label while the editor is open (default: the file name)
 
---- Open a file in the project dir, anywhere in a trusted repository (`zemi.project.root()`), or under
---- `zemi.fs.data_dir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
+--- Open a file in the user's editor (editor.command, $VISUAL, $EDITOR)
 --- fullscreen over zemi, and call on_done when it exits: on_done(),
---- or on_done(err) when it failed or exited non-zero.
---- Never blocks the interpreter. Raises for a path outside those.
+--- or on_done(err) when it failed or exited non-zero. A relative path
+--- resolves against the project dir. Never blocks the interpreter.
 ---
 --- ```lua
 --- zemi.ui.edit(zemi.fs.data_dir("notes") .. "/todo.md", { line = 1 }, function(err)
