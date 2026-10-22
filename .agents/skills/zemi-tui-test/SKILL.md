@@ -1,3 +1,8 @@
+---
+name: zemi-tui-test
+description: "Load to check a UI or agent change end to end, capture a screen, or reproduce a bug Go tests cannot: zemi-lab drives the real binary in tmux against a fake model, in a throwaway config tree."
+---
+
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
