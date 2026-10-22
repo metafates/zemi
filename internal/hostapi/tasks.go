@@ -972,11 +972,13 @@ func (h *Host) ViewedAgent() string {
 // ViewAgent shows a run's transcript in the chat in place of the session's;
 // "" shows the session again. A run this process no longer holds (an
 // earlier zemi, or evicted) is read from its child session.
-func (h *Host) ViewAgent(id string) error { return h.ViewAgentFrom(id, "") }
+func (h *Host) ViewAgent(id string) error { return h.ViewAgentFrom(id, "", "") }
 
 // ViewAgentFrom is ViewAgent from a screen: back is the command that
-// reopens it, which LeaveAgentView hands the esc that leaves the run.
-func (h *Host) ViewAgentFrom(id, back string) error {
+// reopens it, which LeaveAgentView hands the esc that leaves the run, and
+// menu the overlay left open under the view, whose esc goes to the view
+// before it closes the menu.
+func (h *Host) ViewAgentFrom(id, back, menu string) error {
 	if _, err := h.Screen(); err != nil {
 		return err
 	}
@@ -991,11 +993,19 @@ func (h *Host) ViewAgentFrom(id, back string) error {
 		}
 	}
 	h.tMu.Lock()
-	h.view, h.viewBack = run, back
+	h.view, h.viewBack, h.viewMenu = run, back, menu
 	h.tMu.Unlock()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
 	return nil
+}
+
+// ViewedAgentMenu is the overlay the shown run was raised from, "" for none:
+// the one overlay whose esc goes to the view instead of closing it.
+func (h *Host) ViewedAgentMenu() string {
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	return h.viewMenu
 }
 
 // LeaveAgentView shows the session again and returns the command that

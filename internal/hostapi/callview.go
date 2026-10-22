@@ -304,27 +304,25 @@ func (h *Host) callStep(n int) (prev, next string) {
 		}
 		return ""
 	}
+	// live scans the turn's unsettled calls for the first step target from
+	// j, walking the way dir points
+	live := func(j, dir int) string {
+		for ; j >= 0 && j < len(s.Tools); j += dir {
+			if s.Tools[j].Run == "" {
+				return "call " + strconv.Itoa(-j-1)
+			}
+		}
+		return ""
+	}
 	// the live turn's calls are named by negative rows, -1 its first: a view
 	// of one steps along the run still being written, not a snapshot of
 	// whatever had settled when it opened
 	if n < 0 {
 		if k := -n; k <= len(s.Tools) {
-			for j := k - 2; j >= 0; j-- {
-				if s.Tools[j].Run == "" {
-					prev = "call " + strconv.Itoa(-j-1)
-					break
-				}
-			}
-			if prev == "" && cross {
+			if prev = live(k-2, -1); prev == "" && cross {
 				prev = back(len(tr) - 1)
 			}
-			for j := k; j < len(s.Tools); j++ {
-				if s.Tools[j].Run == "" {
-					next = "call " + strconv.Itoa(-j-1)
-					break
-				}
-			}
-			return prev, next
+			return prev, live(k, 1)
 		}
 		// the turn landed since the view opened: it steps along the rows the
 		// calls settled at
@@ -347,12 +345,7 @@ func (h *Host) callStep(n int) (prev, next string) {
 	// the walk ran to the transcript's end: the rail runs on into the calls
 	// the turn is still writing
 	if i == len(tr) && cross {
-		for j := range s.Tools {
-			if s.Tools[j].Run == "" {
-				next = "call " + strconv.Itoa(-j-1)
-				break
-			}
-		}
+		next = live(0, 1)
 	}
 	return prev, next
 }

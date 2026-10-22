@@ -485,6 +485,7 @@ type Host struct {
 	session  *Session
 	view     *agentRun // the agent run the chat shows instead of the session, nil for none
 	viewBack string    // the command that reopens the screen view came from
+	viewMenu string    // the overlay left open under view, whose esc goes to the view
 
 	// msgMu guards the messages picker's levels opened in this session, and
 	// the call view on top of them: a transcript that grows rebuilds each

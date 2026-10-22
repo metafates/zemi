@@ -1083,15 +1083,17 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			i = slices.IndexFunc(pairs, func(p hintPair) bool { return p.key == "y" })
 		}
 		if i < 0 {
-			i = len(pairs) - 1
-			for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc" || pairs[i].row) {
-				i--
-			}
-			if i < 0 { // no state key is left: the row's own drop, last first
-				i = len(pairs) - 1
-				for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
+			// the state keys give way last first, a row's own key only once no
+			// state key is left; enter and esc never do
+			scan := func(row bool) int {
+				i := len(pairs) - 1
+				for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc" || pairs[i].row != row) {
 					i--
 				}
+				return i
+			}
+			if i = scan(false); i < 0 {
+				i = scan(true)
 			}
 		}
 		if hostapi.SegsWidth(out) <= w || i < 0 {

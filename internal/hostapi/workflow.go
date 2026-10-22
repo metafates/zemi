@@ -1675,7 +1675,7 @@ func (h *Host) workflowCommands() []*Command {
 				return h.runSaved("/workflows "+strings.Join(f, " "), attached, id, strings.Join(f[2:], " "))
 			case "view":
 				if arg(2) != "" {
-					if err := h.ViewAgentFrom(arg(2), "workflows view "+id); err != nil {
+					if err := h.ViewAgentFrom(arg(2), "workflows view "+id, "workflows"); err != nil {
 						return err
 					}
 					// the chat shows the transcript with the list still open under

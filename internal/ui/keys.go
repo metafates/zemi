@@ -217,13 +217,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case modalQuestion:
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
-		// a shown run is the reader's context: esc leaves it before a menu
-		// left under it, and the back command reopens what the view came from
-		if key == "esc" && a.host.ViewedAgent() != "" {
-			a.armed = armed{}
-			if back := a.host.LeaveAgentView(); back != "" {
-				a.runCommand(hostapi.SplitCommand(back))
-			}
+		// a menu left open under a shown run is the view's context: esc goes
+		// to the view first, so the back command reopens the run view over it
+		if key == "esc" && a.host.ViewedAgentMenu() == a.overlays[len(a.overlays)-1].o.ID {
+			a.leaveAgentView()
 			return nil
 		}
 		return a.overlayKey(key, keyText(msg))
@@ -340,10 +337,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// box, and one press too many must not kill the turn. Idle, the
 		// second press opens /rewind instead.
 		if a.host.ViewedAgent() != "" {
-			a.armed = armed{}
-			if back := a.host.LeaveAgentView(); back != "" {
-				a.runCommand(hostapi.SplitCommand(back))
-			}
+			a.leaveAgentView()
 		} else if label, _ := a.host.BusyNow(); a.host.AgentActive() || label != "" {
 			if a.arm(key, "interrupt") {
 				a.host.CancelBusy()
@@ -364,6 +358,15 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return a.updateCompletion()
+}
+
+// leaveAgentView is esc on a shown run: it leaves the view and runs the back
+// command that reopens the screen the view was opened from.
+func (a *App) leaveAgentView() {
+	a.armed = armed{}
+	if back := a.host.LeaveAgentView(); back != "" {
+		a.runCommand(hostapi.SplitCommand(back))
+	}
 }
 
 // interrupt cancels the running turn and hands queued messages back to the
