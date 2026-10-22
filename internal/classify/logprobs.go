@@ -78,7 +78,8 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 		if len(q.Levels) > len(scoreLabels) {
 			return nil, nil, fmt.Errorf("a score question takes at most %d levels, got %d", len(scoreLabels), len(q.Levels))
 		}
-		labels, keys = scoreLabels[:len(q.Levels)], scoreLabels[:len(q.Levels)]
+		labels = scoreLabels[:len(q.Levels)]
+		keys = labels
 	}
 	return labels, keys, nil
 }
@@ -221,11 +222,7 @@ func renderQuestion(name string, q Question, labels []string) string {
 	case TypeScore:
 		b.WriteString("\n\nLevels:")
 		for i, level := range q.Levels {
-			line := strconv.Itoa(i)
-			if labels != nil {
-				line = labels[i]
-			}
-			b.WriteString("\n" + line + ". " + level)
+			b.WriteString("\n" + strconv.Itoa(i) + ". " + level)
 		}
 	}
 	return b.String()
