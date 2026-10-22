@@ -1436,3 +1436,13 @@ func workdir() string {
 	}
 	return wd
 }
+
+// workRel shortens a resolved path to the working directory when it is
+// inside it, resolving the directory too: a symlinked cwd (/tmp on macOS)
+// would otherwise never match.
+func workRel(path string) string {
+	if rel, ok := perm.Under(perm.RealPath(workdir()), path); ok {
+		return rel
+	}
+	return path
+}

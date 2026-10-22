@@ -42,7 +42,7 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 - Keeps prompts small, cache hit rates high
 - Knows when to shut up
 - Does more with less steps
-- Tools to make cheap models suck less, smart ones do more: subagents, workflows, forks, lsp, parallel tool calls... _yada yada_
+- Tools to make cheap models suck less, smart ones do more: subagents, workflows, forks, parallel tool calls... _yada yada_
 - Fully scriptable with Lua and knows how to modify itself
 - Learns from previous sessions
 - Compatible with Claude Code plugins

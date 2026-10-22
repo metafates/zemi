@@ -618,7 +618,7 @@ function zemi.command.list() end
 ---@class zemi.ev.LspRequest: zemi.Event
 ---@field server string
 ---@field path string
----@field kind "diagnostics"|"tool"
+---@field kind "diagnostics"
 
 --- What a vetoable handler returns to veto: `decision = "deny"` with a
 --- reason. Any other return lets the event through; on `permission.request`

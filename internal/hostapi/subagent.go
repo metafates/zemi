@@ -60,7 +60,7 @@ const forkAgent = "fork"
 
 // readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolLSP, tools.ToolSkill}
+var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolSkill}
 
 var builtinAgents = []AgentDef{
 	{
@@ -156,8 +156,7 @@ var zemiToolNames = set.Of(
 	tools.ToolTodos,
 	tools.ToolQuestion, tools.ToolPlan, tools.ToolSkill,
 	tools.ToolJobStart, tools.ToolJobRead, tools.ToolJobList,
-	tools.ToolJobKill, tools.ToolMemory, tools.ToolDiagnostics,
-	tools.ToolLSP, tools.ToolAgent, tools.ToolWorkflow,
+	tools.ToolJobKill, tools.ToolMemory, tools.ToolAgent, tools.ToolWorkflow,
 	tools.ToolLua, tools.ToolUpdate, tools.ToolSearch,
 )
 
@@ -959,7 +958,7 @@ func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[string]) (
 // Naming update there, or -update, is accepted and ignored: every run holds it.
 func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
 	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == tools.ToolUpdate })
-	kept, unknown = filterTools(h.allTools(pipe), want, h.toolSkip(subagentExcluded))
+	kept, unknown = filterTools(h.allTools(pipe), want, subagentExcluded)
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 

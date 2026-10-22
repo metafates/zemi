@@ -367,19 +367,6 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // can only refuse, so a zemi run does not pay for their schemas every step.
 var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
-// toolSkip adds to base the tools that could only answer with why they
-// cannot, whose schemas would ride every step: the language server tools
-// when no server can start in this project (untrusted, or none installed
-// for it).
-func (h *Host) toolSkip(base set.Set[string]) set.Set[string] {
-	skip := base.Clone()
-	if len(h.lspDefs("")) == 0 {
-		skip.Add(tools.ToolLSP)
-		skip.Add(tools.ToolDiagnostics)
-	}
-	return skip
-}
-
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
 // MCP tools, filtered by the profile. The lua tool builds its scripts' calls
 // through it, so a script reaches exactly what the run has, a profile's filter
@@ -424,7 +411,7 @@ func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTo
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
-	build := h.toolBuilder(p, h.toolSkip(skip))
+	build := h.toolBuilder(p, skip)
 	out, unknown = build(pipe)
 	wireLua(out, build)
 	return out, unknown
@@ -1552,8 +1539,8 @@ func toolSummary(tool, input string) string {
 		path, _ := m["path"].(string)
 		return path
 	}
-	// the lsp tool names what it does in "action"; without it a row would
-	// read as the whole body of what it is about to show
+	// a tool that names what it does in "action" reads as the action and
+	// what it acts on, not the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {
 		for _, k := range []string{"symbol", "path", "id"} {
 			if v, ok := m[k]; ok {
@@ -2887,10 +2874,8 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Progress: func(id string, p tools.Progress) {
 			h.setToolProgress(id, sanitize.String(p.Line), sanitize.String(p.Tail))
 		},
-		Outcome:     h.setToolOutcome,
-		Diagnostics: h.lspDiagnostics,
-		LSP:         h.lspOpen,
-		ReadOnly:    func() bool { return readOnly },
+		Outcome:  h.setToolOutcome,
+		ReadOnly: func() bool { return readOnly },
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.consultHooks(EventToolDenied, map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 			h.EmitAsync(EventToolDenied, map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})

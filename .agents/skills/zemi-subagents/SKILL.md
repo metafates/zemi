@@ -176,8 +176,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   quiescent: it exits on the save of a file opened during its workspace scan, and checks the
   whole workspace once quiescent.
   A reload stops only the servers whose definition it changed or dropped or whose start failed (`lspStopChanged`), like
-  the MCP replay, so a write to config or a plugin leaves them warm. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
-  so an untrusted project does not carry their schemas every step. A server re-reads a file
+  the MCP replay, so a write to config or a plugin leaves them warm. A server re-reads a file
   only when told, so `lspSync` sends `workspace/didChangeWatchedFiles` for what changed: a query
   syncs every time - in a repository from the diff of two `git status` listings plus, when HEAD
   moved, the two commits' diff (a checkout's clean swaps) - while the write path syncs only once

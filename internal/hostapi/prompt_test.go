@@ -91,7 +91,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
 	pad := h.ScratchDir()
-	h.agents.targets["lean"] = &modelTarget{Prof: &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}}
+	h.agents.targets["lean"] = &modelTarget{Prof: &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start"}}}
 	h.SetUIHooks(&fakeUI{})
 	lean, err := h.resolveProfile("lean")
 	if err != nil {
@@ -116,7 +116,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		{
 			"lean", lean,
 			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "lua.md", "job_start", `"lsp"`},
+			[]string{"workflow", "lua.md", "job_start"},
 			nil,
 		},
 		// the plan's shape lives in the plan tool's description only
@@ -128,7 +128,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		text := h.buildSystem(c.p)
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
-			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
+			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, subagentExcluded)
 			text = h.systemText(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {
@@ -509,9 +509,6 @@ func TestPromptBudget(t *testing.T) {
 	h.agents.sessionID = "s1"
 	// a repository, as most projects are
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.Settings.SetQuiet("lsp.auto", false); err != nil {
 		t.Fatal(err)
 	}
 	toolset, _ := h.profileTools(nil)

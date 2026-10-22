@@ -208,7 +208,7 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 // with; any other tool reads as its own name's words.
 var callTitles = map[string]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
-	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill", tools.ToolLSP: "Lookup",
+	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill",
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
 }
 
@@ -228,7 +228,7 @@ var callMarks = map[CallStatus]MarkKind{
 // on before the body says what came back.
 var callArg = map[string]string{
 	tools.ToolRead: "file", tools.ToolEdit: "file", tools.ToolWrite: "file", tools.ToolGrep: "pattern",
-	tools.ToolGlob: "pattern", tools.ToolSkill: "skill", tools.ToolLSP: "symbol",
+	tools.ToolGlob: "pattern", tools.ToolSkill: "skill",
 	tools.ToolMemory: "memory", tools.ToolTodos: "what",
 }
 

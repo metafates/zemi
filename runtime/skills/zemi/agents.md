@@ -7,7 +7,7 @@ A subagent is a model run the main agent starts for a self-contained task. It ge
 ```markdown
 ---
 description: Reviews the uncommitted change for bugs, missing tests and broken conventions; use after finishing a change, before calling it done
-tools: read, grep, glob, shell, lsp
+tools: read, grep, glob, shell
 read_only: true
 ---
 You review the uncommitted change in this repository.
@@ -45,7 +45,7 @@ A profile sets the main conversation's model, prompt and tools; `/profile <name>
 
 ```lua
 -- no workflows, Lua tool, background jobs or LSP queries: fewer schemas on every request
-zemi.agent.profile.add("lean", { tools = { "-workflow", "-lua", "-job_start", "-lsp" } })
+zemi.agent.profile.add("lean", { tools = { "-workflow", "-lua", "-job_start" } })
 ```
 
 Also `model`, `temperature`, `system` (replaces the base prompt; zemi's own sections stay), `context = { files = { ... } }` (files pinned into the prompt) and `read_only = true` (a planning agent). Without the file tools there is no read-before-write check, no rewind checkpoint and no diagnostics after an edit; without `skill` no skill loads.
