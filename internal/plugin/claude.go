@@ -120,8 +120,6 @@ type claudeManifestJSON struct {
 // ${CLAUDE_PLUGIN_DATA} stands for. A missing manifest is the zero manifest,
 // its components still read; a malformed one is an error carrying the zero
 // manifest, for the caller to log and load nothing from.
-// ReadClaude reads the Claude manifest of the plugin in dir, its components
-// resolved against dir and its ${CLAUDE_PLUGIN_DATA} against dataDir.
 func ReadClaude(dir, dataDir string) (ClaudeManifest, error) {
 	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile)))
 }
