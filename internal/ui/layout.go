@@ -428,8 +428,8 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		}
 		onPanel(rows)
 	case n.Kind == hostapi.LayoutBar:
-		// a cell of air either side, in from the edges the frame above spans
-		row := append([]hostapi.Segment{{Text: " "}}, a.statusRow(max(w-2, 1), n.Left, n.Right)...)
+		// two cells of air either side, in from the edges the frame above spans
+		row := append([]hostapi.Segment{{Text: "  "}}, a.statusRow(max(w-4, 1), n.Left, n.Right)...)
 		rows = [][]hostapi.Segment{padSegs(row, w)}
 	}
 	for len(rows) < h {
