@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -157,6 +158,51 @@ func TestFrameClock(t *testing.T) {
 			last = f
 		}
 	})
+}
+
+// TestFrameCache: a View with nothing behind it returns the frame it has,
+// and every change that moves neither the generation nor the size - a
+// composer key, a widget's lines, a toast coming and going - still repaints.
+func TestFrameCache(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 14)
+	app.renderSync(t)
+	first := app.View().Content
+
+	app.composer.text, app.composer.cursor = "changed under the cache", 23
+	if app.View().Content != first {
+		t.Fatal("a View with nothing behind it recomposed")
+	}
+
+	app.composerKey("x", tea.KeyPressMsg{Text: "x"})
+	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "changed under the cachex") {
+		t.Fatalf("the draft did not repaint:\n%s", frame)
+	}
+
+	app.onWidgetRendered(widgetRender{id: "chat", lines: [][]hostapi.Segment{{{Text: "fresh lines"}}}, width: 78, height: 12, gen: app.frameGen})
+	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "fresh lines") {
+		t.Fatalf("a widget's lines did not repaint:\n%s", frame)
+	}
+
+	app.pushToast(slog.LevelInfo, "saved", "")
+	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "saved") {
+		t.Fatalf("a toast did not show:\n%s", frame)
+	}
+	app.pruneToasts(time.Now().Add(time.Hour))
+	if frame := ansi.Strip(app.View().Content); strings.Contains(frame, "saved") {
+		t.Fatalf("an expired toast stayed:\n%s", frame)
+	}
+
+	// a frame that drew something moving by itself is never clean: its
+	// shimmer steps with the frame clock though nothing else changed
+	app.onWidgetRendered(widgetRender{id: "chat", lines: [][]hostapi.Segment{{{Text: "breathing", HL: "Dim", Effect: hostapi.EffectShimmer}}}, width: 78, height: 12, gen: app.frameGen})
+	app.View()
+	app.now = func() time.Time { return time.UnixMilli(50) }
+	slow := app.View().Content
+	app.now = func() time.Time { return time.UnixMilli(100) }
+	if fast := app.View().Content; fast == slow {
+		t.Fatal("a shimmering frame stopped moving")
+	}
 }
 
 // TestComposerGrowResizesSplash: the frames drawn between the composer

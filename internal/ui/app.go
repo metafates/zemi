@@ -172,6 +172,12 @@ type App struct {
 	lastFrame string
 	readRow   int // the transcript row the paint placed the reader at
 	rects     map[string]hostapi.Rect
+	// what lastFrame drew: a generation or size change recomposes, and the
+	// changes that move neither (the draft, a widget's lines, the toasts)
+	// set frameDirty, so a View with nothing behind it returns the frame
+	// it has instead of composing again
+	drawn      renderKey
+	frameDirty bool
 
 	program   *tea.Program
 	relaunch  atomic.Pointer[relaunchTarget] // RelaunchDir
@@ -503,7 +509,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 }
 
 func (a *App) View() tea.View {
-	v := tea.NewView(a.Frame())
+	v := tea.NewView(a.viewFrame())
 	v.AltScreen = true
 	// Cell motion: the wheel scrolls the transcript (the altscreen buffer has
 	// no native scrollback), drags select and clicks press. ui.mouse = false
@@ -558,7 +564,8 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 }
 
 // Frame renders the full screen as styled text; exported for the golden
-// test harness (DESIGN §8 golden tests).
+// test harness (DESIGN §8 golden tests), which pins the composed screen and
+// so always composes.
 func (a *App) Frame() string {
 	if a.width <= 0 || a.height <= 0 {
 		return "zemi starting…"
@@ -574,6 +581,24 @@ func (a *App) Frame() string {
 		}
 	}
 	return a.compose(a.width, a.height)
+}
+
+// viewFrame is Frame behind the drawn-frame cache: while nothing changed
+// since the last paint (the generation and size it ran at, and no draft,
+// widget line or toast that marked itself in), the View returns the frame
+// it has instead of composing again.
+func (a *App) viewFrame() string {
+	if a.width <= 0 || a.height <= 0 {
+		return "zemi starting…"
+	}
+	// a frame that drew something moving by itself (a.spun) is never clean:
+	// its effects step at the tick with nothing else bumping
+	if !a.host.RT.Reloading() && !a.frameDirty && !a.spun && a.drawn == (renderKey{gen: a.frameGen, width: a.width, height: a.height}) {
+		a.frameMu.Lock()
+		defer a.frameMu.Unlock()
+		return a.lastFrame
+	}
+	return a.Frame()
 }
 
 // frame loop and widget rendering
@@ -835,6 +860,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		}
 	}
 	a.caches[msg.id] = c
+	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
 
 // renderStaleWidgetsCmd renders, as ui-class requests, the widgets rendered
@@ -932,10 +958,15 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	if len(a.toasts) > toastsLive {
 		a.toasts = a.toasts[len(a.toasts)-toastsLive:]
 	}
+	a.frameDirty = true
 }
 
 func (a *App) pruneToasts(now time.Time) {
+	live := len(a.toasts)
 	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool { return !now.Before(t.expires) })
+	if len(a.toasts) != live {
+		a.frameDirty = true
+	}
 }
 
 // hook plumbing (drained by a persistent cmd when a program is attached)
@@ -1099,6 +1130,7 @@ func (a *App) compose(w, h int) string {
 	a.frameMu.Lock()
 	a.lastFrame, a.rects, a.readRow = out, rects, a.chatRow()
 	a.frameMu.Unlock()
+	a.drawn, a.frameDirty = renderKey{gen: a.frameGen, width: w, height: h}, false
 	return out
 }
 
@@ -1804,12 +1836,20 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return out
 }
 
+// blank is the run of spaces a padded row slices: a strings.Repeat per row
+// costed a few hundred small allocations a frame.
+var blank = strings.Repeat(" ", 4096)
+
 func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	pad := w - hostapi.SegsWidth(segs)
 	if pad <= 0 {
 		return segs
 	}
+	text := blank[:min(pad, len(blank))]
+	if pad > len(blank) { // not a width a terminal reports
+		text = strings.Repeat(" ", pad)
+	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of
 	// leaving the terminal's background showing
-	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal"})
+	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: text, HL: "Normal"})
 }

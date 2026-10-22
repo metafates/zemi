@@ -227,6 +227,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 // the slash palette capture navigation while open. Returns a cmd when the
 // file scan should launch.
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
+	// a key may move only the draft or a popup, which repaints without
+	// re-rendering the widgets: typing stays off the frame generation
+	a.frameDirty = true
 	c := &a.composer
 	if key == "ctrl+z" {
 		c.undoLast()

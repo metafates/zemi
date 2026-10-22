@@ -957,8 +957,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 // back never finds the row armed. A click or a wheel (acts) drops an armed
 // list key at once, as any other key does.
 func (a *App) disarmIfMoved(acts bool) func() {
-	if n := len(a.overlays); acts && n > 0 {
+	if n := len(a.overlays); acts && n > 0 && a.overlays[n-1].keyArmed != "" {
 		a.overlays[n-1].keyArmed = ""
+		a.frameDirty = true // a wheel with no step bumps nothing else
 	}
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].armed {
@@ -968,6 +969,7 @@ func (a *App) disarmIfMoved(acts bool) func() {
 	return func() {
 		if i < len(a.overlays) && a.overlays[i].selected != sel {
 			a.overlays[i].armed = false
+			a.frameDirty = true
 		}
 	}
 }
