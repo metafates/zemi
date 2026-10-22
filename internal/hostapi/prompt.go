@@ -120,7 +120,7 @@ func (h *Host) zemiPrompt() string {
 	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi); the project's is under Environment." +
 		" Local plugins directory: " + h.localPlugins() + "." +
-		" Reading the user config needs no approval; writing it does, so say first what you will write." +
+		" Reading or writing the user config needs no approval; say first what you will write." +
 		" zemi's Lua API and shipped UI source, readable by every tool: " + filepath.Join(h.TypesDir(), "zemi.lua") + " and " + filepath.Join(h.TypesDir(), "zemi", "tui") + "."
 }
 
