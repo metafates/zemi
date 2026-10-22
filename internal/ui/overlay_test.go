@@ -1016,10 +1016,14 @@ func TestOverlayArrowKeys(t *testing.T) {
 func TestOverlayHintsAreTheFrontmostBox(t *testing.T) {
 	t.Parallel()
 	a, _ := bootAgentApp(t, 80, 24)
-	a.openOverlay(hostapi.Overlay{ID: "j", Title: "Jobs", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "job", Detail: "the job's view"}}})
-	a.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "other", Detail: "stacked over it"}}})
+	a.openOverlay(hostapi.Overlay{
+		ID: "j", Title: "Jobs", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "job", Detail: "the job's view"}},
+	})
+	a.openOverlay(hostapi.Overlay{
+		ID: "s", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "other", Detail: "stacked over it"}},
+	})
 	covered, top := a.overlayBox(&a.overlays[0], 80, 20, false), a.overlayBox(&a.overlays[1], 80, 20, true)
 	cf, tf := hostapi.SegsText(covered[len(covered)-2]), hostapi.SegsText(top[len(top)-2])
 	if strings.Contains(cf, "h back") {
@@ -1161,8 +1165,15 @@ func TestMoveSel(t *testing.T) {
 // first, and a row's own key only once no state key is left; never enter or
 // esc.
 func TestHintOrder(t *testing.T) {
-	pairs := []hintPair{{key: "esc", verb: "close"}, {key: "y", verb: "copy"}, {key: "a", verb: "keep"},
-		{key: "enter", verb: "open"}, {key: "d", verb: "drop"}, {key: "v", verb: "show", row: true}, {key: "ctrl+d/u", verb: "scroll"}}
+	pairs := []hintPair{
+		{key: "esc", verb: "close"},
+		{key: "y", verb: "copy"},
+		{key: "a", verb: "keep"},
+		{key: "enter", verb: "open"},
+		{key: "d", verb: "drop"},
+		{key: "v", verb: "show", row: true},
+		{key: "ctrl+d/u", verb: "scroll"},
+	}
 	for _, c := range []struct {
 		w    int
 		want string
