@@ -44,6 +44,10 @@ type Plugin struct {
 	Enabled   bool
 	Uses      []string // the manifest's declared capabilities: what enabling it grants
 
+	// Author and Homepage are the manifest's metadata, display-only: the
+	// detail view's table. Author falls back to a Claude manifest beside it.
+	Author, Homepage string
+
 	// Marketplace is the registered marketplace the install came from, ""
 	// for a local plugin or a clone from before marketplaces.
 	Marketplace string
@@ -76,9 +80,29 @@ func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, Manif
 
 // manifest is ManifestFile parsed; every field is optional.
 type manifest struct {
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Uses        []string `json:"uses"`
+	Version     string         `json:"version"`
+	Description string         `json:"description"`
+	Homepage    string         `json:"homepage"`
+	Author      jsontext.Value `json:"author"`
+	Uses        []string       `json:"uses"`
+}
+
+// authorName is a manifest's author as it displays: a string, or Claude's
+// object with a name.
+func authorName(raw jsontext.Value) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	if raw[0] == '{' {
+		var j struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(raw, &j)
+		return j.Name
+	}
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
 }
 
 // Uses is the vocabulary a manifest's "uses" draws from, one word per host
@@ -98,11 +122,46 @@ func CheckUses(u []string) error {
 	return nil
 }
 
+// Readme is the plugin's README, "" when it has none: what the detail view
+// shows instead of the manifest prose. A long one is cut; it is display text.
+func Readme(dir string) string {
+	for _, name := range []string{"README.md", "README.markdown", "README.txt", "README"} {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err == nil {
+			if len(b) > 1<<16 {
+				b = b[:1<<16]
+			}
+			return string(b)
+		}
+	}
+	return ""
+}
+
 // manifestOf parses the manifest of the plugin in dir; a missing or malformed
-// one is the zero manifest, which declares nothing.
+// one is the zero manifest, which declares nothing. Description, author and
+// homepage fall back to a Claude manifest beside it, which a Claude-layout
+// plugin keeps.
 func manifestOf(dir string) manifest {
 	var m manifest
 	_ = json.Unmarshal(manifestBytes(dir), &m)
+	if m.Description == "" || len(m.Author) == 0 || m.Homepage == "" {
+		if IsClaude(dir) {
+			var j claudeManifestJSON
+			if err := json.Unmarshal(readHead(filepath.Join(dir, ClaudeManifestFile)), &j); err == nil {
+				if m.Description == "" {
+					m.Description = j.Description
+				}
+				if len(m.Author) == 0 && j.Author.Name != "" {
+					m.Author, _ = json.Marshal(struct {
+						Name string `json:"name"`
+					}{j.Author.Name})
+				}
+				if m.Homepage == "" {
+					m.Homepage = j.Homepage
+				}
+			}
+		}
+	}
 	return m
 }
 
@@ -1344,6 +1403,7 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	// what it leaves out
 	m := manifestOf(dir)
 	p.Version, p.Desc, p.Uses = m.Version, m.Description, m.Uses
+	p.Author, p.Homepage = authorName(m.Author), m.Homepage
 	if line := firstLine(filepath.Join(dir, InitFile)); p.Desc == "" && strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}

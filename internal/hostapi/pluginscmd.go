@@ -285,7 +285,7 @@ func (h *Host) pluginNamed(name string) (plugin.Plugin, error) {
 func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 	ui.OpenOverlay(Overlay{
 		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.pluginItems(), Confirm: confirm,
-		Reload: h.pluginItems,
+		Reload: h.pluginItems, BodyMD: true,
 	})
 }
 
@@ -346,12 +346,25 @@ func (h *Host) pluginItems() []OverlayItem {
 			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugin modify " + p.Name + " "})
 		}
 		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name + " --yes"})
+		readme := plugin.Readme(p.Dir)
+		fields := fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
+			"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "))
+		// metadata the row shows only when it has it; with a README the
+		// description and grants move here from the prose it replaces
+		extra := fieldList("author", p.Author, "homepage", p.Homepage)
+		if readme != "" {
+			extra = append(extra, fieldList("description", p.Desc, "grants", strings.Join(p.Uses, ", "))...)
+		}
+		for _, f := range extra {
+			if f.Value != "" {
+				fields = append(fields, f)
+			}
+		}
+		fields = append(fields, fieldList("path", perm.TildePath(p.Dir), "error", errText)...)
 		items = append(items, OverlayItem{
 			Text: p.Name, Desc: strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			Section: section, On: new(p.Enabled), Run: "plugin toggle " + p.Name,
-			Detail: pluginDetail(p), Keys: keys,
-			Fields: fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
-				"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
+			Detail: cmp.Or(readme, pluginDetail(p)), Keys: keys, Fields: fields,
 		})
 	}
 	h.marketplaceItems(&items)
@@ -483,6 +496,7 @@ func (h *Host) openMarketplace(ui UIHooks, name string) {
 	ui.OpenOverlay(Overlay{
 		ID: "plugin-marketplace", Title: "Marketplace " + name, Origin: lua.OriginBuiltin,
 		Items: h.marketplaceItemsOf(name), Reload: func() []OverlayItem { return h.marketplaceItemsOf(name) },
+		BodyMD: true,
 	})
 }
 

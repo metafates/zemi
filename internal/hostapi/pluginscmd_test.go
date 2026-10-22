@@ -48,7 +48,8 @@ func TestPluginsCommand(t *testing.T) {
 	src, mkt := filepath.Join(tmp, "src", "x"), filepath.Join(tmp, "src", "mkt")
 	for p, text := range map[string]string{
 		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.InitFile):     "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
-		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.ManifestFile): `{"version": "0.1.0", "description": "a todo list in the statusline"}`,
+		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.ManifestFile): `{"version": "0.1.0", "description": "a todo list in the statusline", "author": "me", "homepage": "https://a"}`,
+		filepath.Join(dirs.PluginsRoot(), "local", "a", "README.md"):         "# a\n\nA todo list in the statusline.",
 		filepath.Join(dirs.PluginsRoot(), "local", "b", plugin.InitFile):     "error('broken')",
 		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\n",
 		filepath.Join(mkt, plugin.ZemiMarketplaceFile): fmt.Sprintf(`{"name": "test", "plugins": [
@@ -93,6 +94,7 @@ func TestPluginsCommand(t *testing.T) {
 				"text:Install a plugin verb:fill", "run:plugin check text:Check for updates verb:run",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
+				"[author me]", "[homepage https://a]", "detail:# a",
 				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugin disable a",
 				"danger:true desc:delete key:x run:plugin delete a --yes",
 			},

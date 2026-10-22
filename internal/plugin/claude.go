@@ -752,11 +752,17 @@ func (e MarketplacePlugin) synthManifest(dir string) (bool, error) {
 	var err error
 	if e.Kind == KindZemi {
 		file = ManifestFile
+		var author jsontext.Value
+		if e.Author.Name != "" {
+			author, _ = json.Marshal(e.Author)
+		}
 		b, err = json.Marshal(struct {
-			Version     string   `json:"version,omitempty"`
-			Description string   `json:"description,omitempty"`
-			Uses        []string `json:"uses,omitempty"`
-		}{e.Version, e.Description, e.Uses})
+			Version     string         `json:"version,omitempty"`
+			Description string         `json:"description,omitempty"`
+			Homepage    string         `json:"homepage,omitempty"`
+			Author      jsontext.Value `json:"author,omitempty"`
+			Uses        []string       `json:"uses,omitempty"`
+		}{e.Version, e.Description, e.Homepage, author, e.Uses})
 	} else {
 		file = ClaudeManifestFile
 		b, err = e.manifestJSON()

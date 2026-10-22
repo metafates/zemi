@@ -63,6 +63,51 @@ func TestManifest(t *testing.T) {
 	}
 }
 
+// TestManifestMetadata: the detail table's author and homepage come from the
+// manifest, a string author or Claude's object, and fall back to a Claude
+// manifest beside it.
+func TestManifestMetadata(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		"str/.zemi/plugin.json":             `{"author": "Ada", "homepage": "https://a"}`,
+		"obj/.zemi/plugin.json":             `{"author": {"name": "Grace"}}`,
+		"claude/.claude-plugin/plugin.json": `{"name": "c", "description": "the claude one", "author": {"name": "Edsger"}, "homepage": "https://e"}`,
+	})
+	for _, c := range []struct{ name, author, home string }{
+		{"str", "Ada", "https://a"}, {"obj", "Grace", ""}, {"claude", "Edsger", "https://e"},
+	} {
+		m := manifestOf(filepath.Join(dir, c.name))
+		if got := authorName(m.Author); got != c.author || m.Homepage != c.home {
+			t.Errorf("%s: author %q, homepage %q; want %q, %q", c.name, got, m.Homepage, c.author, c.home)
+		}
+	}
+	if m := manifestOf(filepath.Join(dir, "claude")); m.Description != "the claude one" {
+		t.Errorf("claude: description %q, want the claude manifest's own", m.Description)
+	}
+	p := load(t.Context(), filepath.Join(dir, "claude"), true, true)
+	if p.Author != "Edsger" || p.Homepage != "https://e" || p.Desc != "the claude one" {
+		t.Errorf("load: author %q, homepage %q, desc %q", p.Author, p.Homepage, p.Desc)
+	}
+}
+
+// TestReadme: the README is the first of the spellings a plugin ships, cut at
+// 64 KB, and "" when there is none.
+func TestReadme(t *testing.T) {
+	dir := t.TempDir()
+	if got := Readme(dir); got != "" {
+		t.Errorf("no plugin: %q", got)
+	}
+	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# hi"), 0o644)
+	if got := Readme(dir); got != "# hi" {
+		t.Errorf("README.md: %q", got)
+	}
+	os.Remove(filepath.Join(dir, "README.md"))
+	os.WriteFile(filepath.Join(dir, "README"), []byte("plain"), 0o644)
+	if got := Readme(dir); got != "plain" {
+		t.Errorf("README: %q", got)
+	}
+}
+
 // TestCheckUses pins the vocabulary a manifest's uses draws from.
 func TestCheckUses(t *testing.T) {
 	want := []string{"agent", "fs.write", "http", "job", "model", "perm", "tool"}
