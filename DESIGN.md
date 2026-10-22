@@ -2268,7 +2268,7 @@ rides the `memories.md` line and its ledger entries.
   when idle - a draft in the composer included - opens /rewind; `ctrl+c`
   moves a draft into the history, and on an empty composer twice within 2s
   quits), `pgup`/`pgdown`,
-  `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
+  `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
   next prompt or opened run; `alt+m` opens `/messages`, the map of the

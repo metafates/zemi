@@ -138,6 +138,21 @@ func TestComposerHistory(t *testing.T) {
 	if len(c2.history) != historyCap || c2.history[0] != "0" {
 		t.Fatalf("cap: %d entries from %q", len(c2.history), c2.history[0])
 	}
+	// Seeding the stored history after a ctrl+n onto the clean slate keeps
+	// the draft: the walk stays on the slate, and ctrl+p returns to it.
+	app := newTestApp(t, t.TempDir())
+	for _, r := range "draft" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.composerKey("ctrl+n", tea.KeyPressMsg{})
+	if app.composer.text != "" {
+		t.Fatalf("ctrl+n left %q", app.composer.text)
+	}
+	app.seedHistory()
+	app.composerKey("ctrl+p", tea.KeyPressMsg{})
+	if app.composer.text != "draft" {
+		t.Fatalf("ctrl+p after seed: %q, want the draft", app.composer.text)
+	}
 }
 
 func TestWrapComposer(t *testing.T) {

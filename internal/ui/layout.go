@@ -577,7 +577,7 @@ func scrollKey(v *viewport, key string, textOnly bool) bool {
 		v.page(1)
 	case "ctrl+home":
 		v.edge(-1)
-	case "ctrl+end":
+	case "ctrl+b":
 		v.edge(1)
 	default:
 		d := listMove(key)

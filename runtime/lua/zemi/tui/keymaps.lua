@@ -14,7 +14,7 @@ zemi.keymap.set(
 zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
 zemi.keymap.set("ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
-zemi.keymap.set("ctrl+end", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })
+zemi.keymap.set("ctrl+b", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })
 zemi.keymap.set("shift+up", "zemi.ui.scroll.line_up", { desc = "scroll chat up a line" })
 zemi.keymap.set("shift+down", "zemi.ui.scroll.line_down", { desc = "scroll chat down a line" })
 zemi.keymap.set("ctrl+k", "zemi.ui.scroll.line_up", { desc = "scroll chat up a line" })

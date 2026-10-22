@@ -39,7 +39,7 @@ func press(t *testing.T, app *App, key tea.KeyPressMsg) {
 
 // TestChatScrollKeys drives the default scroll bindings end to end:
 // pgup/pgdown page through the transcript, ctrl+d/ctrl+u move half a view like
-// a list does, ctrl+home/ctrl+end jump to the ends, and reaching the bottom
+// a list does, ctrl+home/ctrl+b jump to the ends, and reaching the bottom
 // re-arms tail follow.
 func TestChatScrollKeys(t *testing.T) {
 	t.Parallel()
@@ -104,9 +104,9 @@ func TestChatScrollKeys(t *testing.T) {
 		t.Fatalf("top view should show the first message")
 	}
 
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd, Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	if !app.scrolls["chat"].follow {
-		t.Fatalf("ctrl+end should re-arm follow")
+		t.Fatalf("ctrl+b should re-arm follow")
 	}
 }
 
@@ -159,7 +159,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	if app.scrolls["chat"].top != top || withoutStatus(after) != withoutStatus(before) {
 		t.Fatalf("scrolled frame should stay anchored as content grows")
 	}
-	if !strings.Contains(after, "ctrl+end") {
+	if !strings.Contains(after, "ctrl+b") {
 		t.Fatalf("a scrolled view should say how to get back:\n%s", after)
 	}
 }

@@ -387,6 +387,7 @@ func TestSetModelArgs(t *testing.T) {
 		{"a/small", "", "models.default", "a/small", ""},
 		{"titles a/big", "", "models.titles", "a/big", ""},
 		{"titles chat", "", "models.titles", "", ""},
+		{"titles default", "", "models.titles", "", ""},
 		{"titles nope/x", "", "", "", `provider "nope" is not registered`},
 		{"fast a/big", "", "", "", "usage: /model"},
 		{"titles a/big more", "", "", "", "usage: /model"},

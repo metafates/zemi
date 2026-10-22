@@ -1506,7 +1506,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 	}{
 		{"the row's keys are named beside the list's", "", "j", func() string {
 			ok := strings.Contains(footer(), "y copy · e edit · d Delete · o Open · esc close")
-			return fail(ok, footer())
+			return fail(ok, fmt.Sprintf("%q", footer()))
 		}},
 		{"a key without an id or a run does nothing", "", "j o", func() string {
 			return fail(len(app.overlays) == 1, strconv.Itoa(len(app.overlays)))

@@ -532,21 +532,35 @@ func switchSeg(on, locked bool) hostapi.Segment {
 // moves it: the description keeps its need and a long label ellipsizes, a
 // tail desc included, its label giving way first; only a box too narrow for
 // both puts every description under its label.
+// listNeedW measures a list's widest row: the label and key columns plus the
+// description column, and the width of a row that draws with no description
+// column at all, the widths a box keeps when nothing may trim.
+func listNeedW(all []listItem) (labelW, keyW, descNeeds, rowW int) {
+	for _, it := range all {
+		w := ansi.StringWidth(it.mark.Text)
+		if it.segs != nil {
+			w += hostapi.SegsWidth(it.segs)
+		} else {
+			w += ansi.StringWidth(it.label)
+		}
+		if it.desc != "" { // a row with no description needs no column
+			labelW = max(labelW, w)
+			descNeeds = max(descNeeds, ansi.StringWidth(it.desc))
+		}
+		rowW = max(rowW, w+2) // the row's marker rides in front
+		if it.key.Text != "" {
+			keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
+		}
+	}
+	return labelW, keyW, descNeeds, rowW
+}
+
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{}             // row -> key column
 	cut, starts := set.Set[int]{}, set.Set[int]{} // rows a scrolled window may end after, and start at
 	var selTop, bandTop, selEnd int
-	labelW, keyW, descNeeds := 0, 0, 0
-	for _, it := range all {
-		if it.desc != "" { // a row with no description needs no column
-			labelW = max(labelW, ansi.StringWidth(it.mark.Text+it.label))
-			descNeeds = max(descNeeds, ansi.StringWidth(it.desc))
-		}
-		if it.key.Text != "" {
-			keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
-		}
-	}
+	labelW, keyW, descNeeds, _ := listNeedW(all)
 	under := false
 	if maxW > 0 {
 		avail := maxW - 4 - keyW  // the marker and the gap take 2 cells each

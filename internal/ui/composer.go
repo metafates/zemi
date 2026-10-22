@@ -297,7 +297,8 @@ func (c *composerState) pushHistory(text string) {
 
 // seedHistory adds the project's recently typed messages to the history,
 // so a restart or a resume does not lose them. It runs once, when a recall
-// starts.
+// starts, and keeps the walk where it stands: a ctrl+n onto the clean slate
+// before the first ctrl+p must not lose the draft it saved.
 // NOTE: reads them on the key loop; one capped query is small enough
 // (upgrade: load it in the background at boot).
 func (a *App) seedHistory() {
@@ -313,7 +314,7 @@ func (a *App) seedHistory() {
 	if len(c.history) > historyCap {
 		c.history = c.history[len(c.history)-historyCap:]
 	}
-	c.histIdx = len(c.history)
+	c.histIdx = len(c.history) + max(c.histIdx-len(c.history), 0)
 }
 
 // histPrev recalls the older entry, saving the live draft; from the clean

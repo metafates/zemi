@@ -2031,7 +2031,7 @@ func (h *Host) OpenModelPicker(name string) error {
 // followRow is a target's list head: what it runs on with no pick of its own.
 func (h *Host) followRow(name, run string) OverlayItem {
 	if name == "default" { // the root: nothing to follow but the provider
-		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run}
+		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + "default"}
 	}
 	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel("default"), Run: run + "default"}
 	t, _ := h.target(name)
@@ -2046,9 +2046,9 @@ func (h *Host) followRow(name, run string) OverlayItem {
 }
 
 func (h *Host) modelPicker(name string) Overlay {
-	// a model id is the row's identity and the descs run long, so the lists
-	// take the whole screen and nothing trims to a menu's width
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Wide: true, Empty: "No models yet. Add a provider to " + h.initPath() + "."}
+	// a model id is the row's identity and the descs run long, so the box
+	// measures the lists' own width and nothing trims to a menu's width
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
 	run, cur := "model ", h.conversationModel()
@@ -2306,10 +2306,10 @@ func (h *Host) SetModel(args string) error {
 	case len(f) == 1: // a bare id is the conversation's, not chat's alone
 		f = []string{h.ConversationTarget(), f[0]}
 	case len(f) > 2 || !h.isTarget(f[0]):
-		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> chat]; targets: %s", strings.Join(h.targetNames(), ", "))
+		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> chat | default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
 	role, id := f[0], f[1]
-	if id == "chat" { // a target following its own model, else chat
+	if id == "chat" || id == "default" { // a target following its own model, else the default
 		id = ""
 	}
 	if err := h.modelSetErr(role, id); err != nil {

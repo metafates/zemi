@@ -1139,13 +1139,23 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			fields = slices.DeleteFunc(slices.Clone(fields), func(f hostapi.Field) bool { return strings.HasSuffix(st.o.Title, " / "+f.Value) })
 		}
 	} else if measuring { // the fewest cells a measuring box keeps, so it reads as a menu
-		st.size.w = max(st.size.w, map[bool]int{true: listBoxW, false: textBoxW}[len(st.o.Items) > 0 && !previews])
+		floor := textBoxW
+		if len(st.o.Items) > 0 && !previews {
+			// the width the list's own rows take, so the box opens at it and
+			// no label or description trims when the kept width arrives
+			labelW, keyW, descNeeds, rowW := listNeedW(st.items)
+			keep := max(labelW+keyW+max(descNeeds, 3)+4, rowW+4)
+			floor = max(listBoxW, min(keep, inner))
+		}
+		st.size.w = max(st.size.w, floor)
 	}
 	if st.o.Wide {
 		st.size.w = max(st.size.w, inner)
 	}
 	bodyW := inner
-	if !measuring {
+	if !measuring || (len(st.o.Items) > 0 && !previews && st.o.Body == "" && len(st.o.Parts) == 0 && st.o.Fields == nil) {
+		// a list draws at the width the box keeps, measuring pass included,
+		// so the first frame and the kept one split its columns the same way
 		bodyW = min(inner, st.size.w)
 	}
 	if previews && st.paneW != bodyW {
@@ -1261,12 +1271,16 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)
-		foot := hint(bodyW, hints...)
+		footW := bodyW
+		if measuring { // the box grows to what the footer keeps, so no hint drops
+			footW = inner
+		}
+		foot := hint(footW, hints...)
 		if st.armed {
-			foot = armedHint(bodyW, "enter", st.items[st.visible[st.selected]].label)
+			foot = armedHint(footW, "enter", st.items[st.visible[st.selected]].label)
 		}
 		if d := st.keyDesc(st.keyArmed); d != "" {
-			foot = armedHint(bodyW, st.keyArmed, d)
+			foot = armedHint(footW, st.keyArmed, d)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})

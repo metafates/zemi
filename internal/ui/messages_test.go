@@ -71,8 +71,16 @@ func TestMessagesRowsTrimAtTheBox(t *testing.T) {
 		for app.Pump() {
 		}
 		st := &app.overlays[len(app.overlays)-1]
-		row := app.overlayBox(st, 120, 30, true)[1]
+		box := app.overlayBox(st, 120, 30, true)
+		for i, r := range box {
+			if i > 2 {
+				break
+			}
+			t.Logf("%s: row %d w=%d size=%+v", c.name, i, hostapi.SegsWidth(r), st.size)
+		}
+		row := box[1]
 		text, width := hostapi.SegsText(row), hostapi.SegsWidth(row)
+		t.Logf("%s: boxw=%d roww=%d", c.name, st.size.w, width)
 		if n := strings.Count(text, "…"); n != map[bool]int{true: 1, false: 0}[c.wantCut] {
 			t.Fatalf("%s: %d ellipses in %q", c.name, n, text)
 		}
@@ -707,7 +715,7 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.Frame()
 	// the chat is already at its tail: this scroll moves nothing
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnd, Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	app.Frame()
 	if chat.focus != 0 {
 		t.Fatalf("a scroll to the bottom kept the place: focus %d", chat.focus)

@@ -70,7 +70,7 @@ end
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
 --- it, Danger for a failure), then the command or key in Dim ("errors
---- /errors", "↓ 25 ctrl+end"). Both segments click as click, a command's own
+--- /errors", "↓ 25 ctrl+b"). Both segments click as click, a command's own
 --- name when click is left out.
 ---@param noun string
 ---@param cmd string
