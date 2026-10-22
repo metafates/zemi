@@ -80,6 +80,8 @@ func (h *Host) pluginsCommand(line string) error {
 	case noUI == nil || ask || verb == "new" || verb == "modify":
 	case verb == "open":
 		return noUI
+	case verb == "toggle" && len(args) == 2:
+		return fmt.Errorf("%w; zemi plugin enable or disable %s from the shell", noUI, args[1])
 	default:
 		return fmt.Errorf("%w; zemi plugin manages them from the shell", noUI)
 	}
@@ -236,10 +238,14 @@ func pluginsErr(verb string, err error) error {
 		return err
 	}
 	all := strings.TrimPrefix(plugin.ErrUsage.Error(), "usage: plugin ") + " | new [what it does] | modify <name> [what to change] | toggle <name> | open <name>"
+	var forms []string
 	for form := range strings.SplitSeq(all, " | ") {
-		if form == verb || strings.HasPrefix(form, verb+" ") {
-			return Usagef("usage: /plugin %s", form)
+		if rest, ok := strings.CutPrefix(form, verb+" "); ok {
+			forms = append(forms, rest)
 		}
+	}
+	if len(forms) > 0 {
+		return Usagef("usage: /plugin %s %s", verb, strings.Join(forms, " | "))
 	}
 	return Usagef("usage: /plugin %s", all)
 }
@@ -491,6 +497,7 @@ var pluginGloss = map[string]string{
 	"job":      "a command it starts",
 	"fs.write": "a file write",
 	"tool":     "a tool it registers being called",
+	"perm":     "steering the permission gate",
 }
 
 // pluginDetail is the detail pane's prose: what the plugin ships, the set its
