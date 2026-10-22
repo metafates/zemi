@@ -1255,7 +1255,7 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 		return "", errors.New(memOwnedReason)
 	}
 	if inUser {
-		return "", errors.New("user-brain files are written with the file tools; those writes ask")
+		return "", errors.New("user-brain files are written with the file tools")
 	}
 	name := filepath.Base(abs)
 	if !strings.HasSuffix(name, ".md") {
