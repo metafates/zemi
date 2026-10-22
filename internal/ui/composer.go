@@ -126,9 +126,6 @@ func (c *composerState) delete() {
 		return
 	}
 	c.text = string(r[:c.cursor]) + string(r[c.cursor+1:])
-	if c.histIdx > len(c.history) {
-		c.histIdx = len(c.history)
-	}
 }
 
 func (c *composerState) left() {
@@ -221,15 +218,11 @@ func (c *composerState) typeKey(key, text string) {
 	}
 }
 
-// replace swaps the runes from start to the cursor for s. Typing on the
-// clean slate makes it the live draft, so the walk continues from there.
+// replace swaps the runes from start to the cursor for s.
 func (c *composerState) replace(start int, s string) {
 	r := c.runes()
 	c.text = string(r[:start]) + s + string(r[c.cursor:])
 	c.cursor = start + len([]rune(s))
-	if c.histIdx > len(c.history) {
-		c.histIdx = len(c.history)
-	}
 }
 
 func (c *composerState) wordLeft() {
@@ -277,10 +270,8 @@ func (c *composerState) delWord() {
 
 func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
-// The history walk: histIdx runs 0..len(history)+1, len(history) the live
-// draft and len(history)+1 the clean slate past it - ctrl+n reaches the
-// slate, ctrl+p walks back through the draft to the entries, and typing on
-// the slate makes it the live draft.
+// The history walk: histIdx runs 0..len(history), len(history) the live
+// draft - ctrl+p walks back to the entries, ctrl+n returns to the draft.
 const historyCap = 50
 
 func (c *composerState) pushHistory(text string) {
@@ -297,8 +288,7 @@ func (c *composerState) pushHistory(text string) {
 
 // seedHistory adds the project's recently typed messages to the history,
 // so a restart or a resume does not lose them. It runs once, when a recall
-// starts, and keeps the walk where it stands: a ctrl+n onto the clean slate
-// before the first ctrl+p must not lose the draft it saved.
+// starts.
 // NOTE: reads them on the key loop; one capped query is small enough
 // (upgrade: load it in the background at boot).
 func (a *App) seedHistory() {
@@ -314,42 +304,29 @@ func (a *App) seedHistory() {
 	if len(c.history) > historyCap {
 		c.history = c.history[len(c.history)-historyCap:]
 	}
-	c.histIdx = len(c.history) + max(c.histIdx-len(c.history), 0)
+	c.histIdx = len(c.history)
 }
 
-// histPrev recalls the older entry, saving the live draft; from the clean
-// slate it returns to the draft it left.
+// histPrev recalls the older entry, saving the live draft.
 func (c *composerState) histPrev() {
 	if c.histIdx == 0 {
 		return
 	}
-	switch c.histIdx - len(c.history) {
-	case 0:
+	if c.histIdx == len(c.history) {
 		c.draft = c.text
-	case 1:
-		c.histIdx--
-		c.text = c.draft
-		c.moveEnd()
-		return
 	}
 	c.histIdx--
 	c.text = c.history[c.histIdx]
 	c.moveEnd()
 }
 
-// histNext recalls the newer entry; past the live draft it shows the clean
-// slate, and on the slate it does nothing.
+// histNext recalls the newer entry or restores the draft.
 func (c *composerState) histNext() {
-	if c.histIdx >= len(c.history)+1 {
+	if c.histIdx >= len(c.history) {
 		return
 	}
-	if c.histIdx == len(c.history) {
-		c.draft = c.text
-	}
 	c.histIdx++
-	if c.histIdx == len(c.history)+1 {
-		c.text = ""
-	} else if c.histIdx == len(c.history) {
+	if c.histIdx == len(c.history) {
 		c.text = c.draft
 	} else {
 		c.text = c.history[c.histIdx]
