@@ -526,6 +526,7 @@ type ClaudeSource struct {
 type MarketplacePlugin struct {
 	Kind                                 MarketplaceKind
 	Name, Version, Description, Homepage string
+	Category                             string
 	Author                               ClaudeAuthor
 	Source                               ClaudeSource
 	Strict                               bool // Claude defaults an unwritten strict to true
@@ -604,6 +605,7 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 			Source      jsontext.Value `json:"source"`
 			Version     string         `json:"version"`
 			Description string         `json:"description"`
+			Category    string         `json:"category"`
 			Homepage    string         `json:"homepage"`
 			Author      struct {
 				Name  string `json:"name"`
@@ -645,7 +647,7 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 		}
 		m.Plugins = append(m.Plugins, MarketplacePlugin{
 			Kind: kind, Name: e.Name, Version: e.Version, Description: e.Description,
-			Homepage: e.Homepage, Author: ClaudeAuthor(e.Author),
+			Category: e.Category, Homepage: e.Homepage, Author: ClaudeAuthor(e.Author),
 			Source: src, Strict: e.Strict == nil || *e.Strict,
 			Commands: e.Commands, Agents: e.Agents, Skills: e.Skills,
 			Hooks: e.Hooks, MCPServers: e.MCPServers, Uses: e.Uses,

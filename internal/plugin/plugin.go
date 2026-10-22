@@ -790,6 +790,8 @@ type MarketplaceInfo struct {
 // MarketplaceEntry is one entry of a registered marketplace, display-only.
 type MarketplaceEntry struct {
 	Name, Version, Description string
+	Category, Author, Homepage string
+	Uses                       []string
 }
 
 // Marketplaces lists the registered marketplaces and the entries their
@@ -811,7 +813,10 @@ func Marketplaces(d config.Dirs) ([]MarketplaceInfo, error) {
 			}
 		} else {
 			for _, e := range m.Plugins {
-				info.Entries = append(info.Entries, MarketplaceEntry{Name: e.Name, Version: e.Version, Description: e.Description})
+				info.Entries = append(info.Entries, MarketplaceEntry{
+					Name: e.Name, Version: e.Version, Description: e.Description,
+					Category: e.Category, Author: e.Author.Name, Homepage: e.Homepage, Uses: e.Uses,
+				})
 			}
 		}
 		out = append(out, info)

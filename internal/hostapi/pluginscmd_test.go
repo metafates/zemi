@@ -52,7 +52,8 @@ func TestPluginsCommand(t *testing.T) {
 		filepath.Join(dirs.PluginsRoot(), "local", "b", plugin.InitFile):     "error('broken')",
 		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\n",
 		filepath.Join(mkt, plugin.ZemiMarketplaceFile): fmt.Sprintf(`{"name": "test", "plugins": [
-			{"name": "x", "source": {"source": "git", "url": "file://%s"}, "description": "the x plugin"}]}`,
+			{"name": "x", "source": {"source": "git", "url": "file://%s"}, "description": "the x plugin", "category": "tools"},
+			{"name": "two", "source": "./two", "description": "the two plugin"}]}`,
 			filepath.Join(tmp, "src", "x.git")),
 	} {
 		os.MkdirAll(filepath.Dir(p), 0o755)
@@ -105,8 +106,8 @@ func TestPluginsCommand(t *testing.T) {
 		{
 			name: "marketplace add", args: "marketplace add " + mkt,
 			want: []string{
-				"info: Marketplace added: marketplace test added (1 plugins)",
-				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
+				"info: Marketplace added: marketplace test added (2 plugins)",
+				"section:Marketplaces text:test", "desc:2 plugins",
 				"verb:open", "run:plugin marketplace test", "desc:update key:u run:plugin marketplace update test", "danger:true desc:remove key:x run:plugin marketplace remove test",
 			},
 		},
@@ -115,7 +116,9 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"section:Marketplace text:" + perm.TildePath(mkt), "desc:update key:u run:plugin marketplace update test",
 				"danger:true desc:remove key:x run:plugin marketplace remove test",
-				"section:Plugins text:x", "desc:the x plugin", "key:i run:plugin install x@test", "run:plugin install x@test",
+				"section:tools text:x", "desc:the x plugin", "key:i run:plugin install x@test",
+				"section:Other text:two", "desc:the two plugin", "key:i run:plugin install two@test",
+				"[category tools]",
 			},
 			not: []string{"installed as x"},
 		},

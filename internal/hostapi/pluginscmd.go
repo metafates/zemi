@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -380,27 +379,26 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 		if len(m.Entries) != 1 {
 			count += "s"
 		}
-		desc := perm.TildePath(m.Source) + " · " + count
+		// the source lives on the drill-down's info row, where it fits
+		desc := count
 		if m.Err != "" {
 			desc = m.Err
 		}
 		*items = append(*items, OverlayItem{
 			Text: m.Name, Section: "Marketplaces",
-			Desc:   desc,
-			Detail: marketplaceDetail(m),
-			Fields: fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly), "error", m.Err),
+			Desc: desc,
+			Verb: VerbOpen, Run: "plugin marketplace " + m.Name,
 			Keys: []ItemKey{
 				{Key: "u", Desc: "update", Run: "plugin marketplace update " + m.Name},
 				{Key: "x", Desc: "remove", Danger: true, Run: "plugin marketplace remove " + m.Name},
 			},
-			Verb: VerbOpen, Run: "plugin marketplace " + m.Name,
 		})
 	}
 }
 
 // marketplaceItemsOf builds a marketplace's drill-down: an info row, the
-// marketplace's own actions, then one row per entry its manifest lists, what
-// install and update pick from.
+// marketplace's own actions, then one row per entry its manifest lists,
+// sectioned by the category each names, what install and update pick from.
 func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	ms, err := plugin.Marketplaces(h.Dirs)
 	if err != nil {
@@ -423,29 +421,58 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 			{Key: "x", Desc: "remove", Danger: true, Run: "plugin marketplace remove " + name},
 		},
 	}}
+	// entries section by their manifest category, the order the manifest
+	// names them in; no categories at all keeps one Plugins section
+	grouped := slices.ContainsFunc(m.Entries, func(e plugin.MarketplaceEntry) bool { return e.Category != "" })
+	order := []string{}
+	groups := map[string][]plugin.MarketplaceEntry{}
 	for _, e := range m.Entries {
-		desc := make([]string, 0, 3)
-		if e.Version != "" {
-			desc = append(desc, e.Version)
+		cat := e.Category
+		switch {
+		case !grouped:
+			cat = "Plugins"
+		case cat == "":
+			cat = "Other"
 		}
-		if p, ok := installed[e.Name]; ok {
-			desc = append(desc, "installed as "+p)
+		if _, ok := groups[cat]; !ok {
+			order = append(order, cat)
 		}
-		if e.Description != "" {
-			desc = append(desc, cutLine(e.Description))
+		groups[cat] = append(groups[cat], e)
+	}
+	if !grouped {
+		order = []string{"Plugins"}
+	}
+	for _, cat := range order {
+		for _, e := range groups[cat] {
+			desc := make([]string, 0, 3)
+			if e.Version != "" {
+				desc = append(desc, e.Version)
+			}
+			if p, ok := installed[e.Name]; ok {
+				desc = append(desc, "installed as "+p)
+			}
+			if e.Description != "" {
+				desc = append(desc, cutLine(e.Description))
+			}
+			item := OverlayItem{
+				Text: e.Name, Section: cat,
+				Desc:   strings.Join(desc, " · "),
+				Detail: e.Description,
+			}
+			for _, f := range fieldList("version", e.Version, "category", e.Category, "author", e.Author,
+				"homepage", e.Homepage, "grants", strings.Join(e.Uses, ", ")) {
+				if f.Value != "" {
+					item.Fields = append(item.Fields, f)
+				}
+			}
+			if p, ok := installed[e.Name]; ok {
+				item.Keys = []ItemKey{{Key: "u", Desc: "update", Run: "plugin update " + p}}
+			} else {
+				run := "plugin install " + e.Name + "@" + name
+				item.Keys = []ItemKey{{Key: "i", Desc: "install", Run: run}}
+			}
+			items = append(items, item)
 		}
-		item := OverlayItem{
-			Text: e.Name, Section: "Plugins",
-			Desc: strings.Join(desc, " · "),
-		}
-		if p, ok := installed[e.Name]; ok {
-			item.Keys = []ItemKey{{Key: "u", Desc: "update", Run: "plugin update " + p}}
-		} else {
-			run := "plugin install " + e.Name + "@" + name
-			item.Keys = []ItemKey{{Key: "i", Desc: "install", Run: run}}
-			item.Run = run
-		}
-		items = append(items, item)
 	}
 	return items
 }
@@ -466,29 +493,6 @@ func cutLine(s string) string {
 		s = s[:i]
 	}
 	return s
-}
-
-// marketplaceDetail is a marketplace row's detail: the entries its clone's
-// manifest lists, what install <name>[@<marketplace>] picks from.
-func marketplaceDetail(m plugin.MarketplaceInfo) string {
-	if m.Err != "" {
-		return "Its manifest could not be read: " + m.Err
-	}
-	lines := make([]string, 0, len(m.Entries))
-	for _, e := range m.Entries {
-		line := e.Name
-		if e.Version != "" {
-			line += " " + e.Version
-		}
-		if e.Description != "" {
-			line += " - " + e.Description
-		}
-		lines = append(lines, line)
-	}
-	if len(lines) == 0 {
-		return "Its manifest lists no plugins."
-	}
-	return "Installed with /plugin install <name>@" + m.Name + ":\n" + strings.Join(lines, "\n")
 }
 
 // pluginGloss is what each declared name grants, for the detail pane: the same
