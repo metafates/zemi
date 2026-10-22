@@ -531,23 +531,29 @@ local function builder(ctx, width)
 			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
 			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
 		})
-		-- a run that ended on its check says so under the digest, marked like
-		-- a report that came in green: the turn's last word is visible however
-		-- far the rail is folded
+		-- a run that ended on its check closes with its own chat entry after
+		-- the block, marked like a report that came in green: the turn's last
+		-- word is an entry of its own, never a row of the rail
 		local final = list[last]
-		if final.kind == "tool" and fmt.tool(final) == "verify" and final.status == "ok" then
+		local ended = final.kind == "tool" and fmt.tool(final) == "verify" and final.status == "ok"
+		local function doneEntry()
+			B.gap("note")
 			local what = relpath(final.text or ""):gsub("%s+", " ")
-			push({
-				bar(),
-				mark("ok", click),
-				{ text = fmt.clip("done - " .. what .. " passed", width - 4 - RAIL_EDGE), hl = "Dim", click = click },
-			})
+			push(B.note("ok", fmt.clip("done - " .. what .. " passed", width - 4)))
 		end
-		if not opened then return end
+		if not opened then
+			if ended then doneEntry() end
+			return
+		end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
 		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil, full = full })
-		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
+		if ended then
+			doneEntry()
+			B.lines[#B.lines][1].sticky = "end"
+		elseif #B.lines > at then
+			B.lines[#B.lines][1].sticky = "end"
+		end
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any
