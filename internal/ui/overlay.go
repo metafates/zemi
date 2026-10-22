@@ -546,8 +546,6 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 }
 
 // rowKey is the key of the selected row that answers to key: zero (an empty
-// Key) in a view, with no row, or when the row offers none.
-// rowKey is the key of the selected row that answers to key: zero (an empty
 // ItemKey) when none. A detail view carries the keys of the row it opened
 // from, so what acts on the row acts on its view.
 func (st *overlayState) rowKey(key string) hostapi.ItemKey {
