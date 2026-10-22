@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -34,7 +35,7 @@ func TestModelPickerFitsItsRows(t *testing.T) {
 		}
 		// the box hugs its rows: at this width a full-screen box is 96 wide
 		width := 0
-		for _, line := range strings.Split(ansi.Strip(app.Frame()), "\n") {
+		for line := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
 			if j := strings.Index(line, "┌ Model"); j >= 0 {
 				width = len([]rune(strings.TrimRight(line, " \r"))) - j
 			}

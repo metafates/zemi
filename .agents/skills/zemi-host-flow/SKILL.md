@@ -28,8 +28,9 @@ error is 1, and one that printed its own diagnostic returns `exitError`. That ho
 dir` (`enterDir`: `PWD` follows) before anything else, then resolves `config.Dirs` once into
 `options.dirs`, which every command reads (`completionDirs` resolves its own, since cobra runs no
 hook before a completion function), and a switch from `/projects` is an exec
-of `zemi -C <dir>` and nothing else (`relaunch`), so no flag of this run widens to another
-project. Piped stdin (1 MiB at most) is attached
+of `zemi -C <dir>` (with `-r <session>` when the switch resumes one, `relaunch`), so this
+run's other flags are left behind; `-r` without `-C` re-roots into the session's project
+(`enterDir`). Piped stdin (1 MiB at most) is attached
 behind the typed prompt, is the typed prompt itself after `-` (`options.text`: sent to the model even
 when it starts with `/`, so piped text runs no command), and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
@@ -40,7 +41,7 @@ guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP`
 server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `-m`, `/model <provider/model>` and `zemi.model.set` write the conversation's slot - the active
-profile's own (`Host.ConversationTarget`), else `models.chat` - so a pick under a profile moves what the
+profile's own (`Host.ConversationTarget`), else `models.default` - so a pick under a profile moves what the
 conversation runs on (`--profile` applies before `-m`).
 `Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
 `--profile` and `/profile` (`Host.SetProfile`) write `agent.profile` for the next send: a switch
@@ -52,7 +53,7 @@ above the tail). `zemi run` (`runHeadless`, internal/cli/run.go; DESIGN §8 Prin
 goal's chain of them. It sends on `GoSafe` and polls `Host.RunFrame` every 100 ms: `ui.RunView`
 renders the chat and working widgets over the frame with `UIState.Printed` (`ctx.headless`),
 and the `follower` turns the same frames into `--json` events, each once (a call by
-`ChatMessage.ID`, which `flushOutput` sets). An ask no UI can answer is denied as
+`ChatMessage.CallID`, the stream's call id, which `flushOutput` sets). An ask no UI can answer is denied as
 `tools.ByNobody` and recorded (`Host.HeadlessDenials`, subagents' too). It also drops what
 needs a user (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached
 report would outlive the run), the workflow tool's `background` and every `action` but
@@ -67,8 +68,7 @@ one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, whi
 reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (under
-`zemi run` too) pointing at the zemi skill's plugins.md (`modify` records the plugin in
-`madePlugins`). A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
+`zemi run` too) pointing at the zemi skill's plugins.md. A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it).
 
@@ -98,9 +98,10 @@ network at boot. Each builtin is on only while its key is exported, one without 
 `Registry.Missing` so the no-model hint (`NoModelHint`) can name the variable, and
 `Registry.Reset` seeds every generation before `init.lua` (DESIGN §6.3).
 Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
-trees (`setReload`, `Host.SetReload`; past dot-directories, `node_modules` and the editor configs
-zemi writes itself, `.luarc.json` and `.emmyrc.json`, plus the local plugins, the plugins'
-`disabled` file and each clone's git index, `pluginRoots`;
+trees (`setReload`, `Host.SetReload`; past dot-directories (a plugin's `.zemi` aside),
+`node_modules` and the editor configs zemi writes itself, `.luarc.json` and `.emmyrc.json`, plus
+the local plugins, the plugins' `disabled` file, `marketplaces.json` and each clone's git index,
+`pluginRoots`;
 an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
 baseline every reload moves. Once a second while no turn is active the watcher calls
 `Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
@@ -281,7 +282,7 @@ applied one. A store made before goose only gains its version table: the baselin
   text that quotes one, or a queued /goal a cancel hands back, sets nothing. After a turn that
   ended cleanly `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
   (`checkGoal`, `parseVerdict`). Each verdict is a `goal` row, and `goalIn` reads the goal back
-  on resume and rewind; no other reader looks at role `goal`.
+  on resume and rewind; `historyFrom` draws the goal notice row from the other `goal` rows.
 - **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only, DESIGN §6.3)
   keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
@@ -369,7 +370,7 @@ applied one. A store made before goose only gains its version table: the baselin
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (`Profile.ReadOnly`) are enforced in
-  `tools.Pipeline.Check` (`Plan` hook): every action denied - a write, a command, a
+  `tools.Pipeline.check` (`Pipeline.ReadOnly`): every action denied - a write, a command, a
   Lua tool; reads and scratchpad writes pass. Approving the plan returns to the agent that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
@@ -377,8 +378,8 @@ applied one. A store made before goose only gains its version table: the baselin
   `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`):
   a question or a report is not a plan, so the text is never presented for approval.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
-  (`promptBox`, `choiceRows`). The permission prompt reads only typed fields (`PermRequest.Where`,
-  `Runs`, `Agent`, `Owner`), never meaning parsed back out of a reason or preview string.
+  (`promptBox`, `choiceRows`). The permission prompt reads only typed fields (`PermRequest.Tool`, `Subject`,
+  `Arg`, `Preview`, `Agent`, `Owner`, `Script`), never meaning parsed back out of the text.
   Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
@@ -409,7 +410,7 @@ applied one. A store made before goose only gains its version table: the baselin
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at
   first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
   and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (profile,
-  model, `ProjectTrusted`, the mode's prompt, whether the model takes images, each tool's name and input schema, since a stale
+  model, `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
   schema fails calls). `closeSession` (`/new`, `/resume`) zeroes it, `compactDone` and
   `deleteRecipe` clear its key (`dropPin`: `/prompt` and a running turn keep the text, and a
   build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on
@@ -441,7 +442,7 @@ applied one. A store made before goose only gains its version table: the baselin
   plugin code names its own by the bare key, `settingPath`;
   `dropPluginKeys` takes the ones a replay did not register again, and `settingOff` makes a
   `set` or `watch` of one whose plugin did not load do nothing); only
-  user config sets them, and a read of a key outside it panics under `go test`. Providers ship
+  user config sets them, and a read of a key outside it gets the zero value. Providers ship
   none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
   `zemi.env.get` reads any name from any origin). Config fields
   hold values, never names of env vars.

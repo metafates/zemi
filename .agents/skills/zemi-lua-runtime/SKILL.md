@@ -32,7 +32,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast** (~10 ms).
    Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`. `wait()` suspends a task (a
    Lua tool's `execute`, a Lua command, a keymap function, an overlay callback, an
-   `on_done`/`on_exit`, a `tool.post` handler, a mode's `decide`, `Runtime.Eval`) and raises
+   `on_done`/`on_exit`, a `tool.post` handler, `Runtime.Eval`) and raises
    anywhere else: a render, any other event handler, a timer, under `pcall` or a library
    callback (`lua.InGoCall`). A handle's `wait` is a `lua.Suspending` wrapper, since gopher-lua
    drops the resume values of a Go function reached by a tail call. A keymap or command returns
@@ -77,8 +77,9 @@ function it wraps. A metamethod leaves no frame of the code that set it, so a ha
 `obj.setup`, `obj()` or `==` runs as the code that triggers it; `setmetatable` (tables only)
 installs it as given, and a Go function handed out as a value runs as its caller, with the module
 table as its first argument when called as a method. Plugins (hostapi/plugins.go, `PluginsStep`,
-DESIGN §5): `plugin.Scan` lists `installed/` and `local/` minus `disabled`, sorted by name, and
-the same pick, fixed for the generation (`Host.pluginDirs`), gives the plugins' skills, agents,
+DESIGN §5): `plugin.Scan` lists `local/` then `installed/` minus `disabled`, and
+the same pick, fixed for the generation (`Host.pluginDirs`, sorted by name in `pickPlugins`),
+gives the plugins' skills, agents,
 markdown commands and workflows; a plugin's own Lua sits under `.zemi` (`plugin.CodeDir`:
 init.lua, lua/, tests/, workflows/, plugin.json), and one still keeping it at its root is refused
 (`plugin.OldLayout`) rather than loading nothing. A gone or reinstalled plugin's `zemi.state`
@@ -98,8 +99,8 @@ Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skill
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
 since installers write there; the config dir wins a name clash), builtin (zemi's
 self-knowledge, one skill per directory in `runtime/skills`: `zemi`, whose SKILL.md routes to
-reference files the model reads on demand, and `sessions`, finding, reading and resuming a past
-conversation; each reference file fits the skill tool's cap (`TestBuiltinSkillsFitTheSkillTool`)
+reference files the model reads on demand, `sessions`, finding, reading and resuming a past
+conversation, and `codescan`, one script over many files; each reference file fits the skill tool's cap (`TestBuiltinSkillsFitTheSkillTool`)
 and is named in its own SKILL.md (`TestBuiltinSkillReferences`), and every builtin body ends with
 this binary's path (`skillNote`); embedded and rewritten to `<data>/builtin-skills/` on
 every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body only), all in the
@@ -123,7 +124,8 @@ and drops the pinned prompt. Invariants:
   but `/skills use` still sends it (the body rides behind `agent.AttachMarker`, like a markdown
   command's).
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
-  with a warning); bodies load on demand via the `skill` tool.
+  with a warning when parsed, and to 240 plus `...` in the line a request carries); bodies load
+  on demand via the `skill` tool.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
   step after user init.lua, as user origin; enabling later does not run it.
 - **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
@@ -170,6 +172,7 @@ lua-language-server is installed.
   assignment whose right side names a left-side target (this once garbled wrapped text). In a
   generic-for header, a method call on a parenthesized `c and x or y` (`(s:sub(-1) == "\n" and
   s or s .. "\n"):gmatch(...)`) gets the wrong receiver: compute it into a local first.
-- **Handles vs snapshots**: host resources (job, http, timer, session) are handle
-  tables with colon methods, everything else a snapshot copy; marshaling caps string size and
+- **Handles vs snapshots**: host resources (job, http, timer, a model, classify, a run or
+  workflow, a perm ask, a tool call) are handle tables with colon methods, everything else a
+  snapshot copy; marshaling caps string size and
   depth and refuses cycles.

@@ -17,8 +17,8 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// The subjects the builtin tools ask about; the set is open (net.<host>,
-// lua.<ns.call>, mcp.<server>).
+// The subjects the builtin tools ask about; the set is open (lua.http.<method>,
+// tool.<name>, mcp.<server>).
 const (
 	SubjectShell    = "tool.shell"
 	SubjectLua      = "tool.lua"

@@ -82,7 +82,7 @@ const ProgressTail = 200
 // Request is one permission check the pipeline needs answered.
 type Request struct {
 	Tool    string // the tool asking (shell, edit, mcp_github_search); set by the pipeline
-	Subject string // tool.shell, fs.read, fs.write, net.<host>
+	Subject string // tool.shell, fs.read, fs.write, lua.http.<method>
 	Arg     string // path, url or command
 	Reason  string // human-facing description for the overlay
 	Preview string // a file tool's unified diff, a script, or a memory's text

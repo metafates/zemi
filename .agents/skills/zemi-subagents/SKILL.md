@@ -29,7 +29,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   starts one; its task says what it is, so it does not ask for another.
 - **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
   tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`, `research`,
-  `hunt` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
+  `hunt`, `brainstorm` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
   `new <what it should do>` sends the line with a prompt pointing at the New workflow steps
   in `workflows.md`, as `/agents new` and `/plugins new` do. They
   run in their **own** gopher-lua state on a host goroutine, never on the interpreter (DESIGN
@@ -40,14 +40,16 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description carries the
   whole script API, inline first (a model sent to a skill wrote a file instead);
   `TestPromptBudget` counts it. A run (`flowRun`) is live work until its script ends, paused or
-  between agents too: `taskReg.live` counts it, and not its agents, for rewind, fork, session
-  delete, the queue drain and the statusline. The tool's `list` action names this session's
+  between agents too: `taskReg.live` counts it, and not its agents, for rewind, find, session
+  delete, a session fork and the project switch (`stillRunning`) and for the agent send and the
+  statusline (`runningFor`); an agent fork's setup reads no registry. The tool's `list` action names this session's
   runs (`flowsOf`), with the id to steer one: a run the user started in `/workflows` is a
   chat row the model never reads, so that list is its only notice of one while it runs. `flowControl` is
   the one control path; controls
   write the run's fields under its lock and wake the scheduler, so none waits on a script busy
-  in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`
-  and read back no-follow, regular and capped (`readPadFile`), since any command can
+  in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`,
+  and read back through it too, guarded by regular and 1 MiB at most with `O_NONBLOCK`
+  (`readPadFile`), since any command can
   write the pad, and a rerun the user starts asks about the script as the tool's does
   (`approveRerun`), since the model can rewrite it; for that reason `/workflows save`
   saves the source the run held (`flowRun.src`), and only for a run this process holds.
@@ -84,7 +86,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   message is the model's. Background runs report through
   `AgentSend` behind `agent.AttachMarker`, which the live transcript and resume cut off; the
   notice row is drawn from the message wherever the model reads it (`appendUserRows`: a new
-  turn, a step boundary, a drained queue, a resume), so it sits under the rows of the turn it
+  turn, a step boundary, a drained queue), so it sits under the rows of the turn it
   arrived in. Consecutive notice rows are one block in the chat (chat.lua `B.notices`), no
   blank row between them and the older ones of a long burst behind one click-to-open row, so
   a fleet of runs reporting at once cannot take the transcript over. A report a
@@ -121,9 +123,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
-  a namespace, and a script `luaUnlisted` finds reaching past them asks once, as one action
-  with the whole script the preview. In an untrusted project or a read-only agent every script
-  asks. A new API member is guarded until added to
+  a namespace: the gate asks once for the whole script (`perm.SubjectLua`, the script as
+  preview), and past that the guard raises on each member the run may not call. A read-only
+  agent's script is denied outright, never asked. A new API member is guarded until added to
   `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
   flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
@@ -181,7 +183,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   moved, the two commits' diff (a checkout's clean swaps) - while the write path syncs only once
   something other than zemi's own file tools ran (`lspDirty`, marked when the command finishes,
   not when it starts). Without a repository an mtime walk over the running zemiLua trees stands
-  in for the listing; gitignored files inside one stay invisible (rewind's treeDiff ceiling too).
+  in for the listing, skipping `.git` alone; the gitignore ceiling is the listing's, above
+  (rewind's treeDiff ceiling too).
   A slow or failed server means no diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send` goes

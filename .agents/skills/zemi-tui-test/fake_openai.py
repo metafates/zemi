@@ -1,7 +1,8 @@
 # Fake OpenAI-compatible server for driving zemi without a real model.
 # A user message "call NAME {json}" makes the model call that tool once; anything
-# else gets a short streamed reply. Non-streaming requests (titles, summaries)
-# get a plain chat.completion. Every request body lands in last_request.json.
+# else gets a short streamed reply. Non-streaming requests (the object calls:
+# classify, zemi.model.ask) get a plain chat.completion. Every request body lands
+# in last_request.json.
 # usage: python3 fake_openai.py PORT
 import json, re, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer

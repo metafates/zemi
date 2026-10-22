@@ -36,7 +36,7 @@ port the other tester's server answers, and on a shared tree its `init.lua` load
 
 `fake_openai.py` (next to this file) is a 40-line OpenAI-compatible server: streams a reply
 with a reasoning delta, or a tool call when the user message reads `call NAME {json}`, answers
-non-streaming requests (session titles use them), and writes every request body to
+non-streaming requests (the object calls: classify, `zemi.model.ask`), and writes every request body to
 `last_request.json` so you can diff two consecutive requests byte for byte (prompt cache).
 
 ```sh
@@ -66,7 +66,7 @@ tmux -L zt kill-session -t zt; pkill -f "fake_openai.py 18472"
 
 Headless checks need no tmux: `$S/zemi-safe $T health`, `$S/zemi-safe $T -C $T/proj run --trust
 --json "call read {\"path\":\"a.txt\"}" </dev/null` (without `</dev/null` `zemi run` waits 3 s on a
-non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
+non-tty stdin). `--profile` and `-m` apply after `init.lua`.
 
 Colors: a pane gets 256 colors, since a detached tmux has no client to report RGB and
 `COLORTERM` is ignored under `TERM=tmux*`. For the theme's exact hues start the pane's command

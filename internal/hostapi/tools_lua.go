@@ -492,7 +492,7 @@ const toolPostWait = 30 * time.Second
 // toolPost runs tool.post after a tool call and returns the output the
 // model gets (DESIGN §6.2): the handlers, then the tool's override posts, in
 // turn as tasks, each seeing the output the one before left. A return of
-// { output = "..." } rewrites it, except from project code; a handler that
+// { output = "..." } rewrites it; a handler that
 // fails or runs late leaves it as it was.
 func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
 	return h.postChain(ctx, h.hookHandlers(EventToolPost, name), pad, name, input, ok, output, changed, took)

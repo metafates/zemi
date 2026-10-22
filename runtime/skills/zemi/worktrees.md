@@ -15,9 +15,9 @@ git worktree add -b feat/retry .agents/worktrees/retry
 - it is inside the project, so writes there are ordinary writes that the project's
   permission rules already cover, whatever directory zemi was started in.
 - zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
-  or reload of a trusted project, so
-  `git status` stays clean, and `grep`, `glob` and a command's `rg` skip it, so a search does not
-  return every hit twice. Nothing under it is loaded as the outer
+  or reload of a trusted project, so `git status` stays clean and a shell `rg` there skips it;
+  `grep` and `glob` skip the directory by its path prefix whatever an ignore file says, so a
+  search does not return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
 
 zemi started inside such a worktree shares the main checkout's trust decision, sessions and
@@ -25,8 +25,7 @@ memories.
 
 ## Running work in one
 
-The path is just a directory: `cd .agents/worktrees/retry && go test ./...` in one shell call (every
-call starts in the project directory). Two rules:
+The path is just a directory: `cd .agents/worktrees/retry && go test ./...` in one shell call (a call starts in the directory zemi was launched from, so the relative path holds when that is the repository root). Two rules:
 
 - One branch per worktree: git refuses to check a branch out twice, which keeps two changes apart.
 - Commands that write to `.git` are shared: a commit, fetch or rebase in one worktree
@@ -37,7 +36,7 @@ Long builds and test runs belong in `job_start`, so one worktree's build does no
 the other.
 
 A subagent (the `agent` tool) is the usual way to drive one: give it the worktree path in
-the prompt and let it stay there. Subagents share this session's mode.
+the prompt and let it stay there.
 
 ## Finishing one
 
@@ -60,7 +59,7 @@ so an abandoned worktree is reused instead of piling up.
 | Symptom | Cause |
 | --- | --- |
 | `fatal: '<branch>' is already checked out` | another worktree holds it; `git worktree list` says which |
-| search results appear twice | the worktree is not under `.agents/worktrees/`, or the project is not trusted, or no start came since the directory was made, so `.agents/worktrees/.gitignore` is missing |
+| search results appear twice | the worktree is not under `.agents/worktrees/` at the project root, or the search was a shell `rg` in a tree whose `.agents/worktrees/.gitignore` is missing (no start or reload of a trusted project since it was made) |
 | the worktree has no `node_modules`, `.env`, build cache | untracked and ignored files are not copied; install or symlink them |
 | `git worktree remove` fails | uncommitted changes, or the directory was already deleted (`git worktree prune`) |
 | project config not loaded in the worktree | the main checkout is not trusted: a worktree shares its trust decision; `/trust` there |

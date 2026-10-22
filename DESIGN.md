@@ -217,9 +217,9 @@ Contracts that make this safe:
   handler, or no handler at all) as no veto, so the request runs unless
   the overlay leg denies it (§9); the timeout is only logged.
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
-  must not hold the user's quit or a typed message hostage; a plugin or
-  builtin `app.quit` denial is honored every time, and project handlers
-  cannot deny it at all); the other
+  must not hold the user's quit or a typed message hostage; any origin's
+  `app.quit` denial is honored, so the quit waits for its handlers to
+  answer); the other
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
@@ -249,9 +249,9 @@ Contracts that make this safe:
   dead; the reserved cancel and reload triggers are not, they dispatch
   before any Lua-visible keymap and are fixed). Reloading builds a
   fresh `LState`:
-  new requests run normally, requests that arrived while hot got the
-  "reloading" error immediately, stale timer/job callbacks are dropped and
-  logged, and replay is safe because all registrations are declarative.
+  new requests run normally, a request landing while the generation is
+  replaced gets the "reloaded" error, stale timer/job callbacks are dropped
+  and logged, and replay is safe because all registrations are declarative.
 - **Widget render is pure.** `render(ctx)` may call only the read-only
   members (`luaReadOnly`) other than `zemi.fs.*` and a handle's `wait`;
   the sandbox guard (`guardLua`) raises on any other call, naming it
@@ -389,7 +389,8 @@ calls blank the user's global filter drivers too.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
-file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
+file's: memory, reflector, skills, agents, jobs, call, messages, workflow,
+mcp, lsp, plugins, config, projects, rename) -> the
 shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
@@ -546,9 +547,8 @@ verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `new [what it should do]`, the list's first row, and `modify <name> [what
 to change]`, which a local plugin's detail fills; the last two send the
 agent a short prompt pointing at the zemi skill's plugins.md, where the
-procedure lives. `modify` also lets auto mode edit that plugin until zemi
-exits, as an approved creating write does (§9); an installed plugin is
-refused, since the agent never writes there.
+procedure lives. `modify` refuses an installed plugin, since the agent
+never writes there.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
 `.zemi/tests/*.lua` so an agent writing one tests it without a user's session.
@@ -757,7 +757,7 @@ zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
 ```
 
 Config values from `init.lua` merge with the defaults in Go's schema.
-`zemi.config.set` is callable from user config only (past boot it is a
+`zemi.config.set` is callable from any origin (past boot it is a
 runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
 error. A value a known key's kind or choices refuse is flagged in `/errors`
 and leaves the key at what it held, so one bad line never stops the rest of
@@ -767,8 +767,6 @@ so a runtime pick (`/model`, `/effort`, `/profile`, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
-`memory.autonomy` (§10.4) is one of them, and a call that raises it from
-Lua passes the `lua.config.set` ask like any other.
 
 A runtime pick outlives the process: the global store keeps it per key as
 `config:<path>`, one row each, so two windows never lose each other's picks,
@@ -807,7 +805,7 @@ project or a plugin, so the call that adds it cannot tell.
 ```lua
 zemi.keymap.set("ctrl+t", function() zemi.notify({ body = "hi" }) end)
 zemi.keymap.set("ctrl+e", "zemi.ui.help", { desc = "help overlay" })
-zemi.keymap.del("tab")                 -- unbind (also a shipped default)
+zemi.keymap.del("ctrl+k")              -- unbind (also a shipped default)
 zemi.keymap.get("ctrl+e")              -- { key, action, desc, origin } or nil
 zemi.keymap.list()
 
@@ -886,7 +884,8 @@ also takes `"halt"` and `"rewrite"` with `input`. Each payload is a `zemi.ev.*`
 class in `runtime/types/zemi.lua`, picked by the event name through overloads
 of `zemi.event.on`.
 
-Every emission is recorded whether or not a handler exists: `zemi.event.log()` holds the
+Every emission is recorded, a vetoable one with no handler counted only:
+`zemi.event.log()` holds the
 last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`
 holds the last 100 notifications, so a widget can show what the session did.
 
@@ -913,16 +912,16 @@ otherwise return a decision table:
   pre-approve a permission (crush's `allow` does pre-approve; zemi
   deliberately diverges).
 - `permission.request`, `app.quit`, `composer.submit`:
-  `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
-  never grant.
+  `{ decision = "deny", reason = "..." }` or nil; `permission.request`
+  also takes `{ decision = "ask" }`, which runs the ask path. Lua can deny;
+  it can never grant.
 
 `tool.post` is not vetoable, but it may rewrite what the model gets. Its
 handlers run after the call, then the tool's `zemi.tool.override` `post`,
 each as a task (§4) seeing in `ev.output` the full text the one before
 left (`ev.ms` is the call's time from the gate, an ask included;
 `ev.changed` lists the files it changed). A return of `{ output = "..." }`
-replaces the output, which is then cut and spilled like any other; a
-project handler's is ignored and logged, as its `tool.pre` rewrites are.
+replaces the output, which is then cut and spilled like any other.
 One call's handlers get 30 s of wall time, waits included, each slice
 between waits the 50 ms veto deadline; esc ends them, and one that fails
 or runs late leaves the output as it was, its error in `/errors`. A
@@ -982,8 +981,9 @@ h:cancel()
 -- profile is a target too, its
 -- definition's model the slot's default that models.<name> overrides.
 -- zemi.model.add registers a slot with a model of its own, for code that runs
--- a model on a job. Anywhere a model can be named (a profile, an agent
--- definition, a workflow) a target name works too.
+-- a model on a job. A profile's or a slot's own model names a builtin role or
+-- a provider/model id; an agent definition and a workflow take a target name
+-- too.
 
 zemi.provider.add({
 	id = "myllm",
@@ -1210,7 +1210,7 @@ that is not JSON are errors, never a nearest match. The call is gated as
 `lua.classify.ask` (a plugin needs `model` in its uses) and billed to the
 live session like `zemi.model.ask`, and the provider's key is read in Go.
 
-`/goal <condition>` gives a session a finish line. The message carries abrief naming the condition, and storing it sets the goal (a `goal` row after
+`/goal <condition>` gives a session a finish line. The message carries a brief naming the condition, and storing it sets the goal (a `goal` row after
 it, with the session's spend then); only the brief `/goal` just sent counts,
 so a plugin's text, a file or a report quoting one sets nothing. After each turn that ended cleanly with
 nothing queued and no background run of the session going, the model judges
@@ -1433,8 +1433,9 @@ callback form. Host-API calls
 from Lua never open the interactive overlay: the gate settles them (§9) -
 a read-only agent's writes deny, everything else runs; only model tool
 calls surface the overlay, on the agent worker (§4). URLs go through the
-permission gate like tools do; a redirect is re-checked against the gate
-before it is followed. Subprocess
+permission gate like tools do (`lua.http.<method>`); zemi.http follows no
+redirect: the call errors and the caller requests the location header
+itself. Subprocess
 environments are the parent's whole environ: a command the model starts
 adds the non-interactive vars and points `TMPDIR` at the scratchpad;
 `zemi.job.start` appends the job's opt-in extras (`env = { ... }`,
@@ -1530,7 +1531,7 @@ UI extensibility contract:
   toward `Normal`, and
   `effect = "spin"` steps a segment's first glyph through the running
   spinner. The state marks
-  (`zemi.ui.marks`: running, done, warn, failed, stopped, waiting, ...) are
+  (`zemi.ui.marks`: spin, ok, warn, err, stop, bg, wait, thought, note) are
   one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id and the widget spec
   carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
@@ -1548,10 +1549,11 @@ UI extensibility contract:
   smuggle a sequence into the terminal. Either way a mark leads it: a braille
   spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on
   the user, `✓` or `✗` after a turn that ended while the window was unfocused,
-  until it is focused again. An idle zemi writes no title.
+  until it is focused again. With no session title yet the tab is just
+  `zemi`.
 - Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
   `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
-  `delbg`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a
+  `delbg`, `well`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a
   terminal's 16 `ansi` colors in their place, and derives the rest once in Go
   (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
   panel toward the accent, the diff tints bg toward ok and danger; the literal
@@ -1682,12 +1684,11 @@ zemi.session.messages()                -- { id, role, text, json } per stored me
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
-                                       -- new/resume/rewind: user config only
 zemi.memory.add("...", { scope = zemi.memory.scope.PROJECT, quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
 zemi.memory.list(); zemi.memory.del(id)
 zemi.learn.list()                      -- pending proposal cards
-zemi.learn.decide(id, "accept")        -- user principal only (keymap/command)
+zemi.learn.decide(id, "accept")        -- accept or reject a proposal
 zemi.skills.list(); zemi.skills.enable("local-integration")
 ```
 
@@ -1695,9 +1696,7 @@ The rest of the installed surface (`internal/hostapi/host.go` holds the
 list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
 `insert`, `submit`, `history_prev`, `history_next`, `paste`, `edit`, over
 a snapshot the UI publishes and edits it applies on its own goroutine;
-edits from user config only, since a submitted line reaches slash
-commands and `!shell` and a paste reads the clipboard; the same actions are
-`zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,
+the same actions are `zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
@@ -1716,7 +1715,7 @@ sessions(id, parent_id, title, profile, created_at, updated_at,
          prompt_tokens, completion_tokens, cache_read_tokens,
          cache_billed_tokens, cost, last_in, run_status)           -- run_status: how the session's last run ended;
                                                                   -- last_in: the context its latest step used
-messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool and turn telemetry,
+messages(id, session_id, role, parts_json, row_meta, created_at)   -- fantasy messages, tool and turn telemetry,
                                                                 -- compaction tails, goal events and chat rows
                                                                 -- (role "chat": a notice, an error, a !command)
 todos(id, session_id, content, status, active_form, ord, created_at)
@@ -1856,7 +1855,8 @@ rides the `memories.md` line and its ledger entries.
   error, the log that holds the whole traceback, and the two keys that work
   there, `c` to copy the error and `q` to quit. The
   shipped right widgets (`statusline.profile`, `model`, `effort`,
-  `context`, `cost`, `hints`) show the model, the session token tally, the
+  `context`, `cost`, `hints`) show the model, the context used against the
+  window (the session total when the window is unknown), the
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`),
   the reasoning effort, and, innermost
@@ -1974,7 +1974,7 @@ rides the `memories.md` line and its ledger entries.
   by, and an "open" row leaves its list under the screen it opens, so esc
   comes back to it (`/model`'s "Choose a model per role"). A list's action rows are
   sentence-case verb phrases above its sections, with no section of their
-  own ("Install a plugin", "Follow the chat model"); the values sit under
+  own ("Install a plugin", "Follow the default model"); the values sit under
   section headers, so an action never reads as one of them. `/` starts a
   filter on a list that opened with five rows or more; a shorter one reads at
   a glance and shows no filter row, and a rebuild keeps what it opened with,
@@ -1996,10 +1996,10 @@ rides the `memories.md` line and its ledger entries.
   nothing but it, as `/jobs view` draws it too: a call that has not answered
   yet is its command alone. A `status` field colors the status
   words every screen shares: `starting`,
-  `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
-  first file) and `off` (disabled). A list grouped by source
-  (`/skills`, `/agents`, `/workflows`) puts the user's first,
-  then builtin, plugin and project, by `lua.Origin.Rank` (`sortBySource`).
+  `ready`, `failed`, `stopped`, `needs sign-in`, `idle` (a language server waiting
+  for its first file) and `off` (disabled). A list grouped by source
+  (`/skills`, `/agents`, `/workflows`) puts the user's first, then builtin,
+  plugin and project, by `sortBySource`'s order.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
@@ -2027,7 +2027,8 @@ rides the `memories.md` line and its ledger entries.
   stage node, or the whole screen when it is under 40 columns or 8 rows; the live toasts (five at
   most) are one tray of a fixed width at the stage's top, hugging its right edge (three
   cells over it, the rest in the margin, inside the screen), newest first, a section
-  per level and title with one row per toast, each leaving when its own time runs out
+  per level and title, a toast's body cut at three rows ("… N more lines"), each
+  leaving when its own time runs out
   (4 s for info, 8 s for a warning or an error), drawn after every other layer: a
   notification is the one thing that never sits behind a box, and it never joins a border
   beside it; completion popups stand in line with
@@ -2087,7 +2088,7 @@ rides the `memories.md` line and its ledger entries.
   call, tool result, reasoning); tool output is sanitized before render
   (see below); the default chat widget maps blocks to
   lines, applies markdown rendering via glamour for assistant text
-  (cached per block id and width; a frame never re-runs glamour). The
+  (cached by style, width and text; a frame never re-runs glamour). The
   view word-wraps (the widget sets `wrap`), so long lines stay visible
   instead of truncating, and starts at its top row: a transcript shorter
   than the view leaves the blank under it. Scrollback (the scroll keys in Default
@@ -2190,7 +2191,7 @@ rides the `memories.md` line and its ledger entries.
   labels breathe, with no spinner and no clock of its own, so what a job is
   never widens the row as it runs. It
   names every handed-off agent and workflow and background job, and the
-  `Host.Busy` entries (a compaction, the idle recap, a plugin install, a boot's
+  `Host.Busy` entries (a reflection, the idle recap, a plugin install, a boot's
   MCP starts) as one part: the oldest's label, `, and N more` when more run. An empty transcript
   has no chat rows at all: the splash draws that row, on the row its block
   reserves for it. The todo block
@@ -2199,7 +2200,7 @@ rides the `memories.md` line and its ledger entries.
   saying `… N more todos` under the window and `… N more todos above` when it
   starts past it.
   The rendered view is derived from host-held blocks: the raw message JSON
-  is always in the store (and in the log), reachable via
+  is always in the store, reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it),
   so no widget can hide what the model actually received. `/messages` is the
   map of it (`alt+m`): a builtin list of turns, each opening on the rows it
@@ -2307,7 +2308,7 @@ rides the `memories.md` line and its ledger entries.
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   project trust, skills, plugins, MCP servers, language servers, reflector,
-  pending reviews, recent errors, layout, Lua runtime, and the rows Lua adds),
+  pending reviews, brain, recent errors, layout, Lua runtime, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
@@ -2352,8 +2353,8 @@ rides the `memories.md` line and its ledger entries.
   float; pulling past an edge selects to it, and a drag outside a modal
   selects nothing.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
-  overlay (diff preview for edits, command preview for shell, command
-  and env preview for job asks), and resume
+  overlay (diff preview for edits, command preview for shell and job asks),
+  and resume
   the pipeline. Concurrent ask-needing calls wait in the host: one overlay
   at a time, in arrival order; the answered box stays drawn until the next
   replaces it in place. The title asks what the call would do, built from the
@@ -2363,7 +2364,7 @@ rides the `memories.md` line and its ledger entries.
   Lua tool runs (`plugin:<name>`) and the queue ("1 of 3"), in what the
   title leaves. Under the title a facts table,
   dim names beside their values like a detail view's fields: the target (`command`,
-  `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
+  `file`, `workflow`, else `arg`), `why` zemi asked, and `says`, the
   model's own description, quoted and last since nothing checked it.
   Then the command, diff or input, then the choices, a vertical list with their
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
@@ -2432,10 +2433,11 @@ rides the `memories.md` line and its ledger entries.
   the view renders with no lock held, so a diagnostic the Lua actor writes
   never waits on a render queued behind it.
   Where stdout and stderr are both terminals and the view drew the answer,
-  stdout stays empty. An ask nobody can answer is denied (`tools.ByNobody`),
-  recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
+  stdout stays empty. An ask nobody can answer is denied
+  (`tools.ByNobody`, "permission denied (nobody): <what>: <reason>"), recorded with its
+  tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
-  it through; the model reads "no one can approve in a headless run".
+  it through; the model reads "Nobody can approve anything in this run".
 - **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
   in the order the run drew them, `done` last; a field the event's type does
   not carry is left out, every string on a line passes the same sanitize
@@ -2445,7 +2447,7 @@ rides the `memories.md` line and its ledger entries.
 
   | `type` | its fields |
   |---|---|
-  | `start` | `session`, `model`, `profile`, `mode`, `trusted`, `cwd` |
+  | `start` | `session`, `model`, `profile`, `trusted`, `cwd` |
   | `message` | `text` |
   | `reasoning` | `text`, `ms` |
   | `notice`, `compact`, `error` | `text` |
@@ -2495,7 +2497,7 @@ rides the `memories.md` line and its ledger entries.
   not security isolation, and it never parses a command to judge it. A
   run that must not touch the machine runs in a container or VM.
 - An action is everything but a read: `fs.write`, `tool.shell`,
-  `tool.lua`, `tool.workflow`, `net.<host>`, a Lua tool (`tool.<name>`),
+  `tool.lua`, `tool.workflow`, `lua.http.<method>`, a Lua tool (`tool.<name>`),
   an MCP tool its server does not mark read-only (`Read` on the request),
   `memory.write`. Reads (`fs.read`) settle on their own.
 - Subjects label the ask and the `tool.denied` event.
@@ -2600,8 +2602,8 @@ Input, in this order: the delta since the seen count (its last 120 user
 and assistant messages, each truncated to 400 runes, a compaction summary
 labeled `summary:`, every line through the shape scrubber before it leaves
 the machine) + the newest ten failed tool results, first line each, read
-from the history rows since the telemetry rows keep no text + tool-call
-stats + the instruction files the agent's prompt carries (the same trust
+from the history rows since the telemetry rows keep no text + the
+instruction files the agent's prompt carries (the same trust
 gate, 16 KiB), so the reflector can see what it must not repeat + this
 session's memories awaiting review (another session's may hold outside
 text, and this session's autonomy would store a copy) + the memory index
@@ -2786,12 +2788,12 @@ by the next startup sweep, since the session still has unseen messages.
   in the rewound turn like any other file.
 - A brain file the file tools write - write, edit, an LSP rename's
   secondary targets - is an ordinary write, and so is Lua's
-  `zemi.fs.write`: both pass the same gates. The reserved `memories.md`
-  carries its own reason, "the memory tool owns this file", with the file's open lint
-  findings named in the ask. Once approved the write gets the recipe
+  `zemi.fs.write`: both pass the same gates, and the ask carries no reason
+  of its own. Once approved the write gets the recipe
   treatment: the secret scrub runs after the write, the instruction-shape
   check is a lint finding, not a rewrite (dropping content the user
-  approved is the review queue's job), and a scrubbed `memories.md` writes
+  approved is the review queue's job), the write's result names the file's
+  open lint findings, and a scrubbed `memories.md` writes
   its edit entries under the partition lock, so the ledger's hash trail
   stays honest.
 
@@ -2963,12 +2965,11 @@ skills index, or the untrusted-content framing.
   relocates an attested line into a brain file of its own partition), the
   skills dir.
   Anything else is a normal tool call under normal permissions.
-- Only user config changes `memory.autonomy`; no Lua path skips a gate.
-  `ask` queues what the model or the reflector propose for /memory;
+- `memory.autonomy`: `ask` queues what the model or the reflector propose for /memory;
   `auto` stores it, and never drops a memory the user saved (§10.4).
 
 Most lines are enforced in code, not by prompt: the intake policy (§10.4),
-the host-only proposal channel (§10.3), the user-only config.set
+the host-only proposal channel (§10.3), the schema's checks on config.set
 (§6.1), and the reflector's tool-less model call (§10.3). The homes line
 rests on the memory tool's channel plus the model's instructions: a brain
 write is the memory tool's file mode or an approved file-tool write, and

@@ -22,8 +22,9 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - After a merge to main, boot the merged binary once with `zemi-safe <tree> health`, the tree holding copies of `~/.config/zemi` and `~/.local/state/zemi`: `make check` cannot see a user's data.
 
 - Parallel workers in worktrees: never `git stash` (the stash is shared by every worktree of
-  the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display
-  diff tool that `git apply` cannot read). When copying state for a boot check, leave out
+  the repo), and write patch files with `git diff --no-ext-diff` (a display
+  diff tool that `git apply` cannot read: it is `diff.external` in the machine's global
+  `~/.gitconfig`, not this repo's). When copying state for a boot check, leave out
   `scratch` and `tmp`, which run to gigabytes.
 
 ## Prompt cache
@@ -33,7 +34,7 @@ Anything in the prefix that varies per request busts the provider cache for the 
 ## Tests that will not flake
 
 - Never synchronize on `time.Sleep`; wait on a channel, `waitIdle`, a hook or an observable state. A sleep fails under load or makes the assertion vacuous.
-- A test's budget measures work, never the clock: CPU time (`TestSendPrepCheap`, the snapshot cutoff); "returned before its deadline" is `ctx.Err() == nil` after the call. A wall-clock slice in the product gets a floor that holds on any machine, bounded by what it draws rather than by the data, and its test runs on a clock always past the slice (`TestColdChatRender`'s `lagClock`). A limit a case must wait out is short only in that case (`TestPluginsTest`'s `hangs`).
+- A test's budget measures work, never the clock: CPU time (`TestSendPrepCheap`); "returned before its deadline" is `ctx.Err() == nil` after the call. A wall-clock slice in the product gets a floor that holds on any machine, bounded by what it draws rather than by the data, and its test runs on a clock always past the slice (`TestColdChatRender`'s `lagClock`). A limit a case must wait out is short only in that case (`TestPluginsTest`'s `hangs`).
 - Pure timer logic (watchdog, idle model, priority queues) runs under `testing/synctest`. It does not fit child processes, ptys, sockets, or a Host booted outside the bubble, whose Lua actor and `database/sql` goroutines never go idle.
 - `t.Parallel()` on slow process-driven tests (LSP, plugin test boots) more than halves the hostapi run. It is safe only with no `t.Setenv`, `t.Chdir`, package globals or shared ports.
 - Boot-time goroutines (the `git status` warm-up, MCP start) capture what they read by value; a test that mutates `h.Dirs` after boot races them.
@@ -56,7 +57,7 @@ Anything in the prefix that varies per request busts the provider cache for the 
 - The Lua API surface is pinned by `TestTypesCoverAPI`, `TestTypesDeclareNothingExtra` and `TestTypesEnums` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
 - Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
   units (the gate in tools, learn intake, store) get table tests.
-- Skills tests: `newTestHostSkills(t)` boots namespaces + skills steps;
+- Skills tests: `newTestHostSkills(t)` boots the namespaces step, which syncs skills;
   `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting - every `Boot` builds a fresh
   generation, so steps sharing state must be passed in ONE call.
 - Agent-turn tests stub the model with `reflectStub` and wait with `waitIdle`. End to end,

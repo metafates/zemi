@@ -9,8 +9,8 @@ description: "Load before changing the TUI or anything the user sees: internal/u
 
 `zemi.ui.layout.set` hands Go a layout table; `parseLayout` validates it into immutable
 `hostapi.Layout` data (no closures) behind an atomic pointer `compose` reads every frame, so
-drawing never waits on Lua. The shipped `tui/layout.lua` sets the default, user config
-may replace it, lower origins are refused. A reload keeps the old layout drawn (the spec is
+drawing never waits on Lua. The shipped `tui/layout.lua` sets the default and any origin's
+later `set` replaces it: the last one wins. A reload keeps the old layout drawn (the spec is
 plain data, safe across generations); `ForceReload` drops one the replay did not set again and
 `DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
 cells, percent, content and weighted fill, takes cells back from fill first when they do not
@@ -93,9 +93,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   keeping the place, and `cancelOverlay` puts the chat back on the mark its state took when it
   opened (`followMark`, focus included).
   Opening the id of an open overlay replaces it in place
-  (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
+  (`replaceOverlay`, keeping the filter and the selection on its row; no origin check), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
-  screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only; a
+  screen's list-level key runs a command (`OverlayKey.Run`, whatever opened the list; a
   `Danger` one on its second press, a refresh keeping the first and a click or a wheel
   dropping it), or with neither command nor fn names the rows' action of that hotkey for the
   footer, and a `Wide` box takes `boxInner`'s width whatever opened it (the workflow
@@ -131,7 +131,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
   (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start,
-  the idle recap, a compaction round) holds a `Host.Busy` entry: `ctx.busy` is the list of
+  the idle recap) holds a `Host.Busy` entry: `ctx.busy` is the list of
   them, newest first, the chat's pending row names the oldest as one part (`and N more`
   when more run), the working rule draws
   `ctx.busy[1]`, and the same double esc
@@ -156,7 +156,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   project file via `hostapi.AttachLabel`: an `@<path>` reference the user can go on editing,
   which the completion picks up again. A file from outside the project zemi copies in becomes
   `[Image <name>]` or `[File <name>]`, the kind read from the extension, the name the copy's
-  own basename, capped at 60 cells; a name the project root already holds is refused, a
+  own basename, capped at 60 runes; a name the project root already holds is refused, a
   directory or a binary or oversized file keeps its quoted path,
   and a
   clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. A project path an `@` word

@@ -46,10 +46,10 @@
 | --- | --- |
 | "no model yet", or `/model` shows "No models yet" | no key exported (zemi reads keys at start: export, then start zemi again) and no provider in init.lua, or init.lua failed before `zemi.provider.add` (the `errors` pill, `/errors` has why); `/model` lists the builtin providers with their variables, `config.md` has `zemi.provider.add` |
 | 401 / unauthorized | the provider's key is empty or wrong: the exported builtin key, or the variable read with `zemi.env.get`, is not right in the shell that started zemi |
-| "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
+| "next try in Xs" / "retrying now" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | `boot failed` on a plain, colorless screen | zemi's own Lua layer did not load (a broken install or a bug; user config, plugins and the project can never cause this: a failure there shows the `errors` pill and zemi boots on); `c` in the box copies the error for a report, the log the box names has the whole traceback |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
-| "does not take images; going on without them" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
+| "Images left out" toast, "`<model>` takes no images; vision = false on its model entry skips this" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry |
 | project `.agents/` config, AGENTS.md or language servers ignored | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root (`/projects` lists them and forgets one); a linked worktree uses its main checkout's |
 | every action denied and no prompt appears | the agent is read-only (`read_only: true` on its profile): it may not change anything. Give the work to an agent that may act |
@@ -61,7 +61,7 @@
 | a script's `zemi run` log is full of chat rows | stderr shows the run as the chat draws it; `-q` keeps it to what went wrong, and stdout has only the answer |
 | one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
 | a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/.zemi/` or `local/<name>/.zemi/` (a library-only plugin has just `.zemi/lua/`), or its name is in `<data>/plugins/disabled` |
-| a plugin is refused in `/errors` with "its Lua is at the plugin root" | the plugin predates the `.zemi/` layout: move its `init.lua`, `lua/`, `tests/` and `workflows/` under `.zemi/` |
+| a plugin is refused in `/errors` with "`<name>` is at the plugin root, where zemi no longer loads it" | the plugin predates the `.zemi/` layout: move its `init.lua`, `lua/`, `tests/` and `workflows/` under `.zemi/` |
 | `... is registered by plugin x, not y` | two plugins want one command, key, widget, theme, event handler id, tool, completion source or health row, or y tried to remove x's; the first by name keeps it |
 
 ## Stores

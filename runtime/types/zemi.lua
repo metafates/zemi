@@ -700,8 +700,8 @@ function zemi.event.emit(name, payload) end
 ---@field at string "15:04:05".
 ---@field ts number Unix seconds.
 
---- Recent events newest first, each the table its handlers saw (or would
---- have: events are logged whether or not anything listens), the last 500.
+--- Recent events newest first, each the table its handlers saw (a vetoable
+--- event nobody listens to is counted but never logged), the last 500.
 --- The streaming deltas are counted in stats only.
 ---@param opts? zemi.EventLogOpts
 ---@return zemi.EventLogEntry[]
@@ -1006,7 +1006,7 @@ function zemi.event.stats() end
 ---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail
 ---@field keys? zemi.OverlayItemKey[] what acts on the row: a character each, run on it from the list, and named in the footer of its view
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
----@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
+---@field run? string a command line such as "mcp restart gitlab" (ignored while the overlay has an on_select)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
 ---@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another: "open" (a screen of its own), "pick" (a value), "run" (a command), "toggle", "fill", "copy" or "stop"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 ---@field anchor? integer The transcript row this one stands for, counted as `ctx.transcript` is (1-based); a list with `follow` set scrolls the chat here when the row is selected.
@@ -1699,7 +1699,7 @@ function zemi.model.list() end
 
 ---@class zemi.ModelTargetSpec
 ---@field desc string What `/model roles` shows for the slot.
----@field model? zemi.ModelTarget|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows chat.
+---@field model? zemi.ModelTarget|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows models.default.
 ---@field classify? boolean true for a slot `zemi.classify.ask` runs on: `/model <slot>` then offers the decisions models beside the chat ones.
 
 --- Register a model slot of its own, for code that runs a model on a job and
@@ -1723,7 +1723,7 @@ function zemi.model.add(name, spec) end
 function zemi.model.del(name) end
 
 --- Switch the model the conversation runs on: the active profile's slot when
---- it has one, else models.chat. Raises for a provider nobody registered; an
+--- it has one, else models.default. Raises for a provider nobody registered; an
 --- id the provider does not list is taken and warned about. A call made after
 --- boot is kept for later starts, like
 --- `zemi.config.set`. An explicitly named target is plain config:
@@ -2349,9 +2349,9 @@ function zemi.fs.stat(path) end
 ---@return boolean
 function zemi.fs.exists(path) end
 
---- `<data>/lua/<name>`, where config code keeps its files: accepted by
---- `zemi.ui.edit` for user config only, and outside the config tree, so a
---- write never reloads the config. Reads
+--- `<data>/lua/<name>`, where config code keeps its files: outside the config
+--- tree, so a write never reloads the config, and `zemi.ui.edit` opens it
+--- through the `lua.fs.read` gate like any other path. Reads
 --- settle; a write takes the `lua.fs.write` gate, which never opens the
 --- overlay - a plugin's declared `fs.write` settles its own, and a
 --- read-only run's write is denied. Nothing is created:

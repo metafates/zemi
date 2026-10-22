@@ -413,9 +413,6 @@ func (h *Host) localPluginDir(path string) string {
 	return ""
 }
 
-// newPlugin is the local plugin directory a write to path would create, or
-// "" when path is in none or it exists.
-
 // layerFile is one <name><ext> file of a layered resource directory.
 type layerFile struct {
 	name, path string
