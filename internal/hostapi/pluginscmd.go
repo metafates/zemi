@@ -356,10 +356,7 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 		return
 	}
 	for _, m := range ms {
-		count := fmt.Sprintf("%d plugin", len(m.Entries))
-		if len(m.Entries) != 1 {
-			count += "s"
-		}
+		count := pluginCount(len(m.Entries))
 		// the source lives on the drill-down's info row, where it fits
 		desc := count
 		if m.Err != "" {
@@ -395,7 +392,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	}
 	installed := plugin.InstalledEntries(h.Dirs, name)
 	items := []OverlayItem{{
-		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %d plugins", m.Added.Format(time.DateOnly), len(m.Entries)),
+		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %s", m.Added.Format(time.DateOnly), pluginCount(len(m.Entries))),
 		Section: "Marketplace",
 		Keys: []ItemKey{
 			{Key: "u", Desc: "update", Run: "plugin marketplace update " + name},
@@ -466,6 +463,14 @@ func (h *Host) openMarketplace(ui UIHooks, name string) {
 		Items: h.marketplaceItemsOf(name), Reload: func() []OverlayItem { return h.marketplaceItemsOf(name) },
 		BodyMD: true,
 	})
+}
+
+// pluginCount is a marketplace's entry count as a row says it.
+func pluginCount(n int) string {
+	if n == 1 {
+		return "1 plugin"
+	}
+	return fmt.Sprintf("%d plugins", n)
 }
 
 // cutLine is a description's first line, cut where a row's desc stops being

@@ -17,7 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
-// TestGoldenPlugins pins /plugins: the list sectioned by source with a failed
+// TestGoldenPlugins pins /plugin: the list sectioned by source with a failed
 // local plugin and an installed one behind its latest tag, an installed
 // plugin's detail, and the list rebuilt by a reload that fixed the failure.
 func TestGoldenPlugins(t *testing.T) {
