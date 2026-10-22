@@ -426,10 +426,10 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 // row. It is always drawn behind a fixed label column and cut to the field's
 // width, so focusing it, moving the highlight or typing shifts nothing.
 func (st *qState) field(q tools.Question, w int) []hostapi.Segment {
-	name, text := "Note", []hostapi.Segment{{Text: "add a note", HL: hostapi.ChromeHint}}
+	name, text := "note", []hostapi.Segment{{Text: "add a note", HL: hostapi.ChromeHint}}
 	tail := st.sel == len(q.Options)
 	if tail {
-		name, text = "Answer", []hostapi.Segment{{Text: "type to answer", HL: hostapi.ChromeHint}}
+		name, text = "answer", []hostapi.Segment{{Text: "type to answer", HL: hostapi.ChromeHint}}
 	}
 	if s := strings.Join(strings.Fields(st.input.text), " "); s != "" {
 		text = []hostapi.Segment{{Text: s, HL: hostapi.ChromeValue}}
