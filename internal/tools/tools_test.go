@@ -1084,22 +1084,6 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	}
 }
 
-func TestFindSymbol(t *testing.T) {
-	text := "import \"net/http\"\nr, _ := http.Get(u)\n"
-	for _, c := range []struct {
-		name, at string
-		line     int
-	}{
-		{"http", "http.Get(u)", 2},
-		{"http.Get", "Get(u)", 0},
-	} {
-		off, _, err := findSymbol(text, c.name, c.line)
-		if err != nil || !strings.HasPrefix(text[off:], c.at) {
-			t.Errorf("%s: at %q, %v", c.name, text[off:], err)
-		}
-	}
-}
-
 func TestChangeDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.go")
 	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {

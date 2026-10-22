@@ -18,13 +18,13 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestLSPDiagnostics: a server added from Lua reports on files the write
-// tool changes, and the diagnostics tool reads them back.
+// tool changes.
 func TestLSPDiagnostics(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T) (*Host, func(tool, name, content string) string) {
@@ -55,11 +55,9 @@ func TestLSPDiagnostics(t *testing.T) {
 		h, run := setup(t)
 		for _, c := range []struct{ tool, name, content, want string }{
 			{"write", "a.txt", "ok\nBROKEN", "error a.txt:2:1: broken"},
-			{"diagnostics", "a.txt", "", `<diagnostics source="fake">`},
 			{"write", "a.txt", "fixed", "fake reports no errors in a.txt"},
 			{"write", "b.txt", "BROKEN", "error b.txt:1:1"},
 			{"write", "a.txt", "still fine", "errors in other files (a caller this change broke, or already broken):\nerror b.txt:1:1: broken"},
-			{"diagnostics", "b.zzz", "", "no language server for .zzz"},
 		} {
 			if got := run(c.tool, c.name, c.content); !strings.Contains(got, c.want) {
 				t.Fatalf("%s %s = %q, want %q", c.tool, c.name, got, c.want)
@@ -89,68 +87,6 @@ func TestLSPDiagnostics(t *testing.T) {
 	}
 }
 
-// TestLSPTool: symbols, definition, references and rename go through the
-// file's server by symbol name; rename writes every file the server names.
-func TestLSPTool(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	defer func() { h.lsp.stopAll()() }()
-	h.SetProjectTrusted(true)
-	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
-	var tool fantasy.AgentTool
-	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name == "lsp" {
-			tool = tl
-		}
-	}
-	a, b := filepath.Join(h.Dirs.ProjectDir, "a.txt"), filepath.Join(h.Dirs.ProjectDir, "b.txt")
-	os.WriteFile(a, []byte("func Foo()\nFoo()\nfunc Bar()\n"), 0o644)
-	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
-	run := func(input string) string {
-		t.Helper()
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: input})
-		if err != nil {
-			t.Fatal(err)
-		}
-		// paths come back relative to the process working directory, which
-		// is not the temp project here; the tool opens what it resolved
-		return strings.ReplaceAll(resp.Content, perm.RealPath(h.Dirs.ProjectDir)+string(filepath.Separator), "")
-	}
-	// references list both lines, so no note names them again
-	if got := run(fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)); strings.Contains(got, "pass line") || !strings.Contains(got, "a.txt:2:1") {
-		t.Fatalf("references repeat the lines they list: %q", got)
-	}
-	for _, c := range []struct{ input, want string }{
-		{fmt.Sprintf(`{"action":"symbols","path":%q}`, a), "function Foo  lines 1-2\nfunction Bar  lines 3-4"},
-		{fmt.Sprintf(`{"action":"definition","path":%q,"symbol":"Foo","line":2}`, a), "a.txt:1:6: func Foo()"},
-		{fmt.Sprintf(`{"action":"definition","path":%q,"symbol":"Foo"}`, a), "also appears on line 2: pass line"},
-		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, b), "3 references\na.txt:1:6: func Foo()\na.txt:2:1: Foo()\nb.txt:1:6: x := Foo()"},
-		{fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Nope"}`, b), "does not appear"},
-		{fmt.Sprintf(`{"action":"implementation","path":%q,"symbol":"Foo","line":2}`, a), "a.txt:1:6: func Foo()"},
-		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Ba"}`, b), "function Bar  a.txt:3"},
-		{fmt.Sprintf(`{"action":"workspace_symbols","path":%q,"symbol":"Nope"}`, b), "no symbol matching Nope"},
-		{fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Foo","new_name":"Baz"}`, b), "renamed Foo to Baz in 2 files, 3 places"},
-	} {
-		if got := run(c.input); !strings.Contains(got, c.want) {
-			t.Fatalf("%s = %q, want %q", c.input, got, c.want)
-		}
-	}
-	if got, _ := os.ReadFile(a); string(got) != "func Baz()\nBaz()\nfunc Bar()\n" {
-		t.Fatalf("a.txt after rename: %q", got)
-	}
-	if got, _ := os.ReadFile(b); string(got) != "x := Baz()\n" {
-		t.Fatalf("b.txt after rename: %q", got)
-	}
-	// renaming straight back must see the files the first rename rewrote,
-	// not the text the server was sent before it
-	if got := run(fmt.Sprintf(`{"action":"rename","path":%q,"symbol":"Baz","new_name":"Foo"}`, b)); !strings.Contains(got, "renamed Baz to Foo in 2 files, 3 places") {
-		t.Fatalf("reverse rename = %q", got)
-	}
-	if got, _ := os.ReadFile(a); string(got) != "func Foo()\nFoo()\nfunc Bar()\n" {
-		t.Fatalf("a.txt after the reverse rename: %q", got)
-	}
-}
-
 // TestLSPConfig: user config replaces a builtin by name with its own args
 // and settings, disables one, and list shows what the project can use.
 func TestLSPConfig(t *testing.T) {
@@ -165,24 +101,7 @@ func TestLSPConfig(t *testing.T) {
 	if defs := h.lspDefs(""); len(defs) != 0 {
 		t.Fatalf("an untrusted project starts servers the user added: %+v", defs)
 	}
-	// with no server to talk to, the model does not carry their schemas
-	lspTools := func() int {
-		n := 0
-		toolset, _ := h.profileTools(nil)
-		for _, tl := range toolset {
-			if name := tl.Info().Name; name == "lsp" || name == "diagnostics" {
-				n++
-			}
-		}
-		return n
-	}
-	if n := lspTools(); n != 0 {
-		t.Fatalf("%d language server tools where none can start", n)
-	}
 	h.SetProjectTrusted(true)
-	if n := lspTools(); n != 2 {
-		t.Fatalf("language server tools with a server configured = %d", n)
-	}
 	defs := h.lspDefs("")
 	if len(defs) != 1 || defs[0].Name != "gopls" || defs[0].Command != "gopls-wrapper" {
 		t.Fatalf("defs = %+v", defs)
@@ -399,9 +318,9 @@ func TestLSPRealLuaLS(t *testing.T) {
 	// started indexes the project first, so ask until it publishes
 	var got string
 	waitFor(t, func() error {
-		out, err := h.lspDiagnostics(bad)
-		if err != nil {
-			return err
+		out, ok := h.lspCheck(bad, false)
+		if !ok {
+			return errors.New("no diagnostics yet")
 		}
 		if !strings.Contains(out, "error ") || !strings.Contains(out, "region") {
 			return fmt.Errorf("the planted spec: %q", out)
@@ -412,7 +331,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 	// an edit that leaves the error as it was gets no new publish
 	spec, _ := os.ReadFile(bad)
 	os.WriteFile(bad, append(spec, "-- still broken\n"...), 0o644)
-	if again, _ := h.lspDiagnostics(bad); again != got {
+	if again, _ := h.lspCheck(bad, false); again != got {
 		t.Fatalf("after an edit that kept the error: %q, want %q", again, got)
 	}
 	err := filepath.WalkDir(plugin, func(p string, d fs.DirEntry, err error) error {
@@ -420,7 +339,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 			return err
 		}
 		// a file it finds nothing in it publishes nothing for, which reads as no answer
-		if got, _ := h.lspDiagnostics(p); strings.Contains(got, "error ") {
+		if got, _ := h.lspCheck(p, false); strings.Contains(got, "error ") {
 			t.Errorf("%s: %q", p, got)
 		}
 		return nil
@@ -456,24 +375,8 @@ func TestLSPSyncFromGit(t *testing.T) {
 	}
 	git("init", "-q")
 	commit("init", "--allow-empty")
-	var tool fantasy.AgentTool
-	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name == "lsp" {
-			tool = tl
-		}
-	}
 	a := filepath.Join(dir, "a.txt")
 	os.WriteFile(a, []byte("func Foo()\nFoo()\n"), 0o644)
-	refs := func() string {
-		t.Helper()
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, a)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		// paths come back relative to the process working directory, which
-		// is not the temp project here; the tool opens what it resolved
-		return strings.SplitN(resp.Content, "\n", 2)[0]
-	}
 	// the server starts here, and a roundtrip puts its watcher registration
 	// ahead of the sync, whose dropped events are never replayed
 	def, ok := h.lspFor(a)
@@ -498,6 +401,22 @@ func TestLSPSyncFromGit(t *testing.T) {
 	}
 	if events == 0 {
 		t.Fatal("the first sync emitted nothing for the listing")
+	}
+	// a query's check syncs the tree, and the reference count reads back
+	// what text the server holds: the word Foo sits on a.txt's second line
+	refs := func() string {
+		t.Helper()
+		if _, ok := h.lspCheck(a, false); !ok {
+			t.Fatal("the check answered nothing")
+		}
+		var locs []lsp.Location
+		if err := p.client.Call(t.Context(), "textDocument/references", map[string]any{
+			"textDocument": map[string]any{"uri": p.client.URI(a)},
+			"position":     map[string]any{"line": 1, "character": 0},
+		}, &locs); err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprintf("%d references", len(locs))
 	}
 	if got := refs(); got != "3 references" {
 		t.Fatalf("first sync: %q", got)
@@ -592,19 +511,29 @@ func TestLSPSyncWithoutRepo(t *testing.T) {
 	os.WriteFile(filepath.Join(cfg, ".git", "objects", "a.lua"), []byte("Foo()\n"), 0o644)
 	init := filepath.Join(cfg, "init.lua")
 	os.WriteFile(init, []byte("func Foo()\nFoo()\n"), 0o644)
-	var tool fantasy.AgentTool
-	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name == "lsp" {
-			tool = tl
-		}
+	def, ok := h.lspFor(init)
+	if !ok {
+		t.Fatal("no server for init.lua")
 	}
+	p, err := h.lspClient(t.Context(), def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the query's check syncs the tree, and the reference count reads back
+	// what text the server holds: Foo sits on init.lua's second line
 	refs := func() string {
 		t.Helper()
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lsp", Input: fmt.Sprintf(`{"action":"references","path":%q,"symbol":"Foo"}`, init)})
-		if err != nil {
+		if _, ok := h.lspCheck(init, false); !ok {
+			t.Fatal("the check answered nothing")
+		}
+		var locs []lsp.Location
+		if err := p.client.Call(t.Context(), "textDocument/references", map[string]any{
+			"textDocument": map[string]any{"uri": p.client.URI(init)},
+			"position":     map[string]any{"line": 1, "character": 0},
+		}, &locs); err != nil {
 			t.Fatal(err)
 		}
-		return strings.SplitN(resp.Content, "\n", 2)[0]
+		return fmt.Sprintf("%d references", len(locs))
 	}
 	// the query that starts the server also walks the tree it is rooted at
 	if got := refs(); got != "2 references" {

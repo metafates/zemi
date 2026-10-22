@@ -23,7 +23,6 @@ import (
 	"charm.land/fantasy"
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
@@ -48,8 +47,6 @@ const (
 	ToolJobList     = "job_list"
 	ToolJobKill     = "job_kill"
 	ToolMemory      = "memory"
-	ToolDiagnostics = "diagnostics"
-	ToolLSP         = "lsp"
 	// Host tools built by the host, not here, but named by the same rule.
 	ToolAgent    = "agent"
 	ToolWorkflow = "workflow"
@@ -248,13 +245,6 @@ type Pipeline struct {
 	// the file (a recipe's scrub); nil = nothing.
 	AfterWrite func(path string) string
 
-	// Diagnostics backs the diagnostics tool; nil = unavailable.
-	Diagnostics func(path string) (string, error)
-
-	// LSP returns the language server covering path, with the file synced
-	// to it; nil = no lsp tool support.
-	LSP func(ctx context.Context, path string) (LSPSession, error)
-
 	// Denied reports a call the gate refused (the tool.denied event); nil
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
@@ -288,15 +278,6 @@ type Pipeline struct {
 
 	// changed is what a shell run found changed, kept on its per-run copy for post
 	changed []string
-}
-
-// LSPSession is a language server ready for one file's queries.
-type LSPSession struct {
-	Client *lsp.Client
-	Server string
-	// Open sends a file's text from disk to the server, so edits the tool
-	// made to other files are seen before the next query.
-	Open func(path string) error
 }
 
 // PathSubject reports a subject whose argument is a file path.
@@ -759,11 +740,6 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 	return t
 }
 
-// diagnosticsArgs is the diagnostics tool's input and its schema source.
-type diagnosticsArgs struct {
-	Path string `json:"path"`
-}
-
 // All returns the builtin tools bound to a pipeline; nil gives their schemas.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, args any,
@@ -887,23 +863,6 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			MemoryCall{},
 			nil,
 			typed(runMemory)),
-
-		gated(mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
-			true,
-			diagnosticsArgs{},
-			pathReq(perm.SubjectRead, pathIn, "read diagnostics"),
-			typed(func(_ context.Context, p *Pipeline, _ diagnosticsArgs) (fantasy.ToolResponse, error) {
-				if p.Diagnostics == nil {
-					return fantasy.NewTextErrorResponse("diagnostics unavailable"), nil
-				}
-				out, err := p.Diagnostics(p.Path.String())
-				if err != nil {
-					return fantasy.NewTextErrorResponse(err.Error()), nil
-				}
-				return fantasy.NewTextResponse(out), nil
-			}))),
-
-		gated(mk(ToolLSP, lspToolDesc, false, lspArgs{}, lspRequests, typed(runLSP))),
 
 		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone, and not for a skill already loaded.",
 			true,

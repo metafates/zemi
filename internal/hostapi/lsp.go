@@ -1,9 +1,9 @@
 // lsp.go feeds language server diagnostics to the model: after write or
-// edit changes a file, its server's errors are appended to the tool result,
-// and the diagnostics tool checks any file. Servers start lazily on the
-// first matching file: the builtin set when its binary is installed and the
-// project has its marker file (lsp.auto), plus servers user config adds with
-// zemi.lsp.add, and lua-language-server for zemi's own Lua (zemiLua).
+// edit changes a file, its server's errors are appended to the tool result.
+// Servers start lazily on the first matching file: the builtin set when its
+// binary is installed and the project has its marker file (lsp.auto), plus
+// servers user config adds with zemi.lsp.add, and lua-language-server for
+// zemi's own Lua (zemiLua).
 
 package hostapi
 
@@ -348,7 +348,7 @@ func globalTSServer(root string) string {
 var lspQuietTool = set.Of(
 	tools.ToolRead, tools.ToolWrite, tools.ToolEdit,
 	tools.ToolGlob, tools.ToolGrep, tools.ToolTodos, tools.ToolPlan, tools.ToolQuestion,
-	tools.ToolSkill, tools.ToolLSP, tools.ToolDiagnostics, tools.ToolJobList,
+	tools.ToolSkill, tools.ToolJobList,
 	tools.ToolMemory,
 )
 
@@ -653,8 +653,8 @@ func languageID(path string) string {
 // lspCheck formats a file's diagnostics; ok is false when no server covers
 // it or it did not answer. After a write it reports errors only (plus the
 // errors the change caused in other files) on a short budget and syncs the
-// tree in the background, since a turn must not wait on git for advice; the
-// diagnostics tool waits, and reports warnings too.
+// tree in the background, since a turn must not wait on git for advice; a
+// query waits out a longer budget and reports warnings too.
 func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -736,46 +736,14 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	return fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
 }
 
-// lspOpen backs the lsp tool: the server for path with the file synced.
-func (h *Host) lspOpen(ctx context.Context, path string) (tools.LSPSession, error) {
-	def, ok := h.lspFor(path)
-	if !ok {
-		return tools.LSPSession{}, h.noLSP(path)
-	}
-	p, err := h.lspClient(ctx, def)
-	if err != nil {
-		return tools.LSPSession{}, err
-	}
-	h.lspSync(true)
-	h.EmitAsync(EventLSPRequest, map[string]any{"server": def.Name, "path": path, "kind": "tool"})
-	open := func(path string) error { return p.client.Open(path, languageID(path)) }
-	if err := open(path); err != nil {
-		return tools.LSPSession{}, err
-	}
-	return tools.LSPSession{Client: p.client, Server: def.Name, Open: open}, nil
-}
-
 // lspAfterWrite is the pipeline's AfterWrite hook: errors for the file just
-// changed. The diagnostics tool is there for a slow server.
+// changed. A server that answers nothing within the budget appends nothing,
+// and the next write checks again.
 func (h *Host) lspAfterWrite(path string) string {
 	if out, ok := h.lspCheck(path, true); ok {
 		return "\n\n" + out
 	}
 	return ""
-}
-
-// lspDiagnostics backs the diagnostics tool.
-func (h *Host) lspDiagnostics(path string) (string, error) {
-	if out, ok := h.lspCheck(path, false); ok {
-		return out, nil
-	}
-	def, ok := h.lspFor(path)
-	if !ok {
-		return "", h.noLSP(path)
-	}
-	// a server that just started indexes before it publishes anything: the
-	// next call finds the diagnostics, a shell sleep only spends a turn
-	return "", fmt.Errorf("%s has published nothing for %s yet: a server that just started indexes the project first, so ask again in a few seconds instead of waiting in a shell command", def.Name, path)
 }
 
 // noLSP says why path (or, when "", the project) has no language server.
