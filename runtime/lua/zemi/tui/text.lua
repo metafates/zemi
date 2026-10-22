@@ -180,6 +180,8 @@ M.COUNT = {
 	glob = { "searched for", "pattern", "patterns" },
 	grep = { "searched for", "pattern", "patterns" },
 	shell = { "ran", "command", "commands" },
+	edit = { "edited", "edit", "edits" },
+	write = { "wrote", "write", "writes" },
 	skill = { "loaded", "skill", "skills" },
 	memory = { "saved", "memory", "memories" },
 	diagnostics = { "checked", "file", "files" },
@@ -217,13 +219,22 @@ end
 ---@return string
 function M.tool(t) return t.tool or t.name or "?" end
 
---- Whether a call folds into its turn's digest: a family counts it, it went
---- well and it shows no diff of its own (a command's diff is news).
+-- The tools whose diff is news rather than their work: a command's change is
+-- news, an edit's is its own.
+local NEWS = { shell = true }
+
+-- Whether a call counts: a family counts it and it went well.
+local function counted(t) return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil end
+
+-- Whether a call folds into its turn's digest: it counts, and its diff is
+-- its own work or there is none; a command's diff is news.
+local function digests(t) return counted(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)]) end
+
+--- Whether a call only looked around and reads as its step's row: it counts
+--- and shows no diff of its own.
 ---@param t zemi.TranscriptRow|zemi.ToolCall
 ---@return boolean
-function M.looks(t)
-	return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil and (t.diff or "") == ""
-end
+function M.looks(t) return counted(t) and (t.diff or "") == "" end
 
 --- Calls counted by noun, first seen first: "2 files, 1 command". With verb,
 --- each part is led by what the calls did: "read 2 files". commands are the
@@ -284,7 +295,7 @@ function M.digest(rows, first, last)
 		local m = rows[i]
 		if m.kind == "reasoning" then
 			secs = secs + (m.thought or 0)
-		elseif M.looks(m) then
+		elseif digests(m) then
 			calls[#calls + 1] = m
 		end
 	end

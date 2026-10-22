@@ -687,6 +687,12 @@ func TestTurnStats(t *testing.T) {
 		}
 		return out[:len(out)-4] // the composer and the statusline row
 	}
+	click := func(id string) []string {
+		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
+			t.Fatal(err)
+		}
+		return rows()
+	}
 	host.AppendMessage("user", "fix it")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1,2 +1,2 @@\n-old\n+new\n keep"})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "b.go", Status: "ok", Diff: "--- b.go\n+++ b.go\n@@ -1 +1 @@\n-x\n+y"})
@@ -697,13 +703,17 @@ func TestTurnStats(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.AgentStream()
 	ended := rows()
+	if !slices.Contains(ended, "· 2 edits") {
+		t.Fatalf("the run of edits does not fold into its digest:\n%s", strings.Join(ended, "\n"))
+	}
+	open := click("turn:2")
 	for _, want := range []string{"│ ✓ edit a.go +1 -1", "│ ✓ edit b.go +1 -1"} {
-		if !slices.Contains(ended, want) {
-			t.Fatalf("missing %q, each call counts its own:\n%s", want, strings.Join(ended, "\n"))
+		if !slices.Contains(open, want) {
+			t.Fatalf("missing %q, each call counts its own:\n%s", want, strings.Join(open, "\n"))
 		}
 	}
-	if slices.ContainsFunc(ended, func(r string) bool { return strings.Contains(r, "+2") || strings.Contains(r, "-2") }) {
-		t.Fatalf("a summed diff shows:\n%s", strings.Join(ended, "\n"))
+	if slices.ContainsFunc(open, func(r string) bool { return strings.Contains(r, "+2") || strings.Contains(r, "-2") }) {
+		t.Fatalf("a summed diff shows:\n%s", strings.Join(open, "\n"))
 	}
 	if n := strings.Count(strings.Join(ended, "\n"), "0.9s"); n != 0 {
 		t.Fatalf("a sentence between runs carries a readout:\n%s", strings.Join(ended, "\n"))
@@ -1833,7 +1843,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	// the reply closes that run as it streams, before its row settles
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "now the next one"})
-	closed := []string{"▌ look around", "· 2 files, 1 command · thought 9.6s", "now the next one"}
+	closed := []string{"▌ look around", "· 2 files, 1 command, 1 edit · thought 9.6s", "now the next one"}
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}

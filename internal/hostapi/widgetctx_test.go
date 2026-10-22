@@ -224,9 +224,9 @@ func TestPrintedRender(t *testing.T) {
 			t.Errorf("%s:\n%s", c.name, got)
 		}
 	}
-	// a run holding neither a look-around call nor a thought has no digest: its
+	// a run holding neither a counted call nor a thought has no digest: its
 	// rail is all there is to draw
-	h.setTranscript("t", []ChatMessage{{Role: "assistant", Kind: RowTool, Tool: "edit", Text: "a.go", Status: CallOK, Diff: "--- a.go\n+++ a.go\n@@ -1 +1 @@\n-a\n+b"}})
+	h.setTranscript("t", []ChatMessage{{Role: "assistant", Kind: RowTool, Tool: "edit", Text: "a.go", Status: CallErr, Output: "old_string not found"}})
 	if got := chat(UIState{}); strings.Contains(got, "· ") || !strings.Contains(got, "edit a.go") {
 		t.Errorf("a run with nothing to fold folded:\n%s", got)
 	}

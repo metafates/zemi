@@ -2114,10 +2114,10 @@ rides the `memories.md` line and its ledger entries.
   A settled turn folds each run of activity into one dim digest row, `· 6
   files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
   and nothing else: the rail of steps under
-  it, its thinking, and the edits, failures, questions, plans, background jobs
+  it, its thinking, and the failures, questions, plans, background jobs
   and commands with a diff it holds are a click
   away, drawn as they drew live. The digest exists only when the run holds a
-  call a family counts (a read, a search, a command that changed
+  call a family counts (a read, a search, a file change, a command that changed
   nothing, gone well, an agent run, a workflow, a script, an MCP call under its
   server) or a thought to name: a run with neither keeps
   its whole rail. A run a reply has closed folds this
