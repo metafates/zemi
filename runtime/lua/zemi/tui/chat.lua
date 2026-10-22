@@ -462,16 +462,18 @@ local function builder(ctx, width)
 				or t.status == "stopped"
 				or name == "question"
 				or name == "plan"
+				or name == "verify"
 				or (o.open and name == "shell")
 			)
 		then
 			local out = util.split(output, "\n")
 			-- a collapsed failure shows three lines where it says what went
 			-- wrong: a tool's first, a command's last (its stderr and exit
-			-- status); a click shows the rest
-			local err, tail = t.status == "err", name == "shell"
+			-- status); a passed verify's last lines are the word the run
+			-- ended on
+			local err, tail = t.status == "err", name == "shell" or name == "verify"
 			local from, to = 1, #out
-			if err and not open and #out > 3 then
+			if (err or tail) and not open and #out > 3 then
 				if tail then
 					from = #out - 2
 				else

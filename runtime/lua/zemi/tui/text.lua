@@ -321,6 +321,11 @@ M.WAIT = { agent = true, workflow = true }
 function M.head(name, label, input, status)
 	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
 	if status == "run" and M.WAIT[name] then return "waiting on " .. name, rest end
+	-- a verify that passed ended the turn: the row says so
+	if name == "verify" and status == "ok" then
+		local what = label ~= "" and M.lower(label) or input
+		return "Done", what ~= "" and " - " .. what or ""
+	end
 	if name == "shell" and label ~= "" then return label:match("^(%S+)(.*)$") end
 	return M.VERB[name] or M.title(name), rest
 end

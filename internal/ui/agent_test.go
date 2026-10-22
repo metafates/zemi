@@ -999,6 +999,21 @@ func TestGoldenWaitRow(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
+// TestGoldenVerifyDone: a run that ended on a verify pass reads Done with the
+// check under it and its output's last lines below - the ending is visible,
+// not a silent stop.
+func TestGoldenVerifyDone(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	host.AppendMessage("user", "fix the flake in the fixture test")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/fixtures/paths.go", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{
+		Role: "assistant", Kind: "tool", Tool: "verify", Text: "go test ./internal/fixtures/", Label: "Run the fixture tests", Status: "ok",
+		Output: "ok  12 tests, 1 rerun\nPASS",
+	})
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
 func TestGoldenAgentStream(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 22)
 
