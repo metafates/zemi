@@ -1678,10 +1678,10 @@ func (h *Host) workflowCommands() []*Command {
 					if err := h.ViewAgentFrom(arg(2), "workflows view "+id); err != nil {
 						return err
 					}
-					// the chat shows the transcript; esc reopens the view
-					for _, o := range []string{"workflow:" + id, "workflows"} {
-						h.hooks().CloseOverlay(o)
-					}
+					// the chat shows the transcript with the list still open
+					// under it: esc reopens the run view over the list, h walks
+					// onto the list
+					h.hooks().CloseOverlay("workflow:" + id)
 					return nil
 				}
 				return h.openFlow(id)

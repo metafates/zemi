@@ -1429,6 +1429,39 @@ func TestSavedWorkflows(t *testing.T) {
 	}
 }
 
+// TestWorkflowViewKeepsTheList: viewing a workflow's agent closes the run's
+// view and keeps the workflows list open under it, so esc reopens the run
+// view over the list and h walks back onto the list.
+func TestWorkflowViewKeepsTheList(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	echoAgents(h)
+	f, err := h.startFlow(t.Context(), flowSpec{src: `local wf = zemi.workflow
+return wf.agent("look")`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-f.done
+	run := f.agents[0].run
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openWorkflows(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.openFlow(f.id); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.workflowCommands()[0].GoFn(h, "view "+f.id+" "+run.id); err != nil {
+		t.Fatal(err)
+	}
+	if h.viewedRun() != run {
+		t.Fatalf("the chat shows %v, want the agent's run", h.viewedRun())
+	}
+	if !slices.Contains(ui.closed, "workflow:"+f.id) || slices.Contains(ui.closed, "workflows") {
+		t.Fatalf("closed %v, want the run's view gone and the list kept", ui.closed)
+	}
+}
+
 // TestReviewTargetsACommit: a sha reviews what that commit introduced. Its
 // merge base with HEAD is the commit itself, so reading one as a base ref
 // would review everything since it plus the working tree.
