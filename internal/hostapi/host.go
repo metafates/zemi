@@ -508,6 +508,16 @@ type Host struct {
 	callServe int    // the row the live call view's watcher serves, so an
 	// opened view supersedes the last watcher instead of adding one
 
+	// agentRows caches ctx.agent's tool subtables between renders: a finished
+	// tool's fields never change, so a long turn rebuilds only the rows that
+	// moved. The Lua actor goroutine fills it, like the renders, and the gen
+	// stamp drops tables an older generation's LState built.
+	agentRows struct {
+		gen  Gen
+		prev []StreamTool
+		rows []*glua.LTable
+	}
+
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
@@ -1900,7 +1910,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			}
 			return out
 		},
-		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream, h.now()) },
+		"agent":      func(L *glua.LState) glua.LValue { return h.agentTable(L, stream, h.now()) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
 		"instructions": func(L *glua.LState) glua.LValue {
 			files := h.instructionsCached()
@@ -2002,8 +2012,10 @@ func (h *Host) instructionsCached() []string {
 }
 
 // agentTable is ctx.agent: the live turn. now is the host's clock, which
-// the tool stamps were taken on.
-func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTable {
+// the tool stamps were taken on. A finished tool's fields never change, so
+// its subtable is reused between renders and only a running row's elapsed
+// moves; the snapshot's tools compare by value, which no field escapes.
+func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTable {
 	at := L.CreateTable(0, 12)
 	at.RawSetString("active", glua.LBool(stream.Active))
 	at.RawSetString("model", glua.LString(stream.Model))
@@ -2031,7 +2043,28 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 		at.RawSetString("retry", retry)
 	}
 	toolsTb := L.CreateTable(len(stream.Tools), 0)
-	for _, t := range stream.Tools {
+	c := &h.agentRows
+	// a new generation's tables are another LState's; a turn only appends
+	// calls, and prev holds what each row was built from, its own array so a
+	// retry's cut cannot alias the next snapshot over a stale row
+	n := len(stream.Tools)
+	switch {
+	case c.gen != h.currentGen():
+		c.prev, c.rows = slices.Clone(stream.Tools), make([]*glua.LTable, n)
+	case len(c.prev) < n:
+		prev := make([]StreamTool, n)
+		copy(prev, c.prev)
+		c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, n-len(c.rows))...)
+	}
+	c.gen = h.currentGen()
+	for i, t := range stream.Tools {
+		if row := c.rows[i]; row != nil && c.prev[i] == t {
+			if t.Status == CallRun && !t.Started.IsZero() {
+				row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
+			}
+			toolsTb.Append(row)
+			continue
+		}
 		row := L.CreateTable(0, 9)
 		row.RawSetString("name", glua.LString(t.Name))
 		row.RawSetString("input", glua.LString(t.Input))
@@ -2045,6 +2078,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTab
 		}
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
 		row.RawSetString("output", glua.LString(t.Output))
+		c.rows[i], c.prev[i] = row, t
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)
