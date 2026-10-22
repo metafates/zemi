@@ -248,7 +248,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			}
 		}
 	}
-	a.pushToast(slog.LevelError, "Not in "+o.Title, "/"+o.Confirm+" runs it without asking")
+	a.pushToast(slog.LevelError, "Nothing to confirm", "/"+o.Confirm+" runs it without asking")
 }
 
 // followRow is the row a following list opens on: the message the view was
