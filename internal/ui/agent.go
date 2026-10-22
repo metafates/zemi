@@ -529,8 +529,9 @@ func switchSeg(on, locked bool) hostapi.Segment {
 // Rows fit maxW cells when it is set, the bar included, and pad to at least
 // minW, with a key column always showing. Descriptions line up in one column
 // sized before the labels, over all, the unfiltered list, so filtering never
-// moves it: the description keeps its need and a long label ellipsizes, and
-// only a box too narrow for both puts every description under its label.
+// moves it: the description keeps its need and a long label ellipsizes, a
+// tail desc included, its label giving way first; only a box too narrow for
+// both puts every description under its label.
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{}             // row -> key column
@@ -546,19 +547,14 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
 		}
 	}
-	// the description column is measured over all before the labels, so
-	// filtering never moves it: both whole when they fit, else the
-	// description keeps its need (never under 20 cells) and a long label
-	// ellipsizes - a tail desc included, its room being the same floor that
-	// bounds the label; a box too narrow for that puts every description
-	// under its label instead
 	under := false
 	if maxW > 0 {
-		avail := maxW - 4 - keyW // the marker and the gap take 2 cells each
+		avail := maxW - 4 - keyW  // the marker and the gap take 2 cells each
+		need := max(descNeeds, 3) // a stub desc still draws beside the label
 		switch {
-		case labelW+descNeeds <= avail:
+		case labelW+need <= avail:
 		case avail >= 32:
-			labelW = max(min(labelW, max(avail-descNeeds, 20)), 1)
+			labelW = max(min(labelW, max(avail-need, 20)), 1)
 		default:
 			under = true
 		}
