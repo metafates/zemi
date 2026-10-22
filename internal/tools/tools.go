@@ -781,7 +781,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolShell, `Run a command with bash -c. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
+		mk(ToolShell, `Run a shell command. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
 Chain dependent steps with &&.`,
 			false,
@@ -834,7 +834,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runPlan)),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with bash -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
 			jobStartArgs{},
 			shellRequests,
