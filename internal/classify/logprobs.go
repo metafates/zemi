@@ -40,7 +40,7 @@ const systemPrompt = "You answer questions about the state." +
 // label.
 func logprobsAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 	answers := make(map[string]Answer, len(req.Questions))
-	var usage Usage
+	var usage fantasy.Usage
 	for _, name := range sortedKeys(req.Questions) {
 		q := req.Questions[name]
 		labels, keys, err := q.labelTokens()
@@ -48,7 +48,7 @@ func logprobsAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 			return Result{Strategy: StrategyLogprobs, Usage: usage}, err
 		}
 		answer, used, err := logprobsAnswer(ctx, chat, req, name, q, labels, keys)
-		usage.add(used)
+		usage = add(usage, used)
 		if err != nil {
 			return Result{Strategy: StrategyLogprobs, Usage: usage}, fmt.Errorf("%s: %w", name, err)
 		}
@@ -86,8 +86,8 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 // logprobsAnswer is one question's call: the prompt asks for the label, and the
 // answer is read off the token probabilities. A label outside the readout is
 // retried deeper, and then it is an error.
-func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q Question, labels, keys []string) (Answer, Usage, error) {
-	var usage Usage
+func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q Question, labels, keys []string) (Answer, fantasy.Usage, error) {
+	var usage fantasy.Usage
 	var last error
 	for _, k := range readoutDepth {
 		res, err := chat.Model.Generate(ctx, fantasy.Call{
@@ -98,7 +98,7 @@ func logprobsAnswer(ctx context.Context, chat Chat, req Request, name string, q 
 		if err != nil {
 			return Answer{}, usage, err
 		}
-		usage.add(usageOf(res.Usage))
+		usage = add(usage, res.Usage)
 		probs, missing, err := labelProbabilities(candidates(res.ProviderMetadata), labels)
 		if err != nil {
 			return Answer{}, usage, err

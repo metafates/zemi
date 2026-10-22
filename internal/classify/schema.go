@@ -37,20 +37,20 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		if !ok {
 			return Result{Strategy: StrategySchema}, err
 		}
-		return Result{Strategy: StrategySchema, Usage: usageOf(none.Usage)}, err
+		return Result{Strategy: StrategySchema, Usage: none.Usage}, err
 	}
 	obj, ok := res.Object.(map[string]any)
 	if !ok {
-		return Result{Strategy: StrategySchema, Usage: usageOf(res.Usage)}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
+		return Result{Strategy: StrategySchema, Usage: res.Usage}, fmt.Errorf("the provider answered a %T, want an object", res.Object)
 	}
 	answers, err := schemaAnswers(req.Questions, obj)
 	if err != nil {
-		return Result{Strategy: StrategySchema, Usage: usageOf(res.Usage)}, err
+		return Result{Strategy: StrategySchema, Usage: res.Usage}, err
 	}
 	return Result{
 		Strategy: StrategySchema,
 		Answers:  answers,
-		Usage:    usageOf(res.Usage),
+		Usage:    res.Usage,
 	}, nil
 }
 

@@ -123,48 +123,22 @@ type Answer struct {
 }
 
 // Result is what a call answered. Usage is what the call cost even when it
-// failed: the strategies a later one replaced were billed too.
+// failed: the strategies a later one replaced were billed too. The cache counts
+// matter, since a ladder re-sends the same state and questions and the later
+// calls are the ones a provider reads from its prompt cache.
 type Result struct {
 	Strategy Strategy
 	Answers  map[string]Answer
-	Usage    Usage
+	Usage    fantasy.Usage
 }
 
-// Usage is what a call used, in the providers' own counts: the cache ones
-// matter here, since a ladder re-sends the same state and questions and the
-// later calls are the ones a provider reads from its prompt cache.
-type Usage struct {
-	InputTokens         int64
-	OutputTokens        int64
-	CacheReadTokens     int64
-	CacheCreationTokens int64
-}
-
-func (u *Usage) add(v Usage) {
-	u.InputTokens += v.InputTokens
-	u.OutputTokens += v.OutputTokens
-	u.CacheReadTokens += v.CacheReadTokens
-	u.CacheCreationTokens += v.CacheCreationTokens
-}
-
-// Fantasy is the same usage in the shape billing and pricing read.
-func (u Usage) Fantasy() fantasy.Usage {
-	return fantasy.Usage{
-		InputTokens:         u.InputTokens,
-		OutputTokens:        u.OutputTokens,
-		CacheReadTokens:     u.CacheReadTokens,
-		CacheCreationTokens: u.CacheCreationTokens,
-	}
-}
-
-// usageOf is a fantasy call's counts in the classify package's shape.
-func usageOf(u fantasy.Usage) Usage {
-	return Usage{
-		InputTokens:         u.InputTokens,
-		OutputTokens:        u.OutputTokens,
-		CacheReadTokens:     u.CacheReadTokens,
-		CacheCreationTokens: u.CacheCreationTokens,
-	}
+// add sums a ladder's attempts.
+func add(a, b fantasy.Usage) fantasy.Usage {
+	a.InputTokens += b.InputTokens
+	a.OutputTokens += b.OutputTokens
+	a.CacheReadTokens += b.CacheReadTokens
+	a.CacheCreationTokens += b.CacheCreationTokens
+	return a
 }
 
 // Chat is the chat model the last two strategies run on, and what the caller
@@ -203,10 +177,10 @@ type Request struct {
 // an error: a caller that cannot get a verdict asks the user. What every
 // attempt used is in the result either way, since every attempt was billed.
 func Ask(ctx context.Context, req Request) (Result, error) {
-	var used Usage
+	var used fantasy.Usage
 	var errs []error
 	done := func(res Result, err error) (Result, error) {
-		used.add(res.Usage)
+		used = add(used, res.Usage)
 		res.Usage = used
 		return res, err
 	}

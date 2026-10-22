@@ -71,7 +71,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			// every attempt the ladder made was billed, so what it used is
 			// reported whether or not one answered
 			res, askErr = classify.Ask(ctx, req)
-			h.bill(sid, id, res.Usage.Fantasy())
+			h.bill(sid, id, res.Usage)
 		}
 		close(done)
 	})
@@ -289,7 +289,7 @@ func classifyResult(L *glua.LState, h *Host, id string, res classify.Result) *gl
 	}
 	tb.RawSetString("answers", answers)
 	// the same shape agent.finish carries, and the same numbers the bill used
-	u := res.Usage.Fantasy()
+	u := res.Usage
 	in := billedInput(u)
 	usage := L.NewTable()
 	tb.RawSetString("usage", usage)

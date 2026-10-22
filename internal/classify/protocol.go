@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/learn"
 )
 
@@ -132,7 +134,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 	res := Result{
 		Strategy: StrategyProtocol,
 		Answers:  answers,
-		Usage:    Usage{InputTokens: out.Usage.InputTokens, OutputTokens: out.Usage.OutputTokens},
+		Usage:    fantasy.Usage{InputTokens: out.Usage.InputTokens, OutputTokens: out.Usage.OutputTokens},
 	}
 	if err != nil {
 		return res, err

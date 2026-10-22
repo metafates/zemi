@@ -41,7 +41,7 @@ func TestLogprobsAsk(t *testing.T) {
 		t.Errorf("danger = %+v, want P(true) about 0.91", a)
 	}
 	// the counts a provider reports, its prompt cache ones included
-	if res.Usage != (Usage{InputTokens: 10, OutputTokens: 1, CacheReadTokens: 4, CacheCreationTokens: 2}) {
+	if res.Usage != (fantasy.Usage{InputTokens: 10, OutputTokens: 1, CacheReadTokens: 4, CacheCreationTokens: 2}) {
 		t.Errorf("usage = %+v", res.Usage)
 	}
 
@@ -192,7 +192,7 @@ func TestAskLadder(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no probability for Yes, No") || !strings.Contains(err.Error(), "no object either") {
 		t.Errorf("err = %v, want both strategies' errors", err)
 	}
-	if want := (Usage{
+	if want := (fantasy.Usage{
 		InputTokens:         int64(len(readoutDepth)) * 10,
 		OutputTokens:        int64(len(readoutDepth)),
 		CacheReadTokens:     int64(len(readoutDepth)) * 4,
@@ -204,7 +204,7 @@ func TestAskLadder(t *testing.T) {
 	// a reply that arrived and did not decode was billed too
 	m = &fakeModel{objectErr: &fantasy.NoObjectGeneratedError{RawText: "not json", Usage: fantasy.Usage{InputTokens: 7, OutputTokens: 2, CacheReadTokens: 3}}}
 	res, err = Ask(t.Context(), Request{State: map[string]any{}, Questions: one("danger"), Chat: &Chat{Model: m}})
-	if err == nil || res.Usage != (Usage{InputTokens: 7, OutputTokens: 2, CacheReadTokens: 3}) {
+	if err == nil || res.Usage != (fantasy.Usage{InputTokens: 7, OutputTokens: 2, CacheReadTokens: 3}) {
 		t.Errorf("usage = %+v, err = %v; want the object call's usage", res.Usage, err)
 	}
 

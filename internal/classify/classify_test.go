@@ -79,7 +79,7 @@ func TestProtocolAsk(t *testing.T) {
 	if a := res.Answers["risk"]; a.Score == nil || *a.Score != 2 || a.Confidence == nil {
 		t.Errorf("risk = %+v", a)
 	}
-	if res.Usage != (Usage{InputTokens: 120, OutputTokens: 8}) {
+	if res.Usage != (fantasy.Usage{InputTokens: 120, OutputTokens: 8}) {
 		t.Errorf("usage = %+v", res.Usage)
 	}
 	body := sent()
