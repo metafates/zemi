@@ -2468,7 +2468,6 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		{"workflow", []string{"workflow"}, "1 workflow"},
 		{"lua", []string{"lua"}, "1 script"},
 		{"tool_search", []string{"tool_search"}, "1 tool"},
-		{"lsp", []string{"lsp", "lsp"}, "2 symbols"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")

@@ -160,13 +160,11 @@ M.VERB = {
 	job_list = "List jobs",
 	job_kill = "Stop job",
 	memory = "Remember",
-	diagnostics = "Check",
 	todos = "Update todos",
 	question = "Ask",
 	plan = "Plan",
 	skill = "Load skill",
 	tool_search = "Find tools",
-	lsp = "Look up",
 	lua = "Run",
 	update = "Tell",
 }
@@ -184,7 +182,6 @@ M.COUNT = {
 	write = { "wrote", "write", "writes" },
 	skill = { "loaded", "skill", "skills" },
 	memory = { "saved", "memory", "memories" },
-	diagnostics = { "checked", "file", "files" },
 	job_read = { "checked", "job", "jobs" },
 	job_list = { "listed jobs" },
 	job_kill = { "stopped", "job", "jobs" },
@@ -193,7 +190,6 @@ M.COUNT = {
 	workflow = { "ran", "workflow", "workflows" },
 	lua = { "ran", "script", "scripts" },
 	tool_search = { "looked for", "tool", "tools" },
-	lsp = { "looked up", "symbol", "symbols" },
 }
 
 -- An MCP call counts under its server: its name is mcp_<server>_<tool> and a
