@@ -412,6 +412,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
 	text = lastAssistantText(said())
+	// a run that ended on its check closed with the verify's words, not a
+	// reply: those words are the report the caller reads
+	if closing := verifyClosing(said()); closing != "" {
+		text = closing
+	}
 	if n := run.droppedCount(); n > 0 {
 		text = strings.TrimSpace(fmt.Sprintf("%s\n\n(%d message(s) sent to it were never read: the run ended first)", text, n))
 	}
@@ -740,6 +745,47 @@ func lastAssistantText(history []fantasy.Message) string {
 		if h.Role == fantasy.MessageRoleAssistant {
 			if s := strings.TrimSpace(concatText(h.Content)); s != "" {
 				return s
+			}
+		}
+	}
+	return ""
+}
+
+// verifyClosing is the about of the verify a run ended on: a run that ends on
+// its check closes with no reply, and the check's own description is the one
+// line the caller can report. "" when the run did not end on one - the caller
+// falls back to the last assistant text, which is then stale narration or
+// empty.
+func verifyClosing(history []fantasy.Message) string {
+	if len(history) == 0 {
+		return ""
+	}
+	last := history[len(history)-1]
+	if last.Role != fantasy.MessageRoleTool {
+		return ""
+	}
+	for _, c := range last.Content {
+		if r, ok := fantasy.AsContentType[fantasy.ToolResultPart](c); ok {
+			return closingOf(history[:len(history)-1], r.ToolCallID)
+		}
+	}
+	return ""
+}
+
+func closingOf(history []fantasy.Message, id string) string {
+	for _, m := range slices.Backward(history) {
+		if m.Role != fantasy.MessageRoleAssistant {
+			continue
+		}
+		for _, c := range m.Content {
+			if tc, ok := fantasy.AsContentType[fantasy.ToolCallPart](c); ok && tc.ToolCallID == id {
+				var in struct {
+					About string `json:"about"`
+				}
+				if json.Unmarshal([]byte(tc.Input), &in) != nil {
+					return ""
+				}
+				return in.About
 			}
 		}
 	}
