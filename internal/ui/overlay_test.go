@@ -957,6 +957,60 @@ func TestOverlayNavigation(t *testing.T) {
 	}
 }
 
+// TestOverlayArrowKeys: left and right alias h and l on a list, and an open
+// filter keeps them for nothing, as it types h and l itself.
+func TestOverlayArrowKeys(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		o     hostapi.Overlay
+		keys  []string
+		check func(a *App) string
+	}{
+		{
+			"right opens the selected row's view and left goes back",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "view"}}},
+			[]string{"right", "left"},
+			func(a *App) string {
+				return fail(len(a.overlays) == 1 && !a.overlays[0].back, fmt.Sprintf("overlays=%d", len(a.overlays)))
+			},
+		},
+		{
+			"left pops a screen stacked over a list",
+			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "a"}}},
+			nil,
+			func(a *App) string {
+				a.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "b"}}})
+				a.overlayKey("left", "")
+				return fail(len(a.overlays) == 1 && a.overlays[0].o.ID == "p", fmt.Sprintf("overlays=%d", len(a.overlays)))
+			},
+		},
+		{
+			"an open filter leaves left and right alone",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "view"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}},
+			nil,
+			func(a *App) string {
+				st := &a.overlays[0]
+				st.active = true
+				a.overlayKey("left", "")
+				a.overlayKey("right", "")
+				return fail(len(a.overlays) == 1 && !st.back && st.query == "", fmt.Sprintf("overlays=%d query=%q", len(a.overlays), st.query))
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			c.o.Origin = lua.OriginBuiltin
+			a.openOverlay(c.o)
+			for _, k := range c.keys {
+				a.overlayKey(k, "")
+			}
+			if msg := c.check(a); msg != "" {
+				t.Fatal(msg)
+			}
+		})
+	}
+}
+
 // TestOverlayHints: the footer names only keys that act on the selection,
 // with one verb per act of enter's in every list.
 func TestOverlayHints(t *testing.T) {

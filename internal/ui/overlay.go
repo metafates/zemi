@@ -779,6 +779,14 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
+	if !st.active { // an open filter types; until then left and right alias h and l
+		switch key {
+		case "left":
+			key = "h"
+		case "right":
+			key = "l"
+		}
+	}
 	// a view opened from a rail steps along it in place, and the level under
 	// it steps with it: the view and the list name one row
 	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
