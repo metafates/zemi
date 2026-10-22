@@ -367,6 +367,23 @@ func completeMarketplaces(c *cobra.Command, args []string, _ string) ([]cobra.Co
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
+// completeEntries offers a registered marketplace's entries as the
+// name@marketplace install types, for plugin install and add.
+func completeEntries(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	dirs, err := completionDirs(c)
+	if err != nil || len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ms, _ := plugin.Marketplaces(dirs)
+	var out []cobra.Completion
+	for _, m := range ms {
+		for _, e := range m.Entries {
+			out = append(out, e.Name+"@"+m.Name)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
 // finish checks a turn's arguments and joins them into the prompt. A lone
 // word that is a near miss of a command is refused: sent, it would open the
 // TUI and pay for a model call on a typo.
@@ -468,7 +485,7 @@ func pluginCommand(o *options) *cobra.Command {
 		names      cobra.CompletionFunc
 		aliases    []string
 	}{
-		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), nil, []string{"add"}},
+		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), completeEntries, []string{"add"}},
 		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins, nil},
 		{"check", "fetch, then list the updates", cobra.NoArgs, nil, nil},
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins, nil},

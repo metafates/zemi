@@ -370,10 +370,14 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 // pluginRoots are what the watcher reads of the plugins tree: every local
 // plugin whole, and for a clone only its git index, which install, update
 // and delete move, so a big installed tree costs no walk. marketplaces.json
-// carries the provenance of copy installs, which have no git index to watch.
+// carries the provenance of copy installs, which have no git index to watch,
+// and each marketplace clone's manifest is what its entries read, so an
+// update in one session moves another's fingerprint too.
 func pluginRoots(root string) []string {
 	idx, _ := filepath.Glob(filepath.Join(root, "installed", "[^.]*", ".git", "index"))
-	return append(idx,
+	mkt, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".zemi", "marketplace.json"))
+	claude, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".claude-plugin", "marketplace.json"))
+	return append(append(append(idx, mkt...), claude...),
 		filepath.Join(root, "local"),
 		filepath.Join(root, "disabled"),
 		filepath.Join(root, "marketplaces.json"),

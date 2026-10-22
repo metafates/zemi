@@ -777,11 +777,14 @@ func forgetInstall(d config.Dirs, name string) error {
 }
 
 // MarketplaceInfo is one registered marketplace and the entries its clone's
-// manifest lists, what list, completion and the overlay display.
+// manifest lists, what list, completion and the overlay display. Err names
+// why the manifest could not be read, so a failure never reads as "lists no
+// plugins".
 type MarketplaceInfo struct {
 	Name, Source string
 	Added        time.Time
 	Entries      []MarketplaceEntry
+	Err          string
 }
 
 // MarketplaceEntry is one entry of a registered marketplace, display-only.
@@ -800,7 +803,13 @@ func Marketplaces(d config.Dirs) ([]MarketplaceInfo, error) {
 	for _, name := range slices.Sorted(maps.Keys(f.Marketplaces)) {
 		reg := f.Marketplaces[name]
 		info := MarketplaceInfo{Name: name, Source: sourceDisplay(reg.Source, reg.Ref), Added: reg.Added}
-		if m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", name)); err == nil {
+		if m, err := ReadMarketplace(filepath.Join(d.PluginsRoot(), "marketplaces", name)); err != nil {
+			// a gone clone is the documented empty state; anything else must
+			// not read as "lists no plugins"
+			if !errors.Is(err, fs.ErrNotExist) {
+				info.Err = err.Error()
+			}
+		} else {
 			for _, e := range m.Plugins {
 				info.Entries = append(info.Entries, MarketplaceEntry{Name: e.Name, Version: e.Version, Description: e.Description})
 			}
@@ -808,6 +817,22 @@ func Marketplaces(d config.Dirs) ([]MarketplaceInfo, error) {
 		out = append(out, info)
 	}
 	return out, nil
+}
+
+// InstalledEntries maps a marketplace's entry names to the plugin each one
+// installed as, for the drill-down's installed markers and update keys.
+func InstalledEntries(d config.Dirs, marketplace string) map[string]string {
+	f, err := readMarketplaces(d)
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for name, reg := range f.Installs {
+		if reg.Marketplace == marketplace {
+			out[reg.Entry] = name
+		}
+	}
+	return out
 }
 
 // listMarketplaces prints one line per marketplace and one per entry.

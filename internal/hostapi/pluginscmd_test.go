@@ -107,8 +107,17 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Marketplace added: marketplace test added (1 plugins)",
 				"section:Marketplaces text:test", "desc:" + perm.TildePath(mkt) + " · 1 plugin",
-				"desc:update key:u run:plugin marketplace update test", "danger:true desc:remove key:x run:plugin marketplace remove test",
+				"verb:open", "run:plugin marketplace test", "desc:update key:u run:plugin marketplace update test", "danger:true desc:remove key:x run:plugin marketplace remove test",
 			},
+		},
+		{
+			name: "the marketplace drill-down", args: "marketplace test",
+			want: []string{
+				"section:Marketplace text:" + perm.TildePath(mkt), "desc:update key:u run:plugin marketplace update test",
+				"danger:true desc:remove key:x run:plugin marketplace remove test",
+				"section:Plugins text:x", "desc:the x plugin", "key:i run:plugin install x@test", "run:plugin install x@test",
+			},
+			not: []string{"installed as x"},
 		},
 		{
 			name: "install from the marketplace", args: "install x@test",
@@ -117,6 +126,15 @@ func TestPluginsCommand(t *testing.T) {
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
 				"danger:true desc:delete key:x run:plugin delete x --yes",
 			},
+		},
+		{
+			name: "the drill-down marks an entry installed", args: "marketplace test",
+			want: []string{"desc:installed as x", "desc:update key:u run:plugin update x"},
+			not:  []string{"key:i run:plugin install x@test"},
+		},
+		{
+			name: "the drill-down of a marketplace nobody registered", args: "marketplace frob",
+			want: []string{"text:Marketplace removed", "desc:no marketplace is named frob"},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
 		{name: "update with nothing newer", args: "update", want: []string{"info: Plugins up to date: ", "text:x"}, not: []string{"Plugin updated"}},
@@ -156,6 +174,24 @@ func TestPluginsCommand(t *testing.T) {
 	// the install completer offers the entries the registered marketplaces list
 	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugin install ")); !strings.Contains(got, "x@test") {
 		t.Errorf("/plugin install completes %s, want x@test", got)
+	}
+}
+
+// TestMarketplaceLabel: the busy line names what it acts on, the source for
+// add, whose clone decides the name, and the argument for the rest.
+func TestMarketplaceLabel(t *testing.T) {
+	for _, c := range []struct {
+		args string
+		want string
+	}{
+		{"marketplace add owner/repo", "Adding marketplace owner/repo"},
+		{"marketplace remove test", "Removing marketplace test"},
+		{"marketplace update test", "Updating marketplace test"},
+		{"marketplace update", "Updating marketplaces"},
+	} {
+		if got := marketplaceLabel(strings.Fields(c.args)); got != c.want {
+			t.Errorf("%s: %q, want %q", c.args, got, c.want)
+		}
 	}
 }
 

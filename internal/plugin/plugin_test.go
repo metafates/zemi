@@ -339,6 +339,39 @@ func TestMarketplaceSource(t *testing.T) {
 	}
 }
 
+// TestMarketplacesUnreadable: a manifest that cannot be parsed is named on
+// the marketplace row, never read as "no plugins"; a gone clone stays the
+// documented empty state.
+func TestMarketplacesUnreadable(t *testing.T) {
+	d := config.Dirs{DataHome: t.TempDir()}
+	write(t, filepath.Join(d.PluginsRoot(), "marketplaces", "broken"), map[string]string{
+		ZemiMarketplaceFile: `{"name": "broken", "plugins": [`,
+	})
+	os.MkdirAll(filepath.Join(d.PluginsRoot(), "marketplaces", "gone"), 0o755)
+	added := time.Now().UTC()
+	f := marketplaceFile{Marketplaces: map[string]marketplaceReg{
+		"broken": {Source: "owner/repo", Added: added},
+		"gone":   {Source: "owner/repo", Added: added},
+	}}
+	if err := f.save(d); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := Marketplaces(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]MarketplaceInfo{}
+	for _, m := range ms {
+		got[m.Name] = m
+	}
+	if m := got["broken"]; m.Err == "" || len(m.Entries) != 0 {
+		t.Errorf("broken: err %q, %d entries, want the read error and none", m.Err, len(m.Entries))
+	}
+	if m := got["gone"]; m.Err != "" || len(m.Entries) != 0 {
+		t.Errorf("gone: err %q, %d entries, want the empty state", m.Err, len(m.Entries))
+	}
+}
+
 // TestMarketplace walks one marketplace tree through the CLI verbs, in
 // order: the repos register, their entries install by their own kind's
 // matching, copies update from pulled clones, a check reads the fetched ref

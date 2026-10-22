@@ -6,18 +6,21 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/charmbracelet/colorprofile"
+	"github.com/spf13/cobra"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -505,6 +508,33 @@ func BenchmarkConfigFingerprint(b *testing.B) {
 	_ = os.WriteFile(filepath.Join(dir, "local", "y", ".zemi", "init.lua"), []byte("-- one"), 0o644)
 	for b.Loop() {
 		configFingerprint("", pluginRoots(dir)...)
+	}
+}
+
+// TestCompleteEntries: zemi plugin install offers a registered marketplace's
+// entries as the name@marketplace it types, and nothing past the first
+// argument.
+func TestCompleteEntries(t *testing.T) {
+	home := t.TempDir()
+	for _, env := range []string{"CONFIG", "STATE", "CACHE"} {
+		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, env))
+	}
+	t.Setenv("ZEMI_DATA_HOME", filepath.Join(home, "data"))
+	writeFile(t, filepath.Join(home, "data", "plugins", "marketplaces.json"), `{"marketplaces": {"demo": {"source": "owner/repo", "added": "2026-01-02T00:00:00Z"}}}`)
+	writeFile(t, filepath.Join(home, "data", "plugins", "marketplaces", "demo", plugin.ZemiMarketplaceFile), `{"name": "demo", "plugins": [
+		{"name": "one", "source": "./p"},
+		{"name": "two", "source": "./q"}]}`)
+	c := newRoot(&options{}, func(options) int { return 0 })
+	install, _, err := c.Find([]string{"plugin", "install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, directive := install.ValidArgsFunction(install, nil, "")
+	if !slices.Equal(got, []cobra.Completion{"one@demo", "two@demo"}) || directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("install completes %v (%v)", got, directive)
+	}
+	if got, _ := install.ValidArgsFunction(install, []string{"one@demo"}, ""); got != nil {
+		t.Errorf("install completes past its argument: %v", got)
 	}
 }
 

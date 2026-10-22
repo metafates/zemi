@@ -174,16 +174,17 @@ func (h *Host) pluginsCommand(line string) error {
 		}
 		h.GoSafe("plugin", func() { h.openPlugins(ui, true, "") })
 		return nil
+	case verb == "marketplace" && len(args) == 2 && !slices.Contains([]string{"add", "remove", "update"}, args[1]):
+		// the drill-down a marketplace row's enter opens; the build reads the
+		// clone's manifest, so it runs off the key loop, and a gone
+		// marketplace opens on its removed row
+		h.GoSafe("plugin", func() { h.openMarketplace(ui, args[1]) })
 	case verb == "marketplace" && len(args) > 1:
 		sub := args[1]
 		if sub != "add" && sub != "remove" && sub != "update" {
 			return pluginsErr(usage, plugin.ErrUsage)
 		}
-		label := map[string]string{"add": "Adding marketplace", "remove": "Removing marketplace", "update": "Updating marketplaces"}[sub]
-		if sub == "remove" && len(args) > 2 {
-			label += " " + args[2]
-		}
-		background(label, func(ctx context.Context) error {
+		background(marketplaceLabel(args), func(ctx context.Context) error {
 			var out strings.Builder
 			err := plugin.Run(ctx, h.Dirs, args, &out)
 			body := strings.TrimSpace(out.String())
@@ -238,6 +239,17 @@ func (h *Host) pluginsCommand(line string) error {
 		return pluginsErr(verb, plugin.ErrUsage)
 	}
 	return nil
+}
+
+// marketplaceLabel is the busy line a marketplace verb shows while it runs:
+// the clone decides a marketplace's name, so add names the source it was
+// given; the others name their argument.
+func marketplaceLabel(args []string) string {
+	kind := map[string]string{"add": "Adding", "remove": "Removing", "update": "Updating"}[args[1]]
+	if len(args) > 2 {
+		return kind + " marketplace " + args[2]
+	}
+	return kind + " marketplaces"
 }
 
 // pluginsErr turns a usage error into verb's own grammar, which fits a
@@ -368,22 +380,100 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 		if len(m.Entries) != 1 {
 			count += "s"
 		}
+		desc := perm.TildePath(m.Source) + " · " + count
+		if m.Err != "" {
+			desc = m.Err
+		}
 		*items = append(*items, OverlayItem{
 			Text: m.Name, Section: "Marketplaces",
-			Desc:   perm.TildePath(m.Source) + " · " + count,
+			Desc:   desc,
 			Detail: marketplaceDetail(m),
-			Fields: fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly)),
+			Fields: fieldList("source", perm.TildePath(m.Source), "plugins", strconv.Itoa(len(m.Entries)), "added", m.Added.Format(time.DateOnly), "error", m.Err),
 			Keys: []ItemKey{
 				{Key: "u", Desc: "update", Run: "plugin marketplace update " + m.Name},
 				{Key: "x", Desc: "remove", Danger: true, Run: "plugin marketplace remove " + m.Name},
 			},
+			Verb: VerbOpen, Run: "plugin marketplace " + m.Name,
 		})
 	}
+}
+
+// marketplaceItemsOf builds a marketplace's drill-down: an info row, the
+// marketplace's own actions, then one row per entry its manifest lists, what
+// install and update pick from.
+func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
+	ms, err := plugin.Marketplaces(h.Dirs)
+	if err != nil {
+		h.Notify(slog.LevelError, "Could not read the marketplaces", err.Error())
+	}
+	i := slices.IndexFunc(ms, func(m plugin.MarketplaceInfo) bool { return m.Name == name })
+	if i < 0 {
+		return []OverlayItem{{Text: "Marketplace removed", Desc: "no marketplace is named " + name}}
+	}
+	m := ms[i]
+	if m.Err != "" {
+		return []OverlayItem{{Text: "Could not read the manifest", Desc: m.Err}}
+	}
+	installed := plugin.InstalledEntries(h.Dirs, name)
+	items := []OverlayItem{{
+		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %d plugins", m.Added.Format(time.DateOnly), len(m.Entries)),
+		Section: "Marketplace",
+		Keys: []ItemKey{
+			{Key: "u", Desc: "update", Run: "plugin marketplace update " + name},
+			{Key: "x", Desc: "remove", Danger: true, Run: "plugin marketplace remove " + name},
+		},
+	}}
+	for _, e := range m.Entries {
+		desc := make([]string, 0, 3)
+		if e.Version != "" {
+			desc = append(desc, e.Version)
+		}
+		if p, ok := installed[e.Name]; ok {
+			desc = append(desc, "installed as "+p)
+		}
+		if e.Description != "" {
+			desc = append(desc, cutLine(e.Description))
+		}
+		item := OverlayItem{
+			Text: e.Name, Section: "Plugins",
+			Desc: strings.Join(desc, " · "),
+		}
+		if p, ok := installed[e.Name]; ok {
+			item.Keys = []ItemKey{{Key: "u", Desc: "update", Run: "plugin update " + p}}
+		} else {
+			run := "plugin install " + e.Name + "@" + name
+			item.Keys = []ItemKey{{Key: "i", Desc: "install", Run: run}}
+			item.Run = run
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+// openMarketplace opens a marketplace's drill-down, or replaces it in place
+// after one of its actions ran.
+func (h *Host) openMarketplace(ui UIHooks, name string) {
+	ui.OpenOverlay(Overlay{
+		ID: "plugin-marketplace", Title: "Marketplace " + name, Origin: lua.OriginBuiltin,
+		Items: h.marketplaceItemsOf(name), Reload: func() []OverlayItem { return h.marketplaceItemsOf(name) },
+	})
+}
+
+// cutLine is a description's first line, cut where a row's desc stops being
+// readable.
+func cutLine(s string) string {
+	if i := strings.IndexAny(s, "\n.。"); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 // marketplaceDetail is a marketplace row's detail: the entries its clone's
 // manifest lists, what install <name>[@<marketplace>] picks from.
 func marketplaceDetail(m plugin.MarketplaceInfo) string {
+	if m.Err != "" {
+		return "Its manifest could not be read: " + m.Err
+	}
 	lines := make([]string, 0, len(m.Entries))
 	for _, e := range m.Entries {
 		line := e.Name
