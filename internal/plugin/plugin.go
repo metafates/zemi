@@ -921,8 +921,12 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 		}
 		dir := filepath.Join(d.PluginsRoot(), "marketplaces", name)
 		if !exists(dir) {
-			// one gone clone does not hold the others back; a sweep and a
-			// bare update name it and move on
+			// a sweep names a gone clone and moves on; a named update errors,
+			// or its caller toasts a false "updated"
+			if !all {
+				errs = append(errs, fmt.Errorf("marketplace %s: its clone is missing", name))
+				continue
+			}
 			fmt.Fprintf(out, "skipped marketplace %s: its clone is missing\n", name)
 			continue
 		}
