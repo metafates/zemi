@@ -105,7 +105,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
-			" The standard io and os libraries are not available: files go through zemi.fs, commands through zemi.tool.call(\"shell\")." +
+			" io is unavailable and os is only time, date, clock: files go through zemi.fs, commands through zemi.tool.call(\"shell\")." +
 			" A script drives this run's tools too: `zemi.tool.call(name, args)` returns a handle whose `:wait()` gives its output; start independent calls together and wait on each; only the script's prints and returns reach you. `zemi.tool.list()` names this run's tools, deferred MCP ones too; `zemi.tool.describe(name)` gives its parameters." +
 			" File calls, paths inside the project: `zemi.fs.read(path)` -> `content, err`; `write(path, content)`; `list(path)` -> entries `{name, type, size}`; `glob(pattern)` -> paths (one string pattern, `**` spans directories); `grep(pattern)` -> hits `{path, line, text}`; plus `stat`, `exists`, `mkdir`, `remove`, `data_dir(name)`. `glob` and `grep` raise on a bad pattern; the rest return `nil, err`." +
 			" Work from these signatures on the first attempt: never a script that just probes the API." +
