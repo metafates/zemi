@@ -803,7 +803,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
 	h.pluginsRoot = sync.OnceValue(func() string {
 		root := dirs.PluginsRoot()
-		if r, err := filepath.EvalSymlinks(root); err == nil {
+		// RealPath, not EvalSymlinks: the memo may run before the root exists
+		// (a first-run tree, a test), and a raw memo would then never match
+		// the resolved paths chunks record
+		if r := perm.RealPath(root); r != "" {
 			return r
 		}
 		return root
