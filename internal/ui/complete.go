@@ -26,7 +26,7 @@ type fileCompleter struct {
 	extra    []listItem // the Lua sources' items, ahead of matches
 	selected int
 	view     viewport
-	size     boxSize // typing never narrows or shortens the popup
+	size     boxSize // the last drawn size, kept for a frame with no matches to show
 
 	scanning bool
 	walkGen  int // bumps so stale scan results are dropped

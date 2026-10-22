@@ -411,6 +411,58 @@ func TestCompletionListWidth(t *testing.T) {
 	}
 }
 
+// TestCompletionPopupRefits: the @ popup's box fits the list it shows now,
+// so a token that widens it narrows back when erased; only a frame with no
+// matches keeps the size it had.
+func TestCompletionPopupRefits(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	files := make([]string, 0, listMaxFiles+1)
+	for i := range listMaxFiles {
+		files = append(files, fmt.Sprintf("f%03d.go", i))
+	}
+	files = append(files, "a/really/long/project/path/that/stretches/the/popup/wide.go")
+	app.completion.setFiles(files)
+
+	type k struct{ key, text string }
+	send := func(ks ...k) {
+		for _, x := range ks {
+			app.composerKey(x.key, tea.KeyPressMsg{Text: x.text})
+		}
+		app.renderSync(t)
+	}
+	width := func() int {
+		f := ansi.Strip(app.Frame())
+		for line := range strings.SplitSeq(f, "\n") {
+			i := strings.Index(line, "┌ Files")
+			if i < 0 {
+				continue
+			}
+			j := strings.Index(line[i:], "┐")
+			if j < 0 {
+				t.Fatalf("popup cut:\n%s", f)
+			}
+			return ansi.StringWidth(line[i:i+j]) + 1
+		}
+		t.Fatalf("popup not drawn:\n%s", f)
+		return 0
+	}
+
+	send(k{"@", "@"})
+	open := width()
+	send(k{"w", "w"}, k{"i", "i"}, k{"d", "d"}, k{"e", "e"})
+	if len(app.completion.matches) != 1 {
+		t.Fatalf("token 'wide' matches: %v", app.completion.matches)
+	}
+	wide := width()
+	send(k{"backspace", ""}, k{"backspace", ""}, k{"backspace", ""}, k{"backspace", ""})
+	if app.completion.token != "" {
+		t.Fatalf("token after erasing: %q", app.completion.token)
+	}
+	if got := width(); got != open {
+		t.Fatalf("popup %d cells after erasing, want the %d it opened at (it widened to %d)", got, open, wide)
+	}
+}
+
 func TestFileRanking(t *testing.T) {
 	files := []string{"README.md", "agent/turn_final_response_app.py", "apps/x.go", "happy.go", "internal/ui/app.go", "lib/app_app.go", "ã©.go"}
 	for _, c := range []struct{ token, want string }{

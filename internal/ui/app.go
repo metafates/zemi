@@ -1218,9 +1218,9 @@ func (a *App) fadeRows(rows [][]hostapi.Segment) {
 // list, over rows, in line with the composer: standing on its frame like an
 // anchored overlay (anchorBottom) in the draft's rule tint, in the bottom
 // rows of the stage when the stage is above the composer, else beside the
-// composer on the side with more rows. It covers only its own cells, keeps
-// its size while it stays open and ends in its hint row. It returns the
-// cells it covers.
+// composer on the side with more rows. It covers only its own cells and ends
+// in its hint row; the palette keeps its size while it stays open, the
+// completion refits its list. It returns the cells it covers.
 func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
 	h := len(rows)
 	var render func(maxW, room, minW int) [][]hostapi.Segment
@@ -1234,6 +1234,9 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 			hints = slices.Delete(hints, 1, 2)
 		}
 	case a.completion.shown():
+		if a.completion.count() > 0 {
+			a.completion.size = boxSize{} // the list refits every frame: erasing a token narrows the popup back
+		}
 		render, size, hints, title = a.completionRows, &a.completion.size, []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}, a.completion.title()
 		if a.completion.count() == 0 {
 			hints = hints[1:]
