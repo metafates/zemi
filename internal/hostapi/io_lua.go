@@ -652,11 +652,15 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 		return h.httpStart(L, req, onDone)
 	}))
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
+		url := L.CheckString(1)
+		if url == "" {
+			L.RaiseError("zemi.http.get: url is required")
+		}
 		var onDone *glua.LFunction
 		if opts, ok := arg[*glua.LTable](L, 2, "zemi.http.get"); ok {
 			onDone, _ = opt[*glua.LFunction](L, opts, "on_done")
 		}
-		return h.httpStart(L, httpReq{method: "GET", url: L.CheckString(1), headers: map[string]string{}}, onDone)
+		return h.httpStart(L, httpReq{method: "GET", url: url, headers: map[string]string{}}, onDone)
 	}))
 	return tb
 }
