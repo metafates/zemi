@@ -2047,17 +2047,17 @@ func TestLuaInput(t *testing.T) {
 }
 
 // TestConfigEdit: /config edit prompts with the key's value; enter sets it
-// and leaves /config open, its row rebuilt, and a refused value toasts and
-// changes nothing.
+// and leaves /config open, its row rebuilt, and a refused value keeps the
+// prompt open with the error it named, the value unchanged.
 func TestConfigEdit(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	reloadUI(t, host)
 	for _, c := range []struct {
-		path, prefill, typed, desc, toast string
+		path, section, prefill, typed, desc, toast string
 	}{
-		{"editor.command", "", "vim", "this run  vim", ""},
-		{"agent.max_background", "4", "x", "default   4", "agent.max_background is a number"},
+		{"editor.command", "editor", "", "vim", "this run  vim", ""},
+		{"agent.max_background", "agent", "4", "x", "default   4", "agent.max_background is a number"},
 	} {
 		app.runCommand("config", "")
 		app.runCommand("config", "edit "+c.path)
@@ -2071,14 +2071,36 @@ func TestConfigEdit(t *testing.T) {
 		}
 		app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		toast := lastToast(app)
-		if len(app.overlays) != 1 || app.overlays[0].o.ID != "config" {
-			t.Fatalf("%s: overlays after enter: %d", c.path, len(app.overlays))
+		n := len(app.overlays)
+		if c.toast == "" { // a good value closes back onto /config
+			if n != 1 || app.overlays[0].o.ID != "config" {
+				t.Fatalf("%s: overlays after enter: %d", c.path, n)
+			}
+			app.runCommand("config", c.section)
+			for app.Pump() {
+			}
+			items := app.overlays[len(app.overlays)-1].o.Items
+			i := slices.IndexFunc(items, func(it hostapi.OverlayItem) bool { return it.Text == c.path })
+			if i < 0 || items[i].Desc != c.desc {
+				t.Errorf("%s: row %+v, desc want %q", c.path, items, c.desc)
+			}
+			app.cancelOverlay(app.overlays[len(app.overlays)-1].o)
+			app.cancelOverlay(app.overlays[0].o)
+			continue
 		}
-		i := slices.IndexFunc(app.overlays[0].o.Items, func(it hostapi.OverlayItem) bool { return it.Text == c.path })
-		if desc := app.overlays[0].o.Items[i].Desc; desc != c.desc || c.toast != "" && !strings.Contains(toast, c.toast) {
-			t.Errorf("%s: row %q, toast %q; want %q, %q", c.path, desc, toast, c.desc, c.toast)
+		// a refused value stays in the prompt with the error it named
+		st := app.overlays[n-1]
+		if n != 2 || !st.o.Input || st.inputErr == "" || !strings.Contains(st.inputErr, c.toast) {
+			t.Fatalf("%s: overlays %d, prompt error %q", c.path, n, st.inputErr)
 		}
-		app.cancelOverlay(app.overlays[0].o)
+		if toast != "" {
+			t.Errorf("%s: toast %q, want none with the error in the box", c.path, toast)
+		}
+		app.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		if err := app.overlays[n-1].inputErr; err != "" {
+			t.Errorf("%s: typing did not clear the error %q", c.path, err)
+		}
+		app.cancelOverlay(st.o)
 	}
 }
 

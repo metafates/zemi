@@ -244,6 +244,7 @@ zemi.api = {}
 ---| "number"
 ---| "bool"
 ---| "list"
+---| "duration"
 
 ---@class zemi.SettingSpec
 ---@field kind zemi.SettingKind

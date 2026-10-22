@@ -759,7 +759,9 @@ zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
 Config values from `init.lua` merge with the defaults in Go's schema.
 `zemi.config.set` is callable from user config only (past boot it is a
 runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
-error. A reload
+error. A value a known key's kind or choices refuse is flagged in `/errors`
+and leaves the key at what it held, so one bad line never stops the rest of
+init.lua. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
 so a runtime pick (`/model`, `/effort`, `/profile`, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
@@ -778,14 +780,14 @@ init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the gated file tools. zemi makes no commits.
 
 A plugin's options are settings of its own: `zemi.config.add(key, spec)`
-registers a key (a string, a number, a bool, or one of a list) with its
+registers a key (a string, a number, a bool, a duration, or one of a list) with its
 default, from the plugin's init.lua while it loads. The plugin names it by
 the bare key; zemi derives the plugin from the calling file, as it does for
 `zemi.state`, and stores it as `plugins.<name>.<key>`, the name the user sets
 and /config shows. The plugin's `get` and `watch` of a bare key resolve the
 same way, and since every builtin key has a section, a bare name is never a
 builtin one. They are schema rows like the builtin ones, so `/config` lists
-them under a section per plugin and every layer above applies unchanged; a kept pick waits in
+them under Plugins and every layer above applies unchanged; a kept pick waits in
 the store until its key registers (checked then, forgotten when the new spec
 refuses it). A replay that registers a key again with the same spec keeps its
 value; a key the replay did not register (the plugin is off, gone, or stopped
@@ -1881,7 +1883,8 @@ rides the `memories.md` line and its ledger entries.
   the list stays open, and again when an overlay stacked on it closes, a
   detail view only after it ran something, so a picker opened from it shows its pick at once,
   as does a Go screen's one-line prompt (`/config edit`), whose command runs with the typed
-  text before it closes,
+  text before it closes, a refused value keeping the prompt open with the
+  error the command named,
   and after a reload; a row that fills the composer closes the list, which would keep
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
@@ -2897,7 +2900,9 @@ with a fresh environment and brain at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
 included, reaches `agent.compact_at` percent of the window, at least half
 of it, never when the window is unknown; once after a
-provider's context-too-long refusal; or by `/compact [focus]`: Go clears
+provider's context-too-long refusal; when a turn has been over and the
+session idle for `agent.compact_idle` (off by default, the TUI arms it);
+or by `/compact [focus]`: Go clears
 old tool output and, when that is not enough, summarizes all but a
 verbatim tail (at least the latest user message on, when a turn came
 before it) with one model call (asked after the runner's own prompt and

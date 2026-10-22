@@ -122,10 +122,13 @@ and `zemi health` keep none.
 A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 
-`/config` (hostapi/configcmd.go) lists every schema key with its `cfgSource` (`init.lua`,
-`saved`, `default` or `this run`) and value. A key changes on a screen of its own, its picker or
+`/config` (hostapi/configcmd.go) opens a root of one row per section (the first
+path segment, in schema order), and `/config <section>` lists that section's keys with their
+`cfgSource` (`init.lua`, `saved`, `default` or `this run`) and value; the root stays open under
+the section, so esc pops back. A key changes on a screen of its own, its picker or
 `/config edit` (its choices, else a one-line prompt whose `Overlay.Run`, Go-only, runs `config set`
-with the text), which closes back onto the rebuilt list. `/config` and `/effort` write through
+with the text), which closes back onto the rebuilt list; a value the command refuses keeps the
+prompt open with the error it named. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*` and `agent.profile` through their
 own setters and refuses a `ui.theme` no theme answers to (`checkTheme`); `zemi.config.set` takes
 any name, since a plugin's or the project's theme may not be added yet, and `CheckTheme`
@@ -287,11 +290,14 @@ applied one. A store made before goose only gains its version table: the baselin
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
   tool choice changes, with every tool refusing to run. Billed, never persisted.
-  `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
-  calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
+  `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`, a duration, 3m default) is one more: the UI
+  arms it `session.recap` after a turn that ended well
   with no input since, and its live-only `Recap: ...` notice row is dropped when the transcript
   moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
-  stops it and the chat's pending row names it.
+  stops it and the chat's pending row names it. An idle auto compact works the same
+  way off `agent.compact_idle` (off by default): the UI arms it after every turn,
+  loop runs included, and `Host.AutoCompact` runs /compact's flow silently when
+  the runner holds history.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a shell call's

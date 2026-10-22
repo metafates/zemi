@@ -65,8 +65,8 @@ func (h *Host) configCommand(args string) error {
 	switch verb {
 	case "":
 		o := Overlay{
-			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Items: h.configItems(),
-			Reload: h.configItems,
+			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Items: h.configSections(),
+			Reload: h.configSections,
 			// what init.lua sets past its error never ran
 			Fields: []Field{{"error", h.InitError()}},
 		}
@@ -91,9 +91,49 @@ func (h *Host) configCommand(args string) error {
 	case "open":
 		h.openInEditor(ui, filepath.Join(h.Dirs.ConfigHome, "init.lua"), "init.lua")
 	default:
-		return Usagef("usage: /config [set <key> <value> | toggle <key> | reset <key> | edit <key> | lua | open]")
+		if h.configSection(verb) { // /config <section> opens the section's keys
+			ui.OpenOverlay(Overlay{
+				ID: "config " + verb, Title: "Config / " + sourceSection(verb), Origin: lua.OriginBuiltin,
+				Items: h.configItems(verb), Reload: func() []OverlayItem { return h.configItems(verb) },
+			})
+			return nil
+		}
+		return Usagef("usage: /config [set <key> <value> | toggle <key> | reset <key> | edit <key> | lua | open | <section>]")
 	}
 	return nil
+}
+
+// configSection reports whether name is a first path segment of the schema,
+// the sections /config falls into.
+func (h *Host) configSection(name string) bool {
+	return slices.ContainsFunc(h.Settings.Schema(), func(s config.Setting) bool {
+		seg, _, _ := strings.Cut(string(s.Path), ".")
+		return seg == name
+	})
+}
+
+// configSections is /config's root: one row per section of the schema, in
+// schema order, over the two actions.
+func (h *Host) configSections() []OverlayItem {
+	counts := map[string]int{}
+	var order []string
+	for _, s := range h.Settings.Schema() {
+		seg, _, _ := strings.Cut(string(s.Path), ".")
+		if counts[seg]++; counts[seg] == 1 {
+			order = append(order, seg)
+		}
+	}
+	items := []OverlayItem{
+		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting off its default, as the zemi.config.set lines init.lua would write"},
+		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
+	}
+	for _, sec := range order {
+		items = append(items, OverlayItem{
+			Text: sourceSection(sec), Desc: pluralCount(counts[sec], "setting", "settings"),
+			Verb: VerbOpen, Run: "config " + sec,
+		})
+	}
+	return items
 }
 
 func (h *Host) setting(path config.Key) (config.Setting, error) {
@@ -125,7 +165,7 @@ func (h *Host) configSet(path config.Key, value string) error {
 		if v, err = strconv.ParseFloat(value, 64); err != nil {
 			return Usagef("%s is a number", path)
 		}
-	case config.KindString:
+	case config.KindString, config.KindDuration: // the line is the value; checkKind judges it
 	}
 	return h.SetConfig(path, v)
 }
@@ -154,25 +194,25 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 	return err
 }
 
-// configItems lists every setting by section under two action rows. Enter
-// opens a row's detail, whose actions change the value; space toggles a
-// bool and passes the other rows by.
-func (h *Host) configItems() []OverlayItem {
-	items := []OverlayItem{
-		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting off its default, as the zemi.config.set lines init.lua would write"},
-		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
-	}
+// configItems lists one section's settings with the source leading every
+// row's description. Enter opens a row's detail, whose actions change the
+// value; space toggles a bool and passes the other rows by.
+func (h *Host) configItems(section string) []OverlayItem {
+	var items []OverlayItem
 	for _, s := range h.Settings.Schema() {
+		seg, _, _ := strings.Cut(string(s.Path), ".")
+		if seg != section {
+			continue
+		}
 		v, _ := h.Settings.Get(s.Path)
 		source := h.cfgSource(s.Path)
 		desc := fmt.Sprintf("%-8s  %s", source, showSetting(v))
 		if s.Kind == config.KindBool {
 			desc = source // the switch in the key column draws the value
 		}
-		section, _, _ := strings.Cut(string(s.Path), ".")
-		section = sourceSection(section)
+		listSection := ""
 		if name := settingPlugin(s.Path); name != "" {
-			section = "Plugin " + name
+			listSection = "Plugin " + name
 		}
 		base, set := h.cfgBase(s.Path)
 		note := ""
@@ -183,7 +223,7 @@ func (h *Host) configItems() []OverlayItem {
 		// holds its switch; one width, so a change moves no text. The key's
 		// description is the preview, whole under the list.
 		item := OverlayItem{
-			Text: string(s.Path), Desc: desc, Preview: s.Desc, Section: section,
+			Text: string(s.Path), Desc: desc, Preview: s.Desc, Section: listSection,
 			Fields: fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
 			Detail: s.Desc + note,
 		}

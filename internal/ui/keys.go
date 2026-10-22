@@ -565,17 +565,24 @@ func (a *App) background(fn func()) {
 // runCommand runs a slash command: Go commands inline, Lua ones on the
 // background worker.
 func (a *App) runCommand(name, args string) {
+	if err := a.runCommandErr(name, args); err != nil {
+		a.host.CommandFailed(name, err)
+	}
+}
+
+// runCommandErr is runCommand for a caller that shows a Go command's error
+// itself: an input overlay keeps its box open and names the failure where
+// the value was typed. Lua commands report through CommandFailed as always.
+func (a *App) runCommandErr(name, args string) error {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
 		a.background(func() {
 			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
 				a.host.CommandFailed(name, err)
 			}
 		})
-		return
+		return nil
 	}
-	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-		a.host.CommandFailed(name, err)
-	}
+	return a.host.RunCommand(context.Background(), name, args)
 }
 
 // keyText extracts the literal text a keypress should insert (printable

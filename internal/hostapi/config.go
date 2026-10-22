@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"log/slog"
 	"reflect"
 	"regexp"
@@ -454,9 +455,16 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if h.settingOff(path) {
 			return 0
 		}
-		// the stored form, so a replay compares what the store holds
+		// the stored form, so a replay compares what the store holds. A bad
+		// value for a known key is refused but does not stop the config: the
+		// key keeps its default and the refusal is flagged in /errors. A key
+		// nothing registered is a bug in the caller, and raises.
 		if v, err = h.Settings.Check(path, v); err != nil {
-			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
+			if _, bad := errors.AsType[*config.BadValueError](err); !bad {
+				L.RaiseError("zemi.config.set: %v", err)
+			}
+			h.RecordErrorOnce("config", err.Error())
+			return 0
 		}
 		// a replay writing what the last load wrote keeps what /model, the
 		// mode cycle, /effort or a flag picked since; an edited value wins

@@ -457,7 +457,7 @@ func TestPluginSettings(t *testing.T) {
 				"bad argument #1 to (anonymous) (string expected, got table)",
 				`zemi.config.add: key "ui.theme" must be a lowercase letter`, `key "Interval" must be`,
 				"plugins.br.units expects metric", "plugins.br.n expects number", "plugins.br.nan expects number",
-				"kind must be one of string, number, bool or list",
+				"kind must be one of string, number, bool, list or duration",
 				"zemi.config.add: register settings while the config loads",
 			},
 		},
@@ -520,7 +520,7 @@ func TestPluginSettings(t *testing.T) {
 			}
 			v, _ := h.Settings.Get(key)
 			fmt.Fprintf(&out, "value %v %s\n", cmp.Or(fmt.Sprint(v), "<nil>"), h.cfgSource(key))
-			for _, it := range h.configItems() {
+			for _, it := range h.configItems("plugins") {
 				if it.Text == key {
 					fmt.Fprintf(&out, "section %s\n", it.Section)
 				}

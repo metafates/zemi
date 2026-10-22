@@ -70,17 +70,17 @@ func TestRoleModel(t *testing.T) {
 		{
 			name:   "a key refuses a target name",
 			config: `zemi.config.set("models.titles", "chat")`,
+			want:   map[string]string{"titles": "a/big"},
 			err:    `config key models.titles expects a provider/model id or ""`,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			h, r := newTestHost(t)
-			if c.err != "" {
-				runExpectErr(t, r, rolesProvider+c.config, c.err)
-				return
-			}
 			runUser(t, r, rolesProvider+c.config)
+			if c.err != "" && !h.Recorded(c.err) {
+				t.Errorf("the refused set is not flagged: %q", c.err)
+			}
 			p, _ := h.resolveProfile("")
 			got := map[string]string{"conversation": h.currentModelID(p), "default": h.roleModel("default")}
 			for _, n := range h.targetNames() {

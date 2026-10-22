@@ -25,11 +25,14 @@ type overlayState struct {
 	items []listItem // render_item's row when given, else the item's text
 	listFilter
 	input composerState // text of an input overlay
-	body  viewport
-	text  textRows            // the body's rows
-	back  bool                // a detail view: esc and its actions return to the overlay under it
-	item  hostapi.OverlayItem // a detail view's item: a reload can swap the parent's under it
-	size  boxSize
+	// inputErr is why an input overlay's last submit was refused, shown
+	// above the line until the next key clears it
+	inputErr string
+	body     viewport
+	text     textRows            // the body's rows
+	back     bool                // a detail view: esc and its actions return to the overlay under it
+	item     hostapi.OverlayItem // a detail view's item: a reload can swap the parent's under it
+	size     boxSize
 	// the selected row's danger act waits for a second press; a key or a
 	// click that moves the selection drops it
 	armed bool
@@ -997,14 +1000,20 @@ func (st *overlayState) value(i int) string {
 
 // inputKey edits an input overlay's line; enter submits, esc cancels. A Go
 // prompt's command runs before the close, so a list under it rebuilds with
-// what it changed.
+// what it changed; a value the command refuses keeps the box open with the
+// error it named, so the ask fixes the value instead of retyping it.
 func (a *App) inputKey(st *overlayState, key, text string) {
 	in := &st.input
 	switch key {
 	case "enter":
 		o, value := st.o, in.text
 		if o.Run != "" {
-			a.runCommand(hostapi.SplitCommand(o.Run + " " + value))
+			name, args := hostapi.SplitCommand(o.Run + " " + value)
+			if err := a.runCommandErr(name, args); err != nil {
+				st.inputErr = err.Error()
+				a.bump()
+				return
+			}
 		} else {
 			a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
 		}
@@ -1012,6 +1021,7 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	case "esc":
 		a.cancelOverlay(st.o)
 	default:
+		st.inputErr = ""
 		in.typeKey(key, text)
 	}
 	a.bump()
@@ -1097,7 +1107,11 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w)), nil, hint(inner, sendHint, hintPair{key: "esc", verb: "close"})}
+		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w))}
+		if st.inputErr != "" {
+			body = append(body, []hostapi.Segment{{Text: ansi.Truncate(st.inputErr, inner, "…"), HL: hostapi.ChromeDanger}})
+		}
+		body = append(body, nil, hint(inner, sendHint, hintPair{key: "esc", verb: "close"}))
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list with previews reads as text; a detail view widens to its

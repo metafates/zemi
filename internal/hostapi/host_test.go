@@ -180,7 +180,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.130.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.131.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -578,14 +578,21 @@ func TestEmitVetoable(t *testing.T) {
 }
 
 // TestConfigSetAnyOrigin pins the config write: any origin sets, a value of
-// the wrong kind for a key with choices names them, and it applies to the store.
+// the wrong kind for a key with choices is flagged and leaves the default,
+// and a good value applies to the store.
 func TestConfigSetAnyOrigin(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project config set memory.autonomy: %v", err)
 	}
-	runExpectErr(t, r, `zemi.config.set("ui.notify", false)`, "config key ui.notify expects auto, osc, native, bell or off")
+	runUser(t, r, `zemi.config.set("ui.notify", false)`)
+	if v, _ := h.Settings.Get("ui.notify"); v != config.NotifyAuto {
+		t.Errorf("ui.notify = %v after a refused set, want the default", v)
+	}
+	if !h.Recorded(`config key ui.notify expects auto, osc, native, bell or off`) {
+		t.Error("the refused value is not flagged in /errors")
+	}
 	runUser(t, r, `
 		zemi.config.set("memory.autonomy", "auto")
 
@@ -679,12 +686,24 @@ func TestConfigSet(t *testing.T) {
 	}
 	// every other row changes on a screen of its own, which /config edit is
 	// unless the key has a picker
-	for path, run := range map[string]string{"editor.command": "config edit editor.command", "ui.theme": "theme", "models.chat": "model chat"} {
-		items := h.configItems()
+	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.chat": "models"} {
+		items := h.configItems(section)
 		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == path })]
-		if act := row.Keys[0]; act.Run != run || act.Desc != "change" {
-			t.Errorf("%s: first action %+v, want change running %q", path, act, run)
+		if act := row.Keys[0]; act.Run != configPicker(config.Key(path)) || act.Desc != "change" {
+			t.Errorf("%s: first action %+v, want change running its picker", path, act)
 		}
+	}
+	// /config's root is one row per section, each falling into its keys
+	sections := h.configSections()
+	root := slices.IndexFunc(sections, func(it OverlayItem) bool { return it.Text == "Session" })
+	if root < 0 || sections[root].Run != "config session" || sections[root].Verb != VerbOpen {
+		t.Fatalf("the session row = %+v, want open running config session", sections[root])
+	}
+	if n := len(h.configItems("session")); n != 2 {
+		t.Errorf("the session section holds %d keys, want auto_title and recap", n)
+	}
+	if !h.configSection("models") || h.configSection("set") {
+		t.Error("configSection matches a schema segment only")
 	}
 	// a bool row draws its switch after its source, and its description is
 	// the preview
@@ -699,7 +718,7 @@ func TestConfigSet(t *testing.T) {
 		{func() { h.cfgNow = nil }, true, "default"},
 	} {
 		c.step()
-		items := h.configItems()
+		items := h.configItems("ui")
 		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == "ui.mouse" })]
 		if row.On == nil || *row.On != c.on || row.Desc != c.desc || !strings.Contains(row.Preview, "drag to select") {
 			t.Errorf("bool row: on %v, desc %q, preview %q; want %v, %q", row.On, row.Desc, row.Preview, c.on, c.desc)
