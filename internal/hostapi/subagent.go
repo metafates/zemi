@@ -1383,7 +1383,7 @@ func (t *updateTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name: tools.ToolUpdate,
 		Description: "Tell your caller one or two lines it should not wait for the run's end to read: a finding it asked for, a blocker, a question." +
-			" The caller may steer you in answer, so read what comes back. Keep it to one or two lines, and do not repeat what you already sent.",
+			" The caller may steer you in answer, so read what comes back. Do not repeat what you already sent.",
 		Parameters: props,
 		Required:   required,
 		Parallel:   true,
