@@ -1430,8 +1430,8 @@ func TestSavedWorkflows(t *testing.T) {
 }
 
 // TestWorkflowViewKeepsTheList: viewing a workflow's agent closes the run's
-// view and keeps the workflows list open under it, so esc reopens the run
-// view over the list and h walks back onto the list.
+// view and keeps the workflows list open under it, so esc leaves the view,
+// the back command reopens the run view over the list, and h walks onto it.
 func TestWorkflowViewKeepsTheList(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)

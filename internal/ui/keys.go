@@ -217,6 +217,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case modalQuestion:
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
+		// a shown run is the reader's context: esc leaves it before a menu
+		// left under it, and the back command reopens what the view came from
+		if key == "esc" && a.host.ViewedAgent() != "" {
+			a.armed = armed{}
+			if back := a.host.LeaveAgentView(); back != "" {
+				a.runCommand(hostapi.SplitCommand(back))
+			}
+			return nil
+		}
 		return a.overlayKey(key, keyText(msg))
 	case noModal:
 	}
