@@ -281,19 +281,22 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 function M.digest(rows, first, last)
 	---@type zemi.TranscriptRow[]
 	local calls = {}
-	local secs = 0
+	local failed, secs = 0, 0
 	for i = first, last do
 		local m = rows[i]
 		if m.kind == "reasoning" then
 			secs = secs + (m.thought or 0)
 		elseif M.looks(m) then
 			calls[#calls + 1] = m
+		elseif (m.kind or "tool") == "tool" and (m.status == "err" or m.status == "stopped") then
+			failed = failed + 1
 		end
 	end
 	---@type string[]
 	local parts = {}
 	if #calls > 0 then parts[#parts + 1] = M.counts(calls) end
 	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end
+	if failed > 0 then parts[#parts + 1] = M.count(failed, "failed", "failed") end
 	return table.concat(parts, " · ")
 end
 

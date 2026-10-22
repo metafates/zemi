@@ -1014,6 +1014,22 @@ func TestGoldenVerifyDone(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
+// TestGoldenVerifyFailed: a verify that failed mid-run counts in the collapsed
+// digest as a failed call, so the check's failure is visible however far the
+// rail is folded.
+func TestGoldenVerifyFailed(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 12)
+	host.AppendMessage("user", "fix the flake in the fixture test")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "reasoning", Text: "running the suite first", Stat: &hostapi.TurnStat{ThoughtMS: 300}})
+	host.AppendChat(hostapi.ChatMessage{
+		Role: "assistant", Kind: "tool", Tool: "verify", Text: "go test ./internal/fixtures/", Status: "err",
+		Output: "--- FAIL: TestFlake\nFAIL",
+	})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "reasoning", Text: "the fixture path moved; fixing", Stat: &hostapi.TurnStat{ThoughtMS: 400}})
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
 func TestGoldenAgentStream(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 22)
 
