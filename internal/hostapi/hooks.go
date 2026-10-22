@@ -123,23 +123,19 @@ func (h *Host) buildHooks(name, root, data string, groups []plugin.ClaudeHookGro
 					if events == nil {
 						events = map[string][]hookEntry{}
 					}
+					timeout := hookTimeout
+					if hk.Timeout > 0 {
+						timeout = min(time.Duration(hk.Timeout)*time.Second, hookTimeout)
+					}
 					add(zevent, hookEntry{
 						root: root, data: data, event: g.Event, command: hk.Command,
-						timeout: hookDeadline(hk.Timeout, hookTimeout), match: match,
+						timeout: timeout, match: match,
 					})
 				}
 			}
 		}
 	}
 	return events
-}
-
-// hookDeadline caps a hook's own timeout at cap; 0 keeps the default.
-func hookDeadline(secs int, cap time.Duration) time.Duration {
-	if secs <= 0 {
-		return min(hookTimeout, cap)
-	}
-	return min(time.Duration(secs)*time.Second, cap)
 }
 
 // hookMatcherList is the exact-or-pipe matcher form, whose tokens name tools.
