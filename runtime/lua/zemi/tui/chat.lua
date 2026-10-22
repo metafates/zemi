@@ -63,6 +63,28 @@ local NOTICES_KEEP = 3
 ---@param click string
 ---@return string, string
 local function foldRow(open, n, click) return open and "… collapse" or "… " .. n .. " earlier", click end
+
+-- Whether a call folds into its step's counted row: the same test steps
+-- groups by, so a fold can walk a rail's entries without drawing them.
+local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
+
+-- The tool the rail entry after i starts at, steps' entry loop walked off
+-- the list: a fold needs the entry count and the kept tail's first tool
+-- before any row is built, so a long turn draws its kept entries alone.
+---@param list zemi.tui.Tool[]
+---@param i integer
+---@param last integer
+---@return integer
+local function nextStep(list, i, last)
+	local t = list[i]
+	if t.kind == "reasoning" or not grouped(t) then return i + 1 end
+	local g = 0
+	while i + g <= last and grouped(list[i + g]) do
+		g = g + 1
+	end
+	if g == 1 then return i + 1 end
+	return i + g
+end
 -- the transcript those tables belong to: its epoch, or the agent run on screen
 ---@type integer|string
 local opened_in = 0
@@ -587,30 +609,35 @@ local function builder(ctx, width)
 	function B.rail(list, first, last, o)
 		frame()
 		local at = #B.lines
-		B.heads = {}
-		B.steps(list, first, last, o)
-		frame()
 		-- a long rail keeps its last entries in view, each with the rows under
 		-- it, the earlier ones behind one row that a click opens or closes; a
-		-- printed run lists everything
+		-- printed run lists everything. A closed fold's earlier entries are
+		-- never drawn: the entry count walks the tool list and only the kept
+		-- tail builds rows.
 		local key = o.live and 0 or o.run or first
-		local n = #B.heads - RAIL_KEEP
-		if o.open or o.full or ctx.headless or n < 2 then return end
-		local label, click = foldRow(whole[key], n, "more:" .. key)
-		if not whole[key] then
-			for _ = at + 1, B.heads[n + 1] - 1 do
-				table.remove(B.lines, at + 1)
+		local n = 0
+		if not (o.open or o.full or ctx.headless) then
+			local i = first
+			while i <= last do
+				i, n = nextStep(list, i, last), n + 1
+			end
+			n = n - RAIL_KEEP
+		end
+		local from = first
+		if n >= 2 and not whole[key] then
+			for _ = 1, n do
+				from = nextStep(list, from, last)
 			end
 		end
+		-- the fold row bounds the rail's head where its bar would stand, so
+		-- the kept tail draws no opening bar of its own
+		B.steps(list, from, last, o, from > first)
+		frame()
+		if n < 2 then return end
+		local label, click = foldRow(whole[key], n, "more:" .. key)
 		table.insert(B.lines, at + 1, { bar(), { text = label, hl = "Dim", click = click } })
 		table.insert(B.lines, at + 2, air())
 	end
-
-	-- the rows a rail's entries start at: a thought, a step or a call, with
-	-- what nests under it
-	---@type integer[]
-	B.heads = {}
-	local function head() B.heads[#B.heads + 1] = #B.lines + 1 end
 
 	-- The rows a call or a thought draws carry its transcript index, so a
 	-- list naming one call (a rail's own) bands those rows alone.
@@ -627,9 +654,8 @@ local function builder(ctx, width)
 	---@param first integer
 	---@param last integer
 	---@param o { open: boolean?, full: boolean?, live: boolean?, run: integer?, unroll: boolean? }
-	function B.steps(list, first, last, o)
-		---@param t zemi.tui.Tool
-		local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
+	---@param headed boolean? A bar already bounds the rail above: the first entry draws without one.
+	function B.steps(list, first, last, o, headed)
 		local i = first
 		-- The rail opens on a bar and closes on one; between entries one stands
 		-- where their kinds differ, and around one that failed or was stopped.
@@ -642,9 +668,8 @@ local function builder(ctx, width)
 			local lone = grouped(t) and not grouped(list[i + 1] or {})
 			local kind = t.kind == "reasoning" and "thought" or fmt.tool(t)
 			local fail = t.status == "err" or t.status == "stopped"
-			if prev ~= kind or prev_fail or fail then frame() end
+			if (prev ~= nil or not headed) and (prev ~= kind or prev_fail or fail) then frame() end
 			prev, prev_fail = kind, fail
-			head()
 			if t.kind == "reasoning" then
 				local click = "call:" .. idx
 				local at = #B.lines + 1

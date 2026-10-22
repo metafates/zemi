@@ -302,8 +302,9 @@ func (a *App) followRow(st *overlayState) int {
 		mid += (chat.viewH - 1) / 2
 	}
 	above := -1
+	spans := indexUnits(chat.lines)
 	for k, idx := range st.visible {
-		from, to := unitRows(chat.lines, unitAt(chat.lines, st.items[idx].row.Anchor))
+		from, to := spans.rows(st.items[idx].row.Anchor)
 		switch {
 		case from < 0:
 		case from > mid:

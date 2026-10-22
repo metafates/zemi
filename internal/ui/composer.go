@@ -505,7 +505,10 @@ func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune, soft
 			start, width, brk = i+1, 0, 0
 			continue
 		}
-		cw := ansi.StringWidth(string(x))
+		cw := 1
+		if x < ' ' || x > '~' { // the ASCII glyphs are one cell, the rest measure
+			cw = ansi.StringWidth(string(x))
+		}
 		if width+cw > w && i > start {
 			end := i
 			if brk > start {
