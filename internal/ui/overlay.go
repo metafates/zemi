@@ -160,11 +160,11 @@ func (f *listFilter) filterRow(w int) []hostapi.Segment {
 func (f *listFilter) filterHints(hints []hintPair, esc string) []hintPair {
 	switch {
 	case f.active:
-		return []hintPair{{"enter", "done"}, {"esc", "clear"}}
+		return []hintPair{{key: "enter", verb: "done"}, {key: "esc", verb: "clear"}}
 	case f.query != "":
 		esc = "clear"
 	}
-	return append(hints, hintPair{"esc", esc})
+	return append(hints, hintPair{key: "esc", verb: esc})
 }
 
 // noMatches is how a filtered list with no hit reads, everywhere one reports it.
@@ -1097,7 +1097,7 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w)), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
+		body := [][]hostapi.Segment{st.input.inputRow(min(inner, st.size.w)), nil, hint(inner, sendHint, hintPair{key: "esc", verb: "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list with previews reads as text; a detail view widens to its
@@ -1204,16 +1204,16 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			list = st.rows
 			verb := st.enterVerb(st.visible[st.selected])
 			if verb != "" {
-				hints = append(hints, hintPair{"enter", string(verb)})
+				hints = append(hints, hintPair{key: "enter", verb: string(verb)})
 				enterCopies = verb == hostapi.VerbCopy
 			}
 			r := st.items[st.visible[st.selected]].row
 			if verb != hostapi.VerbToggle && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
-				hints = append(hints, hintPair{"space", "toggle"})
+				hints = append(hints, hintPair{key: "space", verb: "toggle"})
 			}
 			if (verb == hostapi.VerbGo || st.o.OnSelect != nil) && (hasView(r) || r.Run != "") {
 				// enter is the row itself: l is the way into what it opens
-				hints = append(hints, hintPair{"l", "open"})
+				hints = append(hints, hintPair{key: "l", verb: "open"})
 			}
 		}
 		hints = append(hints, st.hintKeys()...)
@@ -1224,10 +1224,10 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 		}
 		// y says nothing enter does not
 		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {
-			hints = append(hints, hintPair{"y", "copy"})
+			hints = append(hints, hintPair{key: "y", verb: "copy"})
 		}
 		if st.o.Next != "" || st.o.Prev != "" {
-			hints = append(hints, hintPair{"ctrl+j/k", "next/prev"})
+			hints = append(hints, hintPair{key: "ctrl+j/k", verb: "next/prev"})
 		}
 		scroll := scrolls(st.body, st.view)
 		if scroll == nil && st.o.Reload != nil {
@@ -1235,7 +1235,7 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 		}
 		esc := map[bool]string{true: "back", false: "close"}[st.back]
 		if top && !st.back && len(a.overlays) > 1 {
-			hints = append(hints, hintPair{"h", "back"})
+			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)
 		foot := hint(bodyW, hints...)
@@ -1320,30 +1320,31 @@ func keyApplies(k hostapi.OverlayKey, st *overlayState) bool {
 
 // hintKeys are what the footer names: the list's keys that act on the
 // selected row, then the row's own, which act on it from the list and are
-// the whole of what a row offers once its view opens.
+// the whole of what a row offers once its view opens. The row's own are
+// marked, so a narrow footer gives way on the screen's keys before them.
 func (st *overlayState) hintKeys() []hintPair {
 	var out []hintPair
 	last := ""
-	add := func(key, desc string) {
+	add := func(key, desc string, row bool) {
 		if last != "" && desc == last { // keys sharing a desc read as one hint: +/- at once
 			out[len(out)-1].key += "/" + key
 			return
 		}
 		last = desc
-		out = append(out, hintPair{key, desc})
+		out = append(out, hintPair{key: key, verb: desc, row: row})
 	}
 	for _, k := range st.o.Keys {
 		if k.Run == "" && k.Fn == nil && k.Act == nil && len(st.visible) == 0 || !keyApplies(k, st) {
 			continue // it acts on the row the list has not got
 		}
-		add(k.Key, k.Desc)
+		add(k.Key, k.Desc, false)
 	}
 	if !st.back && len(st.visible) > 0 {
 		for _, k := range st.selectedRow().Keys {
 			if slices.ContainsFunc(st.o.Keys, func(o hostapi.OverlayKey) bool { return o.Key == k.Key }) {
 				continue
 			}
-			add(k.Key, k.Desc)
+			add(k.Key, k.Desc, true)
 		}
 	}
 	return out
@@ -1393,7 +1394,7 @@ func pressArmed(armed *bool, key string) (confirmed, swallowed bool) {
 // armedHint is the footer of a press that waits for a second one: what the
 // next press does, in the danger color, with the keys drawn as keys.
 func armedHint(w int, key, label string) []hostapi.Segment {
-	foot := hint(w, hintPair{key, "again to " + strings.ToLower(label)}, hintPair{"esc", "cancel"})
+	foot := hint(w, hintPair{key: key, verb: "again to " + strings.ToLower(label)}, hintPair{key: "esc", verb: "cancel"})
 	foot[1].HL = hostapi.ChromeDanger
 	return foot
 }

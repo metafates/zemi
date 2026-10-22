@@ -1217,12 +1217,12 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	var title string
 	switch {
 	case a.palette.open:
-		render, size, hints, title = a.paletteRows, &a.palette.size, []hintPair{{"enter", "run"}, {"tab", "complete"}, {"esc", "close"}}, "Commands"
+		render, size, hints, title = a.paletteRows, &a.palette.size, []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}, "Commands"
 		if a.palette.count() == 0 { // enter still runs the typed line
 			hints = slices.Delete(hints, 1, 2)
 		}
 	case a.completion.shown():
-		render, size, hints, title = a.completionRows, &a.completion.size, []hintPair{{"enter", "pick"}, {"esc", "close"}}, a.completion.title()
+		render, size, hints, title = a.completionRows, &a.completion.size, []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}, a.completion.title()
 		if a.completion.count() == 0 {
 			hints = hints[1:]
 		}

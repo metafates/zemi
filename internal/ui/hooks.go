@@ -105,7 +105,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{key: "l", label: "Later", desc: laterDesc},
 	}
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(choices, tp.sel, width, compact) }
-	body := scrollChoiceBody(h, width, nil, &tp.view, explain, width, act, pickHint, hintPair{"esc", "later"})
+	body := scrollChoiceBody(h, width, nil, &tp.view, explain, width, act, pickHint, hintPair{key: "esc", verb: "later"})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 
@@ -127,7 +127,7 @@ func (a *App) bootBox(w, h int) [][]hostapi.Segment {
 		return rows
 	}
 	var size boxSize
-	body := scrollChoiceBody(h, width, nil, &a.bootView, text, width, nil, hintPair{"c", "copy the error"}, hintPair{"q", "quit"})
+	body := scrollChoiceBody(h, width, nil, &a.bootView, text, width, nil, hintPair{key: "c", verb: "copy the error"}, hintPair{key: "q", verb: "quit"})
 	return promptBox("Boot failed", "", body, w, h, textBoxW, &size)
 }
 

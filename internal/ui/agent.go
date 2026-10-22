@@ -841,7 +841,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for _, c := range pa.choices() {
 		btns = append(btns, c.promptChoice)
 	}
-	hints := []hintPair{pickHint, {"esc", "deny"}}
+	hints := []hintPair{pickHint, {key: "esc", verb: "deny"}}
 	placeholder := oneRow
 	if len(content) == 0 {
 		placeholder = nil
@@ -1020,13 +1020,18 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 	return "arg", parts(req.Arg)
 }
 
-// hintPair is one key of a footer hint and the verb it does.
-type hintPair struct{ key, verb string }
+// hintPair is one key of a footer hint and the verb it does; row marks the
+// selected list row's own keys, which a narrow footer keeps over the
+// screen's state keys.
+type hintPair struct {
+	key, verb string
+	row       bool
+}
 
 // enter's hint in every prompt, in the lists' words (enterVerb): one verb
 // for every button and one for typed text, as wide as "pick" and "open",
 // since a changing width shifts the row.
-var pickHint, sendHint = hintPair{"enter", "pick"}, hintPair{"enter", "send"}
+var pickHint, sendHint = hintPair{key: "enter", verb: "pick"}, hintPair{key: "enter", verb: "send"}
 
 // hintSlot is where a pair sits in a footer: moving, enter, space, copy,
 // letter keys, esc, then scrolling. A screen's letter keys come and go with
@@ -1053,7 +1058,8 @@ func hintSlot(p hintPair) int {
 
 // hint is the one footer row every box draws: "enter pick · esc deny",
 // the pairs in slot order. Past w cells the middle pairs give way,
-// scrolling and copy first, then the last first; enter and esc never do.
+// scrolling and copy first, then the screen's state keys last first, and a
+// row's own key only once no state key is left; enter and esc never do.
 func hint(w int, pairs ...hintPair) []hostapi.Segment {
 	pairs = slices.Clone(pairs)
 	slices.SortStableFunc(pairs, func(a, b hintPair) int { return hintSlot(a) - hintSlot(b) })
@@ -1077,8 +1083,14 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 		}
 		if i < 0 {
 			i = len(pairs) - 1
-			for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
+			for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc" || pairs[i].row) {
 				i--
+			}
+			if i < 0 { // no state key is left: the row's own drop, last first
+				i = len(pairs) - 1
+				for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
+					i--
+				}
 			}
 		}
 		if hostapi.SegsWidth(out) <= w || i < 0 {
@@ -1090,7 +1102,7 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 
 // scrollHint names the half-page keys, which every box's text scrolls on
 // and a laptop has.
-var scrollHint = hintPair{"ctrl+d/u", "scroll"}
+var scrollHint = hintPair{key: "ctrl+d/u", verb: "scroll"}
 
 // scrollGap keeps scrollHint's cells blank in a list that can grow past its
 // view, so the hint coming moves none of the keys after it.

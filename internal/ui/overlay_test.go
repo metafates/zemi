@@ -1157,16 +1157,19 @@ func TestMoveSel(t *testing.T) {
 }
 
 // TestHintOrder: pairs sort into their slots, and a narrow row drops the
-// middle pairs, scrolling and copy first, never enter or esc.
+// middle pairs, scrolling and copy first, then the screen's state keys last
+// first, and a row's own key only once no state key is left; never enter or
+// esc.
 func TestHintOrder(t *testing.T) {
-	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"ctrl+d/u", "scroll"}}
+	pairs := []hintPair{{key: "esc", verb: "close"}, {key: "y", verb: "copy"}, {key: "a", verb: "keep"},
+		{key: "enter", verb: "open"}, {key: "d", verb: "drop"}, {key: "v", verb: "show", row: true}, {key: "ctrl+d/u", verb: "scroll"}}
 	for _, c := range []struct {
 		w    int
 		want string
 	}{
-		{80, "enter open · y copy · a keep · d drop · esc close · ctrl+d/u scroll"},
-		{55, "enter open · y copy · a keep · d drop · esc close"},
-		{40, "enter open · a keep · d drop · esc close"},
+		{80, "enter open · y copy · a keep · d drop · v show · esc close · ctrl+d/u scroll"},
+		{55, "enter open · a keep · d drop · v show · esc close"},
+		{40, "enter open · a keep · v show · esc close"},
 		{5, "enter open · esc close"},
 	} {
 		if got := hostapi.SegsText(hint(c.w, pairs...)); got != c.want {

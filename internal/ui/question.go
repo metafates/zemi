@@ -319,9 +319,9 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var moves []hintPair
 	if len(qp.qs) > 1 {
 		tabs = [][]hostapi.Segment{questionTabs(qp)}
-		moves = []hintPair{{"tab", "next"}}
+		moves = []hintPair{{key: "tab", verb: "next"}}
 		if qp.at == len(qp.qs) {
-			moves = []hintPair{{"shift+tab", "previous"}}
+			moves = []hintPair{{key: "shift+tab", verb: "previous"}}
 		}
 	}
 	qp.size.w = max(qp.size.w, listBoxW)
@@ -342,7 +342,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			}
 			return rows
 		}
-		hints := slices.Concat(moves, []hintPair{sendHint, {fmt.Sprintf("1-%d", n), "change"}, {"esc", "dismiss"}})
+		hints := slices.Concat(moves, []hintPair{sendHint, {key: fmt.Sprintf("1-%d", n), verb: "change"}, {key: "esc", verb: "dismiss"}})
 		return scrollChoiceBody(h, inner, tabs, &qp.review, qp.reviewRows, inner, act, hints...)
 	}
 
@@ -387,11 +387,11 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var hints []hintPair
 	switch {
 	case st.typing:
-		hints = slices.Concat(moves, []hintPair{sendHint, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
+		hints = slices.Concat(moves, []hintPair{sendHint, {key: "esc", verb: map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
 	case q.Multi():
-		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, sendHint, {"esc", "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{{key: "space", verb: "toggle"}, sendHint, {key: "esc", verb: "dismiss"}})
 	default:
-		hints = slices.Concat(moves, []hintPair{pickHint, {"esc", "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{pickHint, {key: "esc", verb: "dismiss"}})
 	}
 	field := [][]hostapi.Segment{st.field(q, min(inner, qp.size.w))}
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
