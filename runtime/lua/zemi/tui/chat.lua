@@ -533,13 +533,24 @@ local function builder(ctx, width)
 		})
 		-- a run that ended on its check closes with its own chat entry after
 		-- the block, marked like a report that came in green: the turn's last
-		-- word is an entry of its own, never a row of the rail
+		-- word is an entry of its own, never a row of the rail. It names what
+		-- the check was and opens the call's view.
 		local final = list[last]
 		local ended = final.kind == "tool" and fmt.tool(final) == "verify" and final.status == "ok"
 		local function doneEntry()
 			B.gap("note")
-			local what = relpath(final.text or ""):gsub("%s+", " ")
-			push(B.note("ok", fmt.clip("done - " .. what .. " passed", width - 4)))
+			local what = final.label ~= "" and final.label or relpath(final.text or "")
+			local click = "call:" .. last
+			local mk = mark("ok")
+			mk.click = click
+			push({
+				mk,
+				{
+					text = fmt.clip("done - " .. (what:gsub("%s+", " ")) .. " passed", width - 4),
+					hl = "Dim",
+					click = click,
+				},
+			})
 		end
 		if not opened then
 			if ended then doneEntry() end

@@ -205,7 +205,7 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		if m.Label != "" {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
-		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolLua) && m.Text != "" {
+		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolVerify || m.Tool == tools.ToolLua) && m.Text != "" {
 			// a command is code, so it heads the body rather than the facts,
 			// and sinks into the well its answer lifts out of
 			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash", Fill: FillCanvas})
