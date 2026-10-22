@@ -799,7 +799,7 @@ Chain dependent steps with &&.`,
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; several edits to one file sent together apply in order.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
