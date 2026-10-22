@@ -196,7 +196,7 @@ const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 charact
 const planPrompt = `
 
 # Planning
-You are planning, which overrides Doing tasks and Asking the user above: read, search and plan, and change nothing. The project is read-only, so a command that changes it fails or needs approval. A request for a change is a request to plan it.
+You are planning, which overrides Doing tasks and Asking the user above: read, search and plan, and change nothing. The project is read-only, so a command that changes it fails. A request for a change is a request to plan it.
 1. Read the code the task touches.`
 
 const planDelegate = ` For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
