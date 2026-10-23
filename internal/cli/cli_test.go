@@ -2,6 +2,7 @@ package cli
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"os"
@@ -632,5 +633,60 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		if c.root != "" && perm.CanonPath(got.dirs.TrustRoot()) != perm.CanonPath(c.root) {
 			t.Errorf("%s: started in %q, want %q", c.name, got.dirs.TrustRoot(), c.root)
 		}
+	}
+}
+
+// wireProbe is not a wire type: it pins the walk's pointer, slice and map
+// cases, and that a value leaves writeJSON as it entered.
+type wireProbe struct {
+	Ptr   *string
+	Slice []string
+	Map   map[string]string
+}
+
+// TestWriteJSONSanitizes: every string the wire carries, a nested row's
+// included, passes the same sanitize pass at writeJSON - plant a control
+// byte in each field class and none may reach a reader of the line.
+func TestWriteJSONSanitizes(t *testing.T) {
+	const esc = "\x1b]0;pwned\a\x7f"
+	probe := wireProbe{Ptr: new(string), Slice: []string{esc}, Map: map[string]string{"k\x07\x7f": esc}}
+	*probe.Ptr = esc
+	var out strings.Builder
+	writeJSON(&out, probe)
+	line := out.String()
+	for _, b := range []byte{0x1b, 0x07, 0x7f} {
+		if strings.IndexByte(line, b) >= 0 {
+			t.Errorf("raw byte %#x on the line: %q", b, line)
+		}
+	}
+	var row map[string]any
+	if err := json.Unmarshal([]byte(line), &row); err != nil {
+		t.Fatal(err)
+	}
+	var walk func(path string, v any)
+	walk = func(path string, v any) {
+		switch x := v.(type) {
+		case string:
+			if strings.ContainsAny(x, "\x1b\x07\x7f") {
+				t.Errorf("%s carries a control byte: %q", path, x)
+			}
+		case []any:
+			for _, e := range x {
+				walk(path, e)
+			}
+		case map[string]any:
+			for k, e := range x {
+				if strings.ContainsAny(k, "\x1b\x07\x7f") {
+					t.Errorf("%s key carries a control byte: %q", path, k)
+				}
+				walk(path+"."+k, e)
+			}
+		}
+	}
+	for k, e := range row {
+		walk("."+k, e)
+	}
+	if *probe.Ptr != esc || probe.Map["k\x07\x7f"] != esc {
+		t.Error("writeJSON rewrote the caller's value")
 	}
 }

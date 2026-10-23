@@ -2,14 +2,11 @@ package cli
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"reflect"
 	"slices"
 	"strings"
 	"syscall"
@@ -216,77 +213,6 @@ func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stderr, "zemi:", hostapi.Headline(err.Error()))
 	return 1
-}
-
-// writeJSON writes v as one JSON Lines line, what every --json prints. A
-// byte that is not UTF-8 becomes U+FFFD, so no line is dropped; the fixed
-// struct types leave Marshal nothing else to refuse. Every string the line
-// carries, a map key or a nested row's included, passes sanitize here, and
-// the caller's value is left alone, so no field needs a per-call list.
-func writeJSON(w io.Writer, v any) {
-	b, _ := json.Marshal(sanitizeWire(reflect.ValueOf(v)).Interface(), jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
-	_, _ = w.Write(append(b, '\n'))
-}
-
-// sanitizeWire returns a copy of v whose strings pass sanitize.String,
-// descending into its structs, slices, arrays, maps and pointers; unexported
-// fields ride along whole, reflect cannot write them one by one.
-func sanitizeWire(v reflect.Value) reflect.Value {
-	switch v.Kind() {
-	case reflect.Pointer:
-		if v.IsNil() {
-			return v
-		}
-		nv := reflect.New(v.Type().Elem())
-		nv.Elem().Set(sanitizeWire(v.Elem()))
-		return nv
-	case reflect.Interface:
-		if v.IsNil() {
-			return v
-		}
-		nv := reflect.New(v.Type()).Elem()
-		nv.Set(sanitizeWire(v.Elem()))
-		return nv
-	case reflect.Struct:
-		nv := reflect.New(v.Type()).Elem()
-		nv.Set(v)
-		for i := range v.NumField() {
-			if v.Type().Field(i).IsExported() {
-				nv.Field(i).Set(sanitizeWire(v.Field(i)))
-			}
-		}
-		return nv
-	case reflect.Slice:
-		if v.IsNil() {
-			return v
-		}
-		nv := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
-		for i := range v.Len() {
-			nv.Index(i).Set(sanitizeWire(v.Index(i)))
-		}
-		return nv
-	case reflect.Array:
-		nv := reflect.New(v.Type()).Elem()
-		for i := range v.Len() {
-			nv.Index(i).Set(sanitizeWire(v.Index(i)))
-		}
-		return nv
-	case reflect.Map:
-		if v.IsNil() {
-			return v
-		}
-		nv := reflect.MakeMapWithSize(v.Type(), v.Len())
-		for iter := v.MapRange(); iter.Next(); {
-			nv.SetMapIndex(sanitizeWire(iter.Key()), sanitizeWire(iter.Value()))
-		}
-		return nv
-	case reflect.String:
-		nv := reflect.New(v.Type()).Elem()
-		nv.SetString(sanitize.String(v.String()))
-		return nv
-	default: // a number, a bool or a flag: nothing on the line to sanitize
-		return v
-	}
 }
 
 // runHeadless runs o.prompt with no TUI: the run view on stderr, and on
