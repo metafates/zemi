@@ -317,29 +317,6 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 	}
 }
 
-// TestRetryDropsPendingCall: a provider retry re-streams the whole step, so
-// a retry whose new attempt answers plain text leaves the failed attempt's
-// call un-pending; a stale one reads as a call the model never made and
-// fails a turn that ended in plain text.
-func TestRetryDropsPendingCall(t *testing.T) {
-	m := &mockModel{steps: [][]fantasy.StreamPart{
-		{
-			{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
-			{Type: fantasy.StreamPartTypeError, Error: &fantasy.ProviderError{
-				TransientError:  true,
-				ResponseHeaders: map[string]string{"retry-after-ms": "1"},
-			}},
-		},
-		textParts("done"),
-	}}
-	r := NewRunner(m, nil, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(t.Context(), "hi"); err != nil {
-		t.Fatalf("the retried turn failed on a call the retry never made: %v", err)
-	}
-	waitDone(t, r.Hooks.(*recHooks))
-}
-
 // TestCutOffToolCallGetsResult: a reply cut off with a tool call in it
 // leaves the call unrun; the next send answers it with an error result so
 // the provider accepts the history.

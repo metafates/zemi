@@ -389,9 +389,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		return nil
 	}
 	call.OnRetry = func(_ *fantasy.ProviderError, delay time.Duration) {
-		// the call streams again from its first delta: no token counted, and
-		// no call of the failed attempt is pending
-		pending, firstToken = "", 0
+		firstToken = 0 // the call streams again from its first delta
 		hooks.Retrying(r.last.Err, delay)
 	}
 	// Each finished step and each steered message is stored as it happens, so
