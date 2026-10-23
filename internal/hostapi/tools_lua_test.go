@@ -53,6 +53,27 @@ func TestLuaToolAskCarriesWholeInput(t *testing.T) {
 	}
 }
 
+// TestLuaToolFinalStopsTurn: a final tool's success is the turn's last word,
+// a failing one lets the model retry.
+func TestLuaToolFinalStopsTurn(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.tool.add({ name = "verdict", description = "the verdict", final = true, execute = function() return "done" end })
+		zemi.tool.add({ name = "flaky", description = "fails", final = true, execute = function() return nil, "no" end })`)
+	byName := map[string]fantasy.AgentTool{}
+	for _, lt := range h.luaFantasyTools(h.PipelineFor()) {
+		byName[lt.Info().Name] = lt
+	}
+	resp, err := byName["verdict"].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+	if err != nil || !resp.StopTurn {
+		t.Fatalf("a successful final tool must end the turn: resp=%+v err=%v", resp, err)
+	}
+	resp, err = byName["flaky"].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+	if err != nil || resp.StopTurn {
+		t.Fatalf("a failed final tool must not end the turn: resp=%+v err=%v", resp, err)
+	}
+}
+
 // TestToolPreHandlerErrorRecorded: a tool.pre handler that raises lets the
 // call proceed, and one that raises or returns a bad shape shows in /errors.
 func TestToolPreHandlerErrorRecorded(t *testing.T) {

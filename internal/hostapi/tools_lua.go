@@ -34,6 +34,7 @@ type luaTool struct {
 	Required []string
 	Prompt   string
 	Parallel bool
+	Final    bool
 	Timeout  time.Duration
 	Fn       *glua.LFunction
 	Origin   lua.Origin
@@ -199,6 +200,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			Schema: schema, Required: required,
 			Prompt:   strings.TrimSpace(rawString(L, spec, "prompt")),
 			Parallel: rawBool(L, spec, "parallel"),
+			Final:    rawBool(L, spec, "final"),
 			Timeout:  timeout, Fn: fn,
 			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),
 			Gen: h.currentGen(),
@@ -302,6 +304,10 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	}
 	reply = fantasy.NewTextResponse(a.h.truncOutput(a.pipe.Pad, a.t.Name, out))
 	reply.IsError = err != nil
+	if a.t.Final && err == nil {
+		// a final tool's success is the turn's last word; a failure lets the model retry
+		reply.StopTurn = true
+	}
 	return reply, nil
 }
 
