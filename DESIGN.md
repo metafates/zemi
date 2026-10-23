@@ -956,7 +956,7 @@ handler runs no Lua.
 ### 6.3 Agents, sessions, models
 
 ```lua
-zemi.agent.current()                 -- session handle: { id = "...", model = "..." }
+zemi.agent.current()                 -- the conversation's model: { model = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
                                        -- message enqueues as steering (§4)

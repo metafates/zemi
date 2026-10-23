@@ -1825,8 +1825,9 @@ function zemi.classify.ask(spec) end
 
 -- zemi.agent
 
+--- The model the conversation runs on, as the statusline sees it. The
+--- session id is `zemi.session.id()`.
 ---@class zemi.AgentCurrent
----@field id string Session id.
 ---@field model string
 
 ---@class zemi.AgentUsage: zemi.Usage

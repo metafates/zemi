@@ -2345,9 +2345,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		out := L.NewTable()
 		ag := h.agents
 		ag.mu.Lock()
-		sid, model := ag.sessionID, h.liveModelID()
+		model := h.liveModelID()
 		ag.mu.Unlock()
-		out.RawSetString("id", glua.LString(sid))
 		out.RawSetString("model", glua.LString(model))
 		L.Push(out)
 		return 1

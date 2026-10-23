@@ -134,7 +134,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 
 	// a read-only script runs with no ask once no policy asks
 	ask(false)
-	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().id`
+	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().model`
 	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
 		t.Errorf("read-only script: %+v %q", ui.asked, out)
 	}
