@@ -70,10 +70,13 @@ func TestGoldenWorkflows(t *testing.T) {
 		}
 		app.renderSync(t)
 		out := app.Frame()
-		// the id first: its random base32 can hold a "<digit>s" pair that the
-		// clock would rewrite, leaving a half-masked id the mask can no longer find
-		if m := runID.FindStringSubmatch(ansi.Strip(out)); m != nil {
-			out = strings.ReplaceAll(out, m[1], "0000000a")
+		// the ids first: random base32 can hold a "<digit>s" pair that the
+		// clock would rewrite, leaving a half-masked id the mask can no
+		// longer find, and a frame can hold the run's and an agent's
+		if m := runID.FindAllStringSubmatch(ansi.Strip(out), -1); len(m) > 0 {
+			for _, id := range m {
+				out = strings.ReplaceAll(out, id[1], "0000000a")
+			}
 		}
 		return elapsed.ReplaceAllString(out, "0.0s")
 	}
@@ -93,6 +96,14 @@ func TestGoldenWorkflows(t *testing.T) {
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 2 })
 	running := frame()
 	t.Run("running", func(t *testing.T) { golden.RequireEqual(t, running) })
+
+	// the collect agent's preview: its facts, its task and what it answered,
+	// the view enter opens on an agent row of the run and of /agents alike
+	pressKeys(app, "enter")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 3 })
+	t.Run("agent", func(t *testing.T) { golden.RequireEqual(t, frame()) })
+	pressKeys(app, "esc")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 2 })
 
 	pressKeys(app, "p")
 	waitPrompt(t, app, func() bool { return strings.Contains(frame(), "paused") })

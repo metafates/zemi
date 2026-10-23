@@ -1148,8 +1148,13 @@ whose view takes the ended one's place) once it ended, and `o` (open its
 script) for a run of this session, with `s` (save it to `workflows/` under
 its description's name, never one another workflow has) when the model
 wrote the script and this process still holds it as it ran. An agent's
-detail views its transcript, from which esc comes back, restarts or stops
-it; its stop has no hotkey, since `x` there stops the run. While any run lives
+detail, enter's view of its row in the run and in `/agents` alike, sets its
+facts (status, time, the agent and model it ran as, its usage and run id, a
+failed run's error), then its task and, once it has ended, what it answered
+(the task as it was written, the reply as the chat draws one); `v` there
+views its transcript, which esc leaves back to the session. The row's keys
+restart or stop a running one; its stop has no hotkey, since `x` on the
+run's view stops the run. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
 starts a saved one with `/workflows run` or `/review`, with no model call
 before the work: detached in the TUI with a live notice row, and headless

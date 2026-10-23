@@ -535,15 +535,15 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := dumpItems(h.agentRunItems())
-	// the row is named by the run's label and its desc keeps the definition
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
+	// the row is named by the run's label and its desc keeps the definition;
+	// enter opens its preview (the facts and the task), v its transcript
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
 		t.Fatalf("another session's workflow is not one row:\n%s", rows)
 	}
-	// enter on a run opens its transcript, and the footer says so; the
-	// running run, under New agent, is selected
+	// the running run, under New agent, is selected
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	if err := h.openAgents(); err != nil || ui.opened[0].Verb != "open" || ui.opened[0].Selected != 1 {

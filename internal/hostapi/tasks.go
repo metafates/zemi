@@ -391,6 +391,31 @@ func (run *agentRun) prompt() string {
 	return run.tr[0].Text
 }
 
+// answer is the run's last plain reply row, "" while it has none.
+func (run *agentRun) answer() string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.lastText("")
+}
+
+// errText is what a failed or stopped run ended with, "" for any other.
+func (run *agentRun) errText() string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.lastText(RowError)
+}
+
+// lastText is the text of the last transcript row of a kind, skipping blanks
+// and empty rows (run.mu held).
+func (run *agentRun) lastText(kind RowKind) string {
+	for _, m := range slices.Backward(run.tr) {
+		if m.Kind == kind && strings.TrimSpace(m.Text) != "" {
+			return m.Text
+		}
+	}
+	return ""
+}
+
 func (run *agentRun) usage() (int64, float64) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
@@ -1062,20 +1087,31 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 }
 
 // agentRunItems are the /agents rows for the live session's runs, the
-// stored ones this process does not hold included; enter shows a transcript.
+// stored ones this process does not hold included; enter opens the run's
+// preview, the same view a workflow's agent gets, and v its transcript.
 // A row is named by the run's label and carries the definition it ran in its
 // desc, next to the status, the clock and the calls.
 func (h *Host) agentRunItems() []OverlayItem {
 	sid := h.AgentSessionID()
 	var running, flows, earlier []OverlayItem
-	row := func(id string, status RunStatus, label string, took time.Duration, desc, calls string) {
+	row := func(id string, status RunStatus, label string, took time.Duration, desc string, calls int, run *agentRun) {
 		item := OverlayItem{
-			Text:    label,
-			Desc:    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
-			Run:     "agents view " + id,
-			Section: "Earlier in this session",
-			Mark:    RunMarks[string(status)],
+			ID:   id,
+			Text: label,
+			Mark: RunMarks[string(status)],
 		}
+		if run != nil {
+			tokens, cost := run.usage()
+			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) +
+				fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")) + " · " + desc
+			item.Fields, item.Detail, item.Parts = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+		} else {
+			// a stored row holds what its session row says; its transcript loads on demand
+			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) + " · " + desc
+			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", desc, "run", id)
+		}
+		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id}}
+		item.Section = "Earlier in this session"
 		if status == RunRunning {
 			item.Section = "Running"
 			running = append(running, item)
@@ -1093,21 +1129,21 @@ func (h *Host) agentRunItems() []OverlayItem {
 		status, calls, took, runSID := run.state()
 		held.Add(runSID)
 		if run.workflow == "" {
-			row(run.id, status, run.label(), took, run.agent, fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
+			row(run.id, status, run.label(), took, run.agent, calls, run)
 		}
 	}
 	// a run another session started (/new leaves a background run behind)
 	// still writes files and blocks /rewind, so it is listed, named by that session
 	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
-		row(run.id, status, run.label(), took, run.agent+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
+		row(run.id, status, run.label(), took, run.agent+h.fromSession(run.parent), calls, run)
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
 			if !held.Has(c.ID) && !inFlows.Has(c.ID) {
-				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, "")
+				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, 0, nil)
 			}
 		}
 	}

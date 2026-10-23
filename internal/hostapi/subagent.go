@@ -1581,7 +1581,7 @@ func (h *Host) agentsOverlay() Overlay {
 		item.Fields = fieldList(fields...)
 		items = append(items, item)
 	}
-	return Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"}
+	return Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open", Wide: true}
 }
 
 // watchAgents keeps /agents current while a run lives: its elapsed time, its

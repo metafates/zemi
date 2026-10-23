@@ -1519,6 +1519,65 @@ func TestFlowViewIDs(t *testing.T) {
 	}
 }
 
+// TestAgentView: the preview a run's row opens, the same in /agents and a
+// workflow's run - its facts, its task, and what it answered once it has. A
+// row with nothing to read sets the facts alone.
+func TestAgentView(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	run := func(status RunStatus, tr ...ChatMessage) *agentRun {
+		return &agentRun{id: "agent-1", agent: "explore", model: "m", status: status, tr: tr}
+	}
+	for _, c := range []struct {
+		name        string
+		row         agentRow
+		run         *agentRun
+		wantFields  string
+		wantDetail  string
+		wantNoParts bool
+	}{
+		{
+			"a queued one is its facts alone",
+			agentRow{def: "explore", status: "queued"},
+			nil,
+			"[run ]", "", true,
+		},
+		{
+			"a running one is its task",
+			agentRow{def: "explore", status: RunRunning},
+			run(RunRunning, ChatMessage{Role: "user", Text: "look around"}),
+			"", "look around", false,
+		},
+		{
+			"a done one answers",
+			agentRow{def: "explore", status: RunDone},
+			run(RunDone, ChatMessage{Role: "user", Text: "look around"}, ChatMessage{Role: "assistant", Text: "two files changed"}),
+			"", "look around\n\ntwo files changed", false,
+		},
+		{
+			"a failed one carries its error",
+			agentRow{def: "explore", status: RunFailed},
+			run(RunFailed, ChatMessage{Role: "user", Text: "look"}, ChatMessage{Kind: RowError, Text: "the provider failed"}),
+			"[error the provider failed]", "look", false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fields, detail, parts := h.agentView(c.row, c.run)
+			if extra := dumpFields(fields); c.wantFields == "" && !strings.HasPrefix(extra, "[status") {
+				t.Fatalf("fields %s, want the facts table", extra)
+			} else if c.wantFields != "" && !strings.Contains(extra, c.wantFields) {
+				t.Fatalf("fields %s, want %s", extra, c.wantFields)
+			}
+			if detail != c.wantDetail {
+				t.Fatalf("detail %q, want %q", detail, c.wantDetail)
+			}
+			if c.wantNoParts && parts != nil || !c.wantNoParts && len(parts) == 0 {
+				t.Fatalf("parts %+v", parts)
+			}
+		})
+	}
+}
+
 // TestWatchFlows: one ticker claims the views, and it lets go only once no
 // run lives.
 func TestWatchFlows(t *testing.T) {

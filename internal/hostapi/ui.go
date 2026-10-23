@@ -569,14 +569,15 @@ var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, 
 type OverlayItem struct {
 	Text, Desc, Key, Section, Detail, Fill, Copy, Run, ID, Preview string
 	Verb                                                           Verb
-	Mark                                                           MarkKind  // drawn ahead of the text
-	On, Locked                                                     *bool     // On: the switch is drawn, on or off; Locked: it stands with nothing to switch
-	Danger                                                         bool      // cannot be undone: drawn in Danger, and its first enter or key only arms it
-	Tail                                                           bool      // a text too wide is cut from the left: a path's name is at its end
-	Anchor                                                         int       // a following list's row: the transcript row it stands for, 0 for none
-	Keys                                                           []ItemKey // what acts on the row: from the list by its character, in the footer of its view
-	Fields                                                         []Field   // the row's view: facts set above Detail
-	Row                                                            []Segment // the row render_item drew, nil for the text alone
+	Mark                                                           MarkKind   // drawn ahead of the text
+	On, Locked                                                     *bool      // On: the switch is drawn, on or off; Locked: it stands with nothing to switch
+	Danger                                                         bool       // cannot be undone: drawn in Danger, and its first enter or key only arms it
+	Tail                                                           bool       // a text too wide is cut from the left: a path's name is at its end
+	Anchor                                                         int        // a following list's row: the transcript row it stands for, 0 for none
+	Keys                                                           []ItemKey  // what acts on the row: from the list by its character, in the footer of its view
+	Fields                                                         []Field    // the row's view: facts set above Detail
+	Parts                                                          []BodyPart // the row's view's body in Detail's place, each drawn the way its text is written
+	Row                                                            []Segment  // the row render_item drew, nil for the text alone
 	// raw is the Lua value the row was parsed from, which its callbacks get
 	// back: a Go screen's row has none.
 	raw any

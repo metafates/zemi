@@ -9,10 +9,12 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 // The workflow views: the /workflows list, one run's agents and a single
-// agent, as the overlays the screens read.
+// agent, as the overlays the screens read - and the agent-run preview /agents
+// rows open too.
 
 // flowWord is a run's status word, paused while it holds its queue.
 func flowWord(v flowView) string {
@@ -134,6 +136,43 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 	return o
 }
 
+// agentView is an agent run's row view, the same in /agents and a workflow's
+// run: its facts, then its task and, once it has ended, what it answered. A
+// row with nothing to read (queued, reused, stored) sets the facts alone; a
+// failed one carries its error as a field.
+func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail string, parts []BodyPart) {
+	usage := fmt.Sprintf("%d %s · %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
+	if a.cost > 0 {
+		usage += " · " + fmtCost(a.cost)
+	}
+	def := a.def
+	if run != nil && run.model != "" {
+		def += " · " + run.model
+	}
+	fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
+	if run == nil {
+		return fields, "", nil
+	}
+	prompt := sanitize.String(run.prompt())
+	if a.status == RunFailed {
+		if err := run.errText(); err != "" {
+			fields = append(fields, Field{"error", err})
+		}
+	} else if answer := run.answer(); answer != "" && (a.status == RunDone || a.status == RunWarn) {
+		parts = append(parts, BodyPart{Text: answer, Lang: "markdown"})
+	}
+	if prompt != "" {
+		parts = append([]BodyPart{{Text: prompt}}, parts...)
+	}
+	for _, p := range parts {
+		if detail != "" {
+			detail += "\n\n"
+		}
+		detail += p.Text
+	}
+	return fields, detail, parts
+}
+
 // flowAgentItem is an agent's row in a run's view, keyed by its call's
 // index, which a call made later in an earlier phase does not move.
 func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem {
@@ -145,32 +184,22 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem
 	if a.status != "queued" {
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
-	item := OverlayItem{ID: strconv.Itoa(a.call), Text: a.description, Desc: desc, Section: section, Mark: RunMarks[string(a.status)]}
-	// a queued row opens too, so starting it moves no footer text
-	item.Fields = fieldList("status", string(a.status), "agent", a.def)
+	run := h.tasks.find(a.id)
+	fields, detail, parts := h.agentView(a, run)
+	item := OverlayItem{
+		ID: strconv.Itoa(a.call), Text: a.description, Desc: desc, Section: section, Mark: RunMarks[string(a.status)],
+		Fields: fields, Detail: detail, Parts: parts,
+	}
 	if a.id == "" {
 		return item
 	}
-	run := h.tasks.find(a.id)
-	def := a.def
-	if run != nil && run.model != "" {
-		def += " · " + run.model
-	}
-	usage, detail := fmt.Sprintf("%d %s · %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
-	if a.cost > 0 {
-		usage += " · " + fmtCost(a.cost)
-	}
 	keys := []ItemKey{{Key: "v", Desc: "view its transcript", Run: "workflows view " + f.id + " " + a.id}}
-	if run != nil {
-		detail = run.prompt()
-		if a.status == RunRunning {
-			keys = append(keys,
-				ItemKey{Key: "r", Desc: "restart", Run: "workflows restart " + f.id + " " + a.id},
-				// s stops this agent; x on the view stops the whole run
-				ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + a.id, Danger: true})
-		}
+	if run != nil && a.status == RunRunning {
+		keys = append(keys,
+			ItemKey{Key: "r", Desc: "restart", Run: "workflows restart " + f.id + " " + a.id},
+			// s stops this agent; x on the view stops the whole run
+			ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + a.id, Danger: true})
 	}
-	item.Fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
-	item.Detail, item.Keys = detail, keys
+	item.Keys = keys
 	return item
 }
