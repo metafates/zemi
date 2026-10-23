@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
@@ -429,7 +427,7 @@ func callTitle(m ChatMessage) string {
 	if t, ok := callTitles[m.Tool]; ok {
 		return t
 	}
-	return capitalize(strings.ReplaceAll(strings.TrimPrefix(m.Tool, "mcp_"), "_", " "))
+	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(m.Tool, "mcp_"), "_", " "))
 }
 
 // callOutput is what the call answered, as its view shows it: a question's
@@ -460,11 +458,3 @@ func callOutput(m ChatMessage) string {
 	return m.Output
 }
 
-// capitalize upper-cases a name's first rune, leaving the rest alone.
-func capitalize(s string) string {
-	r, n := utf8.DecodeRuneInString(s)
-	if n == 0 {
-		return s
-	}
-	return string(unicode.ToUpper(r)) + s[n:]
-}
