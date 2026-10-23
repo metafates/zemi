@@ -2401,6 +2401,7 @@ function zemi.fs.grep(pattern, opts) end
 
 ---@class zemi.HTTPHandle
 ---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit) and under pcall.
+---@field cancel fun(self: zemi.HTTPHandle) Cancels the request; a waiting `wait` comes back with its error.
 
 --- http and https only, no userinfo. Gated as `lua.http.<method>` with the
 --- URL as the argument. Redirects are not followed: the gate approved one
