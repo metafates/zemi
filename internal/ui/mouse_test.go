@@ -194,7 +194,7 @@ func TestFilterKeys(t *testing.T) {
 		{"foo bar", "alt+backspace", "foo "},
 		{"foo", "backspace", "fo"},
 	} {
-		f := listFilter{active: true, query: c.query, labels: []string{"a"}}
+		f := listFilter{active: true, query: c.query, cursor: len([]rune(c.query)), labels: []string{"a"}}
 		if !f.edit(c.key, "") || f.query != c.want {
 			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
 		}
@@ -205,7 +205,7 @@ func TestFilterKeys(t *testing.T) {
 // one keeping its end and cursor, so filtering widens no box.
 func TestFilterRowWidth(t *testing.T) {
 	const w = 30
-	f := listFilter{query: strings.Repeat("x", 60), labels: []string{"a"}}
+	f := listFilter{query: strings.Repeat("x", 60), cursor: 60, labels: []string{"a"}}
 	f.active = true
 	if row := f.filterRow(w); hostapi.SegsWidth(row) != w || row[len(row)-1].HL != hostapi.ChromeCursor {
 		t.Errorf("active query not cut to %d with its cursor kept: %q", w, hostapi.SegsText(row))

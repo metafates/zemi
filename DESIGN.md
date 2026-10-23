@@ -2005,9 +2005,11 @@ rides the `memories.md` line and its ledger entries.
   section headers, so an action never reads as one of them. `/` starts a
   filter on a list that opened with five rows or more; a shorter one reads at
   a glance and shows no filter row, and a rebuild keeps what it opened with,
-  so a row going or coming adds or drops no filter row. While it types, every one-character key types,
-  so the footer says only `enter done · esc clear`; enter keeps the query and
-  gives the keys back to the list (j and k move in the narrowed rows, `/`
+  so a row going or coming adds or drops no filter row. While it types, every one-character key types
+  at a cursor left and right move (backspace, delete and ctrl+w edit around
+  it), so the footer says only `enter done · esc clear`; enter keeps the query and
+  gives the keys back to the list, where left and right alias h and l again
+  (j and k move in the narrowed rows, `/`
   types on), and esc clears it, then closes. A detail view opens with its
   item's `fields` set as a table (names in a dim column, a field with no value
   left out), then its `detail` prose, and lists nothing: its keys are the

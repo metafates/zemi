@@ -69,6 +69,7 @@ type listFilter struct {
 	filterable    bool
 	active        bool // "/" was pressed: keys type into query
 	query         string
+	cursor        int      // rune offset into query, kept while it types
 	labels, texts []string // per row
 	visible       []int
 	match         [][]int
@@ -85,15 +86,17 @@ func (f *listFilter) apply() {
 }
 
 // edit applies a filtering key. "/" starts typing a query on a list with
-// rows; typed text and the composer's deletion keys edit it; enter keeps it
-// and gives the keys back to the list, where "/" types on and esc clears it;
-// esc while typing, or backspace on an empty query, clears it too. It
-// reports whether the key was used.
+// rows; typed text inserts at the cursor and the composer's editing keys
+// move or edit around it; enter keeps it and gives the keys back to the
+// list, where "/" types on and esc clears it; esc while typing, or
+// backspace on an empty query, clears it too. It reports whether the key
+// was used.
 func (f *listFilter) edit(key, text string) bool {
 	if !f.active {
 		switch {
 		case text == "/" && len(f.labels) > 0:
 			f.active = true
+			f.cursor = len([]rune(f.query))
 		case key == "esc" && f.query != "":
 			f.set("")
 		default:
@@ -101,24 +104,35 @@ func (f *listFilter) edit(key, text string) bool {
 		}
 		return true
 	}
-	q := composerState{text: f.query, cursor: len([]rune(f.query))}
+	q := composerState{text: f.query, cursor: f.cursor}
 	switch {
 	case key == "enter":
 		f.active = false
+		return true
 	case key == "esc" || key == "backspace" && f.query == "":
 		f.active = false
 		f.set("")
+		return true
+	case key == "left":
+		q.left()
+	case key == "right":
+		q.right()
 	case key == "backspace":
 		q.backspace()
 		f.set(q.text)
 	case key == "ctrl+w" || key == "alt+backspace":
 		q.delWord()
 		f.set(q.text)
+	case key == "delete":
+		q.delete()
+		f.set(q.text)
 	case text != "":
-		f.set(f.query + text)
+		q.insert(text)
+		f.set(q.text)
 	default:
 		return false
 	}
+	f.cursor = q.cursor
 	return true
 }
 
@@ -131,6 +145,7 @@ func (f *listFilter) set(query string) {
 	}
 	changed := query != f.query
 	f.query = query
+	f.cursor = min(f.cursor, len([]rune(query)))
 	f.apply()
 	if changed {
 		f.selected, f.view.top = 0, 0
@@ -146,12 +161,13 @@ const filterMin = 5
 
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row. It is cut to the box's inner width, so a long
-// query widens nothing: an active one keeps its end, the cursor included.
+// query widens nothing: an active one keeps its end, the cursor included
+// while it sits in the kept tail.
 func (f *listFilter) filterRow(w int) []hostapi.Segment {
 	slash := hostapi.Segment{Text: "/ ", HL: hostapi.ChromeHintKey}
 	switch r := []rune(f.query); {
 	case f.active:
-		return tailSegs(append([]hostapi.Segment{slash}, cursorSegs(r, len(r), hostapi.ChromeBold)...), w)
+		return tailSegs(append([]hostapi.Segment{slash}, cursorSegs(r, min(f.cursor, len(r)), hostapi.ChromeBold)...), w)
 	case f.query != "":
 		return ellipsizeSegs([]hostapi.Segment{slash, {Text: f.query, HL: hostapi.ChromeValue}}, w)
 	}

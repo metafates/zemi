@@ -957,8 +957,14 @@ func TestOverlayNavigation(t *testing.T) {
 	}
 }
 
+// fiveRows is a filterable list: filterMin rows or more.
+func fiveRows() []hostapi.OverlayItem {
+	return []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}
+}
+
 // TestOverlayArrowKeys: left and right alias h and l on a list, and an open
-// filter keeps them for nothing, as it types h and l itself.
+// filter keeps them for its cursor, as it moves and edits the query with
+// them.
 func TestOverlayArrowKeys(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -985,15 +991,90 @@ func TestOverlayArrowKeys(t *testing.T) {
 			},
 		},
 		{
-			"an open filter leaves left and right alone",
+			"an open filter moves the cursor with left and right",
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "view"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}},
 			nil,
 			func(a *App) string {
-				st := &a.overlays[0]
-				st.active = true
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
 				a.overlayKey("left", "")
 				a.overlayKey("right", "")
-				return fail(len(a.overlays) == 1 && !st.back && st.query == "", fmt.Sprintf("overlays=%d query=%q", len(a.overlays), st.query))
+				a.overlayKey("right", "") // clamps at the end, opens no view
+				st := &a.overlays[0]
+				return fail(st.cursor == 1 && st.query == "a" && len(a.overlays) == 1 && !st.back,
+					fmt.Sprintf("cursor=%d query=%q overlays=%d back=%v", st.cursor, st.query, len(a.overlays), st.back))
+			},
+		},
+		{
+			"typing inserts at a moved cursor",
+			hostapi.Overlay{Items: fiveRows()},
+			nil,
+			func(a *App) string {
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
+				a.overlayKey("c", "c")
+				a.overlayKey("left", "")
+				a.overlayKey("b", "b")
+				st := &a.overlays[0]
+				return fail(st.query == "abc" && st.cursor == 2, fmt.Sprintf("query=%q cursor=%d", st.query, st.cursor))
+			},
+		},
+		{
+			"backspace deletes before a moved cursor",
+			hostapi.Overlay{Items: fiveRows()},
+			nil,
+			func(a *App) string {
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
+				a.overlayKey("b", "b")
+				a.overlayKey("left", "")
+				a.overlayKey("backspace", "")
+				st := &a.overlays[0]
+				return fail(st.query == "b" && st.cursor == 0, fmt.Sprintf("query=%q cursor=%d", st.query, st.cursor))
+			},
+		},
+		{
+			"delete removes after a moved cursor",
+			hostapi.Overlay{Items: fiveRows()},
+			nil,
+			func(a *App) string {
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
+				a.overlayKey("b", "b")
+				a.overlayKey("left", "")
+				a.overlayKey("delete", "")
+				st := &a.overlays[0]
+				return fail(st.query == "a" && st.cursor == 1, fmt.Sprintf("query=%q cursor=%d", st.query, st.cursor))
+			},
+		},
+		{
+			"left clamps at the start and a kept query types on from the end",
+			hostapi.Overlay{Items: fiveRows()},
+			nil,
+			func(a *App) string {
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
+				a.overlayKey("left", "")
+				a.overlayKey("left", "") // clamps at 0
+				a.overlayKey("enter", "")
+				a.overlayKey("/", "/") // types on from the end, not where it left off
+				a.overlayKey("b", "b")
+				st := &a.overlays[0]
+				return fail(st.query == "ab" && st.cursor == 2 && st.active, fmt.Sprintf("query=%q cursor=%d active=%v", st.query, st.cursor, st.active))
+			},
+		},
+		{
+			"a kept filter gives left and right back to the list",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "view"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}},
+			nil,
+			func(a *App) string {
+				a.overlayKey("/", "/")
+				a.overlayKey("a", "a")
+				a.overlayKey("enter", "")
+				a.overlayKey("right", "") // aliases l: opens the row's view
+				st := &a.overlays[0]
+				return fail(len(a.overlays) == 2 && st.query == "a" && !st.active,
+					fmt.Sprintf("overlays=%d query=%q active=%v", len(a.overlays), st.query, st.active))
 			},
 		},
 	} {
