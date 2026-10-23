@@ -855,10 +855,12 @@ func (s *subagentHooks) ToolCallRunning(id string) {
 func (s *subagentHooks) ToolCallEnd(id, name string, result fantasy.ToolResultOutputContent, diff string) {
 	run := s.run
 	out, ok := agent.ToolOutput(result), !agent.ErrResult(result)
+	// takeToolOutcome takes ag.mu, which nextTurn holds across this run's
+	// run.mu: under run.mu here the pair deadlocks
+	o := s.h.takeToolOutcome(id)
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		t := &run.tr[i]
-		o := s.h.takeToolOutcome(id)
 		t.Status, t.Output, t.Job = toolStatus(result, s.ctx != nil && s.ctx.Err() != nil, o), shortOutput(out), o.Job
 		if o.Run != "" {
 			t.Run = o.Run

@@ -480,6 +480,54 @@ func TestFinishNeverDeadlocksNextTurn(t *testing.T) {
 	}
 }
 
+// TestToolCallEndNeverDeadlocksNextTurn: ToolCallEnd takes the call's
+// outcome before run.mu, because nextTurn holds ag.mu across runningFor's
+// run.mu - the old order (the outcome under run.mu) deadlocked the pair when
+// a subagent's tool ended as the parent's turn did. One pass is enough to
+// lock up on the old order (the deadlocked pair keeps ag.mu forever, so the
+// next pass fails at once).
+func TestToolCallEndNeverDeadlocksNextTurn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	sid := seedSession(t, h)
+	for i := range 200 {
+		run := &agentRun{
+			id: strconv.Itoa(i), agent: "explore", parent: sid, status: RunRunning, started: time.Now(),
+			rows: map[string]int{"c1": 0}, tr: []ChatMessage{{Tool: "read", CallID: "c1"}},
+		}
+		if err := h.tasks.add(run); err != nil {
+			t.Fatal(err)
+		}
+		h.agents.mu.Lock()
+		if h.agents.outcomes == nil {
+			h.agents.outcomes = map[string]tools.Outcome{}
+		}
+		h.agents.outcomes["c1"] = tools.Outcome{Job: "j1"}
+		h.agents.mu.Unlock()
+		s := &subagentHooks{h: h, run: run, sid: sid}
+		done := make(chan struct{})
+		go func() { defer close(done); s.ToolCallEnd("c1", "read", fantasy.ToolResultOutputContentText{}, "") }()
+		nested := make(chan struct{})
+		go func() {
+			// nextTurn's shape: ag.mu held across runningFor's run.mu
+			h.agents.mu.Lock()
+			h.tasks.runningFor(sid)
+			h.agents.mu.Unlock()
+			close(nested)
+		}()
+		select {
+		case <-nested:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("ToolCallEnd deadlocked against nextTurn's lock order (pass %d)", i)
+		}
+		<-done
+		if run.tr[0].Job != "j1" {
+			t.Fatalf("call row lost its outcome job (pass %d): %q", i, run.tr[0].Job)
+		}
+	}
+}
+
 // forgetRun drops a run from the registry, as eviction or a restart would.
 func forgetRun(h *Host, id string) {
 	h.tasks.mu.Lock()
