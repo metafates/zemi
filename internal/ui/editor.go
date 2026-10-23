@@ -53,10 +53,10 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	// sh takes the file as argv["1"]; cmd and PowerShell take one command
 	// line, so the file is quoted into it in place of "$1".
 	var c *exec.Cmd
-	switch {
-	case sh == "cmd":
+	switch sh {
+	case "cmd":
 		c = exec.Command(sh, "/c", strings.Replace(script, `"$1"`, `"`+req.Path+`"`, 1))
-	case sh == "pwsh":
+	case "pwsh":
 		q := "'" + strings.ReplaceAll(req.Path, "'", "''") + "'"
 		c = exec.Command(sh, "-NoProfile", "-NonInteractive", "-Command", strings.Replace(script, `"$1"`, q, 1))
 	default:
