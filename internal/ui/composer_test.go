@@ -644,6 +644,38 @@ func TestSubmitFailed(t *testing.T) {
 
 // TestSubmitEmptyShellDraft: a "!" with no command is an empty draft, not a
 // message for the model.
+// TestRestoreQueue: an interrupt hands the queue back as one draft that
+// history keeps, with the popups a slash draft held closed.
+func TestRestoreQueue(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 60, 12)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if err := host.AgentSendUser("queued"); err != nil {
+		t.Fatal(err)
+	}
+	app.composer.text, app.composer.cursor = "/he", 3
+	app.updatePalette()
+	if !app.palette.open {
+		t.Fatal("the palette did not open")
+	}
+	app.composerKey("esc", tea.KeyPressMsg{}) // closes the palette, then arms
+	app.composerKey("esc", tea.KeyPressMsg{})
+	app.composerKey("esc", tea.KeyPressMsg{}) // and interrupts
+	if app.composer.text != "queued\n\n/he" || app.palette.open || app.completion.shown() {
+		t.Fatalf("restore left text %q, palette %v, completion %v", app.composer.text, app.palette.open, app.completion.shown())
+	}
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "/he" {
+		t.Fatalf("undo after the restore: %q", app.composer.text)
+	}
+	// the queue text is not lost with the draft: it recalls from history
+	app.clearComposer()
+	app.composerKey("ctrl+p", tea.KeyPressMsg{})
+	if app.composer.text != "queued\n\n/he" {
+		t.Fatalf("history does not hold the restored text: %q", app.composer.text)
+	}
+}
+
 func TestSubmitEmptyShellDraft(t *testing.T) {
 	t.Parallel()
 	app := newTestApp(t, t.TempDir())

@@ -254,7 +254,9 @@ func (a *App) sendMessage(text string) {
 }
 
 // restoreQueue moves queued steering messages back into the composer,
-// ahead of any draft, so they can be edited and sent again.
+// ahead of any draft, so they can be edited and sent again. The joined
+// text joins the history: AgentTakeQueue consumed it, so history is all
+// that keeps it when an undo takes the draft back.
 func (a *App) restoreQueue() bool {
 	q := a.host.AgentTakeQueue()
 	if len(q) == 0 {
@@ -263,7 +265,11 @@ func (a *App) restoreQueue() bool {
 	if !a.composer.empty() {
 		q = append(q, a.composer.text)
 	}
-	a.composer.text = strings.Join(q, "\n\n")
+	text := strings.Join(q, "\n\n")
+	a.composer.pushHistory(text)
+	a.composer.text = text
 	a.composer.moveEnd()
+	a.palette.close()
+	a.completion.close()
 	return true
 }
