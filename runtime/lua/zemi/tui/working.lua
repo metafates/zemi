@@ -82,10 +82,14 @@ zemi.ui.widget.add({
 			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
 			if ag.retry then
 				state = "error"
+				local why = ag.retry.why ~= "" and " - " .. fmt.clip(ag.retry.why, 60) or ""
 				tick = {
 					plain(
-						ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
+						(
+							ag.retry.next_in > 0
+								and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
 							or "retrying now"
+						) .. why
 					),
 					5,
 					18,

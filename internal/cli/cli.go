@@ -446,7 +446,7 @@ func pluginCommand(o *options) *cobra.Command {
 			if err == nil && buf.Len() == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no marketplaces yet; zemi plugin marketplace add <source> adds one")
 			}
-			c.OutOrStdout().Write(buf.Bytes())
+			_, err = buf.WriteTo(c.OutOrStdout())
 		case c.Parent().Name() == "marketplace":
 			err = plugin.Run(ctx, dirs, append([]string{"marketplace", c.Name()}, args...), c.OutOrStdout())
 		default:

@@ -119,8 +119,8 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		}
 		o.Keys = []OverlayKey{
 			pause,
-			{Key: "+", Desc: "more at once", Run: "workflows concurrency " + f.id + " +1"},
-			{Key: "-", Desc: "fewer at once", Run: "workflows concurrency " + f.id + " -1"},
+			{Key: "+", Desc: "at once", Run: "workflows concurrency " + f.id + " +1"},
+			{Key: "-", Desc: "at once", Run: "workflows concurrency " + f.id + " -1"},
 			{Key: "x", Desc: "stop workflow", Run: "workflows stop " + f.id, Danger: true},
 		}
 	}
