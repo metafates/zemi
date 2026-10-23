@@ -72,7 +72,7 @@ func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 	if s == "cmd" {
 		return CommandContext(ctx, s, "/c", line)
 	}
-	if s == "pwsh" || s == "powershell" {
+	if s == "pwsh" {
 		// NOTE: -Command exits 0 after a failed native command, so the tail
 		// hands the real exit code back; the newline keeps a trailing
 		// comment from eating it.
