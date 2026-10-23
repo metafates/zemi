@@ -2,11 +2,15 @@ package proc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"golang.org/x/sys/windows"
 )
 
 // NOTE: Windows kills only the process itself; children of a shell survive
@@ -68,11 +72,33 @@ func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 	if s == "cmd" {
 		return CommandContext(ctx, s, "/c", line)
 	}
-	if s == "pwsh" {
+	if s == "pwsh" || s == "powershell" {
 		// NOTE: -Command exits 0 after a failed native command, so the tail
-		// hands the real exit code back.
+		// hands the real exit code back; the newline keeps a trailing
+		// comment from eating it.
 		return CommandContext(ctx, s, "-NoProfile", "-NonInteractive", "-Command",
 			line+"\nif (-not $?) { exit 1 }; exit $LASTEXITCODE")
 	}
 	return CommandContext(ctx, s, "-c", line)
+}
+
+// SymlinkDir makes newname a directory link to oldname. A stock Windows
+// account lacks the symlink privilege, so it falls back to a junction,
+// which needs none but stores an absolute target.
+func SymlinkDir(oldname, newname string) error {
+	err := os.Symlink(oldname, newname)
+	if !errors.Is(err, windows.ERROR_PRIVILEGE_NOT_HELD) {
+		return err
+	}
+	target := oldname
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(newname), target)
+	}
+	c := Command("cmd", "/c", "mklink", "/J", newname, target)
+	var errb strings.Builder
+	c.Stderr = &errb
+	if err := Run(c); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(errb.String()))
+	}
+	return nil
 }
