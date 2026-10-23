@@ -81,6 +81,11 @@ func (h *Host) ResumeSession(id string) error {
 	if id == live {
 		return nil
 	}
+	// a run reporting into this session would join rows the resume rebuilt
+	// from the store
+	if err := h.tasks.stillRunning(func(p string) bool { return p == id }); err != nil {
+		return err
+	}
 	sess, err := h.DB.GetSession(id)
 	if errors.Is(err, store.ErrNotFound) {
 		if h.hooks() == nil {
@@ -90,6 +95,9 @@ func (h *Host) ResumeSession(id string) error {
 	}
 	if err != nil {
 		return fmt.Errorf("session %s: %w", id, err)
+	}
+	if sess.ParentID != "" {
+		return Usagef("%q is a subagent run's session, not a conversation", id)
 	}
 	rows, err := h.DB.Messages(id)
 	if err != nil {

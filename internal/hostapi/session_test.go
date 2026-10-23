@@ -429,6 +429,33 @@ func TestTurnRunningRefusals(t *testing.T) {
 	}
 }
 
+// TestResumeRefusals: a session a live run reports into cannot be resumed
+// (its report would join rows the resume rebuilt from the store), and a
+// subagent run's own session is not a conversation to open.
+func TestResumeRefusals(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	other := addSession(t, h)
+	if err := h.tasks.add(&agentRun{id: "r1", parent: other, status: RunRunning}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(other); err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("resume with a live run: %v", err)
+	}
+	h.tasks.mu.Lock()
+	delete(h.tasks.runs, "r1")
+	h.tasks.mu.Unlock()
+
+	child := store.ShortID()
+	if err := h.DB.CreateSession(child, other, "a run", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(child); err == nil || !strings.Contains(err.Error(), "subagent run") {
+		t.Fatalf("resume of a run's session: %v", err)
+	}
+}
+
 // TestResumeKeepsToolDiffs: the diff a file tool showed live is stored
 // as the tool ends, before its call's message, so a resumed session renders
 // it on that call and not on a later one a provider gave the same id.

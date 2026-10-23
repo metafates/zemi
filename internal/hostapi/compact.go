@@ -476,9 +476,11 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	if errors.Is(err, errNoSummary) || contextTooLarge(err) {
 		out, err = h.summarize(ctx, head, prev, focus, window)
 	}
+	// only a full window may drop history unsummarized; a handoff that
+	// cannot summarize returns and the send proceeds whole
 	switch {
 	case err == nil:
-	case reason != compactManual && (errors.Is(err, errNoSummary) || contextTooLarge(err)):
+	case reason != compactManual && reason != compactHandoff && (errors.Is(err, errNoSummary) || contextTooLarge(err)):
 		// NOTE: the earlier history is lost unsummarized; still better than a
 		// session that can never send again.
 		h.Log.Warn("summary failed, dropping history", "origin", "agent", "error", err, "messages", len(head))
