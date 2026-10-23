@@ -899,6 +899,7 @@ func (h *Host) settleTodos() {
 	if h.DB == nil || sid == "" {
 		return
 	}
+	ag := h.agents
 	todos, err := h.DB.Todos(sid)
 	if err != nil {
 		h.Log.Warn("todo list not read", "origin", "agent", "error", err)
@@ -911,6 +912,14 @@ func (h *Host) settleTodos() {
 		if todos[i].Status == store.TodoInProgress {
 			todos[i].Status = store.TodoPending
 		}
+	}
+	// a send may have claimed the agent while this read was in flight, and
+	// its turn writes a list of its own: that one is not a leftover to settle
+	ag.mu.Lock()
+	stale := ag.active
+	ag.mu.Unlock()
+	if stale {
+		return
 	}
 	if err := h.DB.SetTodos(sid, todos); err != nil {
 		h.Log.Warn("todo list not settled", "origin", "agent", "error", err)
