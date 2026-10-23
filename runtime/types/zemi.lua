@@ -1949,14 +1949,15 @@ zemi.workflow = {}
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state; a reload cancels it.
+--- Run a workflow in its own Lua state; a reload cancels it. Raises for a
+--- name nothing saved; an untrusted project's, or a past-cap run, is nil, err.
 --- ```lua
 --- zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
 --- ```
 ---@param spec zemi.WorkflowRunSpec
 ---@param on_done? fun(result: string|nil, err: string|nil, log: string[]) A result that is not a string arrives as JSON.
 ---@return zemi.WorkflowHandle|nil handle
----@return string|nil err No such saved workflow, or one in an untrusted project.
+---@return string|nil err One in an untrusted project, or past the background cap.
 function zemi.workflow.run(spec, on_done) end
 
 --- Workflow scripts only. Runs a subagent and waits for its report.
@@ -2267,8 +2268,9 @@ function zemi.tool.list() end
 --- Start the independent calls first and `wait()` on each. `wait()` gives the
 --- tool's output, or `nil` and why it failed, like every other zemi call; a
 --- tool that failed reports its output as the error. Only the lua tool's own
---- script reaches this, and only while it runs. What the calls return stays in
---- the script: print or return what should reach you.
+--- script reaches this (calling it anywhere else raises), and only while it
+--- runs. What the calls return stays in the script: print or return what
+--- should reach you.
 ---
 --- ```lua
 --- local a = zemi.tool.call("read", { path = "a.go" })
@@ -2283,7 +2285,8 @@ function zemi.tool.list() end
 function zemi.tool.call(name, args) end
 
 --- The declaration of one of this run's tools, for one the prompt does not
---- show (a deferred MCP tool) or a parameter to check before calling.
+--- show (a deferred MCP tool) or a parameter to check before calling. Only
+--- the lua tool's own script reaches this, like `zemi.tool.call`.
 ---@param name string
 ---@return zemi.ToolDecl? decl Nil when this run has no such tool.
 function zemi.tool.describe(name) end

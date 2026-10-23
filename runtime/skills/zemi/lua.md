@@ -17,7 +17,7 @@ A gated host-API call (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify
 ## Rules that keep zemi responsive
 
 - Keymap and event handlers finish in about 10 ms; long work goes to zemi.job, zemi.http or zemi.timer callbacks, or to a `wait` in a task (below). Widget render has stricter rules, in `ui.md`.
-- Misuse raises; a runtime failure of a synchronous call returns `nil, err` (`fs.read`, `fs.write`, `state.get`, `state.set`, `json.decode`, `session.new`, `session.resume`, `job.start`, `workflow.run`, and the `memory`, `learn` and `skills` calls). An empty path, one that does not resolve, or a bad pattern is misuse and raises (`fs.read`, `glob`, `grep`): wrap the call in `pcall` when the path is built at runtime.
+- Misuse raises; a runtime failure of a synchronous call returns `nil, err` (`fs.read`, `fs.write`, `state.get`, `state.set`, `json.decode`, `session.new`, `session.resume`, `job.start`, and the `memory`, `learn` and `skills` calls). An empty path, one that does not resolve, or a bad pattern is misuse and raises (`fs.read`, `glob`, `grep`): wrap the call in `pcall` when the path is built at runtime.
 - Removal reports a boolean and never raises for "not there" (`keymap.del`, `event.off`, `widget.del`, `config.unwatch`), so a reloaded config unbinds idempotently.
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 - Once a `pcall` catches an error, closures made before it stop sharing locals with the function that made them (gopher-lua): a later `n = n + 1` inside one is lost outside it. Share state through a table (`local got = {}`), or return values out of the `pcall`.
