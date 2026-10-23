@@ -1044,19 +1044,20 @@ func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
 		}
 	}
 	want := st.top*st.rows/prevRows + st.anchorOff
-	best, bestD := -1, 0
-	for i := range lines {
-		if !anchoredAt(lines, i, st.anchor) {
-			continue
-		}
-		if d := max(i-want, want-i); best < 0 || d < bestD {
-			best, bestD = i, d
-		}
-	}
-	if best < 0 {
+	if anchoredAt(lines, want, st.anchor) {
 		return want - st.anchorOff
 	}
-	return best - st.anchorOff
+	// the nearest line is the same answer a whole scan finds, and this stops
+	// at the first hit: each probe costs a SegsText
+	for d := 1; want-d >= 0 || want+d < len(lines); d++ {
+		if hit := want - d; hit >= 0 && anchoredAt(lines, hit, st.anchor) {
+			return hit - st.anchorOff
+		}
+		if hit := want + d; hit < len(lines) && anchoredAt(lines, hit, st.anchor) {
+			return hit - st.anchorOff
+		}
+	}
+	return want - st.anchorOff
 }
 
 func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {

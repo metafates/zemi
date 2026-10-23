@@ -565,9 +565,14 @@ func (a *App) background(fn func()) {
 	}
 }
 
-// runCommand runs a slash command: Go commands inline, Lua ones on the
-// background worker.
+// runCommand runs a slash command fire-and-forget: Lua and Go alike on the
+// background worker, so a Go command that loads the store (/resume, /fork)
+// never blocks a key.
 func (a *App) runCommand(name, args string) {
+	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn != nil {
+		a.background(func() { a.runGo(name, args) })
+		return
+	}
 	if err := a.runCommandErr(name, args); err != nil {
 		a.host.CommandFailed(name, err)
 	}
@@ -575,17 +580,21 @@ func (a *App) runCommand(name, args string) {
 
 // runCommandErr is runCommand for a caller that shows a Go command's error
 // itself: an input overlay keeps its box open and names the failure where
-// the value was typed. Lua commands report through CommandFailed as always.
+// the value was typed, so a Go command runs inline. Lua commands report
+// through CommandFailed as always.
 func (a *App) runCommandErr(name, args string) error {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
-		a.background(func() {
-			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-				a.host.CommandFailed(name, err)
-			}
-		})
+		a.background(func() { a.runGo(name, args) })
 		return nil
 	}
 	return a.host.RunCommand(context.Background(), name, args)
+}
+
+// runGo runs a Go command, reporting a failure the way any command's is.
+func (a *App) runGo(name, args string) {
+	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
+		a.host.CommandFailed(name, err)
+	}
 }
 
 // keyText extracts the literal text a keypress should insert (printable
