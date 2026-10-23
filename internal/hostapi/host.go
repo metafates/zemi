@@ -629,7 +629,7 @@ type Host struct {
 
 	// healthReg holds the /health checks Lua registered.
 	healthReg healthReg
-	// completions holds the zemi.composer.complete sources
+	// completions holds the zemi.composer.add sources
 	completions completeReg
 
 	hostActions map[string]func(h *Host, args string) error

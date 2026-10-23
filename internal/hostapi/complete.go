@@ -241,7 +241,7 @@ func runeStarts(s string, from, to int, pos []int) []int {
 	return pos
 }
 
-// completionSource is a zemi.composer.complete registration: it completes
+// completionSource is a zemi.composer.add registration: it completes
 // the word after trigger, or the arguments of command.
 type completionSource struct {
 	id, trigger, command string
@@ -339,7 +339,7 @@ func completionItems(v any) []CompletionItem {
 	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" })
 }
 
-// addCompletion is zemi.composer.complete(spec).
+// addCompletion is zemi.composer.add(spec).
 func (h *Host) addCompletion(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	fn, _ := opt[*glua.LFunction](L, spec, "items")
@@ -350,18 +350,18 @@ func (h *Host) addCompletion(L *glua.LState) int {
 	r, size := utf8.DecodeRuneInString(s.trigger)
 	switch {
 	case s.id == "" || fn == nil:
-		L.RaiseError("zemi.composer.complete: id and items are required")
+		L.RaiseError("zemi.composer.add: id and items are required")
 	case (s.trigger == "") == (s.command == ""):
-		L.RaiseError("zemi.composer.complete: set trigger or command, not both")
+		L.RaiseError("zemi.composer.add: set trigger or command, not both")
 	case s.trigger != "" && (size != len(s.trigger) || !unicode.IsPunct(r) && !unicode.IsSymbol(r) || r == '/'):
-		L.RaiseError("zemi.composer.complete: trigger must be one punctuation character other than /, got %q", s.trigger)
+		L.RaiseError("zemi.composer.add: trigger must be one punctuation character other than /, got %q", s.trigger)
 	}
 	reg := &h.completions
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	if i := slices.IndexFunc(reg.list, func(o completionSource) bool { return o.id == s.id }); i >= 0 {
 		if err := mayReplace(h.PluginOf, "completion source "+s.id, reg.list[i].origin, reg.list[i].path, s.origin, s.path); err != nil {
-			L.RaiseError("zemi.composer.complete: %v", err)
+			L.RaiseError("zemi.composer.add: %v", err)
 		}
 		reg.list[i] = s
 		return 0

@@ -2037,14 +2037,14 @@ zemi.composer = {}
 --- bad spec or an id another plugin registered.
 ---
 --- ```lua
---- zemi.composer.complete({
+--- zemi.composer.add({
 --- 	id = "issues",
 --- 	trigger = "#",
 --- 	items = function(lead) return { { text = "12", desc = "login fails on Safari" } } end,
 --- })
 --- ```
 ---@param spec zemi.CompletionSpec
-function zemi.composer.complete(spec) end
+function zemi.composer.add(spec) end
 
 ---@return zemi.ComposerState
 function zemi.composer.get() end
@@ -2921,7 +2921,7 @@ function zemi.test.emit(name, ev) end
 
 --- The rows the plugin's completion offers for a draft line, cursor at its
 --- end: a command's `complete` for a `/command` line, else its
---- `zemi.composer.complete` source for the trigger that starts the last word.
+--- `zemi.composer.add` source for the trigger that starts the last word.
 ---
 --- ```lua
 --- test.eq(test.complete("see #rev"), { "review" })

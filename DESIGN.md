@@ -592,7 +592,7 @@ registered the way zemi runs it: `run`, `keys`, `tool` (through the
 adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
-`zemi.composer.complete` sources, as the palette asks them), `overlay`,
+`zemi.composer.add` sources, as the palette asks them), `overlay`,
 `answer` and `set` (one of the plugin's settings by its bare key, as
 `/config` writes it),
 each refusing another origin's target, a Go command and a host
@@ -1638,7 +1638,7 @@ UI extensibility contract:
   the last argument its `nargs` takes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
-- Completion sources: `zemi.composer.complete({ id, trigger | command,
+- Completion sources: `zemi.composer.add({ id, trigger | command,
   items })` adds rows to the popup after a punctuation character that
   starts a word (a `#` issue list; `@` rows go ahead of the files) or to a
   command's argument candidates. `items(lead, line)` runs on the UI worker
