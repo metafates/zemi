@@ -74,7 +74,7 @@ func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 		// NOTE: Windows PowerShell 5.1 -Command exits 0 after a failed native
 		// command, so the tail hands the real exit code back.
 		return CommandContext(ctx, s, "-NoProfile", "-NonInteractive", "-Command",
-			line+"; if (-not $?) { exit 1 }; exit $LASTEXITCODE")
+			line+"\nif (-not $?) { exit 1 }; exit $LASTEXITCODE")
 	}
 	return CommandContext(ctx, s, "-c", line)
 }
