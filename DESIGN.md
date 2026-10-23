@@ -323,7 +323,7 @@ Directories (XDG; Windows keeps the same roots under the user's home,
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  copies of the files attached from outside the project
-  plans/<session id>.md   plans approved from a read-only agent
+  plans/<session id>.md   plans approved from the plan tool's popup
   types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
   zemi.db                 global store (proposals, the user partition's memory ledger, skills, kv)
@@ -1228,7 +1228,7 @@ during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a `goal` row, drawn as a notice
 line live and on resume, so a rewind, a fork and a delete handle it like the
-rest of the conversation. A read-only agent is never checked. Lua reads it
+rest of the conversation. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
 
