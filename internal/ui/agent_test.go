@@ -1687,6 +1687,33 @@ func TestAskGuardUnderDraft(t *testing.T) {
 	}
 }
 
+// TestNoopKeysBumpNothing: a key or a wheel that moves nothing under the
+// chrome leaves the frame generation alone, so it never re-renders widgets;
+// ones that move something still bump.
+func TestNoopKeysBumpNothing(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan string, 1)
+	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
+	waitPrompt(t, app, func() bool { return app.trust != nil })
+	app.program = tea.NewProgram(nil)
+	app.now = func() time.Time { return app.trust.opened.Add(permGrace + time.Millisecond) }
+	gen := app.frameGen
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if app.frameGen != gen {
+		t.Fatal("a no-op key under the trust box bumped the frame")
+	}
+	app.trust.view.top = 0
+	app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp, X: 40, Y: app.chromeRect.Min.Y + 2})
+	if app.frameGen != gen || app.trust.view.top != 0 {
+		t.Fatal("a wheel at the top of the box text bumped the frame")
+	}
+	app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if app.frameGen != gen+1 {
+		t.Fatalf("a move under the box did not bump the frame: %d of %d", app.frameGen, gen)
+	}
+}
+
 // TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {

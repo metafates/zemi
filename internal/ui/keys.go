@@ -104,12 +104,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.bump()
 		return replay
 	}
-	a.bump()
-
-	// Go-reserved cancel trigger: never routed to Lua, never rebindable
-	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
-	// turn, clears a draft, and on an empty composer quits when pressed twice.
+	// A key under the chrome moves at most the chrome or a draft: the branches
+	// below bump when one does, and a key that moves nothing leaves the
+	// generation alone (the cleared hover repaints through frameDirty).
 	if key == "ctrl+c" {
+		a.bump() // every branch below acts
 		switch {
 		case top == modalPerm && a.permAsk.answer != nil:
 			a.answerPerm(false, tools.ByUser)
@@ -144,6 +143,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch top {
 	case modalBoot:
 		// the shipped Lua layer failed: nothing else on this screen acts
+		a.bump()
 		if scrollKey(&a.bootView, key, false) {
 			return nil
 		}
@@ -684,8 +684,10 @@ func (a *App) topChrome() modal {
 // wheel scrolls the box on top: the modal chrome, else an open composer
 // popup, else the scrolled region under the pointer. In a box, text that
 // overflows takes the wheel unless the pointer is on a list row; a list
-// moves one item.
+// moves one item. A wheel that moves nothing bumps no generation: the
+// cleared hover repaints through frameDirty.
 func (a *App) wheel(x, y, step int) {
+	a.frameDirty = true
 	text, sel, n, ok := a.boxScroll()
 	onRow := false // over a list row or a choice, which carry a Hit
 	if y >= 0 && y < len(a.lastRows) {
@@ -697,11 +699,17 @@ func (a *App) wheel(x, y, step int) {
 		a.scrollRows(a.scrollAt(x, y), step)
 		return
 	case text != nil && text.overflows() && !(sel != nil && onRow):
+		top := text.top
 		text.scroll(step)
+		if text.top != top {
+			a.bump()
+		}
 	case sel != nil:
-		*sel = max(0, min(*sel+step, n-1))
+		if at := max(0, min(*sel+step, n-1)); at != *sel {
+			*sel = at
+			a.bump()
+		}
 	}
-	a.bump()
 }
 
 // boxScroll is what scrolls in the box on top, the modal chrome else an
