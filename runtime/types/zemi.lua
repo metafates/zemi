@@ -571,8 +571,8 @@ function zemi.command.list() end
 ---@field reason string
 
 ---@class zemi.ev.PermissionRequest: zemi.Event
----@field subject string
----@field arg string
+---@field subject string The action's subject: "tool.shell" for a shell command, "fs.read", "fs.write", "lua.http.<method>".
+---@field arg string The path, url or command the subject is about.
 ---@field reason? string
 ---@field agent? string The subagent asking, such as "explore agent"; "" for the main agent.
 
@@ -1814,9 +1814,10 @@ zemi.classify = {}
 ---@field state table The data to judge, handed to the model as data. A prompt-injection attempt inside it is data too.
 ---@field questions table<string, zemi.ClassifierQuestion> What to ask about the state.
 ---@field timeout? number Seconds to wait, 60 by default.
+---@field on_answer? fun(res: zemi.ClassifyResult|nil, err: string|nil) Runs as a task when the verdict settles, `res` as `wait` answers it. The one way to act from a plain event handler, where `wait` cannot suspend.
 
 ---@class zemi.ClassifyHandle
----@field wait fun(self: zemi.ClassifyHandle): zemi.ClassifyResult|nil, string|nil Suspends the task until the verdict, `timeout` at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
+---@field wait fun(self: zemi.ClassifyHandle): zemi.ClassifyResult|nil, string|nil Suspends the task until the verdict, `timeout` at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. From a plain event handler, pass `on_answer` instead.
 ---@field cancel fun(self: zemi.ClassifyHandle)
 
 --- Judge data with a model: every question gets a validated answer, or the
@@ -2176,6 +2177,7 @@ function zemi.perm.ask(spec) end
 ---@field execute fun(args: table, run: zemi.ToolRun): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It runs as a task: a handle's `wait` in it suspends it and frees the interpreter.
 ---@field timeout_ms? integer Wall time for one call, waits included; 60000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.
+---@field final? boolean A successful call ends the turn: the model's last act, nothing after it. A failing one behaves as always, so the model can retry.
 
 --- The call `execute` runs for.
 ---@class zemi.ToolRun
@@ -2963,7 +2965,8 @@ function zemi.test.render(id, ctx) end
 function zemi.test.click(id, click) end
 
 --- Deliver a host event to the plugin's handlers: `tool.post` returns the
---- output the model gets, a vetoable event its zemi.Veto or nil.
+--- output the model gets, a vetoable event its verdict - `{ decision = "deny" }`,
+--- `{ decision = "ask" }`, or nil when no handler decided.
 ---
 --- ```lua
 --- test.eq(test.emit("tool.post", { tool = "shell", ok = false, output = "FAIL" }), "FAIL")
