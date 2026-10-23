@@ -129,10 +129,10 @@ func (h *Host) applyProposal(res *learn.Result) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	note := cutNote(cut)
+	note := ""
 	if slices.Contains(cut, res.Memory.ID) {
-		// the budget kept the line out of memories.md; queryHint's tool
-		// syntax is noise in a toast, /memory's trail group shows it
+		// the budget kept the line out of memories.md; /memory's trail
+		// group shows it
 		note = "; the " + string(res.Memory.Scope) + " memory is full; kept in the memory trail"
 	}
 	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+note+redactNote(res.Scrubbed))
@@ -150,7 +150,7 @@ func cutNote(cut []string) string {
 }
 
 // queryHint teaches the recall for what a budget cut, on the tool result
-// only - cutNote also feeds toasts, where tool-call syntax is noise.
+// only (DESIGN §10.7).
 func queryHint(cut []string) string {
 	if len(cut) == 0 {
 		return ""
@@ -286,15 +286,14 @@ func (h *Host) Remember(text string) error {
 	if err != nil {
 		return err
 	}
-	cut, err := h.storeProposal(res)
-	if err != nil {
+	if _, err := h.storeProposal(res); err != nil {
 		if uc, ok := errors.AsType[brain.UserCutError](err); ok {
 			return userCutFull(res.Memory.Scope, uc)
 		}
 		return err
 	}
 	h.Notify(slog.LevelInfo, "Memory saved for this project",
-		"press s on it in /memory to keep it for every project"+cutNote(cut)+redactNote(res.Scrubbed))
+		"press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
 	return nil
 }
 
