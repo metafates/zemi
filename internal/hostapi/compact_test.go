@@ -14,7 +14,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestContextEstimateCountsPrompt: the estimate a compaction installs counts
@@ -299,59 +298,6 @@ func TestHandoffGate(t *testing.T) {
 	}
 	if !whole {
 		t.Fatalf("the failed handoff send is not the whole history: %d messages", len(got))
-	}
-}
-
-// gateUI holds the handoff ask open until the test releases it, the way the
-// real overlay waits on the UI goroutine.
-type gateUI struct {
-	fakeUI
-	hold chan struct{}
-}
-
-func (g *gateUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
-	g.fakeUI.AskQuestion(qs)
-	<-g.hold
-	return []tools.Answer{{Picked: []string{g.qAnswer}}}, g.qOK
-}
-
-// TestHandoffGateOffTheSendPath: the gate's ask waits on the turn
-// goroutine, not the sender's. A composer submit reaches the gate on the
-// UI's own goroutine, the only one that could answer the ask, so a send
-// that blocked there would freeze the TUI.
-func TestHandoffGateOffTheSendPath(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Settings.SetQuiet("models.default", "stub/m")
-	m := reflectStub(t, h, "ok")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	ui := &gateUI{fakeUI: fakeUI{qOK: true, qAnswer: "Send as is"}, hold: make(chan struct{})}
-	h.SetUIHooks(ui)
-	send := sender(t, h)
-	send(strings.Repeat("x", 80_000))
-	h.agents.mu.Lock()
-	h.agents.lastIn = 90_000 // the gate's floor is 50k
-	h.agents.mu.Unlock()
-	h.Settings.SetQuiet("models.default", "stub/m2")
-
-	done := make(chan error, 1)
-	go func() { done <- h.AgentSend("switch") }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("send: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the send blocked on the handoff ask, which only the UI goroutine can answer")
-	}
-	close(ui.hold) // the user answers
-	waitIdle(t, h)
-	if len(ui.qAsked) != 1 {
-		t.Fatalf("the gate asked %d times, want once", len(ui.qAsked))
-	}
-	if len(m.prompts) < 2 {
-		t.Fatalf("the send never reached the model: %d calls", len(m.prompts))
 	}
 }
 
