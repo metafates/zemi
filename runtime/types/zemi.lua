@@ -1672,6 +1672,7 @@ function zemi.provider.add(spec) end
 --- no-op, so init.lua works on a machine where that key is not exported.
 --- `providers.builtin = false` drops every builtin one.
 ---@param id string
+---@return boolean removed
 function zemi.provider.del(id) end
 
 ---@return zemi.ProviderInfo[]
@@ -1719,8 +1720,9 @@ function zemi.model.list() end
 function zemi.model.add(name, spec) end
 
 --- Drop a slot `zemi.model.add` registered, with `models.<name>` and the pick
---- kept for it. User, builtin or plugin origin.
+--- kept for it. User, builtin or plugin origin; false for a name nothing registered.
 ---@param name string
+---@return boolean removed
 function zemi.model.del(name) end
 
 --- Switch the model the conversation runs on, models.default. Raises for a
@@ -2728,6 +2730,12 @@ zemi.mcp = {}
 ---@param spec zemi.MCPSpec
 function zemi.mcp.add(name, spec) end
 
+--- Remove and stop a server `zemi.mcp.add` registered; false for a name
+--- nothing registered.
+---@param name string
+---@return boolean removed
+function zemi.mcp.del(name) end
+
 ---@return zemi.MCPInfo[]
 function zemi.mcp.list() end
 
@@ -2761,6 +2769,7 @@ function zemi.lsp.add(name, spec) end
 
 --- Never start this server: a builtin you do not want, or one added above.
 ---@param name string
+---@return boolean removed
 function zemi.lsp.del(name) end
 
 --- The servers this project can use and their state.
