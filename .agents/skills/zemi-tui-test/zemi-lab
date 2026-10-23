@@ -190,7 +190,7 @@ cmd_send() {
 
 cmd_wait() {
 	case "${1:-}" in
-		ask) PAT="No, and tell zemi" ;;
+		ask) PAT="No, and tell" ;;
 		*) PAT=${1:-} ;;
 	esac
 	wait_stable "$PAT" 30 && exit 0
@@ -204,7 +204,7 @@ cmd_ask() {
 	i=0
 	while [ "$i" -lt 10 ]; do
 		case "$(cap)" in
-			*"No, and tell zemi"*) tmux -L "$SERVER" send-keys -t "$SESSION" "$1"; sleep 0.5 ;;
+			*"No, and tell"*) tmux -L "$SERVER" send-keys -t "$SESSION" "$1"; sleep 0.5 ;;
 			*) exit 0 ;;
 		esac
 		i=$((i + 1))
