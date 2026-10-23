@@ -21,7 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf16"
 
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/proc"
@@ -153,24 +152,23 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			map[string]any{"uri": root, "name": filepath.Base(cfg.Root)},
 		},
 		"capabilities": map[string]any{
-			// one encoding only, so every server answers in the units
-			// Offset and Pos count
+			// one encoding only, so every position a server sends counts
+			// the same units
 			"general": map[string]any{"positionEncodings": []string{"utf-16"}},
 			// rust-analyzer's experimental/serverStatus, which syncFile reads
 			"experimental": map[string]any{"serverStatusNotification": true},
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didSave": true},
 				"publishDiagnostics": map[string]any{"versionSupport": true},
-				"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
+				// the lua-ls readiness probe asks documentSymbol and discards
+				// the answer, so the capability stays requested
+				"documentSymbol": map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			},
 			"workspace": map[string]any{
 				"configuration": true, "workspaceFolders": true,
 				// servers keep their own copy of files nobody opened and
 				// only re-read one when told it changed
 				"didChangeWatchedFiles": map[string]any{"dynamicRegistration": true, "relativePatternSupport": true},
-				// versioned edits, so a rename planned against an older
-				// text can be refused instead of applied
-				"workspaceEdit": map[string]any{"documentChanges": true},
 			},
 		},
 	}
@@ -244,14 +242,6 @@ func (c *Client) Touch(ctx context.Context, path, languageID string) ([]Diagnost
 func (c *Client) Alive(ctx context.Context) bool {
 	_ = c.Call(ctx, "zemi/alive", nil, nil)
 	return ctx.Err() == nil
-}
-
-// Open syncs path's current content to the server without waiting for
-// diagnostics, so a query that follows sees the text on disk.
-func (c *Client) Open(path, languageID string) error {
-	c.refresh()
-	_, err := c.syncFile(normPath(path), DocumentURI(path), languageID)
-	return err
 }
 
 // docState is what the server holds for an open document: the server uses
@@ -357,15 +347,6 @@ func (c *Client) URI(path string) string {
 		return d.uri
 	}
 	return DocumentURI(path)
-}
-
-// Version is the document version last sent for path, 0 when it is not
-// open. A server's edit that names another version was planned against
-// text the server no longer has.
-func (c *Client) Version(path string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.opened[normPath(path)]
 }
 
 // NotifyChanged tells the server about files that changed on disk, those
@@ -499,44 +480,6 @@ func (l Location) Path() string {
 		return l.URI
 	}
 	return filepath.FromSlash(u.Path)
-}
-
-// TextEdit replaces a range with NewText.
-type TextEdit struct {
-	Range   Range  `json:"range"`
-	NewText string `json:"newText"`
-}
-
-// Offset converts a position to a byte offset in text, clamped to its end.
-func Offset(text string, pos Position) int {
-	off := 0
-	for range pos.Line {
-		i := strings.IndexByte(text[off:], '\n')
-		if i < 0 {
-			return len(text)
-		}
-		off += i + 1
-	}
-	units := 0
-	for i, r := range text[off:] {
-		if units >= pos.Character || r == '\n' {
-			return off + i
-		}
-		units += utf16.RuneLen(r)
-	}
-	return len(text)
-}
-
-// Pos converts a byte offset in text to a position.
-func Pos(text string, off int) Position {
-	off = min(off, len(text))
-	line := strings.Count(text[:off], "\n")
-	start := strings.LastIndexByte(text[:off], '\n') + 1
-	units := 0
-	for _, r := range text[start:off] {
-		units += utf16.RuneLen(r)
-	}
-	return Position{Line: line, Character: units}
 }
 
 // Others returns the errors published for files other than path since path

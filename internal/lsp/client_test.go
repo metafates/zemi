@@ -77,7 +77,7 @@ func TestServerRequestWhileWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- c.Open(path, "plaintext") }()
+	go func() { _, err := c.Touch(ctx, path, "plaintext"); done <- err }()
 	closed := make(chan error, 1)
 	go func() { closed <- c.Close() }()
 	select {
@@ -91,7 +91,7 @@ func TestServerRequestWhileWriting(t *testing.T) {
 	select {
 	case err := <-done:
 		if err == nil {
-			t.Fatal("Open outlived the server it was writing to")
+			t.Fatal("Touch outlived the server it was writing to")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("the kill did not free the wedged send")
@@ -281,28 +281,6 @@ func TestTouchSymlinkSpellings(t *testing.T) {
 	}
 }
 
-// TestOffsetPos: positions count UTF-16 units, so a character outside the
-// BMP is two of them and the round trip holds.
-func TestOffsetPos(t *testing.T) {
-	text := "a😀b\ncd"
-	for _, c := range []struct {
-		off  int
-		line int
-		char int
-	}{{0, 0, 0}, {1, 0, 1}, {5, 0, 3}, {6, 0, 4}, {7, 1, 0}, {8, 1, 1}} {
-		pos := lsp.Position{Line: c.line, Character: c.char}
-		if got := lsp.Offset(text, pos); got != c.off {
-			t.Errorf("Offset(%+v) = %d, want %d", pos, got, c.off)
-		}
-		if got := lsp.Pos(text, c.off); got != pos {
-			t.Errorf("Pos(%d) = %+v, want %+v", c.off, got, pos)
-		}
-	}
-	if got := lsp.Offset(text, lsp.Position{Line: 9, Character: 0}); got != len(text) {
-		t.Errorf("past the end = %d", got)
-	}
-}
-
 // TestRefreshStaleDocuments: a file changed on disk after the server saw
 // it (a rename's edits to other files, a formatter) is sent again before
 // the next query, so the server never answers from a stale copy.
@@ -374,7 +352,7 @@ func TestWatchedFiles(t *testing.T) {
 	if _, err := c.Touch(ctx, b, "plaintext"); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Diagnostics(a); len(got) != 0 || c.Version(a) != 0 {
-		t.Fatalf("deleted document still open: diags %v version %d", got, c.Version(a))
+	if got := c.Diagnostics(a); len(got) != 0 {
+		t.Fatalf("deleted document still open: diags %v", got)
 	}
 }

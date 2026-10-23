@@ -576,8 +576,14 @@ func sourceSection[S ~string](source S) string {
 // fragment, lowercase and with no final period, like every list's.
 func listDesc(s string) string {
 	s = strings.TrimSuffix(strings.TrimSpace(s), ".")
+	return LowerFirst(s)
+}
+
+// lowerFirst lowercases a string's first rune unless a second upper-case one
+// follows: an acronym's word stays whole.
+func LowerFirst(s string) string {
 	r, n := utf8.DecodeRuneInString(s)
-	if next, _ := utf8.DecodeRuneInString(s[n:]); n > 0 && !unicode.IsUpper(next) { // an acronym stays
+	if next, _ := utf8.DecodeRuneInString(s[n:]); n > 0 && !unicode.IsUpper(next) {
 		s = string(unicode.ToLower(r)) + s[n:]
 	}
 	return s
