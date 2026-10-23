@@ -162,6 +162,11 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if len(cps) > 0 {
 		h.lspDirty() // a restore rewrites files behind the language servers' backs
 	}
+	// fetched before the cut: a failure here must leave the store untruncated
+	sess, err := h.DB.GetSession(sid)
+	if err != nil {
+		return 0, err
+	}
 	// the locks come before any truncation or restore (DESIGN §7): a store
 	// another zemi holds aborts the rewind with both intact
 	err = func() error {
@@ -198,10 +203,6 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	h.todosStale.Store(true)
 	h.resetTodoNag(todos)
-	sess, err := h.DB.GetSession(sid)
-	if err != nil {
-		return 0, err
-	}
 	history, tr := resumeHistory(rows[:cut])
 	ag.mu.Lock()
 	ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
