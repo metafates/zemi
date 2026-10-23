@@ -492,7 +492,7 @@ type Host struct {
 
 	rendering atomic.Bool
 
-	tMu      sync.Mutex
+	tMu      sync.RWMutex
 	session  *Session
 	view     *agentRun // the agent run the chat shows instead of the session, nil for none
 	viewBack string    // the command that reopens the screen view came from
@@ -596,7 +596,7 @@ type Host struct {
 	modelFn  func() (fantasy.LanguageModel, error) // stubs every model in tests
 	browser  func(string)                          // stubs the sign-in browser in tests
 
-	busyMu sync.Mutex
+	busyMu sync.RWMutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first
 
 	md        markdownCache
@@ -690,7 +690,7 @@ type Host struct {
 	// reloadDone is non-nil and open while reloads run; reloadSeq counts
 	// reloads started (see awaitReload). reloadRun keeps one reload's sweep
 	// of the dead generation's registrations from racing the next one's replay.
-	reloadMu   sync.Mutex
+	reloadMu   sync.RWMutex
 	reloadRun  sync.Mutex
 	reloads    int
 	reloadSeq  uint64
@@ -960,8 +960,8 @@ func (h *Host) CancelBusy() {
 // can stop any busy job; the UI re-renders every frame while one runs.
 // NOTE: only the newest label shows; a "+N" part would name the others.
 func (h *Host) BusyNow() (label string, cancellable bool) {
-	h.busyMu.Lock()
-	defer h.busyMu.Unlock()
+	h.busyMu.RLock()
+	defer h.busyMu.RUnlock()
 	if len(h.busy) == 0 {
 		return "", false
 	}
@@ -980,8 +980,8 @@ type BusyEntry struct {
 // BusyList is every busy job, newest first, so a widget can name each of them
 // instead of the newest alone.
 func (h *Host) BusyList() []BusyEntry {
-	h.busyMu.Lock()
-	defer h.busyMu.Unlock()
+	h.busyMu.RLock()
+	defer h.busyMu.RUnlock()
 	out := make([]BusyEntry, 0, len(h.busy))
 	for _, j := range slices.Backward(h.busy) {
 		out = append(out, BusyEntry{Label: j.label, Elapsed: h.now().Sub(j.start), Cancellable: j.cancel != nil})
@@ -1008,8 +1008,8 @@ func (h *Host) TerminalTitle() string {
 
 // SessionTitle is the current session's title, for the terminal tab.
 func (h *Host) SessionTitle() string {
-	h.tMu.Lock()
-	defer h.tMu.Unlock()
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
 	return h.session.Title
 }
 
@@ -1063,8 +1063,8 @@ func (h *Host) scroll(kind ScrollAction, id string) {
 // appended to or replaced whole, never written in place, so the snapshot
 // shares its rows: every widget render takes one.
 func (h *Host) Session() Session {
-	h.tMu.Lock()
-	defer h.tMu.Unlock()
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
 	return Session{
 		Title:      h.session.Title,
 		CWD:        h.session.CWD,
@@ -2481,9 +2481,9 @@ func (h *Host) checkInits() error {
 // awaitReload waits out running reloads and returns how many have started.
 func (h *Host) awaitReload() uint64 {
 	for {
-		h.reloadMu.Lock()
+		h.reloadMu.RLock()
 		done, seq := h.reloadDone, h.reloadSeq
-		h.reloadMu.Unlock()
+		h.reloadMu.RUnlock()
 		if done == nil {
 			return seq
 		}

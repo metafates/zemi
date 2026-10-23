@@ -52,7 +52,7 @@ type overrideRec struct {
 }
 
 type toolReg struct {
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	byName    map[string]*luaTool
 	overrides map[string][]*overrideRec
 	owner     func(path string) string // Host.PluginOf, see mayReplace
@@ -75,14 +75,14 @@ func (r *toolReg) add(t *luaTool) error {
 }
 
 func (r *toolReg) get(name string) *luaTool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.byName[name]
 }
 
 func (r *toolReg) list() []*luaTool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return slices.SortedFunc(maps.Values(r.byName), func(a, b *luaTool) int { return cmp.Compare(a.Name, b.Name) })
 }
 
@@ -107,14 +107,14 @@ func (r *toolReg) addOverride(o *overrideRec) {
 }
 
 func (r *toolReg) overridesFor(tool string) []*overrideRec {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return slices.Clone(r.overrides[tool])
 }
 
 func (r *toolReg) overridden() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return slices.Sorted(maps.Keys(r.overrides))
 }
 

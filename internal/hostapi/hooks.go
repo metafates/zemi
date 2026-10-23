@@ -67,7 +67,7 @@ type hookEntry struct {
 // consults them; the plugins step rebuilds it from the plugin dirs, and a
 // reload purges the old generation's before the replay.
 type hookReg struct {
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	gen    Gen
 	events map[string][]hookEntry
 }
@@ -81,8 +81,8 @@ func (r *hookReg) set(gen Gen, events map[string][]hookEntry) {
 }
 
 func (r *hookReg) handlers(event string) []hookEntry {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.events[event]
 }
 

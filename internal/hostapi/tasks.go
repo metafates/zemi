@@ -989,8 +989,8 @@ func (h *Host) stopRun(id string) error {
 
 // ViewedAgent is the id of the run the chat shows, "" for the session.
 func (h *Host) ViewedAgent() string {
-	h.tMu.Lock()
-	defer h.tMu.Unlock()
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
 	if h.view == nil {
 		return ""
 	}
@@ -1031,17 +1031,17 @@ func (h *Host) ViewAgentFrom(id, back, menu string) error {
 // ViewedAgentMenu is the overlay the shown run was raised from, "" for none:
 // the one overlay whose esc goes to the view instead of closing it.
 func (h *Host) ViewedAgentMenu() string {
-	h.tMu.Lock()
-	defer h.tMu.Unlock()
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
 	return h.viewMenu
 }
 
 // LeaveAgentView shows the session again and returns the command that
 // reopens the screen the run was opened from, "" for none.
 func (h *Host) LeaveAgentView() string {
-	h.tMu.Lock()
+	h.tMu.RLock()
 	back := h.viewBack
-	h.tMu.Unlock()
+	h.tMu.RUnlock()
 	_ = h.ViewAgent("")
 	return back
 }
@@ -1050,8 +1050,8 @@ func (h *Host) LeaveAgentView() string {
 // run itself: the registry forgets a finished run past maxKeptRuns and the chat
 // goes on showing it.
 func (h *Host) viewedRun() *agentRun {
-	h.tMu.Lock()
-	defer h.tMu.Unlock()
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
 	return h.view
 }
 

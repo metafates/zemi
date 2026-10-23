@@ -1930,9 +1930,9 @@ func (h *Host) recap(ctx context.Context) {
 	ag.mu.Lock()
 	sid, idle := ag.sessionID, ag.runner != nil && !ag.active && !ag.compacting && h.tasks.runningFor(ag.sessionID) == 0
 	ag.mu.Unlock()
-	h.tMu.Lock()
+	h.tMu.RLock()
 	tr := h.session.Transcript
-	h.tMu.Unlock()
+	h.tMu.RUnlock()
 	// a turn that ran no tool is its own recap
 	worked := false
 	for _, m := range slices.Backward(tr) {

@@ -31,7 +31,7 @@ type errEntry struct {
 }
 
 type errLog struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	entries []errEntry
 	unseen  bool
 }
@@ -59,8 +59,8 @@ func (h *Host) RecordError(source, msg string) {
 // with prefix, oldest first, one "error: <source>: <headline>" line each.
 func (h *Host) errorsSince(t time.Time, prefix string) []string {
 	l := &h.errs
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	var out []string
 	for _, e := range l.entries {
 		if !e.at.Before(t) && strings.HasPrefix(e.source, prefix) {
@@ -74,8 +74,8 @@ func (h *Host) errorsSince(t time.Time, prefix string) []string {
 // can point at /errors for the rest.
 func (h *Host) Recorded(msg string) bool {
 	l := &h.errs
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	return len(l.entries) > 0 && l.entries[len(l.entries)-1].msg == sanitize.String(msg)
 }
 
@@ -85,9 +85,9 @@ func (h *Host) Recorded(msg string) bool {
 func (h *Host) RecordErrorOnce(source, msg string) {
 	msg = sanitize.String(msg)
 	l := &h.errs
-	l.mu.Lock()
+	l.mu.RLock()
 	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.source == source && e.msg == msg })
-	l.mu.Unlock()
+	l.mu.RUnlock()
 	if !dup {
 		h.Log.Warn(msg, "origin", source)
 		h.RecordError(source, msg)
@@ -101,9 +101,9 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		l := &h.errs
-		l.mu.Lock()
+		l.mu.RLock()
 		entries := slices.Clone(l.entries)
-		l.mu.Unlock()
+		l.mu.RUnlock()
 		rows := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) { // newest first, like /errors
 			rows = append(rows, map[string]any{
@@ -118,8 +118,8 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 
 // HasUnseenErrors reports whether errors arrived since /errors last opened.
 func (h *Host) HasUnseenErrors() bool {
-	h.errs.mu.Lock()
-	defer h.errs.mu.Unlock()
+	h.errs.mu.RLock()
+	defer h.errs.mu.RUnlock()
 	return h.errs.unseen
 }
 

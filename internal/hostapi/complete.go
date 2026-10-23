@@ -252,7 +252,7 @@ type completionSource struct {
 }
 
 type completeReg struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	list []completionSource
 }
 
@@ -273,8 +273,8 @@ func (h *Host) HasCompletions(trigger, command string) bool {
 
 // sources is the sources for trigger or command, in registration order.
 func (r *completeReg) sources(trigger, command string) []completionSource {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return slices.DeleteFunc(slices.Clone(r.list), func(s completionSource) bool {
 		return s.trigger != trigger || !strings.EqualFold(s.command, command)
 	})
