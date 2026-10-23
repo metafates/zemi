@@ -1334,6 +1334,11 @@ func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (g
 	if hd.Once && !h.Events.drop(hd) {
 		return glua.LNil, false, nil
 	}
+	// the caller listed the handlers before this Do ran; a reload in between
+	// purged them, and a purged handler never runs on the fresh state
+	if hd.Gen != h.currentGen() {
+		return glua.LNil, false, nil
+	}
 	handlerCtx, restore := setHandlerContext(L)
 	defer restore()
 	rets, err := h.callFn(L, luaCaller{gen: h.currentGen(), origin: hd.Origin, path: hd.Path}, hd.Fn, 1, lua.FromGo(L, ev))
