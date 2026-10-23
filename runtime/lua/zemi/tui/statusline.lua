@@ -28,6 +28,7 @@ zemi.ui.widget.add({
 		if zemi.ui.width(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
 		---@type zemi.Line
 		local line = { { text = p, hl = "Dim", click = "projects" } }
+		if (ctx.branch or "") ~= "" then line[#line + 1] = { text = ":" .. ctx.branch, hl = "Accent" } end
 		if ctx.trusted == false then
 			line = p == "" and {} or { line[1], { text = " · ", hl = "Dim" } }
 			for _, seg in ipairs(fmt.hint("untrusted", "/trust")) do

@@ -718,6 +718,11 @@ type Host struct {
 	// path ~-shortened, which widgets read every frame.
 	trustRoot func() string
 	project   func() string
+	// branchMu guards the HEAD cache the statusline reads every render; a
+	// branch switch rewrites HEAD, whose stat keys it
+	branchMu  sync.Mutex
+	branchKey headKey
+	branch    string
 	// pluginsRoot is Dirs.PluginsRoot resolved once, as chunk paths are:
 	// PluginOf runs on every gated call and every overlay frame.
 	pluginsRoot func() string
@@ -1814,7 +1819,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		v.RawSetString("status", glua.LString(status))
 		view = v
 	}
-	tb = L.CreateTable(0, 33)
+	tb = L.CreateTable(0, 34)
 	tb.RawSetString("headless", glua.LBool(printed != nil))
 	if printed != nil && printed.Prev != nil {
 		tb.RawSetString("printed_prev", chatRow(L, *printed.Prev))
@@ -1837,6 +1842,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	home, _ := os.UserHomeDir()
 	tb.RawSetString("home", glua.LString(home))
 	tb.RawSetString("project", glua.LString(h.project()))
+	tb.RawSetString("branch", glua.LString(h.gitBranch()))
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
@@ -2320,7 +2326,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.133.0"))
+	api.RawSetString("version", glua.LString("0.134.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

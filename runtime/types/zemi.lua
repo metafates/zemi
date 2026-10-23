@@ -868,6 +868,7 @@ function zemi.event.stats() end
 ---@field cwd string The session's working directory, ~-shortened.
 ---@field home string The user's home directory, which ~ stands for in `cwd` and elsewhere.
 ---@field project string The repository root trust is decided for, ~-shortened.
+---@field branch string The branch of the checkout zemi runs in, or the short sha when HEAD detaches; "" outside a repository.
 ---@field trusted boolean Whether the user trusts this project (/trust).
 ---@field trustable boolean Whether /trust can trust this project: false at $HOME, / and outside any.
 ---@field init_error string First line of the failure the user init.lua raised this boot, "" when it loaded.
