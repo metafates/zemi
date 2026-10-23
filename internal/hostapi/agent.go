@@ -364,7 +364,7 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
-// can only refuse, so a zemi run does not pay for their schemas every step.
+// can only refuse, so a no-UI boot does not pay for their schemas every step.
 var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
@@ -2521,8 +2521,8 @@ var planNudge = agent.Note(planNudgeText)
 const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer. If it asked something, ask it with the question tool; if it was a plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 
 // nudgesPlan reports whether a turn run as p is nudged for ending in plain
-// text: a read-only agent with the plan tool. Headless drops the tool and
-// planHeadless asks for the plan as the reply, so there is nothing to
+// text: a read-only agent with the plan tool. A profile without the tool
+// asks for the plan as the reply (planReply), so there is nothing to
 // present it with.
 func (h *Host) nudgesPlan(p *Profile, toolset []fantasy.AgentTool) bool {
 	return p != nil && p.ReadOnly && hasTool(toolset, tools.ToolPlan)

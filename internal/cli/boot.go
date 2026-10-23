@@ -527,7 +527,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string) error {
 			if _, err := h.Screen(); err != nil {
-				return fmt.Errorf("%w; --trust trusts the project for one run", err)
+				return fmt.Errorf("%w; --trust trusts the project", err)
 			}
 			trust()
 			return nil

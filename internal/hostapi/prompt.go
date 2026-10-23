@@ -163,7 +163,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 		}
 		switch {
 		case !hasTool(toolset, tools.ToolPlan):
-			sys += planHeadless
+			sys += planReply
 		case !hasTool(toolset, tools.ToolQuestion):
 			sys += planAssuming
 		default:
@@ -192,13 +192,13 @@ You are planning, which overrides Doing tasks and Asking the user above: read, s
 const planDelegate = ` For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
 
 // planAsking is the rest of the planning prompt for a run with the plan and
-// question tools; a headless run and a profile that drops one have none.
+// question tools; a profile that drops one has none.
 const planAsking = `
 2. Ask what only the user can decide (goal, scope, behavior, tradeoffs) with the question tool. A vague request needs several rounds; a focused fix may need none.
 3. When nothing is left to decide, call the plan tool.
 End every turn with the question or plan tool, never plain text; after answering the user's question, ask what to plan next.`
 
-const planHeadless = `
+const planReply = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
 
 const planAssuming = `

@@ -56,12 +56,12 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var version string
 
 type options struct {
-	cont              bool
-	resume, model     string
-	profile           string
-	prompt            string
-	dir               string // -C
-	trust             *bool  // --trust for this run; nil when not given
+	cont          bool
+	resume, model string
+	profile       string
+	prompt        string
+	dir           string // -C
+	trust         *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -88,7 +88,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 }
 
 // execute runs the command line and returns the exit status. launch opens
-// the TUI or, with options.run, answers one prompt on stdout.
+// the TUI.
 func execute(args []string, stdout, stderr io.Writer, launch func(options) int) int {
 	var o options
 	// cobra runs PersistentPreRunE once flags and arguments passed its checks,

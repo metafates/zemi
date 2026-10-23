@@ -77,8 +77,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   answer false once it ended, so the result is the caller's and is never both or neither. The
   signal (`Host.UserSpoke`) is raised for a message that joined a *running* turn alone - the
   composer idle starts one, and its own calls wait - and it is re-armed where the queue is read
-  at a step boundary or taken back for editing, so a later call in the turn waits as usual;
-  headless (no UI hooks) raises none. A background run past
+  at a step boundary or taken back for editing, so a later call in the turn waits as usual.
+  A background run past
   `agent.max_background`
   (4 by default, workflows counted with agents, a handed-off run counted too) is refused
   (`taskReg.detached`). What the chat

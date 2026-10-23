@@ -2062,8 +2062,7 @@ func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) 
 	return at
 }
 
-// chatRow is one transcript row as ctx.transcript and ctx.printed_prev
-// carry it.
+// chatRow is one transcript row as ctx.transcript carries it.
 func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 	row := L.CreateTable(0, 16)
 	row.RawSetString("role", glua.LString(m.Role))

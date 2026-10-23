@@ -28,7 +28,6 @@ $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the draft grace
 $S/zemi-lab size 60 15             # narrow and short layouts
-$S/zemi-lab run --json 'call read {"path":"a.txt"}'   # headless, same tree and model
 $S/zemi-lab db                     # this project's zemi.db; logs is the launch log
 $S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
 ```

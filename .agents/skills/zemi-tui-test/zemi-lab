@@ -23,7 +23,6 @@ usage: zemi-lab [-n name] command [args]
   size W H           resize the window
   last               the fake model's last request body
   db | logs | status | health [args...]
-  run [args...]      headless: zemi run through the same tree and model
   attach             the lab in a real terminal
   down [--keep]      kill the sessions and server, delete the tree
 U
@@ -162,7 +161,7 @@ LAB_TRUST="$TRUST"
 EOF
 	say "lab $NAME up: $TREE, fake model 127.0.0.1:$PORT, tmux server $SERVER ($W x $H)"
 	say "  zemi-lab prompt 'call shell {\"command\":\"ls\",\"about\":\"list\"}'"
-	say "  zemi-lab cap | wait PATTERN | send Escape | ask y | db | logs | last | run | down"
+	say "  zemi-lab cap | wait PATTERN | send Escape | ask y | db | logs | last | down"
 }
 
 cmd_prompt() {
@@ -259,9 +258,6 @@ cmd_status() {
 
 cmd_health() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"; }
 
-# shellcheck disable=SC2086 # TRUST is empty or "--trust"; an empty quoted arg is not
-cmd_run() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" run $TRUST "$@" </dev/null; }
-
 cmd_down() {
 	keep=""
 	[ "${1:-}" = --keep ] && keep=1
@@ -288,7 +284,6 @@ case "$CMD" in
 	logs) load; cmd_logs "$@" ;;
 	status) load; cmd_status "$@" ;;
 	health) load; cmd_health "$@" ;;
-	run) load; TRUST=${LAB_TRUST:---trust}; cmd_run "$@" ;;
 	attach) load; exec tmux -L "$SERVER" attach -t "$SESSION" ;;
 	down) cmd_down "$@" ;;
 	*) usage ;;
