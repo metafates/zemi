@@ -285,18 +285,31 @@ const handoffMinTokens = 50_000
 // whose prefix the provider cannot read from cache - the model or the
 // pinned prompt changed since the last step, so the whole conversation
 // would resend. Switching back never asks: the key matches the last sent
-// one again. It runs before Send swaps the runner, so the summary rides the
-// old model's warm prefix and the handoff send carries summary and tail.
-// scope is the send's own: the ask and the summary call cancel with it.
-func (h *Host) handoffGate(scope *turnScope, newModel string) {
+// one again. The summary is asked on prev, the runner the last step sent
+// on, so it rides that model's warm prefix, and the send's runner opens on
+// the summary and the tail. It runs on the turn goroutine: the ask blocks
+// on the UI and the summary is a model call, and a composer submit reaches
+// its send path on the UI's own, the only goroutine that could answer the
+// ask. scope is the send's own: the ask and the summary call cancel with it.
+func (h *Host) handoffGate(runner, prev *agent.Runner, from string, scope *turnScope) {
 	ag := h.agents
 	ag.mu.Lock()
-	from, key, last := ag.turnModel, ag.pin.key, ag.lastSent
+	newModel, key, last := ag.turnModel, ag.pin.key, ag.lastSent
 	asked, in := ag.handoffAsked == key, ag.lastIn
 	ag.mu.Unlock()
 	if from == "" || last == "" || last == key || asked || in < handoffMinTokens {
 		return
 	}
+	// the summary bills to the model that runs it, the old one, whose warm
+	// prefix it reads; the send's own model is back after the gate
+	ag.mu.Lock()
+	ag.turnModel = from
+	ag.mu.Unlock()
+	defer func() {
+		ag.mu.Lock()
+		ag.turnModel = newModel
+		ag.mu.Unlock()
+	}()
 	compactIt := h.Settings.Str(config.KeyAgentHandoff) == "on"
 	if !compactIt {
 		if h.Settings.Str(config.KeyAgentHandoff) == "off" {
@@ -323,7 +336,6 @@ func (h *Host) handoffGate(scope *turnScope, newModel string) {
 	}
 	ag.mu.Lock()
 	ag.handoffAsked = key
-	runner := ag.runner
 	ag.mu.Unlock()
 	if !compactIt || prev == nil || prev.Len() < 2 {
 		return // dismissed, or nothing to compact
