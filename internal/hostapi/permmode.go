@@ -87,18 +87,18 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 			Owner:   owner,
 		}
 		done := make(chan struct{})
-		var answer string
+		answer := "deny" // a panic in the ask fails closed
 		cut := h.askCut.Load()
 		h.GoSafe("zemi.perm.ask", func() {
+			// closed even when the ask panics; answer stays "deny"
+			defer close(done)
 			allowed, _ := h.ask(req)
-			answer = "deny"
 			switch {
 			case allowed:
 				answer = "allow"
 			case h.askCut.Load() != cut: // the user denied and told zemi what to do instead
 				answer = "told"
 			}
-			close(done)
 		})
 		handle := L.NewTable()
 		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {

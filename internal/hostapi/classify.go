@@ -63,8 +63,11 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	stopID := h.stops.add(cancel) // a reload cancels it, like a job
 	h.GoSafe("zemi.classify.ask", func() {
+		// closed even when the ask panics, so the wait reads the failure instead of its cap
+		defer close(done)
 		defer h.stops.remove(stopID)
 		defer cancel()
+		askErr = errPanicked
 		if stub != nil {
 			// a test zemi's stub stands in for the whole call, its error included:
 			// a plugin's test must see the same failure a provider would give
@@ -75,7 +78,6 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			res, askErr = classify.Ask(ctx, req)
 			h.bill(sid, id, res.Usage)
 		}
-		close(done)
 		if onAnswer != nil {
 			// the same table wait() answers, delivered as a task, so a
 			// handler that cannot suspend still acts on the answer

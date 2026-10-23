@@ -700,11 +700,13 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	ctx, cancel := context.WithCancel(context.Background())
 	stopID := h.stops.add(cancel) // a reload cancels it, like a job
 	h.GoSafe(subject, func() {
+		// closed even when the fetch panics, so the wait reads the failure instead of its cap
+		defer close(hnd.done)
 		defer cancel()
 		defer h.stops.remove(stopID)
+		hnd.err = errPanicked
 		res, err := fetch(ctx)
 		hnd.res, hnd.err = res, err
-		close(hnd.done)
 		if onDone != nil {
 			payload := map[string]any{"url": req.url}
 			if err != nil {
@@ -1096,6 +1098,16 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		onExit, _ := opt[*glua.LFunction](L, spec, "on_exit")
 		h.GoSafe("job wait", func() {
+			exited := false
+			// closed even when the run panics, so the wait reads the failure instead of its cap
+			defer close(jh.done)
+			defer func() {
+				if !exited {
+					jh.mu.Lock()
+					jh.err = errPanicked.Error()
+					jh.mu.Unlock()
+				}
+			}()
 			code, err := exit()
 			h.lspDirty()
 			h.stops.remove(stopID)
@@ -1106,7 +1118,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				jh.err = err.Error()
 			}
 			jh.mu.Unlock()
-			close(jh.done)
+			exited = true
 			// on_exit follows every output callback
 			for _, s := range []*lineSink{outSink, errSink} {
 				if s != nil {

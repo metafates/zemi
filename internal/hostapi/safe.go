@@ -5,11 +5,17 @@
 package hostapi
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
 	"time"
 )
+
+// errPanicked is the failure an async handle's wait reads when the goroutine
+// running the work panicked before the real result landed: GoSafe logs the
+// panic, and the wait ends with this instead of an empty success or its cap.
+var errPanicked = errors.New("the call panicked")
 
 func (h *Host) GoSafe(where string, fn func()) {
 	t := h.test

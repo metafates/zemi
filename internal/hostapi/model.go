@@ -272,11 +272,13 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	stopID := h.stops.add(cancel) // a reload cancels it, like a job
 	h.GoSafe("zemi.model.ask", func() {
+		// closed even when the call panics, so the wait reads the failure instead of its cap
+		defer close(done)
 		defer h.stops.remove(stopID)
 		defer cancel()
+		askErr = errPanicked
 		err := ask(ctx)
 		askErr = err
-		close(done)
 		switch {
 		case onDone == nil:
 		case err != nil:
