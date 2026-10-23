@@ -609,6 +609,7 @@ function zemi.command.list() end
 ---@field queued? integer Proposals waiting in /memory.
 ---@field superseded? integer
 ---@field skipped? integer
+---@field retired? integer Memories the run dropped under auto accept.
 
 ---@class zemi.ev.JobExit: zemi.Event
 ---@field id integer
