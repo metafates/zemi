@@ -170,6 +170,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	// the locks come before any truncation or restore (DESIGN §7): a store
 	// another zemi holds aborts the rewind with both intact
+	var brainFailed bool
 	err = func() error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
@@ -188,7 +189,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 		if len(failed) > 0 {
 			return fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 		}
-		h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
+		brainFailed = h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
 		if err := h.DB.TruncateMessages(sid, id); err != nil {
 			return err
 		}
@@ -197,6 +198,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}()
 	if err != nil {
 		return 0, err
+	}
+	if brainFailed {
+		h.Notify(slog.LevelWarn, "Learned memories not rewound", "the conversation and files are rewound; what the cut turns learned may remain (details in the log)")
 	}
 	todos := todosIn(rows[:cut])
 	if err := h.DB.SetTodos(sid, todos); err != nil {
@@ -229,14 +233,19 @@ func (h *Host) RewindTo(id string) (int, error) {
 // as the add it stands for and a frozen row the import superseded coming
 // back too (DESIGN §7). The rewind holds cutMu and the partition locks.
 // NOTE: an accept or a reflector run between two rewound rows goes too.
-func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) {
+func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) bool {
+	failed := false
+	warn := func(err error) {
+		failed = true
+		h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+	}
 	dbs := []*store.DB{h.DB, h.GlobalDB}
 	for _, db := range dbs {
 		if db == nil {
 			continue
 		}
 		if err := db.DeleteProposalsBetween(sid, from, until); err != nil {
-			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			warn(err)
 		}
 	}
 	user, private := h.brainParts()
@@ -251,12 +260,12 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 		}
 		lg, err := p.OpenLedger()
 		if err != nil {
-			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			warn(err)
 			continue
 		}
 		ops, err := lg.Session(sid, from, until)
 		if err != nil {
-			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			warn(err)
 			_ = lg.Close()
 			continue
 		}
@@ -325,7 +334,7 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 			if db != nil {
 				frozen, err := db.ListMemory(p.Kind.Scope(), true)
 				if err != nil {
-					h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+					warn(err)
 				}
 				for _, m := range frozen {
 					if !slices.Contains(drop[p.Kind], m.SupersededBy) || slices.Contains(drop[p.Kind], m.ID) {
@@ -341,29 +350,33 @@ func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoi
 						CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, TS: h.now().UnixMilli(),
 					}
 					if err := lg.Insert(revive); err != nil {
-						h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+						warn(err)
 					}
 				}
 			}
 		}
 		if err := brain.RestoreLocked(p, sid, add, drop[p.Kind], h.now()); err != nil {
-			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+			warn(err)
 		}
 		_ = lg.Close()
 	}
-	h.restoreBrainWrites(private, user, writes, cps)
+	if h.restoreBrainWrites(private, user, writes, cps) {
+		failed = true
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.brainWrites = nil // the session wrote nothing that survives the rewind
 	ag.mu.Unlock()
 	h.refreshPending()
+	return failed
 }
 
 // restoreBrainWrites rewinds the session's file-mode brain writes: the
 // oldest op's prior bytes win, a creation deletes its file, and a truncated
 // prior defers to the file-tool checkpoint the restore loop already wrote
 // (DESIGN §7). The rewind holds the partition locks.
-func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) {
+func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) bool {
+	failed := false
 	oldest := map[string]*brain.Op{}
 	for _, op := range writes {
 		// the key is scope-qualified: a name one session promoted in both
@@ -403,9 +416,11 @@ func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain
 			err = config.WriteFileAtomic(path, op.Prior)
 		}
 		if err != nil {
+			failed = true
 			h.Log.Warn("brain file not rewound", "origin", "rewind", "path", path, "error", err)
 		}
 	}
+	return failed
 }
 
 // todosIn is the todo list the last todos call in rows that ran set.
