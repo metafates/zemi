@@ -78,6 +78,35 @@ func TestNotifyWhenAway(t *testing.T) {
 	}
 }
 
+// TestAskTrustNotifiesWhenAway: the trust ask alerts an unfocused terminal
+// like the other three asks do.
+func TestAskTrustNotifiesWhenAway(t *testing.T) {
+	t.Parallel()
+	app, host := notifyApp(t)
+	if _, err := host.Settings.SetQuiet("ui.notify", "osc"); err != nil {
+		t.Fatal(err)
+	}
+	app.Update(tea.BlurMsg{})
+	app.testQueue = make(chan tea.Msg, 1)
+	done := make(chan string, 1)
+	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
+	var sent string
+	if _, cmd := app.Update(<-app.testQueue); cmd != nil {
+		for _, m := range runCmd(cmd) {
+			if raw, ok := m.(tea.RawMsg); ok {
+				sent = fmt.Sprint(raw.Msg)
+			}
+		}
+	}
+	if sent != "\x1b]9;zemi: trust this project?\x07" {
+		t.Fatalf("sent %q", sent)
+	}
+	app.answerTrust("later")
+	if got := <-done; got != "later" {
+		t.Fatalf("answered %q", got)
+	}
+}
+
 // TestRecapWhenIdle: once the agent went idle from a turn, a recap starts
 // after the session.recap delay when the turn ended well with no input
 // since, and the next input stops it; the reflector runs after ReflectIdle

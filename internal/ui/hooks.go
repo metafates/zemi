@@ -33,9 +33,13 @@ type trustPrompt struct {
 // a buffered channel.
 func (a *App) AskTrust(root, cwd, state string) string {
 	ch := make(chan string, 1)
+	what := "project"
+	if hostapi.TrustUnsaved(root) {
+		what = "directory"
+	}
 	a.await(func() tea.Cmd {
 		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
-		return nil
+		return a.notifyIfAway("zemi: trust this " + what + "?")
 	})
 	return <-ch
 }
