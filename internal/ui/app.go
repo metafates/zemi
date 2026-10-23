@@ -1840,10 +1840,12 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 // costed a few hundred small allocations a frame.
 var blank = strings.Repeat(" ", 4096)
 
-func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
+// padSeg is the segment padding a row out to w cells, or false when the row
+// already fills them.
+func padSeg(segs []hostapi.Segment, w int) (hostapi.Segment, bool) {
 	pad := w - hostapi.SegsWidth(segs)
 	if pad <= 0 {
-		return segs
+		return hostapi.Segment{}, false
 	}
 	text := blank[:min(pad, len(blank))]
 	if pad > len(blank) { // not a width a terminal reports
@@ -1851,5 +1853,15 @@ func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of
 	// leaving the terminal's background showing
-	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: text, HL: "Normal"})
+	return hostapi.Segment{Text: text, HL: "Normal"}, true
+}
+
+func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
+	p, ok := padSeg(segs, w)
+	if !ok {
+		return segs
+	}
+	out := make([]hostapi.Segment, 0, len(segs)+1)
+	out = append(out, segs...)
+	return append(out, p)
 }

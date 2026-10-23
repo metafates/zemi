@@ -388,15 +388,30 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 					cell := hostapi.Segment{Text: "│", HL: "Rule", NoCopy: true, Line: true}
 					if n := len(row); lastBar(row) && n > 1 {
 						cell = row[n-1]
-						row = slices.Concat(row[:n-1],
-							[]hostapi.Segment{{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill}})
+						row = append(row[:n-1:n-1], hostapi.Segment{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill})
 					}
-					joined[j] = slices.Concat(padSegs(row, x), []hostapi.Segment{cell})
+					// one make per row: the row must not share a backing
+					// array with a kid's or a cache's row, which in-place
+					// edits below would corrupt
+					p, ok := padSeg(row, x)
+					out := make([]hostapi.Segment, 0, len(row)+2)
+					out = append(out, row...)
+					if ok {
+						out = append(out, p)
+					}
+					joined[j] = append(out, cell)
 				}
 				x++
 			}
 			for j, kr := range a.paint(k) {
-				joined[j] = slices.Concat(padSegs(joined[j], x), kr)
+				// one make per row per kid, for the same reason
+				p, ok := padSeg(joined[j], x)
+				out := make([]hostapi.Segment, 0, len(joined[j])+len(kr)+1)
+				out = append(out, joined[j]...)
+				if ok {
+					out = append(out, p)
+				}
+				joined[j] = append(out, kr...)
 			}
 			x += k.rect.Dx()
 		}
