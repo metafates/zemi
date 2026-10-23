@@ -76,8 +76,8 @@ func TestMigrationKeepsData(t *testing.T) {
 		t.Fatalf("sessions = %d, %v", n, err)
 	}
 	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 2 {
-		t.Fatalf("goose version = %d, %v; want 2", version, err)
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 3 {
+		t.Fatalf("goose version = %d, %v; want 3", version, err)
 	}
 }
 
