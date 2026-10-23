@@ -4,6 +4,7 @@ package proc
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -38,3 +39,6 @@ func ShellCommand(line string) *exec.Cmd { return Command(Shell(), "-c", line) }
 func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 	return CommandContext(ctx, Shell(), "-c", line)
 }
+
+// SymlinkDir makes newname a directory link to oldname.
+func SymlinkDir(oldname, newname string) error { return os.Symlink(oldname, newname) }

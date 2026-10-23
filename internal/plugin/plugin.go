@@ -1398,7 +1398,7 @@ func linkPlugin(d config.Dirs, name, target string, on bool) error {
 	}
 	staging := filepath.Join(d.PluginsRoot(), "installed", "."+name+".link.tmp")
 	os.RemoveAll(staging)
-	if err := os.Symlink(rel, staging); err != nil {
+	if err := proc.SymlinkDir(rel, staging); err != nil {
 		return err
 	}
 	// a rename replaces a link in one step; a legacy real tree moves aside

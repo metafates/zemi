@@ -17,10 +17,11 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// editorScript is the sh -c text that runs editor on "$1", so an editor with
+// editorScript is the shell text that runs editor on "$1", so an editor with
 // flags ("code --wait") splits like a shell would, with the common editors'
 // starting line flag.
 func editorScript(editor string, line int) string {
@@ -47,9 +48,22 @@ type editorDoneMsg struct {
 // work stays the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str(config.KeyEditorCommand)), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
+	sh := proc.Shell()
+	script := editorScript(editor, req.Line)
+	// sh takes the file as argv["1"]; cmd and PowerShell take one command
+	// line, so the file is quoted into it in place of "$1".
+	var c *exec.Cmd
+	switch {
+	case sh == "cmd":
+		c = exec.Command(sh, "/c", strings.Replace(script, `"$1"`, `"`+req.Path+`"`, 1))
+	case sh == "pwsh":
+		q := "'" + strings.ReplaceAll(req.Path, "'", "''") + "'"
+		c = exec.Command(sh, "-NoProfile", "-NonInteractive", "-Command", strings.Replace(script, `"$1"`, q, 1))
+	default:
+		c = exec.Command(sh, "-c", script, sh, req.Path)
+	}
 	// NOTE: not internal/proc: the editor needs the controlling terminal
 	// Setsid would drop, and tea.ExecProcess runs and waits for it itself.
-	c := exec.Command("sh", "-c", editorScript(editor, req.Line), "sh", req.Path)
 	errc := make(chan error, 1)
 	a.await(func() tea.Cmd {
 		a.editing = sanitize.String(req.Title)

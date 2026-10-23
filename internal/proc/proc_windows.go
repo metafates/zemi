@@ -2,11 +2,15 @@ package proc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"golang.org/x/sys/windows"
 )
 
 // NOTE: Windows kills only the process itself; children of a shell survive
@@ -20,8 +24,8 @@ func killGroup(pid int) {
 }
 
 // Shell is the shell that runs the model's command lines: a Git for Windows
-// bash where there is one, else pwsh or powershell, else cmd, which knows
-// nothing POSIX. System32's bash.exe is the WSL launcher, whose /mnt paths
+// bash where there is one, else pwsh, else cmd, which knows nothing POSIX.
+// System32's bash.exe is the WSL launcher, whose /mnt paths
 // do not match zemi's, so it is refused. Looked up once, on PATH like every
 // program zemi runs by name.
 var Shell = sync.OnceValue(func() string {
@@ -37,10 +41,8 @@ var Shell = sync.OnceValue(func() string {
 			return path
 		}
 	}
-	for _, name := range []string{"pwsh", "powershell"} {
-		if _, err := exec.LookPath(name); err == nil {
-			return name
-		}
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
 	}
 	return "cmd"
 })
@@ -70,11 +72,33 @@ func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 	if s == "cmd" {
 		return CommandContext(ctx, s, "/c", line)
 	}
-	if s == "pwsh" || s == "powershell" {
-		// NOTE: Windows PowerShell 5.1 -Command exits 0 after a failed native
-		// command, so the tail hands the real exit code back.
+	if s == "pwsh" {
+		// NOTE: -Command exits 0 after a failed native command, so the tail
+		// hands the real exit code back; the newline keeps a trailing
+		// comment from eating it.
 		return CommandContext(ctx, s, "-NoProfile", "-NonInteractive", "-Command",
-			line+"; if (-not $?) { exit 1 }; exit $LASTEXITCODE")
+			line+"\nif (-not $?) { exit 1 }; exit $LASTEXITCODE")
 	}
 	return CommandContext(ctx, s, "-c", line)
+}
+
+// SymlinkDir makes newname a directory link to oldname. A stock Windows
+// account lacks the symlink privilege, so it falls back to a junction,
+// which needs none but stores an absolute target.
+func SymlinkDir(oldname, newname string) error {
+	err := os.Symlink(oldname, newname)
+	if !errors.Is(err, windows.ERROR_PRIVILEGE_NOT_HELD) {
+		return err
+	}
+	target := oldname
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(newname), target)
+	}
+	c := Command("cmd", "/c", "mklink", "/J", newname, target)
+	var errb strings.Builder
+	c.Stderr = &errb
+	if err := Run(c); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(errb.String()))
+	}
+	return nil
 }

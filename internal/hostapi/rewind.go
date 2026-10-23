@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -458,7 +459,7 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 		return err
 	}
 	if cp.Link {
-		return os.Symlink(string(cp.Content), cp.Path)
+		return proc.SymlinkDir(string(cp.Content), cp.Path)
 	}
 	return os.WriteFile(cp.Path, cp.Content, 0o644)
 }

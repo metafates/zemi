@@ -41,7 +41,7 @@ func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
 // TildePath shortens the home directory, or a path under it, to ~.
 func TildePath(p string) string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" && (p == home || strings.HasPrefix(p, home+"/")) {
+	if home, err := os.UserHomeDir(); err == nil && home != "" && (p == home || strings.HasPrefix(p, home+"/") || strings.HasPrefix(p, home+string(filepath.Separator))) {
 		return "~" + p[len(home):]
 	}
 	return p
