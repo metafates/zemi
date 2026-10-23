@@ -129,6 +129,7 @@ func TestWorkflowRun(t *testing.T) {
 		args         any
 		want         string // result, or the error substring when wantErr
 		wantErr      bool
+		raw          bool // script runs as written: no local wf prepended
 	}{
 		{name: "sequential chain", script: `local a = wf.agent("x") return wf.agent(a .. "y")`, want: "x!y!"},
 		{
@@ -176,8 +177,19 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return wf.parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return wf.agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "a wrong-typed option raises naming it", script: `return wf.agent("x", {phase = 1})`, wantErr: true, want: "phase must be a string"},
+		{name: "an unknown option names the ones there are", script: `return wf.agent("x", {agnt = "explore"})`, wantErr: true, want: `unknown option "agnt"; have agent, description, model, phase, schema`},
 		{name: "bare agent points at zemi.workflow", script: `return agent("x")`, wantErr: true, want: "has no agent, write zemi.workflow.agent"},
 		{name: "print is gone", script: `print("x")`, wantErr: true, want: "has no print, write zemi.workflow.log"},
+		{name: "coroutine.yield points at the suspenders", script: `coroutine.yield(1)`, wantErr: true, want: "has no coroutine, write zemi.workflow.agent or zemi.workflow.parallel"},
+		{name: "a misspelled member names the table", script: `return wf.agnt({})`, wantErr: true, want: "has no agnt; zemi.workflow has agent, parallel, pipeline, phase, log, args"},
+		{name: "wf itself is not given", script: `return wf.agent("x")`, raw: true, wantErr: true, want: "has no wf, write zemi.workflow"},
+		{name: "parallel functions as arguments name the shape", script: `return wf.parallel(function() return 1 end, function() return 1 end)`, wantErr: true, want: "parallel: pass the branches as one table: parallel({fn, ...})"},
+		{name: "parallel raises at the script's line when it is on the stack", script: `local r = wf.parallel({function() return 1 end, "x"}) return type(r)`, wantErr: true, want: ".lua:2: parallel: item 2 is not a function"},
+		{name: "pipeline stages as one table name the shape", script: `return wf.pipeline({"a"}, {function(a) return a end})`, wantErr: true, want: "pipeline: pass the stages as arguments, not one table: pipeline(items, stage, ...)"},
+		{name: "pipeline with the items second names the shape", script: `return wf.pipeline(function(a) return a end, {"a"})`, wantErr: true, want: "pipeline: pass the items as one table first: pipeline(items, stage, ...)"},
+		{name: "pipeline with a stage that is not a function names it", script: `return wf.pipeline({"a"}, function(a) return a end, "x")`, wantErr: true, want: "pipeline: stage 2 is not a function"},
+		{name: "agent options as a string name the shape", script: `return wf.agent("x", "explore")`, wantErr: true, want: "agent: the argument must be a table, not a string"},
+		{name: "agent prompt as a table names the shape", script: `return wf.agent({prompt = "x"})`, wantErr: true, want: "agent: the argument must be a string, not a table"},
 		{name: "no other zemi namespace", script: `return zemi.fs.read("x")`, wantErr: true, want: "attempt to index"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
 		{name: "a script error after an agent", script: `local x = wf.agent("quick") local t = nil return t.field`, wantErr: true, want: "attempt to index"},
@@ -186,7 +198,11 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := runFlow(t.Context(), h, "local wf = zemi.workflow\n"+c.script, c.args)
+			src := c.script
+			if !c.raw {
+				src = "local wf = zemi.workflow\n" + src
+			}
+			res, err := runFlow(t.Context(), h, src, c.args)
 			if c.wantErr {
 				if err == nil || !strings.Contains(err.Error(), c.want) {
 					t.Fatalf("err = %v, want %q", err, c.want)
@@ -687,6 +703,37 @@ func TestWorkflowRerun(t *testing.T) {
 	}
 }
 
+// TestWorkflowFailedReport: a failed run's report prices the rerun - the k of
+// n agents a rerun answers at once - so a model that lost a long run near its
+// end reruns instead of rewriting it from scratch.
+func TestWorkflowFailedReport(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	echoAgents(h)
+	for _, c := range []struct {
+		name, script, want string
+	}{
+		{"a late failure names the agents a rerun replays", `local a = wf.agent("quick") local t = nil return t.field`, "1 of 1 agents finished, and a rerun answers those at once"},
+		{"a failure before any agent keeps the rerun line", `local t = nil return t.field`, "with action rerun."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := h.startFlow(t.Context(), flowSpec{src: "local wf = zemi.workflow\n" + c.script})
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-f.done
+			if f.err == nil {
+				t.Fatal("the run did not fail")
+			}
+			report, ok := f.report()
+			if ok || !strings.Contains(report, c.want) {
+				t.Fatalf("report = %q, want it failing with %q", report, c.want)
+			}
+		})
+	}
+}
+
 // TestWorkflowSchema: a schema call's report is the JSON object cut out of
 // the reply, checked, asked for again at most twice, and a table in Lua.
 func TestWorkflowSchema(t *testing.T) {
@@ -756,6 +803,7 @@ func TestWorkflowToolInput(t *testing.T) {
 	}{
 		{name: "two sources name the three", input: `{"script":"return 1","name":"review"}`, want: "exactly one of script, name or run", failed: true},
 		{name: "an action needs its run", input: `{"script":"return 1","action":"stop"}`, want: "pass its id as run", failed: true},
+		{name: "a script that cannot parse never asks", input: `{"script":"return ("}`, want: "workflow script:", failed: true},
 		{name: "a run alone answers its status", input: `{"run":"` + id + `"}`, want: "workflow " + id + " Count to two: done"},
 		{name: "a control on an ended run says so", input: `{"run":"` + id + `","action":"pause"}`, want: "is not running", failed: true},
 		{name: "a rerun asks about the script file as it is", input: `{"run":"` + id + `","action":"rerun"}`, want: "\n\n3", preview: "-- Count to two\nreturn 3"},
@@ -769,6 +817,9 @@ func TestWorkflowToolInput(t *testing.T) {
 			out, failed := call(c.input)
 			if failed != c.failed || !strings.Contains(out, c.want) {
 				t.Fatalf("= %q (error %v), want %q", out, failed, c.want)
+			}
+			if c.preview == "" && len(ui.asked) != n {
+				t.Fatalf("asked %+v; only the script's ask is wanted", ui.asked[n:])
 			}
 			if c.preview != "" && (len(ui.asked) != n+1 || ui.asked[n].Arg != "script" || ui.asked[n].Preview != c.preview) {
 				t.Fatalf("asked %+v, want the script %q", ui.asked[n:], c.preview)

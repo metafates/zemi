@@ -34,6 +34,7 @@ import (
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua/parse"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
@@ -353,6 +354,24 @@ func (f *flowRun) failedAgent() bool {
 	return false
 }
 
+// finishedAgents counts the agents a rerun would answer at once: the same
+// predicate journal.cache replays.
+func (f *flowRun) finishedAgents() (done, total int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	total = len(f.agents)
+	for _, a := range f.agents {
+		status := a.status
+		if a.run != nil {
+			status, _, _, _ = a.run.state()
+		}
+		if status == RunDone {
+			done++
+		}
+	}
+	return done, total
+}
+
 // runScript is the scheduler loop: it resumes the script's coroutines as
 // agents report and control arrives, and returns the script's value.
 func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string, error) {
@@ -361,7 +380,12 @@ func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string
 	defer L.Close()
 	L.SetContext(ctx)
 
-	fn, err := L.LoadString(spec.src)
+	// the script's name is what its errors carry: a model edits this file to rerun
+	name := "workflow.lua"
+	if f.script != "" {
+		name = filepath.Base(f.script)
+	}
+	fn, err := L.Load(strings.NewReader(spec.src), name)
 	if err != nil {
 		return "", fmt.Errorf("workflow script: %w", err)
 	}
@@ -516,11 +540,25 @@ func luaResultString(v glua.LValue) string {
 	return string(b)
 }
 
-// workflowPrelude is the part of zemi.workflow written in Lua.
+// workflowPrelude is the part of zemi.workflow written in Lua. The shape
+// errors raise bare: naming the call is the point, and the chunk's own
+// position ("<string>") would read as the engine's.
 const workflowPrelude = `
 local parallel = zemi.workflow.parallel
 function zemi.workflow.pipeline(items, ...)
-	local stages, fns = { ... }, {}
+	local stages = { ... }
+	if type(items) ~= "table" then
+		error("pipeline: pass the items as one table first: pipeline(items, stage, ...)", 0)
+	end
+	if #stages == 1 and type(stages[1]) == "table" then
+		error("pipeline: pass the stages as arguments, not one table: pipeline(items, stage, ...)", 0)
+	end
+	for i, stage in ipairs(stages) do
+		if type(stage) ~= "function" then
+			error("pipeline: stage " .. i .. " is not a function", 0)
+		end
+	end
+	local fns = {}
 	for i, item in ipairs(items) do
 		fns[i] = function()
 			local v, err = item, nil
@@ -539,7 +577,8 @@ end`
 var misnamed = map[string]string{
 	"agent": "zemi.workflow.agent", "parallel": "zemi.workflow.parallel", "pipeline": "zemi.workflow.pipeline",
 	"phase": "zemi.workflow.phase", "log": "zemi.workflow.log", "print": "zemi.workflow.log",
-	"args": "zemi.workflow.args", "json": "zemi.json",
+	"args": "zemi.workflow.args", "json": "zemi.json", "wf": "zemi.workflow", "workflow": "zemi.workflow",
+	"coroutine": "zemi.workflow.agent or zemi.workflow.parallel, which suspend on their own",
 }
 
 // open builds the script's own state (DESIGN §4): base, string, table and
@@ -573,7 +612,10 @@ func (r *wfRun) open(args any) *glua.LState {
 	wf.RawSetString("agent", lua.Suspending(L, L.NewFunction(r.luaAgent)))
 	wf.RawSetString("parallel", lua.Suspending(L, L.NewFunction(r.luaParallel)))
 	wf.RawSetString("phase", L.NewFunction(func(L *glua.LState) int {
-		phase := L.CheckString(1)
+		if _, ok := L.Get(1).(glua.LString); !ok {
+			lua.RaiseScript(L, "phase: pass the phase name as a string")
+		}
+		phase := string(L.Get(1).(glua.LString))
 		r.f.mu.Lock()
 		r.f.phase = phase
 		r.f.mu.Unlock()
@@ -594,6 +636,18 @@ func (r *wfRun) open(args any) *glua.LState {
 		r.f.changed()
 		return 0
 	}))
+	// a member the table lacks is a script bug: the known misspellings point
+	// at the right spelling, the rest name what the table has
+	wmt := L.NewTable()
+	wmt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(2)
+		if to, ok := misnamed[name]; ok {
+			lua.RaiseScript(L, "a workflow script has no %s, write %s", name, to)
+		}
+		lua.RaiseScript(L, "a workflow script has no %s; zemi.workflow has %s", name, strings.Join(wfMembers, ", "))
+		return 0
+	}))
+	L.SetMetatable(wf, wmt)
 	zemi := L.NewTable()
 	zemi.RawSetString("workflow", wf)
 	zemi.RawSetString("json", r.h.jsonNamespace(L))
@@ -604,39 +658,54 @@ func (r *wfRun) open(args any) *glua.LState {
 	return L
 }
 
+// agentOpts are the option keys zemi.workflow.agent reads; any other raises.
+var agentOpts = []string{"agent", "description", "model", "phase", "schema"}
+
+// wfMembers are zemi.workflow's members, named when a script reads one the
+// table lacks.
+var wfMembers = []string{"agent", "parallel", "pipeline", "phase", "log", "args"}
+
 // luaAgent is zemi.workflow.agent(prompt [, opts]): the agent's report, or
 // nil and an error.
 func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
 	switch {
 	case t == nil:
-		L.RaiseError("agent() must run inside the workflow")
+		lua.RaiseScript(L, "agent() must run inside the workflow")
 	case lua.InGoCall(L):
-		L.RaiseError("agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
+		lua.RaiseScript(L, "agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
 	}
-	prompt := L.CheckString(1)
-	opts := L.OptTable(2, L.NewTable())
+	prompt, ok := arg[glua.LString](L, 1, "agent")
+	if !ok || strings.TrimSpace(string(prompt)) == "" {
+		lua.RaiseScript(L, "agent: prompt is required")
+	}
+	opts, ok := arg[*glua.LTable](L, 2, "agent")
+	if !ok {
+		opts = L.NewTable()
+	}
+	opts.ForEach(func(k, v glua.LValue) {
+		if key, ok := k.(glua.LString); !ok || !slices.Contains(agentOpts, string(key)) {
+			lua.RaiseScript(L, "agent: unknown option %q; have %s", k, strings.Join(agentOpts, ", "))
+		}
+	})
 	name, desc, model, phase := rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model"), rawString(L, opts, "phase")
-	if strings.TrimSpace(prompt) == "" {
-		L.RaiseError("agent: prompt is required")
-	}
 	def, err := r.h.agentDef(name)
 	if err != nil {
-		L.RaiseError("agent: %v", err)
+		lua.RaiseScript(L, "agent: %v", err)
 	}
 	if err := r.h.checkModelID(model); err != nil {
-		L.RaiseError("agent: %v", err)
+		lua.RaiseScript(L, "agent: %v", err)
 	}
 	if model != "" {
 		def.Model = model
 	}
 	if desc == "" {
-		first, _, _ := strings.Cut(prompt, "\n")
+		first, _, _ := strings.Cut(string(prompt), "\n")
 		desc = clipRunes(first, 40)
 	}
 	schema := callSchema(L, opts)
 	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase)}
-	key := agentKey(def.Name, model, schema, prompt)
+	key := agentKey(def.Name, model, schema, string(prompt))
 	// an identical call an earlier run finished answers at once and starts
 	// nothing, so it does not count toward the cap
 	if q := r.cache[key]; len(q) > 0 {
@@ -650,15 +719,16 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		return 1
 	}
 	if r.started >= workflowMaxAgents {
-		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
+		lua.RaiseScript(L, "agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
 	}
 	r.started++
 	r.f.addAgent(a)
+	reqPrompt := string(prompt)
 	if schema != nil { // in the task, never the system prompt, which runs share
 		b, _ := json.Marshal(schema, json.Deterministic(true))
-		prompt += "\n\nEnd with only a JSON object matching this JSON Schema, no prose and no code fences:\n" + string(b)
+		reqPrompt += "\n\nEnd with only a JSON object matching this JSON Schema, no prose and no code fences:\n" + string(b)
 	}
-	t.req = &wfAgentReq{def: def, prompt: prompt, key: key, schema: schema, agent: a}
+	t.req = &wfAgentReq{def: def, prompt: reqPrompt, key: key, schema: schema, agent: a}
 	return L.Yield()
 }
 
@@ -679,7 +749,7 @@ func callSchema(L *glua.LState, opts *glua.LTable) map[string]any {
 		return !ok
 	})
 	if s["type"] != "object" || props == nil || stray {
-		L.RaiseError(`agent: schema must be a JSON Schema object with type "object" and properties, and required naming only those`)
+		lua.RaiseScript(L, "agent: schema must be a JSON Schema object with type \"object\" and properties, and required naming only those; it holds a %s", tb.Type())
 	}
 	return s
 }
@@ -689,19 +759,22 @@ func callSchema(L *glua.LState, opts *glua.LTable) map[string]any {
 func (r *wfRun) luaParallel(L *glua.LState) int {
 	t := r.tasks[L]
 	if t == nil || lua.InGoCall(L) {
-		L.RaiseError("parallel() cannot wait inside pcall or a library callback such as table.sort")
+		lua.RaiseScript(L, "parallel() cannot wait inside pcall or a library callback such as table.sort")
 	}
-	list := L.CheckTable(1)
+	list, ok := L.Get(1).(*glua.LTable)
+	if !ok {
+		lua.RaiseScript(L, "parallel: pass the branches as one table: parallel({fn, ...})")
+	}
 	n := list.Len()
 	// Every entry becomes a coroutine before the concurrency cap applies,
 	// so refuse a batch larger than the run's whole agent budget.
 	if n > workflowMaxAgents {
-		L.RaiseError("parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
+		lua.RaiseScript(L, "parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
 	}
 	for i := 1; i <= n; i++ {
 		fn, ok := list.RawGetInt(i).(*glua.LFunction)
 		if !ok {
-			L.RaiseError("parallel: item %d is not a function", i)
+			lua.RaiseScript(L, "parallel: item %d is not a function", i)
 		}
 		t.kids = append(t.kids, fn)
 	}
@@ -1449,6 +1522,11 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if strings.TrimSpace(spec.src) == "" {
 		return fantasy.NewTextErrorResponse("the script is empty"), nil
 	}
+	// a script that cannot parse never runs: the ask would only spend the
+	// user's approval on a syntax error
+	if _, err := parse.Parse(strings.NewReader(spec.src), arg); err != nil {
+		return fantasy.NewTextErrorResponse("workflow script: " + err.Error()), nil
+	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
 	if v := t.pipe.CheckDenied(tools.Request{Tool: tools.ToolWorkflow, Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
@@ -1578,7 +1656,12 @@ func (f *flowRun) report() (string, bool) {
 			msg = where + ": the user stopped it; do not start it again unless they ask"
 		}
 		if f.script != "" {
-			log += "\n\nEdit the script if needed and pass run=" + f.id + " with action rerun: the agents that finished answer at once."
+			log += "\n\nEdit the script if needed and pass run=" + f.id + " with action rerun"
+			if k, n := f.finishedAgents(); n > 0 {
+				log += fmt.Sprintf(": %d of %d agents finished, and a rerun answers those at once", k, n)
+			} else {
+				log += "."
+			}
 		}
 		return msg + log, false
 	}

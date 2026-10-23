@@ -302,3 +302,35 @@ func suspended(fn *glua.LFunction) (*glua.LFunction, bool) {
 	inner, ok := fn.Upvalues[0].Value().(*glua.LFunction)
 	return inner, ok && inner.IsG
 }
+
+// RaiseScript raises format attributed to the innermost script frame, so an
+// error a host call raises reads as the script's line and never as the
+// Suspending wrapper's ("@host:wait:1"). Host machinery - Go frames, the
+// wrapper, unnamed chunks - is skipped; with no script frame (a tail call
+// replaced it) the message raises bare, since a wrapper position would only
+// misattribute it.
+func RaiseScript(L *glua.LState, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	for level := 0; ; level++ {
+		dbg, ok := L.GetStack(level)
+		if !ok {
+			L.Error(glua.LString(msg), 0)
+			return
+		}
+		fv, err := L.GetInfo("f", dbg, glua.LNil)
+		if err != nil {
+			continue
+		}
+		fn, ok := fv.(*glua.LFunction)
+		if !ok {
+			continue
+		}
+		switch {
+		case fn.IsG, fn.Proto == suspendingProto.FunctionPrototypes[0]:
+		case fn.Proto.SourceName == "" || fn.Proto.SourceName == "[G]" || fn.Proto.SourceName == "<string>":
+		default:
+			L.Error(glua.LString(msg), level+1)
+			return
+		}
+	}
+}
