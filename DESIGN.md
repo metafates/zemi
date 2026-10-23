@@ -2205,8 +2205,9 @@ rides the `memories.md` line and its ledger entries.
   is always in the store, reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it),
   so no widget can hide what the model actually received. `/messages` is the
-  map of it (`alt+m`): a builtin list of turns, each opening on the rows it
-  held (a prompt, reply, notice, error or command) with `l`, and its whole
+  map of it (`alt+m`): one builtin list of the whole conversation, every turn
+  a section header over the rows it held (a prompt, reply, notice, error or
+  command), saying the turn's clock and what it counted, and a turn's whole
   activity as one row saying how many steps it took, as the chat draws that
   rail folded. `l` on that row opens the rail's own list, one row per call and
   thought, and the chat draws that run whole while it is up: no row of it
@@ -2217,14 +2218,14 @@ rides the `memories.md` line and its ledger entries.
   adding to included: its calls are open whole while the list is up and go
   back to the short tail a live rail keeps once it closes. It opens where the
   reader is, the way muffin opens on the symbol under the cursor, not on its
-  first row: the levels down to the row the view's middle draws come up
-  together, turns then the turn then its rail, and each level opens on the
-  row that place names - a blank line between two messages hands over to the
-  one under it, the row the chat itself resolves there - so a level and the
-  chat always say the same message, and `h` walks back up, each
-  level on the row it was left on, while `esc` closes the whole menu: a
-  level's id is its parent's and its own, so a rail is the turn's child and
-  the menu closes whole from any of them. `l` is
+  first row: the list opens on the row the chat names, with the rail of the
+  run holding that row under the list when the reader sits in one, and each
+  level opens on the row that place names - a blank line between two messages
+  hands over to the one under it, the row the chat itself resolves there - so
+  a level and the chat always say the same message. `esc` closes the whole
+  menu: a level's id starts with the list's own, so a rail is its child and
+  the menu closes whole from any of them, and `h` backs the rail or a view
+  out, each on the row it was left on. `l` is
   the one way down a level: a row's own view or the run its keys open. `enter`
   on a row of any level is the place itself - the menu closes and the chat
   stays there, the run folding under it - so enter answers "open in chat"

@@ -9,7 +9,7 @@ import (
 )
 
 // The resumed-session tail: the last turn holds many runs and a long final
-// reply; the reader is at the tail. Alt+m must open on the message the tail
+// reply; the reader is at the tail. Alt+m opens on the message the tail
 // shows - the reply - not on the turn's prompt.
 func TestMessagesResumedTailPicksTheReply(t *testing.T) {
 	app, host := bootAgentApp(t, 120, 46)
@@ -31,30 +31,18 @@ func TestMessagesResumedTailPicksTheReply(t *testing.T) {
 	if !chat.follow {
 		t.Fatalf("the tail view should follow")
 	}
-	// what the open's own levels leave behind: the turns list picks the last
-	// turn and jumps the chat to its prompt (row 5); a level deriving its
-	// selection from the moved chat opens on the prompt, not the reply
-	chat.focus, chat.placed, chat.follow = 5, chat.top, false
 	if err := host.OpenMessages(); err != nil {
 		t.Fatal(err)
 	}
 	for app.Pump() {
 	}
-	var ids []string
-	for _, st := range app.overlays {
-		ids = append(ids, st.o.ID)
+	if len(app.overlays) != 1 {
+		t.Fatalf("%d overlays, want the list alone", len(app.overlays))
 	}
-	t.Logf("levels: %v", ids)
-	if len(app.overlays) < 2 {
-		t.Fatalf("%d overlays, want the turns list and the turn level", len(app.overlays))
-	}
-	top := &app.overlays[len(app.overlays)-1]
-	if got := top.selectedAnchor(); got <= 0 {
-		t.Fatalf("no selection")
-	}
+	top := &app.overlays[0]
 	// the reply's anchor: its transcript row is the last text row
 	want := len(host.Session().Transcript)
 	if got := top.selectedAnchor(); got != want {
-		t.Fatalf("opened on anchor %d, want the reply %d; levels %v", got, want, ids)
+		t.Fatalf("opened on anchor %d, want the reply %d", got, want)
 	}
 }
