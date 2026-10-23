@@ -1634,8 +1634,15 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		done := make(chan struct{})
 		var text, runErr string
 		h.GoSafe("zemi.agent.run", func() {
-			// closed even when the run panics, so a task waiting on it never hangs
+			ran := false
+			// closed even when the run panics, so a task waiting on it reads
+			// the failure instead of hanging
 			defer close(done)
+			defer func() {
+				if !ran {
+					runErr = errPanicked.Error()
+				}
+			}()
 			defer cancel()
 			defer h.stops.remove(stopID)
 			_, t, err := h.runSubagent(ctx, def, desc, prompt)
@@ -1643,6 +1650,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			if err != nil {
 				runErr = h.friendlyError(err)
 			}
+			ran = true
 			switch {
 			case onDone == nil:
 			case err != nil:
