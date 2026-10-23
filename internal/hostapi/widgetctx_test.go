@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	glua "github.com/yuin/gopher-lua"
-
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
