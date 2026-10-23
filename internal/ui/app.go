@@ -633,11 +633,11 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 }
 
 // tickInterval is idleInterval unless something on screen moves by itself:
-// a turn's readouts, a spinner, a toast's or the done frame's expiry.
-// Everything else bumps.
+// a turn's readouts, a shown run's clock, a spinner, a toast's or the done
+// frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if busy, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
+	if busy, _ := a.host.BusyNow(); a.turnActive || a.host.ViewedRunRunning() || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
 		return frameInterval
 	}
 	return idleInterval
@@ -651,10 +651,10 @@ func (a *App) onFrame() tea.Cmd {
 		a.timeStr = ts
 		a.frameGen++
 	}
-	// While a turn or a busy job runs every tick re-renders, so the eyes and
-	// the elapsed time step even when no stream event arrives.
+	// While a turn, a shown run or a busy job runs every tick re-renders, so
+	// the eyes and the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if busy, _ := a.host.BusyNow(); active || busy != "" {
+	if busy, _ := a.host.BusyNow(); active || a.host.ViewedRunRunning() || busy != "" {
 		a.frameGen++
 	}
 	a.turnActive = active

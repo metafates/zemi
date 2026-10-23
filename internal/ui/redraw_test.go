@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestProgressReport: the view reports OSC 9;4 while a turn runs, changes it
@@ -108,6 +109,27 @@ func TestIdleDrawsNothing(t *testing.T) {
 	app.Update(frameTickMsg{})
 	if app.frameGen != gen+1 {
 		t.Fatalf("the done frame cost %d redraws, want 1", app.frameGen-gen)
+	}
+
+	// a shown run ticks the clock like a turn does, though the turn is idle
+	host.SeedStream(hostapi.StreamSnapshot{})
+	testStore(t, host)
+	id := store.ShortID()
+	if err := host.DB.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.DB.SetSessionRunStatus(id, "running"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	app.Update(frameTickMsg{})
+	if app.frameGen == gen+1 {
+		t.Fatal("a shown run does not tick the working row")
+	}
+	if app.tickInterval() != frameInterval {
+		t.Fatal("a shown run should tick at frame rate")
 	}
 }
 

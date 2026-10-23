@@ -113,7 +113,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
   callbacks call `refresh` when they return. The frame tick sleeps 250 ms unless something
-  moves by itself (a turn, a drawn spinner or shimmer, a toast, an armed flag) and always lands on a 50 ms wall boundary,
+  moves by itself (a turn, a shown run, a drawn spinner or shimmer, a toast, an armed flag) and always lands on a 50 ms wall boundary,
   so `ctx.frame` steps one per tick while a turn re-renders every one; a change goes through
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
