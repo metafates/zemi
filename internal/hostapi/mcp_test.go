@@ -447,16 +447,85 @@ func TestMCPOverlayRefresh(t *testing.T) {
 	ids0, _ := snap()
 	n := len(ids0)
 	h.mcpChanged()
-	ids, rebuilt := snap()
+	ids, _ := snap()
 	if len(ids) != n+1 || ids[n] != "mcp" {
 		t.Fatalf("a change did not rebuild the open /mcp: %v", ids)
 	}
 	s, _ := h.mcpServerNamed("fake")
 	shrink.Store(true)
 	h.refreshMCPTools(s)
-	ids, rebuilt = snap()
+	ids, rebuilt := snap()
 	if len(ids) != n+2 || row(rebuilt[len(rebuilt)-1]) != "ready · 1 tool" {
 		t.Fatalf("a tool-list refresh left the open /mcp stale: %v, %q", ids, row(rebuilt[len(rebuilt)-1]))
+	}
+}
+
+// TestMCPRefreshCoalesces: notifications landing while a tools/list refresh
+// runs buy one more run after it, not one goroutine and one list each.
+func TestMCPRefreshCoalesces(t *testing.T) {
+	t.Parallel()
+	var (
+		mu      sync.Mutex
+		lists   int // page-1 tools/list requests: one per refresh round
+		release = make(chan struct{})
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var m struct {
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
+			Params struct {
+				Cursor string `json:"cursor"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(body, &m)
+		if m.Method == "tools/list" && m.Params.Cursor == "" {
+			mu.Lock()
+			lists++
+			second := lists == 2
+			mu.Unlock()
+			if second {
+				<-release // hold the refresh in flight; further notifications pile up behind it
+			}
+		}
+		if resp := mcptest.Respond(body); resp != nil {
+			if m.Method == "initialize" {
+				w.Header().Set("Mcp-Session-Id", "fake-session")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(resp)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q })`, srv.URL))
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s.currentClient() == nil {
+			return errors.New("never became ready")
+		}
+		return nil
+	})
+	s, _ := h.mcpServerNamed("fake")
+	for range 5 {
+		h.queueMCPRefresh(s)
+	}
+	close(release)
+	waitFor(t, func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.refreshing || s.queued {
+			return errors.New("a refresh is still running")
+		}
+		return nil
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if lists != 3 { // the start's list, the held refresh, its one re-run
+		t.Fatalf("%d tools/list rounds for 5 notifications, want 3", lists)
 	}
 }
 

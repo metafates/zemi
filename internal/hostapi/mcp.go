@@ -59,6 +59,8 @@ type mcpServer struct {
 	signIn      string // the sign-in URL while one waits in the browser
 	authorizing bool   // a flow is between its start and its park, so no second one starts
 	stopped     bool
+	refreshing  bool // a tools/list refresh is running
+	queued      bool // a list_changed landed during it: one more run after
 }
 
 type mcpReg struct {
@@ -137,7 +139,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.DataHome,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
-		OnToolsChanged: func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) },
+		OnToolsChanged: func() { h.queueMCPRefresh(s) },
 	}
 	if s.spec.URL != "" && !hasHeader(headers, "Authorization") {
 		cfg.Auth = h.mcpAuth(s)
@@ -199,6 +201,35 @@ func (h *Host) refreshMCPTools(s *mcpServer) {
 	s.mu.Unlock()
 	h.checkToolNames(s, list)
 	h.mcpChanged()
+}
+
+// queueMCPRefresh coalesces notifications/tools/list_changed: one refresh
+// runs at a time, and a notification landing during it buys one more run
+// after, so a spamming server cannot fan out goroutines and tools/list calls.
+func (h *Host) queueMCPRefresh(s *mcpServer) {
+	s.mu.Lock()
+	if s.refreshing {
+		s.queued = true
+		s.mu.Unlock()
+		return
+	}
+	s.refreshing = true
+	s.mu.Unlock()
+	h.GoSafe("mcp tools "+s.name, func() {
+		for {
+			h.refreshMCPTools(s)
+			s.mu.Lock()
+			again := s.queued
+			s.queued = false
+			if !again {
+				s.refreshing = false
+			}
+			s.mu.Unlock()
+			if !again {
+				return
+			}
+		}
+	})
 }
 
 // checkToolNames records the enabled_tools and disabled_tools entries the
