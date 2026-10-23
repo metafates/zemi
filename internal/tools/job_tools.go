@@ -24,6 +24,11 @@ import (
 // timeout; the host stamps such a row "bg" by this phrase.
 const JobHandoff = "moved to the background as "
 
+// maxKeptJobs is how many finished jobs a host keeps before the oldest go;
+// a running job's id must stay resolvable for job_read, so only finished
+// ones are evicted.
+const maxKeptJobs = 50
+
 // jobSettle is how long new job output must stay quiet before a job_read
 // wait returns.
 // NOTE: a build that pauses longer returns early and costs another read.
@@ -253,11 +258,33 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
+		m.mu.Lock()
+		m.evictFinished()
+		m.mu.Unlock()
 		if m.OnChange != nil {
 			m.OnChange()
 		}
 	}()
 	return j.ID
+}
+
+// evictFinished drops the oldest finished jobs past maxKeptJobs, under m.mu.
+func (m *Jobs) evictFinished() {
+	finished := 0
+	for _, j := range m.jobs {
+		if !j.Running() {
+			finished++
+		}
+	}
+	for id := 1; finished > maxKeptJobs && id <= m.seq; id++ {
+		key := fmt.Sprintf("job-%d", id)
+		j, ok := m.jobs[key]
+		if !ok || j.Running() {
+			continue
+		}
+		delete(m.jobs, key)
+		finished--
+	}
 }
 
 func (m *Jobs) Get(id string) (*Job, error) {
