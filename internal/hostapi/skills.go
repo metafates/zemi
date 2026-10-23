@@ -579,7 +579,7 @@ func listDesc(s string) string {
 	return LowerFirst(s)
 }
 
-// lowerFirst lowercases a string's first rune unless a second upper-case one
+// LowerFirst lowercases a string's first rune unless a second upper-case one
 // follows: an acronym's word stays whole.
 func LowerFirst(s string) string {
 	r, n := utf8.DecodeRuneInString(s)
