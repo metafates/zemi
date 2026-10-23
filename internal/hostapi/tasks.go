@@ -609,7 +609,6 @@ func (h *Host) MessageAgent(id, text string) error {
 
 func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
-	defer run.mu.Unlock()
 	run.flush()
 	if run.end != nil {
 		close(run.end)
@@ -635,13 +634,17 @@ func (run *agentRun) finish(h *Host, err error) {
 		run.status = RunDone
 	}
 	run.touch()
+	status := run.status
 	if h.DB != nil && run.sessionID != "" {
 		// a restart reads this back instead of calling every run done
-		if err := h.DB.SetSessionRunStatus(run.sessionID, string(run.status)); err != nil {
+		if err := h.DB.SetSessionRunStatus(run.sessionID, string(status)); err != nil {
 			h.Log.Warn("run status not stored", "origin", "agents", "run", run.id, "error", err)
 		}
 	}
-	h.markRunRow(run.id, callMark(run.status))
+	run.mu.Unlock()
+	// markRunRow takes ag.mu, which nextTurn holds across runningFor's
+	// run.mu: under run.mu here the pair deadlocks
+	h.markRunRow(run.id, callMark(status))
 }
 
 // waitEnd is the channel a waiter selects on: closed when the run's current

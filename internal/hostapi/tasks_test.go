@@ -446,6 +446,40 @@ func TestMessageAgent(t *testing.T) {
 	run("user after the last step", false, false, viaView)
 }
 
+// TestFinishNeverDeadlocksNextTurn: finish marks the run's rows with run.mu
+// released, because nextTurn holds ag.mu across runningFor's run.mu - the old
+// order (run.mu under the mark) deadlocked the pair when a run ended as a
+// turn did. One pass of the two races is enough to lock up on the old order
+// (the deadlocked pair keeps ag.mu forever, so the next pass fails at once).
+func TestFinishNeverDeadlocksNextTurn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	sid := seedSession(t, h)
+	for i := range 200 {
+		run := &agentRun{id: strconv.Itoa(i), agent: "explore", parent: sid, status: RunRunning, started: time.Now()}
+		if err := h.tasks.add(run); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{})
+		go func() { defer close(done); run.finish(h, nil) }()
+		nested := make(chan struct{})
+		go func() {
+			// nextTurn's shape: ag.mu held across runningFor's run.mu
+			h.agents.mu.Lock()
+			h.tasks.runningFor(sid)
+			h.agents.mu.Unlock()
+			close(nested)
+		}()
+		select {
+		case <-nested:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("finish deadlocked against nextTurn's lock order (pass %d)", i)
+		}
+		<-done
+	}
+}
+
 // forgetRun drops a run from the registry, as eviction or a restart would.
 func forgetRun(h *Host, id string) {
 	h.tasks.mu.Lock()
