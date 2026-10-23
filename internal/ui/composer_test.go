@@ -642,6 +642,18 @@ func TestSubmitFailed(t *testing.T) {
 	}
 }
 
+// TestSubmitEmptyShellDraft: a "!" with no command is an empty draft, not a
+// message for the model.
+func TestSubmitEmptyShellDraft(t *testing.T) {
+	t.Parallel()
+	app := newTestApp(t, t.TempDir())
+	app.composer.text = "!"
+	app.submitComposer()
+	if app.composer.text != "!" || len(app.composer.history) != 0 {
+		t.Fatalf("a bare ! submitted: draft %q, history %v", app.composer.text, app.composer.history)
+	}
+}
+
 func TestPasteToken(t *testing.T) {
 	big := strings.Repeat("line\n", 12) // the trailing newline is no line of its own
 	var c composerState
