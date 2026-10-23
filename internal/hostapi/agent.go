@@ -747,13 +747,12 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	if err != nil {
 		return fail(err)
 	}
-	h.handoffGate(scope, h.currentModelID(p))
-
 	ag.mu.Lock()
+	from, prev := ag.turnModel, ag.runner
 	// The runner is rebuilt per send (model and tools may have changed, the
 	// prompt only with pinPrompt's key); the conversation carries over from
 	// the idle previous one.
-	if prev := ag.runner; prev != nil {
+	if prev != nil {
 		runner.Continue(prev)
 	}
 	ag.runner = runner
@@ -772,7 +771,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	// must not nudge the reply the replaced agent wrote
 	nudge := h.nudgesPlan(p, toolset)
 	h.GoSafe("agent turn", func() {
-		h.runTurns(runner, scope, text)
+		h.runTurns(runner, prev, from, scope, text)
 		h.planFollowup(runner, nudge)
 	})
 	return nil
@@ -968,8 +967,11 @@ func (h *Host) handOff(scope *turnScope) {
 
 // runTurns sends text and every follow-up the queue produces on one
 // runner, compacting first whenever the last prompt filled the context.
-func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
+// prev and from are the runner and model the conversation came from, which
+// the handoff gate may summarize before the first send.
+func (h *Host) runTurns(runner, prev *agent.Runner, from string, scope *turnScope, text string) {
 	defer h.endTurnAfterPanic()
+	h.handoffGate(runner, prev, from, scope)
 	for scope != nil {
 		// one context per turn covers compaction too, which runs before the
 		// runner holds a cancel of its own
