@@ -18,6 +18,8 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openai"
+
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one
@@ -459,6 +461,31 @@ func TestToolLoopEndsTurn(t *testing.T) {
 		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
 			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
 		}
+	}
+}
+
+// TestToolLoopWindow: the comparison window counts steps that make a
+// signature, so polling steps and a long distinct past never push a real
+// loop out of its reach, and a run shorter than any window never loops.
+func TestToolLoopWindow(t *testing.T) {
+	call := func(name, in string) fantasy.StepResult {
+		return fantasy.StepResult{Response: fantasy.Response{Content: fantasy.ResponseContent{
+			&fantasy.ToolCallContent{ToolCallID: "c1", ToolName: name, Input: in},
+			&fantasy.ToolResultContent{ToolCallID: "c1", ToolName: name, Result: fantasy.ToolResultOutputContentText{Text: "same"}},
+		}}}
+	}
+	var steps []fantasy.StepResult
+	for range 3 * loopMinSteps {
+		steps = append(steps, call("wander", fmt.Sprint(len(steps)))) // distinct: no loop in sight
+	}
+	for range 2 * loopMinSteps {
+		steps = append(steps, call("echo", "{}"), call(tools.ToolJobRead, "{}")) // the loop, behind a poll per step
+	}
+	if !repeatsToolCalls(steps) {
+		t.Fatal("a loop past many distinct steps and polls was not seen")
+	}
+	if repeatsToolCalls(steps[:loopMinSteps-1]) {
+		t.Fatal("a run shorter than any window reads as a loop")
 	}
 }
 
