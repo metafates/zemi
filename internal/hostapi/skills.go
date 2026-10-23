@@ -122,7 +122,20 @@ func (h *Host) syncSkills() {
 			h.Log.Warn("skill body has !`cmd` shell blocks, they stay literal text", "origin", "skills", "skill", s.Name)
 		}
 	}
-	found = append(found, commands...)
+	// the command rows go through the same seen-set as Discover: on a clash
+	// with a skills/ dir row the earlier one wins, loudly
+	seen := make(map[string]string, len(found))
+	for _, s := range found {
+		seen[s.Name] = s.Dir
+	}
+	for _, s := range commands {
+		if at, clash := seen[s.Name]; clash {
+			h.RecordErrorOnce("skills", fmt.Sprintf("%s: skill %s is already in %s", s.File, s.Name, at))
+			continue
+		}
+		seen[s.Name] = s.Dir
+		found = append(found, s)
+	}
 	rows := make([]*store.Skill, 0, len(found))
 	for _, s := range found {
 		rows = append(rows, &store.Skill{Name: s.Name, Path: s.Dir, Source: string(s.Source)})
@@ -165,8 +178,9 @@ func (h *Host) builtinSkillsDir() string { return joinIf(h.Dirs.DataHome, "built
 // skill off.
 func (h *Host) zemiSkillDir() string { return filepath.Join(h.builtinSkillsDir(), "zemi") }
 
-// materializeBuiltinSkills rewrites the builtin skills on every sync, so an
-// upgraded zemi replaces them and drops the ones it no longer ships.
+// materializeBuiltinSkills rewrites the builtin skills once per process, so
+// an upgraded zemi replaces them and drops the ones it no longer ships; the
+// sync retries while the write fails.
 func (h *Host) materializeBuiltinSkills() error {
 	dir := h.builtinSkillsDir()
 	if dir == "" {
@@ -294,7 +308,13 @@ func (h *Host) discoverProjectSkills() []skill.Skill {
 func (h *Host) discoverSkills(dirs ...skill.Dir) []skill.Skill {
 	found, warns := skill.Discover(dirs...)
 	for _, w := range warns {
-		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
+		if errors.Is(w, skill.ErrDescriptionCut) {
+			// the /skills row and the index show the cut text already: a log
+			// line, not an error row
+			h.Log.Warn(strings.TrimPrefix(w.Error(), "skills: "), "origin", "skills")
+			continue
+		}
+		h.RecordErrorOnce("skills", strings.TrimPrefix(w.Error(), "skills: "))
 	}
 	return found
 }

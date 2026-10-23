@@ -119,18 +119,16 @@ func settledPrefix(s string) int {
 	if len(s) < 2000 {
 		return 0
 	}
-	fence, cut, at := false, 0, 0
+	var fs fenceScanner
+	cut, at := 0, 0
 	for at < len(s) {
 		end := len(s)
 		if i := strings.IndexByte(s[at:], '\n'); i >= 0 {
 			end = at + i + 1
 		}
-		trimmed := strings.TrimSpace(s[at:end])
-		if strings.HasPrefix(trimmed, "```") {
-			fence = !fence
-		}
+		line := s[at:end]
 		at = end
-		if !fence && trimmed == "" {
+		if !fs.line(line, 0) && strings.TrimSpace(line) == "" {
 			cut = at
 		}
 	}
@@ -149,7 +147,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 	}
 	// a tab occupies no cell once drawn into the buffer, so code would lose
 	// its indentation; a marker may only ever come from markDecorations
-	text = escapeHTML(sanitize.String(strings.NewReplacer("\t", "    ", markOpen, "", markClose, "").Replace(text)))
+	text = escapeHTML(sanitize.String(mdPlain.Replace(text)))
 	var lines [][]Segment
 	for i, chunk := range splitTables(text) {
 		var rows [][]Segment
@@ -244,12 +242,13 @@ type mdChunk struct {
 func splitTables(text string) []mdChunk {
 	lines := strings.SplitAfter(text, "\n")
 	var out []mdChunk
-	fence, from := false, 0
+	var fs fenceScanner
+	from := 0
 	for i := 0; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "```") {
-			fence = !fence
+		if fs.line(lines[i], 0) {
+			continue
 		}
-		if fence || i+1 >= len(lines) || !strings.Contains(lines[i], "|") ||
+		if i+1 >= len(lines) || !strings.Contains(lines[i], "|") ||
 			!strings.Contains(lines[i+1], "|") || !tableDelim.MatchString(strings.TrimRight(lines[i+1], "\n")) {
 			continue
 		}
@@ -279,6 +278,11 @@ const (
 	markClose    = "\ue001"
 	chromaMarked = "zemi-marked"
 )
+
+// mdPlain strips the decoration markers and expands tabs, before a render:
+// a tab occupies no cell once drawn into the buffer, so code would lose its
+// indentation, and a marker may only ever come from markDecorations.
+var mdPlain = strings.NewReplacer("\t", "    ", markOpen, "", markClose, "")
 
 func markDecorations(cfg *gansi.StyleConfig) {
 	nc := func(s string) string { return markOpen + s + markClose }
@@ -754,19 +758,16 @@ func escapeHTML(s string) string {
 		return s
 	}
 	var b strings.Builder
-	fence, list, code, blank := "", 0, false, true
+	var fs fenceScanner
+	list, code, blank := 0, false, true
 	for line := range strings.SplitAfterSeq(s, "\n") {
-		body := strings.TrimLeft(line, " ")
-		ind := len(line) - len(body)
-		f := fenceRun(body)
-		wasBlank := blank
+		ind := len(line) - len(strings.TrimLeft(line, " "))
+		wasFence, wasBlank := fs.run != "", blank
 		blank = strings.TrimSpace(line) == ""
+		in := fs.line(line, list)
 		switch {
-		case fence == "" && f != "":
-			fence = f
-		case fence != "" && strings.HasPrefix(f, fence):
-			fence = ""
-		case fence != "" || blank:
+		case in != wasFence: // a fence opened or closed on this line
+		case in || blank:
 		case ind >= list+4 && (wasBlank || code):
 			code = true
 		default:
@@ -820,14 +821,50 @@ func tagStart(c byte) bool {
 	return c == '/' || c == '!' || c == '?' || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
 }
 
-// fenceRun is the ``` or ~~~ run a code fence line starts with, or "".
-func fenceRun(t string) string {
+// fenceRun is the 3+-of-one-character run a fenced code block opens with
+// and the info string that follows it, or "" when s starts no fence.
+func fenceRun(s string) (run, info string) {
 	for _, c := range []string{"`", "~"} {
-		if run := t[:len(t)-len(strings.TrimLeft(t, c))]; len(run) >= 3 {
-			return run
+		if r := s[:len(s)-len(strings.TrimLeft(s, c))]; len(r) >= 3 {
+			return r, s[len(r):]
 		}
 	}
-	return ""
+	return "", ""
+}
+
+// fenceScanner tracks the code fence a document is inside, by the CommonMark
+// rules goldmark renders with: a fence opens on a run of 3+ backticks or
+// tildes indented at most 3 columns past base (a list's content column, 0
+// at the top level), the info string rides that opener alone, and it closes
+// on a run of the same character at least as long with nothing else on the
+// line. base exists for escapeHTML's lists; the other users pass 0.
+type fenceScanner struct {
+	run string // the opener's run, "" when outside a fence
+}
+
+// line takes one raw line and reports whether the text after it sits inside
+// the fence.
+func (f *fenceScanner) line(s string, base int) bool {
+	body := strings.TrimLeft(s, " ")
+	ind := len(s) - len(body)
+	if f.run == "" {
+		if ind > base+3 {
+			return false
+		}
+		run, info := fenceRun(body)
+		if run == "" || (run[0] == '`' && strings.Contains(info, "`")) {
+			return false
+		}
+		f.run = run
+		return true
+	}
+	if ind <= base+3 {
+		body = strings.TrimRight(body, " \t\r\n")
+		if len(body) >= len(f.run) && strings.Trim(body, f.run[:1]) == "" {
+			f.run = ""
+		}
+	}
+	return f.run != ""
 }
 
 // WrapSegs word-wraps one logical line into rows of at most w cells,

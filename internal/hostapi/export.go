@@ -280,16 +280,13 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 // NOTE: a setext heading (a line underlined with === or ---) is not demoted.
 func demoteHeadings(s string, level int) string {
 	var b strings.Builder
-	fence := ""
+	var fs fenceScanner
 	for line := range strings.SplitAfterSeq(s, "\n") {
 		body := strings.TrimLeft(line, " ")
-		f := fenceRun(body)
+		wasFence := fs.run != ""
 		switch {
-		case fence == "" && f != "":
-			fence = f
-		case fence != "" && strings.HasPrefix(f, fence):
-			fence = ""
-		case fence == "" && len(line)-len(body) < 4 && atxHeading.MatchString(body):
+		case fs.line(line, 0):
+		case !wasFence && len(line)-len(body) < 4 && atxHeading.MatchString(body):
 			n := len(body) - len(strings.TrimLeft(body, "#"))
 			line = strings.Repeat("#", min(n+level, 6)) + body[n:]
 		}
@@ -305,7 +302,7 @@ var atxHeading = regexp.MustCompile(`^#{1,6}(\s|$)`)
 func codeFence(lang, text string) string {
 	n := 3
 	for l := range strings.Lines(text) {
-		if run := fenceRun(strings.TrimLeft(l, " \t")); strings.HasPrefix(run, "`") {
+		if run, _ := fenceRun(strings.TrimLeft(l, " \t")); strings.HasPrefix(run, "`") {
 			n = max(n, len(run)+1)
 		}
 	}

@@ -298,12 +298,27 @@ func TestEscapeHTML(t *testing.T) {
 		{"1 < 2, <https://x.dev> and \\<b>", "1 < 2, <https://x.dev> and \\<b>"},
 		{"`Vec<T>` or ``a`<T>``", "`Vec<T>` or ``a`<T>``"},
 		{"```go\nx := []Vec<T>{}\n```\nVec<T>", "```go\nx := []Vec<T>{}\n```\nVec\\<T>"},
+		{"~~~\nVec<T>\n~~~\nVec<T>", "~~~\nVec<T>\n~~~\nVec\\<T>"},
+		{"```go\nx := Vec<T>{}\n```go\nstill <T>\n```\nVec<T>", "```go\nx := Vec<T>{}\n```go\nstill <T>\n```\nVec\\<T>"},
+		{"Text:\n\n    ```\n    Vec<T>\n\nprose Vec<T> out", "Text:\n\n    ```\n    Vec<T>\n\nprose Vec\\<T> out"},
+		{"```a`b\nVec<T>\n```\nVec<T>", "```a`b\nVec\\<T>\n```\nVec<T>"},
+		{"```\nVec<T>\n    ```\nVec<T>", "```\nVec<T>\n    ```\nVec<T>"},
 		{"Text:\n\n    let v: Vec<T>;\n    w<T>\nVec<T>", "Text:\n\n    let v: Vec<T>;\n    w<T>\nVec\\<T>"},
 		{"- a\n\n      Vec<T>\n\n  more <T>\n    no <T>", "- a\n\n      Vec<T>\n\n  more \\<T>\n    no \\<T>"},
 	} {
 		if got := escapeHTML(c.in); got != c.want {
 			t.Errorf("escapeHTML(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestSplitTablesTildeFence: a pipe table inside a ~~~ fence stays in the
+// code chunk, and the same table outside one is still chunked as a table.
+func TestSplitTablesTildeFence(t *testing.T) {
+	table := "| a | b |\n|---|---|\n| 1 | 2 |\n"
+	chunks := splitTables("~~~\n" + table + "\n~~~\n\n" + table)
+	if len(chunks) != 3 || chunks[0].table || !strings.Contains(chunks[0].text, "~~~") || !chunks[1].table {
+		t.Fatalf("split: %+v", chunks)
 	}
 }
 

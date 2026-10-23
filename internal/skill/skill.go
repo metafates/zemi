@@ -230,7 +230,7 @@ func readSkillFile(path string) ([]byte, error) {
 // A skill that does not parse is skipped with a warning, never fatal: a
 // broken skill must not hide the others. A missing or unreadable directory
 // is skipped.
-func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
+func Discover(dirs ...Dir) (skills []Skill, warnings []error) {
 	seen := map[string]Skill{}
 	for _, d := range dirs {
 		entries, err := os.ReadDir(d.Path)
@@ -238,19 +238,23 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 			continue
 		}
 		for _, e := range entries {
+			if e.Type()&fs.ModeSymlink != 0 {
+				warnings = append(warnings, fmt.Errorf("skills: %s: skill dir is a symlink, skipped", filepath.Join(d.Path, e.Name())))
+				continue
+			}
 			if !e.IsDir() {
 				continue
 			}
 			name := d.Prefix + e.Name()
 			if kept, ok := seen[name]; ok {
 				if kept.Source == Plugin && d.Source == Plugin {
-					warnings = append(warnings, fmt.Sprintf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), name, kept.Dir))
+					warnings = append(warnings, fmt.Errorf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), name, kept.Dir))
 				}
 				continue
 			}
 			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source, d.Prefix)
 			if err != nil {
-				warnings = append(warnings, err.Error())
+				warnings = append(warnings, err)
 				if !errors.Is(err, ErrDescriptionCut) {
 					// a broken skill still holds its name: taking it away
 					// would let a lower-trust same-named one in unnoticed
