@@ -16,6 +16,23 @@ import (
 
 const scratchTTL = 7 * 24 * time.Hour
 
+// removeTree removes dir; when that fails it makes the tree writable and
+// retries once, since a module cache copies its directories 0555 and one
+// such dir would keep a whole pad alive forever. The caller logs the
+// error: a sweep that discards it hides a pad that never ages out.
+func removeTree(dir string) error {
+	if err := os.RemoveAll(dir); err == nil {
+		return nil
+	}
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, _ error) error {
+		if d != nil && d.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	return os.RemoveAll(dir)
+}
+
 // ScratchDir is the live session's scratchpad, "" before the first send.
 func (h *Host) ScratchDir() string { return h.scratchFor(h.AgentSessionID()) }
 
@@ -23,7 +40,6 @@ func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
-	// the id is short, so a unix socket under the pad fits macOS's 104 bytes
 	return filepath.Join(h.Dirs.StateHome, "scratch", sid)
 }
 
@@ -52,7 +68,9 @@ func (h *Host) sweepScratch(root string, t time.Time) {
 	entries, _ := os.ReadDir(root)
 	for _, e := range entries {
 		if pad := filepath.Join(root, e.Name()); e.IsDir() && !usedSince(pad, t) && pad != h.ScratchDir() {
-			_ = os.RemoveAll(pad)
+			if err := removeTree(pad); err != nil {
+				h.Log.Warn("scratchpad not removed", "origin", "scratch", "path", pad, "error", err)
+			}
 		}
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -260,8 +259,11 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 // scratchpad and its approved plan.
 func (h *Host) removeSessionFiles(sid string) {
 	// "" when there is no state or data dir, which RemoveAll ignores
-	_ = os.RemoveAll(h.scratchFor(sid))
-	_ = os.RemoveAll(h.planPath(sid))
+	for _, p := range []string{h.scratchFor(sid), h.planPath(sid)} {
+		if err := removeTree(p); err != nil {
+			h.Log.Warn("session files not removed", "origin", "sweep", "path", p, "error", err)
+		}
+	}
 }
 
 // planPath is where a session's approved plan is saved, "" with no session

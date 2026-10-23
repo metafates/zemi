@@ -14,7 +14,8 @@ import (
 
 // TestScratchSweep: the sweep keeps the live pad however old, and another
 // pad while anything in it moved within the TTL, whatever its own directory
-// time says.
+// time says, and ages out a pad holding a read-only tree, which a plain
+// RemoveAll cannot (a module cache copies its dirs 0555).
 func TestScratchSweep(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -27,10 +28,12 @@ func TestScratchSweep(t *testing.T) {
 	cases := []struct {
 		name, file  string
 		fresh, kept bool
+		ro          bool
 	}{
-		{"the live pad", filepath.Join(live, "notes.md"), false, true},
-		{"a pad written deep inside", filepath.Join(root, "b", "d", "e", "out.txt"), true, true},
-		{"a pad nobody used", filepath.Join(root, "c", "d", "out.txt"), false, false},
+		{"the live pad", filepath.Join(live, "notes.md"), false, true, false},
+		{"a pad written deep inside", filepath.Join(root, "b", "d", "e", "out.txt"), true, true, false},
+		{"a pad nobody used", filepath.Join(root, "c", "d", "out.txt"), false, false, false},
+		{"a pad holding a read-only tree", filepath.Join(root, "d", "gomod", "out.txt"), false, false, true},
 	}
 	for _, c := range cases {
 		if err := os.MkdirAll(filepath.Dir(c.file), 0o700); err != nil || os.WriteFile(c.file, nil, 0o600) != nil {
@@ -39,6 +42,11 @@ func TestScratchSweep(t *testing.T) {
 		for p := c.file; p != root; p = filepath.Dir(p) {
 			if !c.fresh || p != c.file {
 				os.Chtimes(p, old, old)
+			}
+		}
+		if c.ro {
+			if err := os.Chmod(filepath.Dir(c.file), 0o555); err != nil {
+				t.Fatal(err)
 			}
 		}
 	}
