@@ -104,12 +104,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.bump()
 		return replay
 	}
-	a.bump()
-
-	// Go-reserved cancel trigger: never routed to Lua, never rebindable
-	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
-	// turn, clears a draft, and on an empty composer quits when pressed twice.
+	// A key under the chrome moves at most the chrome or a draft: the branches
+	// below bump when one does, and a key that moves nothing leaves the
+	// generation alone (the cleared hover repaints through frameDirty).
 	if key == "ctrl+c" {
+		a.bump() // every branch below acts
 		switch {
 		case top == modalPerm && a.permAsk.answer != nil:
 			a.answerPerm(false, tools.ByUser)
@@ -144,6 +143,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch top {
 	case modalBoot:
 		// the shipped Lua layer failed: nothing else on this screen acts
+		a.bump()
 		if scrollKey(&a.bootView, key, false) {
 			return nil
 		}
@@ -154,11 +154,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.Quit()
 		}
 	case modalTrust:
-		if a.fresh(a.trust.opened) {
-			return nil
+		if taken, cmd := a.askGuard(&a.trust.opened, false, key, msg); taken {
+			return cmd
 		}
 		tp := a.trust
 		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(trustAnswers), len(trustAnswers), key) {
+			a.bump()
 			return nil
 		}
 		switch key {
@@ -176,19 +177,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if pa == nil {
 			return nil
 		}
-		// a draft under the box takes printable keys, backspace and its
-		// enter, and re-arms the grace per key: the y, n and t of a message
-		// typed under a waiting ask never answer it
-		if !a.composer.empty() {
-			if keyText(msg) != "" || key == "enter" || key == "backspace" || key == "delete" {
-				pa.opened = a.now()
-				return a.composerKey(key, msg)
-			}
-		} else if pa.answer == nil || a.fresh(pa.opened) {
-			return nil // keys typed as the box opened are still in flight
+		if taken, cmd := a.askGuard(&pa.opened, pa.answer == nil, key, msg); taken {
+			return cmd
 		}
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
+			a.bump()
 			return nil
 		}
 		// a choice's key answers directly ("o" is "y"), so a new choice needs
@@ -213,8 +207,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	case modalPlan:
+		if taken, cmd := a.askGuard(&a.planAsk.opened, false, key, msg); taken {
+			return cmd
+		}
 		a.planKey(key, keyText(msg))
 	case modalQuestion:
+		if taken, cmd := a.askGuard(&a.question.opened, false, key, msg); taken {
+			return cmd
+		}
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
 		return a.overlayKey(key, keyText(msg))
@@ -506,6 +506,18 @@ func listMove(key string) int {
 // so the half-page pair scrolls whatever stands above it, typed or not.
 func lineKey(key string) bool { return key == "home" || key == "end" }
 
+// lineEditKey reports whether key edits a typed line: the composer's editing
+// keys (composerState.editKey) and its undo, which a waiting ask yields to a
+// draft typed under it.
+func lineEditKey(key string) bool {
+	switch key {
+	case "backspace", "delete", "left", "right", "alt+left", "alt+b", "alt+right", "alt+f",
+		"ctrl+left", "ctrl+right", "home", "end", "ctrl+a", "ctrl+e", "ctrl+w", "alt+backspace", "ctrl+z":
+		return true
+	}
+	return false
+}
+
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.
 func (a *App) typing(top modal) bool {
@@ -523,6 +535,24 @@ func (a *App) typing(top modal) bool {
 	default:
 		return false
 	}
+}
+
+// askGuard is the guard the four blocking asks share (DESIGN §8): with a
+// draft being typed under the box, the typing and line-edit keys draft and
+// re-arm the grace per key, so the y, n and digits of a message never answer
+// it; on an empty composer, keys typed as the box opened are still in flight,
+// as are keys on an answered permission box. It reports whether the key was
+// taken, with the cmd a draft key returned (a file scan); the ask's own keys
+// run when it was not.
+func (a *App) askGuard(opened *time.Time, answered bool, key string, msg tea.KeyPressMsg) (bool, tea.Cmd) {
+	if !a.composer.empty() {
+		if keyText(msg) != "" || key == "enter" || lineEditKey(key) {
+			*opened = a.now()
+			return true, a.composerKey(key, msg)
+		}
+		return false, nil
+	}
+	return answered || a.fresh(*opened), nil
 }
 
 // runRHS executes a keymap right-hand side on the background worker.
@@ -654,8 +684,10 @@ func (a *App) topChrome() modal {
 // wheel scrolls the box on top: the modal chrome, else an open composer
 // popup, else the scrolled region under the pointer. In a box, text that
 // overflows takes the wheel unless the pointer is on a list row; a list
-// moves one item.
+// moves one item. A wheel that moves nothing bumps no generation: the
+// cleared hover repaints through frameDirty.
 func (a *App) wheel(x, y, step int) {
+	a.frameDirty = true
 	text, sel, n, ok := a.boxScroll()
 	onRow := false // over a list row or a choice, which carry a Hit
 	if y >= 0 && y < len(a.lastRows) {
@@ -667,11 +699,17 @@ func (a *App) wheel(x, y, step int) {
 		a.scrollRows(a.scrollAt(x, y), step)
 		return
 	case text != nil && text.overflows() && !(sel != nil && onRow):
+		top := text.top
 		text.scroll(step)
+		if text.top != top {
+			a.bump()
+		}
 	case sel != nil:
-		*sel = max(0, min(*sel+step, n-1))
+		if at := max(0, min(*sel+step, n-1)); at != *sel {
+			*sel = at
+			a.bump()
+		}
 	}
-	a.bump()
 }
 
 // boxScroll is what scrolls in the box on top, the modal chrome else an
@@ -712,12 +750,13 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 }
 
 // pasteChrome sends a paste to the topmost filter or input instead of the
-// composer hidden under it; prompts without text input swallow it.
-func (a *App) pasteChrome(text string) bool {
+// composer hidden under it; prompts without text input swallow it, but a
+// draft under a waiting permission ask takes it, like its typing.
+func (a *App) pasteChrome(text string) (bool, tea.Cmd) {
 	line := strings.Join(strings.Fields(text), " ")
 	switch a.topChrome() {
 	case noModal:
-		return false
+		return false, nil
 	case modalQuestion:
 		qp := a.question
 		if qp.reviewing() {
@@ -739,8 +778,16 @@ func (a *App) pasteChrome(text string) bool {
 		} else if st.filterable {
 			st.edit("", line)
 		}
-	case modalPerm, modalTrust, modalBoot: // no text input: swallowed
+	case modalPerm:
+		if !a.composer.empty() {
+			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
+			a.composer.paste(line)
+			a.composer.snapshot(prev, false)
+			a.publishComposer()
+			return true, a.updateCompletion()
+		}
+	case modalTrust, modalBoot: // no text input: swallowed
 	}
 	a.bump()
-	return true
+	return true, nil
 }

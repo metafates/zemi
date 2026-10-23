@@ -7,6 +7,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -21,6 +22,7 @@ type planAskPrompt struct {
 	sel    int // the highlighted button: approve, then request changes
 	typing bool
 	input  composerState
+	opened time.Time // keys typed as the box opened are still in flight (permGrace)
 	size   boxSize
 	text   textRows
 	answer chan planAnswer
@@ -49,6 +51,7 @@ func (a *App) AskPlan(plan string) (tools.PlanVerdict, bool) {
 		a.planAsk = &planAskPrompt{
 			plan:   sanitize.String(plan),
 			answer: ch,
+			opened: a.now(),
 		}
 		return a.notifyIfAway("zemi: a plan to review")
 	})

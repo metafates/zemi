@@ -33,9 +33,13 @@ type trustPrompt struct {
 // a buffered channel.
 func (a *App) AskTrust(root, cwd, state string) string {
 	ch := make(chan string, 1)
+	what := "project"
+	if hostapi.TrustUnsaved(root) {
+		what = "directory"
+	}
 	a.await(func() tea.Cmd {
 		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
-		return nil
+		return a.notifyIfAway("zemi: trust this " + what + "?")
 	})
 	return <-ch
 }
@@ -215,8 +219,10 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 			if n := len([]rune(text)); cursor < 0 || cursor > n {
 				a.composer.cursor = n
 			}
+			cmd = a.updateCompletion()
 		case hostapi.ComposerInsert:
 			a.composer.insert(text)
+			cmd = a.updateCompletion()
 		case hostapi.ComposerSubmit:
 			a.submitComposer()
 		case hostapi.ComposerHistoryPrev:

@@ -514,19 +514,21 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			a.pushToast(slog.LevelError, "Could not paste", msg.err.Error())
 			return nil
 		}
-		a.insertToken(msg.token)
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
+		cmd := a.insertToken(msg.token)
+		a.composer.snapshot(prev, false)
 		a.publishComposer()
-		return nil
+		return cmd
 	case tea.PasteMsg:
 		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
-		if a.pasteChrome(s) {
-			return nil
+		if handled, cmd := a.pasteChrome(s); handled {
+			return cmd
 		}
 		// a dropped file arrives as a paste of its path
 		if paths, ok := parseDrop(s); ok {
-			a.insertAttachments(paths)
+			cmd := a.insertAttachments(paths)
 			a.publishComposer()
-			return nil
+			return cmd
 		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.paste(s)
@@ -1705,6 +1707,11 @@ func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
 	var tray [][]hostapi.Segment
 	for i, s := range secs {
 		box := hostBox(s.title, toastHL(s.level), "", s.rows, inner+8, inner+4, inner)
+		// a section that does not fit drops whole: a row-wise cut would leave
+		// an orphaned bottom border under dropped rows
+		if len(tray)+len(box) > h {
+			break
+		}
 		if i > 0 {
 			// the section's rule closes the one above
 			top := box[0]
@@ -1712,12 +1719,6 @@ func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
 			tray = tray[:len(tray)-1]
 		}
 		tray = append(tray, box...)
-	}
-	if len(tray) > h {
-		if h < 2 {
-			return nil
-		}
-		tray = append(tray[:h-1], tray[len(tray)-1])
 	}
 	// a toast sits over a box the user may be reading, so a drag across it
 	// copies the box's own text and never two boxes at once

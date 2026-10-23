@@ -124,11 +124,13 @@ func TestComposerHistory(t *testing.T) {
 			t.Fatalf("step %d: %q, want %q", i, c.text, step.want)
 		}
 	}
-	// Cap and duplicate suppression.
+	// A repeat moves the entry to the end, wherever it was; a recall
+	// resubmitted never walks itself twice.
 	c2 := &composerState{}
-	c2.pushHistory("same")
-	c2.pushHistory("same")
-	if len(c2.history) != 1 {
+	c2.pushHistory("one")
+	c2.pushHistory("two")
+	c2.pushHistory("one")
+	if len(c2.history) != 2 || c2.history[0] != "two" {
 		t.Fatalf("duplicate: %#v", c2.history)
 	}
 	for i := range historyCap {
@@ -637,6 +639,85 @@ func TestSubmitFailed(t *testing.T) {
 		if len(app.toasts) != 1 || !strings.HasPrefix(app.toasts[0].body, "no model yet") {
 			t.Errorf("%s: toasts %+v", text, app.toasts)
 		}
+	}
+}
+
+// TestSubmitEmptyShellDraft: a "!" with no command is an empty draft, not a
+// message for the model.
+// TestRestoreQueue: an interrupt hands the queue back as one draft that
+// history keeps, with the popups a slash draft held closed.
+func TestRestoreQueue(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 60, 12)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if err := host.AgentSendUser("queued"); err != nil {
+		t.Fatal(err)
+	}
+	app.composer.text, app.composer.cursor = "/he", 3
+	app.updatePalette()
+	if !app.palette.open {
+		t.Fatal("the palette did not open")
+	}
+	app.composerKey("esc", tea.KeyPressMsg{}) // closes the palette, then arms
+	app.composerKey("esc", tea.KeyPressMsg{})
+	app.composerKey("esc", tea.KeyPressMsg{}) // and interrupts
+	if app.composer.text != "queued\n\n/he" || app.palette.open || app.completion.shown() {
+		t.Fatalf("restore left text %q, palette %v, completion %v", app.composer.text, app.palette.open, app.completion.shown())
+	}
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "/he" {
+		t.Fatalf("undo after the restore: %q", app.composer.text)
+	}
+	// the queue text is not lost with the draft: it recalls from history
+	app.clearComposer()
+	app.composerKey("ctrl+p", tea.KeyPressMsg{})
+	if app.composer.text != "queued\n\n/he" {
+		t.Fatalf("history does not hold the restored text: %q", app.composer.text)
+	}
+}
+
+func TestSubmitEmptyShellDraft(t *testing.T) {
+	t.Parallel()
+	app := newTestApp(t, t.TempDir())
+	app.composer.text = "!"
+	app.submitComposer()
+	if app.composer.text != "!" || len(app.composer.history) != 0 {
+		t.Fatalf("a bare ! submitted: draft %q, history %v", app.composer.text, app.composer.history)
+	}
+}
+
+// TestComposerEditRecomputes: every composer write from Lua recomputes the
+// popups, so a set or insert never leaves one keyed at stale rune offsets.
+func TestComposerEditRecomputes(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.text, app.composer.cursor = "/he", 3
+	app.updateCompletion()
+	if !app.palette.open {
+		t.Fatal("the palette did not open")
+	}
+	runLua(t, app, `zemi.composer.set("hello")`)
+	if app.palette.open {
+		t.Fatal("set left the palette open over the new text")
+	}
+	runLua(t, app, `zemi.composer.insert(" see @no")`)
+	if !app.completion.shown() {
+		t.Fatalf("insert did not open the completion: %q", app.composer.text)
+	}
+}
+
+// TestImagePasteUndo: an image paste is one undo step, like a text paste.
+func TestImagePasteUndo(t *testing.T) {
+	t.Parallel()
+	app := newTestApp(t, t.TempDir())
+	app.composer.text, app.composer.cursor = "hi", 2
+	app.Update(clipboardMsg{token: "[Image pasted.png]"})
+	if app.composer.text != "hi [Image pasted.png] " {
+		t.Fatalf("the token did not insert: %q", app.composer.text)
+	}
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "hi" {
+		t.Fatalf("ctrl+z did not undo the image paste: %q", app.composer.text)
 	}
 }
 

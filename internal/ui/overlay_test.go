@@ -1186,6 +1186,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}}}, "", "esc close"}, // a row's key waits for a row
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
+		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
 		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy · esc close"},
 		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter done · esc clear"},
@@ -1193,6 +1194,18 @@ func TestOverlayHints(t *testing.T) {
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
+		}
+	}
+	// esc closes a browsing menu whole from any of its levels; h is the
+	// one-level back, so the level's esc verb says close all
+	a := newTestApp(t, t.TempDir())
+	a.openOverlay(hostapi.Overlay{ID: "menu", Follow: true, Items: run})
+	a.openOverlay(hostapi.Overlay{ID: "menu 1", Follow: true, Items: run})
+	for _, i := range []int{0, 1} {
+		box := a.overlayBox(&a.overlays[i], 80, 20, true)
+		want := map[bool]string{true: "esc close all", false: "esc close"}[i == 1]
+		if got := strings.Trim(hostapi.SegsText(box[len(box)-2]), "│ "); !strings.HasSuffix(got, want) {
+			t.Errorf("menu level %d: %q, want %q", i, got, want)
 		}
 	}
 }

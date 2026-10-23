@@ -172,7 +172,7 @@ zemi.ui.widget.add({
 				if app.composer.text != c.fill {
 					t.Errorf("%s: a click on the tip left the composer %q", c.name, app.composer.text)
 				}
-				app.composer.text = ""
+				app.clearComposer() // a slash fill opened its palette
 			}
 		}
 	}

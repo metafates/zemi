@@ -1607,6 +1607,10 @@ func TestPromptKeysUnderDraft(t *testing.T) {
 	if app.composer.text != "do no" || len(done) != 0 {
 		t.Fatalf("typing under a waiting ask drafted %q, want %q and no answer", app.composer.text, "do no")
 	}
+	app.Update(tea.PasteMsg{Content: "thing else"})
+	if !strings.Contains(app.composer.text, "thing else") || len(done) != 0 {
+		t.Fatalf("a paste under the waiting ask did not draft: %q", app.composer.text)
+	}
 	app.clearComposer()
 	typeKey("y") // an empty composer inside the grace of the cleared draft
 	if len(done) != 0 {
@@ -1616,6 +1620,103 @@ func TestPromptKeysUnderDraft(t *testing.T) {
 	typeKey("y")
 	if got := <-done; got != "user:once" {
 		t.Errorf("y on an empty composer answered %q, want user:once", got)
+	}
+}
+
+// TestAskGuardUnderDraft: the guard all four blocking asks share - a key
+// inside the grace is still in flight, an answer key under a draft types, the
+// line-edit keys edit the draft, and on an empty composer past the grace the
+// ask answers as before.
+func TestAskGuardUnderDraft(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		ask    func(app *App)
+		open   func(app *App) bool
+		answer string // the key that answers on an empty composer past the grace
+	}{
+		{
+			"perm", func(app *App) { app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"}) },
+			func(app *App) bool { return app.permAsk != nil }, "y",
+		},
+		{
+			"plan", func(app *App) { app.AskPlan("# Plan") },
+			func(app *App) bool { return app.planAsk != nil }, "a",
+		},
+		{"question", func(app *App) {
+			app.AskQuestion([]tools.Question{{Type: tools.TypeSingle, Question: "go on?", Options: []tools.QuestionOption{{Label: "one"}}}})
+		}, func(app *App) bool { return app.question != nil }, "1"},
+		{
+			"trust", func(app *App) { app.AskTrust("/proj", "/proj", "") },
+			func(app *App) bool { return app.trust != nil }, "y",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 20)
+			done := make(chan struct{})
+			go func() { c.ask(app); close(done) }()
+			waitPrompt(t, app, func() bool { return c.open(app) })
+			// the grace only applies with a program attached; set it after
+			// the prompt opened so the ask still ran inline
+			app.program = tea.NewProgram(nil)
+			opened := app.now()
+			now := opened
+			app.now = func() time.Time { return now }
+			typeKey := func(key string) {
+				now = now.Add(time.Millisecond)
+				app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+			}
+			now = opened.Add(permGrace / 4)
+			typeKey(c.answer)
+			if !c.open(app) || app.composer.text != "" {
+				t.Fatalf("a key inside the grace answered or drafted: open=%v text=%q", c.open(app), app.composer.text)
+			}
+			app.composer.text, app.composer.cursor = "do ", 3 // typing as the box opened
+			now = now.Add(permGrace + time.Millisecond)
+			typeKey(c.answer) // under a draft it types
+			if !c.open(app) || !strings.HasSuffix(app.composer.text, c.answer) {
+				t.Fatalf("the answer key did not draft: open=%v text=%q", c.open(app), app.composer.text)
+			}
+			app.composerKey("left", tea.KeyPressMsg{Code: tea.KeyLeft})
+			if app.composer.cursor != len(app.composer.runes())-1 || !c.open(app) {
+				t.Fatalf("left did not edit the draft: cursor %d", app.composer.cursor)
+			}
+			app.clearComposer()
+			now = now.Add(permGrace + time.Millisecond)
+			typeKey(c.answer)
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the ask did not answer past the grace")
+			}
+		})
+	}
+}
+
+// TestNoopKeysBumpNothing: a key or a wheel that moves nothing under the
+// chrome leaves the frame generation alone, so it never re-renders widgets;
+// ones that move something still bump.
+func TestNoopKeysBumpNothing(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan string, 1)
+	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
+	waitPrompt(t, app, func() bool { return app.trust != nil })
+	app.program = tea.NewProgram(nil)
+	app.now = func() time.Time { return app.trust.opened.Add(permGrace + time.Millisecond) }
+	gen := app.frameGen
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if app.frameGen != gen {
+		t.Fatal("a no-op key under the trust box bumped the frame")
+	}
+	app.trust.view.top = 0
+	app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp, X: 40, Y: app.chromeRect.Min.Y + 2})
+	if app.frameGen != gen || app.trust.view.top != 0 {
+		t.Fatal("a wheel at the top of the box text bumped the frame")
+	}
+	app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if app.frameGen != gen+1 {
+		t.Fatalf("a move under the box did not bump the frame: %d of %d", app.frameGen, gen)
 	}
 }
 

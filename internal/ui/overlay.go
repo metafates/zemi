@@ -724,16 +724,26 @@ func (a *App) closeOverlays(id string) {
 	a.syncRail()
 }
 
+// menuRoot is the id of the browsing-menu level id belongs to, "" when id is
+// its own root: a level's id extends the root's ("calls 12" under "calls").
+func (a *App) menuRoot(id string) string {
+	for _, st := range a.overlays { // levels are outermost first
+		if strings.HasPrefix(id, st.o.ID+" ") {
+			return st.o.ID
+		}
+	}
+	return ""
+}
+
 // cancelMenuRoot closes the outermost level of a browsing menu, so esc on any
 // of its levels closes the lot; false when the level is its own root.
 func (a *App) cancelMenuRoot(o hostapi.Overlay) bool {
-	for _, st := range a.overlays {
-		if strings.HasPrefix(o.ID, st.o.ID+" ") {
-			a.cancelOverlay(st.o)
-			return true
-		}
+	root := a.menuRoot(o.ID)
+	if root == "" {
+		return false
 	}
-	return false
+	a.cancelOverlay(a.overlays[a.overlayIndex(root)].o)
+	return true
 }
 
 // closeMenu closes a browsing list with every level under it opened, keeping
@@ -747,13 +757,7 @@ func (a *App) closeMenu(st *overlayState) {
 			chat.focus, chat.placed = anchor, chat.top
 		}
 	}
-	root := st.o.ID
-	for _, s := range a.overlays { // levels are outermost first
-		if strings.HasPrefix(st.o.ID, s.o.ID+" ") {
-			root = s.o.ID
-			break
-		}
-	}
+	root := cmp.Or(a.menuRoot(st.o.ID), st.o.ID)
 	a.closeOverlayByID(root)
 }
 
@@ -909,21 +913,24 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.runOverlayRow(r)
 			a.reloadOverlay(o, sel)
 		case o.Reload != nil: // a fill hands the keys to the composer, so the list closes
-			a.runOverlayRow(r)
+			cmd := a.runOverlayRow(r)
 			if o.OnSelect != nil {
 				a.background(sel)
 			}
 			a.closeOverlayByID(o.ID)
+			return cmd
 		case verb == "":
 		case verb == hostapi.VerbOpen && o.OnSelect == nil:
-			a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
+			return a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
+			var cmd tea.Cmd
 			if o.OnSelect != nil {
 				a.background(sel)
 			} else {
-				a.runOverlayRow(r)
+				cmd = a.runOverlayRow(r)
 			}
 			a.closeOverlayByID(o.ID)
+			return cmd
 		}
 	case "l":
 		// one level in, where there is one: a row's view or the screen its run
@@ -1111,16 +1118,19 @@ func (a *App) cancelMenu() {
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
 // palette) and "run", which only builtin and user overlays keep. A screen it
 // opens is a level of this list, so it reopens on the row the list left.
-func (a *App) runOverlayRow(r hostapi.OverlayItem) {
+func (a *App) runOverlayRow(r hostapi.OverlayItem) tea.Cmd {
+	var cmd tea.Cmd
 	if r.Fill != "" {
 		a.composer.text = r.Fill
 		a.composer.moveEnd()
+		cmd = a.updateCompletion()
 	}
 	if r.Run != "" {
 		name, args := hostapi.SplitCommand(r.Run)
 		a.byRow = true // the screen it opens is a level of this list
 		a.runCommand(name, args)
 	}
+	return cmd
 }
 
 // listRowsMax is the most rows a list takes before it scrolls: a menu that
@@ -1299,6 +1309,11 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			scroll = []hintPair{scrollGap}
 		}
 		esc := map[bool]string{true: "back", false: "close"}[st.back]
+		if !st.back && st.o.Follow && a.menuRoot(st.o.ID) != "" {
+			// esc from any level of a browsing menu closes the whole menu,
+			// while h is the one-level back
+			esc = "close all"
+		}
 		if top && !st.back && len(a.overlays) > 1 {
 			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}
