@@ -20,13 +20,15 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
+	"time"
 )
 
 type questionPrompt struct {
 	qs     []tools.Question
 	states []qState
-	at     int      // the tab shown: a question, or len(qs) for the Submit tab
-	review viewport // the Submit tab's summary
+	at     int       // the tab shown: a question, or len(qs) for the Submit tab
+	opened time.Time // keys typed as the box opened are still in flight (permGrace)
+	review viewport  // the Submit tab's summary
 	size   boxSize
 	answer chan qAnswer
 }
@@ -67,7 +69,7 @@ func (a *App) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	}
 	ch := make(chan qAnswer, 1)
 	a.await(func() tea.Cmd {
-		a.question = &questionPrompt{qs: clean, states: states, answer: ch}
+		a.question = &questionPrompt{qs: clean, states: states, answer: ch, opened: a.now()}
 		return a.notifyIfAway("zemi: a question: " + clean[0].Question)
 	})
 	ans := <-ch

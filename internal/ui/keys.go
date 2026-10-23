@@ -154,11 +154,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.Quit()
 		}
 	case modalTrust:
-		if a.fresh(a.trust.opened) {
-			return nil
+		if taken, cmd := a.askGuard(&a.trust.opened, false, key, msg); taken {
+			return cmd
 		}
 		tp := a.trust
 		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(trustAnswers), len(trustAnswers), key) {
+			a.bump()
 			return nil
 		}
 		switch key {
@@ -176,19 +177,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if pa == nil {
 			return nil
 		}
-		// a draft under the box takes printable keys, backspace and its
-		// enter, and re-arms the grace per key: the y, n and t of a message
-		// typed under a waiting ask never answer it
-		if !a.composer.empty() {
-			if keyText(msg) != "" || key == "enter" || key == "backspace" || key == "delete" {
-				pa.opened = a.now()
-				return a.composerKey(key, msg)
-			}
-		} else if pa.answer == nil || a.fresh(pa.opened) {
-			return nil // keys typed as the box opened are still in flight
+		if taken, cmd := a.askGuard(&pa.opened, pa.answer == nil, key, msg); taken {
+			return cmd
 		}
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
+			a.bump()
 			return nil
 		}
 		// a choice's key answers directly ("o" is "y"), so a new choice needs
@@ -213,8 +207,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	case modalPlan:
+		if taken, cmd := a.askGuard(&a.planAsk.opened, false, key, msg); taken {
+			return cmd
+		}
 		a.planKey(key, keyText(msg))
 	case modalQuestion:
+		if taken, cmd := a.askGuard(&a.question.opened, false, key, msg); taken {
+			return cmd
+		}
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
 		return a.overlayKey(key, keyText(msg))
@@ -506,6 +506,18 @@ func listMove(key string) int {
 // so the half-page pair scrolls whatever stands above it, typed or not.
 func lineKey(key string) bool { return key == "home" || key == "end" }
 
+// lineEditKey reports whether key edits a typed line: the composer's editing
+// keys (composerState.editKey) and its undo, which a waiting ask yields to a
+// draft typed under it.
+func lineEditKey(key string) bool {
+	switch key {
+	case "backspace", "delete", "left", "right", "alt+left", "alt+b", "alt+right", "alt+f",
+		"ctrl+left", "ctrl+right", "home", "end", "ctrl+a", "ctrl+e", "ctrl+w", "alt+backspace", "ctrl+z":
+		return true
+	}
+	return false
+}
+
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.
 func (a *App) typing(top modal) bool {
@@ -523,6 +535,24 @@ func (a *App) typing(top modal) bool {
 	default:
 		return false
 	}
+}
+
+// askGuard is the guard the four blocking asks share (DESIGN §8): with a
+// draft being typed under the box, the typing and line-edit keys draft and
+// re-arm the grace per key, so the y, n and digits of a message never answer
+// it; on an empty composer, keys typed as the box opened are still in flight,
+// as are keys on an answered permission box. It reports whether the key was
+// taken, with the cmd a draft key returned (a file scan); the ask's own keys
+// run when it was not.
+func (a *App) askGuard(opened *time.Time, answered bool, key string, msg tea.KeyPressMsg) (bool, tea.Cmd) {
+	if !a.composer.empty() {
+		if keyText(msg) != "" || key == "enter" || lineEditKey(key) {
+			*opened = a.now()
+			return true, a.composerKey(key, msg)
+		}
+		return false, nil
+	}
+	return answered || a.fresh(*opened), nil
 }
 
 // runRHS executes a keymap right-hand side on the background worker.

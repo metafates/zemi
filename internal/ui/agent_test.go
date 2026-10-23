@@ -1623,6 +1623,70 @@ func TestPromptKeysUnderDraft(t *testing.T) {
 	}
 }
 
+// TestAskGuardUnderDraft: the guard all four blocking asks share - a key
+// inside the grace is still in flight, an answer key under a draft types, the
+// line-edit keys edit the draft, and on an empty composer past the grace the
+// ask answers as before.
+func TestAskGuardUnderDraft(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		ask    func(app *App)
+		open   func(app *App) bool
+		answer string // the key that answers on an empty composer past the grace
+	}{
+		{"perm", func(app *App) { app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"}) },
+			func(app *App) bool { return app.permAsk != nil }, "y"},
+		{"plan", func(app *App) { app.AskPlan("# Plan") },
+			func(app *App) bool { return app.planAsk != nil }, "a"},
+		{"question", func(app *App) {
+			app.AskQuestion([]tools.Question{{Type: tools.TypeSingle, Question: "go on?", Options: []tools.QuestionOption{{Label: "one"}}}})
+		}, func(app *App) bool { return app.question != nil }, "1"},
+		{"trust", func(app *App) { app.AskTrust("/proj", "/proj", "") },
+			func(app *App) bool { return app.trust != nil }, "y"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 20)
+			done := make(chan struct{})
+			go func() { c.ask(app); close(done) }()
+			waitPrompt(t, app, func() bool { return c.open(app) })
+			// the grace only applies with a program attached; set it after
+			// the prompt opened so the ask still ran inline
+			app.program = tea.NewProgram(nil)
+			opened := app.now()
+			now := opened
+			app.now = func() time.Time { return now }
+			typeKey := func(key string) {
+				now = now.Add(time.Millisecond)
+				app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+			}
+			now = opened.Add(permGrace / 4)
+			typeKey(c.answer)
+			if !c.open(app) || app.composer.text != "" {
+				t.Fatalf("a key inside the grace answered or drafted: open=%v text=%q", c.open(app), app.composer.text)
+			}
+			app.composer.text, app.composer.cursor = "do ", 3 // typing as the box opened
+			now = now.Add(permGrace + time.Millisecond)
+			typeKey(c.answer) // under a draft it types
+			if !c.open(app) || !strings.HasSuffix(app.composer.text, c.answer) {
+				t.Fatalf("the answer key did not draft: open=%v text=%q", c.open(app), app.composer.text)
+			}
+			app.composerKey("left", tea.KeyPressMsg{Code: tea.KeyLeft})
+			if app.composer.cursor != len(app.composer.runes())-1 || !c.open(app) {
+				t.Fatalf("left did not edit the draft: cursor %d", app.composer.cursor)
+			}
+			app.clearComposer()
+			now = now.Add(permGrace + time.Millisecond)
+			typeKey(c.answer)
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the ask did not answer past the grace")
+			}
+		})
+	}
+}
+
 // TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {
