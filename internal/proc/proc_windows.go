@@ -20,8 +20,8 @@ func killGroup(pid int) {
 }
 
 // Shell is the shell that runs the model's command lines: a Git for Windows
-// bash where there is one, else pwsh or powershell, else cmd, which knows
-// nothing POSIX. System32's bash.exe is the WSL launcher, whose /mnt paths
+// bash where there is one, else pwsh, else cmd, which knows nothing POSIX.
+// System32's bash.exe is the WSL launcher, whose /mnt paths
 // do not match zemi's, so it is refused. Looked up once, on PATH like every
 // program zemi runs by name.
 var Shell = sync.OnceValue(func() string {
@@ -37,10 +37,8 @@ var Shell = sync.OnceValue(func() string {
 			return path
 		}
 	}
-	for _, name := range []string{"pwsh", "powershell"} {
-		if _, err := exec.LookPath(name); err == nil {
-			return name
-		}
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
 	}
 	return "cmd"
 })
@@ -70,9 +68,9 @@ func ShellCommandContext(ctx context.Context, line string) *exec.Cmd {
 	if s == "cmd" {
 		return CommandContext(ctx, s, "/c", line)
 	}
-	if s == "pwsh" || s == "powershell" {
-		// NOTE: Windows PowerShell 5.1 -Command exits 0 after a failed native
-		// command, so the tail hands the real exit code back.
+	if s == "pwsh" {
+		// NOTE: -Command exits 0 after a failed native command, so the tail
+		// hands the real exit code back.
 		return CommandContext(ctx, s, "-NoProfile", "-NonInteractive", "-Command",
 			line+"\nif (-not $?) { exit 1 }; exit $LASTEXITCODE")
 	}
