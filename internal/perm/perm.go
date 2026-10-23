@@ -154,6 +154,7 @@ func Resolve(p string) (Path, error) {
 // a symlink there is the link itself, which Remove deletes rather than its
 // target.
 func Lresolve(p string) (Path, error) {
+	p = filepath.FromSlash(p)
 	sep := string(filepath.Separator)
 	dir, name, ok := strings.CutLast(p, sep)
 	if !ok {
