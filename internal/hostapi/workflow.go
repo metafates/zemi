@@ -52,6 +52,9 @@ const (
 	// NOTE: a hard cap on agents per run keeps a runaway loop from spending
 	// without bound; make it a config knob if real workflows outgrow it.
 	workflowMaxAgents = 100
+	// workflowLogCap bounds a run's log the same way: a script logging in a
+	// loop keeps only its last lines.
+	workflowLogCap = 200
 	// workflowDrainGrace bounds the wait for in-flight agents after a
 	// cancel, so one that ignores its context cannot hold the run open.
 	workflowDrainGrace = 2 * time.Second
@@ -585,6 +588,9 @@ func (r *wfRun) open(args any) *glua.LState {
 		}
 		r.f.mu.Lock()
 		r.f.log = append(r.f.log, strings.Join(parts, " "))
+		if over := len(r.f.log) - workflowLogCap; over > 0 {
+			r.f.log = append(r.f.log[:0], r.f.log[over:]...)
+		}
 		r.f.mu.Unlock()
 		r.f.changed()
 		return 0
