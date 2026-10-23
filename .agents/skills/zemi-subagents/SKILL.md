@@ -142,7 +142,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `agent.Attached("plugin:<name>")`, so no quote comes from it.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
-  `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
+  `callback_port` for one without dynamic registration; grants persist in the OS keychain
+  with a 0600 file fallback, `internal/keyring`). Servers come from `zemi.mcp.add` (user
   origin only) or from a Claude-layout plugin's `.mcp.json` and manifest, registered by the
   plugins step under the plugin's name as a prefix; `PurgeGeneration` parks them, the replay
   keeps a live one (or one waiting for a

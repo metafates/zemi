@@ -2,8 +2,8 @@
 // the MCP authorization spec: protected resource metadata (RFC 9728),
 // authorization server metadata (RFC 8414 or OpenID discovery), dynamic
 // client registration (RFC 7591), and the authorization code flow with
-// PKCE through a localhost callback. Grants persist per server and refresh
-// on their own.
+// PKCE through a localhost callback. Grants persist per server in the OS
+// keychain (a 0600 file where none answers) and refresh on their own.
 
 package mcp
 
@@ -21,17 +21,15 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/keyring"
 )
 
 // ErrAuthRequired means the server wants a sign-in zemi does not have (or
@@ -52,7 +50,8 @@ type Token struct {
 	Resource     string    `json:"resource,omitempty"`
 }
 
-// Auth holds the grant for the server at ServerURL, persisted at Path.
+// Auth holds the grant for the server at ServerURL; Path is the fallback
+// file's path for when no OS keychain answers.
 type Auth struct {
 	Name      string // shown on the browser page
 	ServerURL string
@@ -78,14 +77,19 @@ var tokenHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*htt
 	return http.ErrUseLastResponse
 }}
 
+// Ref is the grant's store: the OS keychain, the file as the fallback.
+func (a *Auth) Ref() keyring.Ref {
+	return keyring.Ref{Account: "mcp:" + a.Name, File: a.Path}
+}
+
 // load reads the stored grant once; a grant for another URL is ignored.
 // The caller holds mu.
 func (a *Auth) load() *Token {
 	if !a.loaded {
 		a.loaded = true
-		if b, err := os.ReadFile(a.Path); err == nil {
+		if s, ok := a.Ref().Get(); ok {
 			var t Token
-			if json.Unmarshal(b, &t) == nil && t.ServerURL == a.ServerURL && t.AccessToken != "" {
+			if json.Unmarshal([]byte(s), &t) == nil && t.ServerURL == a.ServerURL && t.AccessToken != "" {
 				a.tok = &t
 			}
 		}
@@ -93,14 +97,15 @@ func (a *Auth) load() *Token {
 	return a.tok
 }
 
-// save writes the grant owner-only. The caller holds mu.
+// save writes the grant, the keychain first. The caller holds mu.
 func (a *Auth) save(t *Token) error {
 	a.tok, a.loaded = t, true
 	b, err := json.Marshal(t, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
-	return config.WriteFileAtomic(a.Path, b)
+	_, err = a.Ref().Set(string(b))
+	return err
 }
 
 // Logout forgets the grant.
@@ -108,10 +113,7 @@ func (a *Auth) Logout() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.tok, a.loaded = nil, true
-	if err := os.Remove(a.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	return nil
+	return a.Ref().Delete()
 }
 
 // bearer returns the access token, refreshing one about to expire; "" when

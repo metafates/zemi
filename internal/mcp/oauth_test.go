@@ -20,8 +20,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/metafates/zemi/internal/keyring"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 )
+
+// noKeychain keeps every test off the real OS keychain: grants exercise the
+// file fallback.
+type noKeychain struct{}
+
+var errNoKeychain = errors.New("no keychain in tests")
+
+func (noKeychain) Get(string, string) (string, error) { return "", keyring.ErrNotFound }
+func (noKeychain) Set(string, string, string) error   { return errNoKeychain }
+func (noKeychain) Delete(string, string) error        { return keyring.ErrNotFound }
+
+func init() { keyring.Chain = noKeychain{} }
 
 // TestOAuthSignIn drives the whole flow against a fake server: the 401
 // points at resource metadata, zemi registers, the "browser" follows the

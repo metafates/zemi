@@ -3071,6 +3071,8 @@ internal/skill/             SKILL.md discovery and parsing
 internal/store/             goose migrations (embedded SQL) and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
+internal/keyring/           secrets in the OS keychain (zalando/go-keyring), a
+                            0600 file as the fallback
 internal/proc/              every child process (own session and process group) and hardened git
 internal/filelock/          exclusive advisory file locks: brain writes, store migrations
 internal/plugin/            plugin install, update, check and delete over plain git, and on/off
@@ -3084,4 +3086,5 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 
 ## 13. Open questions
 
-- Credential storage and auth flow (keys read with `zemi.env.get` today).
+- Credential storage and auth flow (MCP grants persist in the OS keychain with
+  a 0600 file fallback; provider keys are still only read with `zemi.env.get`).

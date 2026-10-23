@@ -819,8 +819,11 @@ func (h *Host) mcpItems() []OverlayItem {
 		if status == StatusSignIn {
 			keys = append(keys, ItemKey{Key: "s", Desc: "sign in", Run: "mcp sign-in " + s.name})
 		}
-		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
-			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
+		if s.spec.URL != "" {
+			_, signedIn := h.mcpAuth(s).Ref().Get()
+			if signedIn {
+				keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
+			}
 		}
 		item := OverlayItem{Text: s.name, Desc: desc, Mark: mcpMarks[status], Fields: fields, Keys: keys}
 		if signIn != "" {
@@ -842,7 +845,8 @@ func hasHeader(headers map[string]string, name string) bool {
 	return false
 }
 
-// mcpAuth is the stored sign-in of an HTTP server, keyed by name and URL.
+// mcpAuth is an HTTP server's stored sign-in; the grant lives in the OS
+// keychain, and mcp-auth/ holds the fallback file.
 func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 	return &mcp.Auth{
 		Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
@@ -996,7 +1000,7 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 		return err
 	}
 	auth := h.mcpAuth(s)
-	if _, err := os.Stat(auth.Path); s.spec.URL == "" || err != nil {
+	if _, signedIn := auth.Ref().Get(); s.spec.URL == "" || !signedIn {
 		return Usagef("%s is not signed in", name)
 	}
 	if !yes {

@@ -20,10 +20,20 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/keyring"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/tools"
 )
+
+// testKeyring keeps tests off the real OS keychain: they plant grant files.
+type testKeyring struct{}
+
+func (testKeyring) Get(string, string) (string, error) { return "", keyring.ErrNotFound }
+func (testKeyring) Set(string, string, string) error   { return errors.New("no keychain in tests") }
+func (testKeyring) Delete(string, string) error        { return keyring.ErrNotFound }
+
+func init() { keyring.Chain = testKeyring{} }
 
 // TestLuaToolDrivesDeferredMCP: an MCP tool whose schema a step is holding
 // back is one script call away, zemi.tool.list() names it, and the script
