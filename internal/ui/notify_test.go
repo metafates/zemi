@@ -236,6 +236,7 @@ func TestToastTray(t *testing.T) {
 		{"a twin restarts its row", []push{signIn("jit"), signIn("chatzone"), signIn("jit")}, 0, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "│ chatzone; open /mcp      │", "└──────────────────────────┘"}},
 		{"an expired toast leaves", []push{signIn("jit"), {slog.LevelInfo, "Copied", "12 bytes"}}, 5 * time.Second, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "└──────────────────────────┘"}},
 		{"a short stage cuts the tray", []push{{slog.LevelInfo, "Copied", "12 bytes"}, signIn("jit")}, 0, 30, 3, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "└──────────────────────────┘"}},
+		{"a shorter stage drops the older section whole", []push{{slog.LevelInfo, "Copied", "12 bytes"}, signIn("jit")}, 0, 30, 4, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "└──────────────────────────┘"}},
 	} {
 		app.toasts = nil
 		for _, p := range c.pushes {
