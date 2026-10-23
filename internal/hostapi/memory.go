@@ -863,7 +863,7 @@ func (h *Host) memoryItems() []OverlayItem {
 		}
 		items = append(items, OverlayItem{
 			Text:    fmt.Sprintf("%d removed from memories.md", len(trail)),
-			Desc:    "cut by the budget or superseded; the ledger keeps their text",
+			Desc:    "cut by the budget, superseded, or lost from the file; the ledger keeps their text",
 			Section: "Trail", Preview: strings.TrimRight(b.String(), "\n"),
 			Fields: fieldList("count", strconv.Itoa(len(trail))),
 		})
@@ -871,8 +871,9 @@ func (h *Host) memoryItems() []OverlayItem {
 	return items
 }
 
-// memoryTrail is the ids the ledgers show superseded or budget-cut, plus
-// the frozen table's superseded rows, none of them live (DESIGN §7);
+// memoryTrail is the ids the ledgers show superseded or budget-cut, plus an
+// add or move-in whose line the file lost unexplained (Lint's divergence),
+// plus the frozen table's superseded rows, none of them live (DESIGN §7);
 // each carries its origin and last-write date.
 func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 	liveIDs := set.Set[string]{}
@@ -896,7 +897,12 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 			continue
 		}
 		for _, op := range latest {
-			if (op.Op != brain.OpSupersede && op.Op != brain.OpArchive) || liveIDs.Has(op.ID) || seen.Has(op.ID) {
+			switch op.Op {
+			case brain.OpSupersede, brain.OpArchive, brain.OpAdd, brain.OpMoveIn:
+			default:
+				continue
+			}
+			if liveIDs.Has(op.ID) || seen.Has(op.ID) {
 				continue
 			}
 			seen.Add(op.ID)
@@ -1520,9 +1526,10 @@ func (h *Host) promotedInto(id string) string {
 
 // memorySearch is the memory tool's query mode: the live lines and the
 // ledger trail whose text or id matches the words, both scopes (DESIGN
-// §10.4). A trail hit is one whose newest op is an archive or a supersede
-// carrying text; forgotten ids and the frozen table's rows stay out, so
-// every hit id the footer names is actionable.
+// §10.4). A trail hit is one whose newest op is an archive, a supersede, or
+// an unexplained add or move-in (the line never reached the file, Lint's
+// divergence) carrying text; forgotten ids and the frozen table's rows stay
+// out, so every hit id the footer names is actionable.
 // NOTE: substring scan over the live lines and the trail; an index only when
 // a corpus outgrows it.
 func (h *Host) memorySearch(query string) (string, error) {
@@ -1558,7 +1565,8 @@ func (h *Host) memorySearch(query string) (string, error) {
 			continue
 		}
 		for _, op := range latest {
-			if liveIDs.Has(op.ID) || op.Text == "" || op.Op != brain.OpArchive && op.Op != brain.OpSupersede {
+			if liveIDs.Has(op.ID) || op.Text == "" ||
+				op.Op != brain.OpArchive && op.Op != brain.OpSupersede && op.Op != brain.OpAdd && op.Op != brain.OpMoveIn {
 				continue
 			}
 			if searchHit(words, op.ID, op.Text) {

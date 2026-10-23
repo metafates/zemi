@@ -1461,6 +1461,23 @@ func TestMemorySearch(t *testing.T) {
 		}
 	})
 
+	t.Run("a drifted add recalls and the trail carries it", func(t *testing.T) {
+		t.Parallel()
+		h, _, private := setup(t)
+		m := seedLine(t, h, "project", store.OriginLearned, "a memory the file lost")
+		// the add reached the ledger, the file replace did not: the drift Lint reports
+		if err := os.WriteFile(filepath.Join(private.Dir, brain.MemFile), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := search(t, h, "file lost"); !strings.Contains(got, m.ID) {
+			t.Fatalf("the drifted add missed: %q", got)
+		}
+		live, _ := h.memoryList(false)
+		if !slices.ContainsFunc(h.memoryTrail(live), func(l brain.Line) bool { return l.ID == m.ID }) {
+			t.Fatal("the trail does not hold the drifted add")
+		}
+	})
+
 	t.Run("the cap holds and a hit re-enters through replaces", func(t *testing.T) {
 		t.Parallel()
 		h, _, private := setup(t)
