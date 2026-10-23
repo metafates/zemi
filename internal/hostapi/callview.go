@@ -232,6 +232,22 @@ var callArg = map[string]string{
 	tools.ToolMemory: "memory", tools.ToolTodos: "what",
 }
 
+// callInput is the input a call acted on, what copying a call row means to
+// take: the command a shell or lua call ran, else the file, pattern or name
+// its argument names. Empty when the call took nothing worth copying.
+func callInput(m ChatMessage) string {
+	if m.Text == "" {
+		return ""
+	}
+	if m.Tool == tools.ToolShell || m.Tool == tools.ToolLua {
+		return m.Text
+	}
+	if _, ok := callArg[m.Tool]; ok {
+		return m.Text
+	}
+	return ""
+}
+
 // callView is one row's view: the mark and the facts of the call, then its
 // content in parts, each drawn the way its text is written.
 func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
@@ -253,12 +269,14 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		if m.Label != "" {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
-		if (m.Tool == tools.ToolShell || m.Tool == tools.ToolLua) && m.Text != "" {
-			// a command is code, so it heads the body rather than the facts,
-			// and sinks into the well its answer lifts out of
-			parts = append(parts, BodyPart{Text: m.Text, Lang: "bash", Fill: FillCanvas})
-		} else if arg := callArg[m.Tool]; arg != "" && m.Text != "" {
-			fields = append(fields, Field{Name: arg, Value: m.Text})
+		if in := callInput(m); in != "" {
+			if m.Tool == tools.ToolShell || m.Tool == tools.ToolLua {
+				// a command is code, so it heads the body rather than the facts,
+				// and sinks into the well its answer lifts out of
+				parts = append(parts, BodyPart{Text: in, Lang: "bash", Fill: FillCanvas})
+			} else {
+				fields = append(fields, Field{Name: callArg[m.Tool], Value: in})
+			}
 		}
 		if m.Diff != "" {
 			parts = append(parts, BodyPart{Text: m.Diff, Lang: "diff"})
