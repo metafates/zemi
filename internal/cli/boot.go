@@ -328,7 +328,8 @@ func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, p
 	return slices.Concat(
 		coreSteps(h, cmds),
 		trust, []lua.BootStep{plugins}, config,
-		[]lua.BootStep{h.MarkdownCommandsStep(), readyStep(h, reflect)})
+		[]lua.BootStep{h.MarkdownCommandsStep(), readyStep(h, reflect)},
+	)
 }
 
 // setReload gives the host its reload of steps and the check that the
@@ -380,10 +381,18 @@ func pluginRoots(root string) []string {
 	claude, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".claude-plugin", "marketplace.json"))
 	fetched, _ := filepath.Glob(filepath.Join(root, "marketplaces", "[^.]*", ".git", "FETCH_HEAD"))
 	cache, _ := filepath.Glob(filepath.Join(root, "marketplaces", plugin.CacheDirName, "*", "*", ".git", "FETCH_HEAD"))
-	return append(append(append(append(append(idx, mkt...), claude...), fetched...), cache...),
-		filepath.Join(root, "local"),
-		filepath.Join(root, "disabled"),
-		filepath.Join(root, "marketplaces.json"),
+
+	return slices.Concat(
+		idx,
+		mkt,
+		claude,
+		fetched,
+		cache,
+		[]string{
+			filepath.Join(root, "local"),
+			filepath.Join(root, "disabled"),
+			filepath.Join(root, "marketplaces.json"),
+		},
 	)
 }
 
