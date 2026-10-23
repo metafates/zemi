@@ -45,7 +45,6 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			if h.takeProposal(id) == nil {
 				return luaResult(L, fmt.Errorf("%w %q", errUnknownProposal, id))
 			}
-			h.Notify(slog.LevelInfo, "Memory dropped", "")
 			return luaResult(L, nil)
 		}
 		p, err := h.acceptProposal(id)
