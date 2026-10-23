@@ -777,7 +777,7 @@ zemi.config.watch("models.chat", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
-zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
+zemi.notify({ title = "hi", body = "...", level = "info" })
 ```
 
 Config values from `init.lua` merge with the defaults in Go's schema.
@@ -972,7 +972,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "default" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the default role:
                                                  -- models.default
-zemi.model.pick(zemi.model.role.TITLES)  -- open a target's picker (returns at once; none opens /model)
+zemi.model.pick("titles")  -- open a target's picker (returns at once; none opens /model)
 zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })
 zemi.model.del("classifier")         -- a slot of its own, for a job rather than a conversation
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
@@ -990,7 +990,7 @@ h:cancel()
 
 zemi.provider.add({
 	id = "myllm",
-	kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
+	kind = "openai_compat",  -- fantasy/openaicompat under the hood
 	base_url = "https://llm.internal/v1",
 	api_key = zemi.env.get("MYLLM_KEY"),
 	body = { service_tier = "flex" },         -- extra request-body fields (not google)
@@ -1679,7 +1679,7 @@ zemi.session.messages()                -- { id, role, text, json } per stored me
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
-zemi.memory.add("...", { scope = zemi.memory.scope.PROJECT, quote = "...", replaces = id })
+zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
 zemi.memory.list(); zemi.memory.del(id)
 zemi.learn.list()                      -- pending proposal cards

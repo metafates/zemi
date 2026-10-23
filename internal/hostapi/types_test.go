@@ -43,8 +43,8 @@ func TestTypesCoverAPI(t *testing.T) {
 	for _, m := range reAnnotatedFn.FindAllStringSubmatch(src, -1) {
 		declared[m[1]] = true
 	}
-	// A class member covers constants and sub-tables: zemi.provider.kind is
-	// a table of strings, not a function.
+	// A class member covers sub-tables a namespace holds as one value: an
+	// annotation field covers the dotted member without a function of its own.
 	var class string
 	for line := range strings.SplitSeq(src, "\n") {
 		if m := reAnnotatedClass.FindStringSubmatch(line); m != nil {
@@ -59,7 +59,7 @@ func TestTypesCoverAPI(t *testing.T) {
 	for ns, members := range bootedNamespaces(t, true) {
 		for _, member := range members {
 			path := ns + "." + member
-			// zemi.provider.kind.ANTHROPIC is covered by the kind class
+			// zemi.ui.widget.add covers the widget sub-table
 			if !declared[path] && !declared[trimLast(path)] {
 				t.Errorf("runtime/types/zemi.lua does not annotate %s", path)
 			}
@@ -285,11 +285,10 @@ func TestTypesEnums(t *testing.T) {
 		alias, table string
 		live         []string
 	}{
-		{"zemi.ProviderKind", "zemi.provider.kind", strs(agent.Kinds)},
-		{"zemi.Scope", "zemi.memory.scope", strs(store.Scopes)},
-		{"zemi.Level", "zemi.notify.level", slices.Collect(maps.Keys(notifyLevels))},
-		{"zemi.ModelRole", "zemi.model.role", roleNames()},
-		{"", "zemi.model.effort", strs(agent.Efforts)},
+		{"zemi.ProviderKind", "", strs(agent.Kinds)},
+		{"zemi.ProviderObjectMode", "", strs(agent.ObjectModes)},
+		{"zemi.Scope", "", strs(store.Scopes)},
+		{"zemi.Level", "", slices.Collect(maps.Keys(notifyLevels))},
 		{"zemi.ServiceStatus", "", strs(serviceStatuses)},
 		{"zemi.MemoryOrigin", "", strs(store.Origins)},
 		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},

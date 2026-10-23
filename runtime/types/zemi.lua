@@ -1498,12 +1498,6 @@ function zemi.ui.help() end
 ---@overload fun(body: string, title?: string)
 zemi.notify = {}
 
----@class zemi.notify.level
----@field INFO "info"
----@field WARN "warn"
----@field ERROR "error"
-zemi.notify.level = {}
-
 ---@param body string
 ---@param title? string
 function zemi.notify.info(body, title) end
@@ -1608,14 +1602,6 @@ function zemi.log.list() end
 ---@field base_url string
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
----@alias zemi.ModelRole
----| "default"  # the conversation, and every role left unset
----| "chat"     # the conversation, when it leaves the default
----| "agents"   # subagents
----| "titles"   # session titles
----| "compact"  # summaries
----| "memory"   # the reflector
-
 ---@alias zemi.ModelTarget
 ---| "default"  # the root every role follows
 ---| "chat"     # the conversation
@@ -1634,23 +1620,6 @@ function zemi.log.list() end
 ---@class zemi.provider
 zemi.provider = {}
 
----@class zemi.provider.kind
----@field ANTHROPIC "anthropic"
----@field OPENAI "openai"
----@field OPENAI_COMPAT "openai_compat"
----@field GOOGLE "google"
----@field OPENROUTER "openrouter"
----@field VERCEL "vercel"
----@field SYSTEM_ONE "system_one"
-zemi.provider.kind = {}
-
----@class zemi.provider.object_mode
----@field AUTO "auto"
----@field JSON "json"
----@field TOOL "tool"
----@field TEXT "text"
-zemi.provider.object_mode = {}
-
 --- Register a provider and its models. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
 --- base_url); the builtin ones are on while their key is exported. An unknown
@@ -1659,7 +1628,7 @@ zemi.provider.object_mode = {}
 --- ```lua
 --- zemi.provider.add({
 --- 	id = "gw",
---- 	kind = zemi.provider.kind.OPENAI_COMPAT,
+--- 	kind = "openai_compat",
 --- 	base_url = "https://gw.example/v1",
 --- 	api_key = zemi.env.get("GW_API_KEY"),
 --- 	models = { { id = "deepseek-chat", context_window = 128000 } },
@@ -1680,22 +1649,6 @@ function zemi.provider.list() end
 
 ---@class zemi.model
 zemi.model = {}
-
----@class zemi.model.role
----@field DEFAULT "default"
----@field CHAT "chat"
----@field AGENTS "agents"
----@field TITLES "titles"
----@field COMPACT "compact"
----@field MEMORY "memory"
-zemi.model.role = {}
-
---- The levels /effort offers, for `zemi.config.set("agent.effort", ...)`.
----@class zemi.model.effort
----@field LOW "low"
----@field MEDIUM "medium"
----@field HIGH "high"
-zemi.model.effort = {}
 
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
@@ -2604,11 +2557,6 @@ function zemi.json.decode(s) end
 
 ---@class zemi.memory
 zemi.memory = {}
-
----@class zemi.memory.scope
----@field USER "user"
----@field PROJECT "project"
-zemi.memory.scope = {}
 
 --- Propose a memory of at most 300 characters. It goes through intake and
 --- the autonomy gate, so it is stored or queued for review, never written

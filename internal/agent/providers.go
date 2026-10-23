@@ -491,7 +491,11 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 		return errors.New("provider needs id and kind")
 	}
 	if !slices.Contains(Kinds, spec.Kind) {
-		return fmt.Errorf("unknown provider kind %q (zemi.provider.kind lists them)", spec.Kind)
+		names := make([]string, len(Kinds))
+		for i, k := range Kinds {
+			names[i] = string(k)
+		}
+		return fmt.Errorf("unknown provider kind %q (one of %s)", spec.Kind, strings.Join(names, ", "))
 	}
 	// the fantasy default is api.openai.com, which would get the key
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {

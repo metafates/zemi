@@ -122,8 +122,8 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({
 -- 	id = "local",
--- 	kind = zemi.provider.kind.OPENAI_COMPAT,   -- or ANTHROPIC, OPENAI, GOOGLE, OPENROUTER, VERCEL, SYSTEM_ONE
--- 	base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, refused for OPENROUTER, an endpoint override for the rest
+-- 	kind = "openai_compat",   -- or "anthropic", "openai", "google", "openrouter", "vercel", "system_one"
+-- 	base_url = "http://localhost:11434/v1",   -- required for openai_compat, refused for openrouter, an endpoint override for the rest
 -- 	api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
 -- 	headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
 -- 	body = { service_tier = "flex" },   -- extra request-body fields; not sent by GOOGLE

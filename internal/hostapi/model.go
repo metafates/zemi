@@ -662,8 +662,6 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		L.Push(glua.LBool(h.Providers.Delete(L.CheckString(1))))
 		return 1
 	}))
-	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
-	tb.RawSetString("object_mode", enumTable(L, agent.ObjectModes...))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, s := range h.Providers.List() {
@@ -844,8 +842,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
-	tb.RawSetString("role", enumTable(L, roleNames()...))
-	tb.RawSetString("effort", enumTable(L, agent.Efforts...))
 
 	// add(name, {desc, model}) is a model slot of its own, for code that runs a
 	// backend job rather than a conversation of its own: a name /model can pick

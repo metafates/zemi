@@ -1168,7 +1168,6 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		return luaResult(L, err)
 	}))
 
-	tb.RawSetString("scope", enumTable(L, store.Scopes...))
 	return tb
 }
 

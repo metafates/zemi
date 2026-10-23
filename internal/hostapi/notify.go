@@ -3,8 +3,6 @@ package hostapi
 import (
 	"context"
 	"log/slog"
-	"maps"
-	"slices"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -32,7 +30,6 @@ func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 	for name, level := range notifyLevels {
 		tb.RawSetString(name, L.NewFunction(h.notifyFn(level)))
 	}
-	tb.RawSetString("level", enumTable(L, slices.Collect(maps.Keys(notifyLevels))...))
 	tb.RawSetString("list", L.NewFunction(h.notifyListFn))
 	return tb
 }
