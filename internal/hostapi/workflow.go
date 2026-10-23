@@ -2071,6 +2071,17 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		stopID <- h.stops.add(f.cancel)
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LString(f.id))
+		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+			return waitHandle(L, "workflow:wait", f.done, 0, nil, func(L *glua.LState, err error) []glua.LValue {
+				if err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+				}
+				if f.err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(f.err.Error())}
+				}
+				return []glua.LValue{glua.LString(f.result)}
+			})
+		})))
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
 			f.cancel()
 			return 0

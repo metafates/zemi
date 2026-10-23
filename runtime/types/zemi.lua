@@ -1872,6 +1872,7 @@ function zemi.classify.ask(spec) end
 ---@field description? string Shown while it runs.
 
 ---@class zemi.RunHandle
+---@field wait fun(self: zemi.RunHandle): string|nil, string|nil Suspends the task until the run ends: its report, or nil and the error. Raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
 ---@field cancel fun(self: zemi.RunHandle)
 
 ---@class zemi.agent
@@ -1905,7 +1906,8 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. A reload cancels it.
+--- Run a subagent off the interpreter. A reload cancels it; `wait` suspends
+--- until it ends, `on_done` fires the same values.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
