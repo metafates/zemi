@@ -5,8 +5,11 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestPanicsDoNotKillZemi: a panicking host goroutine is recovered into
@@ -44,6 +47,41 @@ func TestPanicsDoNotKillZemi(t *testing.T) {
 	h.modelFn = func() (fantasy.LanguageModel, error) { panic("model exploded") }
 	if err := h.AgentSend("hi"); err == nil || h.AgentActive() {
 		t.Fatalf("send %v, agent active %v", err, h.AgentActive())
+	}
+}
+
+// TestPanickedHandleWait: a handle whose work panicked ends its wait with
+// the failure instead of an empty reply or the cap, and the panic still
+// lands in /errors.
+func TestPanickedHandleWait(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, src string }{
+		{"model", `local v, err = zemi.model.ask({ prompt = "ping" }):wait() zemi.state.set("err", tostring(err))`},
+		{"agent", `local v, err = zemi.agent.run({ prompt = "ping" }):wait() zemi.state.set("err", tostring(err))`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHostDB(t)
+			h.modelFn = func() (fantasy.LanguageModel, error) { panic("provider exploded") }
+			done := make(chan error, 1)
+			go func() { done <- chunkAs(t.Context(), h, r, lua.OriginUser, c.src) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the wait burned its cap instead of reading the panic")
+			}
+			if v, _ := h.GlobalDB.GetKV("err"); !strings.Contains(v, "panicked") {
+				t.Errorf("wait err = %s", v)
+			}
+			waitFor(t, func() error {
+				if !h.HasUnseenErrors() {
+					return errors.New("the panic was not recorded")
+				}
+				return nil
+			})
+		})
 	}
 }
 
