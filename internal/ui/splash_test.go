@@ -127,7 +127,7 @@ func TestSplashTip(t *testing.T) {
 	}{
 		{"init.lua failed", `init_error = "/cfg/init.lua:12: boom", model = ""`, "● Tip  init.lua:12 failed: /errors", "", false},
 		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\nadd a provider to ~/.config/zemi/init.lua", "", false},
-		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this project's instructions and run its code", "", false},
+		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this project's instructions and run code", "", false},
 		{"at home", `trusted = false, trustable = false`, "● Tip  /resume picks up the latest session", "", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
