@@ -21,13 +21,13 @@ func (s *stubChain) Set(_, _, secret string) error {
 	if s.setErr != nil {
 		return s.setErr
 	}
-	s.stored = secret
+	s.val, s.stored = secret, secret
 	return nil
 }
 
 func (s *stubChain) Delete(string, string) error {
 	if s.delErr == nil {
-		s.stored = ""
+		s.val, s.stored = "", ""
 	}
 	return s.delErr
 }
@@ -51,6 +51,7 @@ func TestRef(t *testing.T) {
 		{name: "neither store holds one", op: "get", chain: &stubChain{getErr: ErrNotFound}},
 		{name: "a keychain save clears the file", op: "set", chain: &stubChain{}, file: "old", secret: "grant", wantOK: true, noErr: true},
 		{name: "a keychain refusal falls to the file", op: "set", chain: &stubChain{setErr: errors.New("locked")}, secret: "grant", noErr: true},
+		{name: "a keychain refusal drops its stale copy", op: "set", chain: &stubChain{val: "old", setErr: errors.New("locked")}, secret: "new", noErr: true},
 		{name: "both stores fail", op: "set", chain: &stubChain{setErr: errors.New("locked")}, secret: "grant", noDir: true},
 		{name: "a delete clears both", op: "delete", chain: &stubChain{}, file: "filedata", noErr: true},
 		{name: "an absent chain entry still clears the file", op: "delete", chain: &stubChain{delErr: ErrNotFound}, file: "filedata", noErr: true},
@@ -88,6 +89,9 @@ func TestRef(t *testing.T) {
 				if (err == nil) != tc.noErr || inChain != tc.wantOK {
 					t.Errorf("Set = (%v, %v), want inChain %v, no err %v", inChain, err, tc.wantOK, tc.noErr)
 				}
+				if err != nil {
+					return
+				}
 				if tc.wantOK {
 					if tc.chain.stored != tc.secret {
 						t.Errorf("chain holds %q, want %q", tc.chain.stored, tc.secret)
@@ -95,7 +99,7 @@ func TestRef(t *testing.T) {
 					if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
 						t.Errorf("the fallback file survived a keychain save: %v", err)
 					}
-				} else if err == nil {
+				} else {
 					fi, err := os.Stat(file)
 					if err != nil {
 						t.Fatal(err)
@@ -103,6 +107,10 @@ func TestRef(t *testing.T) {
 					if fi.Mode().Perm() != 0o600 {
 						t.Errorf("fallback file mode = %v, want 0600", fi.Mode().Perm())
 					}
+				}
+				// a reader gets the secret from either store, chain copies dropped
+				if got, ok := ref.Get(); got != tc.secret || !ok {
+					t.Errorf("Get after Set = (%q, %v), want (%q, true)", got, ok, tc.secret)
 				}
 			case "delete":
 				err := ref.Delete()
