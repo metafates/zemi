@@ -53,6 +53,11 @@ type markdownCache struct {
 	prev      map[mdKey][][]Segment
 	bytes     int // roughly what lines holds: a streaming reply keyed by its
 	// whole text would otherwise retain every version of it
+	// cells is styledLines' per-cell scratch: it survives on the cache, so a
+	// GC cannot drop it and every call does not regrow it
+	cells []Segment
+	// draw is the screen buffer the markdown path's cells are drawn into
+	draw *uv.ScreenBuffer
 }
 
 // mdKey keys the line caches by value: a concatenated string key copied the
@@ -222,7 +227,7 @@ func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width i
 	if err != nil {
 		return plainLines(text)
 	}
-	return styledLines(out)
+	return c.styledLines(out)
 }
 
 // A table is the header row, its delimiter row and every row up to a blank
@@ -517,47 +522,71 @@ func (t *Theme) color(ref string) string {
 // styledLines parses glamour's ANSI output into segments: runs of equal
 // style merge, decoration markers become NoCopy runs, and the unstyled
 // padding glamour adds to every line and the trailing blank lines are
-// dropped.
-func styledLines(s string) [][]Segment {
+// dropped. The cache holds the scratch: a per-call one would grow from its
+// first guess every call, since prose renders unwrapped and wraps after
+// (WrapSegs), so one line can be a whole paragraph of cells.
+func (c *markdownCache) styledLines(s string) [][]Segment {
 	var out [][]Segment
-	for _, l := range ansiLines(s) {
+	c.cells = c.cells[:0]
+	var b strings.Builder
+	var lastStyle uv.Style
+	lastHL := ""
+	if c.draw == nil {
+		d := uv.NewScreenBuffer(1, 1)
+		c.draw = &d
+	}
+	ansiLinesIn(c.draw, s, func(_ int, l uv.Line) {
 		end := len(l)
 		for end > 0 && (l[end-1].Content == " " || l[end-1].Content == "") && l[end-1].Style.Bg == nil {
 			end--
 		}
-		var cells []Segment
+		c.cells = c.cells[:0]
 		open, closed := false, 0
-		for _, c := range l[:end] {
-			switch c.Content {
+		for _, cell := range l[:end] {
+			switch cell.Content {
 			case markOpen:
 				open = true
 				continue
 			case markClose:
-				for i := closed; !open && i < len(cells); i++ {
-					cells[i].NoCopy, cells[i].HL = true, "Dim"
+				for i := closed; !open && i < len(c.cells); i++ {
+					c.cells[i].NoCopy, c.cells[i].HL = true, "Dim"
 				}
-				open, closed = false, len(cells)
+				open, closed = false, len(c.cells)
 				continue
 			}
-			hl := ""
+			var hl string
 			switch {
 			case open:
 				hl = "Dim"
-			case !c.Style.IsZero():
-				hl = SGRPrefix + strings.TrimSuffix(strings.TrimPrefix(c.Style.String(), "\x1b["), "m")
+			case !cell.Style.Equal(&lastStyle):
+				lastStyle = cell.Style
+				lastHL = SGRPrefix + strings.TrimSuffix(strings.TrimPrefix(cell.Style.String(), "\x1b["), "m")
+				hl = lastHL
+			default:
+				hl = lastHL
 			}
-			cells = append(cells, Segment{Text: c.Content, HL: hl, NoCopy: open, Link: linkOf(c.Link.URL)})
+			c.cells = append(c.cells, Segment{Text: cell.Content, HL: hl, NoCopy: open, Link: linkOf(cell.Link.URL)})
 		}
-		row := []Segment{}
-		for _, c := range cells {
-			if n := len(row); n > 0 && row[n-1].HL == c.HL && row[n-1].NoCopy == c.NoCopy && row[n-1].Link == c.Link {
-				row[n-1].Text += c.Text
+		row := make([]Segment, 0, 16)
+		b.Reset()
+		for _, seg := range c.cells {
+			if n := len(row); n > 0 && row[n-1].HL == seg.HL && row[n-1].NoCopy == seg.NoCopy && row[n-1].Link == seg.Link {
+				b.WriteString(seg.Text)
 				continue
 			}
-			row = append(row, c)
+			if n := len(row); n > 0 {
+				row[n-1].Text = b.String()
+				b.Reset()
+			}
+			row = append(row, seg)
+			row[len(row)-1].Text = ""
+			b.WriteString(seg.Text)
+		}
+		if len(row) > 0 {
+			row[len(row)-1].Text = b.String()
 		}
 		out = append(out, swatchColors(row))
-	}
+	})
 	// trailing rows with nothing to read: blank ones, and the margin
 	// glamour leaves under a code block
 	for len(out) > 0 && !slices.ContainsFunc(out[len(out)-1], func(s Segment) bool {
@@ -957,27 +986,48 @@ func SegsText(segs []Segment) string {
 // SGRStyle decodes the params of an "sgr:" hl. They go through the SGR
 // parser, so hostile params can only ever yield a style.
 func SGRStyle(params string) uv.Style {
-	return ansiLines("\x1b[" + params + "m ")[0][0].Style
+	var st uv.Style
+	ansiLines("\x1b["+params+"m ", func(_ int, l uv.Line) {
+		if len(l) > 0 {
+			st = l[0].Style
+		}
+	})
+	return st
 }
 
-// ansiLines parses styled text into cell lines by drawing it into a buffer
-// sized to fit. StyledString.Lines is not used: with no bounds it stops
-// after the first cell.
-func ansiLines(s string) []uv.Line {
+// ansiLines parses styled text into cell lines, handing each line to fn: the
+// cells are drawn into buf and only valid inside fn. StyledString.Lines is
+// not used: with no bounds it stops after the first cell.
+func ansiLinesIn(buf *uv.ScreenBuffer, s string, fn func(y int, line uv.Line)) {
 	rows := strings.Split(s, "\n")
 	w := 1
 	for _, r := range rows {
 		w = max(w, ansi.StringWidth(r))
 	}
-	buf := uv.NewScreenBuffer(w, len(rows))
+	buf.Resize(w, len(rows))
+	buf.Clear()
 	buf.Method = ansi.GraphemeWidth // match ansi.StringWidth used for layout
 	uv.NewStyledString(s).Draw(buf, buf.Bounds())
-	out := make([]uv.Line, len(rows))
 	for y := range rows {
-		out[y] = buf.Line(y)
+		fn(y, buf.Line(y))
 	}
-	return out
 }
+
+// ansiLines serves callers outside the markdown mutex with a pooled buffer;
+// the Markdown path draws into one held by the cache (ansiLinesCache).
+func ansiLines(s string, fn func(y int, line uv.Line)) {
+	buf, _ := lineBufs.Get().(*uv.ScreenBuffer)
+	if buf == nil {
+		b := uv.NewScreenBuffer(1, 1)
+		buf = &b
+	}
+	ansiLinesIn(buf, s, fn)
+	lineBufs.Put(buf)
+}
+
+// lineBufs pools the draw buffers behind ansiLines; the cells handed to fn
+// die with it, so a buffer returns only after fn has read them.
+var lineBufs sync.Pool
 
 func plainLines(text string) [][]Segment {
 	var out [][]Segment
