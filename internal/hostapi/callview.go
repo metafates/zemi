@@ -457,4 +457,3 @@ func callOutput(m ChatMessage) string {
 	}
 	return m.Output
 }
-
