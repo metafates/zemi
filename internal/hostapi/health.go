@@ -383,11 +383,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 	switch detail := fmt.Sprintf("%d learned, %d yours", learned, yours); {
 	case len(findings) > 0:
-		texts := make([]string, len(findings))
-		for i, f := range findings {
-			texts[i] = f.Text
-		}
-		detail = fmt.Sprintf("%d findings: %s; %s", len(findings), strings.Join(texts, "; "), detail)
+		detail = fmt.Sprintf("%d findings; %s", len(findings), detail)
 		add(HealthWarn, "brain", detail, "memory")
 	default:
 		add(HealthOK, "brain", detail)

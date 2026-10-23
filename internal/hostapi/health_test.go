@@ -129,8 +129,7 @@ func TestHealthChecks(t *testing.T) {
 }
 
 // TestHealthBrainRow: malformed memories.md lines make the brain row warn
-// with every finding joined, &
-// action opens /memory.
+// with a finding count, & action opens /memory.
 func TestHealthBrainRow(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -149,8 +148,7 @@ func TestHealthBrainRow(t *testing.T) {
 	}
 	row := rows["brain"]
 	if row.Level != HealthWarn || row.Run != "memory" ||
-		!strings.Contains(row.Detail, "memories.md: line 1 is not a memory line; memories.md: line 3 is not a memory line") ||
-		!strings.Contains(row.Detail, "1 learned, 0 yours") {
+		!strings.Contains(row.Detail, " findings; 1 learned, 0 yours") {
 		t.Fatalf("brain row = %+v", row)
 	}
 }
