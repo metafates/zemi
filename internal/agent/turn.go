@@ -620,19 +620,10 @@ var ErrToolLoop = errors.New("stopped: the agent kept repeating the same tool ca
 // repeatsToolCalls reports whether the latest tool steps repeat one block of
 // calls with the same results (see repeatsCycle). Stuck models repeat
 // themselves immediately; an edit-build-edit cycle whose build keeps printing
-// nothing does not, which is why the repeats must be consecutive. Only the
-// last block any period can name is ever compared, so a long turn builds no
-// signatures past it: every step finish would otherwise re-read the whole
-// turn's inputs and outputs.
+// nothing does not, which is why the repeats must be consecutive.
 func repeatsToolCalls(steps []fantasy.StepResult) bool {
-	// the window is the longest block any period names, not the largest
-	// period's: floor(S/p) can make a shorter one need more
-	window := 0
-	for period := 1; period <= loopPeriod; period++ {
-		window = max(window, period*max(loopMinSteps/period, loopMinCycles))
-	}
 	var sigs []string
-	for _, s := range slices.Backward(steps) {
+	for _, s := range steps {
 		calls := s.Content.ToolCalls()
 		if len(calls) == 0 {
 			continue
@@ -651,10 +642,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		for _, res := range s.Content.ToolResults() {
 			sig += ToolOutput(res.Result) + "\x00"
 		}
-		sigs = append([]string{sig}, sigs...)
-		if len(sigs) >= window {
-			break
-		}
+		sigs = append(sigs, sig)
 	}
 	for period := 1; period <= loopPeriod; period++ {
 		if repeatsCycle(sigs, period) {
