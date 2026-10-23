@@ -19,44 +19,40 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// messagesCommands is /messages: the conversation as turns, and the levels
-// under it a list row opens.
+// messagesCommands is /messages: the conversation as one list, and the
+// levels under it a list row opens.
 func (h *Host) messagesCommands() []*Command {
 	return []*Command{{
-		Name: "messages", NArgs: NArgsAny, Desc: "the conversation as turns: read, copy or rewind a message",
+		Name: "messages", NArgs: NArgsAny, Desc: "the conversation as one list: read, copy or rewind a message",
 		GoFn: func(h *Host, args string) error { return h.MessagesCommand(args) },
 	}}
 }
 
-// MessagesCommand is /messages and the levels under it: no argument lists the
-// turns, "turn N" opens one turn's messages and rail, "view N" reads one row
+// MessagesCommand is /messages and the levels under it: no argument lists
+// the conversation, "rail N" opens one run's rail, "view N" reads one row
 // whole.
 func (h *Host) MessagesCommand(args string) error {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	switch verb {
 	case "":
 		return h.OpenMessages()
-	case "turn", "rail", "view":
+	case "rail", "view":
 		n, err := strconv.Atoi(strings.TrimSpace(rest))
 		if err != nil {
 			return Usagef("/messages %s <row> (a row the list shows)", verb)
 		}
-		switch verb {
-		case "turn":
-			return h.openMessagesTurn(n)
-		case "rail":
+		if verb == "rail" {
 			return h.openMessagesRail(n)
 		}
 		return h.openMessageView(n)
 	}
-	return Usagef("usage: /messages [turn <row> | rail <row> | view <row>]")
+	return Usagef("usage: /messages [rail <row> | view <row>]")
 }
 
-// OpenMessages lists the conversation where the reader is: the deepest level
-// holding their place, the way muffin opens on the symbol under the cursor.
-// A row the chat draws from no turn opens the list of turns. The row derives
-// once, before any level opens: the levels then pin it (OpenAt), since each
-// one's open moves the chat the next would read.
+// OpenMessages lists the conversation where the reader is: the element
+// holding their row, with the rail of the run holding it under the list when
+// the reader sits in one. The row derives once, before anything opens, and
+// the levels pin it (OpenAt), since the rail's open moves the chat.
 func (h *Host) OpenMessages() error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -64,20 +60,11 @@ func (h *Host) OpenMessages() error {
 	}
 	tr := h.viewedTranscript()
 	row := ui.ChatRow()
-	list := h.messagesOverlay(tr, row)
+	list := h.messagesList(tr, row)
 	list.OpenAt = row
 	ui.OpenOverlay(list)
-	first, run := messagesAt(tr, row)
-	if first == 0 {
-		h.trackMessages("messages")
-		return nil
-	}
-	ids := []string{"messages", "messages turn " + strconv.Itoa(first)}
-	if o, ok := h.messagesTurnOverlay(tr, first, row); ok {
-		o.OpenAt = row
-		ui.OpenOverlay(o)
-	}
-	if run != 0 {
+	ids := []string{"messages"}
+	if run := messagesRunAt(tr, row); run != 0 {
 		if o, ok := h.messagesRailOverlay(tr, run, row); ok {
 			o.OpenAt = row
 			ui.OpenOverlay(o)
@@ -125,19 +112,14 @@ func (h *Host) refreshMessages() {
 // for an id it no longer holds. A refresh keeps whatever the reader selected,
 // so it names no row to open on.
 func (h *Host) messagesLevel(id string, tr []ChatMessage) (Overlay, bool) {
-	if _, rail, ok := strings.Cut(id, " rail "); ok { // a turn's rail level
+	if _, rail, ok := strings.Cut(id, " rail "); ok { // a run's rail level
 		if n, err := strconv.Atoi(rail); err == nil {
 			return h.messagesRailOverlay(tr, n, 0)
 		}
 		return Overlay{}, false
 	}
-	switch {
-	case id == "messages":
-		return h.messagesOverlay(tr, 0), true
-	case strings.HasPrefix(id, "messages turn "):
-		if n, err := strconv.Atoi(strings.TrimPrefix(id, "messages turn ")); err == nil {
-			return h.messagesTurnOverlay(tr, n, 0)
-		}
+	if id == "messages" {
+		return h.messagesList(tr, 0), true
 	}
 	return Overlay{}, false
 }
@@ -150,21 +132,19 @@ func (h *Host) trackMessages(ids ...string) {
 	h.msgLevels = append(h.msgLevels, ids...)
 }
 
-// messagesAt is the level of /messages that holds a transcript row: the turn
-// it belongs to, and the activity run of that turn holding it, 0 for none.
-func messagesAt(tr []ChatMessage, row int) (first, run int) {
+// messagesRunAt is the activity run holding a transcript row, 0 for none.
+func messagesRunAt(tr []ChatMessage, row int) int {
 	for _, t := range messagesTurns(tr) {
 		if !slices.Contains(t.rows, row) {
 			continue
 		}
 		for _, e := range turnElements(tr, t.rows) {
 			if e.run != nil && slices.Contains(e.run.rows, row) {
-				run = e.run.first
+				return e.run.first
 			}
 		}
-		return t.first, run
 	}
-	return 0, 0
+	return 0
 }
 
 // viewedTranscript is the chat's rows: the session's, or the shown run's,
@@ -206,56 +186,70 @@ func messagesTurns(tr []ChatMessage) []msgTurn {
 	return turns
 }
 
-// messagesOverlay is /messages: one row per turn, the prompt it opens on
-// first, and what it held after it. The row the reader was at, when given,
-// selects the turn holding it.
-func (h *Host) messagesOverlay(tr []ChatMessage, at int) Overlay {
+// messagesList is /messages: every turn's rows in order under a header that
+// names the turn, so one list reads the whole conversation. The row the
+// reader was at, when given, selects the element holding it.
+func (h *Host) messagesList(tr []ChatMessage, at int) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
 	}
 	for _, t := range messagesTurns(tr) {
-		if at > 0 && o.Selected == 0 && slices.Contains(t.rows, at) {
-			o.Selected = len(o.Items)
-		}
-		m := tr[t.first-1]
-		text := strings.TrimSpace(m.Text)
-		var desc []string
-		if m.SentAt > 0 {
-			desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
-		}
-		replies, steps := 0, 0
-		for _, idx := range t.rows[1:] {
-			r := tr[idx-1]
-			switch {
-			case r.Kind == "" && strings.TrimSpace(r.Text) != "":
-				replies++
-			case r.Kind == RowTool || r.Kind == RowReasoning:
-				steps++
+		section := turnSection(tr, t)
+		for _, e := range turnElements(tr, t.rows) {
+			if at > 0 && o.Selected == 0 {
+				if e.run != nil && slices.Contains(e.run.rows, at) {
+					o.Selected = len(o.Items)
+				} else if e.run == nil && e.idx == at {
+					o.Selected = len(o.Items)
+				}
+			}
+			var item OverlayItem
+			if e.run != nil {
+				item = railRow(*e.run)
+			} else {
+				item = h.messageRow(e.idx, tr[e.idx-1])
+			}
+			if item.Text == "" {
+				continue
+			}
+			item.Section = section
+			o.Items = append(o.Items, item)
+			if item.ID != "" {
+				o.Keys = h.rewindKey(o.Keys)
 			}
 		}
-		if replies > 0 {
-			desc = append(desc, pluralCount(replies, "reply", "replies"))
-		}
-		if steps > 0 {
-			desc = append(desc, pluralCount(steps, "step", "steps"))
-		}
-		head := cmp.Or(messageHead(text), "(untitled turn)")
-		item := OverlayItem{
-			Text: head, Desc: strings.Join(desc, " · "), Anchor: t.first,
-			Verb: VerbGo, Run: "messages turn " + strconv.Itoa(t.first),
-			Row: []Segment{{Text: "▌ ", HL: "UserMsg"}, {Text: head}},
-		}
-		if text != "" {
-			item.Copy = text
-		}
-		if m.ID != "" {
-			item.ID = m.ID
-			o.Keys = h.rewindKey(o.Keys)
-		}
-		o.Items = append(o.Items, item)
 	}
 	return o
+}
+
+// turnSection is the header a turn's rows sit under: its number, the clock
+// of its prompt, and what it held after the prompt.
+func turnSection(tr []ChatMessage, t msgTurn) string {
+	var desc []string
+	if m := tr[t.first-1]; m.SentAt > 0 {
+		desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
+	}
+	replies, steps := 0, 0
+	for _, idx := range t.rows[1:] {
+		r := tr[idx-1]
+		switch {
+		case r.Kind == "" && strings.TrimSpace(r.Text) != "":
+			replies++
+		case r.Kind == RowTool || r.Kind == RowReasoning:
+			steps++
+		}
+	}
+	if replies > 0 {
+		desc = append(desc, pluralCount(replies, "reply", "replies"))
+	}
+	if steps > 0 {
+		desc = append(desc, pluralCount(steps, "step", "steps"))
+	}
+	if len(desc) == 0 {
+		return "Turn " + strconv.Itoa(t.n)
+	}
+	return "Turn " + strconv.Itoa(t.n) + " · " + strings.Join(desc, " · ")
 }
 
 // rewindKey adds r once: the key rewinds to the prompt a row names, and only
@@ -279,68 +273,8 @@ func (h *Host) rewindTo(id string) {
 	}
 }
 
-// openMessagesTurn lists what one turn held: its prompt, replies, notices,
-// commands and errors, then the rail of calls and runs a click opens. Every
-// row names its transcript row, so the chat follows the selection here too.
-func (h *Host) openMessagesTurn(first int) error {
-	ui, err := h.Screen()
-	if err != nil {
-		return err
-	}
-	o, ok := h.messagesTurnOverlay(h.viewedTranscript(), first, 0)
-	if !ok {
-		return Usagef("the chat shows no turn at row %d", first)
-	}
-	ui.OpenOverlay(o)
-	h.trackMessages(o.ID)
-	return nil
-}
-
-// messagesTurnOverlay is one turn's rows: its prompt, replies, notices,
-// commands and errors, and its activity run folded into the row l opens.
-// The row the reader was at, when given, selects the element holding it.
-func (h *Host) messagesTurnOverlay(tr []ChatMessage, first, at int) (Overlay, bool) {
-	var turn msgTurn
-	for _, t := range messagesTurns(tr) {
-		if t.first == first {
-			turn = t
-		}
-	}
-	if turn.first != first {
-		return Overlay{}, false
-	}
-	o := Overlay{
-		ID: "messages turn " + strconv.Itoa(first), Title: "Messages / Turn " + strconv.Itoa(turn.n),
-		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true,
-		Empty: "This turn held nothing.",
-	}
-	for _, e := range turnElements(tr, turn.rows) {
-		if at > 0 && o.Selected == 0 {
-			if e.run != nil && slices.Contains(e.run.rows, at) {
-				o.Selected = len(o.Items)
-			} else if e.run == nil && e.idx == at {
-				o.Selected = len(o.Items)
-			}
-		}
-		var item OverlayItem
-		if e.run != nil {
-			item = railRow(*e.run)
-		} else {
-			item = h.messageRow(e.idx, tr[e.idx-1])
-		}
-		if item.Text == "" {
-			continue
-		}
-		o.Items = append(o.Items, item)
-		if item.ID != "" {
-			o.Keys = h.rewindKey(o.Keys)
-		}
-	}
-	return o, true
-}
-
 // openMessagesRail lists the calls and thoughts of one activity run, the
-// rail the turn view folds into a single row: the chat draws that run whole
+// rail the list folds into a single row: the chat draws that run whole
 // while this is up, and bands the call the selection names.
 func (h *Host) openMessagesRail(first int) error {
 	ui, err := h.Screen()
@@ -356,8 +290,8 @@ func (h *Host) openMessagesRail(first int) error {
 	return nil
 }
 
-// messagesRailOverlay is one activity run call by call: the rail the turn
-// view folds into a row, whose run the chat draws whole while this is up.
+// messagesRailOverlay is one activity run call by call: the rail the list
+// folds into a row, whose run the chat draws whole while this is up.
 // The row the reader was at, when given, selects the call holding it.
 func (h *Host) messagesRailOverlay(tr []ChatMessage, first, at int) (Overlay, bool) {
 	for _, t := range messagesTurns(tr) {
@@ -366,9 +300,9 @@ func (h *Host) messagesRailOverlay(tr []ChatMessage, first, at int) (Overlay, bo
 				continue
 			}
 			o := Overlay{
-				// a level's id starts with the id of the one it opened from,
-				// so the menu closes whole from any of its levels
-				ID:     "messages turn " + strconv.Itoa(t.first) + " rail " + strconv.Itoa(first),
+				// a level's id starts with the menu's root id, so the menu
+				// closes whole from any of its levels
+				ID:     "messages rail " + strconv.Itoa(first),
 				Title:  "Messages / Turn " + strconv.Itoa(t.n) + " activity",
 				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
 			}
@@ -384,7 +318,7 @@ func (h *Host) messagesRailOverlay(tr []ChatMessage, first, at int) (Overlay, bo
 	return Overlay{}, false
 }
 
-// msgElement is one row the turn view lists: a message, or the activity run
+// msgElement is one row the list lists: a message, or the activity run
 // its rail folds into.
 type msgElement struct {
 	idx int // the transcript row
@@ -398,9 +332,9 @@ type msgRun struct {
 	rows  []int // every row it holds
 }
 
-// railRow is a run as the turn view lists it: one row standing for the rail
+// railRow is a run as the list lists it: one row standing for the rail
 // the chat draws folded, which l opens call by call. It reads the same
-// whatever the run did, so a list of turns keeps one shape.
+// whatever the run did, so the list keeps one shape.
 func railRow(run msgRun) OverlayItem {
 	text := pluralCount(len(run.rows), "step", "steps")
 	return OverlayItem{

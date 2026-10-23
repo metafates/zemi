@@ -1,65 +1,26 @@
 package hostapi
 
 import (
-	"fmt"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
 )
 
-// TestMessagesTurns: /messages heads one row per turn, the prompt it opens
-// on first, and what the turn held after it.
-func TestMessagesTurns(t *testing.T) {
+// TestMessagesList: /messages lists every turn's rows in order, each turn a
+// section header naming its clock and what it held; a prompt row names the
+// message r rewinds to and a run folds into the row l opens the rail from.
+func TestMessagesList(t *testing.T) {
 	t.Parallel()
 	sent := time.Date(2026, 10, 19, 14, 2, 0, 0, time.Local)
 	tr := []ChatMessage{
 		{Role: fantasy.MessageRoleUser, Text: "ping", ID: "m1", SentAt: sent.UnixMilli()},
 		{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm"},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test", Status: CallOK},
-		{Role: fantasy.MessageRoleAssistant, Text: "pong"},
-		{Role: fantasy.MessageRoleUser, Text: "again", SentAt: sent.UnixMilli()},
-		{Role: fantasy.MessageRoleAssistant, Text: "twice"},
-	}
-	h, _ := newTestHost(t)
-	o := h.messagesOverlay(tr, 0)
-	if o.ID != "messages" || o.Title != "Messages" || !o.Follow || o.Anchor != OverlayBottomRight {
-		t.Fatalf("list: %s %q follow=%v anchor=%q", o.ID, o.Title, o.Follow, o.Anchor)
-	}
-	if len(o.Items) != 2 {
-		t.Fatalf("%d turns: %v", len(o.Items), o.Items)
-	}
-	first := o.Items[0]
-	if first.Text != "ping" || first.Anchor != 1 || first.Run != "messages turn 1" ||
-		first.Desc != sent.Format(ClockLayout)+" · 1 reply · 2 steps" || first.ID != "m1" {
-		t.Errorf("turn 1 = %+v", first)
-	}
-	second := o.Items[1]
-	if second.Text != "again" || second.Anchor != 5 || second.Run != "messages turn 5" {
-		t.Errorf("turn 2 = %+v", second)
-	}
-	// r is the list's own key, and it acts on the rows that name a prompt
-	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
-	if !r.Danger || !r.Applies(OverlayItem{ID: "m1"}) || r.Applies(OverlayItem{Text: "again"}) {
-		t.Errorf("rewind key = %+v", r)
-	}
-}
-
-// TestMessagesTurnRows: a turn lists its messages in order and each activity
-// run as one row, the rail the chat folds, which opens its calls a level
-// down; a message row with a choice of things to do opens them the same way.
-func TestMessagesTurnRows(t *testing.T) {
-	t.Parallel()
-	tr := []ChatMessage{
-		{Role: fantasy.MessageRoleUser, Text: "ping", ID: "m1"},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm"},
 		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test", Label: "run the tests", Status: CallErr, Output: "a\nb"},
 		{Role: fantasy.MessageRoleAssistant, Text: "the tests fail"},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "plugin updated"},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "agent", Label: "find the widget", Run: "a1b2c3d4", Status: CallOK},
-		{Role: fantasy.MessageRoleUser, Text: "next turn"},
+		{Role: fantasy.MessageRoleUser, Text: "again", SentAt: sent.UnixMilli()},
+		{Role: fantasy.MessageRoleAssistant, Text: "twice"},
 	}
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}
@@ -67,27 +28,26 @@ func TestMessagesTurnRows(t *testing.T) {
 	h.tMu.Lock()
 	h.session = &Session{Transcript: tr}
 	h.tMu.Unlock()
-	if err := h.openMessagesTurn(1); err != nil {
-		t.Fatal(err)
+	o := h.messagesList(tr, 0)
+	if o.ID != "messages" || o.Title != "Messages" || !o.Follow || o.Anchor != OverlayBottomRight {
+		t.Fatalf("list: %s %q follow=%v anchor=%q", o.ID, o.Title, o.Follow, o.Anchor)
 	}
-	o := ui.opened[len(ui.opened)-1]
-	if o.ID != "messages turn 1" || o.Title != "Messages / Turn 1" || !o.Follow {
-		t.Fatalf("turn view: %s %q", o.ID, o.Title)
-	}
+	clock := sent.Format(ClockLayout)
 	type row struct {
-		text, mark string
-		anchor     int
+		text, section, mark, run string
+		anchor                   int
 	}
 	var got []row
 	for _, it := range o.Items {
-		got = append(got, row{it.Text, string(it.Mark), it.Anchor})
+		got = append(got, row{it.Text, it.Section, string(it.Mark), it.Run, it.Anchor})
 	}
+	turn1, turn2 := "Turn 1 · "+clock+" · 1 reply · 2 steps", "Turn 2 · "+clock+" · 1 reply"
 	want := []row{
-		{"ping", "", 1},
-		{"2 steps", "", 2},
-		{"the tests fail", "", 4},
-		{"plugin updated", "note", 5},
-		{"1 step", "", 6},
+		{"ping", turn1, "", "messages view 1", 1},
+		{"2 steps", turn1, "", "messages rail 2", 2},
+		{"the tests fail", turn1, "", "messages view 4", 4},
+		{"again", turn2, "", "messages view 5", 5},
+		{"twice", turn2, "", "messages view 6", 6},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rows = %+v", got)
@@ -97,49 +57,51 @@ func TestMessagesTurnRows(t *testing.T) {
 			t.Errorf("row %d = %+v, want %+v", i+1, got[i], want[i])
 		}
 	}
-	// every row stands for its place in the chat: enter goes there, l opens
-	// the view or run under it, and a prompt names the row r rewinds to
-	prompt := o.Items[0]
-	if prompt.ID != "m1" || prompt.Run != "messages view 1" || prompt.Verb != VerbGo || prompt.Keys != nil {
+	// the reader's row names the element holding it: a message row by its
+	// transcript row, a row inside a run by the run's digest
+	if sel := h.messagesList(tr, 4).Selected; sel != 2 {
+		t.Errorf("the reader at row 4 selects %d, want the reply", sel)
+	}
+	if sel := h.messagesList(tr, 3).Selected; sel != 1 {
+		t.Errorf("the reader in the run selects %d, want the digest", sel)
+	}
+	// a prompt names the message r rewinds to
+	if prompt := o.Items[0]; prompt.ID != "m1" || prompt.Keys != nil {
 		t.Errorf("prompt = %+v", prompt)
 	}
-	if reply := o.Items[2]; reply.Run != "messages view 4" || reply.Verb != VerbGo {
-		t.Errorf("reply = %+v", reply)
-	}
-	// a run reads the same whatever it did, and its row opens the rail alone
-	rail := o.Items[1]
-	if rail.Mark != "" || rail.Desc != "" || rail.Run != "messages rail 2" || rail.Verb != VerbGo || rail.Keys != nil {
-		t.Errorf("rail = %+v", rail)
-	}
-	// the next turn's prompt is no row of this one
-	if strings.Contains(fmt.Sprint(o.Items), "next turn") {
-		t.Error("the turn reached past its own rows")
+	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
+	if !r.Danger || !r.Applies(OverlayItem{ID: "m1"}) || r.Applies(OverlayItem{Text: "again"}) {
+		t.Errorf("rewind key = %+v", r)
 	}
 
 	// the rail's own list walks its calls, and the chat draws that run whole
 	if err := h.openMessagesRail(2); err != nil {
 		t.Fatal(err)
 	}
-	r := ui.opened[len(ui.opened)-1]
-	if r.ID != "messages turn 1 rail 2" || r.Title != "Messages / Turn 1 activity" || r.Rail != 2 || !r.Follow {
-		t.Fatalf("rail view: %s %q rail=%d", r.ID, r.Title, r.Rail)
+	ro := ui.opened[len(ui.opened)-1]
+	if ro.ID != "messages rail 2" || ro.Title != "Messages / Turn 1 activity" || ro.Rail != 2 || !ro.Follow {
+		t.Fatalf("rail view: %s %q rail=%d", ro.ID, ro.Title, ro.Rail)
 	}
-	var calls []row
-	for _, it := range r.Items {
-		calls = append(calls, row{it.Text, string(it.Mark), it.Anchor})
-	}
-	if !slices.Equal(calls, []row{{"hmm", "", 2}, {"run the tests", "err", 3}}) {
-		t.Errorf("calls = %+v", calls)
-	}
-	if call := r.Items[1]; call.Run != "call 3" || call.Verb != VerbGo || call.Keys != nil {
+	if call := ro.Items[1]; call.Run != "call 3" || call.Verb != VerbGo || call.Keys != nil {
 		t.Errorf("call = %+v", call)
-	}
-	// a call that started a job opens it from its view, and no key names it here
-	if call := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "sleep 9", Job: "job-1"}); call.Run != "call 3" || call.Verb != VerbGo || call.Keys != nil {
-		t.Errorf("a call with a job: %+v", call)
 	}
 	if err := h.openMessagesRail(9); err == nil {
 		t.Error("a row that opens no rail opened one")
+	}
+
+	// /messages opens the list on the reader's row, with the rail of the run
+	// holding it under the list
+	ui.opened = nil
+	ui.chatRow = 3
+	if err := h.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	if len(ui.opened) != 2 {
+		t.Fatalf("%d overlays opened: %v", len(ui.opened), ui.opened)
+	}
+	if list, rail := ui.opened[0], ui.opened[1]; list.ID != "messages" || list.Selected != 1 ||
+		rail.ID != "messages rail 2" || rail.Selected != 1 {
+		t.Fatalf("open at the run: %+v, %+v", ui.opened[0], ui.opened[1])
 	}
 }
 
@@ -205,10 +167,10 @@ func TestMessagesRun(t *testing.T) {
 		t.Fatalf("%d overlays opened", len(ui.opened))
 	}
 	items := ui.opened[0].Items
-	if len(items) != 1 {
-		t.Fatalf("%d turns: %v", len(items), items)
+	if len(items) != 2 {
+		t.Fatalf("%d rows: %v", len(items), items)
 	}
 	if first := items[0]; first.Text != "find the widget" || first.Anchor != 1 {
-		t.Fatalf("turn = %+v", first)
+		t.Fatalf("prompt = %+v", first)
 	}
 }

@@ -30,7 +30,7 @@ func TestMessagesRowsKeyedByRow(t *testing.T) {
 		app.Frame()
 	}
 	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
-	if err := host.MessagesCommand("turn 1"); err != nil {
+	if err := host.OpenMessages(); err != nil {
 		t.Fatal(err)
 	}
 	pump()
