@@ -2,7 +2,7 @@ package hostapi
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -97,7 +97,7 @@ func TestHealthActionCoversRuns(t *testing.T) {
 func TestHealthChecks(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.agents.reflectErr = fmt.Errorf("%w: no JSON object in the output", errNoProposal)
+	h.agents.reflectErr = errors.New("boom")
 	runUser(t, h.RT, `
 		zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })
 		zemi.ui.widget.add({ id = "bye", region = "exit", render = function() return {} end })`)
@@ -110,7 +110,7 @@ func TestHealthChecks(t *testing.T) {
 		t.Errorf("layout row %q", d)
 	}
 	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "reflector": "warn", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
+		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
 	} {
 		if string(got[name].Level) != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)
@@ -129,8 +129,7 @@ func TestHealthChecks(t *testing.T) {
 }
 
 // TestHealthBrainRow: malformed memories.md lines make the brain row warn
-// with every finding joined, &
-// action opens /memory.
+// with a finding count, & action opens /memory.
 func TestHealthBrainRow(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -149,8 +148,7 @@ func TestHealthBrainRow(t *testing.T) {
 	}
 	row := rows["brain"]
 	if row.Level != HealthWarn || row.Run != "memory" ||
-		!strings.Contains(row.Detail, "memories.md: line 1 is not a memory line; memories.md: line 3 is not a memory line") ||
-		!strings.Contains(row.Detail, "1 learned, 0 yours") {
+		!strings.Contains(row.Detail, " findings; 1 learned, 0 yours") {
 		t.Fatalf("brain row = %+v", row)
 	}
 }

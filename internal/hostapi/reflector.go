@@ -314,8 +314,9 @@ func (h *Host) reflectClaimed(sid, claim string) bool {
 	}
 	switch {
 	case errors.Is(err, errNoProposal):
-		// prose is the model's answer, not a run to repeat, and the /health
-		// row's news rather than a zemi error the badge asks the agent to fix
+		// prose is the model's answer, not a run to repeat, and not a
+		// zemi error the badge asks the agent to fix
+		err = nil
 	case err != nil && try >= reflectTries:
 		if read != nil {
 			h.cutMu.Lock()

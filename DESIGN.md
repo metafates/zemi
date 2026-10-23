@@ -2544,7 +2544,7 @@ minute, so a second window's delta waits for its next close or sweep instead
 of a run over the same rows. A reply that is not the JSON asked for marks
 the delta seen, as does a second failed try (kv `reflector.tries.<sid>`), so
 a delta a provider refuses does not cost a call at every close; `/health`
-shows the last outcome.
+shows a failed run.
 
 Input, in this order: the delta since the seen count (its last 120 user
 and assistant messages, each truncated to 400 runes, a compaction summary
