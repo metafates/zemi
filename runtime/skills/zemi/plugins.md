@@ -131,11 +131,13 @@ enabled = false
 
 ## Identity and permissions
 
-Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`; anything else replaces what it finds, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Its modules sit under `.zemi/lua/<name>/` and any code can require them; a module table is one instance per session, so keep a secret in a local.
+Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`; anything else replaces what it finds, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Its modules sit under `.zemi/lua/<name>/` and any code can require them; a module table is one instance per session, so keep a secret in a local. Plugins reach each other over `user.*` events - `zemi.event.emit("user.<plugin>.done", { id = id })` from any origin, heard by every `zemi.event.on("user.<plugin>.done", fn)`; the payload is copied the way JSON copies, so each key arrives as a string. Prefix the name with the plugin's (two plugins emitting `user.done` hear each other's events), and `zemi.event.list({ name = ... })` shows what actually fired.
 
 Permissions: the manifest declares what the plugin calls, and enabling it grants exactly that. A call the declaration covers runs, and one it does not is refused, naming the line to add: `lua.http.get https://x: plugin jira declares no "http"; add "http" to uses in .zemi/plugin.json`. Never an ask: the manifest is the decision the user made. A read-only agent changes nothing, its writes included. The one capability that widens the gate itself is `perm`: with it the plugin may register a `permission.request` handler and call `zemi.perm.ask`, so its code can deny or force the ask overlay on actions of its choosing - that is why it is declared, and why a handler cannot wait for an answer (50 ms). Enabling grants nothing else: the declaration is the whole gate. A call no `uses` name covers - `zemi.provider.add`, `zemi.lsp.add`, the composer, settings, the theme, the layout, a model - is not origin-gated at all; what changes the machine still passes the tool pipeline's gate. A key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua.
 
-What a plugin cannot do at all: rewrite the conversation or the provider request, draw its own transcript rows or a panel, change the tool set per turn, or replace a builtin tool (`zemi.tool.override` adds `pre` and `post` around one). Each would break the prompt cache, the conversation or the UI rules below. A Claude-layout plugin (`.claude-plugin/plugin.json`, see DESIGN.md) is the exception at two of these: zemi loads its `.mcp.json` servers and runs its `hooks/hooks.json` as background shell children on the events zemi has, its layered names prefixed with the plugin's (`<plugin>-<name>`), consented to by enabling the plugin.
+Asking the user from plugin code: `zemi.ui.select` and `zemi.ui.input` return a handle whose `wait()` suspends the task until the answer (nil on cancel, `cancel()` closes the overlay), so a tool can block on a question - the shape `zemi.perm.ask` waits with. With no UI running (a headless boot) the ask fails closed: the callback gets nil once and `/errors` names the call.
+
+What a plugin cannot do at all: rewrite the conversation or the provider request, draw its own transcript rows or a panel, change the tool set per turn, or replace a builtin tool (`zemi.tool.override` adds `pre` and `post` around one). Each would break the prompt cache, the conversation or the UI rules below. The typed line is the one text a plugin may change before the turn: a `composer.submit` handler may return `{ decision = "rewrite", text = ... }` to send its text in the place of what was typed (50 ms, so it cannot ask first). A Claude-layout plugin (`.claude-plugin/plugin.json`, see DESIGN.md) is the exception at two of these: zemi loads its `.mcp.json` servers and runs its `hooks/hooks.json` as background shell children on the events zemi has, its layered names prefixed with the plugin's (`<plugin>-<name>`), consented to by enabling the plugin.
 
 ## A classifier
 
@@ -170,6 +172,61 @@ local res = zemi.classify.ask({
 `wait()` suspends only a task, so an event handler cannot call it: there, ask with `on_answer = function(res, err) ... end` and the answer arrives as a task - set the setting, refresh the widget, send to the agent, all from the callback. A new ask while one runs is yours to settle: keep the handle and `:cancel()` the stale one.
 
 A failure is a state, not a crash: the handle's `:wait()` returns `nil, err` when no strategy answered (a key not exported, a provider down, a model that cannot answer the question), so the plugin reports it in a `zemi.health.add` row.
+
+## Examples
+
+Three shapes plugins ask for most, each declaring its calls in `uses` (`job` for the first, `model` for the last). A completion source whose rows are preloaded with a job and matched against the typed word:
+
+```lua
+-- .zemi/lua/issues/init.lua: "#" completes an issue number from `gh issue list`
+local issues = {}
+zemi.event.on("app.ready", function()
+	zemi.job.start({ cmd = "gh", args = { "issue", "list", "--limit", "50", "--json", "number,title" },
+		on_exit = function(res) if res.code == 0 then issues = zemi.json.decode(res.stdout) end end })
+end)
+zemi.composer.add({ id = "issues", trigger = "#", items = function(lead)
+	local rows = {}
+	for _, it in ipairs(issues) do
+		local n = tostring(it.number)
+		if n:find(lead, 1, true) then rows[#rows + 1] = { text = n, desc = it.title } end
+	end
+	return rows
+end })
+```
+
+A `tool.pre` that blocks one command and a `tool.post` that keeps the log, around the same builtin:
+
+```lua
+-- .zemi/lua/audit/init.lua: no pushes, every shell call in the plugin's state
+zemi.tool.override("shell", {
+	pre = function(ev)
+		if ev.input.command:find("^git push") then return { decision = "deny", reason = "push by hand" } end
+	end,
+	post = function(ev)
+		local log = zemi.state.get("calls") or {}
+		log[#log + 1] = ev.input.command
+		zemi.state.set("calls", log)
+	end,
+})
+```
+
+A command that summarizes the session with the user's compact model and leaves the note in the composer:
+
+```lua
+-- .zemi/lua/handoff/init.lua: /handoff asks a side model for a handoff note
+zemi.command.add("handoff", function()
+	local turns = {}
+	for _, m in ipairs(zemi.session.messages()) do
+		if m.text ~= "" then turns[#turns + 1] = m.text end
+	end
+	local note, err = zemi.model.ask({
+		model = "compact",
+		prompt = "Summarize this session for whoever picks it up:\n" .. table.concat(turns, "\n"),
+	}):wait()
+	if not note then return zemi.notify.error(err) end
+	zemi.composer.set("Handoff:\n" .. note)
+end, { desc = "summarize the session into the composer" })
+```
 
 ## Style
 
