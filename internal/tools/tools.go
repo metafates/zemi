@@ -134,6 +134,10 @@ const (
 	userDismissed = "The user dismissed"
 )
 
+// readOnlyVerdict is the gate's deny for a read-only agent, named once so
+// the wording cannot drift from the self-executing actions that repeat it.
+var readOnlyVerdict = Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
+
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
 func DeniedText(v Verdict, what string) string {
@@ -329,7 +333,7 @@ func (p *Pipeline) check(req Request) Verdict {
 		if PathSubject(req.Subject) && perm.InPad(p.Pad, req.Arg) {
 			return Verdict{Allowed: true, DecidedBy: ByDefault}
 		}
-		return Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
+		return readOnlyVerdict
 	}
 	if p.Ask != nil && p.Veto != nil {
 		switch p.Veto(req) {

@@ -499,12 +499,7 @@ func TestToolCallEndNeverDeadlocksNextTurn(t *testing.T) {
 		if err := h.tasks.add(run); err != nil {
 			t.Fatal(err)
 		}
-		h.agents.mu.Lock()
-		if h.agents.outcomes == nil {
-			h.agents.outcomes = map[string]tools.Outcome{}
-		}
-		h.agents.outcomes["c1"] = tools.Outcome{Job: "j1"}
-		h.agents.mu.Unlock()
+		h.setToolOutcome("c1", tools.Outcome{Job: "j1"})
 		s := &subagentHooks{h: h, run: run, sid: sid}
 		done := make(chan struct{})
 		go func() { defer close(done); s.ToolCallEnd("c1", "read", fantasy.ToolResultOutputContentText{}, "") }()
