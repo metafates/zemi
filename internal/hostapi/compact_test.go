@@ -276,6 +276,29 @@ func TestHandoffGate(t *testing.T) {
 			t.Fatalf("the handoff send resends the big history")
 		}
 	}
+
+	// a summary that comes back empty twice leaves the history whole: a
+	// handoff that cannot summarize sends as is, it never drops the
+	// earlier history the way a full window may
+	m.resp = ""
+	send(strings.Repeat("y", 80_000))
+	h.Settings.SetQuiet("models.default", "stub/m5")
+	ag.mu.Lock()
+	ag.lastIn = 90_000
+	ag.mu.Unlock()
+	send("handoff again")
+	got = m.prompts[len(m.prompts)-1]
+	whole := false
+	for _, msg := range got {
+		text := concatText(msg.Content)
+		if strings.Contains(text, "dropped unsummarized") {
+			t.Fatalf("the failed handoff compact dropped the history: %q", text)
+		}
+		whole = whole || strings.Contains(text, strings.Repeat("y", 1000))
+	}
+	if !whole {
+		t.Fatalf("the failed handoff send is not the whole history: %d messages", len(got))
+	}
 }
 
 // TestHandoffModes pins the config: off never asks, on compacts silently.
