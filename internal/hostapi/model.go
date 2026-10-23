@@ -482,9 +482,6 @@ func (h *Host) addTarget(L *glua.LState, name string, t modelTarget) error {
 	h.agents.targetsMu.Lock()
 	h.agents.targets[name] = &t
 	h.agents.targetsMu.Unlock()
-	if name == "default" { // the conversation's own slot: no key of its own
-		return nil
-	}
 	return h.addKey(config.Setting{Path: config.ModelKey(name), Kind: config.KindString, Default: "", Check: config.ModelRefCheck, Desc: t.Desc})
 }
 

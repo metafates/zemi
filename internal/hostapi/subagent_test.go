@@ -197,9 +197,9 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
 	}
 	h.SeedStream(s)
-	// Profile is gone; CtxWindow falls back to the model's;
-	// Model to the live one; Thought, Elapsed and RetryIn count from the seed
-	// on the host clock; Steering takes AgentSend, which builds the queue.
+	// CtxWindow falls back to the model's; Model to the live one; Thought,
+	// Elapsed and RetryIn count from the seed on the host clock; Steering
+	// takes AgentSend, which builds the queue.
 	derived := map[string]string{
 		"Model":     "empty seeds the live model",
 		"CtxWindow": "0 seeds the model's window", "Thought": "counts from the seed",
