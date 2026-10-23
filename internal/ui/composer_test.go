@@ -124,11 +124,13 @@ func TestComposerHistory(t *testing.T) {
 			t.Fatalf("step %d: %q, want %q", i, c.text, step.want)
 		}
 	}
-	// Cap and duplicate suppression.
+	// A repeat moves the entry to the end, wherever it was; a recall
+	// resubmitted never walks itself twice.
 	c2 := &composerState{}
-	c2.pushHistory("same")
-	c2.pushHistory("same")
-	if len(c2.history) != 1 {
+	c2.pushHistory("one")
+	c2.pushHistory("two")
+	c2.pushHistory("one")
+	if len(c2.history) != 2 || c2.history[0] != "two" {
 		t.Fatalf("duplicate: %#v", c2.history)
 	}
 	for i := range historyCap {

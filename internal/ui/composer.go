@@ -275,10 +275,8 @@ func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 const historyCap = 50
 
 func (c *composerState) pushHistory(text string) {
-	if n := len(c.history); n > 0 && c.history[n-1] == text {
-		c.histIdx = n
-		return
-	}
+	// a repeat moves the entry to the end, wherever it was
+	c.history = slices.DeleteFunc(c.history, func(s string) bool { return s == text })
 	c.history = append(c.history, text)
 	if len(c.history) > historyCap {
 		c.history = c.history[len(c.history)-historyCap:]
