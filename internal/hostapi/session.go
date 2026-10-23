@@ -383,10 +383,15 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 
 // resumeHistory rebuilds model history and transcript from stored rows; a
 // compacted session's model history starts at its last summary row, so a
-// rewind that cut the summary resumes from the one before it.
+// rewind that cut the summary resumes from the one before it. One pass
+// builds both: the summary cut reads off the decoded history.
 func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
-	_, tr := historyFrom(rows)
-	history, _ := historyFrom(resumeRows(rows))
+	history, tr := historyFrom(rows)
+	for i := len(history) - 1; i >= 0; i-- {
+		if _, ok := summaryOf(history[i]); ok {
+			return history[i:], tr
+		}
+	}
 	return history, tr
 }
 
