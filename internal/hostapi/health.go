@@ -456,8 +456,8 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 	h.errs.mu.Unlock()
 	if nerr > 0 {
-		// name one of them: headless there is no /errors to open, and a
-		// boot step that failed is an error so zemi health does not read green
+		// name one of them: a boot step that failed is an error, so the
+		// checks do not read green over it
 		level := HealthWarn
 		if boot {
 			level = HealthError

@@ -1646,11 +1646,8 @@ func TestMaxOutput(t *testing.T) {
 	}
 }
 
-// TestHeadlessToolsetDropsPrompts: a zemi run has nobody to answer a
-// question, approve a plan, open an editor or watch a window, so those
-// schemas never ship with it, the prompt stops telling the model to use
-// them, and the agent tool drops background, whose report a run that exits
-// at idle would throw away.
+// TestHeadlessToolsetDropsPrompts: with no UI hooks nobody can answer a
+// question or approve a plan, so those tools never ship.
 func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
@@ -1664,16 +1661,8 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	}
 	for name := range headlessExcluded {
 		if names()[name] {
-			t.Errorf("headless toolset still ships %q", name)
+			t.Errorf("the toolset still ships %q", name)
 		}
-	}
-	params := func() map[string]any { return h.agentTool(nil).Info().Parameters }
-	if params()["background"] != nil {
-		t.Error("the headless agent tool still offers background")
-	}
-	sys := h.buildSystem(nil)
-	if strings.Contains(sys, "question tool") || strings.Contains(sys, "Ask before") || strings.Contains(sys, "ask why") {
-		t.Error("the headless prompt still tells the model to ask")
 	}
 
 	h.SetUIHooks(&fakeUI{})
@@ -1681,12 +1670,6 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 		if !names()[name] {
 			t.Errorf("the TUI toolset lost %q", name)
 		}
-	}
-	if params()["background"] == nil {
-		t.Error("the TUI agent tool lost background")
-	}
-	if !strings.Contains(h.buildSystem(nil), "question tool") {
-		t.Error("the TUI prompt lost the asking guidance")
 	}
 }
 
@@ -1995,31 +1978,6 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 	} {
 		if g := got(); g != want {
 			t.Errorf("%s: rows %q, want %q", name, g, want)
-		}
-	}
-}
-
-func TestRunFrame(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	h.setTranscript("t", make([]ChatMessage, 5))
-	for _, c := range []struct {
-		name          string
-		active        bool
-		stepRows      int
-		from          int
-		next, pending int
-	}{
-		{name: "an idle session settles every row", stepRows: 2, from: 1, next: 5},
-		{name: "rows of the running step wait", active: true, stepRows: 3, from: 1, next: 3, pending: 2},
-		{name: "a stale step start keeps the cursor", active: true, stepRows: 0, from: 4, next: 4, pending: 1},
-	} {
-		h.agents.mu.Lock()
-		h.agents.active, h.agents.stepRows = c.active, c.stepRows
-		h.agents.mu.Unlock()
-		fr := h.RunFrame(c.from)
-		if fr.Next != c.next || len(fr.Pending) != c.pending || len(fr.Settled) != max(c.next-c.from, 0) {
-			t.Errorf("%s: next %d, %d settled, %d pending", c.name, fr.Next, len(fr.Settled), len(fr.Pending))
 		}
 	}
 }

@@ -40,29 +40,3 @@ func TestAutoTitle(t *testing.T) {
 		t.Fatalf("title call options = %+v", m.lastOpts.Load())
 	}
 }
-
-// TestHeadlessTurnNamesNoTitle: the session keeps its first line as the
-// title, stored whole since every screen cuts it to fit.
-func TestHeadlessTurnNamesNoTitle(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "Parser Fix")
-	h.reflectMu.Lock() // no detached reflector in this test
-	defer h.reflectMu.Unlock()
-	first := "the parser drops the last token of every file it reads, can you look into it?"
-	if err := h.AgentSend(first + "\nmore"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	// the tab, the exit banner and the /resume list read it before any title
-	// call could land
-	if got := h.SessionTitle(); got != first {
-		t.Fatalf("live title = %q", got)
-	}
-	if s, err := h.DB.GetSession(h.AgentSessionID()); err != nil || s.Title != first {
-		t.Fatalf("stored title = %+v, %v", s, err)
-	}
-	if m.calls.Load() != 0 {
-		t.Fatal("a headless turn started a title call")
-	}
-}

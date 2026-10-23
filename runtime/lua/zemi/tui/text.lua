@@ -123,7 +123,7 @@ end
 ---@param ctx zemi.WidgetCtx
 ---@return boolean
 function M.empty_chat(ctx)
-	if ctx.headless or ctx.agent_active or (ctx.transcript_count or 0) > 0 then return false end
+	if ctx.agent_active or (ctx.transcript_count or 0) > 0 then return false end
 	for _, td in ipairs(ctx.todos or {}) do
 		if td.status ~= "done" then return false end
 	end

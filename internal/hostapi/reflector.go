@@ -87,9 +87,9 @@ const (
 	ReflectIdle = 10 * time.Minute
 	// reflectSweepMax bounds the model calls one process's startup makes.
 	// NOTE: one, since the sweep records every session it listed and a
-	// session that grew is reflected at its close: a backlog a crash or a
-	// `zemi run` left drains one session per process, deferred, never lost,
-	// since the next sweep still sees it.
+	// session that grew is reflected at its close: a backlog a crash left
+	// drains one session per process, deferred, never lost, since the next
+	// sweep still sees it.
 	reflectSweepMax = 1
 	// reflectTries is how many failed runs a delta gets before it is marked
 	// seen, so a provider that refuses it does not cost a call at every close.
@@ -126,9 +126,9 @@ func (h *Host) ReflectLive() { h.GoSafe("reflector", func() { h.reflectIfDue(h.A
 
 // ReflectSweep runs at startup, in the background so quitting never waits
 // on a model call (DESIGN §10.3): the newest due session no window has
-// touched for ReflectIdle is reflected, which covers what a quit, a crash
-// or a zemi run left unreflected, and every session the sweep listed is
-// recorded, so this process's closes do not read those rows again.
+// touched for ReflectIdle is reflected, which covers what a quit or a crash
+// left unreflected, and every session the sweep listed is recorded, so this
+// process's closes do not read those rows again.
 func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-ReflectIdle)) }
 
 // reflectSweep reflects the due sessions quiet since before idle and

@@ -11,8 +11,7 @@ import (
 )
 
 // TestPermAsk: zemi.perm.ask is plugin origin only, needs the manifest's
-// "perm" word, waits only from a task, and a headless run denies and
-// records the ask.
+// "perm" word, and waits only from a task.
 func TestPermAsk(t *testing.T) {
 	const ask = `zemi.perm.ask({ subject = "fs.write", arg = "x", reason = "why" }):wait()`
 	for _, c := range []struct {
@@ -49,26 +48,9 @@ func TestPermAsk(t *testing.T) {
 	}
 	h, r := newTestHostPlugin(t, `["perm"]`)
 	seedSession(t, h)
+	// no UI to answer: the ask resolves denied instead of hanging the task
 	if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, ask); err != nil {
 		t.Fatal(err)
-	}
-	if d := h.HeadlessDenials(); len(d) != 1 || d[0].Subject != "fs.write" {
-		t.Fatalf("headless denials = %+v, want one fs.write ask", d)
-	}
-}
-
-// TestHeadlessDenialNotes: an ask nobody can answer in zemi run is denied and
-// noted for the run to report.
-func TestHeadlessDenialNotes(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	ok, by := h.askHook()(tools.Request{Subject: "tool.shell", Arg: "make out"})
-	if ok || by != tools.ByNobody {
-		t.Fatalf("an ask with no UI = %v by %q", ok, by)
-	}
-	d := h.HeadlessDenials()
-	if len(d) != 1 || d[0].Why != DenyApproval || d[0].Subject != "tool.shell" || d[0].Arg != "make out" {
-		t.Fatalf("noted %+v", d)
 	}
 }
 

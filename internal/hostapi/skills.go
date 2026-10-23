@@ -362,7 +362,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		if errors.Is(err, store.ErrNotFound) {
 			// project skills are not stored, so there is no flag to flip
 			if slices.ContainsFunc(h.projectOnlySkills(), func(s skill.Skill) bool { return s.Name == name }) {
-				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (%s)", name, h.trustHint())
+				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (%s)", name, "/trust")
 			}
 			return Usagef("no such skill %q", name)
 		}
@@ -370,9 +370,8 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
 	if s, ok := h.skillsReg.get(name); ok && s.UserInvocable {
-		// the markdown commands step builds /<name> or puts back the command the
-		// skill displaced; booting, it has yet to run, and zemi run has no TUI
-		// and runs no second command
+		// the markdown commands step builds /<name> or puts back the command
+		// the skill displaced; booting, it has yet to run
 		_ = h.ReloadConfig()
 	}
 	return nil
@@ -628,7 +627,7 @@ func dedupeByName[T any](rows []T, name func(T) string, taken func(string) bool)
 // untrustedNote is why a project file did not load: one sentence for every
 // layered resource, the caller adding its own way out.
 func (h *Host) untrustedNote(kind, name, dir string) string {
-	return fmt.Sprintf("%s %q is in %s, and this project is not trusted: the user runs %s to load it", kind, name, dir, h.trustHint())
+	return fmt.Sprintf("%s %q is in %s, and this project is not trusted: the user runs /trust to load it", kind, name, dir)
 }
 
 func (h *Host) skillItems() []OverlayItem {

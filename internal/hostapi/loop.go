@@ -16,7 +16,7 @@ import (
 
 const (
 	loopMin      = time.Minute      // the shortest interval, and the shortest delay the model may pick
-	loopMaxEvery = 24 * time.Hour   // a longer interval belongs to cron and zemi run
+	loopMaxEvery = 24 * time.Hour   // a longer interval belongs to cron
 	loopPaceMax  = time.Hour        // the longest delay the model may pick
 	loopFallback = 20 * time.Minute // after a self-paced run that named no delay
 	// NOTE: a busy agent delays a run by up to loopRetry; an idle hook is the
@@ -58,7 +58,7 @@ func (h *Host) Loop() (Loop, bool) {
 // "[interval] <prompt>" starts one, replacing any, with a first run now.
 func (h *Host) SetLoop(args string) error {
 	if _, err := h.Screen(); err != nil {
-		return fmt.Errorf("%w; from a shell, run zemi run in a loop or from cron", err)
+		return fmt.Errorf("%w; a loop lives in the TUI's process; cron can run zemi with a prompt", err)
 	}
 	typed, _ := agent.CutAttached(args)
 	prompt := strings.TrimSpace(typed)
@@ -71,7 +71,7 @@ func (h *Host) SetLoop(args string) error {
 	var every time.Duration
 	if d, err := time.ParseDuration(first); err == nil {
 		if d > loopMaxEvery {
-			return Usagef("a loop runs every 1m to 24h; a longer wait belongs to cron and zemi run")
+			return Usagef("a loop runs every 1m to 24h; a longer wait belongs to cron")
 		}
 		if d < loopMin {
 			return Usagef("a loop runs every 1m to 24h")

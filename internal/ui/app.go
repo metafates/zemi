@@ -12,6 +12,7 @@ import (
 	"cmp"
 	"context"
 	"image/color"
+	"io"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -322,6 +323,37 @@ func (a *App) Farewell() string {
 		printLines(&b, a.thm, a.colors, a.frame(), widgetRows(lines, w.Wrap, width))
 	}
 	return b.String()
+}
+
+// printLines writes lines as SGR text for a shell: a style that paints a
+// surface of its own (a diff's tint) keeps its pair, the rest print
+// foreground only, since the shell's ground is not the theme's canvas, and a
+// foreground equal to Normal's is left to the terminal, so a dark theme's
+// text reads on a light one. The profile drops what the terminal cannot
+// show (NO_COLOR keeps bold).
+func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, frame int, lines [][]hostapi.Segment) {
+	var b strings.Builder
+	normal := t.style("Normal").Fg
+	canvas := t.canvas()
+	for _, line := range lines {
+		line, _ = segEffects(t, frame, line)
+		for _, s := range line {
+			if s.Text == "" {
+				continue
+			}
+			st := t.style(s.HL)
+			if st.Bg == nil || sameColor(st.Bg, canvas) {
+				st.Bg = nil
+				if sameColor(st.Fg, normal) {
+					st.Fg = nil
+				}
+			}
+			st = uv.ConvertStyle(toProfile(st, p), p)
+			b.WriteString(st.Styled(s.Text))
+		}
+		b.WriteString("\n")
+	}
+	_, _ = io.WriteString(w, b.String())
 }
 
 // messages

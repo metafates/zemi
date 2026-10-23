@@ -395,17 +395,19 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := os.MkdirAll(pad, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// headless the delete is done when the command returns: zemi run exits then
-	h.SetUIHooks(nil)
+	h.SetUIHooks(&fakeUI{})
 	if err := h.DeleteSession(first, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(pad); err == nil {
-		t.Error("scratchpad still there")
-	}
-	if _, err := h.DB.GetSession(first); err == nil {
-		t.Error("session still stored")
-	}
+	waitFor(t, func() error {
+		if _, err := os.Stat(pad); err == nil {
+			return errors.New("scratchpad still there")
+		}
+		if _, err := h.DB.GetSession(first); err == nil {
+			return errors.New("session still stored")
+		}
+		return nil
+	})
 }
 
 // TestTurnRunningRefusals: what cannot run mid-turn is refused as a usage
@@ -421,7 +423,6 @@ func TestTurnRunningRefusals(t *testing.T) {
 		"new":    h.NewSession,
 		"fork":   func() error { _, err := h.ForkSession(); return err },
 		"rewind": func() error { _, err := h.RewindTo("x"); return err },
-		"btw":    func() error { return h.Btw("why") },
 	} {
 		if err := run(); !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), "a turn is running") {
 			t.Errorf("%s mid-turn: %v", name, err)

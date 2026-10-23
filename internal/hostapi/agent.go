@@ -364,7 +364,7 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
-// can only refuse, so a zemi run does not pay for their schemas every step.
+// can only refuse, so a no-UI boot does not pay for their schemas every step.
 var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
@@ -811,12 +811,8 @@ func (ag *agentHost) spokeLocked() chan struct{} {
 // instead of waiting for the run. Every waiting call hears it, since the result
 // of one call alone cannot release the turn. Host.AgentSendUser raises it, and
 // only for a message that joined a running turn; a report, a plugin send or a
-// loop never does, and headless nothing does: a detached report would outlive
-// the run.
+// loop never does.
 func (h *Host) UserSpoke() {
-	if h.hooks() == nil {
-		return
-	}
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
@@ -1818,34 +1814,10 @@ const btwPrompt = `Side question. Answer only it, in this one reply, from what t
 Question: `
 
 // Btw runs /btw: a side question answered in an overlay from the
-// conversation so far, a running turn included, and never stored. Headless
-// the answer is a transcript row, which zemi run prints; the call claims the agent
-// like /compact, so zemi run waits on it and its ctrl+c cancels it. In the TUI it
-// is a busy job, which a double esc cancels.
+// conversation so far, a running turn included, and never stored. It is a
+// busy job, which a double esc cancels.
 func (h *Host) Btw(question string) error {
 	ui := h.hooks()
-	if ui == nil {
-		ag := h.agents
-		ag.mu.Lock()
-		if ag.active {
-			ag.mu.Unlock()
-			return Usagef("a turn is running; ask after it")
-		}
-		ag.beginTurn()
-		scope := h.claim()
-		ag.mu.Unlock()
-		h.GoSafe("btw", func() {
-			defer h.endTurnAfterPanic()
-			answer, err := h.btw(scope.ctx, question)
-			row := ChatMessage{Role: fantasy.MessageRoleAssistant, Text: answer}
-			if err != nil {
-				row = ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: sanitize.String(h.errorRowText(err))}
-			}
-			h.AppendChat(row)
-			h.handOff(scope)
-		})
-		return nil
-	}
 	h.GoSafe("btw", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -2549,8 +2521,8 @@ var planNudge = agent.Note(planNudgeText)
 const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer. If it asked something, ask it with the question tool; if it was a plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 
 // nudgesPlan reports whether a turn run as p is nudged for ending in plain
-// text: a read-only agent with the plan tool. Headless drops the tool and
-// planHeadless asks for the plan as the reply, so there is nothing to
+// text: a read-only agent with the plan tool. A profile without the tool
+// asks for the plan as the reply (planReply), so there is nothing to
 // present it with.
 func (h *Host) nudgesPlan(p *Profile, toolset []fantasy.AgentTool) bool {
 	return p != nil && p.ReadOnly && hasTool(toolset, tools.ToolPlan)
@@ -2755,9 +2727,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
 		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
-			if h.hooks() == nil {
-				// nothing bounds a chain of turns, and zemi run exits after its own
-				L.RaiseError("zemi.agent.send: a plugin cannot send in zemi run")
+			if h.hooks() == nil { // zemi health boots plugins with no UI: a turn nobody sees has nothing to bound it
+				L.RaiseError("zemi.agent.send: no UI is running to send from")
 			}
 			if stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn

@@ -176,9 +176,8 @@ Contracts that make this safe:
   tool error, a dropped
   `tool.post` leaves the output as it was. Keymaps and Lua commands run in
   order on the UI's worker per slice: a suspended one lets the next key's
-  handler run, and its rest reports its own failure (`zemi run` waits for a
-  whole command). An overlay's `reload` holds the worker until it returns,
-  since it hands back the items.
+  handler run, and its rest reports its own failure. An overlay's `reload`
+  holds the worker until it returns, since it hands back the items.
   NOTE: every task gets a fresh thread (~100 KB of garbage); a pool is the
   upgrade path.
 - **Queue priority.** Requests carry a class: `ui` (keymaps, renders,
@@ -355,7 +354,7 @@ prompt shows the root `~`-shortened, what trusting loads and runs
 saves trusted, `n` saves untrusted, `l` (Later), `esc`, `ctrl+c` or an enter typed by
 habit means untrusted until the next start (a reload does not ask again); up and down
 move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=false`
-decides one run without saving; a headless run with nothing saved is
+decides one run without saving; a boot with no UI yet and nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only), and
 the TUI does not ask at start in a directory outside a repository where the
@@ -456,7 +455,7 @@ a manifest change. `readyStep`'s once-per-process work ends with the daily
 sweep: when `marketplaces.json`'s last one is a day old, zemi pulls every
 registered marketplace in the background (`plugins.auto_update`, on by
 default - off only fetches and toasts which marketplaces have updates, the
-pull stays the user's), and toasts the news; a headless run sweeps nothing.
+pull stays the user's), and toasts the news; a boot with no UI sweeps nothing.
 
 `/plugin` and `zemi plugin` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua. Every install comes from a marketplace:
@@ -552,7 +551,7 @@ session-creation path, holds each hook to 10 s and stores its
 `additionalContext`, else its stdout, for that session alone, dropping a
 pinned prompt it lands after so the next send rebuilds with it. A reload
 never re-runs it, a message sent within the capture window gets it on the
-next send, a headless one-shot may never see it, and a `SessionEnd` hook
+next send, and a `SessionEnd` hook
 does not fire on process quit (nothing calls closeSession there).
 `/plugin` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`), then its version, the
@@ -798,7 +797,7 @@ A runtime pick outlives the process: the global store keeps it per key as
 and a start applies the rows before any Lua. The layers are schema default <
 saved pick < init.lua < this run: init.lua always wins a restart, and a pick
 over a key it sets lasts the run. A pick back to what the key would be without
-it forgets the row. Flags, `zemi run` and `zemi health` keep nothing. zemi never edits
+it forgets the row. Flags and `zemi health` keep nothing. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the gated file tools. zemi makes no commits.
 
@@ -1024,14 +1023,14 @@ A session is named at creation from the first line of the user's first
 message, which the store row, the tab, the exit banner and
 `zemi.session.title()` read at once; `session.auto_title` then has the `titles`
 role's model replace that name in the background, never waiting for the first
-reply, and a failed or empty answer keeps it. A `zemi run` makes no title call.
+reply, and a failed or empty answer keeps it.
 Every title surface - the tab, `/sessions`, `/projects`, the splash's recent
 rows and the exit banner - leads the name with the session's marker emoji,
 derived from its id and picked from a pool of one-codepoint, East Asian Wide
 glyphs of Emoji 11.0 or older, so it is stable across resume and restart
 without storage; subagent runs, in child sessions, never surface one.
 
-There is no `task` profile. A headless sub-turn is a subagent: a named
+There is no `task` profile: a side turn is a subagent, a named
 definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a fresh
@@ -1157,8 +1156,7 @@ restart or stop a running one; its stop has no hotkey, since `x` on the
 run's view stops the run. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
 starts a saved one with `/workflows run` or `/review`, with no model call
-before the work: detached in the TUI with a live notice row, and headless
-on the claimed agent, as `/btw`.
+before the work: it runs detached with a live notice row.
 
 Builtin providers come from catwalk's embedded catalog, or the one
 `/model update` or `zemi models update` fetched from catwalk.charm.land and saved in the data
@@ -1190,9 +1188,6 @@ It costs money, and the manifest's `uses` naming `model` is what consents to it 
 a reload cancels it. `zemi.agent.send` from a plugin settles the same way. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
 named after the plugin, so it is never the user's words (§10.4).
-`zemi run` refuses a
-plugin's send: nothing would bound a chain of turns, and `zemi run` exits after
-its own.
 
 A `zemi.model.ask` with a `schema` asks for a value instead of text. The
 schema is a JSON schema in the fields a tool's input has (`type`,
@@ -1249,15 +1244,14 @@ call `/btw` uses): `MET` clears it, `NOT YET` sends the next turn with the
 reason, `BLOCKED` stops and keeps it, as do a reply with no verdict and a check
 that failed, whose reason the paused row names. The
 check and the turns it starts run under the claim the first turn took, so a
-submit queues and `zemi run` waits for the whole chain; a message queued
+submit queues behind the whole chain; a message queued
 during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a `goal` row, drawn as a notice
 line live and on resume, so a rewind, a fork and a delete handle it like the
-rest of the conversation. A read-only agent is never checked, and `zemi
-run` exits 1 when the chain leaves the goal set. Lua reads it (`ctx.goal`,
-`ctx.agent.checking_goal`) and does not drive it: the check must hold the
-claim, and a plugin-driven chain of turns is what `zemi run` refuses.
+rest of the conversation. A read-only agent is never checked. Lua reads it
+(`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
+must hold the claim.
 
 `/loop [interval] <prompt>` sends a prompt again while the session stays
 open in this zemi: every interval (1m to 24h), or, with none, when the model
@@ -1270,8 +1264,7 @@ nothing on its own, and it stops on `/loop stop`, a session change, a
 failed run, an interrupt of any turn nobody typed (a run, a goal's turn or
 check, a report's turn: esc means stop working on your own), and after 72h.
 A chain of turns a run began arms no idle recap and sends no `ui.notify`
-alert, since nobody waits on it; the loop's end alerts. `zemi run` refuses
-it: a process that stayed up for it would be a daemon nobody asked for.
+alert, since nobody waits on it; the loop's end alerts.
 
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
@@ -1864,7 +1857,7 @@ rides the `memories.md` line and its ledger entries.
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
-  `waiting`, `headless`, `busy` (its newest entry, the job the user waits on)
+  `waiting`, `busy` (its newest entry, the job the user waits on)
   and `agent.retry`/`compacting`/`checking_goal`),
   the statusline on a bar row below the box. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
@@ -1956,8 +1949,8 @@ rides the `memories.md` line and its ledger entries.
   with that key armed (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row
   the list does not hold (a session past the 50 it shows), a toast names the
   `--yes` form; `/memory forget <id>` opens `/memory` on that memory, its
-  Forget key armed. In `zemi run` such a command refuses, naming the command
-  that runs it without asking (`zemi plugin delete x --yes`). `j`, `k`, `/`,
+  Forget key armed. A screenless run of such a command refuses, naming the
+  command that runs it without asking (`zemi plugin delete x --yes`). `j`, `k`, `/`,
   `y` and `Y` are the list's own and cannot be keys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`,
   `/plugin`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
@@ -2336,7 +2329,7 @@ rides the `memories.md` line and its ledger entries.
   transcript rebuilt from the store), `/compact`, `/goal <condition>` (work until
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
-  answered in an overlay, on stdout in `zemi run`, from the conversation so far,
+  answered in an overlay, from the conversation so far,
   never stored), `/copy [reply|code [n]]` (the last reply or its code blocks as
   written), `/messages` (the map of the conversation, `alt+m`), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
@@ -2358,7 +2351,6 @@ rides the `memories.md` line and its ledger entries.
   output, which follows the tail while it runs unless the reader scrolled up.
   Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
-  In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
   in place of the list with its full text and the actions as a list, so a restart, a
@@ -2447,59 +2439,9 @@ rides the `memories.md` line and its ledger entries.
   sanitized the same way, and the log's slog text handler quotes every key
   and value holding a control byte, a newline or another unprintable rune,
   so a `tail -f` of the log cannot execute escape sequences or forge entries.
-- **Printed runs** (`zemi run`; internal/cli/run.go, ui/run.go): one observer, two
-  outputs. stdout is the answer and nothing else: the run's last message
-  (the headless prompt tells the model to put the whole answer there, after
-  its last call), or with `--json` one event per line, `done` last (the
-  lines are specified below). stderr is the run view: the chat and working
-  widgets rendered over the run's rows with `UIState.Printed`, which widgets
-  read as `ctx.headless` (no click or key hints, the splash stays out, the
-  exit region drops its banner). Rows print once they settle, and on a
-  terminal the pending rows, the live turn and the working rule are a tail
-  redrawn in place under them (`Host.RunFrame`: while a turn runs, a row
-  settles only below the running step's start, which a provider retry cuts
-  back to). The chat regions render at the stage node's max, the width the
-  TUI centers the chat inside (the terminal's width when the layout has no
-  stage or it sets none); the working rule draws at the terminal's width.
-  The gap between two printed batches is the chat's own block rule, seeded
-  with the last row printed above (`Printed.Prev`), and the live tail's
-  render (`Printed.Tail`) leaves the pending row to the tail alone. Off a
-  terminal it is plain lines; `-q` and `--json` leave only
-  diagnostics, which print above the tail since the view is `Host.Stderr`;
-  the view renders with no lock held, so a diagnostic the Lua actor writes
-  never waits on a render queued behind it.
-  Where stdout and stderr are both terminals and the view drew the answer,
-  stdout stays empty. An ask nobody can answer is denied
-  (`tools.ByNobody`, "permission denied (nobody): <what>: <reason>"), recorded with its
-  tool, argument and reason (`Host.HeadlessDenials`, any
-  agent's), and listed on stderr at the end with the change that would let
-  it through; the model reads "Nobody can approve anything in this run".
-- **JSON lines** (internal/cli/run.go, cli.go): `zemi run --json` prints one object per line
-  in the order the run drew them, `done` last; a field the event's type does
-  not carry is left out, every string on a line passes the same sanitize
-  pass at the wire's chokepoint (`writeJSON`), the nested rows included, and
-  a run that failed before its turn prints that `done` line alone, no
-  events before it.
-
-  | `type` | its fields |
-  |---|---|
-  | `start` | `session`, `model`, `profile`, `trusted`, `cwd` |
-  | `message` | `text` |
-  | `reasoning` | `text`, `ms` |
-  | `notice`, `compact`, `error` | `text` |
-  | `tool_start` | `id`, `tool`, `input`, `label` |
-  | `tool_end` | the start's fields, `status`, `output`, `diff`, `detail`, and `error` when the call failed or was stopped |
-  | `retry` | `attempt`, `in_ms`, `error` |
-  | `ask` | `tool`, `subject`, `arg`, `reason`, `why` |
-
-  The `done` line carries `result` (the run's last message), `is_error` and
-  `error`, `session`, `duration_ms`, the run's own `usage`
-  (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`),
-  `compactions`, `denied` (each `tool`, `subject`, `arg`, `reason`, `why`) and
-  `tools` (`id`, `tool`, `input`, `status` and `error` per call that ended).
-  `zemi sessions` (`-a` for every project, `search <words>` across all of
-  them), `zemi projects`, `zemi plugin` and `zemi health` take `--json` too,
-  one object per row:
+- **JSON lines** (cli.go): every listing command's `--json` prints one object
+  per row; every string on a line passes the same sanitize pass at the wire's
+  chokepoint (`writeJSON`), the nested rows included.
 
   | command | fields per row |
   |---|---|
@@ -2508,7 +2450,7 @@ rides the `memories.md` line and its ledger entries.
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
-- **Golden tests**: headless mode renders the frame's segment rows to a string;
+- **Golden tests**: the TUI renders each widget's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
   A scrolled view sinks the rows at an edge content lies past toward the
@@ -2552,11 +2494,10 @@ rides the `memories.md` line and its ledger entries.
   that restores a nervous gate is a `permission.request` handler
   returning `{ decision = "ask" }`.
 - Asks reach the user one at a time (`Host.askMu`); no Lua runs under
-  the ask lock. An ask no UI can answer (zemi run) fails closed
-  (`ByNobody`) and the denial is recorded for the run's summary.
+  the ask lock. An ask nobody can answer fails closed (`ByNobody`).
 - `zemi.perm.ask({subject=, arg=, reason=, preview=})` is a plugin's own
-  ask from a task: the shipped overlay, `permission.resolved`, headless
-  failing closed. `:wait()` answers allow, deny or told (the user denied
+  ask from a task: the shipped overlay, `permission.resolved`, an
+  unanswered ask failing closed. `:wait()` answers allow, deny or told (the user denied
   and said what to do instead).
 - Host-API calls from Lua never open the overlay (§6.5): the gate
   settles them, a read-only agent's writes deny, everything else runs.
@@ -2616,7 +2557,7 @@ has had no turn for ten minutes (the same idle the sweep waits for, so the
 close finds the delta seen), and by a startup sweep
 (once per process, not on a reload) over the newest sessions nothing has
 touched for ten minutes, one model call, so quitting never waits on a model
-call and a session a quit, a crash or a `zemi run` left behind is still read;
+call and a session a quit or a crash left behind is still read;
 `/reflect` runs it by hand. The sweep records every session it listed with
 the message count it held then, and a close skips a session still at that
 count: one process reads a session's rows once, so a sweep plus a `/resume`
@@ -3054,8 +2995,7 @@ the AfterWrite hook scrubs what the user approves.
 ```
 main.go                     the entry: one os.Exit
 internal/cli/               the front end: wiring, boot steps and the TUI launch
-                            (boot.go), the command line (cli.go, cobra), zemi run:
-                            the loop, the answer or the JSON events (run.go), zemi
+                            (boot.go), the command line (cli.go, cobra), zemi
                             plugin test: the copy, a boot per case, the report
                             (plugintest.go)
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
@@ -3071,7 +3011,7 @@ internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the t
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              path resolution, the pad, glob and subjects
 internal/ui/                program, regions, widgets, themes, palette, overlays,
-                            composer, mouse, and zemi run's view of a run
+                            composer, mouse, and the exit region the shell reads
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check
 internal/brain/             the memory store: partitions, memories.md, the ops ledger,
                             render, lint, lock, migration

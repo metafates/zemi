@@ -1,14 +1,13 @@
 ---
 name: zemi-host-flow
-description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI and headless runs, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
+description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
 ---
 
 # Host flow: CLI, boot, config, turns
 
-## CLI (internal/cli/cli.go, internal/cli/run.go)
+## CLI (internal/cli/cli.go)
 
-The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
-prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
+The command line is a cobra tree (`execute`): `zemi` opens the TUI, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
 stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
 sweeps nothing and takes no lock a running zemi waits on; `sessions -a` and `sessions search <words>` walk every
 project's store the same way through `hostapi.ListAllSessions`/`hostapi.FindSessions`, skipping one it cannot read), `projects` (`hostapi.ListProjects` with its
@@ -16,11 +15,11 @@ stores read the same way, one line each, the absolute root at column 36 for `cut
 `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
 `plugin`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
-`zemi run --json` uses too. Their plain lines are colored only on a terminal (`paint` and `pad`
+every listing shares. Their plain lines are colored only on a terminal (`paint` and `pad`
 over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot), with a
 header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as
-the first message, or run as a command when it names one (`Host.SendPrompt`, TUI and `zemi run`
-alike, so `/review` works from a git hook); a prompt whose first word names a zemi command goes
+the first message, or run as a command when it names one (`Host.SendPrompt`, so `/review` works
+from the composer's first send); a prompt whose first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
 for a model call on a typo. Exit status 2 is anything that fails before the root's
 `PersistentPreRunE`, which cobra runs once flags and arguments passed; after it a command's
@@ -30,9 +29,8 @@ dir` (`enterDir`: `PWD` follows) before anything else, then resolves `config.Dir
 hook before a completion function), and a switch from `/projects` is an exec
 of `zemi -C <dir>` (with `-r <session>` when the switch resumes one, `relaunch`), so this
 run's other flags are left behind; `-r` without `-C` re-roots into the session's project
-(`enterDir`). Piped stdin (1 MiB at most) is attached
-behind the typed prompt, is the typed prompt itself after `-` (`options.text`: sent to the model even
-when it starts with `/`, so piped text runs no command), and is a usage error for the TUI.
+(`enterDir`). The TUI takes a terminal on stdin and stdout, and refuses
+a pipe on either.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
 completion function. `zemi models` and the `-m` and `--profile` completion boot
@@ -47,28 +45,20 @@ conversation runs on (`--profile` applies before `-m`).
 `--profile` and `/profile` (`Host.SetProfile`) write `agent.profile` for the next send: a switch
 changes the prompt and the tool set, so it busts the provider's prompt cache once.
 
-`zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
-`stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
-above the tail). `zemi run` (`runHeadless`, internal/cli/run.go; DESIGN §8 Printed runs) runs one turn, or a
-goal's chain of them. It sends on `GoSafe` and polls `Host.RunFrame` every 100 ms: `ui.RunView`
-renders the chat and working widgets over the frame with `UIState.Printed` (`ctx.headless`),
-and the `follower` turns the same frames into `--json` events, each once (a call by
-`ChatMessage.CallID`, the stream's call id, which `flushOutput` sets). An ask no UI can answer is denied as
-`tools.ByNobody` and recorded (`Host.HeadlessDenials`, subagents' too). It also drops what
-needs a user (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached
-report would outlive the run), the workflow tool's `background` and every `action` but
-`status`, `list`, `wait` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
-raises there (nothing would bound its chain of turns). With no UI `Host.Notify` prints a
-warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so `zemi run` never swallows
-one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
-`RunCommand` names ("/help needs the TUI", status 1); `/btw` claims the agent like
-`/compact`, so `zemi run` waits on it and ctrl+c cancels it.
+`zemi health`, `zemi models` and the flag completions boot headless (`bootHeadless`, the TUI's
+steps without it; its `stderr` is `Host.Stderr`). None of them sends a prompt: a host with no
+UI never runs a turn. It still drops what
+needs a user (`headlessExcluded`: a no-UI host cannot answer a question or approve a plan).
+With no UI `Host.Notify` prints a
+warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so an early failure is never
+swallowed. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
+`RunCommand` names ("/help needs the TUI", status 1).
 
 `zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugin` (hostapi/plugincmd.go) takes the same verbs plus `toggle`,
-`open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (under
-`zemi run` too) pointing at the zemi skill's plugins.md. A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
+`open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (they run
+before the UI attaches too) pointing at the zemi skill's plugins.md. A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it), and a busy line names what it acts on (`marketplaceLabel`: the source for add, whose clone decides the name, the argument for the rest). Enter on a
 marketplace row opens its drill-down (`/plugin marketplace <name>`, TUI-only): the
@@ -110,7 +100,8 @@ code-only commit included) and each cache clone's `FETCH_HEAD`,
 `pluginRoots`;
 an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
 baseline every reload moves. Once a second while no turn is active the watcher calls
-`Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
+`Host.ReloadIfChanged`, which reloads when the fingerprint moved; only the TUI's launch runs the
+watcher. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
 a key of their own, `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer
@@ -123,8 +114,8 @@ this run. Every runtime write goes through `Host.writeSetting` (`setWatched`, an
 `zemi.config.set` and `zemi.model.set` past boot), whose `keepPick` keeps the value in the
 global store's kv as `config:<path>`, or deletes the row when the value is `cfgBase` (config's
 last write when init.lua wrote the key, else the default). It keeps nothing while booting or
-before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `zemi run`
-and `zemi health` keep none.
+before `Host.KeepPicks`, which launch turns on after the TUI's flags apply, so a flag and
+`zemi health` keep none.
 `NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`), so init.lua still wins; per user, not per project.
 A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
@@ -142,7 +133,7 @@ any name, since a plugin's or the project's theme may not be added yet, and `Che
 records one nothing added once boot is done, while whorl draws. A key's `Choices` refuse any other value in `config.checkKind`,
 which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
 those setters included, fires the key's watches through `setWatched`. zemi never edits
-init.lua. Under `zemi run` only `config set` runs.
+init.lua. A `/config` verb that opens a screen refuses without one; only `config set` runs.
 
 ## Architecture and control flow
 
@@ -342,7 +333,7 @@ applied one. A store made before goose only gains its version table: the baselin
   at every launch; `/reflect` skips it. The sweep records every session it listed with the count
   it held (`Host.swept`), and `reflectPending` skips a session still at that count, so one
   process reflects a session's rows once; the sweep itself runs at most one call
-  (`reflectSweepMax`), a backlog a crash or a `zemi run` left draining one per process.
+  (`reflectSweepMax`), a backlog a crash left draining one per process.
   `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so two
   windows never reflect it at once. A reply that is not the JSON document asked for marks the
   delta seen and is the `/health` reflector row's news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
@@ -410,7 +401,7 @@ applied one. A store made before goose only gains its version table: the baselin
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`
   drops its "Using tools" line, and a read-only agent without the `plan` tool
-  (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
+  (a profile's drop) ends in `planReply`. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at

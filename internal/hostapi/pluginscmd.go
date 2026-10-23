@@ -74,7 +74,7 @@ func (h *Host) pluginsCommand(line string) error {
 	if verb == "delete" && len(args) == 3 && args[2] == "--yes" {
 		args = args[:2]
 	}
-	// new and modify only send, so zemi run takes them
+	// new and modify only send, so they run before the UI attaches too
 	ui, noUI := h.Screen()
 	switch {
 	case noUI == nil || ask || verb == "new" || verb == "modify":

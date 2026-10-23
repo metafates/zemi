@@ -31,9 +31,6 @@ const contextBudget = 32 << 10
 // defaultSystemPrompt is the shipped prompt (no profile configured).
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
-	if h.hooks() == nil {
-		ask, care, denied = headlessAskingPrompt, headlessCarePrompt, headlessDeniedPrompt
-	}
 	if !hasTool(toolset, tools.ToolQuestion) {
 		ask = strings.Replace(ask, " with the question tool", "", 1)
 	}
@@ -46,14 +43,11 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
 }
 
-// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}; a
-// headless run has nobody to ask or to explain a denial.
+// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}.
 const (
-	riskyActs            = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
-	carePrompt           = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
-	headlessCarePrompt   = "Nobody can approve anything in this run, so do nothing hard to undo or that leaves this machine unless the task names it: " + riskyActs + "."
-	deniedPrompt         = "If the user denies a call, do not retry it: change approach or ask why."
-	headlessDeniedPrompt = "A denied call stays denied in this run: change approach, or say in your reply what you need."
+	riskyActs    = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
+	carePrompt   = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
+	deniedPrompt = "If the user denies a call, do not retry it: change approach or ask why."
 )
 
 // batchPrompt opens every run's tool guidance, a subagent's included.
@@ -72,12 +66,8 @@ const readPrompt = `
 const codemodePrompt = `
 - Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
 
-// askingPrompt fills basePrompt's {Asking}. A headless run has no question
-// or plan tool (headlessExcluded), so telling it to ask
-// there only buys a tool call that cannot resolve.
+// askingPrompt fills basePrompt's {Asking}.
 const askingPrompt = `When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.`
-
-const headlessAskingPrompt = `Nobody can answer in this run and there is no tool to ask with: take the most likely reading and carry the task through; name the assumption only when the user would likely have chosen otherwise. Anything you cannot decide goes in your reply as what you need and why. Your last message is what this run prints: give the whole answer there, after your last tool call.`
 
 const basePrompt = `You are zemi, a coding agent in the user's terminal.
 
@@ -173,7 +163,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 		}
 		switch {
 		case !hasTool(toolset, tools.ToolPlan):
-			sys += planHeadless
+			sys += planReply
 		case !hasTool(toolset, tools.ToolQuestion):
 			sys += planAssuming
 		default:
@@ -202,13 +192,13 @@ You are planning, which overrides Doing tasks and Asking the user above: read, s
 const planDelegate = ` For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
 
 // planAsking is the rest of the planning prompt for a run with the plan and
-// question tools; a headless run and a profile that drops one have none.
+// question tools; a profile that drops one has none.
 const planAsking = `
 2. Ask what only the user can decide (goal, scope, behavior, tradeoffs) with the question tool. A vague request needs several rounds; a focused fix may need none.
 3. When nothing is left to decide, call the plan tool.
 End every turn with the question or plan tool, never plain text; after answering the user's question, ask what to plan next.`
 
-const planHeadless = `
+const planReply = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
 
 const planAssuming = `
@@ -547,7 +537,7 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 		}
 	} else {
 		// so the model does not write config that never loads
-		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
+		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
 		// file names and commit subjects are the repository's free text,
 		// which steers the model like its instruction files
 		env, _, _ = strings.Cut(env, recentCommits)

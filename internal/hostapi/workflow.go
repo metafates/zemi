@@ -38,7 +38,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -1366,20 +1365,13 @@ type workflowArgs struct {
 }
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
-	tui := t.h.hooks() != nil
 	var desc strings.Builder
 	desc.WriteString(workflowToolDesc)
-	actions := []string{string(actStatus), "list", string(actWait), "rerun"}
+	actions := []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
 	props, required := tools.ArgsOf(workflowArgs{})
-	// a detached run outlives a headless turn, which would throw its result away
-	if tui {
-		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
-			" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
-			" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
-		actions = []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
-	} else {
-		delete(props, "background")
-	}
+	desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
+		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
+		" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
 	props["action"].(map[string]any)["enum"] = actions
 	props["concurrency"].(map[string]any)["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
 	if len(t.saved) > 0 {
@@ -1715,10 +1707,6 @@ func (h *Host) workflowCommands() []*Command {
 					}
 					return h.startUserFlow(flowSpec{from: id, src: src}, "/workflows rerun "+id, attached)
 				}
-				if h.hooks() == nil {
-					_, err := rerun()
-					return err
-				}
 				// its ask blocks, and a Go command runs on the key loop
 				h.GoSafe("workflows rerun", func() {
 					next, err := rerun()
@@ -1784,11 +1772,8 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 }
 
 // startUserFlow starts a run the user asked for, with no model call before
-// the work. In the TUI it runs in the background and reports to the model
-// like a background agent. Headless it claims the agent as /btw does, so
-// zemi run waits on it and ctrl+c stops it, and its report starts the turn
-// under line, what the user typed, with attached (piped stdin) behind it.
-// It returns the TUI's run id, "" headless.
+// the work. It runs in the background and reports to the model like a
+// background agent, and returns the run's id.
 func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
 	p, err := h.resolveProfile("")
 	if err != nil {
@@ -1799,65 +1784,23 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 	if _, err := h.resolveModel(p); err != nil {
 		return "", err
 	}
-	if h.hooks() != nil {
-		// the user has no foreground version of this run to fall back on,
-		// here and at the late refusal in addFlow
-		spec.advice = waitAdvice
-		if err := h.tasks.canDetach(); err != nil {
-			return "", err
-		}
-		// the run's report, pad, agents and spend belong to a session
-		if err := h.ensureSession(p, line+attached); err != nil {
-			return "", err
-		}
-		spec.background, spec.done = true, h.deliverFlow(attached)
-		f, err := h.startFlow(context.Background(), spec)
-		if err != nil {
-			return "", err
-		}
-		h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
-		return f.id, nil
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	if ag.active {
-		ag.mu.Unlock()
-		return "", Usagef("a turn is running; start the workflow after it")
-	}
-	scope := h.claim()
-	ag.mu.Unlock()
-	if err := h.ensureSession(p, line+attached); err != nil {
-		h.endScope(scope)
+	// the user has no foreground version of this run to fall back on,
+	// here and at the late refusal in addFlow
+	spec.advice = waitAdvice
+	if err := h.tasks.canDetach(); err != nil {
 		return "", err
 	}
-	h.GoSafe("workflow", func() {
-		defer h.endTurnAfterPanic()
-		f, err := h.startFlow(scope.ctx, spec)
-		if err == nil {
-			// ctrl+c cancels the claim: the run is the caller's, not the
-			// step's, so nothing else would stop it
-			select {
-			case <-f.done:
-			case <-scope.ctx.Done():
-				f.cancel()
-				<-f.done
-			}
-			if errors.Is(f.err, context.Canceled) {
-				err = f.err
-			}
-		}
-		if err != nil {
-			h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: sanitize.String(h.errorRowText(err))})
-			h.handOff(scope)
-			return
-		}
-		attr, status, body := f.reportAs()
-		msg := h.reportMessage(h.scratchFor(f.parent), report{id: f.id, agent: attr, status: status, description: f.description, body: body})
-		if err := h.sendClaimed(scope, line+msg+attached); err != nil {
-			h.Log.Warn("report not sent", "origin", "workflows", "error", err)
-		}
-	})
-	return "", nil
+	// the run's report, pad, agents and spend belong to a session
+	if err := h.ensureSession(p, line+attached); err != nil {
+		return "", err
+	}
+	spec.background, spec.done = true, h.deliverFlow(attached)
+	f, err := h.startFlow(context.Background(), spec)
+	if err != nil {
+		return "", err
+	}
+	h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
+	return f.id, nil
 }
 
 // openFlowScript opens a run's script, or a saved workflow's file, in the

@@ -34,9 +34,7 @@ its pad writes pass; then the veto (`Pipeline.Veto`, only when an asker exists -
 without one cannot survive the veto's interpreter round-trip); then the ask path for an ask
 decision, and everything else runs.
 
-An ask nobody can answer (no UI: `zemi run`) denies fail-closed and is recorded
-(`Host.HeadlessDenials`, which `zemi run` prints; the exit status is the run's own, from
-`d.IsError`, not the denial). Asks reach the user one at a
+An ask nobody can answer (no UI) denies fail-closed (`tools.ByNobody`). Asks reach the user one at a
 time under `Host.askMu`; no Lua runs under the lock.
 
 Subjects label the asks: `tool.shell`, `tool.lua`, `tool.workflow`, `tool.<name>` of a Lua

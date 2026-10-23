@@ -485,30 +485,6 @@ func TestWaitingNoticesAreOneBlock(t *testing.T) {
 	}
 }
 
-// TestPrintedRunFoldsNoNotice: a printed run has no click, so it lists every
-// notice row where the chat folds a long burst behind one.
-func TestPrintedRunFoldsNoNotice(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	rows := []hostapi.ChatMessage{{Role: "user", Text: "go"}}
-	for i := range 6 {
-		rows = append(rows, hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: fmt.Sprintf("Background agent a%d (explore) finished", i)})
-	}
-	st := app.uiState()
-	st.Printed = &hostapi.Printed{Rows: rows}
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := make([]string, 0, len(lines))
-	for _, l := range lines {
-		out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
-	}
-	if !slices.Contains(out, "◦ Background agent a0 (explore) finished") || slices.ContainsFunc(out, func(r string) bool { return strings.Contains(r, "earlier") }) {
-		t.Fatalf("a printed run folded its notices:\n%s", strings.Join(out, "\n"))
-	}
-}
-
 // addRunMessage stores one model message in a run's child session, which
 // loadRun reads back into transcript rows.
 func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message) {
@@ -579,9 +555,6 @@ func TestRailWindow(t *testing.T) {
 	}
 	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
 		t.Fatalf("the window does not close:\n%s", strings.Join(got, "\n"))
-	}
-	if printed := printedChat(t, host, 98); strings.Contains(printed, "earlier") || !strings.Contains(printed, "list dir 0") {
-		t.Fatalf("a printed run is windowed:\n%s", printed)
 	}
 }
 
@@ -1681,53 +1654,6 @@ func TestLuaUtil(t *testing.T) {
 	`)
 }
 
-// printedChat is the chat as zemi run --reasoning prints the session.
-func printedChat(t *testing.T, host *hostapi.Host, width int) string {
-	t.Helper()
-	lines := printedLines(t, host, width)
-	rows := make([]string, len(lines))
-	for i, l := range lines {
-		for _, seg := range l {
-			rows[i] += seg.Text
-		}
-	}
-	return strings.Join(rows, "\r\n")
-}
-
-func printedLines(t *testing.T, host *hostapi.Host, width int) [][]hostapi.Segment {
-	t.Helper()
-	live := host.AgentStream()
-	st := hostapi.UIState{Printed: &hostapi.Printed{Rows: host.Session().Transcript, Live: &live, Reasoning: true}}
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), width, 0, st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return lines
-}
-
-// TestReasoningExpanded: --reasoning shows a finished thought as one header
-// with the text under a thin bar. A thought too short to count says no time,
-// and thinking alone folds into its own digest.
-func TestReasoningExpanded(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 16)
-	host.AppendMessage("user", "why?")
-	appendReasoning(host, "first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
-	frame := printedChat(t, host, 78)
-	if !strings.Contains(frame, "✻ thought 4.2s") {
-		t.Fatalf("thought header missing:\n%s", frame)
-	}
-	if !strings.Contains(frame, "│   first idea") || !strings.Contains(frame, "│   second idea") {
-		t.Fatalf("expanded reasoning layout:\n%s", frame)
-	}
-	// a thought too short to count says no time
-	appendReasoning(host, "quick", hostapi.TurnStat{ThoughtMS: 20})
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "0.0s") || !strings.Contains(frame, "· thought 4.2s") {
-		t.Fatalf("a zero thought time:\n%s", frame)
-	}
-}
-
 // thoughtHead is the line carrying the live thinking mark, "" for a frame
 // without one.
 func thoughtHead(frame string) string {
@@ -2297,7 +2223,7 @@ func TestCallRowClickIDs(t *testing.T) {
 // of them, a labelled one its own row with
 // no command under it, while edits and failures keep their rows, every mark
 // at column 2 behind the bar; a kept command shows the model's description
-// with the command under it, and --reasoning shows every call.
+// with the command under it.
 func TestToolRows(t *testing.T) {
 	t.Parallel()
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
@@ -2363,43 +2289,7 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "go vet ./...") || strings.Contains(frame, "7 - old") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
-		t.Fatalf("command output shows only with --reasoning, a verdict row shows only the verdict:\n%s", frame)
-	}
-	// a call that only looked around reads as its step, a kept row keeps its
-	// bold verb, a running one reads Dim beside its spinner
-	hl := map[string]string{}
-	for _, l := range printedLines(t, host, 98) {
-		for _, s := range l {
-			if _, ok := hl[s.Text]; !ok {
-				hl[s.Text] = s.HL
-			}
-		}
-	}
-	if hl["read"] != "Normal" || hl["edit"] != "AgentToolName" || hl["compile"] != "Dim" {
-		t.Fatalf("verbs: read %q, edit %q, compile %q", hl["read"], hl["edit"], hl["compile"])
-	}
-	frame = printedChat(t, host, 98)
-	// every call, nested under its step's row behind its branch mark
-	if !strings.Contains(frame, "│ └ read b.go") || !strings.Contains(frame, "│ ✓ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
-		t.Fatalf("--reasoning must list every call:\n%s", frame)
-	}
-	// an open row keeps a multi-line command's lines, each a detail row
-	rows = strings.Split(frame, "\r\n")
-	for _, c := range []struct{ first, next string }{{"cat > n.txt <<EOT", "first line"}, {"printf a", "printf b"}} {
-		col := func(r, s string) int { return ansi.StringWidth(r[:max(strings.Index(r, s), 0)]) }
-		i := slices.IndexFunc(rows, func(r string) bool { return strings.Contains(r, c.first) })
-		if i < 0 || i+1 == len(rows) || !strings.Contains(rows[i+1], c.next) || col(rows[i+1], c.next) != 6 {
-			t.Fatalf("%q not under %q:\n%s", c.next, c.first, frame)
-		}
-	}
-	// an expanded long input wraps instead of ending in an ellipsis: a lone
-	// look-around call's row is that input, with no "1 pattern" row over it
-	var words int
-	for row := range strings.SplitSeq(frame, "\r\n") {
-		words += strings.Count(row, "pattern")
-	}
-	if words != 30 {
-		t.Fatalf("expanded input shows %d of 30 words:\n%s", words, frame)
+		t.Fatalf("a folded call's output stays out, a verdict row shows only the verdict:\n%s", frame)
 	}
 }
 
@@ -2702,28 +2592,6 @@ func todoRows(t *testing.T, h int, live, last store.TodoStatus, want, gone []str
 		if strings.Contains(frame, g) {
 			t.Fatalf("%q is outside the window:\n%s", g, frame)
 		}
-	}
-}
-
-// TestReasoningWrapKeepsWords: an expanded thought longer than the chat
-// width wraps without losing or repeating words.
-func TestReasoningWrapKeepsWords(t *testing.T) {
-	t.Parallel()
-	_, host := bootAgentApp(t, 60, 40)
-	var words []string
-	for i := range 40 {
-		words = append(words, fmt.Sprintf("w%02d", i))
-	}
-	host.AppendMessage("user", "why?")
-	appendReasoning(host, strings.Join(words, " ")+"\n\nsecond paragraph", hostapi.TurnStat{ThoughtMS: 1000})
-	var got []string
-	for row := range strings.SplitSeq(printedChat(t, host, 58), "\r\n") {
-		if body, ok := strings.CutPrefix(row, "│   "); ok {
-			got = append(got, strings.Fields(body)...)
-		}
-	}
-	if want := append(words, "second", "paragraph"); strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("wrapped words:\n%s", strings.Join(got, " "))
 	}
 }
 

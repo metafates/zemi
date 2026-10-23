@@ -30,7 +30,7 @@
    ```
 
    It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's widget is checked by `test.render` in its tests instead, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed, and `/health` names widgets whose region the layout does not draw (`exit` aside: it prints on quit).
-5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Headless (`zemi run`, `zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
+5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Without a TUI (`zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
 6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
    ```sh
@@ -57,8 +57,6 @@
 | `module "x" not found on runtimepath` from a plugin | the module is not at `<plugin x>/.zemi/lua/x.lua` or `.zemi/lua/x/init.lua` (a plugin answers only requires under its own name, so plugin `zemi-branch` cannot answer `require("branch")`), or plugin x is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
 | `module "..." at ... is outside plugin <name>` | a relative require or a symlink left the plugin's own directory, or reached a disabled plugin |
 | `plugin code running with no file of its plugin on the stack has no principal` | user code called a function a plugin handed out that is not the plugin's own file (a user module it required, a `load` chunk); call it through the plugin's own code |
-| `zemi run "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
-| a script's `zemi run` log is full of chat rows | stderr shows the run as the chat draws it; `-q` keeps it to what went wrong, and stdout has only the answer |
 | one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
 | a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/.zemi/` or `local/<name>/.zemi/` (a library-only plugin has just `.zemi/lua/`), or its name is in `<data>/plugins/disabled` |
 | a plugin is refused in `/errors` with "`<name>` is at the plugin root, where zemi no longer loads it" | the plugin predates the `.zemi/` layout: move its `init.lua`, `lua/`, `tests/` and `workflows/` under `.zemi/` |
