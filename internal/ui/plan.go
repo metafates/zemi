@@ -1,6 +1,7 @@
 // plan.go is the Go-owned plan approval overlay (DESIGN §6.4, §8): the plan
 // tool shows its plan as a scrollable markdown "Plan" popup the user approves
-// (a), asks to change (e, then type), or dismisses (esc).
+// (a), saves without starting (s), asks to change (e, then type), or
+// dismisses (esc).
 
 package ui
 
@@ -102,7 +103,7 @@ func (a *App) planKey(key, text string) {
 }
 
 // planBox draws the plan popup: the plan as scrollable markdown, then its
-// two buttons, which the changes input replaces row for row, so e moves
+// buttons, which the changes input replaces row for row, so e moves
 // nothing.
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)

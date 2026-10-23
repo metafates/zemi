@@ -762,8 +762,11 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 		a.unseen = a.turnEnded
 	}
 	text := "zemi finished"
-	if msg.err != "" {
-		text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
+	switch {
+	case msg.stopped:
+		text = "zemi stopped"
+	case msg.err != "":
+		text = "zemi failed: " + ansi.Truncate(msg.err, 80, "…")
 	}
 	if byLoop {
 		return nil

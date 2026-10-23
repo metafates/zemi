@@ -371,7 +371,7 @@ func (a *App) leaveAgentView() {
 }
 
 // interrupt cancels the running turn and hands queued messages back to the
-// composer; the working row reads "Cancelling" until the turn ends.
+// composer; the working row keeps its ctrl+c quit hint until the turn ends.
 func (a *App) interrupt() {
 	a.host.AgentCancel()
 	a.restoreQueue()
