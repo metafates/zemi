@@ -116,14 +116,6 @@ type claudeManifestJSON struct {
 	MCPServers jsontext.Value `json:"mcpServers"`
 }
 
-// ReadClaude reads the Claude manifest of the plugin in dir; dataDir is what
-// ${CLAUDE_PLUGIN_DATA} stands for. A missing manifest is the zero manifest,
-// its components still read; a malformed one is an error carrying the zero
-// manifest, for the caller to log and load nothing from.
-func ReadClaude(dir, dataDir string) (ClaudeManifest, error) {
-	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile)))
-}
-
 // ReadClaudeRaw is ReadClaude with the manifest bytes given instead of read
 // from the file: an entry-carried manifest, whose source dir has none.
 func ReadClaudeRaw(dir, dataDir string, raw []byte) (ClaudeManifest, error) {

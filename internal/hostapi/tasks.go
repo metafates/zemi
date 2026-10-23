@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -542,13 +543,6 @@ func (run *agentRun) message(text string) error {
 	return nil
 }
 
-// queued copies the messages still waiting, oldest first.
-func (run *agentRun) queued() []string {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	return slices.Clone(run.queue)
-}
-
 // take empties the queue into transcript rows, after the reply they
 // interrupted (run.mu held).
 func (run *agentRun) take() []string {
@@ -900,16 +894,6 @@ var (
 	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
 )
 
-// headLine is the first line of body with something in it, "" for none.
-func headLine(body string) string {
-	for line := range strings.SplitSeq(body, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			return line
-		}
-	}
-	return ""
-}
-
 // notifyReports tells the user of the queued reports a closing session drops.
 func (h *Host) notifyReports(queued []string) {
 	for _, m := range queued {
@@ -960,17 +944,17 @@ func reportHeads(tail string) []notice {
 		heads = append(heads, notice{Text: reportHead(r), Status: reportStatus(m[3]), Run: run})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
-		if line := headLine(m[2]); line != "" {
+		if line := skill.FirstBodyLine(m[2]); line != "" {
 			heads = append(heads, notice{Text: m[1] + ": " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
-		if line := headLine(m[2]); line != "" {
+		if line := skill.FirstBodyLine(m[2]); line != "" {
 			heads = append(heads, notice{Text: "Loop run " + m[1] + ": " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
-		if line := headLine(m[3]); line != "" {
+		if line := skill.FirstBodyLine(m[3]); line != "" {
 			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200), Run: m[1]})
 		}
 	}

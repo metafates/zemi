@@ -373,3 +373,11 @@ func TestClaudeProvides(t *testing.T) {
 		}
 	}
 }
+
+// ReadClaude reads the Claude manifest of the plugin in dir; dataDir is what
+// ${CLAUDE_PLUGIN_DATA} stands for. A missing manifest is the zero manifest,
+// its components still read; a malformed one is an error carrying the zero
+// manifest, for the caller to log and load nothing from.
+func ReadClaude(dir, dataDir string) (ClaudeManifest, error) {
+	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile)))
+}

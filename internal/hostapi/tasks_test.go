@@ -696,3 +696,10 @@ func TestStopWording(t *testing.T) {
 		t.Errorf("stop without an id: %v", err)
 	}
 }
+
+// queued copies the messages still waiting, oldest first.
+func (run *agentRun) queued() []string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return slices.Clone(run.queue)
+}
