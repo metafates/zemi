@@ -3,11 +3,21 @@ package tools
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/proc"
 )
+
+// TestJobKillReadOnlyDeny: job_kill makes no gate request, so runJobKill
+// carries the read-only deny itself instead of killing ungated.
+func TestJobKillReadOnlyDeny(t *testing.T) {
+	p := &Pipeline{Jobs: NewJobs(), ReadOnly: func() bool { return true }}
+	if res, _ := runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"}); !res.IsError || !strings.Contains(res.Content, ByReadOnly) {
+		t.Fatalf("a read-only agent's kill must deny: %+v", res)
+	}
+}
 
 func TestJobsEvictFinished(t *testing.T) {
 	t.Parallel()
