@@ -335,6 +335,7 @@ func (h *Host) closeSession(open func()) error {
 	// message of the session just closed
 	ag.sessionID, ag.runner, ag.steering, ag.turnMsgID = "", nil, nil, ""
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
+	ag.outcomes, ag.rows = nil, nil // no call of the old session is waiting to be drawn
 	ag.sessIn, ag.sessOut, ag.lastIn, ag.sessCost = 0, 0, 0, 0
 	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
