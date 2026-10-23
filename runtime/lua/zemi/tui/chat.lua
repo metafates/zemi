@@ -8,10 +8,9 @@ local util = require("zemi.util")
 ---@alias zemi.tui.Tool zemi.TranscriptRow|zemi.ToolCall
 
 -- How a run of activity rows draws: its digest alone (settled), that digest
--- over its whole rail (a digest clicked open), a rail of one row per step
--- (the live turn, a printed run, an agent run's view), or the rail with every
--- row and thought open (zemi run --reasoning).
----@alias zemi.tui.RunMode "fold"|"unfold"|"rail"|"open"
+-- over its whole rail (a digest clicked open), or a rail of one row per step
+-- (the live turn, an agent run's view).
+---@alias zemi.tui.RunMode "fold"|"unfold"|"rail"
 
 -- The settled transcript is rendered in units, a message or a run of
 -- activity rows, kept across frames by the index of their first message:
@@ -343,14 +342,11 @@ local function builder(ctx, width)
 
 	-- One call as its own row: the verb and the label or input, what it
 	-- changed or how long it runs at the right, and under it what it said.
-	-- Open (a printed run), a row shows the whole command, the diff and a
-	-- command's output; a click opens that view instead, off the widget.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { open: boolean?, nest: string? } nest: the two cells a row hangs by, its branch mark.
+	---@param o { nest: string? } nest: the two cells a row hangs by, its branch mark.
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
-		local open = o.open
 		-- NOTE: every running row reads as asked about while a prompt is open,
 		-- a parallel call that runs on meanwhile included.
 		local asked = t.status == "run" and (ctx.waiting or "") ~= ""
@@ -363,17 +359,8 @@ local function builder(ctx, width)
 		local dim = not asked and MARK_OF[t.status] == nil
 		local inner = width - 2 - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
-		-- a collapsed row is one line; an open one keeps a heredoc's lines
-		---@type string[]
-		local more = {}
-		local body = input
-		if open then
-			body = input:gsub("%s+$", "")
-			more = util.split(body, "\n")
-			input = table.remove(more, 1)
-		else
-			input = (input:gsub("%s+", " "))
-		end
+		-- the row is one line; a heredoc's lines wait in its click view
+		local input = (input:gsub("%s+", " "))
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
@@ -388,18 +375,17 @@ local function builder(ctx, width)
 		local verb, rest = fmt.head(name, label, input, t.status)
 		verb = fmt.lower(verb)
 		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1 + RAIL_EDGE)
-		-- open rows wrap (the widget wraps), collapsed ones stay one line
 		---@param text string
 		---@param n integer
 		---@return string
-		local function fit(text, n) return open and text or fmt.clip(text, n) end
-		-- a command is highlighted where it is what the row reads, the head and
-		-- an opened row; collapsed under its label it stays a Dim detail
+		local function fit(text, n) return fmt.clip(text, n) end
+		-- a command is highlighted where it is what the row reads, the head;
+		-- under its label it stays a Dim detail
 		local code = name == "shell"
 				and input ~= ""
-				and (open or label == "")
+				and label == ""
 				and not dim
-				and zemi.ui.highlight(open and body or fit(input, room - 1), "bash")
+				and zemi.ui.highlight(fit(input, room - 1), "bash")
 			or nil
 		-- a click opens the row's own view; an agent's row opens its transcript
 		-- and a workflow's its view (ids must differ between adjacent rows)
@@ -447,53 +433,28 @@ local function builder(ctx, width)
 		local answered = name == "question" and output:find("\t") ~= nil
 		-- the command a description stands for, then progress, then the job
 		-- a timed-out command went on as, which the row carries
-		if answered then
-			more = {}
-		elseif label ~= "" and input ~= "" and (open or not fmt.looks(t)) then
-			-- a labelled counted call on the rail shows its command once opened
+		if not answered and label ~= "" and input ~= "" and not fmt.looks(t) then
+			-- a labelled counted call on the rail shows its command
 			detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
-		end
-		for i, l in ipairs(more) do
-			detail(code and code[i + 1] or l, "Dim")
 		end
 		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
 		-- the job a timed-out command went on as opens its own view
 		if (t.job or "") ~= "" then detail("running as " .. t.job, "Dim", "job:" .. t.job) end
-		-- an open file tool shows what it changed as numbered, tinted rows, four
-		-- cells in; a diff row is body: no hover, but the click folds like the head
-		if open then
-			for _, row in ipairs(zemi.ui.diff(t.diff or "", inner - 4)) do
-				for _, sg in ipairs(row) do
-					sg.click, sg.hover = click, false
-				end
-				table.insert(row, 1, { text = indent, copy = false, click = click, hover = false })
-				push(row)
-			end
-		end
 		-- the result's last lines: always for a failure, for what the user
-		-- answered (question, plan), for a command of an open run; what the
+		-- answered (question, plan); what the
 		-- user just decided needs no restating: the model's text carries the
 		-- reason and the instructions, the row the verdict. A running call
 		-- keeps its line to the row; its view says the rest.
 		if output:match("^permission denied %(user") then output = "denied by you" end
 		if output:match("^The user dismissed") then output = "dismissed by you" end
-		if
-			output ~= ""
-			and (
-				t.status == "err"
-				or t.status == "stopped"
-				or name == "question"
-				or name == "plan"
-				or (o.open and name == "shell")
-			)
-		then
+		if output ~= "" and (t.status == "err" or t.status == "stopped" or name == "question" or name == "plan") then
 			local out = util.split(output, "\n")
-			-- a collapsed failure shows three lines where it says what went
-			-- wrong: a tool's first, a command's last (its stderr and exit
-			-- status); a click shows the rest
+			-- a failure shows three lines where it says what went wrong: a
+			-- tool's first, a command's last (its stderr and exit status); a
+			-- click shows the rest
 			local err, tail = t.status == "err", name == "shell"
 			local from, to = 1, #out
-			if err and not open and #out > 3 then
+			if err and #out > 3 then
 				if tail then
 					from = #out - 2
 				else
@@ -582,8 +543,7 @@ local function builder(ctx, width)
 	function B.notices(list, first, last)
 		B.gap("note")
 		local hidden = last - first + 1 - NOTICES_KEEP
-		-- a printed run lists every row: its fold row would have nothing to click
-		if hidden > 1 and not ctx.headless then
+		if hidden > 1 then
 			local label, click = foldRow(whole[first], hidden, "more:" .. first)
 			B.lines[#B.lines + 1] = {
 				{ text = "  ", copy = false, hover = false },
@@ -607,18 +567,17 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, full: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.open draws every row and thought of the run starting at run with its bodies; o.full draws every row of it with the bodies folded; o.unroll draws a thought as its text.
+	---@param o { full: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.full draws every row of the run starting at run with the bodies folded; o.unroll draws a thought as its text.
 	function B.rail(list, first, last, o)
 		frame()
 		local at = #B.lines
 		-- a long rail keeps its last entries in view, each with the rows under
-		-- it, the earlier ones behind one row that a click opens or closes; a
-		-- printed run lists everything. A closed fold's earlier entries are
-		-- never drawn: the entry count walks the tool list and only the kept
-		-- tail builds rows.
+		-- it, the earlier ones behind one row that a click opens or closes. A
+		-- closed fold's earlier entries are never drawn: the entry count walks
+		-- the tool list and only the kept tail builds rows.
 		local key = o.live and 0 or o.run or first
 		local n = 0
-		if not (o.open or o.full or ctx.headless) then
+		if not o.full then
 			local i = first
 			while i <= last do
 				i, n = nextStep(list, i, last), n + 1
@@ -655,7 +614,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, full: boolean?, live: boolean?, run: integer?, unroll: boolean? }
+	---@param o { full: boolean?, live: boolean?, run: integer?, unroll: boolean? }
 	---@param headed boolean? A bar already bounds the rail above: the first entry draws without one.
 	function B.steps(list, first, last, o, headed)
 		local i = first
@@ -678,7 +637,7 @@ local function builder(ctx, width)
 				if o.unroll and (t.text or "") ~= "" then
 					B.reasoning(t.text, nil, click)
 				else
-					B.thought(t.thought or 0, click, o.open and t.text or nil)
+					B.thought(t.thought or 0, click)
 				end
 				markCall(at, idx)
 				i = i + 1
@@ -691,12 +650,11 @@ local function builder(ctx, width)
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
 				B.group(group, "step:" .. idx)
-				if o.open or o.full or steps[idx] then
+				if o.full or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
 						local at = #B.lines + 1
 						B.tool(g, o.live and -n or n, {
-							open = o.open,
 							nest = k == #group and "└ " or "├ ",
 						})
 						markCall(at, o.live and -n or n)
@@ -705,7 +663,7 @@ local function builder(ctx, width)
 				i = i + #group
 			else
 				local at = #B.lines + 1
-				B.tool(t, idx, { open = o.open })
+				B.tool(t, idx, {})
 				markCall(at, idx)
 				i = i + 1
 			end
@@ -714,13 +672,7 @@ local function builder(ctx, width)
 	return B
 end
 
--- The block the rows printed above ended in: a printed batch's first unit
--- seeds its block gap from it, where a printed run draws one blindly.
----@param ctx zemi.WidgetCtx
----@return "user"|"activity"|"text"|"note"|nil
-local function prev_block(ctx) return ctx.printed_prev and block_of(ctx.printed_prev) or nil end
-
---- A click on the chat's rows: on a call's or a thought's row opens a view of
+-- A click on the chat's rows: on a call's or a thought's row opens a view of
 --- it, on an agent's row shows that run, on a workflow's its view, on a job's
 --- line its output, and on a fold row (a digest, a step, a burst's `… N
 --- earlier`) opens or closes what it stands for in place.
@@ -838,7 +790,7 @@ zemi.ui.widget.add({
 		local function unit(tr, first, last, mode)
 			local m = tr[first]
 			local content = nil -- where the message ends and meta begins
-			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or prev_block(ctx)
+			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
 			if mode == "fold" or mode == "unfold" then
 				B.gap("activity")
 				B.fold(tr, first, last, mode == "unfold")
@@ -846,7 +798,7 @@ zemi.ui.widget.add({
 				B.gap("activity")
 				-- the picker's rail view draws the run whole, the live turn's own
 				-- included: every call it walks has a row to band
-				B.rail(tr, first, last, { open = mode == "open", run = first, full = (ctx.rail or 0) == first })
+				B.rail(tr, first, last, { run = first, full = (ctx.rail or 0) == first })
 			elseif m.kind == "shell" then
 				-- a !command: the command, then its output, already cut to a head
 				-- and a tail by the host; a failure's mark takes the prompt's place
@@ -933,7 +885,6 @@ zemi.ui.widget.add({
 		local key = table.concat({
 			epoch,
 			width,
-			tostring(ctx.show_reasoning),
 			ctx.cwd or "",
 			zemi.ui.theme.get(),
 			tostring(ctx.transcript_edit or 0),
@@ -991,10 +942,9 @@ zemi.ui.widget.add({
 			---@return zemi.tui.RunMode|""
 			local function mode_of(first)
 				if not activity(tr[first]) then return "" end
-				if ctx.show_reasoning then return "open" end
-				-- the live turn's own run and a printed run read whole; every
-				-- other run folds, the one an agent view shows included
-				if ctx.headless or first == live_first then return "rail" end
+				-- the live turn's own run reads whole; every other run folds,
+				-- the one an agent view shows included
+				if first == live_first then return "rail" end
 				if (ctx.rail or 0) == first then return "unfold" end
 				return unfolded[first] and "unfold" or "fold"
 			end
@@ -1054,7 +1004,7 @@ zemi.ui.widget.add({
 			local all = {}
 			-- the transcript's first row stands one row off the window's top
 			-- edge; a printed run's output keeps its own framing
-			if last == 0 and #tr > 0 and not ctx.headless then all[1] = { { text = "" } } end
+			if last == 0 and #tr > 0 then all[1] = { { text = "" } } end
 			for n = #shown, 1, -1 do
 				for _, l in ipairs(shown[n].lines) do
 					all[#all + 1] = l
@@ -1071,7 +1021,7 @@ zemi.ui.widget.add({
 			settled = not more and done or nil
 		end
 		-- the live turn's lines go after the settled ones in the same list
-		B.lines, B.prev = done.lines, done.block or prev_block(ctx)
+		B.lines, B.prev = done.lines, done.block
 		for n = #B.lines, done.n + 1, -1 do
 			B.lines[n] = nil
 		end
@@ -1109,12 +1059,7 @@ zemi.ui.widget.add({
 				B.gap("activity")
 				-- the picker's rail view opens this run as it opens a settled one:
 				-- every row, until the menu closes back to its own short rail
-				B.rail(
-					tools,
-					1,
-					#tools,
-					{ live = true, open = ctx.show_reasoning, full = live_first > 0 and live_first == (ctx.rail or 0) }
-				)
+				B.rail(tools, 1, #tools, { live = true, full = live_first > 0 and live_first == (ctx.rail or 0) })
 			end
 			if text ~= "" then
 				B.gap("text")
@@ -1131,10 +1076,9 @@ zemi.ui.widget.add({
 				if q.notice then notes = notes + 1 end
 			end
 			local fold = notes - NOTICES_KEEP
-			-- a printed run lists every row, its fold row would have nothing to
-			-- click, and one hidden notice is not worth a row either: nothing
-			-- hides unless the fold row draws
-			if ctx.headless or fold < 2 then fold = 0 end
+			-- one hidden notice is not worth a row either: nothing hides
+			-- unless the fold row draws
+			if fold < 2 then fold = 0 end
 			local seen, note = 0, false
 			for _, q in ipairs(queued) do
 				if q.notice then

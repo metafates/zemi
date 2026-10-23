@@ -42,13 +42,8 @@ zemi.ui.widget.add({
 		local busy = (ctx.busy or {})[1]
 		-- a job that just started is not worth the block that comes and goes
 		if busy and busy.elapsed < 0.3 then busy = nil end
-		-- a printed run takes no key but the shell's interrupt
 		local key, verb = "esc", "interrupt"
-		if ctx.headless then
-			key, verb = "ctrl+c", "stop"
-		elseif ctx.interrupt_armed then
-			verb = "again to interrupt"
-		end
+		if ctx.interrupt_armed then verb = "again to interrupt" end
 		-- the run the chat shows and the key that leaves it, which is what esc
 		-- means there: the name takes the row's centre, the key the rule's right
 		-- end, and the key is worth more than the name so a narrow rule keeps it

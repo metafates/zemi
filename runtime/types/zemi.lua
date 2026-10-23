@@ -893,10 +893,9 @@ function zemi.event.stats() end
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /. Cached: read again after a boot or reload, a trust change and a new session.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
----@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
 ---@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view): the chat draws that run whole while it is up.
 ---@field emoji string The session's marker emoji, derived from its id; "" before the first send.
----@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen. Empty in a printed run.
+---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean }[] Every job the user waits on that is not a turn (/btw, a plugin install, the reflector, a recap, compaction), newest first: each one's label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
@@ -914,8 +913,6 @@ function zemi.event.stats() end
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".
 ---@field focus string Id of the layout node that has the keys, "" while the composer has them.
----@field headless boolean `zemi run` prints the frame to a shell: nothing is clicked, ctrl+c is the only key, and only the live tail redraws.
----@field printed_prev? zemi.TranscriptRow In a printed run, the last row printed above this frame: the batch's first unit seeds its block gap from it.
 
 --- `render` returns a list of lines. A bare string or a single line is taken
 --- as one line; a list of several strings raises, since it could mean one
@@ -1901,7 +1898,7 @@ function zemi.agent.current() end
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
 --- a turn it joins at the next step. A plugin's own send settles where its
---- manifest declares `agent`, and raises in `zemi run`; its text reaches the
+--- manifest declares `agent`; its text reaches the
 --- model as the plugin's, never the user's words.
 ---@param text string
 ---@return true?, string?
@@ -2155,8 +2152,8 @@ function zemi.composer.edit() end
 zemi.perm = {}
 
 --- Ask the user through zemi's permission overlay. Only from a task; a
---- plugin needs the manifest's `uses` naming `perm`. A
---- headless run answers "deny" and records the ask.
+--- plugin needs the manifest's `uses` naming `perm`. An ask nobody can
+--- answer denies.
 ---
 --- ```lua
 --- local ans = zemi.perm.ask({ subject = "fs.write", arg = path, reason = "cache refresh" }):wait()
