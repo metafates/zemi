@@ -1200,8 +1200,8 @@ func TestWorkflowToolListsRuns(t *testing.T) {
 }
 
 // TestWorkflowUserStart: /workflows run starts the saved workflow with no
-// model call first, and its report reaches the model: detached in the TUI,
-// on the claimed agent headless, which zemi run waits on. The run belongs to
+// model call first, and its report reaches the model as a message. The run
+// belongs to
 // the session its report lands in, even when it opened no session first, and
 // a start that cannot run opens none.
 func TestWorkflowUserStart(t *testing.T) {
@@ -1210,8 +1210,8 @@ func TestWorkflowUserStart(t *testing.T) {
 		ui   bool
 		want []string // the transcript rows' texts, in order
 	}{
-		{"the TUI runs it detached and says so", true, []string{"Started workflow ", "Workflow ", "ok"}},
-		{"headless it holds the agent until the report's turn ends", false, []string{"Workflow ", "ok"}},
+		{"the TUI says the run started", true, []string{"Started workflow ", "Workflow ", "ok"}},
+		{"without UI hooks it still runs detached and reports", false, []string{"Workflow ", "ok"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

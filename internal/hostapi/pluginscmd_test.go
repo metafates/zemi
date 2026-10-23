@@ -235,13 +235,13 @@ func TestPluginsSend(t *testing.T) {
 		err      string   // a usage error, which sends nothing
 		sent     []string // in the message the agent gets
 		link     bool     // the data dir is reached through a symlink
-		headless bool     // no UI, as under zemi run
+		headless bool     // no UI, as before the UI attaches
 	}{
 		{args: "modify mine add a flag\nand a test", sent: []string{`/plugin modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
 		{args: "modify mine", link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
 		{args: "modify", err: "usage: /plugin modify <name> [what to change]"},
-		{args: "modify mine in zemi run", headless: true, sent: []string{"Change my zemi plugin mine in "}},
+		{args: "modify mine in a script", headless: true, sent: []string{"Change my zemi plugin mine in "}},
 	} {
 		t.Run(c.args, func(t *testing.T) {
 			data := t.TempDir()
