@@ -387,8 +387,8 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 // builds both: the summary cut reads off the decoded history.
 func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	history, tr := historyFrom(rows)
-	for i := len(history) - 1; i >= 0; i-- {
-		if _, ok := summaryOf(history[i]); ok {
+	for i, m := range slices.Backward(history) {
+		if _, ok := summaryOf(m); ok {
 			return history[i:], tr
 		}
 	}
