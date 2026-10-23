@@ -104,6 +104,10 @@ type Overlay struct {
 	OnSelect *glua.LFunction
 	OnAction *glua.LFunction // on_action(item, key), for a row key with an id
 	OnClose  *glua.LFunction
+	// Answered is the Go-side hook a blocking ask (zemi.ui.select/input)
+	// waits on: the host calls it with the item or the text, nil on cancel,
+	// when the overlay is answered. Lua's own callbacks are separate.
+	Answered func(v any)
 	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
 	Anchor   OverlayAnchor
@@ -2151,11 +2155,13 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	if index >= 0 && index < len(o.Items) {
 		item = o.Items[index].raw
 	}
+	h.overlayAnswered(o, item)
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
 }
 
 // SubmitOverlayInput hands an input overlay's text to on_select.
 func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
+	h.overlayAnswered(o, text)
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, text)
 }
 
@@ -2179,7 +2185,16 @@ func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item Ove
 
 // CancelOverlay runs on_close if present.
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
+	h.overlayAnswered(o, nil)
 	_ = h.callOverlay(ctx, o, "on_close", o.OnClose)
+}
+
+// overlayAnswered reports the ask's answer to its waiting task, once: the
+// same value the Lua callback gets, nil on cancel.
+func (h *Host) overlayAnswered(o Overlay, v any) {
+	if o.Answered != nil {
+		o.Answered(v)
+	}
 }
 
 // callOverlay runs one of an overlay's callbacks as a task under the

@@ -1337,7 +1337,8 @@ function zemi.ui.overlay.open(spec) end
 function zemi.ui.overlay.close(id) end
 
 --- A picker in the shape of `vim.ui.select`. on_choice gets the item on
---- enter, nil on cancel. Items take the zemi.OverlayItem keys too.
+--- enter, nil on cancel. Items take the zemi.OverlayItem keys too. A task
+--- can wait on the answer with the handle instead.
 ---
 --- ```lua
 --- zemi.ui.select({ "low", "medium", "high" }, { prompt = "Effort" }, function(choice)
@@ -1347,10 +1348,12 @@ function zemi.ui.overlay.close(id) end
 ---@param items any[]
 ---@param opts? zemi.SelectOpts
 ---@param on_choice fun(item: any|nil)
+---@return zemi.UIHandle
 function zemi.ui.select(items, opts, on_choice) end
 
 --- A one-line prompt in the shape of `vim.ui.input`: on_confirm gets the
---- text on enter, which its footer names "send", nil on esc.
+--- text on enter, which its footer names "send", nil on esc. A task can
+--- wait on the answer with the handle instead.
 ---
 --- ```lua
 --- zemi.ui.input({ prompt = "Branch name" }, function(text)
@@ -1359,7 +1362,17 @@ function zemi.ui.select(items, opts, on_choice) end
 --- ```
 ---@param opts? zemi.InputOpts
 ---@param on_confirm fun(text: string|nil)
+---@return zemi.UIHandle
 function zemi.ui.input(opts, on_confirm) end
+
+--- What `zemi.ui.select` and `zemi.ui.input` return: `wait()` suspends the
+--- task until the user answers (the item, or the text; nil and no error on
+--- cancel), `cancel()` closes the overlay, which answers nil. The callback
+--- fires with the same answer either way. Raises outside a task and under
+--- pcall, like `zemi.HTTPHandle.wait`.
+---@class zemi.UIHandle
+---@field wait fun(self: zemi.UIHandle): any|nil, string|nil
+---@field cancel fun(self: zemi.UIHandle)
 
 ---@class zemi.EditOpts
 ---@field line? integer 1-based line to start at
