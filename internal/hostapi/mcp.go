@@ -59,6 +59,8 @@ type mcpServer struct {
 	signIn      string // the sign-in URL while one waits in the browser
 	authorizing bool   // a flow is between its start and its park, so no second one starts
 	stopped     bool
+	refreshing  bool // a tools/list refresh is running
+	queued      bool // a list_changed landed during it: one more run after
 }
 
 type mcpReg struct {
@@ -137,7 +139,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		Command: s.spec.Command, Args: s.spec.Args, Env: env, Dir: h.Dirs.DataHome,
 		Stderr: serverLogWriter{h: h, source: "mcp", server: s.name},
 		URL:    s.spec.URL, Headers: headers,
-		OnToolsChanged: func() { h.GoSafe("mcp tools "+s.name, func() { h.refreshMCPTools(s) }) },
+		OnToolsChanged: func() { h.queueMCPRefresh(s) },
 	}
 	if s.spec.URL != "" && !hasHeader(headers, "Authorization") {
 		cfg.Auth = h.mcpAuth(s)
@@ -198,6 +200,36 @@ func (h *Host) refreshMCPTools(s *mcpServer) {
 	s.tools = list
 	s.mu.Unlock()
 	h.checkToolNames(s, list)
+	h.mcpChanged()
+}
+
+// queueMCPRefresh coalesces notifications/tools/list_changed: one refresh
+// runs at a time, and a notification landing during it buys one more run
+// after, so a spamming server cannot fan out goroutines and tools/list calls.
+func (h *Host) queueMCPRefresh(s *mcpServer) {
+	s.mu.Lock()
+	if s.refreshing {
+		s.queued = true
+		s.mu.Unlock()
+		return
+	}
+	s.refreshing = true
+	s.mu.Unlock()
+	h.GoSafe("mcp tools "+s.name, func() {
+		for {
+			h.refreshMCPTools(s)
+			s.mu.Lock()
+			again := s.queued
+			s.queued = false
+			if !again {
+				s.refreshing = false
+			}
+			s.mu.Unlock()
+			if !again {
+				return
+			}
+		}
+	})
 }
 
 // checkToolNames records the enabled_tools and disabled_tools entries the
@@ -230,11 +262,12 @@ func (h *Host) setMCP(s *mcpServer, status ServiceStatus, err string) bool {
 	return moved
 }
 
-// mcpChanged redraws what shows the servers, an open /mcp included.
+// mcpChanged redraws what shows the servers, an open /mcp included. The
+// refresh builds nothing for a closed one.
 func (h *Host) mcpChanged() {
 	h.refresh()
 	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(h.mcpOverlay(true))
+		ui.RefreshOverlay("mcp", h.mcpOverlay)
 	}
 }
 
@@ -757,18 +790,17 @@ func (h *Host) openMCP(confirm string) error {
 	if err != nil {
 		return err
 	}
-	o := h.mcpOverlay(false)
+	o := h.mcpOverlay()
 	o.Confirm = confirm
 	ui.OpenOverlay(o)
 	return nil
 }
 
-// mcpOverlay is /mcp; with refresh it only replaces an open one. The batch
-// key is there once two or more HTTP servers ask for a sign-in: one is the
-// row's own Sign in.
-func (h *Host) mcpOverlay(refresh bool) Overlay {
+// mcpOverlay is /mcp. The batch key is there once two or more HTTP servers
+// ask for a sign-in: one is the row's own Sign in.
+func (h *Host) mcpOverlay() Overlay {
 	o := Overlay{
-		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.mcpItems(),
+		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: h.mcpItems(),
 		Reload: h.mcpItems,
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}

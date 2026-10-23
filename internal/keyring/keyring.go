@@ -77,6 +77,9 @@ func (r Ref) Set(secret string) (inChain bool, err error) {
 		_ = os.Remove(r.File) // ErrNotExist is the usual case, a cleanup miss no news
 		return true, nil
 	}
+	// Get reads the chain first, so an older copy there would shadow the
+	// file's newer one forever; the chain refused this write anyway.
+	_ = Chain.Delete(Service, r.Account)
 	return false, config.WriteFileAtomic(r.File, []byte(secret))
 }
 

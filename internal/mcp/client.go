@@ -78,6 +78,7 @@ type Content struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
 	Data     string `json:"data,omitempty"`
+	URI      string `json:"uri,omitempty"`
 	MimeType string `json:"mimeType,omitempty"`
 	Resource *struct {
 		URI      string `json:"uri"`
@@ -107,7 +108,7 @@ func (r *Result) Text() string {
 		case c.Resource != nil:
 			parts = append(parts, "["+c.Type+" "+c.Resource.URI+"]")
 		default:
-			parts = append(parts, "["+c.Type+" "+c.MimeType+"]")
+			parts = append(parts, "["+c.Type+" "+cmp.Or(c.URI, c.MimeType)+"]")
 		}
 	}
 	if len(parts) == 0 && r.Structured != nil {
@@ -475,6 +476,9 @@ var httpClient = &http.Client{}
 // send POSTs one message. The reply is JSON or an SSE stream whose events
 // are messages; both are routed through handle before send returns.
 func (t *httpTransport) send(ctx context.Context, msg []byte) error {
+	// each retry cause runs once: a second 401 is a grant the refresh does
+	// not fix, a second 404 a session the renew does not fix
+	authTried, renewed := false, false
 	for attempts := 0; ; attempts++ {
 		resp, bearer, err := t.post(ctx, msg)
 		if err != nil {
@@ -482,26 +486,20 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 		}
 		if resp.StatusCode == http.StatusUnauthorized && t.cfg.Auth != nil {
 			resp.Body.Close()
-			if bearer == "" || !t.cfg.Auth.reject(bearer) {
+			if authTried || bearer == "" || !t.cfg.Auth.reject(bearer) {
 				return ErrAuthRequired
 			}
-			if resp, _, err = t.post(ctx, msg); err != nil {
-				return err
-			}
-			if resp.StatusCode == http.StatusUnauthorized {
-				resp.Body.Close()
-				return ErrAuthRequired
-			}
+			authTried = true // the fresh token rides the next post
+			continue
 		}
 		// the server forgot the session (a redeploy): the spec says start another
-		if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
+		if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && !renewed && ctx.Value(renewing{}) == nil {
+			renewed = true
 			resp.Body.Close()
 			if err := t.renew(ctx, old); err != nil {
 				return err
 			}
-			if resp, _, err = t.post(ctx, msg); err != nil {
-				return err
-			}
+			continue
 		}
 		if id := resp.Header.Get(sessionHeader); id != "" {
 			t.mu.Lock()
