@@ -2727,6 +2727,9 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
 		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
+			if h.hooks() == nil { // zemi health boots plugins with no UI: a turn nobody sees has nothing to bound it
+				L.RaiseError("zemi.agent.send: no UI is running to send from")
+			}
 			if stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1

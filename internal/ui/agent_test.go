@@ -2223,7 +2223,7 @@ func TestCallRowClickIDs(t *testing.T) {
 // of them, a labelled one its own row with
 // no command under it, while edits and failures keep their rows, every mark
 // at column 2 behind the bar; a kept command shows the model's description
-// with the command under it, and --reasoning shows every call.
+// with the command under it.
 func TestToolRows(t *testing.T) {
 	t.Parallel()
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."

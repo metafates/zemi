@@ -293,16 +293,12 @@ local function builder(ctx, width)
 		end
 		return #body - from + 1
 	end
-	-- "│ ✻ thought 8s", with the text under it when given, and one bar-only row
-	-- between the header and prose of two or more lines so it breathes.
+	-- "│ ✻ thought 8s"; the caller draws the thought's text itself when it
+	-- unrolls, so this is the header row alone.
 	---@param secs number
 	---@param click string
-	---@param text string?
-	function B.thought(secs, click, text)
+	function B.thought(secs, click)
 		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if not text then return end
-		local at = #B.lines + 1
-		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
 	end
 	-- The model thinking now: drawn outside the rail's own loop, so it frames
 	-- itself as an entry does. The label breathes while the row lives; a
