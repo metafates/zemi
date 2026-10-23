@@ -98,7 +98,8 @@ var ErrInUse = errors.New("store: open in another process")
 // needs every other connection gone, so another zemi's idle one fails it at
 // once (ErrInUse); the exclusive lock holds until release, which runs after
 // the files are gone. A missing file, or one SQLite cannot read (garbage, no
-// sessions table), is no ids: its sessions' pads age out on their own.
+// sessions table, or any other read failure), is no ids: its sessions' pads
+// age out on their own.
 // NOTE: a zemi started there while the files go waits on the lock, then
 // writes to the unlinked file and loses it; two windows racing on purpose.
 func ClaimForDelete(path string) (sessions []string, release func(), err error) {
@@ -123,6 +124,10 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 	if isBusy(err) {
 		d.Close()
 		return nil, nil, ErrInUse
+	}
+	if err != nil {
+		d.Close()
+		return nil, func() {}, nil
 	}
 	return sessions, func() {
 		_, _ = d.Exec(`ROLLBACK`)
