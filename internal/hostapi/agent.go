@@ -2131,7 +2131,24 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.Items = append(o.Items, OverlayItem{Text: m.ID, Section: "Needs a key", Desc: "export " + m.Env, Copy: "export " + m.Env + "="})
 	}
 	if !usable && len(o.Items) > 0 {
-		o.Body = "No models yet. Export one of these keys in your shell and start zemi again, or " + h.addProvider() + "."
+		// the init.lua path is split at its slashes, so a narrow box wraps it
+		// whole-component instead of mid-word; Body stays the line y copies
+		segs := []Segment{{Text: "No models yet. Export one of these keys in your shell and start zemi again, or add a provider to "}}
+		for part := range strings.SplitAfterSeq(h.initPath(), "/") {
+			segs = append(segs, Segment{Text: part})
+		}
+		segs = append(segs, Segment{Text: "."})
+		// no key export fixes a default whose provider nobody registered:
+		// name it, so the user knows what to change
+		if id := h.Settings.Str(config.KeyModelsDefault); id != "" {
+			p, _, _ := strings.Cut(id, "/")
+			_, registered := h.Providers.Lookup(p)
+			awaiting := slices.ContainsFunc(h.Providers.Missing(), func(m agent.MissingKey) bool { return m.ID == p })
+			if !registered && !awaiting {
+				segs = append(segs, Segment{Text: " models.default is " + id + ", whose provider is not registered."})
+			}
+		}
+		o.BodySegs, o.Body = [][]Segment{segs}, SegsText(segs)
 	}
 	return o
 }
