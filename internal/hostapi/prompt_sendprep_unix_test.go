@@ -26,13 +26,20 @@ func TestSendPrepCheap(t *testing.T) {
 		syscall.Getrusage(syscall.RUSAGE_CHILDREN, &kids)
 		return time.Duration(self.Utime.Nano() + self.Stime.Nano() + kids.Utime.Nano() + kids.Stime.Nano())
 	}
-	start := cpu()
-	for range 5 {
-		toolset, _ := h.profileTools(nil)
-		_, _, parts := h.buildSystemParts(nil, toolset)
-		promptSizes(parts, toolset)
+	// a retry, like TestPadBoundPerPipeline's: process-wide rusage counts the
+	// churn parallel tests' goroutines leave behind, which a loaded -race run
+	// inflates; a real send-path regression costs seconds and fails every pass
+	var d time.Duration
+	for range 3 {
+		start := cpu()
+		for range 5 {
+			toolset, _ := h.profileTools(nil)
+			_, _, parts := h.buildSystemParts(nil, toolset)
+			promptSizes(parts, toolset)
+		}
+		if d = cpu() - start; d <= 200*time.Millisecond {
+			return
+		}
 	}
-	if d := cpu() - start; d > 200*time.Millisecond {
-		t.Fatalf("5 prompt builds took %s of CPU; something expensive is back on the send path", d)
-	}
+	t.Fatalf("5 prompt builds took %s of CPU; something expensive is back on the send path", d)
 }
