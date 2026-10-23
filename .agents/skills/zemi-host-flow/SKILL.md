@@ -33,17 +33,14 @@ run's other flags are left behind; `-r` without `-C` re-roots into the session's
 a pipe on either.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
-completion function. `zemi models` and the `-m` and `--profile` completion boot
+completion function. `zemi models` and the `-m` completion boot
 inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
 guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
 server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
-reads. `-m`, `/model <provider/model>` and `zemi.model.set` write the conversation's slot - the active
-profile's own (`Host.ConversationTarget`), else `models.default` - so a pick under a profile moves what the
-conversation runs on (`--profile` applies before `-m`).
+reads. `-m`, `/model <provider/model>` and `zemi.model.set` write `models.default`, so a pick moves what the
+conversation runs on.
 `Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
-`--profile` and `/profile` (`Host.SetProfile`) write `agent.profile` for the next send: a switch
-changes the prompt and the tool set, so it busts the provider's prompt cache once.
 
 `zemi health`, `zemi models` and the flag completions boot headless (`bootHeadless`, the TUI's
 steps without it; its `stderr` is `Host.Stderr`). None of them sends a prompt: a host with no
@@ -105,7 +102,7 @@ watcher. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
 a key of their own, `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer
-times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`
+times is settled to its last value (`cfgSettle`), so `/model`, `/effort`
 and the flags survive a reload until the config changes that key. A key the config stopped
 writing returns to its saved pick, else its schema default, unless a runtime pick moved it since.
 
@@ -127,7 +124,7 @@ the section, so esc pops back. A key changes on a screen of its own, its picker 
 `/config edit` (its choices, else a one-line prompt whose `Overlay.Run`, Go-only, runs `config set`
 with the text), which closes back onto the rebuilt list; a value the command refuses keeps the
 prompt open with the error it named. `/config` and `/effort` write through
-`Host.SetConfig`, which sends `models.*` and `agent.profile` through their
+`Host.SetConfig`, which sends `models.*` through their
 own setters and refuses a `ui.theme` no theme answers to (`checkTheme`); `zemi.config.set` takes
 any name, since a plugin's or the project's theme may not be added yet, and `CheckTheme`
 records one nothing added once boot is done, while whorl draws. A key's `Choices` refuse any other value in `config.checkKind`,
@@ -163,7 +160,7 @@ the decision and reloads when it changed (a reload that fails before the trust s
 leave the old decision in force) under the watcher's lock, so the watcher does not reload first
 for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
-commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
+commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory),
 project skills, every project language server, the Lua tool's ask, and the private brain
 partition. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
@@ -189,15 +186,13 @@ applied one. A store made before goose only gains its version table: the baselin
 - **Models are targets.** `models.default` is the root: the conversation and every role left
   unset run on it. `models.chat` is the conversation when it leaves the default; `models.agents`
   (subagents with no model of their own), `models.titles`, `models.compact`, `models.memory`
-  (the reflector) and every `models.<profile>` each fall back to it while empty (`roleModel`). Nothing falls
+  (the reflector) each fall back to it while empty (`roleModel`). Nothing falls
   back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
   `models.*` value is `""` or an id with a `/` (`config.set` refuses a bare word), so targets
-  never nest. A profile is a target: its definition's `model` is the slot's default and
-  `models.<name>` overrides it, while a bare `/model` pick writes the default role (the active
-  profile's own slot when it has one) and no other slot. A
-  slot `zemi.model.add` registered is a target like the roles, with no shape of its own
+  never nest, and a bare `/model` pick writes the default role and no other slot. A
+  slot `zemi.model.add` registered is a target like the roles
   (`addTarget`; the registry lives in `agentHost.targets` under its own leaf mutex, cleared by
-  `PurgeGeneration`). Anything that takes a model — a profile, an agent definition, a workflow —
+  `PurgeGeneration`). Anything that takes a model — an agent definition, a workflow —
   takes a target name or a `provider/model` id (`modelRef`). `/health` checks each distinct
   target model.
 - **Classifying a state** (`zemi.classify.ask`, classify.go, `internal/classify`): one call
@@ -221,16 +216,6 @@ applied one. A store made before goose only gains its version table: the baselin
   row move during a slow tool; a subagent's run bills once, at its end. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields
   without the effort; the reflector bills the session it read, closed or not.
-- **The active profile is a config key.** `agent.profile` names what `resolveProfile("")`
-  runs (`default` is the shipped shape), so the user's config writes it and a reload keeps a
-  runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
-  a key config stopped writing to `default`, so deleting a profile and its `config.set` line
-  runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send. A profile is defined with `zemi.agent.profile.add` from any origin, the
-  last definition of a name winning: a `-name` denylist or an
-  allowlist of tools, so a new tool is in the default set until a profile drops it. An allowed
-  name no tool has is an `/errors` entry; a `-name` no tool has fails the send, since the tool
-  it meant to drop may run under another name (`profileTools`).
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model and
   tools may change; the prompt comes from `ag.pin`); `AgentSend` carries the previous idle runner's conversation over (`Runner.Continue`), and
   every step's input passes `Runner.signed`, which drops the thinking whose signed prefix
@@ -366,21 +351,17 @@ applied one. A store made before goose only gains its version table: the baselin
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
-- **Read-only agents** (`Profile.ReadOnly`) are enforced in
+- **Read-only agents** (`AgentDef.ReadOnly`) are enforced in
   `tools.Pipeline.check` (`Pipeline.ReadOnly`): every action denied - a write, a command, a
-  Lua tool; reads and scratchpad writes pass. Approving the plan returns to the agent that ran before: the read-only
-  turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
-  fresh send as the restored agent (`planApproved`, the plan already in history), so the
-  agent never passes through idle. A read-only turn that ends in plain text instead of the
-  `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`):
-  a question or a report is not a plan, so the text is never presented for approval.
+  Lua tool; reads and scratchpad writes pass. A subagent the plan builtin starts, or one
+  whose agent file says `read_only: true`, runs under it; the main conversation never is.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
   (`promptBox`, `choiceRows`). The permission prompt reads only typed fields (`PermRequest.Tool`, `Subject`,
   `Arg`, `Preview`, `Agent`, `Owner`, `Script`), never meaning parsed back out of the text.
   Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
-- **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
-  then `zemiPrompt`, the read-only agent's plan section, the user, builtin and plugin skills, the
+- **System prompt** (prompt.go): `basePrompt` + `delegationPrompt`,
+  then `zemiPrompt`, the user, builtin and plugin skills, the
   user's `<config>/AGENTS.md` under `# User instructions` (its own budget) and Lua sections
   (`agent.assemble`, then the `prompt` of each Lua tool in the tool set). Of the project it holds
   only what trust decides and what a trusted project's own Lua
@@ -400,14 +381,13 @@ applied one. A store made before goose only gains its version table: the baselin
   conversation holds too; `dropPin` forgets it. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`
-  drops its "Using tools" line, and a read-only agent without the `plan` tool
-  (a profile's drop) ends in `planReply`. No kept tool's description names a dropped tool
+  drops its "Using tools" line. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at
   first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
-  and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (profile,
-  model, `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
+  and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (model,
+  `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
   schema fails calls). `closeSession` (`/new`, `/resume`) zeroes it, `compactDone` and
   `deleteRecipe` clear its key (`dropPin`: `/prompt` and a running turn keep the text, and a
   build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on

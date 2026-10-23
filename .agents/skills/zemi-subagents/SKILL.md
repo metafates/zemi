@@ -61,7 +61,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   an empty composer taking that run's waiting queue back (`AgentTakeQueue`, the session's
   untouched). Its thinking buffers as the session's does and settles as one Thought row where
   the call or the reply that ends it lands (`flush`). A fork is an
-  `agentRun` too (`profile` `fork`), and its `forkBase` is where its own messages start in the
+  `agentRun` too (`agent` `fork`), and its `forkBase` is where its own messages start in the
   history: the conversation it opened with is not its report, and `send_to` refuses a fork this
   process forgot, whose rows hold its own work alone. `send_to` with `stop` kills a running run
   (the model's one stop, as `/agents stop` is the user's; a stopped run reports nothing), `wait`

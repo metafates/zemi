@@ -375,7 +375,7 @@ before the reload it triggers when the decision changed, so a revoke holds
 even if that reload stops at an earlier failing step.
 
 Trusted, zemi loads the project's `.agents` config and instruction files
-(and a profile's `context.files`) and starts language servers (builtin and
+and starts language servers (builtin and
 user-added; the Lua of zemi's own trees gets its server either way).
 Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no project language server starts (zemi's own Lua still gets its own), and `.agents` edits trigger no reload.
@@ -787,10 +787,10 @@ error. A value a known key's kind or choices refuse is flagged in `/errors`
 and leaves the key at what it held, so one bad line never stops the rest of
 init.lua. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, `/profile`, `-m`) is not reverted
-by an unrelated config edit; replaying `agent.profile` over a read-only agent
-pick would loosen its read-only plan silently, so a pick is settled to its last value too.
-A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
+so a runtime pick (`/model`, `/effort`, `-m`) is not reverted
+by an unrelated config edit; a pick is settled to its last value too, so a
+reload cannot loosen it silently. A key whose `set` line was deleted returns
+to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
 
 A runtime pick outlives the process: the global store keeps it per key as
 `config:<path>`, one row each, so two windows never lose each other's picks,
@@ -956,26 +956,7 @@ handler runs no Lua.
 ### 6.3 Agents, sessions, models
 
 ```lua
--- Profiles are named agent shapes (fantasy agent + prompt + tools + model).
-zemi.agent.profile.add("coder", {
-	model = "anthropic/claude-sonnet-4-5",
-	system = [[You are zemi, a coding agent...]],
-	tools = { "read", "edit", "shell", "glob", "grep" },
-	context = { files = { "AGENTS.md", "CONTRIBUTING.md" } },
-	temperature = 0.2,
-})
--- read_only makes a profile a planning agent: the project is read-only to it
--- and the pipeline denies writes and confines commands; its turn ends in a
--- plan the user approves, asks changes to, or saves to start later. A plugin
--- or a project registers profiles the same way, so a planner can ship as a
--- plugin; the switch stays the user's (a /profile pick, ctrl+t, or their own
--- command or keymap):
-zemi.agent.profile.add("planner", { read_only = true })
-zemi.command.add("plan", function() zemi.config.set("agent.profile", "planner") end)
-
-zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
-                                           -- and what deleting this line returns to
-zemi.agent.current()                 -- session handle: { id = "...", profile = "..." }
+zemi.agent.current()                 -- session handle: { id = "...", model = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
                                        -- message enqueues as steering (§4)
@@ -990,7 +971,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "default" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the default role:
-                                                 -- the active profile's slot, else models.default
+                                                 -- models.default
 zemi.model.pick(zemi.model.role.TITLES)  -- open a target's picker (returns at once; none opens /model)
 zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })
 zemi.model.del("classifier")         -- a slot of its own, for a job rather than a conversation
@@ -1001,11 +982,9 @@ h:cancel()
 -- Models are targets: models.default is the root the conversation and every
 -- role left unset run on; models.chat pins the conversation past it, and
 -- models.agents, models.titles, models.compact and models.memory (the
--- reflector) follow the default while empty; zemi.config.set sets them. A
--- profile is a target too, its
--- definition's model the slot's default that models.<name> overrides.
+-- reflector) follow the default while empty; zemi.config.set sets them.
 -- zemi.model.add registers a slot with a model of its own, for code that runs
--- a model on a job. A profile's or a slot's own model names a builtin role or
+-- a model on a job. A slot's own model names a builtin role or
 -- a provider/model id; an agent definition and a workflow take a target name
 -- too.
 
@@ -1030,7 +1009,7 @@ derived from its id and picked from a pool of one-codepoint, East Asian Wide
 glyphs of Emoji 11.0 or older, so it is stable across resume and restart
 without storage; subagent runs, in child sessions, never surface one.
 
-There is no `task` profile: a side turn is a subagent, a named
+A side turn is a subagent, a named
 definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a fresh
@@ -1050,7 +1029,7 @@ holding a preamble and the caller's prompt, and its calls carry the caller's
 own provider cache key (`prompt_cache_key`, `x-session-affinity`, §10.7), so
 the provider reads that prefix out of its cache instead of writing it again.
 Everything else is an ordinary subagent run: an `agentRun` in `taskReg`, a child
-session whose `profile` is `fork`, `send_to`, `/agents`, `/export`, the same
+session whose `agent` is `fork`, `send_to`, `/agents`, `/export`, the same
 permission pipeline, the same billing. It is no definition: `forkAgent` holds a
 name and a description only, so the tool's enum, its agent list and
 `zemi.agent.list()` name it, while a user's `agents/fork.md` is ignored with an
@@ -1278,7 +1257,7 @@ section, skills index, project context ship as built-in sections).
 The main agent's fixed prefix, the system prompt and every tool's
 description and schema, is built once and sent verbatim, because anything
 that varies per turn busts the provider's prompt cache. It is keyed on
-what the user switches (profile, model, trust) and each tool's name and
+what the user switches (model, trust) and each tool's name and
 input schema, since a stale schema
 fails calls: a change there rebuilds it. Otherwise it is rebuilt only
 where the cache is gone anyway: `/new`, `/resume`, a compaction, and
@@ -1345,15 +1324,11 @@ nearest instruction file not already in the prompt, once per session),
 goes back to `pending`, so nothing reads as running while the agent is idle), `question` (1-4 questions in one overlay, options or a typed
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
-open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; for a
-read-only agent the agent active before it is remembered at its start,
-and approval returns to it - the turn ends there because the read-only
-pipeline cannot implement, and its follow-up is a fresh send as the
-restored agent under the same claim; Save, don't start approves it with no
-handoff, saving the plan and leaving the turn ended until the user says when; a
-read-only run that ends in plain
-text instead of the `question` or `plan` tool is told so once, since a
-question or a report is no plan to approve),
+open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; the
+model keeps its own capabilities and stays the same agent: an approval lets it
+implement in the same turn, Save, don't start approves with no
+handoff, saving the plan and leaving the turn ended until the user says when;
+changes are asked for and a dismissal ends the turn),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, or a private-partition brain file, `replaces` rewrites or drops one, §10.4),
 `skill` (loads a SKILL.md body on demand), plus the
@@ -1386,8 +1361,8 @@ pipeline, one gate per call, and returns a handle whose `wait()` suspends the
 script. Only the script's print and return values reach the model, so a script
 batches, parallelizes and filters what would otherwise be a step per call
 (the tool result carries the whole output, `Pipeline.Script`, not the cut a
-direct call gets). Only the running script reaches it, the set is the run's own
-(profile filter included), and a script that only drives tools needs no
+direct call gets). Only the running script reaches it, the set is the run's own,
+and a script that only drives tools needs no
 approval of its own: `zemi.tool.call` is the one member `luaDelegated` lets an
 unapproved run call, since what it reaches is gated anyway. `zemi.tool.list()`
 names that set - an MCP tool a step is holding back included - and
@@ -1731,7 +1706,7 @@ capability model that matters is the manifest's `uses`, not who calls.
 ## 7. Storage (SQLite)
 
 ```
-sessions(id, parent_id, title, profile, created_at, updated_at,
+sessions(id, parent_id, title, agent, created_at, updated_at,
          prompt_tokens, completion_tokens, cache_read_tokens,
          cache_billed_tokens, cost, last_in, run_status)           -- run_status: how the session's last run ended;
                                                                   -- last_in: the context its latest step used
@@ -1874,7 +1849,7 @@ rides the `memories.md` line and its ledger entries.
   exists at all: the whole screen left is Go's, and the boot box states the
   error, the log that holds the whole traceback, and the two keys that work
   there, `c` to copy the error and `q` to quit. The
-  shipped right widgets (`statusline.profile`, `model`, `effort`,
+  shipped right widgets (`statusline.model`, `effort`,
   `context`, `cost`, `hints`) show the model, the context used against the
   window (the session total when the window is unknown), the
   session cost when the model spec carries prices (`cost_per_1m_in` /
@@ -1884,7 +1859,7 @@ rides the `memories.md` line and its ledger entries.
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: above the statusline row, the border in line with the
   composer frame on the side of the pill that opened it: a Lua picker
-  left, `/profile`, `/model`, `/effort` and `/usage` right; the box stands on
+  left, `/model`, `/effort` and `/usage` right; the box stands on
   the frame, whose top rule is its bottom border, the label that rule carries
   giving way to it cell for cell). A box takes its width on the frame it
   opens in and keeps it: a menu that resized as the selection moved, or as a
@@ -2319,8 +2294,6 @@ rides the `memories.md` line and its ledger entries.
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`,
-  `/profile [name]` (the agent profile the next send runs as; a picker without a name;
-  `ctrl+t`/`ctrl+shift+t` cycle the agent),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `search <words>` finds them in every project, `r` resumes the
   selected session, `n` renames it, `x` opens its Delete, enter offers both),
@@ -2360,8 +2333,7 @@ rides the `memories.md` line and its ledger entries.
   item index; widget segments carry their `click` id (§6.6) and are
   targets only while their widget has `on_click` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `tui/statusline.lua`: the profile opens its
-  picker, the project path `/projects`, the model the model
+  `tui/statusline.lua`: the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`, running jobs `/jobs`. The chat widget marks a
   digest (`turn:<first
@@ -2531,7 +2503,7 @@ rides the `memories.md` line and its ledger entries.
    skills live in the config dir (`~/.config/zemi/skills/`) and start
    enabled, tracked by their `skills` row and file; nothing model-written
    is a skill: a repository procedure is a recipe.
-3. **Structure (config)**: profiles, prompt sections,
+3. **Structure (config)**: prompt sections,
    keymaps, widgets. The learning loop proposes none of it: these are
    edits to files in the config dir, made by the user or by the agent
    through the permission-gated file tools (§6.1).
@@ -2549,8 +2521,7 @@ session summaries. Additional signals: explicit user teaching
 
 ### 10.3 Distillation: the reflector
 
-The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin and
-not a profile: one tool-less model call over a closed or idle session. With no
+The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin: one tool-less model call over a closed or idle session. With no
 tools it cannot act at all, so its only output is the proposal document below.
 Triggered on `session.close` (`/new`, `/resume`), once an open zemi's session
 has had no turn for ten minutes (the same idle the sweep waits for, so the
@@ -2968,8 +2939,8 @@ the AfterWrite hook scrubs what the user approves.
 - Registration conflicts (duplicate widget id, keymap collision) log at
   load with origin path, the last registration winning, like nvim's plugin
   loading noise but structured. One plugin can neither
-  replace nor remove another's: event-handler ids, profile
-  ids, builtin tool names, command names, and widget ids. Builtin tool
+  replace nor remove another's: event-handler ids, model slot
+  names, builtin tool names, command names, and widget ids. Builtin tool
   names and command names are reserved, so no later registration shadows
   them and `/reload`/`/RELOAD` cannot diverge. Command names
   collide case-insensitively: a registration whose name differs from an

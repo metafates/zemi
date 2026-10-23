@@ -85,9 +85,8 @@ var builtinAgents = []AgentDef{
 		Source: lua.OriginBuiltin,
 	},
 	{
-		// the planner a read-only agent delegates to in a planning session (§6): a
-		// read-only architect persona whose report is a concrete plan the
-		// sending agent turns into a plan tool call.
+		// a read-only architect persona whose report is a concrete plan draft
+		// the caller presents with its plan tool.
 		Name:        "plan",
 		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
 		Tools:       readOnlyTools,

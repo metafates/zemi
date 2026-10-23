@@ -1,4 +1,4 @@
-# Subagents and profiles
+# Subagents
 
 ## Subagents (`agents/<name>.md`)
 
@@ -22,7 +22,7 @@ Report a one-line verdict (ready, or fix first), then each finding as `path:line
 - `description` (required) is how the main agent picks the agent: it reads every description, cut at 200 characters, on every request. Say what it does and when to use it, in one sentence specific enough that no other agent matches. "Use after X" or "use for any Y" gets it used without being named.
 - `tools` is an allowlist (`read, grep, glob`), or `-name` entries that remove from the full set (`-glob`), so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`, which no subagent gets. `update` is outside the allowlist and every agent definition has it: it sends the caller a line while the run goes on. Names are the lowercase tool names you call yourself (`config.md` lists them; MCP tools are `mcp_<server>_<tool>`). An unknown tool name fails the agent.
 - `read_only: true` denies every action - a write, a command, a Lua tool - whatever its tools, like `explore`; the agent is told so, and its write and edit still work in the scratchpad. Use it for any agent that should only look; a build or a test run usually writes inside the project (build dirs, caches) and is denied under it.
-- `model` is a target (`default`, `chat`, `agents`, `titles`, `compact`, `memory`, a name a profile or `zemi.model.add` registered, or a `provider/model`); omitted or `inherit`, `models.agents`. An id that resolves to nothing fails the run, not the file: `provider ... is not registered`.
+- `model` is a target (`default`, `chat`, `agents`, `titles`, `compact`, `memory`, a name `zemi.model.add` registered, or a `provider/model`); omitted or `inherit`, `models.agents`. An id that resolves to nothing fails the run, not the file: `provider ... is not registered`.
 - The body is the job, in under 40 lines: its one job in a line; the steps, with this project's real commands and paths; what to check; the report's shape; what it must not do.
 - `/agents` lists every agent; its first row, New agent, fills `/agents new`, and `/agents open <name>` edits a file agent.
 
@@ -39,15 +39,3 @@ New agent (`/agents new` sends you here, or the user asked for one):
 
 `agent = "fork"` continues the conversation that called it, in parallel, on the caller's model, prompt and tools, so it shares the caller's prompt cache and needs no briefing: give it the task alone. It is not a definition (there is no `agents/fork.md`). Only its report comes back, like a subagent's; it cannot fork again, and `question`, `plan` and `todos` refuse in it.
 
-## Profiles (`init.lua`)
-
-A profile sets the main conversation's model, prompt and tools; `/profile <name>`, ctrl+t, `--profile` or `zemi.config.set("agent.profile", name)` picks one. `tools` works as in an agent file, except that an allowed name no tool has is only an /errors entry (a `-name` one still fails the send):
-
-```lua
--- no workflows, Lua tool, background jobs or LSP queries: fewer schemas on every request
-zemi.agent.profile.add("lean", { tools = { "-workflow", "-lua", "-job_start" } })
-```
-
-Also `model`, `temperature`, `system` (replaces the base prompt; zemi's own sections stay), `context = { files = { ... } }` (files pinned into the prompt) and `read_only = true` (a planning agent). Without the file tools there is no read-before-write check, no rewind checkpoint and no diagnostics after an edit; without `skill` no skill loads.
-
-A profile is a model target: its `model` is what its slot runs until someone picks `models.<name>` (`/model roles`, then the profile's row), and `models.<name>` beats the definition's `model`. So a profile without a `model` of its own follows `models.default`. `model` names a builtin role or a `provider/model`, never another target: nothing nests. Two targets that want one model share an id, not a reference.

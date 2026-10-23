@@ -29,7 +29,7 @@ panics; a denied result names who decided and why. Host-implemented tools (`agen
 `workflow`, `lua`, MCP and Lua tools) run the events through `preCheck` and call the gate
 themselves.
 
-The gate (`Pipeline.Check`), in order: a read-only agent (`Profile.ReadOnly`) denies every action - writes, commands, Lua tools - while its reads and
+The gate (`Pipeline.Check`), in order: a read-only agent (`AgentDef.ReadOnly`) denies every action - writes, commands, Lua tools - while its reads and
 its pad writes pass; then the veto (`Pipeline.Veto`, only when an asker exists - a gate
 without one cannot survive the veto's interpreter round-trip); then the ask path for an ask
 decision, and everything else runs.

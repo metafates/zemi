@@ -13,7 +13,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | Lua in init.lua or the lua tool: the API, origins, events, what may wait | `lua.md` |
 | keymaps, widgets, the statusline, themes and colors, layout | `ui.md`, then `lua.md` for API |
 | a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a widget or key), which says when `lua.md` is needed |
-| a subagent or a profile | `agents.md` |
+| a subagent | `agents.md` |
 | a skill or a prompt command | `skills.md` |
 | a workflow: controlling a run, rerunning, saving or making one | `workflows.md` |
 | memories, the reflector, recipes | `memory.md` |
@@ -22,7 +22,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 
 ## Where things go
 
-- Settings, keymaps, profiles, colors, layout and changes to the shipped widgets: the user's `init.lua`.
+- Settings, keymaps, colors, layout and changes to the shipped widgets: the user's `init.lua`.
 - A feature with logic of its own (a tool, a new widget, a command and its handlers): a local plugin, which the user can share, update and turn off on its own (`plugins.md`).
 - Agents, prompt commands, skills and saved workflows: files in the user config directory (every project) or in the repository's `.agents/` (shared through git, loaded once the user trusts the project). Writing one, ask where it lives in one `question` call: recommend the repository for one about this code base and every project otherwise; outside a git repository offer only every project, and in a project the user has not trusted say that a repository file loads only after `/trust`. If the `question` tool is missing, take the recommended answers and say which.
 
@@ -33,7 +33,7 @@ The prompt names the exact user config, project config and local plugins directo
 - Ask before you edit the user's init.lua, and say which lines you add or change. A plugin, agent, prompt command, skill or workflow never needs an init.lua edit to load.
 - Never write an API key into a file: config reads it with `zemi.env.get("NAME")`.
 - zemi reloads within a second of a config file change once no turn runs, and the Lua tool reloads before a script whenever a config or plugin file changed, so a script always sees what is on disk and its result starts with what failed to load. A reload drops what earlier scripts registered.
-- The system prompt is pinned per session: the listed skills, agents and workflows, a profile's text and `agent.assemble` sections change after `/new` or `/compact`. A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
+- The system prompt is pinned per session: the listed skills, agents and workflows and `agent.assemble` sections change after `/new` or `/compact`. A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
 - For the Lua API, grep the types file in the shell, never read it whole: `grep -n '^function zemi\.'` lists every member with its parameters, `grep -n -B20 'function zemi.config.add('` one member with the rules and `---@return` above it, and `grep -n -A20 '@class zemi.WidgetSpec'` (or `@alias zemi.SettingKind`) one type with its fields.
 
 ## Check a change

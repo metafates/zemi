@@ -94,7 +94,7 @@ tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme ch
 ```
 
 A detached tmux pane reports 256 colors; `env -u NO_COLOR ... COLORTERM=truecolor` (what
-the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `--profile` and `-m` apply
+the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `-m` applies
 after init.lua. Parallel testers each take their own `$T`, tmux server name and port: on a
 shared port the other tester's server answers, and on a shared tree its `init.lua` loads.
 

@@ -520,8 +520,8 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 
 // SystemPrompt is the pinned system prompt and context message the last send
 // carried, "" before the first one and briefly after a resume, whose pin
-// builds in the background. /usage measures it; this is the text, so a
-// profile, an assemble handler or an instruction file the budget cut can be
+// builds in the background. /usage measures it; this is the text, so an
+// assemble handler or an instruction file the budget cut can be
 // read instead of guessed at. It is never rebuilt here: assembling it runs Lua
 // handlers on the interpreter, which a Lua caller would deadlock on.
 func (h *Host) SystemPrompt() string {
@@ -2034,8 +2034,9 @@ func rolesDesc(own []string) string {
 	}
 }
 
-// OpenModelRoles lists the conversation, the roles and the profiles with the
-// model each runs on. Enter opens a slot's model list over it, and the list
+// OpenModelRoles lists the conversation's default slot, the roles and the
+// slots config registered with the model each runs on. Enter opens a slot's
+// model list over it, and the list
 // rebuilds when that one closes.
 func (h *Host) OpenModelRoles() error {
 	ui, err := h.Screen()

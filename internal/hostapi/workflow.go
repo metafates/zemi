@@ -1873,7 +1873,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	items = append(items, running...)
 	items = append(items, earlier...)
 	// NOTE: while a run lives, an open list reads the saved files and the
-	// pad's journals each second; cache them if a large pad shows in a profile.
+	// pad's journals each second; cache them if a large pad shows in a list.
 	for _, w := range h.workflows() {
 		path := ""
 		keys := []ItemKey{
