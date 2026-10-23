@@ -334,6 +334,8 @@ func (c *Client) closeDoc(key, uri string) {
 	delete(c.docs, key)
 	delete(c.opened, key)
 	delete(c.diags, key)
+	delete(c.pubSeq, key)
+	delete(c.synced, key)
 	c.mu.Unlock()
 	_ = c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": uri}})
 }
