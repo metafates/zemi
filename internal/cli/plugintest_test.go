@@ -145,6 +145,17 @@ for i = 1, 300 do test("case " .. i, function() end) end
 			".zemi/init.lua":    `zemi.event.on("tool.pre", function() while true do end end)`,
 			".zemi/tests/a.lua": `zemi.test("spins", function() zemi.test.emit("tool.pre", { tool = "shell", input = {} }) end)`,
 		}, want: "FAIL .zemi/tests/a.lua:1: spins\n  error in event tool.pre during test.emit at .zemi/tests/a.lua:1:\n    .zemi/init.lua:1: context deadline exceeded\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "an ask verdict surfaces", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
+			".zemi/init.lua": `zemi.event.on("permission.request", function(ev)
+	if ev.arg == "danger" then return { decision = "ask" } end
+end, { id = "guard" })`,
+			".zemi/plugin.json": `{"uses": ["perm"]}`,
+			".zemi/tests/a.lua": `local test = zemi.test
+test("an ask verdict surfaces", function()
+	test.eq(test.emit("permission.request", { subject = "tool.shell", arg = "danger" }), { decision = "ask" })
+	test.eq(test.emit("permission.request", { subject = "tool.shell", arg = "safe" }), nil)
+end)`,
+		}, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
 			want: "no case matches \"wether\" (37 cases in 2 files)\n",

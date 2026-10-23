@@ -617,7 +617,14 @@ func (t *PluginTest) emit(L *glua.LState) int {
 				if decision == "" {
 					return []glua.LValue{glua.LNil}
 				}
-				return []glua.LValue{lua.FromGo(L, map[string]any{"decision": decision, "reason": reason, "input": input})}
+				verd := map[string]any{"decision": decision}
+				if reason != "" {
+					verd["reason"] = reason
+				}
+				if input != nil {
+					verd["input"] = input
+				}
+				return []glua.LValue{lua.FromGo(L, verd)}
 			}
 		}
 		switch name {
@@ -638,6 +645,8 @@ func (t *PluginTest) emit(L *glua.LState) int {
 		case EventPermissionRequest, EventAppQuit, EventComposerSubmit:
 			if res := t.h.emitVetoable(ctx, name, hs, ev); res.Denied {
 				return veto("deny", res.Reason, nil), nil
+			} else if res.Ask {
+				return veto("ask", "", nil), nil
 			}
 			return veto("", "", nil), nil
 		}
