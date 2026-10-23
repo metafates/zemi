@@ -628,7 +628,8 @@ function zemi.command.list() end
 
 --- What a vetoable handler returns to veto: `decision = "deny"` with a
 --- reason. Any other return lets the event through; on `permission.request`
---- a `zemi.PermVeto` may also hand the request to the ask path.
+--- a `zemi.PermVeto` may also hand the request to the ask path, and on
+--- `composer.submit` a `zemi.SubmitVeto` may rewrite the text instead.
 ---@class zemi.Veto
 ---@field decision "deny"
 ---@field reason? string
@@ -637,6 +638,13 @@ function zemi.command.list() end
 --- "ask" runs zemi's ask path (the overlay) for it, nil lets it run.
 ---@class zemi.PermVeto: zemi.Veto
 ---@field decision "deny"|"ask"
+
+--- What a `composer.submit` handler returns: "deny" refuses the send,
+--- "rewrite" sends `text` in the place of what was typed, nil sends as is.
+--- The handler has 50 ms, so it cannot ask the user first.
+---@class zemi.SubmitVeto: zemi.Veto
+---@field decision "deny"|"rewrite"
+---@field text? string
 
 ---@class zemi.EventOpts
 ---@field id? string Name the handler so `zemi.event.off` can drop it.
@@ -678,7 +686,7 @@ zemi.event = {}
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
----@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.SubmitVeto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string

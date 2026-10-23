@@ -647,6 +647,8 @@ func (t *PluginTest) emit(L *glua.LState) int {
 				return veto("deny", res.Reason, nil), nil
 			} else if res.Ask {
 				return veto("ask", "", nil), nil
+			} else if res.Text != "" {
+				return veto("rewrite", "", nil), nil
 			}
 			return veto("", "", nil), nil
 		}

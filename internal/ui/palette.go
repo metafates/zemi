@@ -221,12 +221,16 @@ func (a *App) runSlashCommand(text string) {
 }
 
 // sendMessage runs the composer.submit vetoable event, then appends the
-// message to the transcript and drives the agent.
+// message to the transcript and drives the agent. A rewrite verdict replaces
+// the text the user typed, before it is sent.
 func (a *App) sendMessage(text string) {
 	res := a.host.EmitVetoable(context.Background(), hostapi.EventComposerSubmit, map[string]any{"text": text})
 	if res.Denied {
 		a.pushToast(slog.LevelWarn, "Message blocked", res.Reason)
 		return
+	}
+	if res.Text != "" {
+		text = res.Text
 	}
 	draft := a.composer.text
 	a.composer.pushHistory(text)

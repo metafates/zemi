@@ -1182,6 +1182,9 @@ type VetoResult struct {
 	// Ask is a handler's { decision = "ask" }: the gate runs the ask path
 	// for it. A denial outranks it.
 	Ask bool
+	// Text is a composer.submit handler's { decision = "rewrite", text = ... }:
+	// what the user typed is replaced with it, pre-send.
+	Text string
 }
 
 // EmitVetoable runs handlers synchronously on the interpreter, each bounded
@@ -1205,11 +1208,15 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		ask    bool
 		reason string
 		timed  bool
+		text   string
 	}
 	outcomes := make([]outcome, len(handlers))
 	allowed := []string{"deny"}
-	if name == EventPermissionRequest {
+	switch name {
+	case EventPermissionRequest:
 		allowed = append(allowed, "ask")
+	case EventComposerSubmit:
+		allowed = append(allowed, "rewrite")
 	}
 	ev := eventTable(name, "host", payload)
 	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
@@ -1233,6 +1240,8 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					case decision == "ask":
 						outcomes[i] = outcome{ask: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
+					case decision == "rewrite":
+						outcomes[i] = outcome{text: glua.LVAsString(tb.RawGetString("text"))}
 					}
 				}
 			}
@@ -1255,6 +1264,9 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		}
 		if o.ask {
 			res.Ask = true
+		}
+		if res.Text == "" {
+			res.Text = o.text
 		}
 	}
 	if res.Denied {
