@@ -10,8 +10,9 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// streamDoc is one long reply: headings, prose, a list, a code fence and a
-// table, long enough that settledPrefix splits it while streaming.
+// streamDoc is one long reply: headings, prose, a list, a code fence, a
+// tilde fence holding pipe rows and a long list, long enough that
+// settledPrefix splits it while streaming.
 func streamDoc() string {
 	var b strings.Builder
 	for i := range 30 {
@@ -22,9 +23,16 @@ func streamDoc() string {
 		}
 		if i%3 == 1 {
 			b.WriteString("```go\nfunc example" + strconv.Itoa(i) + "() int {\n\treturn " + strconv.Itoa(i) + " * 2 // doubled\n}\n```\n\n")
+			b.WriteString("~~~\n| not | a | table |\n|---|---|---|\n\nstill ~~~ fenced, not a table\n\n~~~\n\n")
 		}
 		if i%3 == 2 {
 			b.WriteString("| col a | col b | col c |\n|---|---|---|\n| x" + strconv.Itoa(i) + " | y" + strconv.Itoa(i) + " | z" + strconv.Itoa(i) + " |\n\n")
+		}
+		if i%7 == 3 {
+			for j := range 12 {
+				b.WriteString("- item " + strconv.Itoa(i) + "." + strconv.Itoa(j) + " with a few words apiece to stretch the list\n")
+			}
+			b.WriteString("\n")
 		}
 	}
 	return b.String()
