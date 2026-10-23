@@ -2584,7 +2584,7 @@ func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
 // it ended in a tool call (an approved or dismissed plan). A read-only agent
 // is told to end every turn with the plan tool; one that ended in text forgot.
 func plainTextEnd(runner *agent.Runner) string {
-	h := runner.History
+	h := runner.Snapshot()
 	if len(h) == 0 || h[len(h)-1].Role != fantasy.MessageRoleAssistant {
 		return ""
 	}

@@ -493,6 +493,22 @@ func (r *Runner) Snapshot() []fantasy.Message {
 	return slices.Clone(r.History)
 }
 
+// SetHistory replaces the conversation, under the same lock every reader
+// takes: a compaction or prune may land while another goroutine (a plan
+// followup's aside, a report) still reads the old slice header.
+func (r *Runner) SetHistory(h []fantasy.Message) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.History = h
+}
+
+// Len is the conversation's message count.
+func (r *Runner) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.History)
+}
+
 // Tools is the tool set the last request sent, in order: a fork rebuilds it so
 // the prefix the provider cached still matches.
 func (r *Runner) Tools() []fantasy.ToolInfo {

@@ -238,7 +238,7 @@ func (h *Host) CompactNow(focus string) error {
 	case ag.active:
 		ag.mu.Unlock()
 		return Usagef("a turn is running; compact after it")
-	case runner == nil || len(runner.History) < 2:
+	case runner == nil || runner.Len() < 2:
 		ag.mu.Unlock()
 		h.Notify(slog.LevelWarn, "Nothing to compact yet", "")
 		return nil
@@ -262,7 +262,7 @@ func (h *Host) AutoCompact() {
 	ag := h.agents
 	ag.mu.Lock()
 	runner := ag.runner
-	if ag.active || ag.compacting || runner == nil || len(runner.History) < 2 {
+	if ag.active || ag.compacting || runner == nil || runner.Len() < 2 {
 		ag.mu.Unlock()
 		return
 	}
@@ -337,12 +337,12 @@ func (h *Host) handoffGate(runner, prev *agent.Runner, from string, scope *turnS
 	ag.mu.Lock()
 	ag.handoffAsked = key
 	ag.mu.Unlock()
-	if !compactIt || prev == nil || len(prev.History) < 2 {
+	if !compactIt || prev == nil || prev.Len() < 2 {
 		return // dismissed, or nothing to compact
 	}
 	// the send's own scope covers the summary call: esc cancels both
 	if h.compactReporting(scope.ctx, prev, compactHandoff, "") {
-		runner.History = prev.History // the send opens on the summary, not the whole history
+		runner.SetHistory(prev.Snapshot()) // the send opens on the summary, not the whole history
 	}
 }
 
@@ -433,8 +433,8 @@ func (h *Host) setCompacting(on bool) {
 // clears old tool output and stops there when that is enough; otherwise
 // everything but a verbatim tail is summarized, merging an earlier summary.
 func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus string) error {
-	h.Log.Info("compacting", "origin", "agent", "reason", reason, "messages", len(runner.History))
-	history := runner.History
+	history := runner.Snapshot()
+	h.Log.Info("compacting", "origin", "agent", "reason", reason, "messages", len(history))
 	window := h.AgentStream().CtxWindow
 	threshold := h.compactThreshold(window)
 	if reason != compactManual && reason != compactHandoff {
@@ -443,7 +443,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 		used := h.agents.lastIn - freed
 		h.agents.mu.Unlock()
 		if freed > 0 && reason == compactAuto && used < threshold {
-			runner.History = pruned
+			runner.SetHistory(pruned)
 			h.compactDone(used, false)
 			h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Cleared %dk tokens of old tool output", freed/1000)})
 			return nil
@@ -516,11 +516,12 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	if err := h.storeCompaction(summary, tail); err != nil {
 		return err
 	}
-	runner.History = append([]fantasy.Message{summary}, tail...)
+	kept := append([]fantasy.Message{summary}, tail...)
+	runner.SetHistory(kept)
 	h.agents.mu.Lock()
 	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
 	h.agents.mu.Unlock()
-	h.compactDone(estTokens(runner.History...)+overhead, reason == compactManual)
+	h.compactDone(estTokens(kept...)+overhead, reason == compactManual)
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactedRow})
 	return nil
 }
@@ -647,7 +648,7 @@ func (h *Host) summarizeAside(ctx context.Context, runner *agent.Runner, tail in
 	if focus != "" {
 		note += "\n\nAdditional focus: " + focus
 	}
-	res, err := runner.Aside(ctx, runner.History, note)
+	res, err := runner.Aside(ctx, runner.Snapshot(), note)
 	if err != nil {
 		return "", err
 	}
