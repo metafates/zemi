@@ -408,6 +408,48 @@ func TestAgentTableCachesToolRows(t *testing.T) {
 	}
 }
 
+// TestUsageTablesCache: the usage and context tables are reused while the
+// tallies hold and rebuilt when one moves, so a turn's frames build them once.
+func TestUsageTablesCache(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	tables := func(s StreamSnapshot, priced bool) (*glua.LTable, *glua.LTable) {
+		var u, c *glua.LTable
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			u, c = h.usageTables(L, s, priced)
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u, c
+	}
+	base := StreamSnapshot{SessionIn: 10, SessionOut: 5, SessionCost: 0.5, LastIn: 7, CtxWindow: 100}
+	firstU, firstC := tables(base, true)
+	if u, c := tables(base, true); u != firstU || c != firstC {
+		t.Fatal("unchanged tallies rebuilt the tables")
+	}
+	for _, tc := range []struct {
+		name string
+		move func(*StreamSnapshot)
+	}{
+		{"out moved", func(s *StreamSnapshot) { s.SessionOut++ }},
+		{"in moved", func(s *StreamSnapshot) { s.SessionIn++ }},
+		{"cost moved", func(s *StreamSnapshot) { s.SessionCost++ }},
+		{"last moved", func(s *StreamSnapshot) { s.LastIn++ }},
+		{"window moved", func(s *StreamSnapshot) { s.CtxWindow++ }},
+	} {
+		s := base
+		tc.move(&s)
+		if u, c := tables(s, true); u == firstU || c == firstC {
+			t.Fatalf("%s: a moved tally kept a table", tc.name)
+		}
+	}
+	if u, c := tables(base, false); u == firstU || c == firstC {
+		t.Fatal("an unpriced read kept the tables")
+	}
+}
+
 // TestTranscriptTableCachesRows: a render reuses an unchanged row's subtable
 // and rebuilds one whose fields moved - same length included - while a longer
 // transcript reuses the prefix; a moved epoch, edit, revision or a shorter

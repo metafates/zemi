@@ -521,6 +521,20 @@ type Host struct {
 		rows []*glua.LTable
 	}
 
+	// usageCtx caches ctx.usage and ctx.context between renders: both are
+	// pure functions of the snapshot's tallies, which move only when a
+	// response lands, so most frames of a turn reuse the tables. The Lua
+	// actor goroutine fills it, like the renders, and the gen stamp drops
+	// tables an older generation's LState built.
+	usageCtx struct {
+		gen            Gen
+		in, out        int64
+		cost           float64
+		last, window   int64
+		priced         bool
+		usage, context *glua.LTable
+	}
+
 	// transcriptRows caches ctx.transcript's row subtables between renders: a
 	// settled row's fields never change, so a long session builds only the
 	// rows a turn appended. The Lua actor goroutine fills it, like the
@@ -1855,8 +1869,9 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		lt.RawSetString("runs", glua.LNumber(l.Runs))
 		tb.RawSetString("loop", lt)
 	}
-	tb.RawSetString("usage", usageTable(L, stream, h.modelPriced(h.turnModelID())))
-	tb.RawSetString("context", contextTable(L, stream))
+	u, c := h.usageTables(L, stream, h.modelPriced(h.turnModelID()))
+	tb.RawSetString("usage", u)
+	tb.RawSetString("context", c)
 	tb.RawSetString("transcript_count", glua.LNumber(len(transcript)))
 	if view != nil { // absent while the session shows
 		tb.RawSetString("view", view)
@@ -2137,6 +2152,20 @@ func usageTable(L *glua.LState, s StreamSnapshot, priced bool) *glua.LTable {
 	u.RawSetString("cost", glua.LNumber(s.SessionCost))
 	u.RawSetString("priced", glua.LBool(priced))
 	return u
+}
+
+// usageTables is ctx.usage and ctx.context through the between-renders cache:
+// rebuilt when a tally, the priced flag or the generation moves, reused
+// while they hold.
+func (h *Host) usageTables(L *glua.LState, s StreamSnapshot, priced bool) (*glua.LTable, *glua.LTable) {
+	c := &h.usageCtx
+	if c.gen == h.currentGen() && c.priced == priced && c.in == s.SessionIn && c.out == s.SessionOut &&
+		c.cost == s.SessionCost && c.last == s.LastIn && c.window == s.CtxWindow {
+		return c.usage, c.context
+	}
+	c.gen, c.in, c.out, c.cost, c.last, c.window, c.priced = h.currentGen(), s.SessionIn, s.SessionOut, s.SessionCost, s.LastIn, s.CtxWindow, priced
+	c.usage, c.context = usageTable(L, s, priced), contextTable(L, s)
+	return c.usage, c.context
 }
 
 // contextPct is how full the model's context window is, in percent; 0 when
