@@ -351,7 +351,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	h.agents.mu.Unlock()
 	switch {
 	case errors.Is(reflectErr, errNoProposal):
-		add(HealthWarn, "reflector", "last run "+reflectErr.Error())
+		add(HealthWarn, "reflector", "last run answered prose instead of memories; the next run clears it")
 	case reflectErr != nil:
 		add(HealthError, "reflector", "last run failed: "+reflectErr.Error())
 	default:
@@ -383,7 +383,11 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 	switch detail := fmt.Sprintf("%d learned, %d yours", learned, yours); {
 	case len(findings) > 0:
-		detail = fmt.Sprintf("%d findings: %s; %s", len(findings), findings[0].Text, detail)
+		texts := make([]string, len(findings))
+		for i, f := range findings {
+			texts[i] = f.Text
+		}
+		detail = fmt.Sprintf("%d findings: %s; %s", len(findings), strings.Join(texts, "; "), detail)
 		add(HealthWarn, "brain", detail, "memory")
 	default:
 		add(HealthOK, "brain", detail)

@@ -128,8 +128,8 @@ func TestHealthChecks(t *testing.T) {
 	}
 }
 
-// TestHealthBrainRow: a malformed memories.md line makes the brain row warn,
-// &
+// TestHealthBrainRow: malformed memories.md lines make the brain row warn
+// with every finding joined, &
 // action opens /memory.
 func TestHealthBrainRow(t *testing.T) {
 	t.Parallel()
@@ -140,7 +140,7 @@ func TestHealthBrainRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(private.Dir, brain.MemFile),
-		[]byte("not a memory line\n- [abcd2345 learned 2026-10-05] tabs over spaces\n"), 0o600); err != nil {
+		[]byte("not a memory line\n- [abcd2345 learned 2026-10-05] tabs over spaces\nalso not a memory line\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	rows := map[string]HealthRow{}
@@ -149,7 +149,8 @@ func TestHealthBrainRow(t *testing.T) {
 	}
 	row := rows["brain"]
 	if row.Level != HealthWarn || row.Run != "memory" ||
-		!strings.Contains(row.Detail, "memories.md: line 1 is not a memory line") || !strings.Contains(row.Detail, "1 learned, 0 yours") {
+		!strings.Contains(row.Detail, "memories.md: line 1 is not a memory line; memories.md: line 3 is not a memory line") ||
+		!strings.Contains(row.Detail, "1 learned, 0 yours") {
 		t.Fatalf("brain row = %+v", row)
 	}
 }
