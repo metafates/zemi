@@ -17,6 +17,9 @@ usage: zemi-lab [-n name] command [args]
                      `wait ask` waits for a permission ask
   ask y|n|t          answer a permission ask until the box is gone
   cap [-e] [FILE]    capture the whole pane (-e keeps colors)
+                     NOTE: captures can carry literal tab bytes from bubbletea's
+                     cursor optimization, so split panes over a non-multiple-of-8
+                     origin may render captured rows misaligned - upstream, not zemi
   size W H           resize the window
   last               the fake model's last request body
   db | logs | status | health [args...]
