@@ -286,7 +286,7 @@ func goalIn(rows []*store.Message) *Goal {
 	return g
 }
 
-// goalReason is a check's verdict as /goal and zemi run name it.
+// goalReason is a check's verdict as the goal row names it.
 func goalReason(ev goalEvent, why string) string {
 	if why == "" {
 		return string(ev)

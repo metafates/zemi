@@ -113,7 +113,7 @@ type Verdict struct {
 // Who decided a Verdict.
 const (
 	ByDefault  = "default"
-	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
+	ByNobody   = "nobody" // an ask with no UI to answer it
 	ByUser     = "user"
 	ByReadOnly = "read-only agent"
 	// ByEvent is a verdict the permission.request veto decided
@@ -200,10 +200,10 @@ type Pipeline struct {
 	TodosWrite func([]store.Todo) error
 
 	// Question asks the user and returns one answer per question; false =
-	// dismissed. nil = nobody can answer (headless).
+	// dismissed. nil = nobody can answer.
 	Question func(qs []Question) (answers []Answer, ok bool)
 	// ApprovePlan shows a plan and asks the user to approve it; false =
-	// dismissed. nil = nobody can answer (headless).
+	// dismissed. nil = nobody can answer.
 	ApprovePlan func(plan string) (PlanVerdict, bool)
 
 	// Jobs owns model-started background processes; nil = jobs error.

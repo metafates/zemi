@@ -19,47 +19,12 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// planReg holds the read-only agent's restore point and the asks a headless
-// run denied.
+// planReg holds the read-only agent's restore point.
 type planReg struct {
 	mu sync.Mutex
 	// prePlanProfile is the agent active before a read-only agent was
 	// picked, restored when its plan is approved
 	prePlanProfile string
-
-	headless []Denial
-}
-
-// Denial is an ask nobody could answer because no UI runs (zemi run), any
-// pipeline's: subagents and workflows run no rows the main transcript shows.
-// Arg and Reason are sanitized.
-type Denial struct {
-	Tool    string    `json:"tool"`
-	Subject string    `json:"subject"`
-	Arg     string    `json:"arg"`
-	Reason  string    `json:"reason"`
-	Why     DenialWhy `json:"why"`
-}
-
-// DenialWhy is what a denied ask needed.
-type DenialWhy string
-
-const (
-	DenyApproval DenialWhy = "approval" // the ask nobody could answer (no UI runs)
-)
-
-func (r *planReg) noteHeadless(d Denial) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.headless = append(r.headless, d)
-}
-
-// HeadlessDenials is every ask denied so far; zemi run reads the ones past
-// its start.
-func (h *Host) HeadlessDenials() []Denial {
-	h.plans.mu.Lock()
-	defer h.plans.mu.Unlock()
-	return slices.Clip(h.plans.headless)
 }
 
 // CheckToolNames records a zemi.tool.override no tool answers to, once boot

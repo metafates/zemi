@@ -527,6 +527,9 @@ func TestOverflowRecovery(t *testing.T) {
 func TestCompactionStopsAfterFailures(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
+	if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
+		t.Fatal(err)
+	}
 	m := reflectStub(t, h, "") // an empty reply starts no title call
 	m.err = errors.New("summarizer down")
 	h.reflectMu.Lock()

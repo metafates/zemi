@@ -88,9 +88,6 @@ func (h *Host) ResumeSession(id string) error {
 	}
 	sess, err := h.DB.GetSession(id)
 	if errors.Is(err, store.ErrNotFound) {
-		if h.hooks() == nil {
-			return Usagef("no session %q; zemi sessions lists them", id)
-		}
 		return Usagef("no session %q; /sessions lists them", id)
 	}
 	if err != nil {
@@ -229,9 +226,8 @@ func (h *Host) sessionItems() ([]OverlayItem, error) {
 
 // DeleteSession removes a stored session other than the live one, with its
 // subagent runs and scratchpad, once yes confirms it (AskFirst). The rewrite
-// that clears the text from disk takes a while on a large store, so with a UI
-// it runs off the caller's goroutine; headless it runs inline, since the
-// process exits when the command returns.
+// that clears the text from disk takes a while on a large store, so it runs
+// off the caller's goroutine.
 func (h *Host) DeleteSession(id string, yes bool) error {
 	if h.DB == nil {
 		return errNoStore
@@ -259,9 +255,6 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 		h.removeSessionFiles(id)
 		h.Notify(slog.LevelInfo, "Session deleted", s.Title)
 		return nil
-	}
-	if _, err := h.Screen(); err != nil {
-		return del()
 	}
 	h.GoSafe("delete session", func() {
 		if err := del(); err != nil {
@@ -328,7 +321,6 @@ func (h *Host) closeSession(open func()) error {
 		return errTurnRunning
 	}
 	prev, reports := ag.sessionID, ag.steering
-	h.swap.Store(true)
 	h.recentStale.Store(true)
 	h.instrStale.Store(true) // the session may have written instructions
 	// turnMsgID too: a write arriving late would checkpoint against a
@@ -583,10 +575,9 @@ func planArg(input string) string {
 const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
 
 // autoTitle names a new session from its first user message with a short
-// model call in the background; any failure keeps the first-line title. No
-// UI means no title: a zemi run exits before the call would answer.
+// model call in the background; any failure keeps the first-line title.
 func (h *Host) autoTitle(sid, user string) {
-	if !h.Settings.Bool(config.KeySessionAutoTitle) || h.hooks() == nil {
+	if !h.Settings.Bool(config.KeySessionAutoTitle) {
 		return
 	}
 	if h.DB == nil {

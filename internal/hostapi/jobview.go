@@ -170,7 +170,7 @@ func (h *Host) overlayTicker(name string, claim, more func() bool) {
 
 // tickOverlay is overlayTicker at a given period.
 func (h *Host) tickOverlay(every time.Duration, name string, claim, more func() bool) {
-	if h.hooks() == nil || claim != nil && !claim() {
+	if claim != nil && !claim() {
 		return
 	}
 	h.GoSafe(name, func() {

@@ -872,7 +872,7 @@ func final(err error) bool {
 // modelIdleTimeout is how long a model call may make no progress. The
 // header timeout only counts until the status line arrives, so a gateway
 // that accepts a stream and then stops sending would hold the turn until
-// the user interrupts it, and headless nobody can.
+// the user interrupts it.
 // NOTE: one fixed ceiling, not a setting: a model that thinks longer than
 // this without sending a part is cut off.
 const modelIdleTimeout = 5 * time.Minute

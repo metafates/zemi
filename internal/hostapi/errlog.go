@@ -201,8 +201,8 @@ func Headline(msg string) string {
 }
 
 // SetInitError records how the user init.lua step ended: "" when it ran
-// clean. The splash and a headless send read it, so a config that failed
-// to load is not reported as a missing model.
+// clean. The splash reads it, so a config that failed to load is not
+// reported as a missing model.
 func (h *Host) SetInitError(msg string) { h.initFail.Store(&msg) }
 
 func (h *Host) InitError() string {

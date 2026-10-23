@@ -31,9 +31,6 @@ const contextBudget = 32 << 10
 // defaultSystemPrompt is the shipped prompt (no profile configured).
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
-	if h.hooks() == nil {
-		ask, care, denied = headlessAskingPrompt, headlessCarePrompt, headlessDeniedPrompt
-	}
 	if !hasTool(toolset, tools.ToolQuestion) {
 		ask = strings.Replace(ask, " with the question tool", "", 1)
 	}
@@ -46,14 +43,11 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
 }
 
-// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}; a
-// headless run has nobody to ask or to explain a denial.
+// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}.
 const (
-	riskyActs            = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
-	carePrompt           = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
-	headlessCarePrompt   = "Nobody can approve anything in this run, so do nothing hard to undo or that leaves this machine unless the task names it: " + riskyActs + "."
-	deniedPrompt         = "If the user denies a call, do not retry it: change approach or ask why."
-	headlessDeniedPrompt = "A denied call stays denied in this run: change approach, or say in your reply what you need."
+	riskyActs    = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
+	carePrompt   = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
+	deniedPrompt = "If the user denies a call, do not retry it: change approach or ask why."
 )
 
 // batchPrompt opens every run's tool guidance, a subagent's included.
@@ -72,12 +66,8 @@ const readPrompt = `
 const codemodePrompt = `
 - Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
 
-// askingPrompt fills basePrompt's {Asking}. A headless run has no question
-// or plan tool (headlessExcluded), so telling it to ask
-// there only buys a tool call that cannot resolve.
+// askingPrompt fills basePrompt's {Asking}.
 const askingPrompt = `When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.`
-
-const headlessAskingPrompt = `Nobody can answer in this run and there is no tool to ask with: take the most likely reading and carry the task through; name the assumption only when the user would likely have chosen otherwise. Anything you cannot decide goes in your reply as what you need and why. Your last message is what this run prints: give the whole answer there, after your last tool call.`
 
 const basePrompt = `You are zemi, a coding agent in the user's terminal.
 
@@ -547,7 +537,7 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 		}
 	} else {
 		// so the model does not write config that never loads
-		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
+		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
 		// file names and commit subjects are the repository's free text,
 		// which steers the model like its instruction files
 		env, _, _ = strings.Cut(env, recentCommits)

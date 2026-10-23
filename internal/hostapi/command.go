@@ -277,15 +277,10 @@ func AskFirst(line, shell string, open func(confirm string) error) error {
 	return err
 }
 
-// runLuaCommand runs a Lua command as a task. With a UI it returns once the
-// task suspends, so the worker runs the next key before its rest; zemi run waits
-// for the whole command.
+// runLuaCommand runs a Lua command as a task; it returns once the task
+// suspends, so the worker runs the next key before its rest.
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
 	t := h.luaTask(lua.ClassUI, luaCaller{gen: cmd.Gen, origin: cmd.Origin, path: cmd.Path}, cmd.Fn, commandArgs(argString))
-	if h.hooks() == nil {
-		_, err := h.RT.RunTask(ctx, t)
-		return err
-	}
 	return h.RT.StartTask(ctx, t, func(err error) {
 		h.refresh()
 		if err != nil && !lua.Dropped(err) {

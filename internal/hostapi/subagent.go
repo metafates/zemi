@@ -1129,12 +1129,8 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	b.WriteString("Start a subagent on a self-contained task. It cannot see this conversation, so the prompt carries everything it needs," +
 		" what to report and how to verify. Only its final report comes back, and the user does not see it: relay what matters." +
 		" A long run sends you lines with the update tool as it goes, which you read at your next step." +
-		" Calls sent together run at once.")
-	// a detached run outlives a headless turn, which exits as soon as the
-	// main agent is idle, so its report would be thrown away
-	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; wait and stop act on it as their parameter descriptions say.")
-	}
+		" Calls sent together run at once." +
+		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message. send_to continues a run, running or finished, by its run id; wait and stop act on it as their parameter descriptions say.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -1142,22 +1138,12 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 			fmt.Fprintf(&b, " (model %s)", d.Model)
 		}
 	}
-	// headless there is no send_to, so the two fields it qualifies are plain required
-	required := "; required"
-	if t.h.hooks() != nil {
-		required = "; required unless send_to is set"
-	}
 	props, req := tools.ArgsOf(agentArgs{})
 	for _, name := range []string{"description", "agent"} {
 		p := props[name].(map[string]any)
-		p["description"] = p["description"].(string) + required
+		p["description"] = p["description"].(string) + "; required unless send_to is set"
 	}
 	props["agent"].(map[string]any)["enum"] = t.names()
-	if t.h.hooks() == nil {
-		for _, name := range []string{"background", "send_to", "wait", "stop"} {
-			delete(props, name)
-		}
-	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
 		Description: b.String(),

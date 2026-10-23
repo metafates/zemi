@@ -727,8 +727,8 @@ func TestWorkflowSchema(t *testing.T) {
 	}
 }
 
-// TestWorkflowToolInput: which fields go together, what a rerun asks
-// about, and what headless leaves out.
+// TestWorkflowToolInput: which fields go together, and what a rerun asks
+// about.
 func TestWorkflowToolInput(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.agents.sessionID = "s1"
@@ -780,12 +780,6 @@ func TestWorkflowToolInput(t *testing.T) {
 	if src, err := h.approveRerun(id); err != nil || src != "-- Count to two\nreturn 3" || len(ui.asked) != n+1 || ui.asked[n].Preview != src {
 		t.Fatalf("the user's rerun = %q, %v; asked %+v", src, err, ui.asked[n:])
 	}
-	h.SetUIHooks(nil)
-	info := h.workflowTool(h.PipelineFor()).Info()
-	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status list wait rerun]" {
-		t.Fatalf("headless schema: %v", info.Parameters)
-	}
-	h.SetUIHooks(ui)
 	enum := fmt.Sprint(h.workflowTool(h.PipelineFor()).Info().Parameters["action"].(map[string]any)["enum"])
 	if enum != "[status list wait pause resume stop rerun]" {
 		t.Fatalf("the TUI schema offers %s", enum)
@@ -875,35 +869,27 @@ func TestWorkflowWait(t *testing.T) {
 // the user's own message arrives, so the turn reads that message instead of
 // waiting: the call answers with the background text, the run stays live, and
 // its report arrives as exactly one message. esc still cancels an attached
-// run, and headless - no UI would take a handoff's report - keeps the call
-// attached to the end.
+// run.
 func TestWorkflowCallHandsOff(t *testing.T) {
 	for _, c := range []struct {
 		name        string
-		hooks       bool
 		act         func(*Host, context.CancelFunc)
 		wantBG      bool
 		wantStopped bool
 	}{
 		{
-			name: "the user's message hands the run off", hooks: true,
-			act: func(h *Host, _ context.CancelFunc) { h.UserSpoke() }, wantBG: true,
+			name: "the user's message hands the run off",
+			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() }, wantBG: true,
 		},
 		{
-			name: "esc cancels an attached run", hooks: true,
-			act: func(_ *Host, cancel context.CancelFunc) { cancel() }, wantStopped: true,
-		},
-		{
-			name: "headless keeps the call attached",
-			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() },
+			name: "esc cancels an attached run",
+			act:  func(_ *Host, cancel context.CancelFunc) { cancel() }, wantStopped: true,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			h, _ := newTestHostDB(t)
-			if c.hooks {
-				h.SetUIHooks(&fakeUI{})
-			}
+			h.SetUIHooks(&fakeUI{})
 			seedSession(t, h)
 			gate := make(chan struct{})
 			// the agent's call blocks until the test releases it, so the run is

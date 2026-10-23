@@ -383,7 +383,7 @@ type ChatMessage struct {
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
-	CallID string // tool rows: the stream's call id, so zemi run reports a call once
+	CallID string // tool rows: the stream's call id, so a report names a call once
 	ID     string // the stored message's id once it is stored; a rewind names it
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
 }
@@ -561,13 +561,9 @@ type Host struct {
 	// dropPluginKeys drops the ones a replay did not register again, never one
 	// the schema owns
 	pluginKeys map[config.Key]Gen
-	// KeepPicks lets a runtime pick outlive the process; main turns it on
-	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
+	// KeepPicks lets a runtime pick outlive the process; launch turns it on
+	// once the TUI's flags applied, so nothing else keeps one.
 	KeepPicks atomic.Bool
-	// swap records that closeSession swapped the session (/new, /resume):
-	// a headless run reads and clears it, so only a swap made during the
-	// run counts.
-	swap atomic.Bool
 	// agentsView is the agents view's one ticker claim (watchAgents).
 	agentsView atomic.Bool
 	agents     *agentHost
@@ -685,7 +681,7 @@ type Host struct {
 	// compaction, the model and tools.
 	turn atomic.Pointer[turnScope]
 
-	plans planReg // the read-only restore point and headless denials
+	plans planReg // the read-only restore point
 
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
@@ -774,9 +770,6 @@ func TrustUnsaved(root string) bool {
 
 // ProjectTrusted reports whether the user trusts this project.
 func (h *Host) ProjectTrusted() bool { return h.projectTrusted.Load() }
-
-// TakeSwap reports and clears the session-swap fact (closeSession).
-func (h *Host) TakeSwap() bool { return h.swap.Swap(false) }
 
 // projectNamespace is zemi.project: what a job-starting plugin checks first.
 func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {
@@ -907,16 +900,8 @@ func (h *Host) hooks() UIHooks {
 	return h.ui
 }
 
-// trustHint names what trusts the project: /trust in the TUI, the flag of
-// a headless run.
-func (h *Host) trustHint() string {
-	if h.hooks() == nil {
-		return "zemi run --trust"
-	}
-	return "/trust"
-}
-
-// Screen is the UI to open a screen on; headless it is ErrNeedsTUI.
+// Screen is the UI to open a screen on; before the UI attaches it is
+// ErrNeedsTUI.
 func (h *Host) Screen() (UIHooks, error) {
 	if ui := h.hooks(); ui != nil {
 		return ui, nil
@@ -1039,11 +1024,11 @@ func ToastTitle(level slog.Level, title string) string {
 	return "Error"
 }
 
-// Notify shows a toast; with no UI a warning or an error goes to Stderr
-// instead, so a headless run never swallows one. The title says what
-// happened, in sentence case with no period: "<Kind> <past participle>" with
-// the name in the body, "Could not <verb> <object>" with the cause in the
-// body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
+// Notify shows a toast; before the UI attaches, a warning or an error goes
+// to Stderr instead, so an early failure is never swallowed. The title says
+// what happened, in sentence case with no period: "<Kind> <past participle>"
+// with the name in the body, "Could not <verb> <object>" with the cause in
+// the body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
 func (h *Host) Notify(level slog.Level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {
@@ -1061,7 +1046,7 @@ func (h *Host) Notify(level slog.Level, title, body string) {
 }
 
 // scroll routes a zemi.ui.scroll.* action to the UI (no-op before the UI
-// attaches, e.g. headless runs).
+// attaches).
 func (h *Host) scroll(kind ScrollAction, id string) {
 	if ui := h.hooks(); ui != nil {
 		ui.Scroll(kind, id)
@@ -1764,23 +1749,9 @@ type UIState struct {
 	Waiting        Waiting // while a prompt holds the turn
 	Focus          string  // the drawn layout node taking keys, "" for the composer
 	Rail           int     // the activity run the chat draws whole, 0 for none
-	Printed        *Printed
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
 	Regions *set.Set[string]
-}
-
-// Printed is set when zemi run prints the frame to a shell: Rows stand in
-// for the transcript, never cached, and Live for the live turn (nil: none,
-// and no todos). Prev is the last row printed above them, which the chat
-// seeds its first block gap from; Tail marks the live tail's own render,
-// which leaves the pending row to the rows it draws under.
-type Printed struct {
-	Rows      []ChatMessage
-	Live      *StreamSnapshot
-	Reasoning bool // zemi run --reasoning: every thought and call drawn whole
-	Prev      *ChatMessage
-	Tail      bool
 }
 
 // widgetCtxTable builds a render's ctx. The fields that copy the transcript,
@@ -1793,15 +1764,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	// past a snapshot without the chunk, and nothing moves it again
 	edit := h.trEdit.Load()
 	sess, stream := h.liveView()
-	printed := state.Printed
-	if printed != nil {
-		sess.Transcript = printed.Rows
-		if printed.Live != nil {
-			stream = *printed.Live
-		} else {
-			stream.Active, stream.Text, stream.Reasoning, stream.Tools, stream.Steering = false, "", "", nil, nil
-		}
-	}
 	// Showing an agent run, the chat renders its transcript alone and the run
 	// reports its own state: the session's turn, todos and stream stay out of
 	// it. Before the ctx writes below, which read stream.
@@ -1819,11 +1781,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		v.RawSetString("status", glua.LString(status))
 		view = v
 	}
-	tb = L.CreateTable(0, 34)
-	tb.RawSetString("headless", glua.LBool(printed != nil))
-	if printed != nil && printed.Prev != nil {
-		tb.RawSetString("printed_prev", chatRow(L, *printed.Prev))
-	}
+	tb = L.CreateTable(0, 32)
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("frame", glua.LNumber(state.Frame))
@@ -1852,15 +1810,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
 	if state.Rail > 0 {
 		tb.RawSetString("rail", glua.LNumber(state.Rail))
 	}
 	tb.RawSetString("emoji", glua.LString(SessionMark(h.AgentSessionID())))
-	// the tail's render leaves the pending row's inputs out: the rows printed
-	// above it drew it once, and the tail draws it under them
-	tail := printed != nil && printed.Tail
-	if jobs := h.BusyList(); len(jobs) > 0 && !tail {
+	if jobs := h.BusyList(); len(jobs) > 0 {
 		b := L.CreateTable(len(jobs), 0)
 		for _, j := range jobs {
 			e := L.CreateTable(0, 3)
@@ -1872,13 +1826,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		tb.RawSetString("busy", b)
 	}
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
-	if !tail {
-		sid := h.AgentSessionID()
-		agents, flows := h.tasks.live(func(p string) bool { return p == sid })
-		tb.RawSetString("agents_running", glua.LNumber(agents))
-		tb.RawSetString("workflows_running", glua.LNumber(flows))
-		tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
-	}
+	sid := h.AgentSessionID()
+	agents, flows := h.tasks.live(func(p string) bool { return p == sid })
+	tb.RawSetString("agents_running", glua.LNumber(agents))
+	tb.RawSetString("workflows_running", glua.LNumber(flows))
+	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
 		gt.RawSetString("condition", glua.LString(sanitize.String(g.Condition)))
@@ -1900,11 +1852,11 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	if view != nil { // absent while the session shows
 		tb.RawSetString("view", view)
 	}
-	// 0 while an agent run or a printed run is shown: the session's epoch
-	// counts replacements of its own rows, and neither shows those. A shown
-	// run reports the revision of its own rows beside it.
+	// 0 while an agent run is shown: the session's epoch counts replacements
+	// of its own rows, and a shown run reports the revision of its own rows
+	// beside it.
 	epoch := h.trEpoch.Load()
-	if run != nil || printed != nil {
+	if run != nil {
 		epoch = 0
 	}
 	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
@@ -1914,7 +1866,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	lazy := map[string]func(L *glua.LState) glua.LValue{
 		"todos": func(L *glua.LState) glua.LValue {
 			todos := L.NewTable()
-			if run != nil || printed != nil && printed.Live == nil {
+			if run != nil {
 				return todos
 			}
 			for _, td := range h.todoSnapshot() {
@@ -2381,7 +2333,7 @@ func (h *Host) ReloadConfig() error {
 	if h.RT.Booting() {
 		return errors.New("config is still loading; a reload from config would repeat forever")
 	}
-	// headless, the process would end before the reload ran
+	// before the UI attaches, the process would end before a reload ran
 	if _, err := h.Screen(); err != nil {
 		return err
 	}

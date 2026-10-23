@@ -202,24 +202,6 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 	return changed(fantasy.NewTextResponse(b.String()))
 }
 
-// ShellFailure is why a failed command failed, for a reader that has only the
-// result text (zemi run's --json error): the last line runShell writes a
-// reason on, else the command's own last output line. A response carries no
-// field for it.
-func ShellFailure(output string) string {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	reason := func(l string) bool {
-		return strings.HasPrefix(l, "exit status ") || strings.HasPrefix(l, "signal: ") ||
-			strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ")
-	}
-	for _, l := range slices.Backward(lines) {
-		if reason(l) {
-			return l
-		}
-	}
-	return lines[len(lines)-1]
-}
-
 // imageMaxSide and imageMaxBytes are what an image sent to a model may be:
 // Anthropic refuses over 8000 px a side (2000 with more than 20 images) and
 // over 5 MB of base64, about 3.75 MB of bytes.

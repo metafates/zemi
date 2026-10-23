@@ -6,10 +6,8 @@ package hostapi
 
 import (
 	"context"
-	"strings"
 
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -62,11 +60,7 @@ func (h *Host) ask(req tools.Request) (bool, string) {
 	}
 	ui := h.hooks()
 	if ui == nil {
-		why := req.Reason
-		if req.Agent != "" {
-			why = strings.TrimSuffix(req.Agent+": "+why, ": ")
-		}
-		h.plans.noteHeadless(Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(why), Why: DenyApproval})
+		// an ask nobody can answer fails closed: the run goes on without it
 		return resolved(false, tools.ByNobody)
 	}
 	cut := h.askCut.Load()

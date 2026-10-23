@@ -376,33 +376,6 @@ func (h *Host) liveView() (Session, StreamSnapshot) {
 	return h.Session(), h.streamLocked()
 }
 
-// RunFrame is what a printed run shows at one moment, read like liveView.
-type RunFrame struct {
-	Settled []ChatMessage // rows from the asked index on that no retry can cut
-	Pending []ChatMessage // the rows after them, which the running step may still cut
-	Stream  StreamSnapshot
-	Next    int // the index after Settled
-}
-
-// RunFrame reads the transcript from index from on. A provider retry cuts
-// the rows its step moved in (Retrying), so while a turn runs only the rows
-// before the step's start are settled. Next never falls below from: a claim
-// with no beginTurn yet leaves a stale step start.
-// NOTE: a row settles one step after it was flushed, so a plain log lags the
-// model by a step; a terminal's live tail shows the pending rows meanwhile.
-func (h *Host) RunFrame(from int) RunFrame {
-	ag := h.agents
-	ag.mu.Lock()
-	tr, stream := h.Session().Transcript, h.streamLocked()
-	from = min(max(from, 0), len(tr))
-	end := len(tr)
-	if ag.active {
-		end = max(from, min(end, ag.stepRows))
-	}
-	ag.mu.Unlock()
-	return RunFrame{Settled: tr[from:end], Pending: tr[end:], Stream: stream, Next: end}
-}
-
 // streamLocked is AgentStream with ag.mu held.
 func (h *Host) streamLocked() StreamSnapshot {
 	ag := h.agents

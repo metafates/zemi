@@ -915,7 +915,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		if role != "" && !h.isTarget(role) {
 			L.RaiseError("zemi.model.pick: unknown model target %q; targets: %s", role, strings.Join(h.targetNames(), ", "))
 		}
-		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
+		_ = h.OpenModelPicker(role)
 		return 0
 	}))
 	return tb
