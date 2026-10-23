@@ -529,9 +529,11 @@ func switchSeg(on, locked bool) hostapi.Segment {
 // Rows fit maxW cells when it is set, the bar included, and pad to at least
 // minW, with a key column always showing. Descriptions line up in one column
 // sized before the labels, over all, the unfiltered list, so filtering never
-// moves it: the description keeps its need and a long label ellipsizes, a
-// tail desc included, its label giving way first; only a box too narrow for
-// both puts every description under its label.
+// moves it: when a box is too narrow for both, the longer column gives way -
+// a label keeps its room while a description is the longer thing, and a
+// description keeps its need while the label is (a tail path's end, whose
+// desc is the only metadata beside it); only a box too narrow for either
+// puts every description under its label.
 // listNeedW measures a list's widest row: the label and key columns plus the
 // description column, and the width of a row that draws with no description
 // column at all, the widths a box keeps when nothing may trim.
@@ -568,7 +570,13 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		switch {
 		case labelW+need <= avail:
 		case avail >= 32:
-			labelW = max(min(labelW, max(avail-need, 20)), 1)
+			// the longer column gives way: labels win while a description is
+			// the longer thing, and a description keeps its need otherwise
+			if labelW > descNeeds {
+				labelW = max(min(labelW, max(avail-need, 20)), 1)
+			} else {
+				labelW = min(labelW, avail-3)
+			}
 		default:
 			under = true
 		}

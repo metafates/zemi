@@ -1382,8 +1382,7 @@ func TestListDescUnderLabel(t *testing.T) {
 }
 
 // TestListDescColumn: descriptions start in one column sized before the
-// labels: a row that does not fit gives way by the new rule, the description
-// keeping its need while a long label ellipsizes at the floor.
+// labels: when a box is too narrow for both, the longer column gives way.
 func TestListDescColumn(t *testing.T) {
 	for _, c := range []struct {
 		name          string
@@ -1391,7 +1390,7 @@ func TestListDescColumn(t *testing.T) {
 		items         []listItem
 		whole, wanted string // row 0 keeps whole, never shows wanted
 	}{
-		{"a long title gives the description its need", 52, []listItem{
+		{"a long description gives way to a label that fits", 52, []listItem{
 			{label: "a much longer session title here", desc: "now · short"},
 			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: tagSeg("current")},
 		}, "", ""},
