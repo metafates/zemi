@@ -121,8 +121,8 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
 		{"option without label", "question", `{"questions":[{"type":"single_choice","question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
 		{
-			"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Path: "/p.md"}, true),
-			"you are back as the default agent. Implementation runs in the next turn", false, true,
+			"approved and saved", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Path: "/p.md"}, true),
+			"The user approved the plan", false, false,
 		},
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
 		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},
@@ -159,7 +159,6 @@ func TestPlanOutcome(t *testing.T) {
 		stop          bool
 	}{
 		{"approved and saved", PlanVerdict{Approved: true, Path: "/p.md"}, "approved", "/p.md", false},
-		{"approved, back to the agent", PlanVerdict{Approved: true, Profile: "default"}, "approved", "", true},
 		{"approved and held", PlanVerdict{Approved: true, Hold: true, Path: "/p.md"}, "approved", "/p.md", true},
 		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", "", false},
 	} {

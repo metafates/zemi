@@ -357,8 +357,6 @@ function zemi.config.schema() end
 ---| "zemi.composer.history_next"
 ---| "zemi.composer.paste"
 ---| "zemi.composer.edit"
----| "zemi.agent.profile.next"
----| "zemi.agent.profile.prev"
 
 ---@class zemi.keymap
 zemi.keymap = {}
@@ -392,8 +390,7 @@ zemi.keymap = {}
 --- zemi.composer.insert <text>,
 --- zemi.ui.help, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
---- zemi.ui.focus.set [id],
---- zemi.ui.focus.{next,prev} and zemi.agent.profile.{next,prev}.
+--- zemi.ui.focus.set [id] and zemi.ui.focus.{next,prev}.
 ---
 --- ```lua
 --- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
@@ -544,7 +541,7 @@ function zemi.command.list() end
 ---@field usage { in: integer, out: integer, cache_read: integer, cache_write: integer, cost: number }
 
 --- Fired when the main agent's prompt is built (a new session, a resume, a
---- compaction, a model, profile, trust or tool change), not per send, and
+--- compaction, a model, trust or tool change), not per send, and
 --- once per subagent run.
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string
@@ -875,8 +872,6 @@ function zemi.event.stats() end
 ---@field init_path string The user init.lua, ~-shortened.
 ---@field model_hint string How to get a model when `model` is "", short enough for one row: the first key to export, or init.lua.
 ---@field model string
----@field profile string
----@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
@@ -1620,7 +1615,7 @@ function zemi.log.list() end
 ---| "titles"   # session titles
 ---| "compact"  # summaries
 ---| "memory"   # the reflector
----| string     # a name zemi.model.add or zemi.agent.profile.add registered
+---| string     # a name zemi.model.add registered
 
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
@@ -1716,13 +1711,12 @@ function zemi.model.list() end
 function zemi.model.add(name, spec) end
 
 --- Drop a slot `zemi.model.add` registered, with `models.<name>` and the pick
---- kept for it. A profile is not one: nothing removes a definition. User,
---- builtin or plugin origin.
+--- kept for it. User, builtin or plugin origin.
 ---@param name string
 function zemi.model.del(name) end
 
---- Switch the model the conversation runs on: the active profile's slot when
---- it has one, else models.default. Raises for a provider nobody registered; an
+--- Switch the model the conversation runs on, models.default. Raises for a
+--- provider nobody registered; an
 --- id the provider does not list is taken and warned about. A call made after
 --- boot is kept for later starts, like
 --- `zemi.config.set`. An explicitly named target is plain config:
@@ -1733,7 +1727,7 @@ function zemi.model.set(id) end
 ---@class zemi.ModelAsk
 ---@field prompt string
 ---@field system? string
----@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
+---@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat) by default.
 ---@field max_output? integer The reply's token cap, 1024 by default.
 ---@field schema? table The shape the reply must have, a JSON schema in the same fields a tool's schema has: `{ type = "object", properties = {...}, required = {...} }` for an object, or a bare `{ type = "string" }`, `{ type = "integer", minimum = 0, maximum = 9 }`, `{ type = "boolean" }` or `{ type = "array", items = ... }`. `enum` pins the values, `description` is read by the model. Any other field and any other type raises. With it the call returns a decoded value instead of text (see `zemi.ModelHandle.wait`).
 ---@field on_done? fun(value: any, err_or_raw: string?) Runs as a task when the reply is in: the reply's text alone without a `schema`, else the decoded value with the raw reply beside it, or nil and the error when the call failed.
@@ -1847,18 +1841,9 @@ function zemi.classify.ask(spec) end
 
 -- zemi.agent
 
----@class zemi.ProfileSpec
----@field model? zemi.ModelRole|string The model the profile's slot runs until someone picks `models.<name>`: a builtin role name (resolved on every read) or a "provider/model" id.
----@field system? string Replaces the system prompt.
----@field temperature? number
----@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest, and fails the send when no tool has that name.
----@field context? { files: string[] } Files pinned into the prompt.
----@field read_only? boolean A read-only (planning) agent: the project is read-only to it and it presents plans for approval.
-
 ---@class zemi.AgentCurrent
 ---@field id string Session id.
 ---@field model string
----@field profile string
 
 ---@class zemi.AgentUsage: zemi.Usage
 ---@field context_tokens integer
@@ -1881,16 +1866,6 @@ function zemi.classify.ask(spec) end
 
 ---@class zemi.agent
 zemi.agent = {}
-
----@class zemi.agent.profile
-zemi.agent.profile = {}
-
---- Define a named profile (model, prompt, tool set). The `agent.profile`
---- config key names the active one, and `/profile` or ctrl+t switches it;
---- one a plugin defines dies with the plugin.
----@param name string
----@param spec zemi.ProfileSpec
-function zemi.agent.profile.add(name, spec) end
 
 ---@return zemi.AgentCurrent
 function zemi.agent.current() end

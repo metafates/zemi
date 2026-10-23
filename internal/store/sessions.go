@@ -12,10 +12,12 @@ var ErrNotFound = errors.New("store: not found")
 
 // Session is one persisted conversation.
 type Session struct {
-	ID               string
-	ParentID         string
-	Title            string
-	Profile          string
+	ID       string
+	ParentID string
+	Title    string
+	// Agent is the agent a session runs as: "" for a main conversation, a
+	// subagent run's definition name otherwise
+	Agent            string
 	CreatedAt        int64
 	UpdatedAt        int64
 	PromptTokens     int64
@@ -32,24 +34,24 @@ type Session struct {
 	RunStatus string
 }
 
-func (s *DB) CreateSession(id, parentID, title, profile string) error {
+func (s *DB) CreateSession(id, parentID, title, agent string) error {
 	t := now()
 	_, err := s.db.Exec(`INSERT INTO sessions
-		(id, parent_id, title, profile, created_at, updated_at)
+		(id, parent_id, title, agent, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		id, nullString(parentID), title, profile, t, t)
+		id, nullString(parentID), title, agent, t, t)
 	if err != nil {
 		return fmt.Errorf("store: create session: %w", err)
 	}
 	return nil
 }
 
-const sessionCols = `id, COALESCE(parent_id, ''), title, profile, created_at, updated_at,
+const sessionCols = `id, COALESCE(parent_id, ''), title, agent, created_at, updated_at,
 	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, last_in, run_status`
 
 func scanSession(row scanner) (*Session, error) {
 	var s Session
-	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Profile,
+	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Agent,
 		&s.CreatedAt, &s.UpdatedAt,
 		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
 		&s.CacheRead, &s.CacheBilled, &s.LastIn, &s.RunStatus); err != nil {
@@ -224,8 +226,8 @@ func (s *DB) ForkSession(src *Session, id, title string) (err error) {
 	// every row is read before the transaction: one connection serves both
 	return s.inTx(func(tx *sql.Tx) error {
 		t := now()
-		if _, err := tx.Exec(`INSERT INTO sessions (id, title, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-			id, title, src.Profile, t, t); err != nil {
+		if _, err := tx.Exec(`INSERT INTO sessions (id, title, agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			id, title, src.Agent, t, t); err != nil {
 			return err
 		}
 		ids := make(map[string]string, len(msgs))

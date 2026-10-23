@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +20,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -199,11 +197,11 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
 	}
 	h.SeedStream(s)
-	// Profile is config, not turn state; CtxWindow falls back to the model's;
+	// Profile is gone; CtxWindow falls back to the model's;
 	// Model to the live one; Thought, Elapsed and RetryIn count from the seed
 	// on the host clock; Steering takes AgentSend, which builds the queue.
 	derived := map[string]string{
-		"Profile": "read from the settings", "Model": "empty seeds the live model",
+		"Model":     "empty seeds the live model",
 		"CtxWindow": "0 seeds the model's window", "Thought": "counts from the seed",
 		"Elapsed": "counts from the seed", "RetryIn": "counts from the seed",
 		"Steering": "AgentSend builds it",
@@ -983,8 +981,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 	// on the chat model, and the agents role is another
 	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", body = { service_tier = "flex" },
 		models = { { id = "big", max_output = 1000 }, { id = "small", max_output = 2000 } } })
-		zemi.config.set("models.agents", "p/small")
-		zemi.agent.profile.add("warm", { temperature = 0.3 }) zemi.config.set("agent.profile", "warm")`)
+		zemi.config.set("models.agents", "p/small")`)
 	var mu sync.Mutex
 	var calls []fantasy.Call
 	m := &scriptModel{record: func(c fantasy.Call) {
@@ -1086,81 +1083,8 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		t.Fatalf("runs = %+v", runs)
 	}
 	sess, err := h.DB.GetSession(runs[0].sessionID)
-	if err != nil || sess.Profile != forkAgent || sess.ParentID != h.AgentSessionID() {
+	if err != nil || sess.Agent != forkAgent || sess.ParentID != h.AgentSessionID() {
 		t.Fatalf("fork session = %+v %v", sess, err)
-	}
-}
-
-// TestForkOffersTheCallersTools: a profile that keeps a couple of MCP tools
-// leaves the caller's own set below the deferral threshold, so the caller sends
-// them all. The fork's first request sends that same array - the names the
-// caller's request offered - not the one this run would build for itself.
-func TestForkOffersTheCallersTools(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(mcptest.Handler())
-	defer srv.Close()
-	h, r := newTestHostDB(t)
-	defer h.mcp.stopParked()
-	defer h.mcp.park()
-	h.reflectMu.Lock() // a session close must not start a reflect run
-	defer h.reflectMu.Unlock()
-	for _, name := range []string{"a", "b", "c", "d"} {
-		runUser(t, r, fmt.Sprintf(`zemi.mcp.add(%q, { url = %q })`, name, srv.URL))
-	}
-	waitFor(t, func() error {
-		if n := len(h.mcpFantasyTools(h.PipelineFor())); n != 12 {
-			return fmt.Errorf("%d MCP tools ready", n)
-		}
-		return nil
-	})
-	runUser(t, r, `zemi.agent.profile.add("lean", { tools = {
-		"read", "write", "edit", "shell", "agent", "mcp_a_echo", "mcp_b_echo",
-	} }) zemi.config.set("agent.profile", "lean")`)
-	names := func(tools []fantasy.Tool) string {
-		out := make([]string, len(tools))
-		for i, tl := range tools {
-			out[i] = tl.GetName()
-		}
-		return strings.Join(out, " ")
-	}
-	var mu sync.Mutex
-	var calls []fantasy.Call
-	m := &scriptModel{record: func(c fantasy.Call) {
-		mu.Lock()
-		defer mu.Unlock()
-		calls = append(calls, c)
-	}}
-	m.script = func(_, last string, toolResult bool) []fantasy.StreamPart {
-		switch {
-		case toolResult:
-			return textParts("parent saw: " + last)
-		case strings.Contains(last, forkTask):
-			// a step of its own, so the fork's own next request is recorded too
-			return toolCallParts("call-2", "agent", `{"description":"again","prompt":"more","agent":"fork"}`)
-		}
-		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
-	}
-	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	if err := h.AgentSend("hello"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(calls) != 4 {
-		for i, c := range calls {
-			last := c.Prompt[len(c.Prompt)-1]
-			t.Logf("call %d: last %s %q", i, last.Role, concatText(last.Content))
-		}
-		t.Fatalf("calls = %d, want the caller's step, the fork's two and the caller's next", len(calls))
-	}
-	// the fork's first request and its own next one, and the caller's next step,
-	// all open with the array the caller's own request sent
-	for i, c := range calls[1:] {
-		if !reflect.DeepEqual(c.Tools, calls[0].Tools) {
-			t.Fatalf("call %d offered other tools than the caller:\ncall %d  %s\ncaller %s", i+1, i+1, names(c.Tools), names(calls[0].Tools))
-		}
 	}
 }
 

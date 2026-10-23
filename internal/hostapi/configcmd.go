@@ -149,7 +149,7 @@ var sectionDesc = map[string]string{
 	"models":    "the model each job runs on",
 	"providers": "the builtin providers and their keys",
 	"ui":        "the theme, the mouse and alerts",
-	"agent":     "profile, effort and compaction",
+	"agent":     "effort and compaction",
 	"session":   "naming sessions and the idle recap",
 	"lsp":       "language servers and when they start",
 	"editor":    "the editor zemi opens",
@@ -203,8 +203,6 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 	}
 	//nolint:exhaustive // a model target's key is no builtin constant
 	switch path {
-	case config.KeyAgentProfile:
-		return h.SetProfile(s)
 	case config.KeyUITheme:
 		if err := h.checkTheme(s); err != nil {
 			return err
@@ -299,8 +297,6 @@ func configPicker(path config.Key) string {
 	switch role, ok := config.ModelRole(path); {
 	case ok:
 		return "model " + role
-	case path == config.KeyAgentProfile:
-		return "profile"
 	case path == config.KeyUITheme:
 		return "theme"
 	}

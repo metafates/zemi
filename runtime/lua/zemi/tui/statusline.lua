@@ -186,12 +186,11 @@ zemi.event.on("reflector.done", function(ev)
 end)
 
 -- Statusline right, read left to right: "$0.12 · 24.5k/200k ctx
--- · profile · effort · model"; the lowest priority (model) sits at the right
+-- · effort · model"; the lowest priority (model) sits at the right
 -- edge. The context meter falls back to the session token total when the
 -- model's context window is unknown. A click on the model opens the model
--- picker, on the effort the effort picker, on the profile the profile
--- picker, on the rest /usage. One widget per part, so config can replace or
--- delete any of them.
+-- picker, on the effort the effort picker, on the rest /usage. One widget per
+-- part, so config can replace or delete any of them.
 ---@type { [1]: string, [2]: integer, [3]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
 local right = {
 	{
@@ -208,15 +207,6 @@ local right = {
 		function(ctx)
 			if (ctx.effort or "") == "" then return end
 			return ctx.effort, "Dim", "effort"
-		end,
-	},
-	-- the shipped profile goes unsaid
-	{
-		"profile",
-		20,
-		function(ctx)
-			if ctx.profile_read_only then return ctx.profile, "ModePlan", "profile" end
-			if ctx.profile ~= "default" then return ctx.profile, "Dim", "profile" end
 		end,
 	},
 	-- how much of the window is in use, not the running session total: the

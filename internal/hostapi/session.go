@@ -143,15 +143,7 @@ func (h *Host) ResumeSession(id string) error {
 // has it now, over the context message the session stored. A model that does
 // not resolve leaves it empty; the send is where that error is reported.
 func (h *Host) pinResumed() {
-	p, err := h.resolveProfile("")
-	if err != nil {
-		return
-	}
-	toolset, err := h.profileTools(p)
-	if err != nil {
-		return
-	}
-	if _, err := h.ensureRunner(p, toolset); err != nil {
+	if _, err := h.ensureRunner(h.mainTools()); err != nil {
 		h.Log.Debug("prompt not pinned", "origin", "agent", "error", err)
 	}
 }

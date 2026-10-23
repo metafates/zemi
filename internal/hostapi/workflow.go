@@ -1775,13 +1775,9 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 // the work. It runs in the background and reports to the model like a
 // background agent, and returns the run's id.
 func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
-	p, err := h.resolveProfile("")
-	if err != nil {
-		return "", err
-	}
 	// the refusals before the session row, so a start that cannot run leaves
 	// no empty session
-	if _, err := h.resolveModel(p); err != nil {
+	if _, err := h.resolveModel(h.roleModel("chat")); err != nil {
 		return "", err
 	}
 	// the user has no foreground version of this run to fall back on,
@@ -1791,7 +1787,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 		return "", err
 	}
 	// the run's report, pad, agents and spend belong to a session
-	if err := h.ensureSession(p, line+attached); err != nil {
+	if err := h.ensureSession(line + attached); err != nil {
 		return "", err
 	}
 	spec.background, spec.done = true, h.deliverFlow(attached)

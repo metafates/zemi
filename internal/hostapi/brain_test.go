@@ -50,11 +50,11 @@ func TestBrainKeyAndReplay(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
-	if err := h.ensureSession(nil, "hello"); err != nil {
+	if err := h.ensureSession("hello"); err != nil {
 		t.Fatal(err)
 	}
-	toolset, _ := h.profileTools(nil)
-	h.pinPrompt(nil, toolset)
+	toolset := h.mainTools()
+	h.pinPrompt(toolset)
 	h.agents.mu.Lock()
 	pinned, key := h.agents.brain, h.agents.ctx.Key
 	h.agents.mu.Unlock()
@@ -74,7 +74,7 @@ func TestBrainKeyAndReplay(t *testing.T) {
 	}
 
 	h.compactDone(0, false)
-	h.pinPrompt(nil, toolset)
+	h.pinPrompt(toolset)
 	h.agents.mu.Lock()
 	rebuilt, newKey := h.agents.brain, h.agents.ctx.Key
 	h.agents.mu.Unlock()
@@ -101,7 +101,7 @@ func TestBrainKeyAndReplay(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.ctx = row
 	h.agents.mu.Unlock()
-	if _, _, ctx, _ := h.pinPrompt(nil, toolset); ctx != "STORED" {
+	if _, _, ctx, _ := h.pinPrompt(toolset); ctx != "STORED" {
 		t.Fatalf("the stored row did not replay: %q", ctx)
 	}
 }
@@ -171,7 +171,7 @@ func TestBrainRebuildsOnTrustFlip(t *testing.T) {
 	}
 	writeBrainFile(t, private.Dir, "repo-map.md", "map of "+h.Dirs.ProjectDir, "before code changes", nil)
 	h.SetProjectTrusted(true)
-	if err := h.ensureSession(nil, "hello"); err != nil {
+	if err := h.ensureSession("hello"); err != nil {
 		t.Fatal(err)
 	}
 	h.agents.mu.Lock()
@@ -238,8 +238,8 @@ func TestBrainCatalogCaps(t *testing.T) {
 		t.Errorf("the render is %d bytes, over the %d backstop", len(text), brain.Backstop)
 	}
 
-	toolset, _ := h.profileTools(nil)
-	_, ctxMsg, _ := h.buildSystemParts(nil, toolset)
+	toolset := h.mainTools()
+	_, ctxMsg, _ := h.buildSystemParts(toolset)
 	if !strings.Contains(ctxMsg, "## Instructions: AGENTS.md\nrun make check") || strings.Contains(ctxMsg, "cut here") {
 		t.Errorf("the brain render disturbed the instruction sections:\n%s", ctxMsg)
 	}

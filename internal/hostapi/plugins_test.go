@@ -192,7 +192,7 @@ func TestPluginsStep(t *testing.T) {
 			plugins: map[string]string{
 				"local/p/.zemi/lua/p/init.lua": `return {
 					setup = function()
-						print(tostring(pcall(zemi.config.set, "agent.profile", "planner")))
+						print(tostring(pcall(zemi.config.set, "agent.effort", "low")))
 						zemi.state.set("ran", true)
 						require("b").put("via-setup")
 						zemi.keymap.set("ctrl+g", function() require("b").put("via-keymap") end)
@@ -201,8 +201,8 @@ func TestPluginsStep(t *testing.T) {
 				}`,
 				"local/b/.zemi/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
 			},
-			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.config.set("agent.profile", m) end))`,
-			want: []string{"true\n", "plugin:p:ran\n", "plugin:b:via-setup\n", "plugin:b:via-keymap\n", "profile: default\n"},
+			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.config.set("agent.effort", m) end))`,
+			want: []string{"true\n", "plugin:p:ran\n", "plugin:b:via-setup\n", "plugin:b:via-keymap\n"},
 		},
 		{
 			name: "require searches every tree, a plugin's own code dir first, and one file is one instance",
@@ -311,7 +311,6 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "%s %s\n", k, v)
 				}
 			}
-			fmt.Fprintf(&out, "profile: %s\n", cmp.Or(h.Settings.Str("agent.profile"), "default"))
 			for _, s := range h.skillsReg.list() {
 				if s.Source != skill.Builtin {
 					fmt.Fprintf(&out, "skill %s %s %v\n", s.Name, h.sourceOf(string(s.Source), s.Dir), h.skillsReg.isEnabled(s.Name))
@@ -637,13 +636,12 @@ func TestPluginUses(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) }))
 	defer srv.Close()
 	for _, c := range []struct {
-		name     string
-		uses     string // the manifest's uses array; "" for a plugin with none
-		readOnly bool
-		stub     bool   // h.modelFn answers "pong"
-		send     bool   // the call starts a turn of the agent
-		call     string // %project% is the project dir, %plugin% the plugin's own root
-		err      string // the substring the call raises; "" when it goes through
+		name string
+		uses string // the manifest's uses array; "" for a plugin with none
+		stub bool   // h.modelFn answers "pong"
+		send bool   // the call starts a turn of the agent
+		call string // %project% is the project dir, %plugin% the plugin's own root
+		err  string // the substring the call raises; "" when it goes through
 	}{
 		{
 			name: "a declared call settles", uses: `["http"]`,
@@ -670,11 +668,6 @@ func TestPluginUses(t *testing.T) {
 			call: `assert(zemi.job.start({ cmd = "true" }):wait(5000).code == 0, "the job")`,
 		},
 		{
-			name: "a read-only turn's job does not settle", uses: `["job"]`, readOnly: true,
-			call: `zemi.job.start({ cmd = "true" })`,
-			err:  "permission denied (read-only agent)",
-		},
-		{
 			name: "a declared agent send settles", uses: `["agent"]`, stub: true, send: true,
 			call: `assert(zemi.agent.send("hi"), "the send")`,
 		},
@@ -686,11 +679,6 @@ func TestPluginUses(t *testing.T) {
 		{
 			name: "a declared write settles", uses: `["fs.write"]`,
 			call: `assert(zemi.fs.write("%project%/notes.txt", "x") == true, "the project write")`,
-		},
-		{
-			name: "a read-only turn's write does not settle", uses: `["fs.write"]`, readOnly: true,
-			call: `zemi.fs.write("%project%/notes.txt", "x")`,
-			err:  "permission denied (read-only agent)",
 		},
 		{
 			name: "a subject no capability covers keeps its default",
@@ -716,12 +704,6 @@ func TestPluginUses(t *testing.T) {
 			if c.stub {
 				seedSession(t, h)
 				reflectStub(t, h, "pong")
-			}
-			if c.readOnly {
-				runUser(t, r, `zemi.agent.profile.add("planner", { read_only = true })`)
-				if err := h.SetProfile("planner"); err != nil {
-					t.Fatal(err)
-				}
 			}
 			err := r.ExecuteChunk(t.Context(), strings.NewReplacer("%project%", dir, "%plugin%", own).Replace(c.call), filepath.Join(own, ".zemi", "init.lua"), lua.OriginPlugin)
 			switch {

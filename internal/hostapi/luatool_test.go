@@ -300,10 +300,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	}
 	ui := &fakeUI{askAllowed: false, askBy: "user"}
 	h.SetUIHooks(ui)
-	set, err := h.profileTools(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := h.mainTools()
 	var tool fantasy.AgentTool
 	for _, c := range set {
 		if c.Info().Name == tools.ToolLua {

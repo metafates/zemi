@@ -404,8 +404,8 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 	reflectStub(t, h, "")
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	toolset, _ := h.profileTools(nil)
-	if _, err := h.ensureRunner(nil, toolset); err != nil {
+	toolset := h.mainTools()
+	if _, err := h.ensureRunner(toolset); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.OpenUsage(); err != nil || len(ui.opened) != 1 {
@@ -441,8 +441,8 @@ func TestPromptCommandShowsTheText(t *testing.T) {
 	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 0 || h.evlog.notes[len(h.evlog.notes)-1].title != "Nothing to show yet" {
 		t.Fatalf("before the first send: %v %+v", err, ui.opened)
 	}
-	toolset, _ := h.profileTools(nil)
-	if _, err := h.ensureRunner(nil, toolset); err != nil {
+	toolset := h.mainTools()
+	if _, err := h.ensureRunner(toolset); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 1 {

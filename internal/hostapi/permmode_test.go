@@ -54,29 +54,6 @@ func TestPermAsk(t *testing.T) {
 	}
 }
 
-// TestPlanApprovalAfterProfileGone: a profile the config dropped since the
-// read-only agent was picked is no reason to read an approved plan as a
-// dismissal. The restore skips it, the default stands, and the handoff is
-// still recorded.
-func TestPlanApprovalAfterProfileGone(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	plannerProfile(t, r)
-	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
-	h.SetUIHooks(ui)
-	h.Settings.SetQuiet("agent.profile", "gone") // the agent the read-only pick restored to, gone since
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	v, ok := h.approvePlan("# The plan")
-	if !ok || !v.Approved {
-		t.Fatalf("approve: %+v ok=%v", v, ok)
-	}
-	if h.takePlanApproved() != implementNow {
-		t.Fatal("the approval recorded no handoff")
-	}
-}
-
 // TestAskFIFO: asks reach the user one at a time under askMu, and the user's
 // tell denies the ones waiting behind the prompt.
 func TestAskFIFO(t *testing.T) {

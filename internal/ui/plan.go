@@ -1,8 +1,6 @@
 // plan.go is the Go-owned plan approval overlay (DESIGN §6.4, §8): the plan
 // tool shows its plan as a scrollable markdown "Plan" popup the user approves
-// (a), asks to change (e, then type), or dismisses (esc). The agent to return to
-// on approval is remembered when the read-only agent started, so approval
-// never asks which agent or profile.
+// (a), asks to change (e, then type), or dismisses (esc).
 
 package ui
 
@@ -17,15 +15,14 @@ import (
 )
 
 type planAskPrompt struct {
-	plan    string
-	view    viewport
-	sel     int // the highlighted button: approve, then request changes
-	typing  bool
-	input   composerState
-	profile string // the profile the "back to <profile> on approve" badge names
-	size    boxSize
-	text    textRows
-	answer  chan planAnswer
+	plan   string
+	view   viewport
+	sel    int // the highlighted button: approve, then request changes
+	typing bool
+	input  composerState
+	size   boxSize
+	text   textRows
+	answer chan planAnswer
 }
 
 type planAnswer struct {
@@ -45,13 +42,12 @@ func (p *planAskPrompt) choices() []promptChoice {
 
 // AskPlan implements hostapi.UIHooks. It blocks the caller (the plan tool on
 // the turn goroutine) until the user approves, types changes, or dismisses.
-func (a *App) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
+func (a *App) AskPlan(plan string) (tools.PlanVerdict, bool) {
 	ch := make(chan planAnswer, 1)
 	a.await(func() tea.Cmd {
 		a.planAsk = &planAskPrompt{
-			plan:    sanitize.String(plan),
-			profile: implementProfile,
-			answer:  ch,
+			plan:   sanitize.String(plan),
+			answer: ch,
 		}
 		return a.notifyIfAway("zemi: a plan to review")
 	})
@@ -127,9 +123,5 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 		return emptyRows("The plan is empty.", w)
 	})
 	body := scrollChoiceBody(h, inner, nil, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, hints...)
-	badge := ""
-	if p.profile != "" {
-		badge = "back to " + p.profile + " on approve"
-	}
-	return promptBox("Plan", badge, body, w, h, 100, &p.size)
+	return promptBox("Plan", "", body, w, h, 100, &p.size)
 }

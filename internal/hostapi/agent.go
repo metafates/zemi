@@ -1,6 +1,6 @@
 // agent.go is the agent core in the host (DESIGN §6.3): the
-// provider/model/agent/permission/session namespaces, profile resolution,
-// turn streaming into the UI, message persistence and the steering queue.
+// provider/model/agent/permission/session namespaces, turn streaming into the
+// UI, message persistence and the steering queue.
 
 package hostapi
 
@@ -37,19 +37,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// Profile is one named agent shape: model, system prompt, tools.
-// ReadOnly makes it a planning agent: the project is read-only to it and
-// the pipeline denies file changes and confines commands (see h.readOnly).
-type Profile struct {
-	Name         string
-	Model        string
-	System       string
-	Tools        []string
-	ContextFiles []string
-	ReadOnly     bool
-	Temperature  *float64
-}
 
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
@@ -102,9 +89,9 @@ type agentHost struct {
 	// it is stored, so a resumed session rebuilds the same rows
 	rows map[string]rowMeta
 
-	// targetsMu guards targets, the slots zemi.model.add and
-	// zemi.agent.profile.add registered. It is a leaf: roleModel reads it with
-	// mu held (liveModelID), so nothing under it takes another lock.
+	// targetsMu guards targets, the slots zemi.model.add registered. It is a
+	// leaf: roleModel reads it with mu held (liveModelID), so nothing under it
+	// takes another lock.
 	targetsMu sync.RWMutex
 	targets   map[string]*modelTarget
 
@@ -238,14 +225,6 @@ type agentHost struct {
 	// steering: a turn that ends first drops it instead of starting another.
 	todoNag string
 
-	// planApproved is set when a read-only agent's plan is approved; the ended
-	// turn's planFollowup starts implementation as the restored agent. Cleared
-	// by takePlanApproved.
-	planApproved string
-	// planNudged: a read-only agent was told once this user message that it
-	// ended in plain text; it is not told again until the user speaks
-	planNudged bool
-
 	// goal is the session's goal (/goal), nil for none; goalPending the
 	// condition of a /goal sent and not yet stored; goalRuns counts the turns
 	// it started in a row, and checkingGoal holds while nextTurn asks whether
@@ -276,73 +255,14 @@ func (h *Host) Effort(modelID string) string {
 	return h.Providers.Effort(agent.ModelID(modelID), agent.Effort(h.Settings.Str(config.KeyAgentEffort)))
 }
 
-// resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key. A defined profile wins; default with none defined is the
-// implicit shipped shape (nil).
-func (h *Host) resolveProfile(name string) (*Profile, error) {
-	if name == "" {
-		name = h.Settings.Str(config.KeyAgentProfile)
-	}
-	if t, ok := h.target(name); ok && t.Prof != nil {
-		return t.Prof, nil
-	}
-	if name != "default" {
-		return nil, fmt.Errorf("agent: unknown profile %q; /profile lists the agents", name)
-	}
-	return nil, nil
-}
-
-// readOnly reports whether the active agent is read-only: the project is
-// read-only to it and file changes are denied regardless of the mode.
-func (h *Host) readOnly() bool {
-	p, _ := h.resolveProfile("")
-	return p != nil && p.ReadOnly
-}
-
-// currentModelID picks the model the main conversation runs on: the slot the
-// active profile names, or the profile's own model for a one-off run
-// (zemi.model.ask, a subagent) that sets no name. The conversation prefers
-// its chat pick, then a default profile shape's own model, then the default
-// role every slot follows.
-func (h *Host) currentModelID(p *Profile) string {
-	switch {
-	case p == nil:
-		return h.roleModel("chat")
-	case p.Name == "":
-		return p.Model
-	case p.Name == "default":
-		return cmp.Or(h.Settings.Str(config.KeyModelsChat), h.modelRef(p.Model), h.roleModel("default"))
-	}
-	return h.roleModel(p.Name)
-}
-
-// conversationModel is the model the conversation runs on, whatever profile
-// is active.
-func (h *Host) conversationModel() string {
-	p, _ := h.resolveProfile("")
-	return h.currentModelID(p)
-}
-
-// ConversationTarget is the slot a pick for the conversation writes: the
-// active profile's own, else the default role every slot follows. A profile
-// named default has no key of its own, so it picks the default role too.
-func (h *Host) ConversationTarget() string {
-	p, _ := h.resolveProfile("")
-	if p == nil || p.Name == "default" {
-		return "default"
-	}
-	return p.Name
-}
-
 // liveModelID is the model turns run on: the running turn's, else the
-// active profile's (ag.mu held).
+// conversation's chat pick (ag.mu held).
 func (h *Host) liveModelID() string {
 	ag := h.agents
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	p, _ := h.resolveProfile("")
-	return h.currentModelID(p)
+	return h.roleModel("chat")
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -368,53 +288,32 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
-// MCP tools, filtered by the profile. The lua tool builds its scripts' calls
-// through it, so a script reaches exactly what the run has, a profile's filter
-// included.
-func (h *Host) toolBuilder(p *Profile, skip set.Set[string]) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
-	var want []string
-	if p != nil {
-		want = p.Tools
-	}
+// MCP tools. The lua tool builds its scripts' calls through it, so a script
+// reaches exactly what the run has.
+func (h *Host) toolBuilder(skip set.Set[string]) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
 	return func(pipe *tools.Pipeline) ([]fantasy.AgentTool, []string) {
-		all := h.allTools(pipe)
-		return filterTools(all, want, skip)
+		return filterTools(h.allTools(pipe), nil, skip)
 	}
 }
 
-// profileTools selects the tool set: a profile's names filter the builtin,
-// Lua and MCP tools alike. A kept name nothing answers to is recorded, so
-// one misspelling does not leave the agent toolless; a "-name" one fails,
-// since the tool it meant to drop may run under another name.
-func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
+// mainTools selects the conversation's tool set over a pipeline of its own.
+func (h *Host) mainTools() []fantasy.AgentTool {
 	pipe := h.PipelineFor()
-	pipe.Images = func() bool { return h.takesImages(h.currentModelID(p)) }
-	out, unknown := h.toolsFor(pipe, p)
-	var want []string
-	if p != nil {
-		want = p.Tools
-	}
-	if dropped := slices.DeleteFunc(slices.Clone(unknown), func(n string) bool { return !slices.Contains(want, "-"+n) }); len(dropped) > 0 {
-		return nil, fmt.Errorf("profile %s drops %s, which no tool is named", p.Name, strings.Join(dropped, ", "))
-	}
-	if len(unknown) > 0 {
-		h.RecordError("profile "+p.Name, "no tool is named "+strings.Join(unknown, ", "))
-	}
-	return out, nil
+	pipe.Images = func() bool { return h.takesImages(h.roleModel("chat")) }
+	return h.toolsFor(pipe)
 }
 
 // toolsFor builds one run's tool set over a pipeline it owns, whose Images says
-// which model the set is built for. nil lists no profile: a fork keeps the
-// caller's own set, which it selects by name.
-func (h *Host) toolsFor(pipe *tools.Pipeline, p *Profile) (out []fantasy.AgentTool, unknown []string) {
+// which model the set is built for.
+func (h *Host) toolsFor(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var skip set.Set[string]
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
-	build := h.toolBuilder(p, skip)
-	out, unknown = build(pipe)
+	build := h.toolBuilder(skip)
+	out, _ := build(pipe)
 	wireLua(out, build)
-	return out, unknown
+	return out
 }
 
 // wireLua gives each lua tool the builder its script's calls come from, so a
@@ -427,14 +326,15 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 	}
 }
 
-func (h *Host) ensureRunner(p *Profile, toolset []fantasy.AgentTool) (*agent.Runner, error) {
-	model, err := h.resolveModel(p)
+func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) {
+	id := h.roleModel("chat")
+	model, err := h.resolveModel(id)
 	if err != nil {
 		return nil, err
 	}
 	_, loaded := h.sessionLogs()
 	toolset, active := h.deferMCP(toolset, loaded)
-	toolset, sys, ctxMsg, parts := h.pinPrompt(p, toolset)
+	toolset, sys, ctxMsg, parts := h.pinPrompt(toolset)
 	r := agent.NewRunner(model, toolset, sys)
 	r.Context, r.ActiveTools = ctxMsg, active
 	sent := toolset
@@ -449,13 +349,9 @@ func (h *Host) ensureRunner(p *Profile, toolset []fantasy.AgentTool) (*agent.Run
 	h.agents.mu.Lock()
 	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
-	id := h.currentModelID(p)
 	sid := h.AgentSessionID()
 	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
-	if p != nil {
-		r.Temperature = p.Temperature
-	}
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
@@ -522,19 +418,16 @@ type pinnedTool struct {
 func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 
 // pinPrompt gives the pinned prompt while its key holds and builds and pins a
-// new one otherwise. The key is what the user switches (profile, model,
-// trust), whether the model takes images (read's
+// new one otherwise. The key is what the user switches (model, trust),
+// whether the model takes images (read's
 // description says) and each tool's name and input schema, since a stale
 // schema fails calls. Descriptions, instruction files, skills and
 // agent.assemble output wait for a drop point (closeSession, compactDone,
 // deleteRecipe). A reload drops nothing: the config watcher reloads on any
 // config-tree write, the model's own skill writes included.
-func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
-	id := h.currentModelID(p)
-	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
-	if p != nil {
-		key[0] = p.Name
-	}
+func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
+	id := h.roleModel("chat")
+	key := []string{id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
 	infos := make([]fantasy.ToolInfo, len(toolset))
 	for i, t := range toolset {
 		infos[i] = t.Info()
@@ -551,7 +444,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
-		pin.text, pin.context, pin.parts = h.buildSystemParts(p, toolset)
+		pin.text, pin.context, pin.parts = h.buildSystemParts(toolset)
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
@@ -728,22 +621,16 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 		h.refresh()
 		return err
 	}
-	p, err := h.resolveProfile("")
-	if err != nil {
-		return fail(err)
-	}
 	// before the session row, so a send that cannot run leaves no empty session
-	if _, err := h.resolveModel(p); err != nil {
+	id := h.roleModel("chat")
+	if _, err := h.resolveModel(id); err != nil {
 		return fail(err)
 	}
-	if err := h.ensureSession(p, text); err != nil {
+	if err := h.ensureSession(text); err != nil {
 		return fail(err)
 	}
-	toolset, err := h.profileTools(p)
-	if err != nil {
-		return fail(err)
-	}
-	runner, err := h.ensureRunner(p, toolset)
+	toolset := h.mainTools()
+	runner, err := h.ensureRunner(toolset)
 	if err != nil {
 		return fail(err)
 	}
@@ -757,22 +644,18 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	}
 	ag.runner = runner
 	ag.modelSeed = ""
-	ag.turnModel = h.currentModelID(p)
+	ag.turnModel = id
 	if ag.byLoop = strings.Contains(text, loopTag); !ag.byLoop {
 		ag.goalRuns = 0 // someone started it: neither the goal nor a loop
 	}
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
-	h.Log.Info("send", "origin", "agent", "profile", h.Settings.Str(config.KeyAgentProfile),
-		"session", h.AgentSessionID(), "text", clipLine(sanitize.String(text), 120))
+	h.Log.Info("send", "origin", "agent", "session", h.AgentSessionID(),
+		"text", clipLine(sanitize.String(text), 120))
 
-	// the profile this turn ran as: a switch to a read-only agent mid-turn
-	// must not nudge the reply the replaced agent wrote
-	nudge := h.nudgesPlan(p, toolset)
 	h.GoSafe("agent turn", func() {
 		h.runTurns(runner, prev, from, scope, text)
-		h.planFollowup(runner, nudge)
 	})
 	return nil
 }
@@ -981,19 +864,15 @@ func (h *Host) runTurns(runner, prev *agent.Runner, from string, scope *turnScop
 }
 
 func (h *Host) startTurn(text string) {
-	if h.appendUserRows(text) {
-		h.agents.mu.Lock()
-		h.agents.planNudged = false
-		h.agents.mu.Unlock()
-	}
+	h.appendUserRows(text)
 	h.agentStream()
 	h.EmitAsync(EventAgentStart, map[string]any{"text": text})
 }
 
 // appendUserRows shows one message as the model reads it: what was typed,
 // then the notice row of each background report behind agent.AttachMarker,
-// the same cut a resumed transcript makes. Reports whether anything was typed.
-func (h *Host) appendUserRows(text string) bool {
+// the same cut a resumed transcript makes.
+func (h *Host) appendUserRows(text string) {
 	shown, heads, _ := userRowsFor(text)
 	if shown != "" {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: h.now().UnixMilli()})
@@ -1001,25 +880,20 @@ func (h *Host) appendUserRows(text string) bool {
 	for _, n := range heads {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
-	return shown != ""
 }
 
 // nextTurn runs after each turn: messages queued after the last step
 // boundary become one follow-up turn, otherwise the agent goes idle.
 // active stays held across the handoff, so a submit in between queues
-// instead of starting a turn out of order. An approved plan (planApproved)
-// is a follow-up too, kept under the same claim, but sent afresh: the
-// restored profile needs its own runner, not the read-only one's. After a
+// instead of starting a turn out of order. After a
 // cancelled turn nothing starts: the queue waits for the UI to hand it back
 // to the composer. After a turn that ended cleanly with nothing queued, a
 // set goal is checked under the same claim (continueGoal). err is how the
 // turn ended.
 func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
-	// the profile the check skips: a read-only agent cannot act on a goal
-	readOnly := h.readOnly()
 	ag := h.agents
 	ag.mu.Lock()
-	text, handoff := "", false
+	text := ""
 	var waiting []string // reports and plugin sends a cancel left for the next message
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
@@ -1029,10 +903,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 			}
 		}
 	} else {
-		if ag.planApproved != "" {
-			ag.steering = append(ag.steering, ag.planApproved)
-			ag.planApproved, handoff = "", true
-		}
 		text = joinQueue(ag.steering)
 		ag.steering = nil
 	}
@@ -1041,19 +911,16 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
-	if text != "" || err != nil || done.ctx.Err() != nil || readOnly || h.tasks.runningFor(ag.sessionID) > 0 {
+	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(ag.sessionID) > 0 {
 		goal = nil
 	}
 	if text != "" {
 		ag.goalRuns, ag.byLoop = 0, false
 	}
 	var next *turnScope
-	switch {
-	case text == "" && goal == nil:
+	if text == "" && goal == nil {
 		h.release()
-	case handoff:
-		next = h.claim() // sendClaimed begins the turn
-	default:
+	} else {
 		ag.beginTurn()
 		ag.checkingGoal = goal != nil
 		next = h.claim()
@@ -1063,21 +930,15 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	if goal != nil {
 		return h.continueGoal(next, goal)
 	}
-	switch {
-	case text == "":
+	if text == "" {
 		// its notice row is drawn when the model reads it; say now that it waits
 		if len(waiting) > 0 {
 			h.Notify(slog.LevelInfo, "Waiting for your next message", strings.Join(waiting, "\n"))
 		}
 		h.refresh()
-	case handoff:
-		if err := h.sendClaimed(next, text); err != nil {
-			h.Notify(slog.LevelError, "Could not start the implementation", h.friendlyError(err))
-		}
 		return nil, ""
-	default:
-		h.startTurn(text)
 	}
+	h.startTurn(text)
 	return next, text
 }
 
@@ -1352,7 +1213,7 @@ func (h *Host) turnModelID() string {
 	if m := h.agents.turnModel; m != "" {
 		return m
 	}
-	return h.currentModelID(nil)
+	return h.roleModel("chat")
 }
 
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
@@ -1755,7 +1616,7 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 // ensureSession creates the store session on the first send. Rolling over
 // a previous session is the reflector's session-close trigger (DESIGN
 // §10.3).
-func (h *Host) ensureSession(p *Profile, firstText string) error {
+func (h *Host) ensureSession(firstText string) error {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.sessionID != "" {
@@ -1768,10 +1629,6 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	}
 	ag.mu.Unlock()
 	sid := store.ShortID()
-	name := ""
-	if p != nil {
-		name = p.Name
-	}
 	typed, attached := agent.CutAttached(firstText)
 	if strings.TrimSpace(typed) == "" {
 		// piped stdin alone: its first line, past the element's tag
@@ -1787,7 +1644,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		ag.mu.Unlock()
 		return nil
 	}
-	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
+	if err := h.DB.CreateSession(sid, "", title, ""); err != nil {
 		ag.mu.Unlock()
 		return err
 	}
@@ -1843,8 +1700,8 @@ func (h *Host) btw(ctx context.Context, question string) (string, error) {
 	return cmp.Or(answer, "(no answer: the model reached for a tool)"), err
 }
 
-// aside sends text on the prefix the next send would use (profile, prompt,
-// tools), so it reads the provider's cache, and bills it. A reply that is
+// aside sends text on the prefix the next send would use (prompt, tools), so
+// it reads the provider's cache, and bills it. A reply that is
 // only a tool call is "".
 func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	ag := h.agents
@@ -1858,15 +1715,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 		return "", errNothingToAsk
 	}
 	history := live.Snapshot()
-	p, err := h.resolveProfile("")
-	if err != nil {
-		return "", err
-	}
-	toolset, err := h.profileTools(p)
-	if err != nil {
-		return "", err
-	}
-	r, err := h.ensureRunner(p, toolset)
+	r, err := h.ensureRunner(h.mainTools())
 	if err != nil {
 		return "", err
 	}
@@ -1875,7 +1724,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.bill(sid, h.currentModelID(p), res.TotalUsage)
+	h.bill(sid, h.roleModel("chat"), res.TotalUsage)
 	return strings.TrimSpace(concatText(res.Response.Content)), nil
 }
 
@@ -2001,7 +1850,7 @@ func strs[T ~string](vals []T) []string {
 // OpenModelPicker lists the registered models for a target, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
 // Name "" is /model and "chat" the model key's list, both of them the
-// conversation's: under a profile a pick writes its slot, else chat. Another
+// conversation's: a pick there writes models.chat. Another
 // target's list opens on a row leaving it to its own model.
 func (h *Host) OpenModelPicker(name string) error {
 	ui, err := h.Screen()
@@ -2018,12 +1867,7 @@ func (h *Host) followRow(name, run string) OverlayItem {
 		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + "default"}
 	}
 	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel("default"), Run: run + "default"}
-	t, _ := h.target(name)
-	switch {
-	case t == nil || t.def() == "":
-	case t.Prof != nil:
-		head.Text, head.Desc = "Follow the profile's model", h.modelRef(t.def())
-	default:
+	if t, _ := h.target(name); t != nil && t.def() != "" {
 		head.Text, head.Desc = "Follow the registered model", h.modelRef(t.def())
 	}
 	return head
@@ -2035,15 +1879,13 @@ func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
-	run, cur := "model ", h.conversationModel()
+	run, cur := "model ", h.roleModel("chat")
 	switch name {
 	case "":
 		o.Items = []OverlayItem{
 			{Text: "Choose a model per role", Desc: rolesDesc(h.ownRoles()), Verb: VerbOpen, Run: "model roles"},
 			{Text: "Update the model catalog", Desc: h.Builtin.Load().Info.String(), Verb: VerbRun, Run: "model update"},
 		}
-	case "chat":
-		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
 		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str(config.ModelKey(name))
 		head := h.followRow(name, run)
@@ -2206,30 +2048,18 @@ func (h *Host) OpenModelRoles() error {
 	return nil
 }
 
-// modelRoleItems is /model roles: the conversation's slot first, then the
-// roles, then the profiles. A profile named default has no key of its own,
-// so its row is the default slot; a profile row one shows is never repeated.
+// modelRoleItems is /model roles: the conversation's default slot first, then
+// the other roles, then the slots config registered.
 func (h *Host) modelRoleItems() []OverlayItem {
-	slot := h.ConversationTarget()
-	first, firstDesc := slot, roles[0].Desc
-	if p, _ := h.resolveProfile(""); p != nil && p.Name != "default" {
-		first, firstDesc = p.Name, h.profileSlotDesc(p.Name)
-	}
 	items := []OverlayItem{{
-		Text: first, Desc: h.slotLine(slot, firstDesc),
-		Verb: VerbOpen, Run: "model " + slot,
+		Text: "default", Desc: h.slotLine("default", roles[0].Desc),
+		Verb: VerbOpen, Run: "model default",
 	}}
 	for _, r := range roles[1:] {
 		items = append(items, h.modelSlotRow(r.Name, r.Desc))
 	}
-	plain, profiles := h.registeredTargets()
-	for _, t := range plain {
+	for _, t := range h.registeredTargets() {
 		items = append(items, h.modelSlotRow(t.Name, t.Desc))
-	}
-	for _, t := range profiles {
-		if t.Name != first {
-			items = append(items, h.modelSlotRow(t.Name, h.profileSlotDesc(t.Name)))
-		}
 	}
 	return items
 }
@@ -2305,7 +2135,7 @@ func (h *Host) SetModel(args string) error {
 	case len(f) == 1 && h.isTarget(f[0]):
 		return picker(f[0])
 	case len(f) == 1: // a bare id is the conversation's, not chat's alone
-		f = []string{h.ConversationTarget(), f[0]}
+		f = []string{"default", f[0]}
 	case len(f) > 2 || !h.isTarget(f[0]):
 		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> chat | default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
@@ -2454,114 +2284,8 @@ func (h *Host) setWatched(path config.Key, val any) error {
 	return nil
 }
 
-// ProfileNames lists default and the defined profiles.
-func (h *Host) ProfileNames() []string {
-	_, profiles := h.registeredTargets()
-	names := []string{"default"}
-	for _, t := range profiles {
-		if t.Name != "default" {
-			names = append(names, t.Name)
-		}
-	}
-	return names
-}
-
-// SetProfile switches the profile the next send runs as (/profile <name>).
-// Picking a read-only agent remembers the one it replaced, so approving a
-// plan can return to it (approvePlan).
-func (h *Host) SetProfile(name string) error {
-	name = cmp.Or(name, "default") // resolveProfile reads "" as the active one
-	next, err := h.resolveProfile(name)
-	if err != nil {
-		return Usagef("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
-	}
-	if next != nil && next.ReadOnly && !h.readOnly() {
-		h.plans.mu.Lock()
-		h.plans.prePlanProfile = h.Settings.Str(config.KeyAgentProfile)
-		h.plans.mu.Unlock()
-	}
-	return h.setWatched("agent.profile", name)
-}
-
-// cycleProfile steps through the agents (a key binding):
-// default, then profiles in definition order, and back.
-func (h *Host) cycleProfile(step int) error {
-	names := h.ProfileNames()
-	n := len(names)
-	cur := h.Settings.Str(config.KeyAgentProfile)
-	i := max(slices.Index(names, cur), 0)
-	return h.SetProfile(names[((i+step)%n+n)%n])
-}
-
-// implementNow is the message a fresh send carries to the restored agent after
-// its plan is approved; the plan itself stays in history.
-var implementNow = agent.Note("The user approved the plan above. " + tools.ImplementPlan)
-
-func (h *Host) setPlanApproved(msg string) {
-	h.agents.mu.Lock()
-	h.agents.planApproved = msg
-	h.agents.mu.Unlock()
-}
-
-func (h *Host) takePlanApproved() string {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	msg := ag.planApproved
-	ag.planApproved = ""
-	return msg
-}
-
-// planNudge is what a read-only agent hears once when it ends in plain text
-// instead of the question or plan tool: the text is not a plan to approve
-// (a question, a report or a refusal would get an approve key), and only
-// the tools give the user something to answer in place.
-var planNudge = agent.Note(planNudgeText)
-
-const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer. If it asked something, ask it with the question tool; if it was a plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
-
-// nudgesPlan reports whether a turn run as p is nudged for ending in plain
-// text: a read-only agent with the plan tool. A profile without the tool
-// asks for the plan as the reply (planReply), so there is nothing to
-// present it with.
-func (h *Host) nudgesPlan(p *Profile, toolset []fantasy.AgentTool) bool {
-	return p != nil && p.ReadOnly && hasTool(toolset, tools.ToolPlan)
-}
-
-// planFollowup runs after a turn goroutine ends. An approved plan left for
-// a cancelled turn (nextTurn hands off an ended one) is sent to the restored
-// agent to implement; otherwise a turn nudgesPlan held for that ended in
-// plain text is nudged once per user message. Runs on the turn goroutine,
-// never the UI one.
-func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
-	if msg := h.takePlanApproved(); msg != "" {
-		if err := h.AgentSend(msg); err != nil {
-			h.Log.Error("implementation send failed", "origin", "agent", "error", err)
-		}
-		return
-	}
-	if !nudge || plainTextEnd(runner) == "" {
-		return
-	}
-	// a submit that claimed the agent first moves the conversation on
-	ag := h.agents
-	ag.mu.Lock()
-	skip := ag.active || ag.planNudged
-	if !skip {
-		ag.planNudged = true
-	}
-	ag.mu.Unlock()
-	if skip {
-		return
-	}
-	if err := h.AgentSend(planNudge); err != nil {
-		h.Log.Error("plan nudge send failed", "origin", "agent", "error", err)
-	}
-}
-
 // plainTextEnd returns the final plain-text reply of an idle run, or "" when
-// it ended in a tool call (an approved or dismissed plan). A read-only agent
-// is told to end every turn with the plan tool; one that ended in text forgot.
+// it ended in a tool call (an approved or dismissed plan).
 func plainTextEnd(runner *agent.Runner) string {
 	h := runner.Snapshot()
 	if len(h) == 0 || h[len(h)-1].Role != fantasy.MessageRoleAssistant {
@@ -2577,25 +2301,6 @@ func plainTextEnd(runner *agent.Runner) string {
 		}
 	}
 	return strings.TrimSpace(text.String())
-}
-
-// OpenProfilePicker lists the profiles with what each changes; enter switches.
-func (h *Host) OpenProfilePicker() error {
-	ui, err := h.Screen()
-	if err != nil {
-		return err
-	}
-	cur, sel := h.Settings.Str(config.KeyAgentProfile), 0
-	var items []OverlayItem
-	for i, name := range h.ProfileNames() {
-		item := OverlayItem{Text: name, Run: "profile " + name, Desc: h.profileDesc(name)}
-		if name == cur {
-			item.Key, sel = "current", i
-		}
-		items = append(items, item)
-	}
-	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomRight, Verb: "pick"})
-	return nil
 }
 
 // OpenEffortPicker lists the reasoning levels and the model's own, each with
@@ -2636,71 +2341,19 @@ func (h *Host) effortDesc(model, level string) string {
 	return "sent as " + sent
 }
 
-// profileDesc is a /profile row: the model the profile runs on and what it
-// changes.
-func (h *Host) profileDesc(name string) string {
-	if name == "default" { // the shipped shape runs what the conversation runs
-		return h.slotLine("chat", h.profileSlotDesc(name))
-	}
-	return h.slotLine(name, h.profileSlotDesc(name))
-}
-
 // slotLine is what a model row shows: the model the slot runs on and the
-// description beside it, in one place so /model roles and /profile agree.
+// description beside it.
 func (h *Host) slotLine(name, desc string) string {
 	return cmp.Or(h.roleModel(name), "no model") + " · " + desc
-}
-
-// profileSlotDesc is what /model roles and /profile say a profile is: the
-// tools it changes.
-func (h *Host) profileSlotDesc(name string) string {
-	p, _ := h.resolveProfile(name)
-	if p == nil { // the shipped default
-		return "the shipped prompt and every tool"
-	}
-	tools := "every tool"
-	if len(p.Tools) > 0 {
-		tools = "only " + strings.Join(p.Tools, ", ")
-		if !slices.ContainsFunc(p.Tools, func(t string) bool { return !strings.HasPrefix(t, "-") }) {
-			tools = "every tool but " + strings.ReplaceAll(tools[len("only -"):], ", -", ", ")
-		}
-	}
-	return tools
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	profile := L.NewTable()
-	tb.RawSetString("profile", profile)
-	profile.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		name := L.CheckString(1)
-		spec, ok := L.Get(2).(*glua.LTable)
-		if !ok {
-			L.RaiseError("zemi.agent.profile.add: spec must be a table")
-		}
-		// a name an earlier registration holds is the last writer's to take:
-		// addTarget's mayReplace keeps one plugin off another's.
-		p := &Profile{Name: name, Model: rawString(L, spec, "model"), System: rawString(L, spec, "system"), ReadOnly: rawBool(L, spec, "read_only")}
-		if temp, ok := opt[glua.LNumber](L, spec, "temperature"); ok {
-			t := float64(temp)
-			p.Temperature = &t
-		}
-		p.Tools = rawStrings(L, spec, "tools")
-		if ctx, ok := opt[*glua.LTable](L, spec, "context"); ok {
-			p.ContextFiles = rawStrings(L, ctx, "files")
-		}
-		if err := h.addTarget(L, name, modelTarget{Prof: p}); err != nil {
-			L.RaiseError("zemi.agent.profile.add: %v", err)
-		}
-		return 0
-	}))
-
 	tb.RawSetString("current", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		ag := h.agents
 		ag.mu.Lock()
-		out.RawSetString("profile", glua.LString(h.Settings.Str(config.KeyAgentProfile)))
 		sid, model := ag.sessionID, h.liveModelID()
 		ag.mu.Unlock()
 		out.RawSetString("id", glua.LString(sid))
@@ -2736,11 +2389,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			}
 			text = agent.Attached(h.principal(L), text)
 		}
-		p, err := h.resolveProfile("")
-		if err == nil {
-			_, err = h.resolveModel(p)
-		}
-		if err != nil {
+		if _, err := h.resolveModel(h.roleModel("chat")); err != nil {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {
@@ -2863,12 +2512,10 @@ func (h *Host) afterWrite(path string) string {
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls. It is
-// built per send (profileTools -> ensureRunner), so the read-only snapshot
-// below matches the profile the system prompt was built for; switching the
-// agent mid-turn changes the next send, not the running one. The pad is the
-// live session's, bound as the prompt names it.
+// built per send (mainTools -> ensureRunner), so the pipeline's settings
+// match the runner the send built. The pad is the live session's, bound as
+// the prompt names it.
 func (h *Host) PipelineFor() *tools.Pipeline {
-	readOnly := h.readOnly()
 	p := &tools.Pipeline{
 		Pre:        h.toolPreHook(),
 		Ask:        h.askHook(),
@@ -2880,8 +2527,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Progress: func(id string, p tools.Progress) {
 			h.setToolProgress(id, sanitize.String(p.Line), sanitize.String(p.Tail))
 		},
-		Outcome:  h.setToolOutcome,
-		ReadOnly: func() bool { return readOnly },
+		Outcome: h.setToolOutcome,
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.consultHooks(EventToolDenied, map[string]any{"tool_name": tool, "tool_input": req.Preview, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 			h.EmitAsync(EventToolDenied, map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})

@@ -538,8 +538,8 @@ func TestRecipes(t *testing.T) {
 	late := []string{"late", "rig"}
 	written := []string{"late", "rig", "tok"}
 	pinned := func() string {
-		toolset, _ := h.profileTools(nil)
-		_, sys, ctx, _ := h.pinPrompt(nil, toolset)
+		toolset := h.mainTools()
+		_, sys, ctx, _ := h.pinPrompt(toolset)
 		return sys + ctx
 	}
 
@@ -611,7 +611,7 @@ func TestRecipes(t *testing.T) {
 	if data, _ := os.ReadFile(filepath.Join(dir, "tok", "SKILL.md")); !strings.Contains(string(data), "step 1") || !strings.Contains(string(data), "realms/local") || strings.Contains(string(data), "ghp_") {
 		t.Errorf("tok on disk: %s", data)
 	}
-	if !strings.Contains(h.buildSystem(nil), "Recipes: "+dir+"\n") {
+	if !strings.Contains(h.buildSystem(), "Recipes: "+dir+"\n") {
 		t.Error("the environment of a trusted project names the recipes dir")
 	}
 	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.userSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "lint")} {

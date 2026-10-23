@@ -28,7 +28,7 @@ import (
 
 const contextBudget = 32 << 10
 
-// defaultSystemPrompt is the shipped prompt (no profile configured).
+// defaultSystemPrompt is the shipped prompt.
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
 	if !hasTool(toolset, tools.ToolQuestion) {
@@ -104,7 +104,7 @@ A reply is one or two short sentences of plain prose, no headings, lists or note
 # Security
 Help with defensive security, authorized testing, CTFs and security education; refuse malware, credential theft, destructive attacks and detection evasion aimed at systems the user is not authorized to test. Never print, log, commit or store secrets.`
 
-// zemiPrompt joins every main-agent prompt, a profile's own included: the
+// zemiPrompt joins every main-agent prompt: the
 // exact config directories config-writing relies on.
 func (h *Host) zemiPrompt() string {
 	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
@@ -143,67 +143,18 @@ type promptParts struct {
 // buildSystemParts gives the system prompt and the context message (see
 // systemFor). It takes the run's tool set so the prompt names no tool the
 // model does not have.
-func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system, ctxMsg string, parts promptParts) {
+func (h *Host) buildSystemParts(toolset []fantasy.AgentTool) (system, ctxMsg string, parts promptParts) {
 	sys := h.defaultSystemPrompt(toolset)
 	if hasTool(toolset, tools.ToolAgent) {
 		sys += delegationPrompt
 	}
-	var files []string
-	if p != nil {
-		if p.System != "" {
-			sys = p.System
-		}
-		files = p.ContextFiles
-	}
 	sys += h.zemiPrompt()
-	if p != nil && p.ReadOnly {
-		sys += planPrompt
-		if hasTool(toolset, tools.ToolAgent) {
-			sys += planDelegate
-		}
-		switch {
-		case !hasTool(toolset, tools.ToolPlan):
-			sys += planReply
-		case !hasTool(toolset, tools.ToolQuestion):
-			sys += planAssuming
-		default:
-			sys += planAsking
-		}
-	}
-	reply := ""
-	if p == nil || p.System == "" {
-		reply = replyReminder
-	}
-	return h.systemFor(sys, files, toolset, h.ScratchDir(), p != nil && p.ReadOnly, reply)
+	return h.systemFor(sys, toolset, h.ScratchDir(), false, replyReminder)
 }
 
 // replyReminder closes the main agent's context message, where a small model
-// weighs it most; a subagent's report and a profile's own prompt keep theirs.
+// weighs it most; a subagent's report keeps its own.
 const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for."
-
-// planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
-// the pipeline enforces it (Pipeline.ReadOnly), the prompt only saves wasted attempts.
-const planPrompt = `
-
-# Planning
-You are planning, which overrides Doing tasks and Asking the user above: read, search and plan, and change nothing. The project is read-only, so a command that changes it fails. A request for a change is a request to plan it.
-1. Read the code the task touches.`
-
-const planDelegate = ` For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
-
-// planAsking is the rest of the planning prompt for a run with the plan and
-// question tools; a profile that drops one has none.
-const planAsking = `
-2. Ask what only the user can decide (goal, scope, behavior, tradeoffs) with the question tool. A vague request needs several rounds; a focused fix may need none.
-3. When nothing is left to decide, call the plan tool.
-End every turn with the question or plan tool, never plain text; after answering the user's question, ask what to plan next.`
-
-const planReply = `
-2. Write the plan as your reply and stop: nothing in this run can approve it.`
-
-const planAssuming = `
-2. What only the user can decide (goal, scope, behavior, tradeoffs) goes in the plan as a stated assumption.
-3. Then call the plan tool, and end every turn with it, never plain text.`
 
 // contextOpener opens every context message; the bytes after it vary by
 // project and session.
@@ -214,32 +165,14 @@ const contextOpener = "<context>\nzemi's notes for this session, not the user's 
 // files, the environment with the run.s scratchpad pad
 // (readOnly: a read-only agent.s) and the session.s # Brain section.
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
-	system, ctxMsg, _ = h.systemFor(sys, nil, toolset, pad, readOnly, "")
+	system, ctxMsg, _ = h.systemFor(sys, toolset, pad, readOnly, "")
 	return system, ctxMsg
 }
 
-// systemFor is systemWith with the section sizes it assembled. files names
-// explicit project files (a profile's context.files); nil means
-// instructionFiles. last closes the context message.
-func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool, last string) (system, ctxMsg string, parts promptParts) {
-	// a profile's files are repository content too
-	var tracked []string
-	if len(files) == 0 || !h.ProjectTrusted() {
-		tracked, files = h.instructionPaths(), h.instructionFiles()
-	} else {
-		// a copy: these are the profile's own paths, and rewriting them in
-		// place would make the next send join them to the project dir again.
-		// A profile is authored content: only repository files ride the
-		// prompt, so a "../x" or a symlink out of the repo is skipped.
-		var abs []string
-		for _, f := range files {
-			p := filepath.Join(h.Dirs.ProjectDir, f)
-			if h.inRoots(p, h.Dirs.RepoRoot()) {
-				abs = append(abs, p)
-			}
-		}
-		tracked, files = abs, abs
-	}
+// systemFor is systemWith with the section sizes it assembled. last closes
+// the context message.
+func (h *Host) systemFor(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool, last string) (system, ctxMsg string, parts promptParts) {
+	tracked, files := h.instructionPaths(), h.instructionFiles()
 	// stat before the read: an edit between the two is then attached, not lost
 	mtimes := map[string]time.Time{}
 	for _, f := range tracked {

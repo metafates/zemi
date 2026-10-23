@@ -464,8 +464,8 @@ func (run *agentRun) transcriptLocked() []ChatMessage {
 
 // view is what the chat draws while this run is shown: its transcript and the
 // live stream of its own turn, read under one lock. base is the session's
-// snapshot, for what belongs to the process rather than to a turn: the model,
-// the profile and the usage tally. rev is the transcript's revision, so the
+// snapshot, for what belongs to the process rather than to a turn: the model
+// and the usage tally. rev is the transcript's revision, so the
 // chat can cache what it rendered of rows this copy has.
 func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, StreamSnapshot, uint64) {
 	run.mu.Lock()
@@ -974,9 +974,6 @@ func reportHeads(tail string) []notice {
 			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200), Run: m[1]})
 		}
 	}
-	if strings.Contains(tail, planNudgeText) {
-		heads = append(heads, notice{Text: "Asked the read-only agent to end with the plan or question tool."})
-	}
 	return heads
 }
 
@@ -1094,7 +1091,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	}
 	_, tr := historyFrom(rows)
 	run := &agentRun{
-		id: id, agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
+		id: id, agent: sess.Agent, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
 		sessionID: id, status: cmp.Or(RunStatus(sess.RunStatus), RunDone), tr: tr,
 	}
@@ -1159,7 +1156,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
 			if !held.Has(c.ID) && !inFlows.Has(c.ID) {
-				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Profile), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Profile, 0, nil)
+				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Agent), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Agent, 0, nil)
 			}
 		}
 	}

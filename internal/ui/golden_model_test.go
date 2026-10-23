@@ -10,29 +10,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestGoldenModelProfileSwitch pins what the frame shows after /profile moves
-// to a profile with a model of its own: the conversation's model is the
-// profile's slot, not models.chat.
-func TestGoldenModelProfileSwitch(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 16)
-	runLua(t, app, `
-		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
-			{ id = "claude-sonnet-4-5" }, { id = "claude-haiku-4-5" } } })
-		zemi.model.set("anthropic/claude-sonnet-4-5")
-		zemi.agent.profile.add("cheap", { model = "anthropic/claude-haiku-4-5" })`)
-	frame := func(name string) {
-		for app.Pump() {
-		}
-		app.renderSync(t)
-		t.Run(name, func(t *testing.T) { golden.RequireEqual(t, app.Frame()) })
-	}
-	frame("chat")
-	if err := host.SetProfile("cheap"); err != nil {
-		t.Fatal(err)
-	}
-	frame("profile")
-}
-
 // TestGoldenModelRoles pins /model roles, a role's model list stacked over
 // it, and the roles list rebuilt with the pick once that list closes.
 func TestGoldenModelRoles(t *testing.T) {

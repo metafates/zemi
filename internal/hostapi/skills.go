@@ -162,7 +162,7 @@ func (h *Host) builtinSkillsDir() string { return joinIf(h.Dirs.DataHome, "built
 
 // zemiSkillDir is where a ready prompt sends the model for the zemi skill's
 // files: the read tool opens them with no ask, also when /skills switched the
-// skill off or the profile has no skill tool.
+// skill off.
 func (h *Host) zemiSkillDir() string { return filepath.Join(h.builtinSkillsDir(), "zemi") }
 
 // materializeBuiltinSkills rewrites the builtin skills on every sync, so an

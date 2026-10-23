@@ -33,8 +33,7 @@ func TestCLI(t *testing.T) {
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
 	}
-	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
-		zemi.agent.profile.add("cheap", {})`)
+	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })`)
 	for _, name := range []string{"rub", "ver", "zzq"} {
 		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
 			t.Fatal(err)
@@ -103,7 +102,6 @@ func TestCLI(t *testing.T) {
 		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
 		{name: "complete a model", args: []string{"__complete", "-m", ""}, stdout: "gw/m1\n"},
-		{name: "complete a profile", args: []string{"__complete", "--profile", ""}, stdout: "cheap\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
 		{name: "sessions as JSON", args: []string{"sessions", "--json"}, stdout: `{"id":"` + sid + `","title":"fix the failing test","updated":"`},
@@ -452,40 +450,38 @@ func TestHeadlessNotices(t *testing.T) {
 	}
 }
 
-// TestModelFlagUnderProfile: -m writes the conversation's slot, which under a
-// profile is the profile's own, so the run measures the flag's model; the
-// shipped default profile has no slot, so it is chat.
-func TestModelFlagUnderProfile(t *testing.T) {
+// TestModelFlag: -m writes the conversation's slot, models.default, and
+// leaves models.chat alone.
+func TestModelFlag(t *testing.T) {
 	_, h, r := newTrustGate(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	provider := `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })`
-	if err := r.ExecuteChunk(t.Context(), provider+`zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
+	if err := r.ExecuteChunk(t.Context(), provider, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err != nil {
+	if err := applyOptions(h, options{model: "a/main"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.Settings.Str("models.cheap"); got != "a/main" {
-		t.Fatalf("models.cheap = %q, want the flag's model", got)
+	if got := h.Settings.Str("models.default"); got != "a/main" {
+		t.Fatalf("models.default = %q, want the flag's model", got)
 	}
 	if got := h.Settings.Str("models.chat"); got != "" {
 		t.Fatalf("models.chat = %q, want the flag to leave it alone", got)
 	}
-	// a bare /model <id> follows the slot the same way, and models.chat keeps
-	// its own pick for the profiles that have none
+	// a bare /model <id> follows the slot the same way
 	if err := h.SetModel("a/cheap"); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.Settings.Str("models.cheap"); got != "a/cheap" {
-		t.Fatalf("models.cheap = %q, want the bare pick", got)
+	if got := h.Settings.Str("models.default"); got != "a/cheap" {
+		t.Fatalf("models.default = %q, want the bare pick", got)
 	}
 	if err := h.SetModel("chat a/main"); err != nil {
 		t.Fatal(err)
 	}
-	if got, cheap := h.Settings.Str("models.chat"), h.Settings.Str("models.cheap"); got != "a/main" || cheap != "a/cheap" {
-		t.Fatalf("a named slot wrote another: chat %q, cheap %q", got, cheap)
+	if got, def := h.Settings.Str("models.chat"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
+		t.Fatalf("a named slot wrote another: chat %q, default %q", got, def)
 	}
 }
 

@@ -23,7 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -108,25 +107,6 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 		if !strings.Contains(err.Error(), w) {
 			t.Fatalf("error %q does not contain %q", err.Error(), w)
 		}
-	}
-}
-
-func TestProfileTemperatureReachesRunner(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	reflectStub(t, h, "")
-	runUser(t, r, `zemi.agent.profile.add("warm", { temperature = 0.3 })`)
-	p, err := h.resolveProfile("warm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	toolset, _ := h.profileTools(p)
-	runner, err := h.ensureRunner(p, toolset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runner.Temperature == nil || *runner.Temperature != 0.3 {
-		t.Fatalf("temperature = %v", runner.Temperature)
 	}
 }
 
@@ -220,8 +200,6 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "a pick outlives the last set", pick: "p/e", want: "p/e", source: "this run"},
 		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
 		{name: "dropping every set returns the default", want: "", source: "default"},
-		{name: "a key's own setter is a config write", key: "agent.profile", config: []any{"planner"}, want: "planner", source: "init.lua"},
-		{name: "and keeps a pick like one", key: "agent.profile", config: []any{"planner"}, pick: "default", want: "default", source: "this run"},
 		{name: "a Lua number sets a number key", key: "agent.compact_at", config: []any{5.0}, want: 5.0, source: "init.lua"},
 		{name: "so dropping it returns the default", key: "agent.compact_at", want: 80.0, source: "default"},
 		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
@@ -410,7 +388,7 @@ func TestSessionNamespace(t *testing.T) {
 		assert(#zemi.session.messages() == 0, "messages should be empty")
 	`)
 
-	if err := h.ensureSession(nil, "hello world"); err != nil {
+	if err := h.ensureSession("hello world"); err != nil {
 		t.Fatalf("ensureSession: %v", err)
 	}
 	if h.AgentSessionID() == "" {
@@ -747,7 +725,7 @@ func (f *fakeUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	return answers, f.qOK
 }
 
-func (f *fakeUI) AskPlan(plan, implementProfile string) (tools.PlanVerdict, bool) {
+func (f *fakeUI) AskPlan(plan string) (tools.PlanVerdict, bool) {
 	f.planAsked++
 	return f.planVerdict, f.planOK
 }
@@ -1147,15 +1125,15 @@ func TestSendWithoutModelLeavesNoSession(t *testing.T) {
 	}
 }
 
-// TestTurnPricedWithProfileModel: a turn records the model it was built
-// with, so a profile's turn is not priced off the session default.
-func TestTurnPricedWithProfileModel(t *testing.T) {
+// TestTurnPricedWithItsModel: a turn records the model it was built
+// with, so its price is not read off the session default.
+func TestTurnPricedWithItsModel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
 	reflectStub(t, h, "ok")
 	runUser(t, r, `
-		zemi.agent.profile.add("cheap", { model = "p/cheap" })
-		zemi.config.set("agent.profile", "cheap")
+		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", models = { { id = "cheap" } } })
+		zemi.model.set("p/cheap")
 	`)
 	if err := h.AgentSend("hi"); err != nil {
 		t.Fatal(err)
@@ -1165,7 +1143,7 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	got := h.agents.turnModel
 	h.agents.mu.Unlock()
 	if got != "p/cheap" {
-		t.Fatalf("turn model = %q, want the profile's", got)
+		t.Fatalf("turn model = %q, want the conversation's pick", got)
 	}
 }
 
@@ -1204,11 +1182,10 @@ func TestProviderModelNumbers(t *testing.T) {
 	}
 }
 
-// TestIdleStreamUsesProfileModel: between turns the context window, the
-// image check and zemi.agent.current follow the default profile's model,
-// not models.chat; compaction and a subagent without a model follow
-// models.chat, whatever the conversation runs on.
-func TestIdleStreamUsesProfileModel(t *testing.T) {
+// TestIdleStreamUsesItsModel: between turns the context window and the
+// image check follow the conversation's model (models.chat); compaction and
+// a subagent without a model follow models.chat too.
+func TestIdleStreamUsesItsModel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -1216,21 +1193,19 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 			{ id = "big", context_window = 200000, vision = false },
 			{ id = "small", context_window = 32000 },
 		} })
-		zemi.model.set("a/small")
-		zemi.agent.profile.add("p", { model = "a/big" })
-		zemi.config.set("agent.profile", "p")
+		zemi.model.set("a/big")
 	`)
 	if s := h.AgentStream(); s.Model != "a/big" || s.CtxWindow != 200000 {
-		t.Fatalf("stream model %q window %d, want the profile's", s.Model, s.CtxWindow)
+		t.Fatalf("stream model %q window %d, want the conversation's", s.Model, s.CtxWindow)
 	}
 	if h.PipelineFor().Images() {
-		t.Fatal("the profile's model is text-only")
+		t.Fatal("the conversation's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if id := h.roleModel("compact"); id != "a/small" {
+	if id := h.roleModel("compact"); id != "a/big" {
 		t.Fatalf("summary model %q, want models.chat", id)
 	}
-	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
+	if id := h.subagentModelID(AgentDef{}); id != "a/big" {
 		t.Fatalf("subagent model %q, want models.chat", id)
 	}
 }
@@ -1270,95 +1245,6 @@ func TestEffortPicker(t *testing.T) {
 		if row.Text != w.text || row.Desc != w.desc || row.Run != w.run || row.Key != w.key {
 			t.Errorf("row %d %+v, want %+v", i, row, w)
 		}
-	}
-}
-
-// TestActiveProfileKey: agent.profile picks the profile a send runs as,
-// whatever order config defined things in; an unknown name fails the send.
-func TestActiveProfileKey(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name, src string
-		want      string // the resolved profile, "" for the shipped one
-		system    string
-		wantErr   bool
-	}{
-		{name: "unset runs the shipped profile"},
-		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile.add("p", { system = "PLAN HARDER" })`, want: "p", system: "PLAN HARDER"},
-		{name: "default resets", src: `zemi.agent.profile.add("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
-		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
-	} {
-		h, r := newTestHost(t)
-		runUser(t, r, c.src)
-		p, err := h.resolveProfile("")
-		got, system := "", ""
-		if p != nil {
-			got, system = p.Name, p.System
-		}
-		if (err != nil) != c.wantErr || got != c.want || system != c.system {
-			t.Errorf("%s: profile %q system %q, err %v", c.name, got, system, err)
-		}
-	}
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile.add("p", {}) zemi.agent.profile.add("q", { model = "x/big" }) zemi.agent.profile.add("default", {})`)
-	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "p", "q"}) {
-		t.Errorf("names %v", names)
-	}
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	if h.OpenProfilePicker() != nil || ui.opened[0].Items[2].Desc != "x/big · every tool" {
-		t.Errorf("the defined profile's picker row %v", ui.opened)
-	}
-	if h.SetProfile("p") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "q" {
-		t.Errorf("cycling from p went to %q", h.Settings.Str("agent.profile"))
-	}
-	h.PurgeGeneration()
-	if _, err := h.resolveProfile("p"); err == nil {
-		t.Error("a purge kept the definition")
-	}
-}
-
-// TestPluginProfile: a plugin ships a profile at boot (the read-only planning
-// recipe), project code does not, `default` stays the user's, and a plugin
-// cannot swap its profile mid-session.
-func TestPluginProfile(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir(), StateHome: t.TempDir()}
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
-	h := NewHost(r, log, config.NewStore(), dirs)
-	t.Cleanup(h.Close)
-	root := filepath.Join(h.pluginsRoot(), "local", "a")
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, plugin.InitFile)), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	init := filepath.Join(root, plugin.InitFile)
-	if err := os.WriteFile(init, []byte(`zemi.agent.profile.add("planner", { read_only = true, model = "a/big" })`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	h.Providers.Reset(agent.Catalog{}) // the profile's model must resolve
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
-		t.Fatalf("Boot: %v", err)
-	}
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	if !h.readOnly() {
-		t.Fatal("the plugin's profile is not read-only")
-	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err != nil {
-		t.Errorf("a plugin added its profile: %v", err)
-	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("planner", { system = "mine" })`, "init.lua", lua.OriginUser, time.Minute, nil); err != nil {
-		t.Fatal(err)
-	}
-	if p, _ := h.resolveProfile("planner"); p == nil || p.System != "mine" || p.ReadOnly {
-		t.Errorf("the user's profile did not take over: %+v", p)
-	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("proj", {})`, ".agents/init.lua", lua.OriginProject, time.Minute, nil); err != nil {
-		t.Errorf("project code defined a profile: %v", err)
-	}
-	if _, err := r.Eval(t.Context(), `zemi.agent.profile.add("default", { system = "mine" })`, init, lua.OriginPlugin, time.Minute, nil); err != nil {
-		t.Errorf("a plugin redefined the default shape: %v", err)
 	}
 }
 
@@ -1413,25 +1299,19 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 }
 
-// TestProfileSwitch: /profile refuses a name nobody defined, a profile's own
-// key is its slot (models.<name>), and both pickers mark what the next send
-// runs on.
-func TestProfileSwitch(t *testing.T) {
+// TestSetModel: /model refuses a provider nobody registered, and an id the
+// provider does not list is taken and warned about, mid-turn too.
+func TestSetModel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
-		zemi.config.set("models.chat", "a/main")
-		zemi.agent.profile.add("cheap", { model = "a/cheap" })
-		zemi.agent.profile.add("onchat", { model = "chat" })`)
+		zemi.config.set("models.chat", "a/main")`)
 	for _, c := range []struct {
 		name    string
 		do      func() error
 		wantErr string
 	}{
-		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, cheap, onchat"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
 		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider to `},
 		{"unlisted model under a registered provider is taken and warned about, mid-turn too", func() error {
@@ -1443,14 +1323,6 @@ func TestProfileSwitch(t *testing.T) {
 			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model not listed" and n.body:match("^a/nope: not in the provider's models list"), tostring(n and n.body))`)
 			return nil
 		}, ""},
-		{"model under a profile on the chat role", func() error {
-			if err := h.SetProfile("onchat"); err != nil {
-				return err
-			}
-			return h.SetModel("a/main")
-		}, ""},
-		{"switch", func() error { return h.SetProfile("cheap") }, ""},
-		{"a profile's own slot is its key", func() error { return h.SetModel("cheap a/main") }, ""},
 	} {
 		err := c.do()
 		if (c.wantErr == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), c.wantErr) {
@@ -1459,54 +1331,6 @@ func TestProfileSwitch(t *testing.T) {
 	}
 	if err := h.SetModel("chat a/small"); err != nil { // the chat slot, named explicitly
 		t.Fatal(err)
-	}
-	if id := h.roleModel("cheap"); id != "a/main" {
-		t.Errorf("cheap runs on %q, want the pick over its own model", id)
-	}
-	for _, c := range []struct{ name, want string }{
-		{"onchat", "a/main · every tool"},
-		{"cheap", "a/main · every tool"},
-		{"default", "a/small · the shipped prompt and every tool"},
-	} {
-		if got := h.profileDesc(c.name); got != c.want {
-			t.Errorf("%s desc %q, want %q", c.name, got, c.want)
-		}
-	}
-	if h.OpenProfilePicker() != nil || h.OpenModelPicker("chat") != nil {
-		t.Fatal("a picker did not open")
-	}
-	// each picker marks what an enter there runs: the active profile, and the
-	// conversation's model for /model chat, which under a profile is cheap's
-	// slot and not models.chat
-	for i, want := range []struct{ id, run string }{
-		{"profile", "profile cheap"},
-		{"model chat", "model a/main"},
-	} {
-		o := ui.opened[len(ui.opened)-2+i] // after the /model refreshes the SetModel calls sent
-		if o.ID != want.id {
-			t.Fatalf("picker %d is %q, want %q", i, o.ID, want.id)
-		}
-		if item := o.Items[o.Selected]; item.Key != "current" || item.Run != want.run {
-			t.Errorf("%s picker marks %+v, want run %q", o.ID, item, want.run)
-		}
-	}
-}
-
-// TestProfileContextFilesSurviveTwoSends: building the prompt must leave the
-// profile's context files as written, or the second build joins them to the
-// project directory twice and silently reads nothing.
-func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile.add("p", { context = { files = { "NOTES.md" } } })`)
-	p, err := h.resolveProfile("p")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.buildSystem(p)
-	h.buildSystem(p)
-	if got := p.ContextFiles; len(got) != 1 || got[0] != "NOTES.md" {
-		t.Fatalf("context files = %v", got)
 	}
 }
 
@@ -1653,7 +1477,7 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	h, _ := newTestHost(t)
 	names := func() map[string]bool {
 		out := map[string]bool{}
-		toolset, _ := h.profileTools(nil)
+		toolset := h.mainTools()
 		for _, tool := range toolset {
 			out[tool.Info().Name] = true
 		}
@@ -1670,25 +1494,6 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 		if !names()[name] {
 			t.Errorf("the TUI toolset lost %q", name)
 		}
-	}
-}
-
-// TestProfileToolsUnknown: another harness's spelling in a profile leaves
-// the main agent almost toolless, so the name lands in /errors; a "-name"
-// nothing answers to fails, since the tool it meant to drop may run under
-// another name.
-func TestProfileToolsUnknown(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	toolset, err := h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "shell"}})
-	if err != nil || !hasTool(toolset, "shell") || hasTool(toolset, "read") {
-		t.Errorf("kept %d tools, %v", len(toolset), err)
-	}
-	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "no tool is named Read, Grep") {
-		t.Errorf("errors = %+v", h.errs.entries)
-	}
-	if _, err := h.profileTools(&Profile{Name: "docs", Tools: []string{"-bash", "-plan"}}); err == nil || !strings.Contains(err.Error(), "profile docs drops bash, which no tool is named") {
-		t.Errorf("an unknown drop: %v", err)
 	}
 }
 
@@ -1722,8 +1527,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 2 and ps[1].id == "a" and ps[1].builtin == true and ps[2].builtin == true, "seed")
 	`)
-	if h.currentModelID(nil) != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
-		t.Fatalf("catalog defaults: %s %s", h.currentModelID(nil), h.roleModel("titles"))
+	if h.roleModel("chat") != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
+		t.Fatalf("catalog defaults: %s %s", h.roleModel("chat"), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "a", kind = "anthropic", base_url = "http://gw", api_key = "mine", models = { { id = "m" } } })
@@ -1734,8 +1539,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 1 and ps[1].id == "a" and ps[1].builtin == false and ps[1].base_url == "http://gw", "override: " .. #ps)
 	`)
-	if h.currentModelID(nil) != "a/m" || h.roleModel("titles") != "a/m" {
-		t.Fatalf("user defaults: %s %s", h.currentModelID(nil), h.roleModel("titles"))
+	if h.roleModel("chat") != "a/m" || h.roleModel("titles") != "a/m" {
+		t.Fatalf("user defaults: %s %s", h.roleModel("chat"), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "local", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "q" } } })

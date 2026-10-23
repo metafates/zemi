@@ -19,7 +19,7 @@ import (
 func TestSendPrepCheap(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	h.buildSystem(nil)
+	h.buildSystem()
 	cpu := func() time.Duration {
 		var self, kids syscall.Rusage
 		syscall.Getrusage(syscall.RUSAGE_SELF, &self)
@@ -33,8 +33,8 @@ func TestSendPrepCheap(t *testing.T) {
 	for range 3 {
 		start := cpu()
 		for range 5 {
-			toolset, _ := h.profileTools(nil)
-			_, _, parts := h.buildSystemParts(nil, toolset)
+			toolset := h.mainTools()
+			_, _, parts := h.buildSystemParts(toolset)
 			promptSizes(parts, toolset)
 		}
 		if d = cpu() - start; d <= 200*time.Millisecond {

@@ -405,7 +405,7 @@ func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
 		t.Fatal("a stale pin survived the capture")
 	}
 	h.agents.mu.Unlock()
-	_, _, ctx, _ := h.pinPrompt(nil, nil)
+	_, _, ctx, _ := h.pinPrompt(nil)
 	if !strings.Contains(ctx, "late text") {
 		t.Fatalf("context: %q", ctx)
 	}

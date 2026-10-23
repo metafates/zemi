@@ -205,7 +205,7 @@ func SessionMarkdown(db *store.DB, sid string, full bool) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID, sanitize.String(run.Profile), sanitize.String(run.Title))
+			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID, sanitize.String(run.Agent), sanitize.String(run.Title))
 			_, tr := historyFrom(rows)
 			exportMarkdown(&b, tr, 3, true)
 		}

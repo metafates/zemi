@@ -611,18 +611,18 @@ func TestBrainAtSessionStart(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.DataHome = t.TempDir()
 
-	if sys := h.buildSystem(nil); strings.Contains(sys, "## Memory") {
+	if sys := h.buildSystem(); strings.Contains(sys, "## Memory") {
 		t.Fatal("memory lines must be absent before any memory")
 	}
 
 	if err := h.Remember("the deploy script lives in bin/deploy"); err != nil {
 		t.Fatalf("remember: %v", err)
 	}
-	if err := h.ensureSession(nil, "hello"); err != nil {
+	if err := h.ensureSession("hello"); err != nil {
 		t.Fatalf("ensureSession: %v", err)
 	}
 
-	sys := h.buildSystem(nil)
+	sys := h.buildSystem()
 	if !strings.Contains(sys, "## Memory\nLines earlier sessions kept, as [id who age].") {
 		t.Fatalf("memory section missing from the context message:\n%s", sys)
 	}

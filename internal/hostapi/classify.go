@@ -31,7 +31,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	state := classifyState(L, spec)
 	questions := classifyQuestions(L, spec)
-	ref := cmp.Or(rawString(L, spec, "model"), h.ConversationTarget())
+	ref := cmp.Or(rawString(L, spec, "model"), "default")
 	id := h.modelRef(ref)
 	stub := h.gateAsk(L, "lua.classify.ask", id, func() map[string]any {
 		return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
@@ -131,7 +131,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 		}
 		return req, nil
 	}
-	chat, err := h.resolveModel(&Profile{Model: id})
+	chat, err := h.resolveModel(id)
 	if err != nil {
 		return classify.Request{}, err
 	}

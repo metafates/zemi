@@ -27,15 +27,14 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// resolveModel picks the agent model for a profile (tests stub modelFn).
-func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
+// resolveModel builds the model for a resolved id (tests stub modelFn).
+func (h *Host) resolveModel(id string) (fantasy.LanguageModel, error) {
 	if h.Inert {
 		return nil, errors.New("an inert boot calls no model")
 	}
 	if h.modelFn != nil {
 		return h.modelFn()
 	}
-	id := h.currentModelID(p)
 	if err := h.modelErr(id); err != nil {
 		return nil, err
 	}
@@ -85,7 +84,7 @@ func (h *Host) modelRunErr(id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
-		// the id may come from a role, -m or a profile, so none is named
+		// the id may come from a role, -m or a slot, so none is named
 		missing := h.Providers.Missing()
 		if i := slices.IndexFunc(missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
 			return fmt.Errorf("builtin provider %q needs its key: export %s and start zemi again", prov, missing[i].Env)
@@ -107,7 +106,7 @@ func (h *Host) modelRunErr(id string) error {
 // job passes retry, so the working rule counts down its provider retries.
 func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), ref string) (*fantasy.AgentResult, error) {
 	id := h.modelRef(ref)
-	model, err := h.resolveModel(&Profile{Model: id})
+	model, err := h.resolveModel(id)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +141,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 // any other, including one whose reply did not fit the schema.
 func (h *Host) generateObject(ctx context.Context, sid, system, prompt string, schema fantasy.Schema, maxOut *int64, temp *float64, ref string) (any, string, error) {
 	id := h.modelRef(ref)
-	model, err := h.resolveModel(&Profile{Model: id})
+	model, err := h.resolveModel(id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -363,28 +362,23 @@ func roleNames() []string {
 	return names
 }
 
-// modelTarget is a model slot config registered: the name /model picks by, the
-// model it was registered with, and, for a profile, the shape its name runs as.
-// A slot a plugin added has no shape: it is a model to run a job on, not a
-// conversation to switch to.
+// modelTarget is a model slot config registered: the name /model picks by and
+// the model it was registered with. A slot a plugin added is a model to run a
+// job on, not a conversation to switch to.
 type modelTarget struct {
 	Name   string
 	Desc   string
 	Def    string
 	Origin lua.Origin
 	Path   string
-	Prof   *Profile
 	// Classify marks a slot zemi.model.add made for classification: /model
 	// offers it the decisions models beside the chat ones, and nothing else
 	// gets them, since a turn cannot run on one.
 	Classify bool
 }
 
-// def is the model the target was registered with; a profile's is its own.
+// def is the model the target was registered with.
 func (t *modelTarget) def() string {
-	if t.Prof != nil {
-		return t.Prof.Model
-	}
 	return t.Def
 }
 
@@ -408,33 +402,27 @@ func (h *Host) targetDef(name string) string {
 }
 
 // registeredTargets is what config registered, sorted by name: the slots
-// zemi.model.add added first, then the profiles. default, the conversation's
-// own slot, is in neither.
-func (h *Host) registeredTargets() (plain, profiles []*modelTarget) {
+// zemi.model.add added. default, the conversation's own slot, is not one.
+func (h *Host) registeredTargets() []*modelTarget {
 	h.agents.targetsMu.RLock()
 	defer h.agents.targetsMu.RUnlock()
 	names := slices.Sorted(maps.Keys(h.agents.targets))
-	plain = make([]*modelTarget, 0, len(names))
+	out := make([]*modelTarget, 0, len(names))
 	for _, n := range names {
-		t := h.agents.targets[n]
-		switch {
-		case n == "default":
-		case t.Prof != nil:
-			profiles = append(profiles, t)
-		default:
-			plain = append(plain, t)
+		if n == "default" {
+			continue
 		}
+		out = append(out, h.agents.targets[n])
 	}
-	return plain, profiles
+	return out
 }
 
 // targetNames is every slot /model sets by name: the builtin roles, then what
 // config registered, sorted. default is not one: it is the conversation's own
 // slot, set as chat.
 func (h *Host) targetNames() []string {
-	plain, profiles := h.registeredTargets()
 	names := roleNames()
-	for _, t := range append(plain, profiles...) {
+	for _, t := range h.registeredTargets() {
 		names = append(names, t.Name)
 	}
 	return names
@@ -469,8 +457,8 @@ func (h *Host) roleModel(name string) string {
 }
 
 // modelRef resolves a model reference, a target name or a provider/model id. A
-// builtin role name stays a name: it is resolved here on every read, so a
-// profile registered with model = "titles" follows models.titles set or picked
+// builtin role name stays a name: it is resolved here on every read, so a slot
+// registered with model = "titles" follows models.titles set or picked
 // later.
 func (h *Host) modelRef(ref string) string {
 	if h.isTarget(ref) {
@@ -484,7 +472,7 @@ func (h *Host) modelRef(ref string) string {
 // that knows the key.
 func (h *Host) addTarget(L *glua.LState, name string, t modelTarget) error {
 	by, path := h.RT.CurrentOrigin(L), h.RT.CurrentPath(L)
-	if err := h.checkTargetName(name, by, path, t.Prof != nil); err != nil {
+	if err := h.checkTargetName(name, by, path); err != nil {
 		return err
 	}
 	if err := checkTargetModel(t.def()); err != nil {
@@ -497,19 +485,16 @@ func (h *Host) addTarget(L *glua.LState, name string, t modelTarget) error {
 	if name == "default" { // the conversation's own slot: no key of its own
 		return nil
 	}
-	return h.addKey(config.Setting{Path: config.ModelKey(name), Kind: config.KindString, Default: "", Check: config.ModelRefCheck, Desc: targetDesc(name, t)})
+	return h.addKey(config.Setting{Path: config.ModelKey(name), Kind: config.KindString, Default: "", Check: config.ModelRefCheck, Desc: t.Desc})
 }
 
 // delTarget drops a slot zemi.model.add registered, with its key and any pick
-// kept for it. A profile is not one: nothing removes a definition.
+// kept for it.
 func (h *Host) delTarget(L *glua.LState, name string) error {
 	by, path := h.RT.CurrentOrigin(L), h.RT.CurrentPath(L)
 	t, ok := h.target(name)
-	switch {
-	case !ok:
+	if !ok {
 		return fmt.Errorf("%q is not registered", name)
-	case t.Prof != nil:
-		return fmt.Errorf("%q is a profile", name)
 	}
 	if err := mayReplace(h.PluginOf, "model target "+name, t.Origin, t.Path, by, path); err != nil {
 		return err
@@ -530,17 +515,14 @@ func (h *Host) delTarget(L *glua.LState, name string) error {
 // word, dashes for readability like an agent file's name.
 var targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
-// checkTargetName refuses a slot name: a builtin role is reserved, as is
-// default for a plain slot (a profile may take it: it is a shape, not an id),
-// and so is a name another origin holds.
-func (h *Host) checkTargetName(name string, by lua.Origin, byPath string, profile bool) error {
+// checkTargetName refuses a slot name: a builtin role is reserved, and so is
+// a name another origin holds.
+func (h *Host) checkTargetName(name string, by lua.Origin, byPath string) error {
 	switch {
 	case !targetName.MatchString(name):
 		return fmt.Errorf("name %q must be a lowercase letter, then up to 31 lowercase letters, digits, _ and -", name)
-	case isRole(name) && name != "default":
+	case isRole(name):
 		return fmt.Errorf("%q is a builtin role", name)
-	case !profile && name == "default":
-		return fmt.Errorf("%q is a shipped profile", name)
 	}
 	old, ok := h.target(name)
 	if !ok {
@@ -557,14 +539,6 @@ func checkTargetModel(def string) error {
 		return nil
 	}
 	return fmt.Errorf("model %q must name a builtin role (%s) or a provider/model id", def, strings.Join(roleNames(), ", "))
-}
-
-// targetDesc is what /config shows for a slot's key.
-func targetDesc(name string, t modelTarget) string {
-	if t.Prof != nil {
-		return "the model profile " + name + " runs on (provider/model; empty uses the one it was defined with, else models.chat)"
-	}
-	return t.Desc
 }
 
 // takesImages reports whether a model accepts image parts; unknown
@@ -856,12 +830,11 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if err := h.modelSetErr(h.ConversationTarget(), id); err != nil {
+		if err := h.modelSetErr("default", id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 		}
-		// the conversation's slot, so a call under a profile moves what the
-		// conversation runs on
-		path := config.ModelKey(h.ConversationTarget())
+		// the default slot: what the conversation and every unset role run on
+		path := config.KeyModelsDefault
 		if h.cfgReplayed(path, id) {
 			return 0
 		}

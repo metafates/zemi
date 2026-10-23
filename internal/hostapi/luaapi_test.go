@@ -351,7 +351,7 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 		want    bool
 	}{
 		{"with the tools", all, true},
-		{"a profile without them", nil, false},
+		{"an empty toolset", nil, false},
 	} {
 		sys := h.systemText("base", c.toolset, "", false)
 		if strings.Contains(sys, want) != c.want {

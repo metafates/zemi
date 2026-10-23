@@ -256,25 +256,6 @@ func TestAnchoredBoxBottomBorder(t *testing.T) {
 	}
 }
 
-// TestProfileSegment: the statusline names a profile other than default.
-func TestProfileSegment(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 16)
-	runLua(t, app, `zemi.agent.profile.add("terse", {})`)
-	for _, c := range []struct {
-		profile string
-		shown   bool
-	}{{"terse", true}, {"default", false}} {
-		if err := host.SetProfile(c.profile); err != nil {
-			t.Fatal(err)
-		}
-		app.renderSync(t)
-		if got := strings.Contains(ansi.Strip(app.Frame()), "terse"); got != c.shown {
-			t.Errorf("profile %s: segment shown = %v", c.profile, got)
-		}
-	}
-}
-
 // TestToastCap: a long error keeps a few rows, drops its stack trace, says
 // how much it cut and sends the reader to /errors when its caller recorded
 // it there; a toast records nothing itself. A lone title or body sits inside the box.

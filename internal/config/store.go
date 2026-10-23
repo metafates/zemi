@@ -30,7 +30,6 @@ const (
 	KeyProvidersBuiltin   Key = "providers.builtin"
 	KeyUITheme            Key = "ui.theme"
 	KeyAgentEffort        Key = "agent.effort"
-	KeyAgentProfile       Key = "agent.profile"
 	KeySessionAutoTitle   Key = "session.auto_title"
 	KeySessionRecap       Key = "session.recap"
 	KeyAgentCompactAt     Key = "agent.compact_at"
@@ -174,12 +173,11 @@ func (s *Store) defineDefaults() {
 		{Path: KeyProvidersBuiltin, Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: KeyUITheme, Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
-		{Path: KeyAgentProfile, Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, or a name defined with zemi.agent.profile.add"},
 		{Path: KeySessionAutoTitle, Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: KeySessionRecap, Kind: KindDuration, Default: "3m", Desc: "after a turn with tool calls, if there is no input for this long, add a one-line recap from a short model call on the cached conversation (billed to the session); 0 turns it off, empty for the 3m default"},
 		{Path: KeyAgentCompactAt, Kind: KindNumber, Default: 80.0, Desc: "auto compact once the context reaches this percent of the model's context window (never under half of it); 100 leaves only /compact and a provider's too-long refusal"},
 		{Path: KeyAgentCompactIdle, Kind: KindDuration, Default: "", Desc: "auto compact the conversation once it has sat idle this long after a turn, whatever its size (billed like /compact); 0 or empty leaves compaction to agent.compact_at, /compact and a provider's too-long refusal"},
-		{Path: KeyAgentHandoff, Kind: KindString, Default: "ask", Choices: []string{"ask", "on", "off"}, Desc: "when the model or profile changed since the last step, the next send would resend the whole conversation with no cache to read: ask offers a compact on the previous model first (once per change, ~50k context tokens up), on always compacts without asking, off sends as is"},
+		{Path: KeyAgentHandoff, Kind: KindString, Default: "ask", Choices: []string{"ask", "on", "off"}, Desc: "when the model or prompt changed since the last step, the next send would resend the whole conversation with no cache to read: ask offers a compact on the previous model first (once per change, ~50k context tokens up), on always compacts without asking, off sends as is"},
 		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
 		{Path: KeyPluginsAutoUpdate, Kind: KindBool, Default: true, Desc: "pull every registered marketplace once a day when zemi's UI opens, in the background, moving the plugins installed from them; false only fetches and tells you a marketplace has updates, pulling stays yours with plugin marketplace update"},
 		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},

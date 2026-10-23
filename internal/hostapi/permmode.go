@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"charm.land/fantasy"
@@ -18,14 +17,6 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// planReg holds the read-only agent's restore point.
-type planReg struct {
-	mu sync.Mutex
-	// prePlanProfile is the agent active before a read-only agent was
-	// picked, restored when its plan is approved
-	prePlanProfile string
-}
 
 // CheckToolNames records a zemi.tool.override no tool answers to, once boot
 // has added every Lua tool: the tool one names may come from a project or a
@@ -46,10 +37,6 @@ func (h *Host) CheckToolNames() {
 // The plan joins the transcript, then the user approves it, keeps it without
 // starting, types what to change, or dismisses it; the file is written once
 // the verdict is in, so a dismissed plan cannot overwrite the session's own.
-// A read-only agent remembers what ran before it (prePlan), so any
-// approval returns to that agent; an approval that starts the work
-// records an implementation handoff (planApproved) that the ended turn passes
-// on to planFollowup, and a hold skips that handoff.
 func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	ui := h.hooks()
 	if ui == nil {
@@ -57,17 +44,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	}
 	var v tools.PlanVerdict
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
-	restore := ""
-	if h.readOnly() {
-		h.plans.mu.Lock()
-		restore = h.plans.prePlanProfile
-		h.plans.mu.Unlock()
-		if restore == "" { // a read-only agent picked from config: the shipped profile
-			restore = "default"
-		}
-		v.Profile = restore
-	}
-	verdict, ok := ui.AskPlan(sanitize.String(plan), restore)
+	verdict, ok := ui.AskPlan(sanitize.String(plan))
 	if !ok {
 		return v, false
 	}
@@ -78,18 +55,6 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	if path := h.planPath(h.AgentSessionID()); path != "" {
 		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
 			v.Path = path
-		}
-	}
-	if restore != "" {
-		// a profile the config dropped since is no reason to read the
-		// approval as a dismissal: the default stands
-		if err := h.SetProfile(restore); err != nil {
-			h.Log.Info("plan restore skipped a profile", "origin", "permissions", "profile", restore, "error", err)
-		}
-		if !verdict.Hold {
-			// the read-only turn cannot implement the plan itself; the turn-end
-			// hook runs it as the restored agent
-			h.setPlanApproved(implementNow)
 		}
 	}
 	v.Approved, v.Hold = true, verdict.Hold

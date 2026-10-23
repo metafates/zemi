@@ -20,8 +20,7 @@ const rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", bas
 `
 
 // TestRoleModel: an empty target follows models.chat, which follows the first
-// provider's default; a profile's own model moves the conversation only and may
-// name a target; a models.* key refuses a target name.
+// provider's default; a models.* key refuses a target name.
 func TestRoleModel(t *testing.T) {
 	for _, c := range []struct {
 		name, config string
@@ -48,31 +47,6 @@ func TestRoleModel(t *testing.T) {
 			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/small"},
 		},
 		{
-			name:   "a profile's model moves the conversation only",
-			config: `zemi.agent.profile.add("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`,
-			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big", "p": "a/small"},
-		},
-		{
-			name:   "a profile names a target",
-			config: `zemi.config.set("models.titles", "a/small") zemi.agent.profile.add("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`,
-			want:   map[string]string{"conversation": "a/small", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/big", "p": "a/small"},
-		},
-		{
-			name:   "a pick on a profile's own slot beats its model",
-			config: `zemi.agent.profile.add("p", { model = "a/big" }) zemi.config.set("agent.profile", "p") zemi.config.set("models.p", "a/small")`,
-			want:   map[string]string{"conversation": "a/small", "p": "a/small"},
-		},
-		{
-			name:   "a defined default profile runs the conversation",
-			config: `zemi.agent.profile.add("default", { model = "a/small" })`,
-			want:   map[string]string{"conversation": "a/small", "default": "a/big", "chat": "a/big", "titles": "a/big"},
-		},
-		{
-			name:   "and the chat pick wins over its model",
-			config: `zemi.agent.profile.add("default", { model = "a/small" }) zemi.config.set("models.chat", "a/big")`,
-			want:   map[string]string{"conversation": "a/big", "default": "a/big", "chat": "a/big", "titles": "a/big"},
-		},
-		{
 			name:   "a key refuses a target name",
 			config: `zemi.config.set("models.titles", "chat")`,
 			want:   map[string]string{"titles": "a/big"},
@@ -86,8 +60,7 @@ func TestRoleModel(t *testing.T) {
 			if c.err != "" && !h.Recorded(c.err) {
 				t.Errorf("the refused set is not flagged: %q", c.err)
 			}
-			p, _ := h.resolveProfile("")
-			got := map[string]string{"conversation": h.currentModelID(p), "default": h.roleModel("default")}
+			got := map[string]string{"conversation": h.roleModel("chat"), "default": h.roleModel("default")}
 			for _, n := range h.targetNames() {
 				got[n] = h.roleModel(n)
 			}
@@ -115,14 +88,12 @@ func TestModelTargetNames(t *testing.T) {
 	}
 	for _, c := range []struct{ name, src, want string }{
 		{"a builtin role", `zemi.model.add("chat", { desc = "x" })`, `"chat" is a builtin role`},
-		{"default", `zemi.model.add("default", { desc = "x" })`, `"default" is a shipped profile`},
+		{"default", `zemi.model.add("default", { desc = "x" })`, `"default" is a builtin role`},
 		{"a dotted name", `zemi.model.add("a.b", { desc = "x" })`, `name "a.b" must be a lowercase letter`},
 		{"no desc", `zemi.model.add("x", { model = "a/big" })`, "desc is what /model roles shows"},
 		{"a typo'd key", `zemi.model.add("x", { desc = "x", model_id = "a/big" })`, `spec: unknown field "model_id"`},
 		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (default, chat, agents, titles, compact, memory) or a provider/model id`},
 		{"another target as its model", `zemi.model.add("x", { desc = "x", model = "clf" })`, `model "clf" must name a builtin role`},
-		{"a profile named after a role", `zemi.agent.profile.add("titles", {})`, `"titles" is a builtin role`},
-		{"a profile naming another target", `zemi.agent.profile.add("p", { model = "clf" })`, `model "clf" must name a builtin role`},
 		{"a slot nothing registered", `zemi.model.del("nope")`, `"nope" is not registered`},
 		{"a role", `zemi.model.del("titles")`, `"titles" is not registered`},
 	} {
@@ -143,10 +114,6 @@ func TestModelTargetNames(t *testing.T) {
 	}
 	if _, ok := h.target("clf"); ok || h.Settings.Default("models.clf") != nil {
 		t.Error("del kept the slot or its key")
-	}
-	// a profile is not a slot zemi.model.del drops: nothing removes a definition
-	if err := r.ExecuteChunk(t.Context(), `zemi.agent.profile.add("p", {}) zemi.model.del("p")`, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `"p" is a profile`) {
-		t.Errorf("del of a profile: %v", err)
 	}
 	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("proj", { desc = "x" })`, ".agents/p.lua", lua.OriginProject); err != nil {
 		t.Errorf("project code: %v", err)
@@ -199,46 +166,6 @@ func TestModelTargetPick(t *testing.T) {
 	}
 }
 
-// TestModelTargetProfileKey: a profile re-registers its models.<name> key on
-// every boot that defines it, re-applying the pick kept for the key; a reload
-// without the profile drops the key with it.
-func TestModelTargetProfileKey(t *testing.T) {
-	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
-	h.SetUIHooks(&fakeUI{})
-	initLua := filepath.Join(dir, "init.lua")
-	steps := func() []lua.BootStep {
-		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	}
-	reload := func(src string) {
-		t.Helper()
-		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := h.ForceReload(t.Context(), steps()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// the pick needs KeepPicks, as /model under the TUI has
-	h.KeepPicks.Store(true)
-	reload(rolesProvider + `zemi.agent.profile.add("planner", { model = "a/small" })`)
-	if id := h.roleModel("planner"); id != "a/small" {
-		t.Fatalf("the profile runs on %q, want its model", id)
-	}
-	if err := h.SetModel("planner a/big"); err != nil {
-		t.Fatal(err)
-	}
-	reload(rolesProvider) // the profile is gone; its key goes with it
-	if slices.ContainsFunc(h.Settings.Schema(), func(s config.Setting) bool { return s.Path == "models.planner" }) {
-		t.Error("the dead profile's key stayed in the schema")
-	}
-	reload(rolesProvider + `zemi.agent.profile.add("planner", { model = "a/small" })`)
-	if id := h.roleModel("planner"); id != "a/big" {
-		t.Errorf("the re-registered profile runs on %q, want the kept pick", id)
-	}
-}
-
 // TestModelTargetHealth: /health checks every target, so an id the provider
 // does not list is named there rather than failing the slot's first run. A
 // classify slot holds a decisions model by design, which is no turn.
@@ -259,9 +186,9 @@ func TestModelTargetHealth(t *testing.T) {
 	}
 }
 
-// TestModelTargetUI: /model roles lists a registered slot among the roles and
-// the profiles after them, /model opens its list on what an empty key means,
-// and the slot's model is pickable from a profile's row too.
+// TestModelTargetUI: /model roles lists a registered slot among the roles,
+// /model opens its list on what an empty key means, and the chat list's
+// follow row is the way back once models.chat is set.
 func TestModelTargetUI(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
@@ -269,8 +196,7 @@ func TestModelTargetUI(t *testing.T) {
 	h.SetUIHooks(ui)
 	runUser(t, r, rolesProvider+`
 		zemi.config.set("models.chat", "a/big")
-		zemi.model.add("clf", { desc = "the classifier", model = "a/small" })
-		zemi.agent.profile.add("cheap", { model = "a/small" })`)
+		zemi.model.add("clf", { desc = "the classifier", model = "a/small" })`)
 	if err := h.OpenModelRoles(); err != nil {
 		t.Fatal(err)
 	}
@@ -279,68 +205,34 @@ func TestModelTargetUI(t *testing.T) {
 	for _, it := range rows {
 		got = append(got, it.Text)
 	}
-	if want := []string{"default", "chat", "agents", "titles", "compact", "memory", "clf", "cheap"}; !slices.Equal(got, want) {
+	if want := []string{"default", "chat", "agents", "titles", "compact", "memory", "clf"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
 	if row := rows[6]; row.Desc != "a/small · the classifier" {
 		t.Errorf("clf row %+v", row)
 	}
-	if row := rows[7]; row.Desc != "a/small · every tool" || row.Key != "a/small" {
-		t.Errorf("cheap row %+v (its spec model is what the row tags)", row)
-	}
-	// the active profile takes row one, and its own row is not repeated
-	if err := h.SetProfile("cheap"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.OpenModelRoles(); err != nil {
-		t.Fatal(err)
-	}
-	rows = ui.opened[1].Items
-	if row := rows[0]; row.Text != "cheap" || row.Key != "" {
-		t.Errorf("row one %+v", row)
-	}
-	var names []string
-	for _, it := range rows {
-		names = append(names, it.Text)
-	}
-	if slices.Contains(names[1:], "cheap") {
-		t.Errorf("the profile row one shows is repeated: %v", names)
-	}
 	// the slot's list opens on what an empty key means
 	if err := h.OpenModelPicker("clf"); err != nil {
 		t.Fatal(err)
 	}
-	head := ui.opened[2].Items[0]
+	head := ui.opened[1].Items[0]
 	if head.Text != "Follow the registered model" || head.Desc != "a/small" || head.Key != "current" {
 		t.Errorf("clf's first row %+v", head)
 	}
-	if err := h.OpenModelPicker("cheap"); err != nil {
+	// the chat list's head is the follow row, and picking it clears
+	// models.chat, which nothing else on the list offers
+	if err := h.OpenModelPicker("chat"); err != nil {
 		t.Fatal(err)
 	}
-	head = ui.opened[len(ui.opened)-1].Items[0]
-	if head.Text != "Follow the profile's model" || head.Desc != "a/small" {
-		t.Errorf("cheap's first row %+v", head)
+	head = ui.opened[2].Items[0]
+	if head.Text != "Follow the default model" || head.Desc != "a/big" || head.Run != "model chat default" {
+		t.Errorf("chat's first row %+v", head)
 	}
-	// a profile named default is row one under its own name, but what it opens
-	// is the conversation's slot, the default role
-	runUser(t, r, `zemi.agent.profile.add("default", { model = "a/small" }) zemi.config.set("agent.profile", "default")`)
-	if err := h.OpenModelRoles(); err != nil {
+	if err := h.SetModel("chat default"); err != nil {
 		t.Fatal(err)
 	}
-	if row := ui.opened[len(ui.opened)-1].Items[0]; row.Text != "default" || row.Run != "model default" || row.Key != "" {
-		t.Errorf("row one under a defined default %+v", row)
-	}
-	// and the list a bare /model opens marks the model the conversation runs
-	// on, which is the active profile's slot
-	if err := h.SetProfile("cheap"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.OpenModelPicker(""); err != nil {
-		t.Fatal(err)
-	}
-	o := ui.opened[len(ui.opened)-1]
-	if row := o.Items[o.Selected]; row.Key != "current" || row.Run != "model a/small" {
-		t.Errorf("the bare list marks %+v, want the conversation's model", row)
+	if id := h.Settings.Str("models.chat"); id != "" {
+		t.Errorf("models.chat = %q, want it cleared", id)
 	}
 }
 

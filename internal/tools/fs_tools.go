@@ -699,7 +699,7 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 }
 
 // CallDone releases the calls, so nothing waits on them: a call fantasy
-// answered without running it (invalid input, a tool the profile dropped)
+// answered without running it (invalid input, a tool the run lacks)
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
 func CallDone(ctx context.Context, ids ...string) {

@@ -53,9 +53,6 @@ local groups = {
 	TodoMark = { link = "Accent" },
 	TodoDone = { link = "Ok" },
 	TodoActive = { fg = "fg", bold = true },
-	-- the statusline's plan marker: a read-only agent plans, and nothing
-	-- else on screen shows it is on
-	ModePlan = { link = "Ok" },
 	-- the shell glyph: what follows goes to the shell, not to the model
 	PromptShell = { link = "Warn", bold = true },
 	PromptCommand = { link = "Title" },

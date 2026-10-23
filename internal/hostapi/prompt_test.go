@@ -24,7 +24,7 @@ import (
 
 // TestSystemPromptSections: the environment is pinned per session and
 // follows the instructions, so a shared prefix spans sessions,
-// project instructions sit under their own heading, and a profile's own
+// project instructions sit under their own heading, and the pinned prompt
 // prompt still carries the zemi section. The top level lists what the read
 // tool's listing would, and it and the commit subjects go out only while
 // the project is trusted.
@@ -49,14 +49,12 @@ func TestSystemPromptSections(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	// an untrusted repository's instructions stay out, a profile's files too
-	for _, p := range []*Profile{nil, {ContextFiles: []string{"AGENTS.md"}}} {
-		if sys := h.buildSystem(p); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") || strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
-			t.Errorf("untrusted prompt: %.300q", sys)
-		}
+	// an untrusted repository's instructions stay out
+	if sys := h.buildSystem(); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") || strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
+		t.Errorf("untrusted prompt: %.300q", sys)
 	}
 	h.SetProjectTrusted(true)
-	sys := h.buildSystem(nil)
+	sys := h.buildSystem()
 	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome, "Top level: AGENTS.md a/ b.go id_rsa private/\n", "subject that steers"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
@@ -65,67 +63,44 @@ func TestSystemPromptSections(t *testing.T) {
 	if i, j := strings.Index(sys, "# Project instructions"), strings.Index(sys, "# Environment"); i >= j {
 		t.Errorf("the per-session environment at %d precedes the instructions at %d", j, i)
 	}
-	lean := h.buildSystem(&Profile{Tools: []string{"shell"}})
-	for _, gone := range []string{"# Delegating", "lua.md", "# Skills"} {
-		if strings.Contains(lean, gone) {
-			t.Errorf("a shell-only prompt names %q", gone)
-		}
-	}
 	if env := h.environmentPrompt(); env != h.environmentPrompt() {
 		t.Error("environment must be pinned")
 	}
 	h.SetProjectTrusted(false)
-	if sys := h.buildSystem(nil); strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
+	if sys := h.buildSystem(); strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
 		t.Errorf("trust taken back: %.300q", sys)
-	}
-	if sys := h.buildSystem(&Profile{System: "custom"}); !strings.HasPrefix(sys, "custom") || !strings.Contains(sys, "# zemi") {
-		t.Errorf("profile prompt: %.200q", sys)
 	}
 }
 
 // TestPromptFollowsToolSet: the prompt and the kept tools' descriptions name
-// no tool the profile dropped, the shipped lean one included, which must
-// keep the file tools and what shell hands a timed out command to.
+// no tool the run lacks, a subagent's allowlist included.
 func TestPromptFollowsToolSet(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
 	pad := h.ScratchDir()
-	h.agents.targets["lean"] = &modelTarget{Prof: &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start"}}}
 	h.SetUIHooks(&fakeUI{})
-	lean, err := h.resolveProfile("lean")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true})
+	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []string{"shell"}})
 	for _, c := range []struct {
 		name string
-		p    *Profile
+		def  string // a subagent's name in defs, "" for the main conversation
 		keep []string
 		gone []string
 		once []string
 	}{
 		// the lua tool's description: read-only scripts run, changing ones ask
-		{"default", nil, []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "needs the user's approval once", "lua.md", "under 150 characters"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
+		{keep: []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "needs the user's approval once", "lua.md", "under 150 characters"}, gone: []string{"in one message", "keep your own files"}, once: []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
-		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit", "under 150 characters"}, nil},
-		{"general", &Profile{Name: "general"}, []string{"Scratchpad: " + pad, "is $TMPDIR in every command you run"}, []string{"keep your own files", "You are read-only", "under 150 characters"}, nil},
+		{name: "explore", keep: []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, gone: []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit", "under 150 characters"}},
+		{name: "general", keep: []string{"Scratchpad: " + pad, "is $TMPDIR in every command you run"}, gone: []string{"keep your own files", "You are read-only", "under 150 characters"}},
 		// an agent file's read_only keeps its tools and is told what they can do
-		{"reviewer", &Profile{Name: "reviewer"}, []string{"You are read-only"}, nil, nil},
-		{
-			"lean", lean,
-			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "lua.md", "job_start"},
-			nil,
-		},
-		// the plan's shape lives in the plan tool's description only
-		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil, []string{"how to verify, the assumptions"}},
-		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool"}, nil},
-		{"no read", &Profile{Tools: []string{"-read"}}, nil, []string{"offset and limit"}, nil},
+		{name: "reviewer", keep: []string{"You are read-only"}},
+		// a definition's allowlist drops the tools and their prompt sections
+		{name: "no-read", gone: []string{"offset and limit"}},
 	} {
-		toolset, _ := h.profileTools(c.p)
-		text := h.buildSystem(c.p)
+		toolset := h.mainTools()
+		text := h.buildSystem()
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, subagentExcluded)
@@ -147,31 +122,6 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		for _, gone := range c.gone {
 			if strings.Contains(text, gone) {
 				t.Errorf("%s: names %q", c.name, gone)
-			}
-		}
-	}
-	// each builtin tool dropped in turn, from the default and a read-only
-	// agent in a trusted project: nothing left sends the model to it
-	h.SetProjectTrusted(true)
-	for _, ro := range []bool{false, true} {
-		all, _ := h.profileTools(nil)
-		for _, dropped := range all {
-			name := dropped.Info().Name
-			p := &Profile{ReadOnly: ro, Tools: []string{"-" + name}}
-			toolset, _ := h.profileTools(p)
-			text := h.buildSystem(p)
-			for _, tool := range toolset {
-				schema, _ := json.Marshal(tool.Info().Parameters, json.Deterministic(true))
-				text += "\n" + tool.Info().Description + string(schema)
-			}
-			for _, ref := range []string{name + " tool", "(use " + name + ")", name + ` "`} {
-				if strings.Contains(text, ref) {
-					t.Errorf("read-only %v without %s: names %q", ro, name, ref)
-				}
-			}
-			// a read-only agent's recipe write is denied
-			if recipe := strings.Contains(text, "<name>/SKILL.md"); recipe == ro && name != tools.ToolWrite && name != tools.ToolEdit {
-				t.Errorf("read-only %v without %s: recipe paragraph %v", ro, name, recipe)
 			}
 		}
 	}
@@ -284,38 +234,6 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	}
 }
 
-// TestProfileContextFilesInRepo: a profile's context files are repository
-// content, so one naming a path outside the repository is skipped and one
-// inside rides the prompt.
-func TestProfileContextFilesInRepo(t *testing.T) {
-	h, _ := newTestHost(t)
-	h.SetProjectTrusted(true)
-	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "notes.md"), []byte("project notes"), 0o644)
-	outside := filepath.Join(filepath.Dir(h.Dirs.ProjectDir), "context-out.md")
-	os.WriteFile(outside, []byte("outside-leak-marker"), 0o644)
-	link := filepath.Join(h.Dirs.ProjectDir, "link.md")
-	os.Symlink(outside, link)
-	for _, c := range []struct {
-		name string
-		file string
-		want bool
-	}{
-		{"inside", "notes.md", true},
-		{"dotdot out", "../context-out.md", false},
-		{"symlink out", "link.md", false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			sys := h.buildSystem(&Profile{ContextFiles: []string{c.file}})
-			if got := strings.Contains(sys, "project notes"); got != c.want {
-				t.Errorf("prompt has the file = %v, want %v", got, c.want)
-			}
-			if strings.Contains(sys, "outside-leak-marker") {
-				t.Error("the outside file's content rode the prompt")
-			}
-		})
-	}
-}
-
 // TestPromptPinned: two sends around a change carry the same system prompt
 // and tools unless the change is a drop point or moves the key, which an
 // agent.assemble counter shows. A hand edit of an instruction file rides
@@ -399,8 +317,8 @@ func TestPromptPinned(t *testing.T) {
 			imagesRejected.Store("stub/m", true)
 			t.Cleanup(func() { imagesRejected.Delete("stub/m") })
 		}, true, 0},
-		{"profile switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
-			runUser(t, r, `zemi.agent.profile.add("other", {}); zemi.config.set("agent.profile", "other")`)
+		{"model switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
+			runUser(t, r, `zemi.config.set("models.chat", "stub/m2")`)
 		}, true, 0},
 		{"resume", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			sid := h.AgentSessionID()
@@ -445,11 +363,10 @@ zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`
 	}
 }
 
-// buildSystem renders the system prompt with context files appended
-// (capped; DESIGN §6.3 context.files).
-func (h *Host) buildSystem(p *Profile) string {
-	toolset, _ := h.profileTools(p)
-	sys, ctx, _ := h.buildSystemParts(p, toolset)
+// buildSystem renders the system prompt with its context message joined.
+func (h *Host) buildSystem() string {
+	toolset := h.mainTools()
+	sys, ctx, _ := h.buildSystemParts(toolset)
 	return sys + "\n\n" + ctx
 }
 
@@ -481,8 +398,8 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		h.SetProjectTrusted(true)
 		h.syncSkills()
 		h.agents.sessionID = fmt.Sprint("session", i)
-		toolset, _ := h.profileTools(nil)
-		out, s, c, _ := h.pinPrompt(nil, toolset)
+		toolset := h.mainTools()
+		out, s, c, _ := h.pinPrompt(toolset)
 		var info []fantasy.ToolInfo
 		for _, tool := range out {
 			info = append(info, tool.Info())
@@ -511,8 +428,8 @@ func TestPromptBudget(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	toolset, _ := h.profileTools(nil)
-	sys, ctx, parts := h.buildSystemParts(nil, toolset)
+	toolset := h.mainTools()
+	sys, ctx, parts := h.buildSystemParts(toolset)
 	sys += ctx
 	if !strings.Contains(sys, "# Skills") {
 		t.Fatal("no skills index: the count would be less than users get")

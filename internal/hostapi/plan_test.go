@@ -1,118 +1,29 @@
 package hostapi
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// plannerProfile defines a read-only profile named planner, the recipe the
-// shipped profile used to be synthesized for (DESIGN §6.3).
-func plannerProfile(t *testing.T, r *lua.Runtime) {
-	t.Helper()
-	runUser(t, r, `zemi.agent.profile.add("planner", { read_only = true })`)
-}
-
-// TestPlanMode: a read-only agent may change nothing
-// and the prompt says so; it works whatever the permission mode.
-func TestPlanMode(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	plannerProfile(t, r)
-	check := func(subject, arg string) tools.Verdict {
-		pipe := h.PipelineFor()
-		pipe.Ask = nil
-		return pipe.Check(tools.Request{Subject: subject, Arg: arg})
-	}
-	if v := check("fs.write", "/p/a.go"); !v.Allowed {
-		t.Fatalf("allowed write = %+v", v)
-	}
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	// the reason names the read-only denial; it cannot pick another agent
-	if v := check("fs.write", "/p/a.go"); v.Allowed || v.DecidedBy != tools.ByReadOnly || !strings.Contains(v.Reason, "may not change anything") {
-		t.Fatalf("read-only write = %+v by %s: %s", v, v.DecidedBy, v.Reason)
-	}
-	p, _ := h.resolveProfile("planner")
-	if !strings.Contains(h.buildSystem(p), "# Planning") {
-		t.Fatal("system prompt misses the planning section")
-	}
-}
-
-// TestPlanApprovalSwitchesBack: approving a read-only agent's plan returns to
-// the agent and mode it replaced, is no longer read-only, and records the
-// implementation handoff planFollowup sends.
-func TestPlanApprovalSwitchesBack(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	plannerProfile(t, r)
-	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
-	h.SetUIHooks(ui)
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	if !h.readOnly() {
-		t.Fatal("the profile must be read-only")
-	}
-	v, ok := h.approvePlan("# The plan")
-	if !ok || !v.Approved || v.Profile != "default" {
-		t.Fatalf("approve: %+v ok=%v", v, ok)
-	}
-	if got := h.Settings.Str("agent.profile"); got != "default" {
-		t.Fatalf("profile not restored to default, got %q", got)
-	}
-	if h.readOnly() {
-		t.Fatal("still read-only after approval")
-	}
-	got := h.takePlanApproved()
-	if got != implementNow {
-		t.Fatalf("planApproved handoff = %q", got)
-	}
-	// the handoff is zemi's, not the user's: no transcript row, nothing to recall
-	h.startTurn(got)
-	for _, m := range h.Session().Transcript {
-		if m.Role == "user" {
-			t.Fatalf("handoff shown as the user's message: %q", m.Text)
-		}
-	}
-	parts, _ := json.Marshal(fantasy.NewUserMessage(got), json.Deterministic(true))
-	if _, ok := userText(&store.Message{Role: "user", PartsJSON: string(parts)}); ok {
-		t.Fatal("handoff would be recalled from the store as typed input")
-	}
-}
-
 // TestPlanHold: the plan file is written for an approval only, so a dismissal
-// leaves the session's saved plan alone, and a hold puts the agent's
-// replacement back without recording the implementation handoff.
+// leaves the session's saved plan alone, and a hold is saved but starts nothing.
 func TestPlanHold(t *testing.T) {
 	t.Parallel()
-	h, r := newTestHostDB(t)
-	plannerProfile(t, r)
+	h, _ := newTestHostDB(t)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
 	sid := seedSession(t, h)
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
 	if v, ok := h.approvePlan("# The first plan"); !ok || v.Path == "" {
 		t.Fatalf("approve: %+v ok=%v", v, ok)
-	}
-	if h.takePlanApproved() != implementNow {
-		t.Fatal("a plain approval recorded no handoff")
 	}
 	path := h.planPath(sid)
 	saved, err := os.ReadFile(path)
@@ -128,18 +39,12 @@ func TestPlanHold(t *testing.T) {
 	if now, err := os.ReadFile(path); err != nil || string(now) != string(saved) {
 		t.Fatalf("the saved plan moved: %q, %v", now, err)
 	}
-	// a hold saves and restores, and starts nothing
+	// a hold saves and starts nothing
 	ui.planOK = true
 	ui.planVerdict = tools.PlanVerdict{Approved: true, Hold: true}
 	v, ok := h.approvePlan("# The plan to keep")
 	if !ok || !v.Approved || !v.Hold || v.Path == "" {
 		t.Fatalf("hold: %+v ok=%v", v, ok)
-	}
-	if got := h.Settings.Str("agent.profile"); got != "default" {
-		t.Fatalf("profile after a hold = %q", got)
-	}
-	if h.takePlanApproved() != "" {
-		t.Fatal("a hold recorded the implementation handoff")
 	}
 	if now, err := os.ReadFile(path); err != nil || !strings.Contains(string(now), "The plan to keep") {
 		t.Fatalf("the held plan was not saved: %q, %v", now, err)
@@ -179,310 +84,7 @@ func TestResumeShowsPlan(t *testing.T) {
 	}
 }
 
-// TestPlanFeedbackKeepsPlanner: a read-only plan the user asks to change does
-// not switch the agent, so the agent revises and presents again.
-func TestPlanFeedbackKeepsPlanner(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	plannerProfile(t, r)
-	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Feedback: "use sqlite"}}
-	h.SetUIHooks(ui)
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	v, ok := h.approvePlan("# The plan")
-	if !ok || v.Approved {
-		t.Fatalf("feedback must not approve: %+v ok=%v", v, ok)
-	}
-	if h.Settings.Str("agent.profile") != "planner" {
-		t.Fatalf("feedback must keep the agent, got %q", h.Settings.Str("agent.profile"))
-	}
-	if h.takePlanApproved() != "" {
-		t.Fatal("feedback must not set the implementation handoff")
-	}
-}
-
-// TestPlanFollowupClaims: a read-only reply in plain text is presented under a
-// claim of its own, released after; a submit that claimed the agent first
-// keeps its turn and scope, and no popup opens over it.
-func TestPlanFollowupNudgesOnce(t *testing.T) {
-	t.Parallel()
-	runner := &agent.Runner{History: []fantasy.Message{
-		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "which file did you mean?"}}},
-	}}
-	h, r := newTestHostDB(t)
-	plannerProfile(t, r)
-	ui := &fakeUI{planOK: true}
-	h.SetUIHooks(ui)
-	if err := h.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	ro, _ := h.resolveProfile("")
-	var mu sync.Mutex
-	var sent []string
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			mu.Lock()
-			sent = append(sent, last)
-			mu.Unlock()
-			return textParts("still text") // every reply forgets the tools
-		}}, nil
-	}
-	nudges := func() int {
-		mu.Lock()
-		defer mu.Unlock()
-		n := 0
-		for _, s := range sent {
-			if strings.Contains(s, "ended in plain text") {
-				n++
-			}
-		}
-		return n
-	}
-	// a text ending is not a plan to approve: the agent is told once
-	toolset, _ := h.profileTools(ro)
-	h.planFollowup(runner, h.nudgesPlan(ro, toolset))
-	waitFor(t, func() error {
-		if n := nudges(); n != 1 {
-			return fmt.Errorf("nudges = %d", n)
-		}
-		return nil
-	})
-	waitIdle(t, h)
-	if ui.planAsked != 0 || nudges() != 1 {
-		t.Fatalf("asked %d, nudges %d after the nudged reply ended in text again", ui.planAsked, nudges())
-	}
-	// the second reply follows a notice row, never a bare gap
-	if !slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool {
-		return m.Kind == "notice" && strings.Contains(m.Text, "Asked the read-only agent")
-	}) {
-		t.Fatalf("no nudge notice: %+v", h.Session().Transcript)
-	}
-	// a submit that claimed the agent first is left alone
-	h.agents.mu.Lock()
-	scope := h.claim()
-	h.agents.mu.Unlock()
-	h.planFollowup(runner, h.nudgesPlan(ro, toolset))
-	h.endScope(scope)
-	if nudges() != 1 {
-		t.Fatal("nudged under another claim")
-	}
-	// headless has no plan tool to present with: the reply is the plan
-	headless, r := newTestHostDB(t)
-	plannerProfile(t, r)
-	if err := headless.SetProfile("planner"); err != nil {
-		t.Fatal(err)
-	}
-	var headlessSent atomic.Int32
-	headless.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { headlessSent.Add(1); return textParts("text") }}, nil
-	}
-	headlessRO, _ := headless.resolveProfile("")
-	headlessTools, _ := headless.profileTools(headlessRO)
-	headless.planFollowup(runner, headless.nudgesPlan(headlessRO, headlessTools))
-	waitIdle(t, headless)
-	if n := headlessSent.Load(); n != 0 {
-		t.Fatalf("headless agent nudged %d times", n)
-	}
-	// the user's next message re-arms the nudge
-	if err := h.AgentSend("go on"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if n := nudges(); n != 2 {
-			return fmt.Errorf("nudges after the user spoke = %d", n)
-		}
-		return nil
-	})
-	waitIdle(t, h)
-}
-
-// TestPlanNudgeFollowsTheTurn: picking a read-only agent while the default
-// agent replies does not nudge that reply, which it never wrote.
-func TestPlanNudgeFollowsTheTurn(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	plannerProfile(t, r)
-	h.SetUIHooks(&fakeUI{})
-	var mu sync.Mutex
-	var sent []string
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			mu.Lock()
-			sent = append(sent, last)
-			mu.Unlock()
-			if last == "fix it" {
-				if err := h.SetProfile("planner"); err != nil {
-					t.Error(err)
-				}
-			}
-			return textParts("Fixed the typo.")
-		}}, nil
-	}
-	if err := h.AgentSend("fix it"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	// a nudge the ended turn sent would reach the model before this message,
-	// which the default agent answers without one
-	if err := h.SetProfile("default"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.AgentSend("what next?"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	mu.Lock()
-	defer mu.Unlock()
-	if len(sent) < 2 || sent[1] != "what next?" {
-		t.Fatalf("the model saw %q", sent)
-	}
-}
-
-// TestPlanApprovalCompacts: implementing an approved plan whose turn filled
-// the context summarizes on the planner's warm prefix (silently under on,
-// behind an ask that names the prompt change under the default), and the
-// implementation send opens at the summary and the tail instead of resending
-// the planner's whole run.
-func TestPlanApprovalCompacts(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		handoff string // "" leaves the default ask
-		answer  string
-		wantAsk string // the ask's header, "" for none
-	}{
-		{"on compacts silently", "on", "", ""},
-		{"the default ask names the prompt change", "", "Compact, then send", "Prompt changed"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			h, r := newTestHostDB(t)
-			plannerProfile(t, r)
-			h.Settings.SetQuiet("models.default", "stub/m")
-			h.reflectMu.Lock()
-			defer h.reflectMu.Unlock()
-			if c.handoff != "" {
-				h.Settings.SetQuiet(config.KeyAgentHandoff, c.handoff)
-			}
-			ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}, qOK: c.answer != "", qAnswer: c.answer}
-			h.SetUIHooks(ui)
-			if err := h.SetProfile("planner"); err != nil {
-				t.Fatal(err)
-			}
-			h.agents.mu.Lock()
-			h.agents.ctxWin = 100_000
-			h.agents.mu.Unlock()
-			// the planner's steps read 90k of context, past the gate's 50k
-			// floor; the implementation's read nothing, so the compaction
-			// judges as working
-			big := strings.Repeat("x", 80_000)
-			script := func(_, last string, toolResult bool) []fantasy.StreamPart {
-				switch {
-				case strings.HasPrefix(last, compactNote[:60]):
-					return textParts("ok")
-				case toolResult || strings.Contains(last, "approved the plan"):
-					parts := textParts("working")
-					if toolResult { // the planner's last step: the gate reads its usage
-						parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 90_000}
-					}
-					return parts
-				default:
-					parts := toolCallParts("c1", "plan", `{"plan":"# The plan\nstep one"}`)
-					parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 90_000}
-					return parts
-				}
-			}
-			var mu sync.Mutex
-			var prompts [][]fantasy.Message
-			h.modelFn = func() (fantasy.LanguageModel, error) {
-				return &scriptModel{script: script, record: func(call fantasy.Call) {
-					mu.Lock()
-					prompts = append(prompts, call.Prompt)
-					mu.Unlock()
-				}}, nil
-			}
-			if err := h.AgentSend(big); err != nil {
-				t.Fatal(err)
-			}
-			waitIdle(t, h)
-
-			wantAsks := 0
-			if c.wantAsk != "" {
-				wantAsks = 1
-			}
-			if len(ui.qAsked) != wantAsks {
-				t.Fatalf("asked %d times, want %d", len(ui.qAsked), wantAsks)
-			}
-			if c.wantAsk != "" && (ui.qAsked[0].Header != c.wantAsk || !strings.Contains(ui.qAsked[0].Question, "The prompt changed")) {
-				t.Fatalf("ask: %q / %q", ui.qAsked[0].Header, ui.qAsked[0].Question)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if len(prompts) != 3 {
-				t.Fatalf("%d prompts, want the planner's turn, the summary aside and the implementation", len(prompts))
-			}
-			aside, impl := prompts[1], prompts[2]
-			if !strings.HasPrefix(concatText(aside[len(aside)-1].Content), compactNote[:60]) {
-				t.Fatalf("the summary did not ride the planner's history: %d messages", len(aside))
-			}
-			if !slices.ContainsFunc(aside, func(m fantasy.Message) bool {
-				return strings.Contains(concatText(m.Content), big)
-			}) {
-				t.Fatal("the summary call did not read the planner's warm prefix")
-			}
-			if s, _ := summaryOf(impl[2]); s != "ok" {
-				t.Fatalf("the implementation send opens on the summary: %d messages", len(impl))
-			}
-			for _, msg := range impl {
-				if strings.Contains(concatText(msg.Content), big) {
-					t.Fatal("the implementation send resends the planner's history")
-				}
-			}
-			if got := h.Settings.Str(config.KeyAgentProfile); got != "default" {
-				t.Fatalf("the implementation ran as %q", got)
-			}
-			if h.agents.compactFails != 0 {
-				t.Fatalf("the compaction judged as failed %d times", h.agents.compactFails)
-			}
-		})
-	}
-}
-
-// TestNextTurnHandsOffApprovedPlan: an approved plan is sent to the restored
-// agent under the claim the read-only turn held, so nothing runs in between.
-func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	var mu sync.Mutex
-	var sent []string
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			mu.Lock()
-			sent = append(sent, last)
-			mu.Unlock()
-			return textParts("done")
-		}}, nil
-	}
-	h.agents.mu.Lock()
-	scope := h.claim()
-	h.agents.mu.Unlock()
-	h.setPlanApproved(implementNow)
-	if next, text := h.nextTurn(scope, nil); next != nil || text != "" {
-		t.Fatalf("the handoff must not run on the ended runner: %v %q", next, text)
-	}
-	if h.takePlanApproved() != "" {
-		t.Fatal("handoff left behind")
-	}
-	waitIdle(t, h)
-	mu.Lock()
-	defer mu.Unlock()
-	if got := strings.Join(sent, "\n"); !strings.Contains(got, "approved the plan") {
-		t.Fatalf("implementation never reached the model: %q", got)
-	}
-}
-
-// TestPlainTextEnd reports whether an idle run ended in a plain-text assistant
+// TestResumeShowsPlan: a resumed session draws the plan as a message above
 // reply (the agent forgetting the plan tool) rather than a tool call.
 func TestPlainTextEnd(t *testing.T) {
 	plain := &agent.Runner{History: []fantasy.Message{
@@ -535,24 +137,5 @@ func TestShellNotes(t *testing.T) {
 	}
 	if h.takeShellNotes() != "" {
 		t.Fatal("notes must be consumed by the message")
-	}
-}
-
-// TestPlanApprovalFromConfigPick: a read-only profile picked from config
-// (no SetProfile, so nothing was recorded) restores default on approval.
-func TestPlanApprovalFromConfigPick(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	plannerProfile(t, r)
-	h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
-	runUser(t, r, `zemi.config.set("agent.profile", "planner")`)
-	if !h.readOnly() {
-		t.Fatal("the picked profile must be read-only")
-	}
-	if v, ok := h.approvePlan("# The plan"); !ok || !v.Approved || v.Profile != "default" {
-		t.Fatalf("approve: %+v ok=%v", v, ok)
-	}
-	if p := h.Settings.Str("agent.profile"); p != "default" {
-		t.Fatalf("profile %q, want default", p)
 	}
 }

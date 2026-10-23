@@ -136,7 +136,6 @@ func TodoList(rows []store.Todo) string {
 type PlanVerdict struct {
 	Approved bool
 	Hold     bool   // approved to keep, not to start: the user says when
-	Profile  string // agent restored on approval, "" when unchanged
 	Feedback string // what to change, when not approved
 	Path     string // where the plan was saved, "" when not saved
 }
@@ -192,10 +191,6 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 		return stopTurn(userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Hold:
 		return endTurn(planApproved + "; the user has not asked for it yet, so do not start implementing: stop here and wait for them to say when." + saved), nil
-	case v.Approved && v.Profile != "":
-		// the read-only turn that proposed this ends here; the run's planFollowup
-		// starts implementation as the restored agent, so do not keep going
-		return endTurn(planApproved + "; you are back as the " + v.Profile + " agent. Implementation runs in the next turn." + saved), nil
 	case v.Approved:
 		return fantasy.NewTextResponse(planApproved + "." + implement), nil
 	}

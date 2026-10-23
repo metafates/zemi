@@ -58,7 +58,6 @@ var version string
 type options struct {
 	cont          bool
 	resume, model string
-	profile       string
 	prompt        string
 	dir           string // -C
 	trust         *bool  // --trust for this run; nil when not given
@@ -238,14 +237,12 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
 	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`, of any project")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	f.StringVar(&o.profile, "profile", "", "agent `profile`: default or one init.lua defines")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
-	_ = c.RegisterFlagCompletionFunc("profile", completeBooted((*hostapi.Host).ProfileNames))
 }
 
-// completeBooted offers what only config knows (models, profiles, modes),
+// completeBooted offers what only config knows (models, modes),
 // read by an inert boot. The dirs are resolved here: cobra runs no hook
 // before a completion.
 func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
@@ -971,13 +968,8 @@ func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 
 // applyOptions applies the flags after boot, so they win over init.lua.
 func applyOptions(h *hostapi.Host, o options) error {
-	if o.profile != "" {
-		if err := h.SetProfile(o.profile); err != nil {
-			return err
-		}
-	}
 	if o.model != "" {
-		if err := h.SetModel(h.ConversationTarget() + " " + o.model); err != nil {
+		if err := h.SetModel("default " + o.model); err != nil {
 			return err
 		}
 	}

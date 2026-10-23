@@ -500,12 +500,11 @@ func (h *Host) runSetup(ctx context.Context, run *agentRun, prev *agent.Runner, 
 // subagentSetup builds a fresh run: its own prompt, its own tool set, its own
 // pipeline over the same permission gate.
 func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSetup, error) {
-	prof := &Profile{Model: h.subagentModelID(def)}
-	model, err := h.resolveModel(prof)
+	modelID := h.subagentModelID(def)
+	model, err := h.resolveModel(modelID)
 	if err != nil {
 		return nil, err
 	}
-	modelID := h.currentModelID(prof)
 	pipe := h.runPipeline(run, def.Name, modelID)
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	var sent sync.Map       // likewise the instruction files its reads carried
@@ -515,16 +514,17 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 			return dup
 		})
 	}
-	// a run the planner starts is read-only too, whatever its definition says
-	readOnly := def.ReadOnly || pipe.ReadOnly()
-	pipe.ReadOnly = func() bool { return readOnly }
+	// a run's own definition decides whether the project is read-only to it
+	if def.ReadOnly {
+		pipe.ReadOnly = func() bool { return true }
+	}
 	kept, unknown := childTools(h, pipe, def.Tools)
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
 	loaded := &sync.Map{} // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly)
+	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, def.ReadOnly), kept, pipe.Pad, def.ReadOnly)
 	runner := agent.NewRunner(model, kept, sys)
 	runner.Context, runner.ActiveTools = ctxMsg, active
 	h.capRun(runner, modelID)
@@ -599,12 +599,12 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 // instead of reading.
 func (h *Host) forkTools(pipe *tools.Pipeline, infos []fantasy.ToolInfo, loaded *sync.Map) ([]fantasy.AgentTool, func() []string, error) {
 	build := func(p *tools.Pipeline) ([]fantasy.AgentTool, []string) {
-		all, unknown := h.toolsFor(p, nil)
+		all := h.toolsFor(p)
 		all, _ = h.deferMCP(all, loaded)
 		out, _ := pickTools(all, infos) // the run refused already if a name is gone
-		return out, unknown
+		return out, nil
 	}
-	all, _ := h.toolsFor(pipe, nil)
+	all := h.toolsFor(pipe)
 	wireLua(all, build)
 	// the caller's own set decides what a step offers, deferral included: those
 	// names are the prefix key, so this run's own next step would send another

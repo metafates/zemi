@@ -11,7 +11,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -331,7 +330,6 @@ type StreamSnapshot struct {
 	Thinking   bool // a reasoning block is open: the model thinks right now
 	Tools      []StreamTool
 	Model      string
-	Profile    string
 	Steering   []Queued      // what waits for the turn's next step boundary, oldest first
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
@@ -394,7 +392,6 @@ func (h *Host) streamLocked() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
-		Profile: h.Settings.Str(config.KeyAgentProfile),
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,

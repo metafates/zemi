@@ -87,8 +87,8 @@ func (r *toolReg) list() []*luaTool {
 	return slices.SortedFunc(maps.Values(r.byName), func(a, b *luaTool) int { return cmp.Compare(a.Name, b.Name) })
 }
 
-// toolSections renders the prompt of each Lua tool in toolset, so a profile
-// that drops the tool drops its section. Name order and fixed text keep the
+// toolSections renders the prompt of each Lua tool in toolset, so the prompt
+// names no tool the model does not have. Name order and fixed text keep the
 // provider's prompt cache.
 func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 	var out strings.Builder

@@ -180,7 +180,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.135.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.136.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -669,7 +669,6 @@ func TestConfigSet(t *testing.T) {
 	}{
 		{"agent.effort", "high", "default", `""`, ""},
 		{"agent.effort", "high", "turbo", `"high"`, `config key agent.effort expects low, medium, high or default, not "turbo"`},
-		{"agent.profile", "high", "", `"default"`, ""},
 		{"agent.compact_at", 80.0, "60", "60", ""},
 		{"agent.compact_at", 80.0, "84.5", "84.5", ""},
 		{"agent.compact_at", 80.0, "abc", "80", "agent.compact_at is a number"},

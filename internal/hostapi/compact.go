@@ -320,7 +320,7 @@ func (h *Host) handoffGate(runner, prev *agent.Runner, from string, scope *turnS
 			return
 		}
 		header, note := "Model handoff", h.handoffNote(from, newModel, in)
-		if from == newModel { // the pinned prompt moved, not the model: a plan approval, a profile switch
+		if from == newModel { // the pinned prompt moved, not the model
 			header, note = "Prompt changed", h.repinNote(from, in)
 		}
 		answers, ok := ui.AskQuestion([]tools.Question{{
@@ -360,9 +360,9 @@ func (h *Host) handoffNote(from, to string, in int64) string {
 		from, handoffCost(in, h.modelPrice(from, false)), handoffCost(handoff, h.modelPrice(to, true)))
 }
 
-// repinNote is handoffNote for a prompt change on the same model (a plan
-// approval, a profile switch): the model's cache of the old prefix is dead
-// either way, and the compact route reads it once more before it goes.
+// repinNote is handoffNote for a prompt change on the same model: the model's
+// cache of the old prefix is dead either way, and the compact route reads it
+// once more before it goes.
 func (h *Host) repinNote(model string, in int64) string {
 	window := h.contextWindow(model)
 	tail := tailKeep(h.compactThreshold(window))

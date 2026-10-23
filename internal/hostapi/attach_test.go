@@ -307,7 +307,7 @@ func TestImagesRefusedContinues(t *testing.T) {
 			if !toolRow {
 				t.Fatal("tool row of the first step lost")
 			}
-			model := h.currentModelID(nil)
+			model := h.roleModel("chat")
 			t.Cleanup(func() { imagesRejected.Delete(model) })
 			if h.takesImages(model) == c.textOnly || h.agents.runner.TextOnly != c.textOnly {
 				t.Fatalf("text-only: model %v, runner %v, want %v", !h.takesImages(model), h.agents.runner.TextOnly, c.textOnly)

@@ -78,7 +78,7 @@ var luaReadOnly = set.Of(
 // reaches nothing else of zemi.
 var luaDelegated = set.Of("tool.call")
 
-// luaEvalTool is the model's lua tool. build is profileTools' builder, which a
+// luaEvalTool is the model's lua tool. build is toolsFor's builder, which a
 // script's callable set is built with under its own pipeline copy.
 type luaEvalTool struct {
 	tools.NoProviderOptions

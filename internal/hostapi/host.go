@@ -70,9 +70,8 @@ type UIHooks interface {
 	// any goroutine.
 	ChatRow() int
 	AskQuestion(qs []tools.Question) (answers []tools.Answer, ok bool)
-	// AskPlan shows a plan for approval (restore is the agent to return to on
-	// approval, "" when none); ok is false when the user dismisses it.
-	AskPlan(plan, restore string) (tools.PlanVerdict, bool)
+	// AskPlan shows a plan for approval; ok is false when the user dismisses it.
+	AskPlan(plan string) (tools.PlanVerdict, bool)
 	// ComposerEdit applies a zemi.composer edit on the UI goroutine; only
 	// ComposerSet reads cursor (-1 = end).
 	ComposerEdit(op ComposerOp, text string, cursor int)
@@ -681,8 +680,6 @@ type Host struct {
 	// compaction, the model and tools.
 	turn atomic.Pointer[turnScope]
 
-	plans planReg // the read-only restore point
-
 	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
 	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
 	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
@@ -852,14 +849,12 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.reconcileBrain(h.partition(store.ScopeUser))
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help":            func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick":         func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
-		"zemi.ui.focus.set":       func(h *Host, id string) error { return h.focusNode(id) },
-		"zemi.ui.focus.next":      func(h *Host, _ string) error { return h.cycleFocus(1) },
-		"zemi.ui.focus.prev":      func(h *Host, _ string) error { return h.cycleFocus(-1) },
-		"zemi.agent.profile.next": func(h *Host, _ string) error { return h.cycleProfile(1) },
-		"zemi.agent.profile.prev": func(h *Host, _ string) error { return h.cycleProfile(-1) },
-		"zemi.reload":             nil, // Go-reserved; never dispatched here
+		"zemi.ui.help":       func(h *Host, _ string) error { return h.OpenHelp() },
+		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
+		"zemi.ui.focus.set":  func(h *Host, id string) error { return h.focusNode(id) },
+		"zemi.ui.focus.next": func(h *Host, _ string) error { return h.cycleFocus(1) },
+		"zemi.ui.focus.prev": func(h *Host, _ string) error { return h.cycleFocus(-1) },
+		"zemi.reload":        nil, // Go-reserved; never dispatched here
 	}
 	for _, a := range scrollActions {
 		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, id string) error { h.scroll(a, id); return nil }
@@ -1805,8 +1800,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
 	tb.RawSetString("model_hint", glua.LString(h.NoModelHint()))
-	tb.RawSetString("profile", glua.LString(stream.Profile))
-	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
@@ -2277,7 +2270,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.135.0"))
+	api.RawSetString("version", glua.LString("0.136.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

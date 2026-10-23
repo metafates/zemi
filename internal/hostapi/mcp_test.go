@@ -64,10 +64,7 @@ func TestLuaToolDrivesDeferredMCP(t *testing.T) {
 		t.Fatalf("the step offers the MCP tools anyway: %v", active())
 	}
 	var tool fantasy.AgentTool
-	set, err := h.profileTools(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := h.mainTools()
 	for _, c := range set {
 		if c.Info().Name == tools.ToolLua {
 			tool = c
