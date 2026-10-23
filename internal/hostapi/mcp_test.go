@@ -3,11 +3,13 @@ package hostapi
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -218,8 +220,10 @@ func TestMCPBridge(t *testing.T) {
 		t.Fatalf("disabled tool call = %+v", resp)
 	}
 	// a sign-out waits for the next sign-in at once, since a start could
-	// only fail the same way, and redraws the open /mcp
-	n := len(ui.overlays())
+	// only fail the same way, and rebuilds the open /mcp
+	ui.mu.Lock()
+	n := len(ui.rebuilt)
+	ui.mu.Unlock()
 	signed, _ := h.mcpServerNamed("fake")
 	grant := h.mcpAuth(signed).Path
 	if err := os.MkdirAll(filepath.Dir(grant), 0o755); err != nil {
@@ -241,11 +245,14 @@ func TestMCPBridge(t *testing.T) {
 	if s, _ := h.mcpServerNamed("fake"); s != out || s.status != StatusSignIn {
 		t.Errorf("a reload after a sign-out started the server: %q", s.status)
 	}
-	if !slices.ContainsFunc(ui.overlays()[n:], func(o Overlay) bool {
+	ui.mu.Lock()
+	rebuilt := slices.Clone(ui.rebuilt)
+	ui.mu.Unlock()
+	if !slices.ContainsFunc(rebuilt[n:], func(o Overlay) bool {
 		row := o.Items[0]
-		return o.Refresh && row.Desc == "needs sign-in" && strings.Contains(strings.Join(dumpKeys(row.Keys), " "), "run:mcp sign-in fake")
+		return row.Desc == "needs sign-in" && strings.Contains(strings.Join(dumpKeys(row.Keys), " "), "run:mcp sign-in fake")
 	}) {
-		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
+		t.Errorf("no /mcp refresh shows the sign-out: %+v", rebuilt[n:])
 	}
 	// the grant is gone now, so a second sign-out has nothing to park
 	if err := h.signOutMCP("fake", true); err == nil || !strings.Contains(err.Error(), "not signed in") {
@@ -305,7 +312,7 @@ func TestMCPSignInAll(t *testing.T) {
 		}
 		return nil
 	})
-	o := h.mcpOverlay(false)
+	o := h.mcpOverlay()
 	if len(o.Keys) != 1 || o.Keys[0].Key != "a" || o.Keys[0].Run != "mcp sign-in-all" {
 		t.Fatalf("two waiting servers offer no batch key: %+v", o.Keys)
 	}
@@ -331,7 +338,7 @@ func TestMCPSignInAll(t *testing.T) {
 	if status != StatusSignIn {
 		t.Fatal("bad is no longer waiting for a sign-in")
 	}
-	if o := h.mcpOverlay(false); len(o.Keys) != 0 {
+	if o := h.mcpOverlay(); len(o.Keys) != 0 {
 		t.Errorf("one waiting server still offers the batch key: %+v", o.Keys)
 	}
 	waitFor(t, func() error {
@@ -382,6 +389,74 @@ func TestMCPStoppedStartSilent(t *testing.T) {
 	h.startMCP(s)
 	if s.status != "stopped" || len(h.errs.entries) != 0 {
 		t.Fatalf("status %q, errors %v", s.status, h.errs.entries)
+	}
+}
+
+// TestMCPOverlayRefresh: a status change or a tool-list refresh rebuilds an
+// open /mcp through the UI's refresh, which builds nothing once it closed.
+func TestMCPOverlayRefresh(t *testing.T) {
+	t.Parallel()
+	var shrink atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var m struct {
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
+		}
+		_ = json.Unmarshal(body, &m)
+		if m.Method == "tools/list" && shrink.Load() {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo","inputSchema":{"type":"object"}}]}}`, m.ID)
+			return
+		}
+		if resp := mcptest.Respond(body); resp != nil {
+			if m.Method == "initialize" {
+				w.Header().Set("Mcp-Session-Id", "fake-session")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(resp)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q })`, srv.URL))
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s.currentClient() == nil {
+			return errors.New("never became ready")
+		}
+		return nil
+	})
+	if err := h.openMCP(""); err != nil {
+		t.Fatal(err)
+	}
+	row := func(o Overlay) string { return o.Items[0].Desc }
+	if got := ui.overlays(); len(got) == 0 || got[len(got)-1].ID != "mcp" || row(got[len(got)-1]) != "ready · 3 tools" {
+		t.Fatalf("open /mcp = %+v", ui.overlays())
+	}
+	snap := func() ([]string, []Overlay) {
+		ui.mu.Lock()
+		defer ui.mu.Unlock()
+		return slices.Clone(ui.refreshed), slices.Clone(ui.rebuilt)
+	}
+	ids0, _ := snap()
+	n := len(ids0)
+	h.mcpChanged()
+	ids, rebuilt := snap()
+	if len(ids) != n+1 || ids[n] != "mcp" {
+		t.Fatalf("a change did not rebuild the open /mcp: %v", ids)
+	}
+	s, _ := h.mcpServerNamed("fake")
+	shrink.Store(true)
+	h.refreshMCPTools(s)
+	ids, rebuilt = snap()
+	if len(ids) != n+2 || row(rebuilt[len(rebuilt)-1]) != "ready · 1 tool" {
+		t.Fatalf("a tool-list refresh left the open /mcp stale: %v, %q", ids, row(rebuilt[len(rebuilt)-1]))
 	}
 }
 

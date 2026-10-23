@@ -198,6 +198,7 @@ func (h *Host) refreshMCPTools(s *mcpServer) {
 	s.tools = list
 	s.mu.Unlock()
 	h.checkToolNames(s, list)
+	h.mcpChanged()
 }
 
 // checkToolNames records the enabled_tools and disabled_tools entries the
@@ -230,11 +231,12 @@ func (h *Host) setMCP(s *mcpServer, status ServiceStatus, err string) bool {
 	return moved
 }
 
-// mcpChanged redraws what shows the servers, an open /mcp included.
+// mcpChanged redraws what shows the servers, an open /mcp included. The
+// refresh builds nothing for a closed one.
 func (h *Host) mcpChanged() {
 	h.refresh()
 	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(h.mcpOverlay(true))
+		ui.RefreshOverlay("mcp", h.mcpOverlay)
 	}
 }
 
@@ -757,18 +759,17 @@ func (h *Host) openMCP(confirm string) error {
 	if err != nil {
 		return err
 	}
-	o := h.mcpOverlay(false)
+	o := h.mcpOverlay()
 	o.Confirm = confirm
 	ui.OpenOverlay(o)
 	return nil
 }
 
-// mcpOverlay is /mcp; with refresh it only replaces an open one. The batch
-// key is there once two or more HTTP servers ask for a sign-in: one is the
-// row's own Sign in.
-func (h *Host) mcpOverlay(refresh bool) Overlay {
+// mcpOverlay is /mcp. The batch key is there once two or more HTTP servers
+// ask for a sign-in: one is the row's own Sign in.
+func (h *Host) mcpOverlay() Overlay {
 	o := Overlay{
-		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.mcpItems(),
+		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: h.mcpItems(),
 		Reload: h.mcpItems,
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}
