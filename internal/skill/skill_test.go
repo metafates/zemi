@@ -200,6 +200,20 @@ func TestParseNonRegularSkillFile(t *testing.T) {
 
 // A skill that fails to parse still holds its name: a lower-trust directory's
 // same-named skill must not slip in behind the warning about the broken one.
+// A symlinked skill directory is refused like a symlinked SKILL.md, with a
+// warning naming it: a stowed skill must not vanish silently.
+func TestDiscoverSymlinkedSkillDir(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "real", "SKILL.md"), "---\nname: real\ndescription: d\n---\nbody")
+	if err := os.Symlink(filepath.Join(base, "real"), filepath.Join(base, "linked")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	got, warns := Discover(Dir{Path: base, Source: User})
+	if len(got) != 1 || got[0].Name != "real" || len(warns) != 1 || !strings.Contains(warns[0].Error(), "symlink") {
+		t.Fatalf("discover: %+v %v", got, warns)
+	}
+}
+
 func TestDiscoverBrokenSkillHoldsItsName(t *testing.T) {
 	root := t.TempDir()
 	user, project := filepath.Join(root, "user"), filepath.Join(root, "project")
@@ -210,7 +224,7 @@ func TestDiscoverBrokenSkillHoldsItsName(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("a lower-trust skill took the name: %+v", got)
 	}
-	if len(warns) != 1 || !strings.Contains(warns[0], "frontmatter block") {
+	if len(warns) != 1 || !strings.Contains(warns[0].Error(), "frontmatter block") {
 		t.Fatalf("warnings=%v", warns)
 	}
 }
@@ -224,7 +238,7 @@ func TestDiscoverMergesUserOverBuiltin(t *testing.T) {
 	writeFile(t, filepath.Join(builtin, "beta", "SKILL.md"), "---\nname: beta\ndescription: builtin beta\n---\n")
 
 	got, warns := Discover(Dir{Path: user, Source: User}, Dir{Path: builtin, Source: Builtin})
-	if len(warns) != 1 || !strings.Contains(warns[0], "broken") {
+	if len(warns) != 1 || !strings.Contains(warns[0].Error(), "broken") {
 		t.Fatalf("warnings=%v", warns)
 	}
 	byName := map[string]Skill{}

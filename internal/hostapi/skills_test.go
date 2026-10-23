@@ -19,6 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -483,6 +484,50 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 	}
 	if got := classes.Classify(hook); got != lua.OriginUser {
 		t.Errorf("hook origin = %q, want user", got)
+	}
+}
+
+// TestDescriptionCutWarnsOnly: a description over the cap still loads, and
+// the cut is a log line, not an /errors row on every boot.
+func TestDescriptionCutWarnsOnly(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.userSkillsDir(), "big", strings.Repeat("d", skill.MaxDescriptionRunes+1), "")
+	h.syncSkills()
+	s, ok := h.skillsReg.get("big")
+	if !ok || len([]rune(s.Description)) != skill.MaxDescriptionRunes {
+		t.Fatalf("the cut skill did not load: %+v", s)
+	}
+	for _, e := range h.errs.entries {
+		if strings.Contains(e.msg, "description cut") {
+			t.Fatalf("recorded %+v", h.errs.entries)
+		}
+	}
+}
+
+// TestClaudeCommandSkillClash: a plugin shipping skills/x/ and commands/x.md
+// keeps the skills/ row and warns; the /skills row no longer flips to the
+// command's path.
+func TestClaudeCommandSkillClash(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	root := filepath.Join(h.pluginsRoot(), "installed", "clashy")
+	writeSkill(t, filepath.Join(root, "skills"), "x", "the skill one", "")
+	cmd := filepath.Join(root, "commands", "x.md")
+	if err := os.MkdirAll(filepath.Dir(cmd), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cmd, []byte("---\ndescription: the command one\n---\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.pluginGrant.Store(&pluginGrant{roots: []string{root}, uses: map[string][]string{}, claude: set.Of(root)})
+	h.syncSkills()
+	s, ok := h.skillsReg.get("clashy-x")
+	if !ok || s.Dir != filepath.Join(root, "skills", "x") {
+		t.Fatalf("skills row: %+v", s)
+	}
+	if !slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "commands"+string(filepath.Separator)+"x.md") }) {
+		t.Fatalf("no clash warning: %+v", h.errs.entries)
 	}
 }
 
