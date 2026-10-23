@@ -971,9 +971,11 @@ zemi.ui.widget.add({
 			and settled.replying == replying
 			and settled
 		-- the row the run this turn is still adding to starts at: the live turn's
-		-- calls are no unit of their own, but the picker names that run by it
+		-- calls are no unit of their own, but the picker names that run by it.
+		-- Reading the transcript converts every row, so a settled cache skips
+		-- it: live_first then only feeds the rail's full flag, false at rail 0.
 		local live_first = 0
-		if active and not replying then
+		if active and not replying and (not done or (ctx.rail or 0) ~= 0) then
 			local tr = ctx.transcript or {}
 			if #tr > 0 and activity(tr[#tr]) then
 				live_first = #tr
