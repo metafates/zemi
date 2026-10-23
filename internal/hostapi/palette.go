@@ -127,8 +127,8 @@ var mixes = [...]struct {
 // a spec's own included: a box stays a box, and text reads on it.
 const surfaceSpan = 0.13
 
-// floors are the WCAG contrast each text role is clamped to on bg, panel
-// and band, the surfaces text draws on.
+// floors are the WCAG contrast each text role is clamped to on bg, panel,
+// band and well, the surfaces text draws on.
 var floors = [...]struct {
 	role string
 	min  float64
@@ -228,7 +228,7 @@ func derive(p *Palette, ansi []colorful.Color) {
 		l, c, h := col(*s).OkLch()
 		*s = inGamut(min(max(l, lbg-surfaceSpan), lbg+surfaceSpan), c, h)
 	}
-	on := []colorful.Color{col(p.Bg), col(p.Panel), col(p.Band)}
+	on := []colorful.Color{col(p.Bg), col(p.Panel), col(p.Band), col(p.Well)}
 	for _, f := range floors {
 		dst := p.role(f.role)
 		*dst = clampContrast(col(*dst), on, f.min)

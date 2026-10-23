@@ -84,7 +84,9 @@ for name, spec in pairs(groups) do
 end
 
 -- whorl, zemi's own: slate greys, a periwinkle accent and an apricot
--- literal, with red, amber and mint for state.
+-- literal, with red, amber and mint for state. warn sits lighter than the
+-- others: deutan folds amber and apricot into one yellow at the same
+-- lightness, so the two split by lightness instead.
 zemi.ui.theme.add("whorl", {
 	bg = "#17181e",
 	fg = "#e7e7ec",
@@ -92,25 +94,30 @@ zemi.ui.theme.add("whorl", {
 	rule = "#4b4c58",
 	panel = "#202128",
 	accent = "#a2adfd",
-	literal = "#f9b379",
+	literal = "#fcb67c",
 	ok = "#68d7a1",
-	warn = "#edcf6f",
+	warn = "#fde59c",
 	danger = "#f17070",
 })
 
--- picked automatically when the terminal reports a light background
+-- picked automatically when the terminal reports a light background. The
+-- light twin of whorl: same hues, the neutrals carry the same periwinkle
+-- cast. A white canvas leaves the five text roles one narrow lightness band,
+-- so the state trio counts on its marks (no state draws without its glyph)
+-- and literal sits darkest to stay apart from warn under deuteranopia and
+-- at 256 colors.
 zemi.ui.theme.add("whorl-light", {
-	bg = "#fafafc",
+	bg = "#f9faff",
 	fg = "#202127",
 	dim = "#696b78",
-	rule = "#bcbdc6",
-	panel = "#eff0f3",
-	accent = "#5458c8",
-	literal = "#ab5819",
-	ok = "#007f52",
-	-- NOTE: 3.85:1 on white (APCA Lc 64), which the 3.5 floor on the band
-	-- darkens to 4.8:1 on bg; a darker amber reads as danger to deuteranopes.
-	warn = "#a97500",
+	rule = "#c1c3d3",
+	panel = "#eef0f6",
+	accent = "#4f44e7",
+	literal = "#6d3800",
+	ok = "#006842",
+	-- NOTE: under the 4.5 floor a darker amber reads as danger to
+	-- deuteranopes, so warn keeps the 3.5 floor and lands at 4.8:1 on bg.
+	warn = "#927100",
 	danger = "#c72d2e",
 })
 

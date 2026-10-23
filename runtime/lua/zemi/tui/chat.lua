@@ -852,7 +852,7 @@ zemi.ui.widget.add({
 				-- and a tail by the host; a failure's mark takes the prompt's place
 				B.gap("user")
 				B.lines[#B.lines + 1] = {
-					m.status == "err" and mark("err") or { text = "$ ", hl = "Title", copy = false },
+					m.status == "err" and mark("err") or { text = "$ ", hl = "PromptShell", copy = false },
 					{ text = m.text, hl = "Normal" },
 				}
 				for _, ol in ipairs(util.split(m.detail or "", "\n")) do

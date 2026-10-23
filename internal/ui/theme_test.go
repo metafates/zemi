@@ -38,7 +38,7 @@ func TestANSI16(t *testing.T) {
 }
 
 // TestThemes: every shipped theme keeps each text role over its contrast
-// floor on bg, panel and band, the literal apart in hue from warn and
+// floor on bg, panel, band and well, the literal apart in hue from warn and
 // danger, its surfaces, rule and dim apart, danger a hue and whorl's diff
 // tints apart at 256 colors, and the Go chrome draws in the colors of the
 // groups it stands for.
@@ -77,7 +77,7 @@ func TestThemes(t *testing.T) {
 			t.Fatalf("%s: %s draws", th.Name, host.ActiveTheme().Name)
 		}
 		for role, floor := range floors {
-			for _, on := range []string{"bg", "panel", "band"} {
+			for _, on := range []string{"bg", "panel", "band", "well"} {
 				if r := hostapi.Contrast(th.Color(role), th.Color(on)); r < floor {
 					t.Errorf("%s: %s is %.2f:1 on %s, under %.1f", th.Name, role, r, on, floor)
 				}
@@ -105,6 +105,67 @@ func TestThemes(t *testing.T) {
 			if !sameColor(h.Fg, g.Fg) || !sameColor(h.Bg, g.Bg) {
 				t.Errorf("%s: %s is %v on %v, %s %v on %v", th.Name, p[0], h.Fg, h.Bg, p[1], g.Fg, g.Bg)
 			}
+		}
+	}
+}
+
+// TestThemeCVD: whorl and whorl-light keep the pairs that must stay apart
+// separated under deuteranopia and protanopia (Vienot 1999 in linear sRGB)
+// and in greyscale, where zemi's marks already carry the state and literal
+// is the one text-vs-text neighbor of warn.
+func TestThemeCVD(t *testing.T) {
+	t.Parallel()
+	_, host := bootAgentApp(t, 80, 24)
+	deutan := [3][3]float64{{0.625, 0.375, 0}, {0.7, 0.3, 0}, {0, 0.3, 0.7}}
+	protan := [3][3]float64{{0.567, 0.433, 0}, {0.558, 0.442, 0}, {0, 0.242, 0.758}}
+	project := func(c color.Color, m [3][3]float64) [3]float64 {
+		v, ok := colorful.MakeColor(c)
+		if !ok {
+			t.Fatal("not a color")
+		}
+		r, g, b := v.LinearRgb()
+		l, a, bb := colorful.LinearRgb(m[0][0]*r+m[0][1]*g+m[0][2]*b, m[1][0]*r+m[1][1]*g+m[1][2]*b, m[2][0]*r+m[2][1]*g+m[2][2]*b).OkLab()
+		return [3]float64{l, a, bb}
+	}
+	grey := func(c color.Color) float64 {
+		v, ok := colorful.MakeColor(c)
+		if !ok {
+			t.Fatal("not a color")
+		}
+		l, _, _ := v.OkLch()
+		return l
+	}
+	for _, c := range []struct {
+		theme     string
+		pairs     map[[2]string]float64
+		greyFloor float64
+	}{
+		{theme: "whorl", greyFloor: 0.07, pairs: map[[2]string]float64{{"warn", "literal"}: 0.04, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.05}},
+		{theme: "whorl-light", greyFloor: 0.05, pairs: map[[2]string]float64{{"warn", "literal"}: 0.035, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.04}},
+	} {
+		th := host.Themes.Get(c.theme)
+		if th == nil {
+			t.Fatalf("no %s", c.theme)
+		}
+		color := func(role string) color.Color {
+			v := th.Color(role)
+			if v == nil {
+				t.Fatalf("%s has no %s", c.theme, role)
+			}
+			return v
+		}
+		for pair, floor := range c.pairs {
+			a, b := color(pair[0]), color(pair[1])
+			for name, m := range map[string][3][3]float64{"deutan": deutan, "protan": protan} {
+				pa, pb := project(a, m), project(b, m)
+				d := math.Hypot(math.Hypot(pa[0]-pb[0], pa[1]-pb[1]), pa[2]-pb[2])
+				if d < floor {
+					t.Errorf("%s: %s and %s are %.3f apart under %s, under %.3f", c.theme, pair[0], pair[1], d, name, floor)
+				}
+			}
+		}
+		if d := math.Abs(grey(color("warn")) - grey(color("literal"))); d < c.greyFloor {
+			t.Errorf("%s: warn and literal are %.3f apart in greyscale, under %.3f", c.theme, d, c.greyFloor)
 		}
 	}
 }
