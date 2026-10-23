@@ -1659,15 +1659,22 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 	if msg.Role == fantasy.MessageRoleUser {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
+		h.agents.mu.Unlock()
 		// the row drawn when the message was sent names the stored one from
-		// here: a send draws its row before the row exists
+		// here: a send draws its row before the row exists. Replaced whole,
+		// like joinReasoning: readers share the old array and the chat widget
+		// caches rows by index
+		h.tMu.Lock()
 		for i := range h.session.Transcript {
-			if r := &h.session.Transcript[i]; r.ID == "" && r.Kind == "" && r.Role == fantasy.MessageRoleUser {
-				r.ID = row.ID
+			r := &h.session.Transcript[i]
+			if r.ID == "" && r.Kind == "" && r.Role == fantasy.MessageRoleUser {
+				tr := slices.Clone(h.session.Transcript)
+				tr[i].ID = row.ID
+				h.session.Transcript = tr
 				break
 			}
 		}
-		h.agents.mu.Unlock()
+		h.tMu.Unlock()
 		h.setGoalFrom(sid, msg)
 	}
 	return nil
