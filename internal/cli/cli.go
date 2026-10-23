@@ -1,5 +1,4 @@
-// Package cli is zemi's front end: the command line, the headless run and
-// the TUI launch.
+// Package cli is zemi's front end: the command line and the TUI launch.
 package cli
 
 import (
@@ -57,14 +56,12 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var version string
 
 type options struct {
-	run, cont, json  bool
-	quiet, reasoning bool
-	resume, model    string
-	profile          string
-	prompt           string
-	text             bool   // the prompt came from stdin after -: a leading / is text, never a command
-	dir              string // -C
-	trust            *bool  // --trust for this run; nil when not given
+	cont              bool
+	resume, model     string
+	profile           string
+	prompt            string
+	dir               string // -C
+	trust             *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -200,8 +197,7 @@ func newRoot(o *options, launch func(options) int) *cobra.Command {
 With no command zemi opens the TUI; a prompt is sent as the first message,
 or run when it names a command (zemi "/review HEAD~1").`,
 		Example: `  zemi "fix the failing test"
-  git diff | zemi run "review this"
-  zemi run "/review HEAD~1" > review.md
+  zemi "/review HEAD~1"
   zemi -- plugins are not loading      after --, it is all prompt`,
 		Version:       versionString(),
 		Args:          o.finish,
@@ -215,29 +211,6 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
 	_ = root.MarkPersistentFlagDirname("cd")
 	turnFlags(root, o)
-
-	run := &cobra.Command{
-		Use:   "run [prompt... | -]",
-		Short: "answer one prompt on stdout and exit",
-		Long: `Answer one prompt and exit, with no TUI. stdout gets the last message, or
-with --json one JSON event per line; stderr shows the run as the chat draws it.
-Piped stdin is attached behind the prompt; - reads the prompt itself from
-stdin. Nobody can approve a call, so one a gate puts to the user is denied
-and stderr lists them at the end.`,
-		Example: `  zemi run "explain main.go"
-  git diff | zemi run "review this"
-  zemi run - < task.md
-  zemi run -c "and the tests?"`,
-		Args: o.finish,
-		RunE: func(*cobra.Command, []string) error {
-			o.run = true
-			return status(launch(*o))
-		},
-	}
-	turnFlags(run, o)
-	run.Flags().BoolVar(&o.json, "json", false, "print one JSON event per line, the done report last")
-	run.Flags().BoolVarP(&o.quiet, "quiet", "q", false, "show no run on stderr, only what went wrong")
-	run.Flags().BoolVar(&o.reasoning, "reasoning", false, "show every thought and call whole")
 
 	var healthJSON *bool
 	health := &cobra.Command{
@@ -255,7 +228,7 @@ and stderr lists them at the end.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(run, sessionsCommand(o), projectsCommand(o), pluginCommand(o), modelsCommand(o), health)
+	root.AddCommand(sessionsCommand(o), projectsCommand(o), pluginCommand(o), modelsCommand(o), health)
 	return root
 }
 
@@ -977,62 +950,21 @@ func normalizeVersion(v string) string {
 	return v
 }
 
-// readStdin reads piped stdin for zemi run: behind the marker that ends what
-// the user typed, or as the typed prompt itself when the prompt is "-". The
-// TUI needs the terminal on stdin, so a pipe there is a usage error.
+// readStdin refuses a piped stdin: the TUI needs the terminal on it.
+// </dev/null is fine, the TUI opens /dev/tty.
 func (o *options) readStdin(stdin *os.File) error {
 	fi, err := stdin.Stat()
-	dash := o.prompt == "-"
-	switch {
-	case dash && (err != nil || term.IsTerminal(stdin.Fd())):
-		return errors.New("- reads the prompt from stdin, which is a terminal")
-	// the TUI opens /dev/tty when stdin is </dev/null
-	case !dash && (err != nil || fi.Mode()&os.ModeCharDevice != 0):
+	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
 		return nil
-	case !o.run:
-		return errors.New("stdin is not a terminal; zemi run answers from a pipe")
 	}
-	// NOTE: stdin over 1 MiB is refused; larger input belongs in a file the
-	// agent reads.
-	first, got := make(chan struct{}), make(chan []byte, 1)
-	go func() {
-		head := make([]byte, 1)
-		n, _ := stdin.Read(head)
-		close(first)
-		rest, _ := io.ReadAll(io.LimitReader(stdin, 1<<20))
-		got <- append(head[:n], rest...)
-	}()
-	// Schedulers and editors often leave an idle pipe on stdin: with a
-	// prompt argument, stdin that stays silent for 3s is skipped. A slow
-	// producer is fine once its first byte arrives.
-	if o.prompt != "" && !dash {
-		select {
-		case <-first:
-		case <-time.After(3 * time.Second):
-			fmt.Fprintln(os.Stderr, "zemi: no stdin within 3s, continuing without it")
-			return nil
-		}
-	}
-	b := <-got
-	if len(b) > 1<<20 {
-		return errors.New("stdin is over 1 MiB; write it to a file and name the file in the prompt")
-	}
-	switch in := strings.TrimSpace(string(b)); {
-	case dash && in == "":
-		return errors.New("- reads the prompt from stdin, which is empty")
-	case dash:
-		o.prompt, o.text = in, true
-	case in != "":
-		o.prompt += agent.Attached("stdin", in)
-	}
-	return nil
+	return errors.New("stdin is not a terminal")
 }
 
 // headlessTrust answers the trust prompt when nobody can: not now, with one
 // line saying what that turns off.
 func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust trusts this project for the run\n", perm.TildePath(root))
+		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust trusts this project\n", perm.TildePath(root))
 		return "later"
 	}
 }
@@ -1099,18 +1031,11 @@ func stopSignals() []os.Signal {
 	return sigs
 }
 
-// sendPrompt sends a command-line prompt (Host.SendPrompt, or as text to
-// the model when text) once no MCP server is starting, since its one send
-// builds the tool set, unless ctx ends the wait.
-func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string, text bool) error {
+// sendPrompt sends a command-line prompt once no MCP server is starting,
+// since its one send builds the tool set, unless ctx ends the wait.
+func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return ctx.Err()
-	}
-	if text {
-		// the command line's prompt is the user's own: one that joins a running
-		// turn hands that turn's foreground calls off. Headless marks nothing,
-		// since no UI would take the report a handoff delivers (Host.UserSpoke).
-		return h.AgentSendUser(prompt)
 	}
 	return h.SendPrompt(prompt)
 }

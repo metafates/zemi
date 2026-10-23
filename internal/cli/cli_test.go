@@ -92,11 +92,9 @@ func TestCLI(t *testing.T) {
 		{name: "tui", want: &options{}},
 		{name: "prompt words join", args: []string{"-m", "a/b", "fix", "the", "test"}, want: &options{model: "a/b", prompt: "fix the test"}},
 		{name: "flags after the prompt", args: []string{"hi", "-m", "x", "there"}, want: &options{model: "x", prompt: "hi there"}},
-		{name: "dash dash keeps a dashed prompt", args: []string{"run", "--", "-v", "means", "verbose?"}, want: &options{run: true, prompt: "-v means verbose?"}},
+		{name: "dash dash keeps a dashed prompt", args: []string{"--", "-v", "means", "verbose?"}, want: &options{prompt: "-v means verbose?"}},
 		{name: "dash dash keeps a command name", args: []string{"--", "plugin", "x"}, want: &options{prompt: "plugin x"}},
 		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "did you mean health"},
-		{name: "run", args: []string{"run", "--json", "-q", "--reasoning", "hi"}, want: &options{run: true, json: true, quiet: true, reasoning: true, prompt: "hi"}},
-		{name: "run dash", args: []string{"run", "-"}, want: &options{run: true, prompt: "-"}},
 		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "cannot be combined"},
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
@@ -104,7 +102,7 @@ func TestCLI(t *testing.T) {
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
 		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
-		{name: "complete a model", args: []string{"__complete", "run", "-m", ""}, stdout: "gw/m1\n"},
+		{name: "complete a model", args: []string{"__complete", "-m", ""}, stdout: "gw/m1\n"},
 		{name: "complete a profile", args: []string{"__complete", "--profile", ""}, stdout: "cheap\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
@@ -132,7 +130,7 @@ func TestCLI(t *testing.T) {
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
 		{name: "complete a session of another project", args: []string{"__complete", "-C", dir, "-r", ""}, stdout: sid + "\t"},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 2, stderr: "zemi: -C nope: no such file or directory"},
-		{name: "-C a dir", args: []string{"-C", dir, "run", "hi"}, want: &options{run: true, prompt: "hi", dir: dir}},
+		{name: "-C a dir", args: []string{"-C", dir, "hi"}, want: &options{prompt: "hi", dir: dir}},
 	} {
 		if err := os.Chdir(base); err != nil {
 			t.Fatal(err)
@@ -170,21 +168,16 @@ func TestCLI(t *testing.T) {
 	}
 }
 
-// TestReadStdin: piped stdin is attached behind the typed prompt, or is
-// the prompt itself after -, and never reaches the TUI.
+// TestReadStdin: the TUI takes a terminal or /dev/null on stdin and
+// refuses a pipe.
 func TestReadStdin(t *testing.T) {
 	for _, c := range []struct {
-		name, prompt, stdin string
-		tui, null           bool // null reads /dev/null, a character device
-		want, err           string
+		name, stdin string
+		null        bool // null reads /dev/null, a character device
+		err         string
 	}{
-		{name: "attached", prompt: "review", stdin: "diff\n", want: "review" + agent.Attached("stdin", "diff")},
-		{name: "dash is the prompt", prompt: "-", stdin: "/fix it\n", want: "/fix it"},
-		{name: "dash with nothing", prompt: "-", err: "which is empty"},
-		{name: "dash with /dev/null", prompt: "-", null: true, err: "which is empty"},
-		{name: "over the cap", stdin: strings.Repeat("x", 1<<20+1), err: "over 1 MiB"},
-		{name: "the tui refuses a pipe", tui: true, stdin: "x", err: "zemi run answers from a pipe"},
-		{name: "the tui takes /dev/null", tui: true, null: true},
+		{name: "a pipe is refused", stdin: "x", err: "stdin is not a terminal"},
+		{name: "/dev/null is taken", null: true},
 	} {
 		r, w, err := os.Pipe()
 		if err != nil {
@@ -200,10 +193,10 @@ func TestReadStdin(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		o := options{run: !c.tui, prompt: c.prompt}
+		o := options{}
 		err = o.readStdin(r)
 		r.Close()
-		if c.err != "" && !strings.Contains(fmt.Sprint(err), c.err) || c.err == "" && (err != nil || o.prompt != c.want || o.text != (c.prompt == "-")) {
+		if !strings.Contains(fmt.Sprint(err), c.err) || o.prompt != "" {
 			t.Errorf("%s: prompt %q, err %v", c.name, o.prompt, err)
 		}
 	}

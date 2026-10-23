@@ -38,39 +38,18 @@ import (
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
-// launch opens the TUI, or with o.run answers one prompt on stdout.
+// launch opens the TUI.
 func launch(o options) int {
-	cmd := "zemi"
-	if o.run {
-		cmd = "zemi run"
-	}
 	usage := func(msg string) int {
-		usageHint(os.Stderr, cmd, msg)
+		usageHint(os.Stderr, "zemi", msg)
 		return 2
 	}
 	if err := o.readStdin(os.Stdin); err != nil {
 		return usage(err.Error())
 	}
-	if o.run {
-		if o.prompt == "" {
-			return usage("zemi run needs a prompt: an argument, - or piped stdin")
-		}
-		// the view is the run's stderr from boot on, so a diagnostic prints
-		// above its tail
-		view := ui.NewRunView(os.Stderr, o.quiet || o.json)
-		h, done, err := bootHeadless(o, false, view, view)
-		if err != nil {
-			return runFailed(err, o.json, os.Stdout, view)
-		}
-		defer done()
-		if err := applyOptions(h, o); err != nil {
-			return runFailed(err, o.json, os.Stdout, view)
-		}
-		return runHeadless(h, view, o, os.Stdout)
-	}
 	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
 	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
-		return usage("stdout is not a terminal; zemi run prints the answer")
+		return usage("stdout is not a terminal; the TUI draws on one")
 	}
 	fail := func(err error) int {
 		fmt.Fprintln(os.Stderr, "zemi:", err)
@@ -129,7 +108,7 @@ func launch(o options) int {
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if o.prompt != "" {
-			if err := sendPrompt(ctx, host, o.prompt, false); err != nil {
+			if err := sendPrompt(ctx, host, o.prompt); err != nil {
 				app.Notify(slog.LevelError, "Could not send", err.Error())
 			}
 		}
@@ -227,8 +206,8 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 	return host, trust
 }
 
-// hostSteps is the boot of a zemi; app is nil headless, where nothing
-// quits and a failing step says so on stderr.
+// hostSteps is the boot of a zemi; app is nil headless (zemi health, a
+// completion), where nothing quits and a failing step says so on stderr.
 func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 	quit := func() {}
 	if app != nil {
@@ -246,10 +225,11 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 		app != nil)
 }
 
-// bootHost is the prologue a TUI and a headless run share: this run's dirs,
-// the log, the host and the trust gate its steps read. An inert boot (zemi
-// models, a completion) only reads config: no store, no log file, no process.
-// closeLog releases the log and, for an inert boot, the process refusal.
+// bootHost is the prologue a TUI boot and a headless one (zemi health, a
+// completion) share: this run's dirs, the log, the host and the trust gate
+// its steps read. An inert boot (zemi models, a completion) only reads
+// config: no store, no log file, no process. closeLog releases the log and,
+// for an inert boot, the process refusal.
 func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
 	dirs := o.dirs
 	if !inert {
@@ -273,9 +253,10 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 	}, nil
 }
 
-// bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
-// stops what boot started (MCP and language servers) and closes the log.
-// stderr gets its diagnostics, notice the untrusted-project line.
+// bootHeadless boots zemi with no TUI, for zemi health, zemi models and the
+// flag completions; done stops what boot started (MCP and language servers)
+// and closes the log. stderr gets its diagnostics, notice the
+// untrusted-project line.
 func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Host, func(), error) {
 	h, trust, _, closeLog, err := bootHost(o, inert)
 	if err != nil {
@@ -590,9 +571,8 @@ const initStep = "init"
 // or project config) from stopping boot: the error goes to the log and
 // /errors, and the remaining steps and the runtime still start, like
 // neovim reporting an init.lua error and opening anyway. Headless there is
-// no /errors to open, so the error goes to stderr as well: otherwise zemi run
-// answers as if the config had loaded, and a broken provider registration
-// then blames a config line that is already correct.
+// no /errors to open, so the error goes to stderr as well: otherwise a
+// zemi health run reads green over a boot that failed to load its config.
 func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 	run := s.Run
 	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -606,7 +586,7 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 			}
 			h.Log.Error(s.Name+" failed", "origin", "boot", "error", err)
 			h.RecordError("boot "+s.Name, err.Error())
-			if headless { // no /errors pill to notice, and zemi run is the scriptable path
+			if headless { // no /errors pill to notice
 				fmt.Fprintln(h.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
 			}
 		}
@@ -725,8 +705,8 @@ func (tg *trustGate) command() func() {
 
 // readyStep drops the builtin providers when init.lua turned them off
 // (config has run by now, and a replay re-seeds them first), names an
-// override no tool answers to and a ui.theme no theme does, and emits app.ready. Only the TUI reflects at startup: zemi run and zemi health
-// exit before it could finish.
+// override no tool answers to and a ui.theme no theme does, and emits app.ready. Only the TUI reflects at startup: zemi health
+// exits before it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
 	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })
@@ -763,7 +743,7 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 			// idle sessions are reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3)
 			// and the marketplace pull runs off the boot too; a headless
-			// run stays quiet, its stderr is the work
+			// boot stays quiet, its stderr is the work
 			if reflect {
 				reflectLast()
 				updateLast()
