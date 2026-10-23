@@ -1607,6 +1607,10 @@ func TestPromptKeysUnderDraft(t *testing.T) {
 	if app.composer.text != "do no" || len(done) != 0 {
 		t.Fatalf("typing under a waiting ask drafted %q, want %q and no answer", app.composer.text, "do no")
 	}
+	app.Update(tea.PasteMsg{Content: "thing else"})
+	if !strings.Contains(app.composer.text, "thing else") || len(done) != 0 {
+		t.Fatalf("a paste under the waiting ask did not draft: %q", app.composer.text)
+	}
 	app.clearComposer()
 	typeKey("y") // an empty composer inside the grace of the cleared draft
 	if len(done) != 0 {

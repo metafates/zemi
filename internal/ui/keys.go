@@ -712,12 +712,13 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 }
 
 // pasteChrome sends a paste to the topmost filter or input instead of the
-// composer hidden under it; prompts without text input swallow it.
-func (a *App) pasteChrome(text string) bool {
+// composer hidden under it; prompts without text input swallow it, but a
+// draft under a waiting permission ask takes it, like its typing.
+func (a *App) pasteChrome(text string) (bool, tea.Cmd) {
 	line := strings.Join(strings.Fields(text), " ")
 	switch a.topChrome() {
 	case noModal:
-		return false
+		return false, nil
 	case modalQuestion:
 		qp := a.question
 		if qp.reviewing() {
@@ -739,8 +740,16 @@ func (a *App) pasteChrome(text string) bool {
 		} else if st.filterable {
 			st.edit("", line)
 		}
-	case modalPerm, modalTrust, modalBoot: // no text input: swallowed
+	case modalPerm:
+		if !a.composer.empty() {
+			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
+			a.composer.paste(line)
+			a.composer.snapshot(prev, false)
+			a.publishComposer()
+			return true, a.updateCompletion()
+		}
+	case modalTrust, modalBoot: // no text input: swallowed
 	}
 	a.bump()
-	return true
+	return true, nil
 }
