@@ -518,6 +518,21 @@ type Host struct {
 		rows []*glua.LTable
 	}
 
+	// transcriptRows caches ctx.transcript's row subtables between renders: a
+	// settled row's fields never change, so a long session builds only the
+	// rows a turn appended. The Lua actor goroutine fills it, like the
+	// renders, and the gen stamp drops tables an older generation's LState
+	// built. epoch, edit and rev are the counters any transcript change moves
+	// (setTranscript, joinReasoning, markRunRow, agentRun.touch); rows also
+	// compare by value, so nothing a counter missed is served stale.
+	transcriptRows struct {
+		gen         Gen
+		epoch, edit int64
+		rev         uint64
+		prev        []ChatMessage
+		rows        []*glua.LTable
+	}
+
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
@@ -1911,7 +1926,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			return out
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return h.agentTable(L, stream, h.now()) },
-		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
+		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript) },
 		"instructions": func(L *glua.LState) glua.LValue {
 			files := h.instructionsCached()
 			if files == nil {
@@ -2110,11 +2125,31 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 	return row
 }
 
-// transcriptTable is ctx.transcript.
-func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
+// transcriptTable is ctx.transcript. epoch, edit and rev are the stamps read
+// beside the transcript snapshot in widgetCtxTable: a changed transcript
+// moves one, a longer one reuses the prefix, and an unchanged row reuses its
+// table where a changed one is rebuilt.
+func (h *Host) transcriptTable(L *glua.LState, epoch, edit int64, rev uint64, transcript []ChatMessage) *glua.LTable {
 	tr := L.CreateTable(len(transcript), 0)
-	for _, m := range transcript {
-		tr.Append(chatRow(L, m))
+	c := &h.transcriptRows
+	n := len(transcript)
+	switch {
+	case c.gen != h.currentGen() || c.epoch != epoch || c.edit != edit || c.rev != rev || len(c.prev) > n:
+		c.prev, c.rows = slices.Clone(transcript), make([]*glua.LTable, n)
+	case len(c.prev) < n:
+		prev := make([]ChatMessage, n)
+		copy(prev, c.prev)
+		c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, n-len(c.rows))...)
+	}
+	c.gen, c.epoch, c.edit, c.rev = h.currentGen(), epoch, edit, rev
+	for i, m := range transcript {
+		if row := c.rows[i]; row != nil && c.prev[i] == m {
+			tr.Append(row)
+			continue
+		}
+		row := chatRow(L, m)
+		c.rows[i], c.prev[i] = row, m
+		tr.Append(row)
 	}
 	return tr
 }

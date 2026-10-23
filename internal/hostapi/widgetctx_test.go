@@ -13,6 +13,8 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -478,5 +480,81 @@ func TestAgentTableCachesToolRows(t *testing.T) {
 	got = rows(append(moved, StreamTool{Name: "edit", Status: CallRun, Started: start}), start)
 	if got[0] != first[0] || got[1] == first[1] || len(got) != 3 {
 		t.Fatal("an appended tool moved the rows before it")
+	}
+}
+
+// TestTranscriptTableCachesRows: a render reuses an unchanged row's subtable
+// and rebuilds one whose fields moved - same length included - while a longer
+// transcript reuses the prefix; a moved epoch, edit, revision or a shorter
+// transcript rebuilds them all, so no stale row reaches a widget.
+func TestTranscriptTableCachesRows(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	rows := func(epoch, edit int64, rev uint64, tr []ChatMessage) []*glua.LTable {
+		var out []*glua.LTable
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			tb := h.transcriptTable(L, epoch, edit, rev, tr)
+			for i := 1; i <= tb.Len(); i++ {
+				out = append(out, tb.RawGetInt(i).(*glua.LTable))
+			}
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	base := func() []ChatMessage {
+		return []ChatMessage{
+			{Role: fantasy.MessageRoleUser, Text: "hi"},
+			{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "read", Status: CallOK},
+		}
+	}
+	first := rows(1, 0, 0, base())
+	again := rows(1, 0, 0, base())
+	for i := range first {
+		if first[i] != again[i] {
+			t.Fatalf("row %d rebuilt", i+1)
+		}
+	}
+	cases := []struct {
+		name          string
+		epoch, edit   int64
+		rev           uint64
+		tr            func() []ChatMessage
+		keptFromFirst int // rows keeping their table from the first render
+	}{
+		{"appended", 1, 0, 0, func() []ChatMessage {
+			return append(base(), ChatMessage{Role: fantasy.MessageRoleUser, Text: "more"})
+		}, 2},
+		{"changed, stamps same", 1, 0, 0, func() []ChatMessage {
+			tr := base()
+			tr[1].Status = CallCancelled
+			return tr
+		}, 1},
+		{"epoch moved", 2, 0, 0, base, 0},
+		{"edit moved", 1, 1, 0, base, 0},
+		{"revision moved", 1, 0, 1, base, 0},
+		{"shrunk", 1, 0, 0, func() []ChatMessage { return base()[:1] }, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rows(1, 0, 0, base()) // settle the cache at two rows
+			prev := rows(1, 0, 0, base())
+			got := rows(c.epoch, c.edit, c.rev, c.tr())
+			for i := range got {
+				switch {
+				case i < c.keptFromFirst && got[i] != prev[i]:
+					t.Fatalf("row %d rebuilt", i+1)
+				case i >= c.keptFromFirst && i < len(prev) && got[i] == prev[i]:
+					t.Fatalf("row %d kept its table", i+1)
+				}
+			}
+			if c.name == "changed, stamps same" {
+				if s := got[1].RawGetString("status"); s != glua.LString(CallCancelled) {
+					t.Fatalf("the rebuilt row reads %v, want cancelled", s)
+				}
+			}
+		})
 	}
 }
