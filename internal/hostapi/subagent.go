@@ -702,7 +702,7 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 		read = readPrompt
 	}
 	if readOnly {
-		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and a command that would change it is denied. Report a change instead of making it."
+		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and every command is denied. Report a change instead of making it."
 	}
 	if hasTool(toolset, tools.ToolUpdate) {
 		update = "\n\nUse the update tool when your caller should not wait for the run's end to hear something: a finding it asked for, a blocker, a question. One or two lines is enough. It reads the line while you run and may steer you on it, so read what comes back and follow it."

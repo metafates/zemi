@@ -216,7 +216,7 @@ func (h *Host) enabledSkills() []skill.Skill {
 	return append(enabled, h.projectOnlySkills()...)
 }
 
-// recipesDir holds a project.s recipes: skills private to this machine, kept
+// recipesDir holds a project's recipes: skills private to this machine, kept
 // outside the repository.
 func (h *Host) recipesDir() string {
 	if h.Dirs.StateHome == "" {

@@ -37,5 +37,5 @@ New agent (`/agents new` sends you here, or the user asked for one):
 
 ## Forks
 
-`agent = "fork"` continues the conversation that called it, in parallel, on the caller's model, prompt and tools, so it shares the caller's prompt cache and needs no briefing: give it the task alone. It is not a definition (there is no `agents/fork.md`). Only its report comes back, like a subagent's; it cannot fork again, and `question`, `plan` and `todos` refuse in it.
+`agent = "fork"` continues the conversation that called it, in parallel, on the caller's model, prompt and tools, so it shares the caller's prompt cache and needs no briefing: give it the task alone. It is not a definition (there is no `agents/fork.md`). Only its report comes back, like a subagent's; it cannot fork again, and in a fork nobody answers `question` and `plan`, and `todos` has no list.
 

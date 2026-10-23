@@ -1,6 +1,6 @@
 ---
 name: zemi
-description: "Load only to change or extend zemi, the tool you run in (settings, models, permissions, keys, UI, Lua, plugins, subagents, commands, skills, workflows, memory, errors), or before parallel work in git worktrees. Never for work on the user's code."
+description: "Load only to change or extend zemi, the tool you run in (settings, models, permissions, keys, UI, Lua, plugins, subagents, skills, workflows, memory, errors), or before parallel work in git worktrees. Never for work on the user's code."
 ---
 
 # zemi

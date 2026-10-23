@@ -1573,7 +1573,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", f.asCall(report))), nil
 }
 
-// flowSource reads run id.s script from pad once: the run or the
+// flowSource reads run id's script from pad once: the run or the
 // model's file tools may rewrite the file, so what is approved is what runs.
 func flowSource(pad, id string) (string, error) {
 	if _, err := readJournal(pad, id); err != nil {

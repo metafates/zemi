@@ -194,8 +194,7 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 	case v.Approved:
 		return fantasy.NewTextResponse(planApproved + "." + implement), nil
 	}
-	return fantasy.NewTextResponse(planChanges + v.Feedback + planRevise +
-		", ask with the question tool if something is still unclear, and call plan again."), nil
+	return fantasy.NewTextResponse(planChanges + v.Feedback + planRevise + ", and call plan again."), nil
 }
 
 // stopTurn is an error result that ends the turn: the user wants to speak next.

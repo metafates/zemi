@@ -154,7 +154,7 @@ func (h *Host) buildSystemParts(toolset []fantasy.AgentTool) (system, ctxMsg str
 
 // replyReminder closes the main agent's context message, where a small model
 // weighs it most; a subagent's report keeps its own.
-const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for."
+const replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for."
 
 // contextOpener opens every context message; the bytes after it vary by
 // project and session.
@@ -162,8 +162,8 @@ const contextOpener = "<context>\nzemi's notes for this session, not the user's 
 
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
-// files, the environment with the run.s scratchpad pad
-// (readOnly: a read-only agent.s) and the session.s # Brain section.
+// files, the environment with the the run's scratchpad
+// (readOnly: a read-only agent's) and the session's # Brain section.
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
 	system, ctxMsg, _ = h.systemFor(sys, toolset, pad, readOnly, "")
 	return system, ctxMsg
@@ -430,7 +430,7 @@ const (
 	// forkTask opens the only message a fork receives, after the conversation
 	// it continues: the caller's own prompt says it may ask and delegate, and
 	// this run may do neither.
-	forkTask   = "You are a fork of the conversation above, running in parallel with the agent that started you: everything it has sent and read is already here. You are not that agent: nobody answers you here (the question and plan tools refuse, and there is no todo list), and a fork cannot fork again, so an agent call with fork is refused. Do the work here, and make your final message a complete, concise report of what the caller needs, citing path:line where it matters: it sees only that."
+	forkTask   = "You are a fork of the conversation above, running in parallel with the agent that started you: everything it has sent and read is already here. You are not that agent: nobody answers you here (nobody answers the question and plan tools, and todos has no list), and a fork cannot fork again, so an agent call with fork is refused. Do the work here, and make your final message a complete, concise report of what the caller needs, citing path:line where it matters: it sees only that."
 	recipesUse = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md in the recipes directory (under Environment): yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
