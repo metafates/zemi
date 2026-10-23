@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -758,5 +759,38 @@ func TestLinkHoverLights(t *testing.T) {
 	}
 	if rows[0][1].Over != "Hover" {
 		t.Errorf("the link did not light: %q", rows[0][1].Over)
+	}
+}
+
+// TestCopyWarnsWhenEveryLocalToolFails: the Copied toast is optimistic about
+// the terminal's own copy, whose outcome cannot be read, so only local tools
+// that ran and failed may warn.
+func TestCopyWarnsWhenEveryLocalToolFails(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name  string
+		tools [][]string
+		want  bool
+	}{
+		{"no local tool ran stays optimistic", nil, false},
+		{"a tool that worked stays quiet", [][]string{{"true"}}, false},
+		{"every local tool failed warns", [][]string{{"false"}}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 16)
+			saved := copyTools
+			copyTools = c.tools
+			t.Cleanup(func() { copyTools = saved })
+			batch, ok := app.copyCmd("x")().(tea.BatchMsg)
+			if !ok || len(batch) != 2 {
+				t.Fatalf("copyCmd = %v, want a batch of two", ok)
+			}
+			batch[1]()       // the local tools run off the UI goroutine
+			for app.Pump() { // Notify lands on the queue without a program
+			}
+			if warn := slices.ContainsFunc(app.toasts, func(to toast) bool { return to.level == slog.LevelWarn }); warn != c.want {
+				t.Fatalf("warned = %v, want %v (toasts %+v)", warn, c.want, app.toasts)
+			}
+		})
 	}
 }

@@ -686,7 +686,7 @@ func (a *App) copied(text string) tea.Cmd {
 		size = fmt.Sprintf("%d lines, %s", n, size)
 	}
 	a.pushToast(slog.LevelInfo, "Copied", size)
-	return copyCmd(text)
+	return a.copyCmd(text)
 }
 
 // Copy implements hostapi.UIHooks (/copy).
@@ -696,11 +696,16 @@ func (a *App) Copy(text string) {
 	}))
 }
 
+// copyTools are the local clipboard commands, tried in order.
+var copyTools = [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}}
+
 // copyCmd sets the clipboard through the terminal (works over ssh) and the
-// local clipboard tool (for terminals without OSC 52).
-func copyCmd(text string) tea.Cmd {
+// local clipboard tool (for terminals without OSC 52). The terminal's own
+// outcome cannot be read, so only local tools that ran and failed warn.
+func (a *App) copyCmd(text string) tea.Cmd {
 	return tea.Batch(tea.SetClipboard(text), func() tea.Msg {
-		for _, c := range [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}} {
+		failed := 0
+		for _, c := range copyTools {
 			if !has(c[0]) {
 				continue
 			}
@@ -712,8 +717,12 @@ func copyCmd(text string) tea.Cmd {
 			err := cmd.Run()
 			cancel()
 			if err == nil {
-				break
+				return nil
 			}
+			failed++
+		}
+		if failed > 0 {
+			a.Notify(slog.LevelWarn, "Copy may have failed", "the clipboard command failed; the terminal's own copy is unconfirmed")
 		}
 		return nil
 	})
