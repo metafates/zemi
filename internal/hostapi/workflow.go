@@ -111,12 +111,12 @@ func flowLabel(description, name, src string) string {
 	return cmp.Or(description, name, clipRunes(leadingComment(src), 60))
 }
 
-// unknownFlow marks workflowSource's no-such-workflow error: the caller that
-// named it raises (zemi.workflow.run), one that only reports the miss keeps
-// the nil, err shape.
-type unknownFlow struct{ error }
+// unknownFlowError marks workflowSource's no-such-workflow error: the caller
+// that named it raises (zemi.workflow.run), one that only reports the miss
+// keeps the nil, err shape.
+type unknownFlowError struct{ error }
 
-func (e unknownFlow) Unwrap() error { return e.error }
+func (e unknownFlowError) Unwrap() error { return e.error }
 
 func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
@@ -136,9 +136,9 @@ func (h *Host) workflowSource(name string) (string, error) {
 		}
 	}
 	if len(names) == 0 {
-		return "", unknownFlow{Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)}
+		return "", unknownFlowError{Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)}
 	}
-	return "", unknownFlow{Usagef("no saved workflow %q (have %s)", name, strings.Join(names, ", "))}
+	return "", unknownFlowError{Usagef("no saved workflow %q (have %s)", name, strings.Join(names, ", "))}
 }
 
 // flowRun is one workflow run as the rest of zemi sees it. The scheduler
@@ -2030,8 +2030,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		src := rawString(L, spec, "script")
 		if name := rawString(L, spec, "name"); name != "" {
 			s, err := h.workflowSource(name)
-			var miss unknownFlow
-			if errors.As(err, &miss) {
+			if _, miss := errors.AsType[unknownFlowError](err); miss {
 				// a mistyped name is misuse, like agent.run's unknown agent
 				L.RaiseError("zemi.workflow.run: %v", err)
 			}
