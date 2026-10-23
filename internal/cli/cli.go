@@ -3,6 +3,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/jsontext"
@@ -95,12 +96,16 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 	parsed := false
 	root := newRoot(&o, launch)
 	root.PersistentPreRunE = func(*cobra.Command, []string) error {
+		// -C ran: past this point a failure is not a usage error
+		parsed = true
+		if f := root.PersistentFlags().Lookup("trust"); f.Changed {
+			o.trust = new(f.Value.String() == "true")
+		}
 		if o.dir != "" {
 			if err := enterDir(o.dir); err != nil {
 				return err
 			}
 		}
-		parsed = true
 		// -C has run, so one resolution serves every command in this run; a
 		// failure here is not a usage error
 		dirs, err := config.ResolveDirs()
@@ -208,6 +213,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	root.SetHelpTemplate(root.HelpTemplate() + envHelp)
 	root.SetVersionTemplate("zemi {{.Version}}\n")
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
+	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
 	turnFlags(root, o)
 
@@ -217,7 +223,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 		Short: "run the /health checks; 1 if any failed",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(*o, false, os.Stderr, io.Discard) // the trust row says it
+			h, done, err := bootHeadless(*o, false, os.Stderr) // the trust row says it
 			if err != nil {
 				return err
 			}
@@ -237,7 +243,6 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
 	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`, of any project")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 }
@@ -251,7 +256,7 @@ func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		h, done, err := bootHeadless(options{dirs: dirs}, true, os.Stderr, io.Discard)
+		h, done, err := bootHeadless(options{dirs: dirs}, true, os.Stderr)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -365,12 +370,12 @@ func (o *options) finish(c *cobra.Command, args []string) error {
 		if s := c.SuggestionsFor(args[0]); len(s) > 0 {
 			return fmt.Errorf("%q is not a command; did you mean %s? (a one-word prompt: zemi -- %s)", args[0], s[0], args[0])
 		}
+		if args[0] == "version" {
+			return errors.New("\"version\" is not a command; did you mean --version?")
+		}
 	}
 	if o.cont && o.resume != "" {
 		return errors.New("--continue and --resume cannot be combined")
-	}
-	if f := c.Flags().Lookup("trust"); f.Changed {
-		o.trust = new(f.Value.String() == "true")
 	}
 	o.prompt = strings.TrimSpace(strings.Join(args, " "))
 	return nil
@@ -435,6 +440,13 @@ func pluginCommand(o *options) *cobra.Command {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugin marketplace add <source> adds one")
 			}
 			printPlugins(c.OutOrStdout(), ps, *asJSON)
+		case c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "marketplace":
+			var buf bytes.Buffer
+			err = plugin.Run(ctx, dirs, []string{"marketplace", "list"}, &buf)
+			if err == nil && buf.Len() == 0 {
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no marketplaces yet; zemi plugin marketplace add <source> adds one")
+			}
+			c.OutOrStdout().Write(buf.Bytes())
 		case c.Parent().Name() == "marketplace":
 			err = plugin.Run(ctx, dirs, append([]string{"marketplace", c.Name()}, args...), c.OutOrStdout())
 		default:
@@ -720,7 +732,7 @@ func modelsCommand(o *options) *cobra.Command {
 		Short: "list the models -m takes",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(*o, true, os.Stderr, io.Discard)
+			h, done, err := bootHeadless(*o, true, os.Stderr)
 			if err != nil {
 				return err
 			}
@@ -957,11 +969,9 @@ func (o *options) readStdin(stdin *os.File) error {
 	return errors.New("stdin is not a terminal")
 }
 
-// headlessTrust answers the trust prompt when nobody can: not now, with one
-// line saying what that turns off.
-func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
+// headlessTrust answers the trust prompt when nobody can: not now.
+func headlessTrust() func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust trusts this project\n", perm.TildePath(root))
 		return "later"
 	}
 }
@@ -989,7 +999,12 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 		return 130
 	}
 	code, p := 0, colorprofile.Detect(stdout, os.Environ())
-	for _, r := range h.HealthRows() {
+	rows := h.HealthRows()
+	var nameW int
+	for _, r := range rows {
+		nameW = max(nameW, ansi.StringWidth(r.Name))
+	}
+	for _, r := range rows {
 		if r.Level == hostapi.HealthError {
 			code = 1
 		}
@@ -1001,7 +1016,7 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 			}{Level: r.Level, Name: r.Name, Detail: r.Detail})
 			continue
 		}
-		fmt.Fprintf(stdout, "%s %s %s\n", pad(p, statusRole[string(r.Level)], string(r.Level), 5), pad(p, "", r.Name, 12), r.Detail)
+		fmt.Fprintf(stdout, "%s %s %s\n", pad(p, statusRole[string(r.Level)], string(r.Level), 5), pad(p, "", r.Name, nameW), r.Detail)
 	}
 	return code
 }

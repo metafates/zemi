@@ -127,7 +127,7 @@ func TestCLI(t *testing.T) {
 		{name: "complete a session id", args: []string{"__complete", "-r", ""}, stdout: sid + "\tfix the failing test\n"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
 		{name: "complete a session of another project", args: []string{"__complete", "-C", dir, "-r", ""}, stdout: sid + "\t"},
-		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 2, stderr: "zemi: -C nope: no such file or directory"},
+		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 1, stderr: "zemi: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir, "hi"}, want: &options{prompt: "hi", dir: dir}},
 	} {
 		if err := os.Chdir(base); err != nil {
@@ -321,12 +321,10 @@ func TestTrustCommand(t *testing.T) {
 	}
 }
 
-// TestHeadlessTrust: a headless run with no decision says in one short line
-// what is off and how to turn it on, and never trusts.
+// TestHeadlessTrust: a headless run with no saved decision never trusts.
 func TestHeadlessTrust(t *testing.T) {
-	var out strings.Builder
-	if got := headlessTrust(&out)("/repo", "/repo", ""); got != "later" || !strings.HasPrefix(out.String(), "zemi: /repo is not trusted") || !strings.Contains(out.String(), "AGENTS.md") || !strings.Contains(out.String(), "--trust") || len(out.String()) > 130 {
-		t.Fatalf("answer %q, stderr %q", got, out.String())
+	if got := headlessTrust()("/repo", "/repo", ""); got != "later" {
+		t.Fatalf("answer %q", got)
 	}
 }
 

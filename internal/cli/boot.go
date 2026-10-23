@@ -256,17 +256,16 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 
 // bootHeadless boots zemi with no TUI, for zemi health, zemi models and the
 // flag completions; done stops what boot started (MCP and language servers)
-// and closes the log. stderr gets its diagnostics, notice the
-// untrusted-project line.
-func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Host, func(), error) {
+// and closes the log. stderr gets its diagnostics.
+func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(), error) {
 	h, trust, _, closeLog, err := bootHost(o, inert)
 	if err != nil {
 		return nil, nil, err
 	}
 	h.Inert, h.Stderr = inert, stderr
-	// a project with no saved decision runs untrusted instead of asking; say
-	// so, or the run looks like it applied the project's setup
-	trust.ask = headlessTrust(notice)
+	// a project with no saved decision runs untrusted instead of asking; the
+	// health row and --trust say what that turns off
+	trust.ask = headlessTrust()
 	done := func() {
 		proc.KillAll()
 		closeLog()
