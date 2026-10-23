@@ -1635,15 +1635,21 @@ func TestAskGuardUnderDraft(t *testing.T) {
 		open   func(app *App) bool
 		answer string // the key that answers on an empty composer past the grace
 	}{
-		{"perm", func(app *App) { app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"}) },
-			func(app *App) bool { return app.permAsk != nil }, "y"},
-		{"plan", func(app *App) { app.AskPlan("# Plan") },
-			func(app *App) bool { return app.planAsk != nil }, "a"},
+		{
+			"perm", func(app *App) { app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"}) },
+			func(app *App) bool { return app.permAsk != nil }, "y",
+		},
+		{
+			"plan", func(app *App) { app.AskPlan("# Plan") },
+			func(app *App) bool { return app.planAsk != nil }, "a",
+		},
 		{"question", func(app *App) {
 			app.AskQuestion([]tools.Question{{Type: tools.TypeSingle, Question: "go on?", Options: []tools.QuestionOption{{Label: "one"}}}})
 		}, func(app *App) bool { return app.question != nil }, "1"},
-		{"trust", func(app *App) { app.AskTrust("/proj", "/proj", "") },
-			func(app *App) bool { return app.trust != nil }, "y"},
+		{
+			"trust", func(app *App) { app.AskTrust("/proj", "/proj", "") },
+			func(app *App) bool { return app.trust != nil }, "y",
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 80, 20)

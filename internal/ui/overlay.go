@@ -724,16 +724,26 @@ func (a *App) closeOverlays(id string) {
 	a.syncRail()
 }
 
+// menuRoot is the id of the browsing-menu level id belongs to, "" when id is
+// its own root: a level's id extends the root's ("calls 12" under "calls").
+func (a *App) menuRoot(id string) string {
+	for _, st := range a.overlays { // levels are outermost first
+		if strings.HasPrefix(id, st.o.ID+" ") {
+			return st.o.ID
+		}
+	}
+	return ""
+}
+
 // cancelMenuRoot closes the outermost level of a browsing menu, so esc on any
 // of its levels closes the lot; false when the level is its own root.
 func (a *App) cancelMenuRoot(o hostapi.Overlay) bool {
-	for _, st := range a.overlays {
-		if strings.HasPrefix(o.ID, st.o.ID+" ") {
-			a.cancelOverlay(st.o)
-			return true
-		}
+	root := a.menuRoot(o.ID)
+	if root == "" {
+		return false
 	}
-	return false
+	a.cancelOverlay(a.overlays[a.overlayIndex(root)].o)
+	return true
 }
 
 // closeMenu closes a browsing list with every level under it opened, keeping
@@ -747,13 +757,7 @@ func (a *App) closeMenu(st *overlayState) {
 			chat.focus, chat.placed = anchor, chat.top
 		}
 	}
-	root := st.o.ID
-	for _, s := range a.overlays { // levels are outermost first
-		if strings.HasPrefix(st.o.ID, s.o.ID+" ") {
-			root = s.o.ID
-			break
-		}
-	}
+	root := cmp.Or(a.menuRoot(st.o.ID), st.o.ID)
 	a.closeOverlayByID(root)
 }
 
@@ -1305,6 +1309,11 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			scroll = []hintPair{scrollGap}
 		}
 		esc := map[bool]string{true: "back", false: "close"}[st.back]
+		if !st.back && st.o.Follow && a.menuRoot(st.o.ID) != "" {
+			// esc from any level of a browsing menu closes the whole menu,
+			// while h is the one-level back
+			esc = "close all"
+		}
 		if top && !st.back && len(a.overlays) > 1 {
 			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -20,7 +21,6 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
-	"time"
 )
 
 type questionPrompt struct {
