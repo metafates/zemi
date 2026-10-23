@@ -989,31 +989,31 @@ func (a *App) disarmIfMoved(acts bool) func() {
 	}
 }
 
-// copyOverlay copies the text of a view, its fields as "name: value" lines
-// before its body, or the selected row (all rows): an error or a diagnostic
+// copyOverlay copies the value of the selected row (every row for Y), or a
+// view's body alone, its fields only when the body is empty: the facts table
+// is display, the body is what the view is for, and an error or a diagnostic
 // is worth nothing if it cannot leave the terminal.
 func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	var lines []string
-	for _, f := range st.o.Fields {
-		if f.Value != "" {
-			lines = append(lines, f.Name+": "+f.Value)
-		}
-	}
-	if lines != nil && st.o.Body != "" {
-		lines = append(lines, "")
-	}
-	if st.o.Body != "" {
-		lines = append(lines, st.o.Body)
-	}
 	switch {
-	case lines != nil && !all:
 	case all:
-		lines = nil
 		for _, i := range st.visible {
-			lines = append(lines, st.value(i))
+			if v := st.value(i); v != "" {
+				lines = append(lines, v)
+			}
 		}
 	case len(st.visible) > 0:
-		lines = []string{st.value(st.visible[st.selected])}
+		if v := st.value(st.visible[st.selected]); v != "" {
+			lines = []string{v}
+		}
+	case st.o.Body != "":
+		lines = []string{st.o.Body}
+	default:
+		for _, f := range st.o.Fields {
+			if f.Value != "" {
+				lines = append(lines, f.Name+": "+f.Value)
+			}
+		}
 	}
 	if len(lines) == 0 {
 		return nil
@@ -1021,12 +1021,13 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	return a.copied(strings.Join(lines, "\n"))
 }
 
-// value is what y copies of item i: its copy field, else its row.
+// value is what y copies of item i: its copy field, else its label alone -
+// the desc is status and metadata, never the value.
 func (st *overlayState) value(i int) string {
 	if s := st.items[i].row.Copy; s != "" {
 		return s
 	}
-	return strings.TrimSpace(st.items[i].label + "  " + st.items[i].desc)
+	return strings.TrimSpace(st.items[i].label)
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels. A Go

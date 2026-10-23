@@ -125,6 +125,27 @@ func TestCallView(t *testing.T) {
 	}
 }
 
+// TestCallInput: the input a call row copies - the command, or the thing the
+// call acted on; a tool whose input is no value copies nothing.
+func TestCallInput(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		tool, text, want string
+	}{
+		{"shell", "make check", "make check"},
+		{"lua", "return 1", "return 1"},
+		{"read", "main.go", "main.go"},
+		{"grep", "callInput", "callInput"},
+		{"skill", "mine", "mine"},
+		{"question", "Where?", ""},
+		{"shell", "", ""},
+	} {
+		if got := callInput(ChatMessage{Tool: c.tool, Text: c.text}); got != c.want {
+			t.Errorf("callInput(%s, %q) = %q, want %q", c.tool, c.text, got, c.want)
+		}
+	}
+}
+
 // TestCallStepCrossesIntoTheLiveTurn: the turn settles its calls into the
 // transcript's tail while its later ones still stream, so one rail runs
 // through both and a step crosses the boundary both ways.

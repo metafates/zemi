@@ -639,7 +639,28 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"an item's fields are set as a table, and y copies them as lines",
+			"without a copy field, y copies the label alone, not its desc",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "deepseek", Desc: "400k · 3m ago"}}},
+			nil,
+			func(a *App) string {
+				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
+				return fail(fmt.Sprint(batch[0]()) == "deepseek", fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]())))
+			},
+		},
+		{
+			"an empty row copies nothing, and Y skips it",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{}, {Text: "b"}}},
+			nil,
+			func(a *App) string {
+				if cmd := a.overlayKey("y", ""); cmd != nil || len(a.toasts) != 0 {
+					return fmt.Sprintf("y on an empty row copied: cmd=%v toasts=%d", cmd != nil, len(a.toasts))
+				}
+				batch, _ := a.overlayKey("Y", "")().(tea.BatchMsg)
+				return fail(fmt.Sprint(batch[0]()) == "b", fmt.Sprintf("Y copied %q", fmt.Sprint(batch[0]())))
+			},
+		},
+		{
+			"y copies a view's body alone, not the facts table before it",
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "mcp", Detail: "prose", Fields: []hostapi.Field{{Name: "status", Value: "ready"}}}}},
 			[]string{"enter"},
 			func(a *App) string {
@@ -647,7 +668,16 @@ func TestOverlayNavigation(t *testing.T) {
 					return box
 				}
 				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
-				return fail(fmt.Sprint(batch[0]()) == "status: ready\n\nprose", fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]())))
+				return fail(fmt.Sprint(batch[0]()) == "prose", fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]())))
+			},
+		},
+		{
+			"a view with no body copies its fields",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "mcp", Fields: []hostapi.Field{{Name: "status", Value: "ready"}}}}},
+			[]string{"enter"},
+			func(a *App) string {
+				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
+				return fail(fmt.Sprint(batch[0]()) == "status: ready", fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]())))
 			},
 		},
 		{

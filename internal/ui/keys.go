@@ -45,7 +45,7 @@ var listKeys = [][2]string{
 	{"home, end, ctrl+b", "first row, last row"},
 	{"/", "filter; enter keeps it, esc clears it"},
 	{"space", "toggle"},
-	{"y, Y", "copy the row, every row"},
+	{"y, Y", "in a list, copy the row, every row"},
 	{"an action's key", "act on the row, as its button does"},
 	{"shift+up, shift+down", "scroll the text a line"},
 }
