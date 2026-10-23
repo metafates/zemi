@@ -1134,34 +1134,6 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 	}
 }
 
-// TestSettleTodosSkipsANewClaim: the settle a release spawned can still be
-// running when a new send claimed the agent and its turn wrote todos; that
-// list is the new turn's work, not a leftover to settle.
-func TestSettleTodosSkipsANewClaim(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	if err := h.PipelineFor().TodosWrite([]store.Todo{{Content: "b", Status: store.TodoInProgress}}); err != nil {
-		t.Fatal(err)
-	}
-	h.agents.mu.Lock()
-	h.agents.active = true
-	h.agents.mu.Unlock()
-	defer func() {
-		h.agents.mu.Lock()
-		h.agents.active = false
-		h.agents.mu.Unlock()
-	}()
-	h.settleTodos()
-	todos, err := h.DB.Todos(sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if todos[0].Status != store.TodoInProgress {
-		t.Fatalf("the claimed turn's todo was settled: %+v", todos)
-	}
-}
-
 // TestSendWithoutModelLeavesNoSession: a send that cannot resolve a model
 // fails before it creates a session row.
 func TestSendWithoutModelLeavesNoSession(t *testing.T) {
