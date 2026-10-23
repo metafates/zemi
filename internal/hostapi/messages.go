@@ -197,13 +197,6 @@ func (h *Host) messagesList(tr []ChatMessage, at int) Overlay {
 	for _, t := range messagesTurns(tr) {
 		section := turnSection(tr, t)
 		for _, e := range turnElements(tr, t.rows) {
-			if at > 0 && o.Selected == 0 {
-				if e.run != nil && slices.Contains(e.run.rows, at) {
-					o.Selected = len(o.Items)
-				} else if e.run == nil && e.idx == at {
-					o.Selected = len(o.Items)
-				}
-			}
 			var item OverlayItem
 			if e.run != nil {
 				item = railRow(*e.run)
@@ -212,6 +205,13 @@ func (h *Host) messagesList(tr []ChatMessage, at int) Overlay {
 			}
 			if item.Text == "" {
 				continue
+			}
+			if at > 0 && o.Selected == 0 {
+				if e.run != nil && slices.Contains(e.run.rows, at) {
+					o.Selected = len(o.Items)
+				} else if e.run == nil && e.idx == at {
+					o.Selected = len(o.Items)
+				}
 			}
 			item.Section = section
 			o.Items = append(o.Items, item)
