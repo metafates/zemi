@@ -278,9 +278,11 @@ func (g *Generation) execute(r *request) {
 		defer slow.Stop()
 		hard := time.AfterFunc(ceiling, func() { fired.Store(true); cancel() })
 		defer hard.Stop()
+		abandon := time.NewTimer(ceiling + grace)
+		defer abandon.Stop()
 		select {
 		case <-r.done:
-		case <-time.After(ceiling + grace):
+		case <-abandon.C:
 			if g.finish(r) {
 				cancel()
 				// Mark hot BEFORE answering: while hot every Lua request
