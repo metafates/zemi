@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -67,6 +68,18 @@ func TestGoldenPlugins(t *testing.T) {
 	clone := filepath.Join(host.Dirs.PluginsRoot(), "installed", "git-status")
 	gitIn(clone, "checkout", "-q", "refs/tags/v1.4.0")
 	gitIn(clone, "remote", "set-url", "origin", "https://github.com/someone/zemi-git-status")
+
+	// the row's added date is the wall clock at install: pin it, or the
+	// golden fails the day after it was made
+	reg := filepath.Join(host.Dirs.PluginsRoot(), "marketplaces.json")
+	b, err := os.ReadFile(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = regexp.MustCompile(`"added":"[^"]*"`).ReplaceAll(b, []byte(`"added":"2026-01-02T00:00:00Z"`))
+	if err := os.WriteFile(reg, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := t.Context()
 	// soft, as main.go runs it: a failed plugin fails no boot
