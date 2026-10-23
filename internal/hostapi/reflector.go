@@ -360,7 +360,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 		_ = h.reflectRead(sid, read)
 		return read, err
 	}
-	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
+	stored, queued, superseded, skipped, retired := h.applyReflectProposal(sid, proposal)
 	// the delta is seen only once every entry has applied or queued (DESIGN §10.3);
 	// a rewind during the apply marks nothing
 	if err := h.reflectRead(sid, read); err != nil {
@@ -368,7 +368,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) ([]*store.Message
 	}
 	result := map[string]any{
 		"session": sid, "stored": stored, "queued": queued,
-		"superseded": superseded, "skipped": skipped,
+		"superseded": superseded, "skipped": skipped, "retired": retired,
 	}
 	h.Log.Info("run complete", "origin", "reflector", "result", result)
 	h.EmitAsync(EventReflectorDone, result)
@@ -591,8 +591,9 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 // superseded when the new one is stored, now or on accept. The model's
 // scope, text and quote are intake inputs, re-validated and scrubbed there;
 // a bad entry, a near-duplicate or a quote the user never wrote is skipped,
-// never fatal.
-func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped int) {
+// never fatal. A retirement drops an id the index already carried, so it
+// counts as retired, never stored.
+func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, queued, superseded, skipped, retired int) {
 	var busy set.Set[store.Scope]
 	for _, pm := range p.Memories {
 		scope := pm.Scope
@@ -607,7 +608,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		if strings.TrimSpace(pm.Text) == "" && pm.Replaces != "" {
 			if h.memoryAuto() {
 				if h.retireMemory(sid, pm.Replaces) {
-					stored++
+					retired++
 				} else {
 					skipped++
 				}
@@ -672,7 +673,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 		}
 	}
-	return stored, queued, superseded, skipped
+	return stored, queued, superseded, skipped, retired
 }
 
 // retireMemory drops the memory id at once, the auto form of the forget

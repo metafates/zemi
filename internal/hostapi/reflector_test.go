@@ -292,7 +292,7 @@ func TestReflectApply(t *testing.T) {
 			check: func(t *testing.T, h *Host, sid string) {
 				p := h.memoryProposals()[0]
 				again, _ := parseReflectProposal(`{"memories":[{"scope":"project","text":"` + fact + `"}]}`)
-				if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
+				if _, queued, _, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
 					t.Fatalf("a duplicate of a pending proposal counted as queued: %d", queued)
 				}
 				if _, err := h.acceptProposal(p.ID); err != nil {
@@ -316,6 +316,15 @@ func TestReflectApply(t *testing.T) {
 				live := projectMemories(t, h)
 				if len(live) != 1 || live[0].Origin != store.OriginUser {
 					t.Fatalf("want only the user's memory left: %+v", live)
+				}
+				// the retirement counted as retired, not stored
+				id := learnedMemory(t, h, "project", "another fact to retire", "")
+				doc, err := parseReflectProposal(`{"memories":[{"text":"","replaces":"` + id + `"}]}`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stored, _, _, _, retired := h.applyReflectProposal(sid, doc); stored != 0 || retired != 1 {
+					t.Fatalf("retirement counted stored=%d retired=%d", stored, retired)
 				}
 			},
 		},
