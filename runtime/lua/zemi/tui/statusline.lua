@@ -178,8 +178,6 @@ zemi.event.on("reflector.done", function(ev)
 	end
 	add(ev.stored, "memory stored", "memories stored")
 	add(ev.queued, "memory to review in /memory", "memories to review in /memory")
-	add(ev.superseded, "memory superseded", "memories superseded")
-	add(ev.retired, "memory retired", "memories retired")
 	-- a session with nothing worth keeping ends quietly
 	if #parts == 0 then return end
 	zemi.notify({ title = "Memories learned", body = table.concat(parts, ", ") })
