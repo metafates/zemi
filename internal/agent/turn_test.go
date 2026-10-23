@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -469,14 +470,14 @@ func TestToolLoopEndsTurn(t *testing.T) {
 // loop out of its reach, and a run shorter than any window never loops.
 func TestToolLoopWindow(t *testing.T) {
 	call := func(name, in string) fantasy.StepResult {
-		return fantasy.StepResult{Response: fantasy.Response{Content: fantasy.ResponseContent{
+		return fantasy.StepResult{Response: fantasy.Response{Content: fantasy.ResponseContent{ //nolint:modernize // embedlit's elided form does not compile under go1.27
 			&fantasy.ToolCallContent{ToolCallID: "c1", ToolName: name, Input: in},
 			&fantasy.ToolResultContent{ToolCallID: "c1", ToolName: name, Result: fantasy.ToolResultOutputContentText{Text: "same"}},
 		}}}
 	}
 	var steps []fantasy.StepResult
 	for range 3 * loopMinSteps {
-		steps = append(steps, call("wander", fmt.Sprint(len(steps)))) // distinct: no loop in sight
+		steps = append(steps, call("wander", strconv.Itoa(len(steps)))) // distinct: no loop in sight
 	}
 	for range 2 * loopMinSteps {
 		steps = append(steps, call("echo", "{}"), call(tools.ToolJobRead, "{}")) // the loop, behind a poll per step

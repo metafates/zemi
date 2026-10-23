@@ -326,7 +326,7 @@ func TestHandoffGateOffTheSendPath(t *testing.T) {
 	m := reflectStub(t, h, "ok")
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
-	ui := &gateUI{fakeUI: fakeUI{qOK: true, qAnswer: "Send as is"}, hold: make(chan struct{})}
+	ui := &gateUI{fakeUI: fakeUI{qOK: true, qAnswer: "Send as is"}, hold: make(chan struct{})} //nolint:modernize // embedlit's elided form does not compile under go1.27
 	h.SetUIHooks(ui)
 	send := sender(t, h)
 	send(strings.Repeat("x", 80_000))
