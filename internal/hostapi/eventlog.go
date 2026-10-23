@@ -1,5 +1,5 @@
 // eventlog.go keeps what happened for Lua reflection: every host event is
-// counted and the recent ones kept (zemi.event.log, zemi.event.stats) - a
+// counted and the recent ones kept (zemi.event.list, zemi.event.stats) - a
 // vetoable event nobody listens to is counted only, so the idle gate does
 // not push the log out - and the recent notifications are listed
 // (zemi.notify.list), so a widget can show a session's activity.
@@ -73,12 +73,12 @@ func (h *Host) recordNotify(level slog.Level, title, body string) {
 	l.mu.Unlock()
 }
 
-// eventLogFn is zemi.event.log([{ name = ..., limit = n }]): recent events
+// eventLogFn is zemi.event.list([{ name = ..., limit = n }]): recent events
 // newest first, each the table its handlers saw plus at and ts.
 func (h *Host) eventLogFn(L *glua.LState) int {
 	var name string
 	limit := eventLogMax
-	if opts, ok := luaToGoChecked(L, 1, "zemi.event.log").(map[string]any); ok {
+	if opts, ok := luaToGoChecked(L, 1, "zemi.event.list").(map[string]any); ok {
 		name = strField(opts, "name")
 		if n, ok := opts["limit"].(float64); ok && n > 0 {
 			limit = int(n)

@@ -711,7 +711,7 @@ function zemi.event.emit(name, payload) end
 --- The streaming deltas are counted in stats only.
 ---@param opts? zemi.EventLogOpts
 ---@return zemi.EventLogEntry[]
-function zemi.event.log(opts) end
+function zemi.event.list(opts) end
 
 --- Emissions per event name since zemi started; diff two snapshots for a
 --- session or a turn.

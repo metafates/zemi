@@ -58,7 +58,7 @@ var luaReadOnly = set.Of(
 	"agent.current", "agent.list", "agent.prompt", "agent.usage",
 	"command.list", "composer.get",
 	"config.get", "config.schema",
-	"errors.list", "event.log", "event.stats",
+	"errors.list", "event.list", "event.stats",
 	"health.list",
 	"fs.data_dir", "fs.exists", "fs.glob", "fs.grep", "fs.list", "fs.read", "fs.stat",
 	"json.decode", "json.encode",

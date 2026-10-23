@@ -909,7 +909,7 @@ class in `runtime/types/zemi.lua`, picked by the event name through overloads
 of `zemi.event.on`.
 
 Every emission is recorded, a vetoable one with no handler counted only:
-`zemi.event.log()` holds the
+`zemi.event.list()` holds the
 last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`
 holds the last 100 notifications, so a widget can show what the session did.
 
