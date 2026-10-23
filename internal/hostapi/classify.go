@@ -40,6 +40,8 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	if n, ok := opt[glua.LNumber](L, spec, "timeout"); ok && n > 0 {
 		timeout = time.Duration(float64(n) * float64(time.Second))
 	}
+	onAnswer, _ := opt[*glua.LFunction](L, spec, "on_answer")
+	at := h.callerOf(L)
 	// a stub stands in for the whole call, a model and all
 	var req classify.Request
 	sid := h.AgentSessionID()
@@ -74,6 +76,19 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			h.bill(sid, id, res.Usage)
 		}
 		close(done)
+		if onAnswer != nil {
+			// the same table wait() answers, delivered as a task, so a
+			// handler that cannot suspend still acts on the answer
+			var out, errArg any
+			if askErr != nil {
+				errArg = askErr.Error()
+			} else if stubbed != nil {
+				out = stubbed
+			} else {
+				out = classifyResultMap(h, id, res)
+			}
+			h.callLuaAsync("zemi.classify on_answer", at, onAnswer, out, errArg)
+		}
 	})
 	handle := L.NewTable()
 	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
@@ -87,7 +102,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			if stubbed != nil {
 				return []glua.LValue{lua.FromGo(L, stubbed)}
 			}
-			return []glua.LValue{classifyResult(L, h, id, res)}
+			return []glua.LValue{lua.FromGo(L, classifyResultMap(h, id, res))}
 		})
 	})))
 	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
@@ -254,50 +269,50 @@ func criteriaText(L *glua.LState, name string, v glua.LValue) string {
 	return s
 }
 
-// classifyResult is a result as Lua reads it: the strategy that answered, one
-// answer per question, and what the call used. A number a strategy had none of
-// is left out, so a caller that needs one can say so.
-func classifyResult(L *glua.LState, h *Host, id string, res classify.Result) *glua.LTable {
-	tb := L.NewTable()
-	tb.RawSetString("strategy", glua.LString(res.Strategy))
-	answers := L.NewTable()
+// classifyResultMap is a result as Lua reads it: the strategy that answered,
+// one answer per question, and what the call used. A number a strategy had
+// none of is left out, so a caller that needs one can say so.
+func classifyResultMap(h *Host, id string, res classify.Result) map[string]any {
+	answers := map[string]any{}
 	for name, a := range res.Answers {
-		row := L.NewTable()
+		row := map[string]any{}
 		switch a.Type {
 		case classify.TypeBool:
-			row.RawSetString("value", glua.LBool(a.Value))
+			row["value"] = a.Value
 			if a.Probability != nil {
-				row.RawSetString("probability", glua.LNumber(*a.Probability))
+				row["probability"] = *a.Probability
 			}
 		case classify.TypeChoice:
-			row.RawSetString("choice", glua.LString(a.Choice))
+			row["choice"] = a.Choice
 			if len(a.Probabilities) > 0 {
-				row.RawSetString("probabilities", lua.FromGo(L, a.Probabilities))
+				row["probabilities"] = a.Probabilities
 			}
 			if a.Confidence != nil {
-				row.RawSetString("confidence", glua.LNumber(*a.Confidence))
+				row["confidence"] = *a.Confidence
 			}
 		case classify.TypeScore:
 			if a.Score != nil {
-				row.RawSetString("score", glua.LNumber(*a.Score))
+				row["score"] = *a.Score
 			}
 			if a.Confidence != nil {
-				row.RawSetString("confidence", glua.LNumber(*a.Confidence))
+				row["confidence"] = *a.Confidence
 			}
 		}
-		answers.RawSetString(name, row)
+		answers[name] = row
 	}
-	tb.RawSetString("answers", answers)
 	// the same shape agent.finish carries, and the same numbers the bill used
 	u := res.Usage
 	in := billedInput(u)
-	usage := L.NewTable()
-	tb.RawSetString("usage", usage)
-	usage.RawSetString("in", glua.LNumber(in))
-	usage.RawSetString("out", glua.LNumber(u.OutputTokens))
-	usage.RawSetString("total", glua.LNumber(in+u.OutputTokens))
-	usage.RawSetString("cost", glua.LNumber(h.turnCost(id, u)))
-	return tb
+	return map[string]any{
+		"strategy": res.Strategy,
+		"answers":  answers,
+		"usage": map[string]any{
+			"in":    in,
+			"out":   u.OutputTokens,
+			"total": in + u.OutputTokens,
+			"cost":  h.turnCost(id, u),
+		},
+	}
 }
 
 func (h *Host) classifyNamespace(L *glua.LState) *glua.LTable {
