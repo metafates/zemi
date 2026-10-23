@@ -2,13 +2,16 @@ package mcp
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -347,6 +350,125 @@ func TestTransportErrorRedactsURL(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "SECRET123") || strings.Contains(err.Error(), "pw123") {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// TestResultText: each content part flattens to what a model reads; a
+// resource_link keeps its URI, the one field that made it meaningful.
+func TestResultText(t *testing.T) {
+	for _, c := range []struct {
+		name, wire, want string
+	}{
+		{"text", `{"content":[{"type":"text","text":"hi"}]}`, "hi"},
+		{"resource link", `{"content":[{"type":"resource_link","uri":"file:///tmp/a"}]}`, "[resource_link file:///tmp/a]"},
+		{"embedded text", `{"content":[{"type":"resource","resource":{"uri":"u","text":"readme"}}]}`, "readme"},
+		{"embedded blob", `{"content":[{"type":"resource","resource":{"uri":"u","mimeType":"image/png","blob":"aGk="}}]}`, "[resource u]"},
+		{"image placeholder", `{"content":[{"type":"image","mimeType":"image/png"}]}`, "[image image/png]"},
+		{"structured only", `{"structuredContent":{"a":1}}`, `{"a":1}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var r Result
+			if err := json.Unmarshal([]byte(c.wire), &r); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.Text(); got != c.want {
+				t.Errorf("Text = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestHTTPAuthAfterRenew: a 401 on the re-post after the 404 session renew
+// is a sign-in ask (or a token the refresh fixes), never a generic http
+// error - that path is the one where a sign-in state became a failed one.
+func TestHTTPAuthAfterRenew(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		grant   bool
+		wantErr error
+	}{
+		{"no grant", false, ErrAuthRequired},
+		{"the refresh fixes it", true, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var (
+				mu      sync.Mutex
+				inits   int
+				tools   int
+				n       = 1 // the grant's refresh token is r1
+				current = "t1"
+			)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				var m struct {
+					ID     jsontext.Value `json:"id"`
+					Method string         `json:"method"`
+				}
+				_ = json.Unmarshal(body, &m)
+				mu.Lock()
+				defer mu.Unlock()
+				switch m.Method {
+				case "initialize":
+					inits++
+					w.Header().Set("Mcp-Session-Id", fmt.Sprint("s", inits))
+					w.Write(mcptest.Respond(body))
+				case "notifications/initialized":
+					w.WriteHeader(http.StatusAccepted)
+				case "tools/list":
+					tools++
+					switch {
+					case tools == 1: // the redeploy forgot the session
+						http.Error(w, "session not found", http.StatusNotFound)
+					case tools == 2 || r.Header.Get("Authorization") != "Bearer "+current:
+						// and dropped the token with it
+						w.Header().Set("WWW-Authenticate", `Bearer`)
+						http.Error(w, "stale token", http.StatusUnauthorized)
+					default:
+						w.Write(mcptest.Respond(body))
+					}
+				default:
+					w.WriteHeader(http.StatusAccepted)
+				}
+			}))
+			defer srv.Close()
+			tSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r.ParseForm()
+				mu.Lock()
+				defer mu.Unlock()
+				if r.Form.Get("refresh_token") != fmt.Sprint("r", n) {
+					http.Error(w, "invalid_grant", http.StatusBadRequest)
+					return
+				}
+				n++
+				current = fmt.Sprint("t", n)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.MarshalWrite(w, map[string]any{
+					"access_token": current, "refresh_token": fmt.Sprint("r", n), "expires_in": 3600,
+				}, json.Deterministic(true))
+			}))
+			defer tSrv.Close()
+
+			auth := &Auth{ServerURL: srv.URL, Path: filepath.Join(t.TempDir(), "grant.json")}
+			if c.grant {
+				if err := auth.save(&Token{ServerURL: srv.URL, AccessToken: "t1", RefreshToken: "r1", Expiry: time.Now().Add(-time.Minute), ClientID: "c", TokenURL: tSrv.URL}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			cl, err := Start(ctx, Config{URL: srv.URL, Auth: auth})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cl.Close()
+			_, err = cl.Tools(ctx)
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("tools err = %v, want %v", err, c.wantErr)
+			}
+			if c.wantErr != nil && cl.Err() != nil {
+				t.Fatalf("a sign-in ask ended the client: %v", cl.Err())
+			}
+		})
 	}
 }
 
