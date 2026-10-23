@@ -797,8 +797,8 @@ func TestReflectTrigger(t *testing.T) {
 		}, calls: 1},
 		{name: "prose sets seen without an error badge", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			m.resp = "no json here"
-			if !reflectNow(h, sid) || h.agents.reflectErr == nil {
-				t.Fatal("run did not happen or left no /health news")
+			if !reflectNow(h, sid) || h.agents.reflectErr != nil {
+				t.Fatal("run did not happen or left /health news")
 			}
 		}, calls: 1},
 		{name: "two provider errors set seen", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {

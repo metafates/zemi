@@ -7,7 +7,6 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -349,12 +348,9 @@ func (h *Host) goHealthRows() []HealthRow {
 	h.agents.mu.Lock()
 	reflectErr := h.agents.reflectErr
 	h.agents.mu.Unlock()
-	switch {
-	case errors.Is(reflectErr, errNoProposal):
-		add(HealthWarn, "reflector", "last run answered prose instead of memories; the next run clears it")
-	case reflectErr != nil:
+	if reflectErr != nil {
 		add(HealthError, "reflector", "last run failed: "+reflectErr.Error())
-	default:
+	} else {
 		add(HealthOK, "reflector", "runs when a session closes, after ten minutes with no turn, and at startup for idle ones")
 	}
 
