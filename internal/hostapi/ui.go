@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -20,9 +21,50 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
+// uiAsk opens the ask o and returns a handle: wait() suspends the task until
+// the user answers with the value the callback gets, nil on cancel;
+// cancel() closes the overlay, which answers nil. The callback itself runs
+// through the overlay's on_select/on_close as before. With no UI the ask
+// fails closed: the callback gets nil once and /errors names the call, like
+// an ask nobody can answer denies.
+func (h *Host) uiAsk(L *glua.LState, api string, o Overlay, cb *glua.LFunction) int {
+	done := make(chan struct{})
+	var ans any
+	o.Answered = func(v any) { ans = v; close(done) }
+	if ui := h.hooks(); ui != nil {
+		ui.OpenOverlay(o)
+	} else {
+		h.RecordError(api, "no UI is running to answer it")
+		o.Answered(nil)
+		// off the interpreter: a task here would wait on the queue it sits in
+		at := h.callerOf(L)
+		h.GoSafe(api, func() { h.callLuaAsync(api, at, cb, nil) })
+	}
+	handle := L.NewTable()
+	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		return waitHandle(L, strings.TrimPrefix(api, "zemi.ui.")+":wait", done, time.Hour, nil, func(L *glua.LState, err error) []glua.LValue {
+			if err != nil {
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			}
+			if ans == nil {
+				return []glua.LValue{glua.LNil}
+			}
+			return []glua.LValue{lua.FromGo(L, ans)}
+		})
+	})))
+	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
+		if ui := h.hooks(); ui != nil {
+			ui.CloseOverlay(o.ID)
+		}
+		return 0
+	}))
+	lua.GuardFuncs(L, handle, strings.TrimPrefix(api, "zemi.ui.")+":", h.guardLua)
+	L.Push(handle)
+	return 1
+}
+
 func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-
 	widget := L.NewTable()
 	widget.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		tb, ok := L.Get(1).(*glua.LTable)
@@ -202,7 +244,8 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 
 	// select(items, opts, on_choice): a picker in the shape of vim.ui.select
 	// over the overlay stack. on_choice(item) runs on enter, on_choice(nil)
-	// on cancel; opts.prompt titles it, opts.format_item renders rows.
+	// on cancel; opts.prompt titles it, opts.format_item renders rows. The
+	// handle's wait() gives the same answer to a task.
 	tb.RawSetString("select", L.NewFunction(func(L *glua.LState) int {
 		itemsV := L.CheckTable(1)
 		opts := L.OptTable(2, L.NewTable())
@@ -232,16 +275,13 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if fn, ok := opt[*glua.LFunction](L, opts, "format_item"); ok {
 			h.renderItems(L, o.ID, fn, o.Items)
 		}
-		if ui := h.hooks(); ui != nil {
-			ui.OpenOverlay(o)
-		}
-		return 0
+		return h.uiAsk(L, "zemi.ui.select", o, cb)
 	}))
 
 	// input(opts, on_confirm): a one-line prompt in the shape of
 	// vim.ui.input. on_confirm(text) runs on enter, on_confirm(nil) on esc;
 	// opts.prompt titles it, opts.default prefills it, opts.placeholder
-	// shows dim in the empty line.
+	// shows dim in the empty line. The handle's wait() gives the same answer.
 	tb.RawSetString("input", L.NewFunction(func(L *glua.LState) int {
 		opts := L.OptTable(1, L.NewTable())
 		cb := L.CheckFunction(2)
@@ -257,10 +297,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 			OnSelect:    cb,
 			OnClose:     cb,
 		}
-		if ui := h.hooks(); ui != nil {
-			ui.OpenOverlay(o)
-		}
-		return 0
+		return h.uiAsk(L, "zemi.ui.input", o, cb)
 	}))
 
 	// edit(path, opts, on_done): the user's editor on a file, then

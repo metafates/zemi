@@ -1631,10 +1631,17 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		ctx, cancel := context.WithCancel(context.WithoutCancel(cmp.Or(L.Context(), context.Background())))
 		at := h.callerOf(L)
 		stopID := h.stops.add(cancel) // a reload cancels it, like a job
+		done := make(chan struct{})
+		var text, runErr string
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
 			defer h.stops.remove(stopID)
-			_, text, err := h.runSubagent(ctx, def, desc, prompt)
+			_, t, err := h.runSubagent(ctx, def, desc, prompt)
+			text = t
+			if err != nil {
+				runErr = h.friendlyError(err)
+			}
+			close(done)
 			switch {
 			case onDone == nil:
 			case err != nil:
@@ -1644,6 +1651,17 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			}
 		})
 		handle := L.NewTable()
+		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+			return waitHandle(L, "run:wait", done, 0, nil, func(L *glua.LState, err error) []glua.LValue {
+				if err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+				}
+				if runErr != "" {
+					return []glua.LValue{glua.LNil, glua.LString(runErr)}
+				}
+				return []glua.LValue{glua.LString(text)}
+			})
+		})))
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
 			cancel()
 			return 0

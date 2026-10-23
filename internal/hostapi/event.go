@@ -131,7 +131,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		h.emitSync(L, h.Events.Handlers(name), name, payload, from)
 		return 0
 	}))
-	tb.RawSetString("log", L.NewFunction(h.eventLogFn))
+	tb.RawSetString("list", L.NewFunction(h.eventLogFn))
 	tb.RawSetString("stats", L.NewFunction(h.eventStatsFn))
 
 	return tb

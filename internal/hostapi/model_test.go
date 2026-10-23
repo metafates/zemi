@@ -94,13 +94,14 @@ func TestModelTargetNames(t *testing.T) {
 		{"a typo'd key", `zemi.model.add("x", { desc = "x", model_id = "a/big" })`, `spec: unknown field "model_id"`},
 		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (default, chat, agents, titles, compact, memory) or a provider/model id`},
 		{"another target as its model", `zemi.model.add("x", { desc = "x", model = "clf" })`, `model "clf" must name a builtin role`},
-		{"a slot nothing registered", `zemi.model.del("nope")`, `"nope" is not registered`},
-		{"a role", `zemi.model.del("titles")`, `"titles" is not registered`},
 	} {
 		if err := r.ExecuteChunk(t.Context(), c.src, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
 		}
 	}
+	// a del of nothing is false, never an error
+	runUser(t, r, `assert(zemi.model.del("nope") == false, "a slot nothing registered")
+		assert(zemi.model.del("titles") == false, "a role")`)
 	// a plugin registers its own slot, and takes a name the user holds
 	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("cli-slot", { desc = "the plugin's", model = "a/big" })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin registers a slot: %v", err)

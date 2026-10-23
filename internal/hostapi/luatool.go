@@ -58,7 +58,7 @@ var luaReadOnly = set.Of(
 	"agent.current", "agent.list", "agent.prompt", "agent.usage",
 	"command.list", "composer.get",
 	"config.get", "config.schema",
-	"errors.list", "event.log", "event.stats",
+	"errors.list", "event.list", "event.stats",
 	"health.list",
 	"fs.data_dir", "fs.exists", "fs.glob", "fs.grep", "fs.list", "fs.read", "fs.stat",
 	"json.decode", "json.encode",
@@ -351,7 +351,8 @@ func (h *Host) luaToolCall(L *glua.LState) int {
 	name := L.CheckString(1)
 	v, ok := h.scripts.Load(h.modelLuaScript(L))
 	if !ok {
-		return luaResult(L, errors.New("zemi.tool.call is for the lua tool's own script, while it runs"))
+		// misuse, not a runtime failure: only the script the lua tool runs may call
+		L.RaiseError("zemi.tool.call is for the lua tool's own script, while it runs")
 	}
 	s := v.(*luaScript)
 	tool, ok := s.tools[name]
@@ -440,7 +441,7 @@ func (h *Host) luaToolDescribe(L *glua.LState) int {
 	name := L.CheckString(1)
 	v, ok := h.scripts.Load(h.modelLuaScript(L))
 	if !ok {
-		return luaResult(L, errors.New("zemi.tool.describe is for the lua tool's own script, while it runs"))
+		L.RaiseError("zemi.tool.describe is for the lua tool's own script, while it runs")
 	}
 	tool, ok := v.(*luaScript).tools[name]
 	if !ok {

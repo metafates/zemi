@@ -1828,16 +1828,6 @@ func (ag *agentHost) endThinking() {
 
 // namespaces
 
-// enumTable is a table of constants keyed by each value upper-cased, like
-// zemi.provider.kind.OPENAI_COMPAT.
-func enumTable[T ~string](L *glua.LState, vals ...T) *glua.LTable {
-	tb := L.CreateTable(0, len(vals))
-	for _, v := range vals {
-		tb.RawSetString(strings.ToUpper(string(v)), glua.LString(v))
-	}
-	return tb
-}
-
 // strs is a closed set's values as plain strings.
 func strs[T ~string](vals []T) []string {
 	out := make([]string, len(vals))
@@ -2355,9 +2345,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		out := L.NewTable()
 		ag := h.agents
 		ag.mu.Lock()
-		sid, model := ag.sessionID, h.liveModelID()
+		model := h.liveModelID()
 		ag.mu.Unlock()
-		out.RawSetString("id", glua.LString(sid))
 		out.RawSetString("model", glua.LString(model))
 		L.Push(out)
 		return 1

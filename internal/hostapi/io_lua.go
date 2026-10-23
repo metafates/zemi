@@ -727,6 +727,10 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 			return []glua.LValue{lua.FromGo(L, hnd.res)}
 		})
 	})))
+	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
+		cancel()
+		return 0
+	}))
 	lua.GuardFuncs(L, handle, "http:", h.guardLua)
 	L.Push(handle)
 	return 1

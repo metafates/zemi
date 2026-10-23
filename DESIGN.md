@@ -592,7 +592,7 @@ registered the way zemi runs it: `run`, `keys`, `tool` (through the
 adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
-`zemi.composer.complete` sources, as the palette asks them), `overlay`,
+`zemi.composer.add` sources, as the palette asks them), `overlay`,
 `answer` and `set` (one of the plugin's settings by its bare key, as
 `/config` writes it),
 each refusing another origin's target, a Go command and a host
@@ -777,7 +777,7 @@ zemi.config.watch("models.chat", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
-zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
+zemi.notify({ title = "hi", body = "...", level = "info" })
 ```
 
 Config values from `init.lua` merge with the defaults in Go's schema.
@@ -909,7 +909,7 @@ class in `runtime/types/zemi.lua`, picked by the event name through overloads
 of `zemi.event.on`.
 
 Every emission is recorded, a vetoable one with no handler counted only:
-`zemi.event.log()` holds the
+`zemi.event.list()` holds the
 last 500 (deltas excluded), `zemi.event.stats()` counts per name, and `zemi.notify.list()`
 holds the last 100 notifications, so a widget can show what the session did.
 
@@ -956,7 +956,7 @@ handler runs no Lua.
 ### 6.3 Agents, sessions, models
 
 ```lua
-zemi.agent.current()                 -- session handle: { id = "...", model = "..." }
+zemi.agent.current()                 -- the conversation's model: { model = "..." }
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
                                        -- message enqueues as steering (§4)
@@ -972,7 +972,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "default" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the default role:
                                                  -- models.default
-zemi.model.pick(zemi.model.role.TITLES)  -- open a target's picker (returns at once; none opens /model)
+zemi.model.pick("titles")  -- open a target's picker (returns at once; none opens /model)
 zemi.model.add("classifier", { desc = "the permission classifier", model = "anthropic/claude-haiku-4-5" })
 zemi.model.del("classifier")         -- a slot of its own, for a job rather than a conversation
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
@@ -990,7 +990,7 @@ h:cancel()
 
 zemi.provider.add({
 	id = "myllm",
-	kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
+	kind = "openai_compat",  -- fantasy/openaicompat under the hood
 	base_url = "https://llm.internal/v1",
 	api_key = zemi.env.get("MYLLM_KEY"),
 	body = { service_tier = "flex" },         -- extra request-body fields (not google)
@@ -1638,7 +1638,7 @@ UI extensibility contract:
   the last argument its `nargs` takes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
-- Completion sources: `zemi.composer.complete({ id, trigger | command,
+- Completion sources: `zemi.composer.add({ id, trigger | command,
   items })` adds rows to the popup after a punctuation character that
   starts a word (a `#` issue list; `@` rows go ahead of the files) or to a
   command's argument candidates. `items(lead, line)` runs on the UI worker
@@ -1679,7 +1679,7 @@ zemi.session.messages()                -- { id, role, text, json } per stored me
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
-zemi.memory.add("...", { scope = zemi.memory.scope.PROJECT, quote = "...", replaces = id })
+zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
 zemi.memory.list(); zemi.memory.del(id)
 zemi.learn.list()                      -- pending proposal cards

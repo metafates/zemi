@@ -429,12 +429,15 @@ func (r *Registry) Missing() []MissingKey {
 
 // Delete removes a provider and its key; an absent id is a no-op, since
 // init.lua must survive a machine where that builtin's key is not exported.
-func (r *Registry) Delete(providerID string) {
+// It reports whether the provider was there.
+func (r *Registry) Delete(providerID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	had := len(r.specs) + len(r.missing)
 	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool { return s.ID == providerID })
 	r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == providerID })
 	delete(r.keys, providerID)
+	return len(r.specs)+len(r.missing) < had
 }
 
 // DropBuiltin removes every catalog spec user config did not replace, and
@@ -488,7 +491,11 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 		return errors.New("provider needs id and kind")
 	}
 	if !slices.Contains(Kinds, spec.Kind) {
-		return fmt.Errorf("unknown provider kind %q (zemi.provider.kind lists them)", spec.Kind)
+		names := make([]string, len(Kinds))
+		for i, k := range Kinds {
+			names[i] = string(k)
+		}
+		return fmt.Errorf("unknown provider kind %q (one of %s)", spec.Kind, strings.Join(names, ", "))
 	}
 	// the fantasy default is api.openai.com, which would get the key
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {

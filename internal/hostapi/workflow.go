@@ -111,6 +111,13 @@ func flowLabel(description, name, src string) string {
 	return cmp.Or(description, name, clipRunes(leadingComment(src), 60))
 }
 
+// unknownFlowError marks workflowSource's no-such-workflow error: the caller
+// that named it raises (zemi.workflow.run), one that only reports the miss
+// keeps the nil, err shape.
+type unknownFlowError struct{ error }
+
+func (e unknownFlowError) Unwrap() error { return e.error }
+
 func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
 	for _, w := range h.workflows() {
@@ -129,9 +136,9 @@ func (h *Host) workflowSource(name string) (string, error) {
 		}
 	}
 	if len(names) == 0 {
-		return "", Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)
+		return "", unknownFlowError{Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)}
 	}
-	return "", Usagef("no saved workflow %q (have %s)", name, strings.Join(names, ", "))
+	return "", unknownFlowError{Usagef("no saved workflow %q (have %s)", name, strings.Join(names, ", "))}
 }
 
 // flowRun is one workflow run as the rest of zemi sees it. The scheduler
@@ -2023,6 +2030,10 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		src := rawString(L, spec, "script")
 		if name := rawString(L, spec, "name"); name != "" {
 			s, err := h.workflowSource(name)
+			if _, miss := errors.AsType[unknownFlowError](err); miss {
+				// a mistyped name is misuse, like agent.run's unknown agent
+				L.RaiseError("zemi.workflow.run: %v", err)
+			}
 			if err != nil {
 				return luaResult(L, err)
 			}
@@ -2059,6 +2070,17 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		stopID <- h.stops.add(f.cancel)
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LString(f.id))
+		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+			return waitHandle(L, "workflow:wait", f.done, 0, nil, func(L *glua.LState, err error) []glua.LValue {
+				if err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+				}
+				if f.err != nil {
+					return []glua.LValue{glua.LNil, glua.LString(f.err.Error())}
+				}
+				return []glua.LValue{glua.LString(f.result)}
+			})
+		})))
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
 			f.cancel()
 			return 0

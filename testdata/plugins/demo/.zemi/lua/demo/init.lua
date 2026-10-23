@@ -76,7 +76,7 @@ end, {
 })
 
 -- #name in a draft completes a snippet's name
-zemi.composer.complete({ id = "demo.snips", trigger = "#", items = names })
+zemi.composer.add({ id = "demo.snips", trigger = "#", items = names })
 
 zemi.keymap.set("ctrl+x d", M.pick, { desc = "send a snippet" })
 zemi.keymap.set("ctrl+x h", "help", { desc = "zemi's help, a Go command" })

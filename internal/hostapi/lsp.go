@@ -788,13 +788,18 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		h.lsp.mu.Unlock()
 		return 0
 	}))
-	// del(name): never start this server (a builtin, or one added above).
+	// del(name): never start this server (a builtin, or one added above);
+	// false when no server has that name.
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		h.lsp.mu.Lock()
+		had := h.lsp.disabled.Has(name) ||
+			slices.ContainsFunc(h.lsp.user, func(d lspDef) bool { return d.Name == name }) ||
+			slices.ContainsFunc(builtinLSP, func(d lspDef) bool { return d.Name == name })
 		h.lsp.disabled.Add(name)
 		h.lsp.mu.Unlock()
-		return 0
+		L.Push(glua.LBool(had))
+		return 1
 	}))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()

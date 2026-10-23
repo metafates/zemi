@@ -19,16 +19,20 @@ import (
 )
 
 // waitHandle is a handle's wait(): it suspends the task until done closes,
-// the timeout passes or the task ends, and resumes it with ret's values
-// (err "timeout" when it passed). stop, when set, runs off the interpreter
-// unless done closed.
+// the timeout passes (none when timeout <= 0) or the task ends, and resumes
+// it with ret's values (err "timeout" when the cap passed). stop, when set,
+// runs off the interpreter unless done closed.
 func waitHandle(L *glua.LState, api string, done <-chan struct{}, timeout time.Duration, stop func(), ret func(L *glua.LState, err error) []glua.LValue) int {
 	return lua.Suspend(L, api, func(ctx context.Context) func(*glua.LState) []glua.LValue {
+		var expired <-chan time.Time
+		if timeout > 0 {
+			expired = time.After(timeout)
+		}
 		select {
 		case <-done:
 			return func(L *glua.LState) []glua.LValue { return ret(L, nil) }
 		case <-ctx.Done(): // the task ends; what this returns is never run
-		case <-time.After(timeout):
+		case <-expired:
 		}
 		if stop != nil {
 			stop()

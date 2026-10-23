@@ -17,7 +17,7 @@ A recipe (the environment's `Recipes:` line) is a procedure for this repository 
 ## From Lua
 
 ```lua
-zemi.memory.add(text, { scope = zemi.memory.scope.PROJECT, quote = "...", replaces = id })
+zemi.memory.add(text, { scope = "project", quote = "...", replaces = id })
 zemi.memory.list(true) -- true includes superseded memories
 zemi.memory.del(id)
 for _, p in ipairs(zemi.learn.list()) do

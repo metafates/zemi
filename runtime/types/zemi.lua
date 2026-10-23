@@ -538,7 +538,15 @@ function zemi.command.list() end
 ---@field ms integer From the call's start to its end.
 ---@field first_token_ms integer To the first text, reasoning or tool argument; 0 when none came.
 ---@field tools integer Tool calls it made.
----@field usage { in: integer, out: integer, cache_read: integer, cache_write: integer, cost: number }
+---@field usage zemi.StepUsage
+
+--- One model call's usage, with the cache fields a turn tally leaves out.
+---@class zemi.StepUsage
+---@field ["in"] integer
+---@field out integer
+---@field cache_read integer
+---@field cache_write integer
+---@field cost number
 
 --- Fired when the main agent's prompt is built (a new session, a resume, a
 --- compaction, a model, trust or tool change), not per send, and
@@ -620,7 +628,8 @@ function zemi.command.list() end
 
 --- What a vetoable handler returns to veto: `decision = "deny"` with a
 --- reason. Any other return lets the event through; on `permission.request`
---- a `zemi.PermVeto` may also hand the request to the ask path.
+--- a `zemi.PermVeto` may also hand the request to the ask path, and on
+--- `composer.submit` a `zemi.SubmitVeto` may rewrite the text instead.
 ---@class zemi.Veto
 ---@field decision "deny"
 ---@field reason? string
@@ -629,6 +638,13 @@ function zemi.command.list() end
 --- "ask" runs zemi's ask path (the overlay) for it, nil lets it run.
 ---@class zemi.PermVeto: zemi.Veto
 ---@field decision "deny"|"ask"
+
+--- What a `composer.submit` handler returns: "deny" refuses the send,
+--- "rewrite" sends `text` in the place of what was typed, nil sends as is.
+--- The handler has 50 ms, so it cannot ask the user first.
+---@class zemi.SubmitVeto: zemi.Veto
+---@field decision "deny"|"rewrite"
+---@field text? string
 
 ---@class zemi.EventOpts
 ---@field id? string Name the handler so `zemi.event.off` can drop it.
@@ -670,7 +686,7 @@ zemi.event = {}
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
----@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
+---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.SubmitVeto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string
@@ -703,7 +719,7 @@ function zemi.event.emit(name, payload) end
 --- The streaming deltas are counted in stats only.
 ---@param opts? zemi.EventLogOpts
 ---@return zemi.EventLogEntry[]
-function zemi.event.log(opts) end
+function zemi.event.list(opts) end
 
 --- Emissions per event name since zemi started; diff two snapshots for a
 --- session or a turn.
@@ -1329,7 +1345,8 @@ function zemi.ui.overlay.open(spec) end
 function zemi.ui.overlay.close(id) end
 
 --- A picker in the shape of `vim.ui.select`. on_choice gets the item on
---- enter, nil on cancel. Items take the zemi.OverlayItem keys too.
+--- enter, nil on cancel. Items take the zemi.OverlayItem keys too. A task
+--- can wait on the answer with the handle instead.
 ---
 --- ```lua
 --- zemi.ui.select({ "low", "medium", "high" }, { prompt = "Effort" }, function(choice)
@@ -1337,21 +1354,33 @@ function zemi.ui.overlay.close(id) end
 --- end)
 --- ```
 ---@param items any[]
----@param opts zemi.SelectOpts
+---@param opts? zemi.SelectOpts
 ---@param on_choice fun(item: any|nil)
+---@return zemi.UIHandle
 function zemi.ui.select(items, opts, on_choice) end
 
 --- A one-line prompt in the shape of `vim.ui.input`: on_confirm gets the
---- text on enter, which its footer names "send", nil on esc.
+--- text on enter, which its footer names "send", nil on esc. A task can
+--- wait on the answer with the handle instead.
 ---
 --- ```lua
 --- zemi.ui.input({ prompt = "Branch name" }, function(text)
 --- 	if text then zemi.notify(text) end
 --- end)
 --- ```
----@param opts zemi.InputOpts
+---@param opts? zemi.InputOpts
 ---@param on_confirm fun(text: string|nil)
+---@return zemi.UIHandle
 function zemi.ui.input(opts, on_confirm) end
+
+--- What `zemi.ui.select` and `zemi.ui.input` return: `wait()` suspends the
+--- task until the user answers (the item, or the text; nil and no error on
+--- cancel), `cancel()` closes the overlay, which answers nil. The callback
+--- fires with the same answer either way. Raises outside a task and under
+--- pcall, like `zemi.HTTPHandle.wait`.
+---@class zemi.UIHandle
+---@field wait fun(self: zemi.UIHandle): any|nil, string|nil
+---@field cancel fun(self: zemi.UIHandle)
 
 ---@class zemi.EditOpts
 ---@field line? integer 1-based line to start at
@@ -1490,12 +1519,6 @@ function zemi.ui.help() end
 ---@overload fun(body: string, title?: string)
 zemi.notify = {}
 
----@class zemi.notify.level
----@field INFO "info"
----@field WARN "warn"
----@field ERROR "error"
-zemi.notify.level = {}
-
 ---@param body string
 ---@param title? string
 function zemi.notify.info(body, title) end
@@ -1600,14 +1623,6 @@ function zemi.log.list() end
 ---@field base_url string
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
----@alias zemi.ModelRole
----| "default"  # the conversation, and every role left unset
----| "chat"     # the conversation, when it leaves the default
----| "agents"   # subagents
----| "titles"   # session titles
----| "compact"  # summaries
----| "memory"   # the reflector
-
 ---@alias zemi.ModelTarget
 ---| "default"  # the root every role follows
 ---| "chat"     # the conversation
@@ -1626,23 +1641,6 @@ function zemi.log.list() end
 ---@class zemi.provider
 zemi.provider = {}
 
----@class zemi.provider.kind
----@field ANTHROPIC "anthropic"
----@field OPENAI "openai"
----@field OPENAI_COMPAT "openai_compat"
----@field GOOGLE "google"
----@field OPENROUTER "openrouter"
----@field VERCEL "vercel"
----@field SYSTEM_ONE "system_one"
-zemi.provider.kind = {}
-
----@class zemi.provider.object_mode
----@field AUTO "auto"
----@field JSON "json"
----@field TOOL "tool"
----@field TEXT "text"
-zemi.provider.object_mode = {}
-
 --- Register a provider and its models. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
 --- base_url); the builtin ones are on while their key is exported. An unknown
@@ -1651,7 +1649,7 @@ zemi.provider.object_mode = {}
 --- ```lua
 --- zemi.provider.add({
 --- 	id = "gw",
---- 	kind = zemi.provider.kind.OPENAI_COMPAT,
+--- 	kind = "openai_compat",
 --- 	base_url = "https://gw.example/v1",
 --- 	api_key = zemi.env.get("GW_API_KEY"),
 --- 	models = { { id = "deepseek-chat", context_window = 128000 } },
@@ -1664,6 +1662,7 @@ function zemi.provider.add(spec) end
 --- no-op, so init.lua works on a machine where that key is not exported.
 --- `providers.builtin = false` drops every builtin one.
 ---@param id string
+---@return boolean removed
 function zemi.provider.del(id) end
 
 ---@return zemi.ProviderInfo[]
@@ -1671,22 +1670,6 @@ function zemi.provider.list() end
 
 ---@class zemi.model
 zemi.model = {}
-
----@class zemi.model.role
----@field DEFAULT "default"
----@field CHAT "chat"
----@field AGENTS "agents"
----@field TITLES "titles"
----@field COMPACT "compact"
----@field MEMORY "memory"
-zemi.model.role = {}
-
---- The levels /effort offers, for `zemi.config.set("agent.effort", ...)`.
----@class zemi.model.effort
----@field LOW "low"
----@field MEDIUM "medium"
----@field HIGH "high"
-zemi.model.effort = {}
 
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
@@ -1711,8 +1694,9 @@ function zemi.model.list() end
 function zemi.model.add(name, spec) end
 
 --- Drop a slot `zemi.model.add` registered, with `models.<name>` and the pick
---- kept for it. User, builtin or plugin origin.
+--- kept for it. User, builtin or plugin origin; false for a name nothing registered.
 ---@param name string
+---@return boolean removed
 function zemi.model.del(name) end
 
 --- Switch the model the conversation runs on, models.default. Raises for a
@@ -1841,8 +1825,9 @@ function zemi.classify.ask(spec) end
 
 -- zemi.agent
 
+--- The model the conversation runs on, as the statusline sees it. The
+--- session id is `zemi.session.id()`.
 ---@class zemi.AgentCurrent
----@field id string Session id.
 ---@field model string
 
 ---@class zemi.AgentUsage: zemi.Usage
@@ -1862,6 +1847,7 @@ function zemi.classify.ask(spec) end
 ---@field description? string Shown while it runs.
 
 ---@class zemi.RunHandle
+---@field wait fun(self: zemi.RunHandle): string|nil, string|nil Suspends the task until the run ends: its report, or nil and the error. Raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
 ---@field cancel fun(self: zemi.RunHandle)
 
 ---@class zemi.agent
@@ -1895,7 +1881,8 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. A reload cancels it.
+--- Run a subagent off the interpreter. A reload cancels it; `wait` suspends
+--- until it ends, `on_done` fires the same values.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -1939,14 +1926,15 @@ zemi.workflow = {}
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state; a reload cancels it.
+--- Run a workflow in its own Lua state; a reload cancels it. Raises for a
+--- name nothing saved; an untrusted project's, or a past-cap run, is nil, err.
 --- ```lua
 --- zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
 --- ```
 ---@param spec zemi.WorkflowRunSpec
 ---@param on_done? fun(result: string|nil, err: string|nil, log: string[]) A result that is not a string arrives as JSON.
 ---@return zemi.WorkflowHandle|nil handle
----@return string|nil err No such saved workflow, or one in an untrusted project.
+---@return string|nil err One in an untrusted project, or past the background cap.
 function zemi.workflow.run(spec, on_done) end
 
 --- Workflow scripts only. Runs a subagent and waits for its report.
@@ -2071,14 +2059,14 @@ zemi.composer = {}
 --- bad spec or an id another plugin registered.
 ---
 --- ```lua
---- zemi.composer.complete({
+--- zemi.composer.add({
 --- 	id = "issues",
 --- 	trigger = "#",
 --- 	items = function(lead) return { { text = "12", desc = "login fails on Safari" } } end,
 --- })
 --- ```
 ---@param spec zemi.CompletionSpec
-function zemi.composer.complete(spec) end
+function zemi.composer.add(spec) end
 
 ---@return zemi.ComposerState
 function zemi.composer.get() end
@@ -2257,8 +2245,9 @@ function zemi.tool.list() end
 --- Start the independent calls first and `wait()` on each. `wait()` gives the
 --- tool's output, or `nil` and why it failed, like every other zemi call; a
 --- tool that failed reports its output as the error. Only the lua tool's own
---- script reaches this, and only while it runs. What the calls return stays in
---- the script: print or return what should reach you.
+--- script reaches this (calling it anywhere else raises), and only while it
+--- runs. What the calls return stays in the script: print or return what
+--- should reach you.
 ---
 --- ```lua
 --- local a = zemi.tool.call("read", { path = "a.go" })
@@ -2273,7 +2262,8 @@ function zemi.tool.list() end
 function zemi.tool.call(name, args) end
 
 --- The declaration of one of this run's tools, for one the prompt does not
---- show (a deferred MCP tool) or a parameter to check before calling.
+--- show (a deferred MCP tool) or a parameter to check before calling. Only
+--- the lua tool's own script reaches this, like `zemi.tool.call`.
 ---@param name string
 ---@return zemi.ToolDecl? decl Nil when this run has no such tool.
 function zemi.tool.describe(name) end
@@ -2393,6 +2383,7 @@ function zemi.fs.grep(pattern, opts) end
 
 ---@class zemi.HTTPHandle
 ---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit) and under pcall.
+---@field cancel fun(self: zemi.HTTPHandle) Cancels the request; a waiting `wait` comes back with its error.
 
 --- http and https only, no userinfo. Gated as `lua.http.<method>` with the
 --- URL as the argument. Redirects are not followed: the gate approved one
@@ -2589,11 +2580,6 @@ function zemi.json.decode(s) end
 ---@class zemi.memory
 zemi.memory = {}
 
----@class zemi.memory.scope
----@field USER "user"
----@field PROJECT "project"
-zemi.memory.scope = {}
-
 --- Propose a memory of at most 300 characters. It goes through intake and
 --- the autonomy gate, so it is stored or queued for review, never written
 --- blindly. User config writes its own memory (origin user) and works
@@ -2719,6 +2705,12 @@ zemi.mcp = {}
 ---@param spec zemi.MCPSpec
 function zemi.mcp.add(name, spec) end
 
+--- Remove and stop a server `zemi.mcp.add` registered; false for a name
+--- nothing registered.
+---@param name string
+---@return boolean removed
+function zemi.mcp.del(name) end
+
 ---@return zemi.MCPInfo[]
 function zemi.mcp.list() end
 
@@ -2752,6 +2744,7 @@ function zemi.lsp.add(name, spec) end
 
 --- Never start this server: a builtin you do not want, or one added above.
 ---@param name string
+---@return boolean removed
 function zemi.lsp.del(name) end
 
 --- The servers this project can use and their state.
@@ -2950,7 +2943,7 @@ function zemi.test.emit(name, ev) end
 
 --- The rows the plugin's completion offers for a draft line, cursor at its
 --- end: a command's `complete` for a `/command` line, else its
---- `zemi.composer.complete` source for the trigger that starts the last word.
+--- `zemi.composer.add` source for the trigger that starts the last word.
 ---
 --- ```lua
 --- test.eq(test.complete("see #rev"), { "review" })

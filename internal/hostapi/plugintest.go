@@ -647,6 +647,8 @@ func (t *PluginTest) emit(L *glua.LState) int {
 				return veto("deny", res.Reason, nil), nil
 			} else if res.Ask {
 				return veto("ask", "", nil), nil
+			} else if res.Text != "" {
+				return veto("rewrite", "", nil), nil
 			}
 			return veto("", "", nil), nil
 		}
@@ -739,7 +741,16 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		}
 		row.Run = key.Run
 	}
-	act := func(ctx context.Context) error { return t.h.callOverlay(ctx, o, what, fn, args...) }
+	// the ask's waiting task (zemi.ui.select/input) resolves here too, the
+	// value the UI's select would hand it
+	v := any(nil)
+	if len(args) > 0 {
+		v = args[0]
+	}
+	act := func(ctx context.Context) error {
+		t.h.overlayAnswered(o, v)
+		return t.h.callOverlay(ctx, o, what, fn, args...)
+	}
 	if fn == nil && args != nil {
 		if row.Run == "" {
 			raise(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)

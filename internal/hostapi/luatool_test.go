@@ -134,7 +134,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 
 	// a read-only script runs with no ask once no policy asks
 	ask(false)
-	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().id`
+	read := `return zemi.session.id() .. zemi.ui.screenshot(), #zemi.errors.list(), zemi.config.get("editor.command") ~= nil, zemi.agent.current().model`
 	if ui, out := run(read, false); len(ui.asked) != 0 || !strings.Contains(out, "screen") {
 		t.Errorf("read-only script: %+v %q", ui.asked, out)
 	}
@@ -394,10 +394,10 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if out := run(`local h, e = zemi.tool.call("lua", { about = "x", script = "print(1)" }) print(h == nil, e ~= nil)`); out != "true\ttrue" {
 		t.Fatalf("nested lua tool: %q", out)
 	}
-	// outside a running script the member refuses, so config and callbacks
-	// cannot drive tools
-	if out, err := h.runModelLua(t.Context(), `print(zemi.tool.call("read", { path = "x" }))`, luaToolChunk); err != nil || !strings.Contains(out, "while it runs") {
-		t.Fatalf("call outside a script: %q %v", out, err)
+	// outside a running script the member raises (misuse), so config and
+	// callbacks cannot drive tools
+	if _, err := h.runModelLua(t.Context(), `zemi.tool.call("read", { path = "x" })`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "while it runs") {
+		t.Fatalf("call outside a script: %v", err)
 	}
 }
 

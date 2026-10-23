@@ -86,7 +86,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString(string(ComposerInsert), edit(ComposerInsert, func(L *glua.LState) (string, int) {
 		return L.CheckString(1), 0
 	}))
-	tb.RawSetString("complete", L.NewFunction(h.addCompletion))
+	tb.RawSetString("add", L.NewFunction(h.addCompletion))
 	for _, op := range []ComposerOp{ComposerSubmit, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
 		tb.RawSetString(string(op), edit(op, func(L *glua.LState) (string, int) { return "", 0 }))
 	}

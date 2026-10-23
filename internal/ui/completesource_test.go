@@ -16,14 +16,14 @@ func TestCompletionSources(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 14)
 	runLua(t, app, `
-zemi.composer.complete({ id = "issues", trigger = "#", items = function(lead)
+zemi.composer.add({ id = "issues", trigger = "#", items = function(lead)
   if lead == "none" then return {} end
   return { { text = "12", desc = "fix focus " .. lead }, "40" }
 end })
-zemi.composer.complete({ id = "people", trigger = "@", items = function() return { "alice" } end })
+zemi.composer.add({ id = "people", trigger = "@", items = function() return { "alice" } end })
 zemi.command.add("greet", function() end, { nargs = "?" })
-zemi.composer.complete({ id = "greet", command = "greet", items = function() return { "bob" } end })
-local ok, err = pcall(zemi.composer.complete, { id = "x", trigger = "ab", items = function() end })
+zemi.composer.add({ id = "greet", command = "greet", items = function() return { "bob" } end })
+local ok, err = pcall(zemi.composer.add, { id = "x", trigger = "ab", items = function() end })
 assert(not ok and tostring(err):find("one punctuation"), tostring(err))`)
 
 	pressKeys(app, "see #1")

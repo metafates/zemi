@@ -687,6 +687,23 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		L.Push(lua.FromGo(L, rows))
 		return 1
 	}))
+	// del(name): remove and stop a server zemi.mcp.add registered; false when
+	// none has that name.
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		h.mcp.mu.Lock()
+		s, ok := h.mcp.servers[name]
+		if ok {
+			delete(h.mcp.servers, name)
+			delete(h.mcp.parked, name)
+		}
+		h.mcp.mu.Unlock()
+		if ok {
+			s.stop()
+		}
+		L.Push(glua.LBool(ok))
+		return 1
+	}))
 	return tb
 }
 

@@ -81,7 +81,7 @@ T=$TMPDIR/zt; mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
 make build
 (cd $T && python3 .agents/skills/zemi-tui-test/fake_openai.py 18472 $T &) ; sleep 0.3
 cat > $T/config/init.lua <<'L'
-zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT,
+zemi.provider.add({ id = "fake", kind = "openai_compat",
 	api_key = "x", base_url = "http://127.0.0.1:18472/v1",
 	models = { { id = "m", context_window = 128000 } } })
 zemi.config.set("models.chat", "fake/m")

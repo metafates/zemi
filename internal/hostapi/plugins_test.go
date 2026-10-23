@@ -105,11 +105,11 @@ func TestPluginsStep(t *testing.T) {
 			name: "two plugins collide on a command, a tool, a health row and a completion source",
 			plugins: map[string]string{
 				"local/a/.zemi/init.lua": `zemi.command.add("dup", function() end, {}) zemi.command.add("dup", function() end, {}) ` + tool("dup_tool") +
-					` zemi.health.add("dup", function() return "" end) zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
+					` zemi.health.add("dup", function() return "" end) zemi.composer.add({ id = "dup", trigger = "#", items = function() return {} end })`,
 				"local/b/.zemi/init.lua": `zemi.command.add("dup", function() end, {})`,
 				"local/c/.zemi/init.lua": tool("dup_tool"),
 				"local/d/.zemi/init.lua": `zemi.health.add("dup", function() return "" end)`,
-				"local/e/.zemi/init.lua": `zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
+				"local/e/.zemi/init.lua": `zemi.composer.add({ id = "dup", trigger = "#", items = function() return {} end })`,
 			},
 			want: []string{
 				"plugin b: ", "command /dup is registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is registered by plugin a, not c`,

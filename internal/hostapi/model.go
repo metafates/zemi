@@ -486,15 +486,15 @@ func (h *Host) addTarget(L *glua.LState, name string, t modelTarget) error {
 }
 
 // delTarget drops a slot zemi.model.add registered, with its key and any pick
-// kept for it.
-func (h *Host) delTarget(L *glua.LState, name string) error {
+// kept for it; false when no slot has that name.
+func (h *Host) delTarget(L *glua.LState, name string) (bool, error) {
 	by, path := h.RT.CurrentOrigin(L), h.RT.CurrentPath(L)
 	t, ok := h.target(name)
 	if !ok {
-		return fmt.Errorf("%q is not registered", name)
+		return false, nil
 	}
 	if err := mayReplace(h.PluginOf, "model target "+name, t.Origin, t.Path, by, path); err != nil {
-		return err
+		return false, err
 	}
 	h.agents.targetsMu.Lock()
 	delete(h.agents.targets, name)
@@ -505,7 +505,7 @@ func (h *Host) delTarget(L *glua.LState, name string) error {
 	delete(h.cfgNow, config.ModelKey(name))
 	h.forgetPick(config.ModelKey(name))
 	h.cfgMu.Unlock()
-	return nil
+	return true, nil
 }
 
 // targetName is a slot's name: its key is models.<name>, so it is a lowercase
@@ -659,11 +659,9 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.Providers.Delete(L.CheckString(1))
-		return 0
+		L.Push(glua.LBool(h.Providers.Delete(L.CheckString(1))))
+		return 1
 	}))
-	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
-	tb.RawSetString("object_mode", enumTable(L, agent.ObjectModes...))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, s := range h.Providers.List() {
@@ -844,8 +842,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
-	tb.RawSetString("role", enumTable(L, roleNames()...))
-	tb.RawSetString("effort", enumTable(L, agent.Efforts...))
 
 	// add(name, {desc, model}) is a model slot of its own, for code that runs a
 	// backend job rather than a conversation of its own: a name /model can pick
@@ -875,10 +871,12 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		if err := h.delTarget(L, L.CheckString(1)); err != nil {
+		ok, err := h.delTarget(L, L.CheckString(1))
+		if err != nil {
 			L.RaiseError("zemi.model.del: %v", err)
 		}
-		return 0
+		L.Push(glua.LBool(ok))
+		return 1
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
 		role := L.OptString(1, "")

@@ -9,12 +9,12 @@ The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are
 ```lua
 zemi.provider.add({
 	id = "gw", -- a builtin id replaces that provider whole, key included
-	kind = zemi.provider.kind.OPENAI_COMPAT, -- or ANTHROPIC, GOOGLE, OPENAI (gpt-4 and later over /responses), OPENROUTER, VERCEL, SYSTEM_ONE (a classifier endpoint)
-	base_url = "https://llm.internal/v1", -- required for OPENAI_COMPAT and SYSTEM_ONE, refused for OPENROUTER
+	kind = "openai_compat", -- or "anthropic", "google", "openai" (gpt-4 and later over /responses), "openrouter", "vercel", "system_one" (a classifier endpoint)
+	base_url = "https://llm.internal/v1", -- required for openai_compat and system_one, refused for openrouter
 	api_key = zemi.env.get("GATEWAY_KEY"),
 	-- headers = { ["X-Team"] = "core" }, -- as secret as the key
 	-- body = { service_tier = "flex" }, -- extra request fields; not sent by GOOGLE
-	-- object_mode = zemi.provider.object_mode.TOOL, -- how a schema'd ask is put to it: auto, json, tool or text
+	-- object_mode = "tool", -- how a schema'd ask is put to it: "auto", "json", "tool" or "text"
 	models = {
 		{ id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
 	},
@@ -44,7 +44,7 @@ A slot is a target as well: `zemi.model.add(name, { desc, model, classify = true
 
 `zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default, description and, for a key with a fixed list, its `choices`; read it with the Lua tool instead of guessing. A value of the wrong kind is refused: the key keeps its default and /errors names the refusal, and an unknown key raises. A runtime pick (`/model`, `/effort`, `/config`) survives a reload until init.lua changes that key, and a restart unless init.lua sets that key: zemi keeps picks per user in its own store, never in init.lua. So a user who wants a value in every start either just picks it, or, to pin it against later picks, sets it in init.lua. `/config` opens on its sections: enter (or `l`) falls into one and shows its keys with where each came from (`init.lua`, `saved` for a kept pick, `default`, or `this run` for what a restart drops) and its value, a bool's as a switch: space toggles a bool and enter opens a key's detail to change it (a switch, a list, or a prompt holding the value, which sets the key and returns to /config, a refused value staying in the prompt with the error it named wrapped to the box's width, an empty line ghosting what a bare enter would set) or reset it to init.lua's value or the default, which forgets the kept pick, `/config set <key> <value>` sets one, and `/config lua` shows every key off its default as `zemi.config.set` lines to copy. A plugin's settings are `plugins.<name>.<key>` keys it registers: /config lists them under Plugins and they layer like any other, and a line for a plugin that is off does nothing. The keys that need more than the schema says:
 
-- `agent.effort`: `low`, `medium`, `high` (`zemi.model.effort.HIGH`, ...), or empty (or `default`) for the model's default; `/effort` opens the levels with the current pick keyed and what each sends on the model. A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
+- `agent.effort`: `low`, `medium`, `high`, or empty (or `default`) for the model's default; `/effort` opens the levels with the current pick keyed and what each sends on the model. A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (`memory.md`).
 - `ui.notify`: how zemi alerts while its window is unfocused: `osc` (OSC 9, which iTerm2, Ghostty, WezTerm and kitty show; tmux, screen and zellij drop it without passthrough), `native` (osascript on macOS, notify-send on Linux; a bell when neither is found), `bell` or `off`. `auto` picks native on macOS when a notifier is on PATH and it is no ssh session, else osc for a terminal known to show it outside those multiplexers, else native, else a bell; the `/health` notify row names the pick and why.
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.

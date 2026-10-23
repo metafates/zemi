@@ -104,6 +104,10 @@ type Overlay struct {
 	OnSelect *glua.LFunction
 	OnAction *glua.LFunction // on_action(item, key), for a row key with an id
 	OnClose  *glua.LFunction
+	// Answered is the Go-side hook a blocking ask (zemi.ui.select/input)
+	// waits on: the host calls it with the item or the text, nil on cancel,
+	// when the overlay is answered. Lua's own callbacks are separate.
+	Answered func(v any)
 	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
 	Anchor   OverlayAnchor
@@ -629,7 +633,7 @@ type Host struct {
 
 	// healthReg holds the /health checks Lua registered.
 	healthReg healthReg
-	// completions holds the zemi.composer.complete sources
+	// completions holds the zemi.composer.add sources
 	completions completeReg
 
 	hostActions map[string]func(h *Host, args string) error
@@ -1178,6 +1182,9 @@ type VetoResult struct {
 	// Ask is a handler's { decision = "ask" }: the gate runs the ask path
 	// for it. A denial outranks it.
 	Ask bool
+	// Text is a composer.submit handler's { decision = "rewrite", text = ... }:
+	// what the user typed is replaced with it, pre-send.
+	Text string
 }
 
 // EmitVetoable runs handlers synchronously on the interpreter, each bounded
@@ -1201,11 +1208,15 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		ask    bool
 		reason string
 		timed  bool
+		text   string
 	}
 	outcomes := make([]outcome, len(handlers))
 	allowed := []string{"deny"}
-	if name == EventPermissionRequest {
+	switch name {
+	case EventPermissionRequest:
 		allowed = append(allowed, "ask")
+	case EventComposerSubmit:
+		allowed = append(allowed, "rewrite")
 	}
 	ev := eventTable(name, "host", payload)
 	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
@@ -1229,6 +1240,8 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					case decision == "ask":
 						outcomes[i] = outcome{ask: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
+					case decision == "rewrite":
+						outcomes[i] = outcome{text: glua.LVAsString(tb.RawGetString("text"))}
 					}
 				}
 			}
@@ -1251,6 +1264,9 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		}
 		if o.ask {
 			res.Ask = true
+		}
+		if res.Text == "" {
+			res.Text = o.text
 		}
 	}
 	if res.Denied {
@@ -2151,11 +2167,13 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	if index >= 0 && index < len(o.Items) {
 		item = o.Items[index].raw
 	}
+	h.overlayAnswered(o, item)
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
 }
 
 // SubmitOverlayInput hands an input overlay's text to on_select.
 func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
+	h.overlayAnswered(o, text)
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, text)
 }
 
@@ -2179,7 +2197,16 @@ func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item Ove
 
 // CancelOverlay runs on_close if present.
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
+	h.overlayAnswered(o, nil)
 	_ = h.callOverlay(ctx, o, "on_close", o.OnClose)
+}
+
+// overlayAnswered reports the ask's answer to its waiting task, once: the
+// same value the Lua callback gets, nil on cancel.
+func (h *Host) overlayAnswered(o Overlay, v any) {
+	if o.Answered != nil {
+		o.Answered(v)
+	}
 }
 
 // callOverlay runs one of an overlay's callbacks as a task under the
@@ -2270,7 +2297,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.136.0"))
+	api.RawSetString("version", glua.LString("0.137.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
