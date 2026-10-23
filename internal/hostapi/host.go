@@ -627,6 +627,10 @@ type Host struct {
 	// skillsReg caches discovery + enabled state (DESIGN §10.5); DB
 	// rows in the global store are the durable state.
 	skillsReg *skillReg
+	// builtinSkillsOK says the embedded skills are on disk; they never
+	// change within a process, so they are written once no matter how
+	// often skills sync, and retried when the write failed
+	builtinSkillsOK atomic.Bool
 
 	// healthReg holds the /health checks Lua registered.
 	healthReg healthReg

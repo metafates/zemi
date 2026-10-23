@@ -87,8 +87,14 @@ func (h *Host) syncSkills() {
 	if h.GlobalDB == nil {
 		return
 	}
-	if err := h.materializeBuiltinSkills(); err != nil {
-		h.Log.Warn("builtin skills not written", "origin", "skills", "error", err)
+	// the embedded tree never changes within a process: write it once,
+	// and retry when the write failed
+	if !h.builtinSkillsOK.Load() {
+		if err := h.materializeBuiltinSkills(); err != nil {
+			h.Log.Warn("builtin skills not written", "origin", "skills", "error", err)
+		} else {
+			h.builtinSkillsOK.Store(true)
+		}
 	}
 	dirs := []skill.Dir{
 		{Path: h.userSkillsDir(), Source: skill.User},
