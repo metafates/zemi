@@ -538,7 +538,15 @@ function zemi.command.list() end
 ---@field ms integer From the call's start to its end.
 ---@field first_token_ms integer To the first text, reasoning or tool argument; 0 when none came.
 ---@field tools integer Tool calls it made.
----@field usage { in: integer, out: integer, cache_read: integer, cache_write: integer, cost: number }
+---@field usage zemi.StepUsage
+
+--- One model call's usage, with the cache fields a turn tally leaves out.
+---@class zemi.StepUsage
+---@field ["in"] integer
+---@field out integer
+---@field cache_read integer
+---@field cache_write integer
+---@field cost number
 
 --- Fired when the main agent's prompt is built (a new session, a resume, a
 --- compaction, a model, trust or tool change), not per send, and
@@ -1337,7 +1345,7 @@ function zemi.ui.overlay.close(id) end
 --- end)
 --- ```
 ---@param items any[]
----@param opts zemi.SelectOpts
+---@param opts? zemi.SelectOpts
 ---@param on_choice fun(item: any|nil)
 function zemi.ui.select(items, opts, on_choice) end
 
@@ -1349,7 +1357,7 @@ function zemi.ui.select(items, opts, on_choice) end
 --- 	if text then zemi.notify(text) end
 --- end)
 --- ```
----@param opts zemi.InputOpts
+---@param opts? zemi.InputOpts
 ---@param on_confirm fun(text: string|nil)
 function zemi.ui.input(opts, on_confirm) end
 
