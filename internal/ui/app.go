@@ -514,9 +514,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			a.pushToast(slog.LevelError, "Could not paste", msg.err.Error())
 			return nil
 		}
-		a.insertToken(msg.token)
+		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
+		cmd := a.insertToken(msg.token)
+		a.composer.snapshot(prev, false)
 		a.publishComposer()
-		return nil
+		return cmd
 	case tea.PasteMsg:
 		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
 		if a.pasteChrome(s) {
@@ -524,9 +526,9 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		}
 		// a dropped file arrives as a paste of its path
 		if paths, ok := parseDrop(s); ok {
-			a.insertAttachments(paths)
+			cmd := a.insertAttachments(paths)
 			a.publishComposer()
-			return nil
+			return cmd
 		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.paste(s)

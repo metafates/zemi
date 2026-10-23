@@ -909,21 +909,24 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.runOverlayRow(r)
 			a.reloadOverlay(o, sel)
 		case o.Reload != nil: // a fill hands the keys to the composer, so the list closes
-			a.runOverlayRow(r)
+			cmd := a.runOverlayRow(r)
 			if o.OnSelect != nil {
 				a.background(sel)
 			}
 			a.closeOverlayByID(o.ID)
+			return cmd
 		case verb == "":
 		case verb == hostapi.VerbOpen && o.OnSelect == nil:
-			a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
+			return a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
+			var cmd tea.Cmd
 			if o.OnSelect != nil {
 				a.background(sel)
 			} else {
-				a.runOverlayRow(r)
+				cmd = a.runOverlayRow(r)
 			}
 			a.closeOverlayByID(o.ID)
+			return cmd
 		}
 	case "l":
 		// one level in, where there is one: a row's view or the screen its run
@@ -1111,16 +1114,19 @@ func (a *App) cancelMenu() {
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
 // palette) and "run", which only builtin and user overlays keep. A screen it
 // opens is a level of this list, so it reopens on the row the list left.
-func (a *App) runOverlayRow(r hostapi.OverlayItem) {
+func (a *App) runOverlayRow(r hostapi.OverlayItem) tea.Cmd {
+	var cmd tea.Cmd
 	if r.Fill != "" {
 		a.composer.text = r.Fill
 		a.composer.moveEnd()
+		cmd = a.updateCompletion()
 	}
 	if r.Run != "" {
 		name, args := hostapi.SplitCommand(r.Run)
 		a.byRow = true // the screen it opens is a level of this list
 		a.runCommand(name, args)
 	}
+	return cmd
 }
 
 // listRowsMax is the most rows a list takes before it scrolls: a menu that

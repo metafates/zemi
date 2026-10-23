@@ -215,8 +215,10 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 			if n := len([]rune(text)); cursor < 0 || cursor > n {
 				a.composer.cursor = n
 			}
+			cmd = a.updateCompletion()
 		case hostapi.ComposerInsert:
 			a.composer.insert(text)
+			cmd = a.updateCompletion()
 		case hostapi.ComposerSubmit:
 			a.submitComposer()
 		case hostapi.ComposerHistoryPrev:

@@ -686,6 +686,41 @@ func TestSubmitEmptyShellDraft(t *testing.T) {
 	}
 }
 
+// TestComposerEditRecomputes: every composer write from Lua recomputes the
+// popups, so a set or insert never leaves one keyed at stale rune offsets.
+func TestComposerEditRecomputes(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.text, app.composer.cursor = "/he", 3
+	app.updateCompletion()
+	if !app.palette.open {
+		t.Fatal("the palette did not open")
+	}
+	runLua(t, app, `zemi.composer.set("hello")`)
+	if app.palette.open {
+		t.Fatal("set left the palette open over the new text")
+	}
+	runLua(t, app, `zemi.composer.insert(" see @no")`)
+	if !app.completion.shown() {
+		t.Fatalf("insert did not open the completion: %q", app.composer.text)
+	}
+}
+
+// TestImagePasteUndo: an image paste is one undo step, like a text paste.
+func TestImagePasteUndo(t *testing.T) {
+	t.Parallel()
+	app := newTestApp(t, t.TempDir())
+	app.composer.text, app.composer.cursor = "hi", 2
+	app.Update(clipboardMsg{token: "[Image pasted.png]"})
+	if app.composer.text != "hi [Image pasted.png] " {
+		t.Fatalf("the token did not insert: %q", app.composer.text)
+	}
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "hi" {
+		t.Fatalf("ctrl+z did not undo the image paste: %q", app.composer.text)
+	}
+}
+
 func TestPasteToken(t *testing.T) {
 	big := strings.Repeat("line\n", 12) // the trailing newline is no line of its own
 	var c composerState

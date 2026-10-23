@@ -99,24 +99,24 @@ func parseDrop(s string) ([]string, bool) {
 
 // insertAttachments puts one token per dropped path at the cursor, spaced
 // from the text around it.
-func (a *App) insertAttachments(paths []string) {
+func (a *App) insertAttachments(paths []string) tea.Cmd {
 	tokens := make([]string, 0, len(paths))
 	for _, p := range paths {
 		tokens = append(tokens, a.host.AttachPath(p))
 	}
-	a.insertToken(strings.Join(tokens, " "))
+	return a.insertToken(strings.Join(tokens, " "))
 }
 
 // insertToken puts tok at the cursor, spaced from the text around it. The
 // space in front is what an @ reference needs to start a word, and the
 // expander reads a word start as ASCII whitespace alone.
-func (a *App) insertToken(tok string) {
+func (a *App) insertToken(tok string) tea.Cmd {
 	r := a.composer.runes()
 	if c := a.composer.cursor; c > 0 && c <= len(r) && !strings.ContainsRune(" \t\n\f\r", r[c-1]) {
 		tok = " " + tok
 	}
 	a.composer.insert(tok + " ")
-	a.completion.close()
+	return a.updateCompletion()
 }
 
 type clipboardMsg struct {
