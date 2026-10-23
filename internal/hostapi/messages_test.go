@@ -10,7 +10,8 @@ import (
 
 // TestMessagesList: /messages lists every turn's rows in order, each turn a
 // section header naming its clock and what it held; a prompt row names the
-// message r rewinds to and a run folds into the row l opens the rail from.
+// message r rewinds to, a run folds into the row l opens the rail from, and
+// a call copies the input it acted on.
 func TestMessagesList(t *testing.T) {
 	t.Parallel()
 	sent := time.Date(2026, 10, 19, 14, 2, 0, 0, time.Local)
@@ -72,6 +73,14 @@ func TestMessagesList(t *testing.T) {
 	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
 	if !r.Danger || !r.Applies(OverlayItem{ID: "m1"}) || r.Applies(OverlayItem{Text: "again"}) {
 		t.Errorf("rewind key = %+v", r)
+	}
+	// a call copies the input it acted on; one that took nothing worth
+	// keeping copies nothing
+	if call := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "go test"}); call.Copy != "go test" {
+		t.Errorf("a shell call copies %q", call.Copy)
+	}
+	if call := messageCallRow(4, ChatMessage{Kind: RowReasoning, Text: "thinking it over"}); call.Copy != "" {
+		t.Errorf("a thought copies %q", call.Copy)
 	}
 
 	// the rail's own list walks its calls, and the chat draws that run whole

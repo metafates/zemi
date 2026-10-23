@@ -391,9 +391,9 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	if n := lineCount(m.Output); m.Output != "" && n > 1 {
 		item.Desc = pluralCount(n, "line", "lines")
 	}
-	if text != "" {
-		item.Copy = text
-	}
+	// y copies the input the call acted on, not its raw text: the same
+	// meaningful input its view leads with
+	item.Copy = callInput(m)
 	item.Text = head
 	// a mark says what the row is, so the row draws no glyph of its own
 	if mark := markFor(m); mark != "" {
