@@ -142,6 +142,11 @@ type agentRun struct {
 	closed    bool           // past its last step boundary: a message would be lost
 	dropped   int            // queued messages the run ended before reading
 	end       chan struct{}  // closed when the run's current attempt ends, fresh per attempt
+	// the attempt in flight after a provider retry, as the session turn's
+	// stream keeps it: Retrying sets it, the next streamed part clears it
+	retries  int
+	retryAt  time.Time
+	retryWhy string
 }
 
 type taskReg struct {
@@ -469,9 +474,12 @@ func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, Stream
 	base.Reasoning, base.Thinking, base.Thought = run.reason, !run.thinkAt.IsZero(), run.thinkTime()
 	base.Steering = queuedRows(run.queue)
 	// the run's calls and its reply are rows of its transcript, and a run
-	// neither retries for the provider nor compacts on its own
+	// compacts on its own never: what it does retry for the provider, it says
 	base.Text, base.Tools = "", nil
-	base.Retries, base.Retrying, base.RetryIn, base.RetryWhy = 0, false, 0, ""
+	base.Retries = run.retries
+	if !run.retryAt.IsZero() {
+		base.Retrying, base.RetryIn, base.RetryWhy = true, max(time.Until(run.retryAt), 0), run.retryWhy
+	}
 	base.Compacting, base.CheckingGoal = false, false
 	return run.status, run.transcriptLocked(), base, run.rev
 }
@@ -635,6 +643,7 @@ func (h *Host) MessageAgent(id, text string) error {
 func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	run.flush()
+	run.retries, run.retryAt, run.retryWhy = 0, time.Time{}, ""
 	if run.end != nil {
 		close(run.end)
 	}
@@ -995,6 +1004,13 @@ func (h *Host) ViewedAgent() string {
 		return ""
 	}
 	return h.view.id
+}
+
+// ViewedRunRunning reports whether the run the chat shows is still going:
+// its clock ticks on the frame while it is, like a turn's.
+func (h *Host) ViewedRunRunning() bool {
+	run := h.viewedRun()
+	return run != nil && run.isRunning()
 }
 
 // ViewAgent shows a run's transcript in the chat in place of the session's;

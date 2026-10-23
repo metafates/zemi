@@ -319,6 +319,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	// fresh per attempt: a continuation makes the run live again, and a
 	// waiter must follow the attempt it started on
 	run.end = make(chan struct{})
+	run.retries, run.retryAt, run.retryWhy = 0, time.Time{}, ""
 	run.mu.Unlock()
 	setup, err := h.runSetup(ctx, run, prev, def, prompt)
 	if err != nil {
@@ -771,6 +772,7 @@ func (s *subagentHooks) TextDelta(text string) {
 	s.run.mu.Lock()
 	s.run.endThinking()
 	s.run.text += text
+	s.run.retryAt = time.Time{}
 	s.run.mu.Unlock()
 	s.h.refreshViewed(s.run)
 }
@@ -795,6 +797,7 @@ func (s *subagentHooks) ReasoningDelta(text string) {
 	} else {
 		run.reason += text
 	}
+	run.retryAt = time.Time{}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 }
@@ -827,6 +830,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.endThinking()
 	run.flush()
 	run.calls++
+	run.retryAt = time.Time{}
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: name, Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
@@ -886,15 +890,22 @@ func (s *subagentHooks) StepStart() {
 }
 
 func (s *subagentHooks) Retrying(err error, delay time.Duration) {
-	s.run.mu.Lock()
-	s.run.text = s.run.text[:min(s.stepText, len(s.run.text))]
-	s.run.reason = s.run.reason[:min(s.stepReason, len(s.run.reason))]
-	if s.run.reason == "" {
+	run := s.run
+	run.mu.Lock()
+	run.text = run.text[:min(s.stepText, len(run.text))]
+	run.reason = run.reason[:min(s.stepReason, len(run.reason))]
+	if run.reason == "" {
 		// the failed attempt's open thought goes with its text
-		s.run.thinkAt = time.Time{}
+		run.thinkAt = time.Time{}
 	}
-	s.run.mu.Unlock()
+	run.retries++
+	run.retryAt = time.Now().Add(delay)
+	run.retryWhy, _ = s.h.explain(err)
+	run.mu.Unlock()
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, fmtDuration(delay)))
+	s.h.Log.Warn("subagent retry", "origin", "agents", "agent", s.def.Name, "run", run.id,
+		"error", errString(err), "delay_ms", delay.Milliseconds())
+	s.h.refreshViewed(run)
 }
 
 // StreamDone counts a model call on the run's row as its stream finishes:
