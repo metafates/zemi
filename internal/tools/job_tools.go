@@ -258,9 +258,7 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
-		m.mu.Lock()
 		m.evictFinished()
-		m.mu.Unlock()
 		if m.OnChange != nil {
 			m.OnChange()
 		}
@@ -268,8 +266,10 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	return j.ID
 }
 
-// evictFinished drops the oldest finished jobs past maxKeptJobs, under m.mu.
+// evictFinished drops the oldest finished jobs past maxKeptJobs.
 func (m *Jobs) evictFinished() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	finished := 0
 	for _, j := range m.jobs {
 		if !j.Running() {
