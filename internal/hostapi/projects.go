@@ -5,8 +5,6 @@ package hostapi
 
 import (
 	"cmp"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -254,14 +252,6 @@ func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
 	return nil
 }
 
-// trustKey names the trust root in cache paths. Caches are kept one per
-// trust root: Go trusts its cache entries, so a shared one lets one
-// project's build plant what another's links.
-func trustKey(root string) string {
-	key := sha256.Sum256([]byte(root))
-	return hex.EncodeToString(key[:8])
-}
-
 // argDir is a directory a /projects verb names: it may start with ~ and is
 // taken from the launch dir when relative.
 func (h *Host) argDir(arg string) (string, error) {
@@ -299,8 +289,8 @@ func (h *Host) forgetTrust(root string) error {
 }
 
 // deleteProject erases what zemi keeps for a project other than this one: its
-// store and state dir, its sessions' scratchpads and plans, its build caches
-// and its trust decision. The claim refuses while another zemi has it open.
+// store and state dir, its sessions' scratchpads and plans and its trust
+// decision. The claim refuses while another zemi has it open.
 func (h *Host) deleteProject(p Project) error {
 	// without a root or a state home the paths below are the working
 	// directory's, or the state home itself
@@ -317,11 +307,7 @@ func (h *Host) deleteProject(p Project) error {
 	for _, id := range ids {
 		h.removeSessionFiles(id)
 	}
-	key := trustKey(p.Root)
 	err = errors.Join(os.RemoveAll(projectState(h.Dirs.StateHome, p.Root)))
-	if h.Dirs.CacheHome != "" {
-		err = errors.Join(err, os.RemoveAll(filepath.Join(h.Dirs.CacheHome, "lsp", key)))
-	}
 	release()
 	h.splashStale.Store(true)
 	if err = errors.Join(err, h.forgetTrust(p.Root)); err != nil {

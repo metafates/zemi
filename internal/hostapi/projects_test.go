@@ -54,11 +54,9 @@ func TestProjectsCommand(t *testing.T) {
 	if err := dirs.WriteTrust(map[string]string{other: "trusted", gone: "trusted"}); err != nil {
 		t.Fatal(err)
 	}
-	key := trustKey(other)
 	files := []string{
 		filepath.Join(dirs.StateHome, "scratch", "sid-other"),
 		filepath.Join(dirs.DataHome, "plans", "sid-other.md"),
-		filepath.Join(dirs.CacheHome, "lsp", key, "gopls"),
 	}
 	for _, f := range files {
 		os.MkdirAll(filepath.Dir(f), 0o755)

@@ -244,6 +244,7 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 	log, level, path, closeLog := logging.New(logDir)
 	host, trust := newHost(hostDirs, log, o)
 	host.UseLogFile(level, path)
+	host.GoSafe("boot sweep", host.SweepBoot)
 	// the saved decision reads this run's dirs, which an inert boot did not open
 	trust.dirs = dirs
 	return host, trust, log, func() {

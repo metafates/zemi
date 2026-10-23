@@ -58,6 +58,43 @@ func TestScratchSweep(t *testing.T) {
 	}
 }
 
+// TestBootSweep: the boot pass removes the orphan dirs of removed features,
+// the drops idle past their TTL and the temp files a crash left, and keeps
+// what is fresh.
+func TestBootSweep(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.Dirs.CacheHome = t.TempDir()
+	old := time.Now().Add(-2 * scratchTTL)
+	cases := []struct {
+		path string
+		mod  time.Time
+		kept bool
+	}{
+		{filepath.Join(h.Dirs.StateHome, "sandbox-cache", "k", "x"), old, false},
+		{filepath.Join(h.Dirs.CacheHome, "lsp", "key", "gopls"), old, false},
+		{filepath.Join(h.Dirs.DataHome, "site", "pack", "p"), old, false},
+		{filepath.Join(h.Dirs.StateHome, "tmp", "zemi-draft.md"), old, false},
+		{filepath.Join(h.Dirs.StateHome, "tmp", "zemi-fresh.md"), time.Now(), true},
+		{filepath.Join(h.Dirs.StateHome, "tmp", "snap-1-x", "tree"), time.Now(), true},
+		{filepath.Join(h.Dirs.DataHome, "drops", "a.png"), old, false},
+		{filepath.Join(h.Dirs.DataHome, "drops", "b.png"), time.Now(), true},
+	}
+	for _, c := range cases {
+		if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil || os.WriteFile(c.path, nil, 0o600) != nil {
+			t.Fatal(err)
+		}
+		os.Chtimes(c.path, c.mod, c.mod)
+		os.Chtimes(filepath.Dir(c.path), c.mod, c.mod)
+	}
+	h.SweepBoot()
+	for _, c := range cases {
+		if _, err := os.Stat(c.path); (err == nil) != c.kept {
+			t.Errorf("%s: kept %v, want %v", c.path, err == nil, c.kept)
+		}
+	}
+}
+
 // TestPadBoundPerPipeline: a pipeline keeps the pad it was built with once
 // the session moves on (a background run, /new), so the run reads and writes
 // the pad its prompt names with no ask and its commands get it as $TMPDIR;
