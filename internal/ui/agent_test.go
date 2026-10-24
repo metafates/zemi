@@ -2394,7 +2394,7 @@ func TestToolRows(t *testing.T) {
 	for _, want := range []string{
 		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│ ⧗ start dev server",
 		"│     … 27 more lines", "│     l4", "│     l6", "│ ✓ edit a.go", "+1 -1", "│ ✗ run the unit tests", "│   ⎿ go test ./...", "│     --- FAIL: TestX",
-		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b",
+		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b", "│   ⎿ make again",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",
 		"│ ■ ask name", "│   ⎿ Name?", "│     dismissed by you",
 		"│ ✓ ask auth method", "│   ⎿ Which auth method?  OAuth", "│ ✓ ask branch cleanup", "│     Yes, delete them",
