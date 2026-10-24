@@ -18,7 +18,10 @@ import (
 func TestFriendlyError(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
-	h.Providers.Reset(agent.Catalog{Specs: []agent.Spec{{ID: "b", Kind: agent.KindOpenAI, KeyEnv: "B_KEY"}}, Keys: map[string]string{"b": "k"}})
+	h.Providers.Reset(agent.Catalog{Specs: []agent.Spec{
+		{ID: "b", Kind: agent.KindOpenAI, KeyEnv: "B_KEY"},
+		{ID: "g", Kind: agent.KindOpenAICompat, BaseURL: "http://x/v1"},
+	}, Keys: map[string]string{"b": "k"}})
 	retry := func(err error) error { return &fantasy.RetryError{Errors: []error{err}} }
 	var v any
 	garbled := json.Unmarshal([]byte("{broken json"), &v)
@@ -35,6 +38,8 @@ func TestFriendlyError(t *testing.T) {
 		{"context", &fantasy.ProviderError{StatusCode: 400, ContextTooLargeErr: true}, "/compact"},
 		{"overload", &fantasy.ProviderError{StatusCode: 529}, "having trouble (529)"},
 		{"bad request", &fantasy.ProviderError{StatusCode: 400, Message: "bad tool schema"}, "bad tool schema"},
+		{"404 from a builtin", &fantasy.ProviderError{StatusCode: 404}, "pick another with /model"},
+		{"404 from a gateway", agent.ModelError{Provider: "g", Err: &fantasy.ProviderError{StatusCode: 404}}, "check base_url and the model id in init.lua"},
 		{"dns", retry(&url.Error{Op: "Post", URL: "https://llm.example/v1", Err: &net.DNSError{Name: "llm.example"}}), "cannot resolve llm.example"},
 		{"refused", &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}}, "refused by 127.0.0.1:1"},
 		{"timeout", context.DeadlineExceeded, "timed out"},

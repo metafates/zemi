@@ -354,7 +354,13 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 		v, _ := h.Settings.Get(path)
 		text, ok := v.(string)
 		if !ok {
-			text = luaLiteral(v) // a number as /config set reads it
+			if list, isList := v.([]string); isList {
+				// NOTE: the list grammar splits on comma and space, so an entry
+				// holding either cannot round-trip; same ceiling as configSet.
+				text = strings.Join(list, ", ")
+			} else {
+				text = luaLiteral(v) // a number as /config set reads it
+			}
 		}
 		ui.OpenOverlay(Overlay{ID: "config edit", Title: string(path), Origin: lua.OriginBuiltin, Input: true, Default: text, Placeholder: settingGhost(s), Run: "config set " + string(path)})
 		return nil
