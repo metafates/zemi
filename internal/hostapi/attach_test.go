@@ -66,7 +66,7 @@ func TestPlusSkillAttachment(t *testing.T) {
 	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill>"); n != 1 {
 		t.Errorf("a repeated skill attached %d elements", n)
 	}
-	if typed := mustExpand(t, h, "+humanize a +humanize b"); typed != "+humanize a +humanize b" {
+	if typed, _, _ := strings.Cut(mustExpand(t, h, "+humanize a +humanize b"), agent.AttachMarker); typed != "+humanize a +humanize b" {
 		t.Errorf("the repeated token was rewritten: %q", typed)
 	}
 	// the typed message carries the request: the body's $ARGUMENTS stays
