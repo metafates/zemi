@@ -156,7 +156,8 @@ type taskReg struct {
 	settings *config.Store // reads agent.max_background
 	runs     map[string]*agentRun
 	flows    map[string]*flowRun
-	watching bool // a watchFlows ticker runs
+	watching bool          // a watchFlows ticker runs
+	change   chan struct{} // closed by bump, fresh for the next: waitAll re-snapshots on it
 }
 
 func newTaskReg(settings *config.Store) *taskReg {
@@ -327,6 +328,34 @@ func (r *taskReg) runsOf(parent string) []*agentRun {
 func (r *taskReg) runningFor(parent string) int {
 	a, f := r.live(func(p string) bool { return p == parent })
 	return a + f
+}
+
+// runningOf returns the agent runs parent is running right now, newest first.
+func (r *taskReg) runningOf(parent string) []*agentRun {
+	return slices.DeleteFunc(r.runList(), func(x *agentRun) bool {
+		return x.parent != parent || !x.isRunning()
+	})
+}
+
+// bump wakes every waitAll selecting on the registry: a run ended or sent an
+// update, so what it re-snapshots may have changed.
+func (r *taskReg) bump() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.change != nil {
+		close(r.change)
+		r.change = nil
+	}
+}
+
+// onChange is the channel the next bump closes.
+func (r *taskReg) onChange() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.change == nil {
+		r.change = make(chan struct{})
+	}
+	return r.change
 }
 
 // live counts the running agents and workflows of the parents keep takes.
@@ -671,6 +700,7 @@ func (run *agentRun) finish(h *Host, err error) {
 		}
 	}
 	run.mu.Unlock()
+	h.tasks.bump()
 	// markRunRow takes ag.mu, which nextTurn holds across runningFor's
 	// run.mu: under run.mu here the pair deadlocks
 	h.markRunRow(run.id, callMark(status))
@@ -831,6 +861,7 @@ const updateStatus = "update"
 // progress, which reads it at its next step boundary, else stored there and
 // toasted.
 func (h *Host) deliverUpdate(run *agentRun, text string) error {
+	defer h.tasks.bump()
 	if h.AgentSessionID() != run.parent {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil

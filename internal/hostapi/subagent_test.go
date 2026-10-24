@@ -1603,3 +1603,188 @@ func TestForegroundWakesOnUpdate(t *testing.T) {
 		t.Fatalf("%d report rows for %s, want 1", n, run.id)
 	}
 }
+
+// TestWaitAllWaitsForEveryRun: wait=all returns only when the session's last
+// running run ends, and its answer sums every run it waited on; the reports
+// themselves arrive as messages.
+func TestWaitAllWaitsForEveryRun(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	gates := map[string]chan struct{}{"one": make(chan struct{}), "two": make(chan struct{})}
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				if !toolResult {
+					<-gates[last]
+					return textParts("done: " + last)
+				}
+			case strings.Contains(last, "<agent-report"):
+				return textParts("noted")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	def, _ := h.agentDef("explore")
+	id1, err := h.startBackgroundAgent(t.Context(), def, "dig one", "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := h.startBackgroundAgent(t.Context(), def, "dig two", "two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run1, run2 := h.tasks.find(id1), h.tasks.find(id2)
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+		answers <- resp
+	}()
+	waitFor(t, func() error {
+		for _, r := range []*agentRun{run1, run2} {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if len(r.updates) == 0 {
+				return errors.New("waitAll never waited on " + r.id)
+			}
+		}
+		return nil
+	})
+	close(gates["one"])
+	waitFor(t, func() error {
+		if run1.isRunning() {
+			return errors.New("one never ended")
+		}
+		return nil
+	})
+	if !run2.isRunning() {
+		t.Fatal("two ended before its gate opened")
+	}
+	close(gates["two"])
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, id1) || !strings.Contains(resp.Content, id2) ||
+		!strings.Contains(resp.Content, "done") {
+		t.Fatalf("waitAll answered %q, want both runs' lines", resp.Content)
+	}
+	waitIdle(t, h)
+}
+
+// TestWaitAllWakesOnUpdate: wait=all returns when one of the runs sends an
+// update, naming its sender, while every run goes on.
+func TestWaitAllWakesOnUpdate(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	start := make(chan struct{})
+	hold := make(chan struct{})
+	gate := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				if !toolResult {
+					if strings.Contains(last, "update") {
+						<-start // the child sends its update only once the wait holds
+						return toolCallParts("u1", "update", `{"text":"found the flake"}`)
+					}
+					<-gate
+					return textParts("plain done")
+				}
+				<-hold // the updating child ends only once the test saw the wake
+				return textParts("child done")
+			case strings.Contains(last, "<agent-update"), strings.Contains(last, "<agent-report"):
+				return textParts("noted")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	def, _ := h.agentDef("explore")
+	id1, err := h.startBackgroundAgent(t.Context(), def, "dig update", "update")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := h.startBackgroundAgent(t.Context(), def, "dig plain", "plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run1, run2 := h.tasks.find(id1), h.tasks.find(id2)
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+		answers <- resp
+	}()
+	waitFor(t, func() error {
+		for _, r := range []*agentRun{run1, run2} {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if len(r.updates) == 0 {
+				return errors.New("waitAll never waited on " + r.id)
+			}
+		}
+		return nil
+	})
+	close(start)
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, "sent an update") || !strings.Contains(resp.Content, id1) {
+		t.Fatalf("waitAll answered %q, want the updating run named", resp.Content)
+	}
+	if !run1.isRunning() || !run2.isRunning() {
+		t.Fatal("the runs did not go on after the wake")
+	}
+	close(hold)
+	close(gate)
+	waitIdle(t, h)
+}
+
+// TestWaitAllHandsOffOnUserSpoke: the user's own message takes every run the
+// wait held, and the answer names them.
+func TestWaitAllHandsOffOnUserSpoke(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	sid := seedSession(t, h)
+	var runs []*agentRun
+	for _, id := range []string{"r1", "r2"} {
+		run := &agentRun{id: id, agent: "explore", parent: sid, status: RunRunning, started: time.Now(), cancel: func() {}}
+		if err := h.tasks.add(run); err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, run)
+	}
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+		answers <- resp
+	}()
+	h.UserSpoke()
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, "r1") || !strings.Contains(resp.Content, "r2") {
+		t.Fatalf("the handoff answered %q, want both runs named", resp.Content)
+	}
+	for _, run := range runs {
+		if !run.handedOff() {
+			t.Fatalf("run %s was not handed off", run.id)
+		}
+	}
+}
+
+// TestWaitAllNothingRunning: a wait with nothing running answers at once,
+// naming the recent finished runs.
+func TestWaitAllNothingRunning(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	done := &agentRun{id: "rDone", agent: "explore", parent: h.AgentSessionID(), status: RunDone,
+		started: time.Now().Add(-time.Minute), finished: time.Now(), cancel: func() {}}
+	if err := h.tasks.add(done); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+	if err != nil || !strings.Contains(resp.Content, "No agents are running") || !strings.Contains(resp.Content, "rDone") {
+		t.Fatalf("an empty waitAll = %q (error %v), want the recent runs named", resp.Content, err)
+	}
+}

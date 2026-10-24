@@ -1121,7 +1121,7 @@ type agentArgs struct {
 	Agent       string `json:"agent,omitempty" desc:"one of the Agents above"`
 	Background  bool   `json:"background,omitempty" desc:"run detached; the report arrives later as a message"`
 	SendTo      string `json:"send_to,omitempty" desc:"id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"`
-	Wait        string `json:"wait,omitempty" desc:"a run id: block until that run ends instead of working on; a wait returns early when the run sends an update - read it, answer with send_to if needed, then wait again"`
+	Wait        string `json:"wait,omitempty" desc:"a run id, or \"all\" for every agent run of this session: block until it, or the last of them, ends instead of working on; a wait returns early when a run sends an update - read it, answer with send_to if needed, then wait again"`
 	Stop        bool   `json:"stop,omitempty" desc:"with send_to: kill the run; its report never arrives"`
 }
 
@@ -1133,7 +1133,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Calls sent together run at once." +
 		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
-		" wait blocks until a run ends instead of working on; it returns early when the run sends an update: read it, answer with send_to if needed, then wait again.")
+		" wait blocks until a run, or every run of this session with \"all\", ends instead of working on; it returns early when a run sends an update: read it, answer with send_to if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -1228,6 +1228,9 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		})
 	}
 	if in.Wait != "" {
+		if in.Wait == "all" {
+			return t.waitAll(ctx, call.ID), nil
+		}
 		run, err := t.h.sessionRun(in.Wait)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -1320,6 +1323,109 @@ func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fant
 // message, the run goes on, and the caller steers or waits again.
 func updateWaitText(run *agentRun) string {
 	return fmt.Sprintf("agent %s (%s) sent an update while you waited; it reads below as a message. The run goes on - steer it with send_to if it needs one, then wait again.", run.id, run.description)
+}
+
+// waitAll blocks until every agent run this session is running has ended, one
+// of them sends an update, or the user types: the join a fleet of detached
+// agents otherwise has none of. The reports arrive as messages of their own,
+// so the answer only sums the runs.
+func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResponse {
+	h := t.h
+	var waited []*agentRun // every run this wait covered, for the final sum
+	for {
+		// before the snapshot: a bump between the two is a wake this
+		// iteration re-snapshots, never a missed one
+		change := h.tasks.onChange()
+		runs := h.tasks.runningOf(h.AgentSessionID())
+		if len(runs) == 0 {
+			if len(waited) > 0 {
+				var b strings.Builder
+				b.WriteString("Every agent run you waited on has ended; each report arrives as a message of its own.")
+				for _, r := range waited {
+					status, _, took, _ := r.state()
+					fmt.Fprintf(&b, "\n- agent %s %s (%s)", r.id, status, fmtDuration(took))
+				}
+				return fantasy.NewTextResponse(b.String())
+			}
+			text := "No agents are running."
+			var recent []string
+			for _, r := range h.tasks.runsOf(h.AgentSessionID()) {
+				if status, _, took, _ := r.state(); status != RunRunning {
+					recent = append(recent, fmt.Sprintf("%s %s (%s)", r.id, status, fmtDuration(took)))
+					if len(recent) == 3 {
+						break
+					}
+				}
+			}
+			if len(recent) > 0 {
+				text += " Recently: " + strings.Join(recent, ", ") + "."
+			}
+			return fantasy.NewTextResponse(text)
+		}
+		for _, r := range runs {
+			if !slices.Contains(waited, r) {
+				waited = append(waited, r)
+			}
+		}
+		wake, resp := t.awaitRuns(ctx, change, runs)
+		if resp != nil {
+			return *resp
+		}
+		if wake != nil {
+			return fantasy.NewTextResponse(updateWaitText(wake))
+		}
+		// the registry changed and runs remain: wait again
+	}
+}
+
+// awaitRuns waits once for a snapshot of running runs and reports what woke
+// it: the run whose update fired, or the response to answer with (nil to have
+// the caller re-snapshot). Its waiters deregister when it returns.
+func (t *agentTool) awaitRuns(ctx context.Context, change <-chan struct{}, runs []*agentRun) (wake *agentRun, resp *fantasy.ToolResponse) {
+	type waiter struct {
+		run    *agentRun
+		update chan struct{}
+	}
+	waiters := make([]waiter, len(runs))
+	for i, r := range runs {
+		ch, cancel := r.waitUpdate()
+		defer cancel()
+		waiters[i] = waiter{r, ch}
+	}
+	select {
+	case <-change:
+	case <-t.h.userSpoke():
+		// the user's own messages take the runs: their reports go to the session
+		var handed []string
+		for _, r := range runs {
+			if r.detach() {
+				handed = append(handed, r.id)
+			}
+		}
+		if len(handed) == 0 {
+			return nil, nil // every run ended as the user spoke: re-snapshot
+		}
+		text := bgAgentText(handed[0])
+		if len(handed) > 1 {
+			text = fmt.Sprintf("Started background agents %s. Their reports arrive as messages when they finish; do not wait for them.", strings.Join(handed, ", "))
+		}
+		resp := fantasy.NewTextResponse(text)
+		return nil, &resp
+	case <-ctx.Done():
+		// esc stops the wait, not the runs
+		resp := fantasy.NewTextResponse("Stopped waiting; the agents go on.")
+		return nil, &resp
+	}
+	// the bump's source is ambiguous: an update closes its waiter's channel,
+	// so a change that was really an update is named here
+	for _, w := range waiters {
+		select {
+		case <-w.update:
+			return w.run, nil
+		default:
+		}
+	}
+	return nil, nil
 }
 
 // bgAgentText is what a call whose run reports as a message answers: a
