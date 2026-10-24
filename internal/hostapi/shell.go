@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -54,7 +55,7 @@ func (h *Host) RunShell(cmd string) {
 		h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
 		ag.mu.Lock()
-		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<shell command=%q status=%q>\n%s\n</shell>", cmd, status, text))
+		ag.shellNotes = append(ag.shellNotes, agent.AttachElement(fmt.Sprintf("shell command=%q status=%q", cmd, status), text))
 		ag.mu.Unlock()
 	})
 }

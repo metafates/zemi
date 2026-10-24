@@ -356,7 +356,7 @@ func instructionBlock(name, note string, data []byte) (string, bool) {
 	if cut := truncRunes(body, 4000); cut != body {
 		body, whole = cut+"\n(cut here; read "+name+" for the rest)", false
 	}
-	return fmt.Sprintf("\n<instructions path=%q>\n%s\n%s\n</instructions>\n", name, note, body), whole
+	return agent.AttachElement(fmt.Sprintf("instructions path=%q", name), note+"\n"+body), whole
 }
 
 // instructionEdits attaches each instruction file the pinned prompt holds,

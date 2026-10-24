@@ -122,7 +122,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		// say why instead of dropping the reference: the model is told the
 		// file was meant to be there and can still read it itself
 		note := func(why string) {
-			fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, name, why, tag)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("%s path=%q", tag, name), "not attached: "+why))
 			refused = append(refused, name+": "+why)
 		}
 		// a FIFO blocks the turn, and an @word naming no file is just prose
@@ -147,7 +147,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		case int64(len(data)) > limit:
 			note(overLimit(limit))
 		case image && !images:
-			fmt.Fprintf(&b, "\n<image path=%q>omitted: the current model does not take images</image>", name)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("image path=%q", name), "omitted: the current model does not take images"))
 		case image:
 			fit, fitMT, err := tools.FitImage(data, mt)
 			if err != nil {
@@ -155,11 +155,11 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 				continue
 			}
 			imgs = append(imgs, fantasy.FilePart{Filename: filepath.Base(abs), Data: fit, MediaType: fitMT})
-			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", name)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("image path=%q", name), "attached below"))
 		case !utf8.Valid(data):
 			note("it is not text")
 		default:
-			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", name, data)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("file path=%q", name), string(data)))
 		}
 	}
 	switch len(refused) {

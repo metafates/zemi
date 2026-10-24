@@ -120,7 +120,7 @@ func TestExpandAttachments(t *testing.T) {
 	if !strings.HasPrefix(got, "look at @main.go, @notes.md and @missing.go"+agent.AttachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
-	if !strings.Contains(got, `<file path="main.go">`) || !strings.Contains(got, "package main // attached") {
+	if !strings.Contains(got, "<file path=\"main.go\">\npackage main // attached\n</file>") {
 		t.Fatalf("main.go not attached: %q", got)
 	}
 	for _, leak := range []string{"outside-secret", "missing.go\">"} {
@@ -145,8 +145,8 @@ func TestExpandAttachments(t *testing.T) {
 	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
 	got, _ = h.expandAttachments("@big.txt @blob.txt", true)
 	for _, want := range []string{
-		`<file path="big.txt">not attached: it is over the 64 KB`,
-		`<file path="blob.txt">not attached: it is not text`,
+		"<file path=\"big.txt\">\nnot attached: it is over the 64 KB",
+		"<file path=\"blob.txt\">\nnot attached: it is not text",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
@@ -300,7 +300,7 @@ func TestImageAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, `<image path="shot.png">omitted`) {
+	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, "<image path=\"shot.png\">\nomitted") {
 		t.Fatalf("text-only model: %#v", msg.Content)
 	}
 	msg := h.composeUserMessage("what is wrong in @shot.png", true)
