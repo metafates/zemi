@@ -843,9 +843,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		if run := o.Keys[i].Run; run != "" {
 			a.runOverlayRow(hostapi.OverlayItem{Run: run})
-			if o.Reload != nil {
+			if o.Reload != nil { // the list shows what the key changed
 				a.reloadOverlay(o, nil)
+				return nil
 			}
+			// the screen the key opens takes over, as the same key on a row does
+			a.closeOverlayByID(o.ID)
 			return nil
 		}
 		item := st.selectedItem()

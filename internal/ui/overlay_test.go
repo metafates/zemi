@@ -911,7 +911,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a list key runs its command, whatever opened the list",
+			"a list key runs its command and its screen takes over, whatever opened the list",
 			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "x"}}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}},
 			nil,
 			func(a *App) string {
@@ -920,13 +920,27 @@ func TestOverlayNavigation(t *testing.T) {
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
 					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
 				})
-				if a.overlayKey("p", "p"); ran != "pause" {
+				if a.overlayKey("p", "p"); ran != "pause" || len(a.overlays) != 0 {
 					return "ran " + ran
 				}
 				ran = ""
 				a.openOverlay(hostapi.Overlay{ID: "q", Origin: lua.OriginPlugin, Items: []hostapi.OverlayItem{{Text: "x"}}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}})
 				a.overlayKey("p", "p")
-				return fail(ran == "pause", "a plugin list's key ran "+ran)
+				return fail(ran == "pause" && len(a.overlays) == 0, "a plugin list's key ran "+ran)
+			},
+		},
+		{
+			"a list key that rebuilds keeps the list open",
+			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "x"}}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}, Reload: func() []hostapi.OverlayItem { return []hostapi.OverlayItem{{Text: "x"}} }},
+			nil,
+			func(a *App) string {
+				ran := ""
+				a.host.Commands.Add(&hostapi.Command{
+					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+				})
+				a.overlayKey("p", "p")
+				return fail(ran == "pause" && len(a.overlays) == 1, "ran "+ran)
 			},
 		},
 		{
