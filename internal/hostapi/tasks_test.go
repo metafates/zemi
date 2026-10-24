@@ -619,6 +619,11 @@ func TestStoredRunningReadsCancelled(t *testing.T) {
 	if h.ViewedRunRunning() {
 		t.Fatal("a stored 'running' row viewed keeps the frame ticking")
 	}
+	// a live run the chat shows still ticks: the stored read is what changed
+	h.view = &agentRun{id: "live", status: RunRunning, cancel: func() {}}
+	if !h.ViewedRunRunning() {
+		t.Fatal("a live viewed run does not tick the frame")
+	}
 }
 
 func TestAgentSendsWhileBackground(t *testing.T) {

@@ -111,7 +111,8 @@ func TestIdleDrawsNothing(t *testing.T) {
 		t.Fatalf("the done frame cost %d redraws, want 1", app.frameGen-gen)
 	}
 
-	// a shown run ticks the clock like a turn does, though the turn is idle
+	// a run left 'running' in the store by a crash is one this process does
+	// not hold: viewing it reads as cancelled and ticks nothing
 	host.SeedStream(hostapi.StreamSnapshot{})
 	testStore(t, host)
 	id := store.ShortID()
@@ -124,12 +125,13 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if err := host.ViewAgent(id); err != nil {
 		t.Fatal(err)
 	}
+	gen = app.frameGen
 	app.Update(frameTickMsg{})
-	if app.frameGen == gen+1 {
-		t.Fatal("a shown run does not tick the working row")
+	if app.frameGen != gen {
+		t.Fatal("a stored 'running' row viewed ticks the frame")
 	}
-	if app.tickInterval() != frameInterval {
-		t.Fatal("a shown run should tick at frame rate")
+	if app.tickInterval() != idleInterval {
+		t.Fatal("a stored 'running' row viewed should tick idly")
 	}
 }
 
