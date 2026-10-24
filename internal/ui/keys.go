@@ -31,20 +31,22 @@ var goKeys = [][2]string{
 	{"alt+left, alt+right", "move by word"},
 	{"ctrl+d, ctrl+u", "scroll the chat half a view"},
 	{"ctrl+w", "delete the word before the cursor"},
+	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},
-	{"ctrl+space", "show completions"},
+	{"ctrl+space", "show completions; tab, enter accept"},
 	{"!cmd", "run a shell command with your next message"},
 }
 
 // listKeys are the keys every list and box takes.
 var listKeys = [][2]string{
 	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
-	{"ctrl+d, ctrl+u", "move half a page, or scroll the text"},
+	{"g, G, home, end", "first row, last row"},
+	{"ctrl+home, ctrl+b", "to the top, bottom"},
+	{"ctrl+d, ctrl+u", "half a page, or scroll the text"},
 	{"pgup, pgdown", "move a page"},
-	{"home, end, ctrl+b", "first row, last row"},
 	{"/", "filter; enter keeps it, esc clears it"},
-	{"space", "toggle"},
+	{"space", "toggle, in toggle lists"},
 	{"y, Y", "in a list, copy the row, every row"},
 	{"an action's key", "act on the row, as its button does"},
 	{"shift+up, shift+down", "scroll the text a line"},
