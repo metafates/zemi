@@ -25,10 +25,13 @@ func (h *Host) explain(err error) (cause, advice string) {
 	dns, _ := errors.AsType[*net.DNSError](err)
 	ne, _ := errors.AsType[net.Error](err)
 	_, garbled := errors.AsType[*jsontext.SyntacticError](err)
+	me, isModel := errors.AsType[agent.ModelError](err)
+	var spec agent.Spec
 	key := "check api_key in init.lua"
-	if me, ok := errors.AsType[agent.ModelError](err); ok {
+	if isModel {
+		spec, _ = h.Providers.Lookup(me.Provider)
 		key = "check api_key for " + me.Provider + " in init.lua"
-		if spec, ok := h.Providers.Lookup(me.Provider); ok && spec.KeyEnv != "" {
+		if spec.KeyEnv != "" {
 			key = "check " + spec.KeyEnv
 		}
 	}
@@ -44,6 +47,10 @@ func (h *Host) explain(err error) (cause, advice string) {
 	case pe != nil && pe.StatusCode == http.StatusTooManyRequests:
 		return "rate limited by the provider", "wait a bit and send again"
 	case pe != nil && pe.StatusCode == http.StatusNotFound:
+		// a gateway's ids come from the user's own init.lua, so /model offers the same wrong list back
+		if spec.Kind == agent.KindOpenAICompat {
+			return "the provider does not know this model", "check base_url and the model id in init.lua"
+		}
 		return "the provider does not know this model", "pick another with /model"
 	case pe != nil && (pe.StatusCode >= 500 || pe.StatusCode == http.StatusRequestTimeout):
 		return fmt.Sprintf("the provider is having trouble (%d)", pe.StatusCode), "try again shortly"
