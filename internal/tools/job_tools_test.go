@@ -4,11 +4,26 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/proc"
 )
+
+// waitFor runs check until it holds or 5s pass: an exit's announcement and
+// its eviction settle on the exit goroutine, after the OnChange signal.
+func waitFor(t *testing.T, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if check() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("not settled in time")
+}
 
 // TestJobKillReadOnlyDeny: job_kill makes no gate request, so runJobKill
 // carries the read-only deny itself instead of killing ungated.
@@ -48,9 +63,7 @@ func TestJobsEvictFinished(t *testing.T) {
 	if _, err := m.Get("job-1"); err != nil {
 		t.Fatalf("running job evicted: %v", err)
 	}
-	if _, err := m.Get("job-2"); err == nil {
-		t.Fatal("oldest finished job kept")
-	}
+	waitFor(t, func() bool { _, err := m.Get("job-2"); return err != nil })
 	if _, err := m.Get("job-6"); err != nil {
 		t.Fatalf("finished job inside the cap evicted: %v", err)
 	}
@@ -77,11 +90,11 @@ func TestJobsExitRefreshSeesTheJob(t *testing.T) {
 		}, w)
 		waits[id] = w
 	}
-	var saw bool
+	var saw atomic.Bool
 	m.OnChange = func() {
 		for _, j := range m.List() {
 			if j.ID == "job-1" && !j.Running() {
-				saw = true
+				saw.Store(true)
 			}
 		}
 		changes <- struct{}{}
@@ -97,15 +110,14 @@ func TestJobsExitRefreshSeesTheJob(t *testing.T) {
 		}
 	}
 	waits["job-1"] <- nil
-	select {
-	case <-changes:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for job-1's exit")
+	// the buffer holds stale add-time signals; drain until one saw the exit
+	deadline := time.After(5 * time.Second)
+	for !saw.Load() {
+		select {
+		case <-changes:
+		case <-deadline:
+			t.Fatal("timed out waiting for job-1's exit")
+		}
 	}
-	if !saw {
-		t.Fatal("no OnChange ever saw the finished job: an open view of it freezes at running")
-	}
-	if _, err := m.Get("job-1"); err == nil {
-		t.Fatal("oldest finished job kept")
-	}
+	waitFor(t, func() bool { _, err := m.Get("job-1"); return err != nil })
 }

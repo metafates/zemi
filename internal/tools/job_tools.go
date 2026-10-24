@@ -82,7 +82,10 @@ type Job struct {
 	werr     error    // what Wait returned
 	sent     [2]int64 // bytes of stdout/stderr already read, see since
 	finished time.Time
-	mu       sync.Mutex
+	// announced: the exit's OnChange has run, so a sweep may evict; guarded
+	// by Jobs.mu, which the exit goroutine holds when it sets it
+	announced bool
+	mu        sync.Mutex
 }
 
 func (j *Job) Running() bool {
@@ -258,30 +261,34 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
-		// OnChange before the eviction sweep: the exit refresh must still
-		// find the job, or an open view of it never leaves "running"
+		// the exit announces while the job is still listed: a sibling's
+		// sweep that saw it finished would evict it unannounced, and an
+		// open view of it would never leave "running"
 		if m.OnChange != nil {
 			m.OnChange()
 		}
-		m.evictFinished()
+		m.mu.Lock()
+		j.announced = true
+		m.evictLocked()
+		m.mu.Unlock()
 	}()
 	return j.ID
 }
 
-// evictFinished drops the oldest finished jobs past maxKeptJobs.
-func (m *Jobs) evictFinished() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// evictLocked drops the oldest announced-finished jobs past maxKeptJobs; a
+// finished job whose exit has not been announced yet is its exit goroutine's
+// to announce and evict. Callers hold m.mu.
+func (m *Jobs) evictLocked() {
 	finished := 0
 	for _, j := range m.jobs {
-		if !j.Running() {
+		if j.announced {
 			finished++
 		}
 	}
 	for id := 1; finished > maxKeptJobs && id <= m.seq; id++ {
 		key := fmt.Sprintf("job-%d", id)
 		j, ok := m.jobs[key]
-		if !ok || j.Running() {
+		if !ok || !j.announced {
 			continue
 		}
 		delete(m.jobs, key)
