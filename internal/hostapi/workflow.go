@@ -648,6 +648,12 @@ func (r *wfRun) open(args any) *glua.LState {
 	wmt := L.NewTable()
 	wmt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(2)
+		if name == "args" {
+			// RawSetString drops a nil value, so args is absent exactly when
+			// the run had none: the read falls through to nil, which the
+			// builtins' `type(wf.args) == "string"` guard expects
+			return 0
+		}
 		if to, ok := misnamed[name]; ok {
 			lua.RaiseScript(L, "a workflow script has no %s, write %s", name, to)
 		}

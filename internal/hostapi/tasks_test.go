@@ -580,7 +580,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	rows := dumpItems(h.agentRunItems())
 	// the row is named by the run's label and its desc keeps the definition;
 	// enter opens its preview (the facts and the task), v its transcript
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
@@ -591,6 +591,45 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	h.SetUIHooks(ui)
 	if err := h.openAgents(); err != nil || ui.opened[0].Verb != "open" || ui.opened[0].Selected != 1 {
 		t.Fatalf("agents verb %q, selected %d, %v", ui.opened[0].Verb, ui.opened[0].Selected, err)
+	}
+}
+
+// TestStoredRunningReadsCancelled: a run_status left 'running' in the store
+// is one this process does not hold, so it reads as cancelled - listed under
+// Earlier, not Running, and viewed it does not tick the frame.
+func TestStoredRunningReadsCancelled(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	child := sid + "c"
+	if err := h.DB.CreateSession(child, sid, "stalerun1", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.SetSessionRunStatus(child, "running"); err != nil {
+		t.Fatal(err)
+	}
+	rows := dumpItems(h.agentRunItems())
+	if strings.Contains(rows, "section:Running") || !strings.Contains(rows, "fields:[status cancelled") {
+		t.Fatalf("the stored 'running' row reads as running:\n%s", rows)
+	}
+	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
+	if err := h.ViewAgent(child); err != nil {
+		t.Fatal(err)
+	}
+	if h.ViewedRunRunning() {
+		t.Fatal("a stored 'running' row viewed keeps the frame ticking")
+	}
+	// a live run the registry holds still ticks: ViewAgent finds it there
+	// before any store read, and that is the term the frame's clock tests
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	if !h.ViewedRunRunning() {
+		t.Fatal("a live viewed run does not tick the frame")
 	}
 }
 

@@ -35,10 +35,14 @@ func flowFields(f *flowRun, v flowView) []string {
 	if f.script != "" {
 		script = perm.TildePath(f.script)
 	}
-	return []string{
+	fields := []string{
 		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done · %d running · %d at once", v.done, len(v.agents), v.running, v.limit),
 		"usage", usage, "time", fmtDuration(v.took), "run", f.id, "script", script,
 	}
+	if f.err != nil {
+		fields = append(fields, "error", f.err.Error())
+	}
+	return fields
 }
 
 // flowDesc is a run's row desc in /workflows and /agents: the padded status

@@ -150,6 +150,11 @@ func TestWorkflowRun(t *testing.T) {
 			want:   "{\n  \"n\": 2\n}",
 		},
 		{
+			name:   "no args reads nil, so the builtins' guard holds",
+			script: `if type(wf.args) == "string" then return wf.args end return "no args"`,
+			want:   "no args",
+		},
+		{
 			name:   "pipeline keeps item order and passes item and index",
 			script: `return table.concat(wf.pipeline({"a", "b"}, function(x) return wf.agent(x) end, function(r, it, i) return r .. it .. i end), ",")`,
 			want:   "a!a1,b!b2",
@@ -1612,6 +1617,21 @@ func TestAgentView(t *testing.T) {
 				t.Fatalf("parts %+v", parts)
 			}
 		})
+	}
+}
+
+// TestFlowViewNamesItsError: a failed run's view carries why it failed, as
+// the agent view does; a run with none has no error row.
+func TestFlowViewNamesItsError(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	f := &flowRun{id: "0000000b", description: "d", status: RunFailed, limit: 1, err: errors.New("the script raised")}
+	if got := dumpFields(h.flowOverlay(f).Fields); !strings.Contains(got, "[error the script raised]") {
+		t.Fatalf("fields %s, want the error", got)
+	}
+	f.err = nil
+	if got := dumpFields(h.flowOverlay(f).Fields); strings.Contains(got, "[error") {
+		t.Fatalf("a run with no error carries one: %s", got)
 	}
 }
 
