@@ -2370,7 +2370,7 @@ function zemi.fs.grep(pattern, opts) end
 
 ---@class zemi.HTTPResponse
 ---@field status integer
----@field body string At most 1 MiB.
+---@field body string At most 1 MiB; a larger body fails the call.
 ---@field headers table<string, string>
 
 --- What `on_done` gets: the response fields, or `error` when the request failed.

@@ -336,6 +336,11 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				L.RaiseError("zemi.timer: interval must be positive")
 			}
 			d := time.Duration(ms) * time.Millisecond
+			// a positive ms can wrap the duration negative, and a
+			// sub-millisecond repeat truncates to 0: both fire in a tight loop
+			if d < 0 || (repeat && d == 0) {
+				L.RaiseError("zemi.timer: interval out of range")
+			}
 			at := h.callerOf(L)
 			handle := &timerHandle{}
 			stopID := h.stops.add(handle.stopIt)
@@ -765,9 +770,13 @@ func (h *Host) httpFetch(ctx context.Context, r httpReq) (map[string]any, error)
 		return nil, err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// one byte past the cap tells a cut body from one that just fits
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) > 1<<20 {
+		return nil, errors.New("zemi.http: body exceeded the 1 MiB cap")
 	}
 	headers := map[string]any{}
 	for k := range resp.Header {
