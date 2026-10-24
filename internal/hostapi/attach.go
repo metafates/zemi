@@ -125,8 +125,14 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, name, why, tag)
 			refused = append(refused, name+": "+why)
 		}
-		// a FIFO blocks the turn, and an @word naming no file is just prose
-		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() {
+		// a FIFO blocks the read, and an @word naming no file is just prose;
+		// a path that is there but not a file says why, like every other refusal
+		if fi, err := os.Stat(abs); err == nil && !fi.Mode().IsRegular() {
+			if fi.IsDir() {
+				note("it is a directory")
+			} else {
+				note("it is not a regular file")
+			}
 			continue
 		}
 		// the model reads the file, so opening a device has effects

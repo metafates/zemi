@@ -135,8 +135,8 @@ func TestExpandAttachments(t *testing.T) {
 		go func() { s, _ := h.expandAttachments("@pipe", true); done <- s }()
 		select {
 		case s := <-done:
-			if s != "@pipe" {
-				t.Fatalf("a FIFO must not attach: %q", s)
+			if !strings.HasPrefix(s, "@pipe"+agent.AttachMarker) || !strings.Contains(s, "not attached: it is not a regular file") {
+				t.Fatalf("a FIFO must refuse with a why: %q", s)
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("a FIFO reference blocked the message")
@@ -152,6 +152,15 @@ func TestExpandAttachments(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
 		}
+	}
+
+	// the composer hands out @dir/ tokens (a drop, a completion): a directory
+	// is refused with a why, like every other unattachable path
+	if err := os.MkdirAll(filepath.Join(proj, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, `<file path="src/">not attached: it is a directory</file>`) {
+		t.Fatalf("the directory must say why: %q", got)
 	}
 
 	// the same file named twice attaches once: a repeated @word, a chip
