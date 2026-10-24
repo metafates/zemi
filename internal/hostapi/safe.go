@@ -5,6 +5,7 @@
 package hostapi
 
 import (
+	"charm.land/fantasy"
 	"errors"
 	"fmt"
 	"log/slog"
