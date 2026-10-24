@@ -116,6 +116,10 @@ func TestQuestionAndPlanTools(t *testing.T) {
 			"an open answer is null and explained", "question", two, answer([]Answer{{Typed: "C"}, {}}, true), nil,
 			`{"answers":[{"question":"Which path?","answer":"C"},{"question":"Checks?","answer":null}],"open":"a null answer is yours`, false, false,
 		},
+		{
+			"a note without a pick reaches the model", "question", two, answer([]Answer{{Note: "my custom path"}, {}}, true), nil,
+			`{"answers":[{"question":"Which path?","answer":null,"note":"my custom path"},{"question":"Checks?","answer":null}],"open":"a null answer is yours`, false, false,
+		},
 		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
 		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},

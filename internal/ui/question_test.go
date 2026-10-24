@@ -214,7 +214,7 @@ func TestQuestionBatch(t *testing.T) {
 		{"s submits a partial batch from the Submit tab", []any{"enter", tab, "s"}, questionResult{[]tools.Answer{{Picked: []string{"a"}}, {}}, true}},
 		{"a question's digit changes it from the Submit tab", []any{"enter", "enter", "1", "j", "enter", "enter"}, questionResult{[]tools.Answer{{Picked: []string{"a2"}}, {Picked: []string{"b"}}}, true}},
 		{"a note edited after answering counts", []any{"enter", back, "n", "first", "esc", tab, tab, "enter"}, questionResult{[]tools.Answer{{Picked: []string{"a"}, Note: "first"}, {}}, true}},
-		{"a note with no pick is dropped", []any{"n", "why", "esc", tab, tab, "enter"}, questionResult{[]tools.Answer{{}, {}}, true}},
+		{"a note with no pick rides the answer", []any{"n", "why", "esc", tab, tab, "enter"}, questionResult{[]tools.Answer{{Note: "why"}, {}}, true}},
 		{"going back keeps the typed answer", []any{"j", "j", "hi", "enter", back, " there", "enter", tab, "enter"}, questionResult{[]tools.Answer{{Typed: "hi there"}, {}}, true}},
 		{"marks count when tab leaves the question", []any{tab, "space", "j", "space", tab, "enter"}, questionResult{[]tools.Answer{{}, {Picked: []string{"b", "b2"}}}, true}},
 		{"unmarking everything unanswers it", []any{tab, "space", "space", tab, "enter"}, questionResult{[]tools.Answer{{}, {}}, true}},

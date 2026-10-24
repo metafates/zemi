@@ -94,7 +94,8 @@ func (a *App) finishQuestion(ok bool) {
 }
 
 // answer is what the state answers: the typed text, or the picked options
-// with the text as their note, so a note edited after the pick counts.
+// with the text as their note; the note counts with no pick too, so an
+// answer typed without picking is not lost.
 func (st *qState) answer(q tools.Question) tools.Answer {
 	text := strings.TrimSpace(st.input.text)
 	if st.typed {
@@ -106,9 +107,7 @@ func (st *qState) answer(q tools.Question) tools.Answer {
 			a.Picked = append(a.Picked, o.Label)
 		}
 	}
-	if len(a.Picked) > 0 {
-		a.Note = text
-	}
+	a.Note = text
 	return a
 }
 
