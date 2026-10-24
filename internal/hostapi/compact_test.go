@@ -476,6 +476,53 @@ func TestCompactionMidTurn(t *testing.T) {
 	}
 }
 
+// TestFailedSummaryRowSaysDropped: an auto compaction whose summary call
+// fails drops the older history unsummarized, and its row says so; the
+// resumed transcript, which rebuilds the row from the stored summary, shows
+// what the live turn drew.
+func TestFailedSummaryRowSaysDropped(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "") // an empty reply summarizes to nothing: the history drops
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	send := sender(t, h)
+	send("warm up")
+	h.agents.mu.Lock()
+	h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+	h.agents.mu.Unlock()
+	send("two")
+	row := ""
+	for _, r := range h.Session().Transcript {
+		if r.Kind == RowCompact {
+			row = r.Text
+		}
+	}
+	if !strings.Contains(row, "the summary failed") || !strings.Contains(row, "were dropped unsummarized") {
+		t.Fatalf("compaction row %q, want the failed summary and the dropped count", row)
+	}
+
+	first := h.AgentSessionID()
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(first); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, r := range h.Session().Transcript {
+		if r.Kind == RowCompact {
+			n++
+			if r.Text != row {
+				t.Fatalf("resumed compaction row %q, want what the live turn drew (%q)", r.Text, row)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("resumed transcript has %d compaction rows, want 1", n)
+	}
+}
+
 // TestOverflowRecovery: a prompt the provider refuses as too long is
 // compacted and resent once without a second copy of the user message; a
 // second refusal is reported, not retried. An earlier turn is summarized

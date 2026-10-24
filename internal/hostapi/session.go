@@ -534,8 +534,8 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
-			if _, ok := summaryOf(m); ok {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactedRow})
+			if s, ok := summaryOf(m); ok {
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactionRow(s)})
 				continue
 			}
 			shown, heads, _ := userRowsFor(s) // show what was typed

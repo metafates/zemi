@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -44,8 +45,9 @@ const (
 
 	clearedOutput = "[old tool output cleared]"
 
-	// compactedRow is the transcript row a compaction draws, live and resumed
-	// alike: the resume path has the summary row and no count to draw.
+	// compactedRow is the transcript row a compaction that summarized draws;
+	// compactionRow derives the row from the stored summary, live and resumed
+	// alike, so a history dropped unsummarized says so.
 	compactedRow = "Compacted earlier messages"
 )
 
@@ -522,7 +524,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
 	h.agents.mu.Unlock()
 	h.compactDone(estTokens(kept...)+overhead, reason == compactManual)
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactedRow})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: compactionRow(out)})
 	return nil
 }
 
@@ -683,6 +685,20 @@ func summaryOf(m fantasy.Message) (string, bool) {
 	}
 	s, _, _ := strings.Cut(rest, compactSuffix)
 	return s, true
+}
+
+// droppedRe matches the note the summary-failed fallback writes into the
+// summary it stores; the last one wins, an earlier one may ride prev.
+var droppedRe = regexp.MustCompile(`\((\d+) earlier messages were dropped unsummarized`)
+
+// compactionRow is the transcript row the summary's content draws, live and
+// resumed alike: a compaction that dropped messages unsummarized says so
+// instead of claiming a compaction that read them.
+func compactionRow(summary string) string {
+	if m := droppedRe.FindAllStringSubmatch(summary, -1); len(m) > 0 {
+		return fmt.Sprintf("Compacted earlier messages (the summary failed; %s earlier messages were dropped unsummarized)", m[len(m)-1][1])
+	}
+	return compactedRow
 }
 
 // tailKeep is the verbatim tail's token budget under a compaction threshold.
