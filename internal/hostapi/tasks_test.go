@@ -629,6 +629,33 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if len(o.Parts) == 0 || o.Parts[0].Text != "look" {
 		t.Fatalf("parts %+v", o.Parts)
 	}
+	// ctrl+j steps into the run's first call: the shell row is transcript
+	// row 2, behind the prompt, and the step shows the run before it opens
+	if o.Next != "agents step "+run.id+" 2" {
+		t.Fatalf("next %q", o.Next)
+	}
+	if err := cmd.GoFn(h, "step "+run.id+" 2"); err != nil {
+		t.Fatal(err)
+	}
+	if h.viewedRun() != run {
+		t.Fatal("the step did not show the run")
+	}
+	steped := ui.overlays()
+	if len(steped) != 2 || steped[1].ID != "call:2" {
+		t.Fatalf("the step opened %v", steped)
+	}
+	h.ViewAgent("")
+	// a run that made no call has nowhere to step
+	idle, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "just talk", "talk", true)
+	if err := h.tasks.add(idle); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.GoFn(h, "show "+idle.id); err != nil {
+		t.Fatal(err)
+	}
+	if last := ui.overlays(); len(last) != 3 || last[2].ID != "agent:"+idle.id || last[2].Next != "" {
+		t.Fatalf("the call-less preview is %+v", last[len(last)-1])
+	}
 	// the watch keeps the open preview current: a tick rebuilds it from the
 	// run, so a view of a run that ended stops saying running
 	run.mu.Lock()
