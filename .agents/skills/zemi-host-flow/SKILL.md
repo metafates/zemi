@@ -9,10 +9,10 @@ description: "Load before changing main.go, internal/cli, internal/config, inter
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
 stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
-sweeps nothing and takes no lock a running zemi waits on; `sessions -a` and `sessions search <words>` walk every
+sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on; `sessions -a` and `sessions search <words>` walk every
 project's store the same way through `hostapi.ListAllSessions`/`hostapi.FindSessions`, skipping one it cannot read), `projects` (`hostapi.ListProjects` with its
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
-`plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
+`db` (one read-only query against the project's store, `--global` the global one), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
 `plugin`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines are colored only on a terminal (`paint` and `pad`

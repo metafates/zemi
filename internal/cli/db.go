@@ -83,7 +83,7 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, asJSON bool) er
 	}
 	var table [][]string
 	for rows.Next() {
-		if len(table) > dbRowCap {
+		if len(table) >= dbRowCap {
 			fmt.Fprintf(errw, "zemi: showing the first %d rows; add LIMIT or narrow the query\n", dbRowCap)
 			break
 		}
