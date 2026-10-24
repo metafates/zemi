@@ -1527,9 +1527,12 @@ func TestWaitWakesOnUpdate(t *testing.T) {
 		return nil
 	})
 	waitIdle(t, h)
-	if n := finishedRows(h, id); n != 1 {
-		t.Fatalf("%d report rows for %s, want 1", n, id)
-	}
+	waitFor(t, func() error {
+		if n := finishedRows(h, id); n != 1 {
+			return fmt.Errorf("%d report rows for %s, want 1", n, id)
+		}
+		return nil
+	})
 }
 
 // TestForegroundWakesOnUpdate: a foreground run's call returns when the run
@@ -1599,9 +1602,12 @@ func TestForegroundWakesOnUpdate(t *testing.T) {
 	})
 	close(hold)
 	waitIdle(t, h)
-	if n := finishedRows(h, run.id); n != 1 {
-		t.Fatalf("%d report rows for %s, want 1", n, run.id)
-	}
+	waitFor(t, func() error {
+		if n := finishedRows(h, run.id); n != 1 {
+			return fmt.Errorf("%d report rows for %s, want 1", n, run.id)
+		}
+		return nil
+	})
 }
 
 // TestWaitAllWaitsForEveryRun: wait=all returns only when the session's last

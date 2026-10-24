@@ -1314,7 +1314,7 @@ func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fant
 		<-end
 	case <-ctx.Done():
 		// esc stops the wait, not the run
-		return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call it again with send_to " + run.id + " and wait, or read its report when it arrives.")
+		return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call agent again with wait " + run.id + ", or read its report when it arrives.")
 	}
 	return answer()
 }
