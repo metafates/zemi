@@ -286,7 +286,8 @@ func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Comple
 	}
 	if c.Flags().Lookup("resume") != nil {
 		root := dirs.TrustRoot()
-		for _, g := range hostapi.ListAllSessions(dirs) {
+		groups, _ := hostapi.ListAllSessions(dirs)
+		for _, g := range groups {
 			where := ""
 			if perm.CanonPath(g.Root) != perm.CanonPath(root) {
 				where = filepath.Base(g.Root) + ": "
@@ -536,7 +537,10 @@ func sessionsCommand(o *options) *cobra.Command {
 			dirs := o.dirs
 			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
 			if *all {
-				groups := hostapi.ListAllSessions(dirs)
+				groups, skipped := hostapi.ListAllSessions(dirs)
+				if n := len(skipped); n > 0 {
+					fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s\n", n, hostapi.Plural(n, "store", "stores"))
+				}
 				if len(groups) == 0 {
 					fmt.Fprintln(c.ErrOrStderr(), "zemi: no sessions in any project yet")
 					return nil
