@@ -12,7 +12,7 @@ Memories reach you as the `## Memory` section of the `# Brain` section in zemi's
 
 ## Recipes
 
-A recipe (the environment's `Recipes:` line) is a procedure for this repository only, on this machine. A fact is a memory; a procedure for every project is a user skill (`skills.md`). Secret-shaped text there is redacted after a write. The user deletes one with `/skills delete <name>`. A recipe is for you: `user-invocable` and `argument-hint` do not apply to it.
+A recipe (the environment's `Recipes:` line) is a procedure for this repository only, on this machine. A fact is a memory; a procedure for every project is a user skill (`skills.md`). Secret-shaped text there is redacted after a write. The user deletes one with `/skills delete <name>`. A recipe is for you: `user-invocable` does not apply to it.
 
 ## From Lua
 

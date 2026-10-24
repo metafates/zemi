@@ -2776,8 +2776,8 @@ Skill format (agentskills.io compatible, crush parity):
 ```
 skills/
   local-integration/
-    SKILL.md            # yaml frontmatter: name, description, user-invocable,
-                        # argument-hint; body = instructions
+    SKILL.md            # yaml frontmatter: name, description, user-invocable;
+                        # body = instructions
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
@@ -2796,8 +2796,8 @@ plugin skill's flag goes with the plugin when it is turned off. The model sees n
 description in context and the full body on demand through the `skill`
 tool. The user attaches a skill with `+name` in a message: the `+` popup
 lists every skill, disabled ones included, and the send expands the token
-behind the message as typed, `$ARGUMENTS` filled from the rest of the
-message; an unknown `+word` is left as written. Every enabled
+behind the message as typed; an unknown `+word` is left as written, and a
+repeated one attaches once. Every enabled
 skill is in the index and the skill tool: Claude's
 `disable-model-invocation` is accepted and ignored. `/skills` browses and
 toggles them (a row's detail carries the whole body and opens it in the
