@@ -1254,7 +1254,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
