@@ -77,8 +77,12 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
 	for _, m := range attachRef.FindAllStringSubmatchIndex(typed, -1) {
-		if m[4] >= 0 { // a +skill: the rest of the message is its request
-			h.attachSkill(&b, typed[m[4]:m[5]], typed[m[5]:])
+		if m[4] >= 0 { // a +skill attaches once, like a repeated @file; a name
+			// and an abs path cannot collide (ValidName allows no /)
+			if !seen.Has(typed[m[4]:m[5]]) {
+				seen.Add(typed[m[4]:m[5]])
+				h.attachSkill(&b, typed[m[4]:m[5]], typed[m[5]:])
+			}
 			continue
 		}
 		// a chip names a file zemi itself copied, or one of the project's: the

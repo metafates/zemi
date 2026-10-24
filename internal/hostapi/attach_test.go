@@ -37,6 +37,7 @@ func TestPlusSkillAttachment(t *testing.T) {
 		}
 	}
 	write("review-pr", "name: review-pr\ndescription: review a PR\n", "Review PR $ARGUMENTS.")
+	write("typst", "name: typst\ndescription: typeset\n", "Typeset the document.")
 	write("big", "name: big\ndescription: huge\n", strings.Repeat("step\n", tools.SkillMaxOut/4))
 	h.syncSkills()
 	if err := h.setSkillEnabled("lint", false); err != nil {
@@ -57,6 +58,10 @@ func TestPlusSkillAttachment(t *testing.T) {
 	}
 	if n := strings.Count(mustAttached(t, h, "+review-pr 12 then +lint the tree"), "<skill>"); n != 2 {
 		t.Errorf("two skills attached %d elements", n)
+	}
+	// a repeated mention attaches once, like a repeated @file
+	if n := strings.Count(mustAttached(t, h, "+typst a +typst b"), "<skill>"); n != 1 {
+		t.Errorf("a repeated skill attached %d elements", n)
 	}
 	// a token the regex takes but no skill answers is prose, whole
 	for _, text := range []string{"diff:\n+fmt.Println(x)", "+5 tasks", "C++", "a+b", "unknown +nosuch here"} {
@@ -133,6 +138,21 @@ func TestExpandAttachments(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
+		}
+	}
+
+	// the same file named twice attaches once: a repeated @word, a chip
+	// beside its @, and a symlink alias resolving to the same abs
+	if err := os.Symlink(filepath.Join(proj, "main.go"), filepath.Join(proj, "alias.md")); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{
+		"see @main.go and @main.go again",
+		"see @main.go and [File main.go]",
+		"see @main.go and @alias.md",
+	} {
+		if n := strings.Count(mustAttached(t, h, text), "<file path="); n != 1 {
+			t.Errorf("%q attached %d file elements", text, n)
 		}
 	}
 
