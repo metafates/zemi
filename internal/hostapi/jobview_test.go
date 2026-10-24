@@ -40,7 +40,7 @@ func TestJobsScreen(t *testing.T) {
 	if first.Section != "Running" || first.Text != "sleep 30" || !strings.Contains(first.Desc, running) || first.Mark != "spin" {
 		t.Fatalf("first row = %+v, want the running job first with its id and clock", first)
 	}
-	if !slices.ContainsFunc(first.Keys, func(k ItemKey) bool { return k.Run == "jobs stop "+running && k.Key == "s" }) {
+	if !slices.ContainsFunc(first.Keys, func(k ItemKey) bool { return k.Run == "jobs stop "+running && k.Key == "s" && k.Danger }) {
 		t.Fatal("a running job offers no stop")
 	}
 	second := o.Items[1]
@@ -52,7 +52,7 @@ func TestJobsScreen(t *testing.T) {
 	}
 
 	view := h.jobOverlay(mustJob(t, h, running))
-	if !view.Live || view.Mark != "spin" || !slices.ContainsFunc(view.Keys, func(k OverlayKey) bool { return k.Run == "jobs stop "+running }) {
+	if !view.Live || view.Mark != "spin" || !slices.ContainsFunc(view.Keys, func(k OverlayKey) bool { return k.Run == "jobs stop "+running && k.Danger }) {
 		t.Fatalf("view = %+v, want a live body and its stop key", view)
 	}
 
