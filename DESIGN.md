@@ -524,8 +524,9 @@ in the settings keys, the principals and every verb.
 A plugin laid out for Claude Code (`.claude-plugin/plugin.json`, no `.zemi`)
 loads too, with no Lua of its own. Its manifest, `.mcp.json` and hooks file
 are read by `internal/plugin`; its skills, agents and commands load through
-the same layered steps under the plugin's sanitized name as a prefix
-(`<plugin>-<name>`, so two plugins cannot take one name), with the skill
+the same layered steps under their own names, one already taken by another
+layer falling back to the plugin's sanitized name as a prefix
+(`<plugin>-<name>`), with the skill
 frontmatter's `name` and `description` optional (the directory and the
 body's first line stand in), every body carrying `${CLAUDE_PLUGIN_ROOT}`
 and `${CLAUDE_PLUGIN_DATA}`, and each command also a model-invocable skill

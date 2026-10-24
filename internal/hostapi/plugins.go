@@ -33,9 +33,9 @@ type pluginLoad struct {
 
 // pluginGrant is what the plugins step fixed for one generation: the roots it
 // loaded, the capabilities each manifest declared, and which roots are
-// Claude-layout (their layered names are prefixed and their MCP servers and
-// hooks load). One swap, so a reload, a disable or a delete cannot leave a
-// stale grant.
+// Claude-layout (their layered names fall back to a prefix and their MCP
+// servers and hooks load). One swap, so a reload, a disable or a delete
+// cannot leave a stale grant.
 type pluginGrant struct {
 	roots  []string
 	uses   map[string][]string // by plugin name
@@ -233,14 +233,15 @@ func (h *Host) claudeRootOf(path string) string {
 	return ""
 }
 
-// pluginPrefix is the layered-name prefix of a Claude-layout plugin: its
-// sanitized name and a dash, so two plugins cannot ship one name.
+// pluginPrefix is the fallback name of a Claude-layout plugin's layered
+// resources: its sanitized name and a dash, joined when the bare name is
+// already taken.
 func (h *Host) pluginPrefix(root string) string {
 	return plugin.SanitizeName(h.PluginOf(root)) + "-"
 }
 
-// layerPrefix is the name prefix a Claude-layout plugin's layered files
-// load under; workflows stay flat, their names no user types.
+// layerPrefix is the fallback name prefix of a Claude-layout plugin's
+// layered files; workflows stay flat, their names no user types.
 func (h *Host) layerPrefix(root, sub string) string {
 	if sub == "workflows" || !h.isClaudePlugin(root) {
 		return ""
@@ -249,11 +250,12 @@ func (h *Host) layerPrefix(root, sub string) string {
 }
 
 // claudeCommandSkills turns a Claude plugin's commands/*.md into
-// model-invocable skill rows named <prefix><stem> (invoked with +name like
-// every skill): Claude loads commands and skills as one thing, zemi's
-// /command stays mdcommands'. A name that would break skill.ValidName is
-// skipped, warned by the command load.
-func (h *Host) claudeCommandSkills(root, prefix, data string) []skill.Skill {
+// model-invocable skill rows named by their stem (invoked with +name like
+// every skill; the sync falls back to the plugin-prefixed name on a clash):
+// Claude loads commands and skills as one thing, zemi's /command stays
+// mdcommands'. A name that would break skill.ValidName is skipped, warned by
+// the command load.
+func (h *Host) claudeCommandSkills(root, data string) []skill.Skill {
 	entries, err := os.ReadDir(filepath.Join(root, "commands"))
 	if err != nil {
 		return nil
@@ -261,7 +263,7 @@ func (h *Host) claudeCommandSkills(root, prefix, data string) []skill.Skill {
 	var rows []skill.Skill
 	for _, e := range entries {
 		stem, ok := strings.CutSuffix(e.Name(), ".md")
-		if !ok || e.IsDir() || !skill.ValidName(prefix+stem) {
+		if !ok || e.IsDir() || !skill.ValidName(stem) {
 			continue
 		}
 		path := filepath.Join(root, "commands", e.Name())
@@ -278,7 +280,7 @@ func (h *Host) claudeCommandSkills(root, prefix, data string) []skill.Skill {
 			desc = skill.FirstBodyLine(body)
 		}
 		rows = append(rows, skill.Skill{
-			Name: prefix + stem, Dir: filepath.Join(root, "commands"), Source: skill.Plugin,
+			Name: stem, Dir: filepath.Join(root, "commands"), Source: skill.Plugin,
 			Description: learn.Truncate(desc, skill.MaxDescriptionRunes),
 			File:        path, Root: root, Data: data,
 		})
@@ -454,9 +456,10 @@ func pluginLayerDir(root, sub string) string {
 
 // layerFiles hands load the <name><ext> files in sub of the user config,
 // each enabled plugin, then a trusted project's .agents. The first file of a
-// name load accepts wins, so a broken one hides nothing; /errors records a
-// name no skill.ValidName and one a plugin ships under a name another
-// plugin took first.
+// name load accepts wins, so a broken one hides nothing, and a Claude
+// plugin's bare name taken by an earlier file retries the plugin-prefixed
+// one; /errors records a name no skill.ValidName and one two plugins still
+// clash on.
 func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 	var dirs []layerFile
 	if h.Dirs.ConfigHome != "" {
@@ -476,9 +479,14 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 			if !ok || e.IsDir() {
 				continue
 			}
-			name = d.prefix + name
 			path := filepath.Join(d.path, e.Name())
-			if kept, ok := seen[name]; ok {
+			// the bare name first; a Claude plugin's falls back to its
+			// prefixed name only when another file already holds the bare one
+			bare, renamed := name, false
+			if _, taken := seen[name]; taken && d.prefix != "" {
+				name, renamed = d.prefix+name, true
+			}
+			if kept, taken := seen[name]; taken {
 				if a, b := h.PluginOf(kept), h.PluginOf(path); a != "" && b != "" && a != b {
 					h.RecordErrorOnce("plugins", fmt.Sprintf("%s %s is already provided by plugin %s, not %s", strings.TrimSuffix(sub, "s"), name, a, b))
 				}
@@ -490,6 +498,9 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 			}
 			if load(layerFile{name, path, d.origin, d.prefix}) {
 				seen[name] = path
+				if renamed {
+					h.Log.Warn(fmt.Sprintf("%s %s is already in %s, loaded as %s", strings.TrimSuffix(sub, "s"), bare, seen[bare], name), "origin", sub, "path", path)
+				}
 			}
 		}
 	}

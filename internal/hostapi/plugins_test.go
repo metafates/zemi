@@ -357,6 +357,109 @@ func TestPluginsStep(t *testing.T) {
 	}
 }
 
+// TestClaudeSkillNameCollisions: a Claude plugin's skills, commands and
+// agents load under their bare names, and only a name something else holds
+// falls back to the plugin prefix. A renamed skill's /skills row shows
+// base@plugin, and +attach names both forms.
+func TestClaudeSkillNameCollisions(t *testing.T) {
+	t.Parallel()
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), ConfigHome: filepath.Join(tmp, "cfg"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+	writeSkill(t, filepath.Join(dirs.ConfigHome, "skills"), "x", "the user's x", "")
+	plugin := func(name string, files map[string]string) {
+		root := filepath.Join(dirs.PluginsRoot(), "installed", name)
+		files[filepath.Join(root, ".claude-plugin", "plugin.json")] = `{"name":"` + name + `"}`
+		for p, src := range files {
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	plugin("fix", map[string]string{
+		filepath.Join(dirs.PluginsRoot(), "installed", "fix", "skills", "x", "SKILL.md"):    "---\ndescription: fix's x\n---\nbody",
+		filepath.Join(dirs.PluginsRoot(), "installed", "fix", "skills", "solo", "SKILL.md"): "---\ndescription: a unique one\n---\nbody",
+		filepath.Join(dirs.PluginsRoot(), "installed", "fix", "commands", "pr.md"):          "---\ndescription: draft it\n---\ndo it",
+		filepath.Join(dirs.PluginsRoot(), "installed", "fix", "agents", "x.md"):             "---\ndescription: reviews\n---\nbe brief",
+	})
+	plugin("other", map[string]string{
+		filepath.Join(dirs.PluginsRoot(), "installed", "other", "skills", "x", "SKILL.md"): "---\ndescription: other's x\n---\nbody",
+		filepath.Join(dirs.PluginsRoot(), "installed", "other", "agents", "x.md"):          "---\ndescription: other agent\n---\nbe brief",
+	})
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
+		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
+		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
+	}})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	if err := r.Boot(t.Context(), []lua.BootStep{
+		h.NamespacesStep(), h.PluginsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	skills := map[string]skill.Skill{}
+	for _, s := range h.skillsReg.list() {
+		if s.Source == skill.User || s.Source == skill.Plugin {
+			skills[s.Name] = s
+		}
+	}
+	for name, desc := range map[string]string{"x": "the user's x", "fix-x": "fix's x", "other-x": "other's x", "solo": "a unique one", "pr": "draft it"} {
+		if got, ok := skills[name]; !ok || got.Description != desc {
+			t.Errorf("skill %s = %+v, want %q", name, got, desc)
+		}
+	}
+	// the unique plugin skill answers to its bare name everywhere
+	mine, _ := h.skillsIndexPrompt()
+	if !strings.Contains(mine, "\n- solo: a unique one\n") {
+		t.Errorf("index: %q", mine)
+	}
+	if _, ok := h.skillByName("solo"); !ok {
+		t.Error("+solo does not resolve")
+	}
+	// a renamed skill's row shows base@plugin, its actions keep the real name
+	rows := map[string]string{}
+	for _, it := range h.skillItems() {
+		rows[it.Run] = it.Text
+	}
+	for run, text := range map[string]string{
+		"skills toggle x":       "x",
+		"skills toggle fix-x":   "x@fix",
+		"skills toggle other-x": "x@other",
+		"skills toggle solo":    "solo",
+	} {
+		if rows[run] != text {
+			t.Errorf("row %q = %q, want %q", run, rows[run], text)
+		}
+	}
+	// the command loads bare as both a /command and a skill row
+	if h.Commands.Lookup("pr") == nil || h.Commands.Lookup("fix-pr") != nil {
+		t.Error("the plugin command did not load as /pr")
+	}
+	agents := map[string]bool{}
+	for _, d := range h.agentDefs() {
+		agents[d.Name] = true
+	}
+	if !agents["x"] || !agents["other-x"] {
+		t.Errorf("agents: %v", agents)
+	}
+	var b strings.Builder
+	h.attachSkill(&b, "fix-x")
+	if !strings.Contains(b.String(), "with +fix-x (x from the fix plugin) in the message above") {
+		t.Errorf("renamed attach note: %s", b.String())
+	}
+	b.Reset()
+	h.attachSkill(&b, "solo")
+	if !strings.Contains(b.String(), "with +solo in the message above") || strings.Contains(b.String(), "from the") {
+		t.Errorf("bare attach note: %s", b.String())
+	}
+}
+
 // TestPluginSettings: a plugin's zemi.config.add keys layer like the builtin
 // ones (default < saved pick < init.lua < this run) across restarts and
 // reloads, leave with their plugin without breaking init.lua's lines for

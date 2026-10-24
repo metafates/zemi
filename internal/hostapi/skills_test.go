@@ -428,8 +428,8 @@ func TestDescriptionCutWarnsOnly(t *testing.T) {
 }
 
 // TestClaudeCommandSkillClash: a plugin shipping skills/x/ and commands/x.md
-// keeps the skills/ row and warns; the /skills row no longer flips to the
-// command's path.
+// loads both: the skills row keeps the bare name and the command row falls
+// back to the prefixed one.
 func TestClaudeCommandSkillClash(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostSkills(t)
@@ -444,12 +444,15 @@ func TestClaudeCommandSkillClash(t *testing.T) {
 	}
 	h.pluginGrant.Store(&pluginGrant{roots: []string{root}, uses: map[string][]string{}, claude: set.Of(root)})
 	h.syncSkills()
-	s, ok := h.skillsReg.get("clashy-x")
+	s, ok := h.skillsReg.get("x")
 	if !ok || s.Dir != filepath.Join(root, "skills", "x") {
 		t.Fatalf("skills row: %+v", s)
 	}
-	if !slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "commands"+string(filepath.Separator)+"x.md") }) {
-		t.Fatalf("no clash warning: %+v", h.errs.entries)
+	if c, ok := h.skillsReg.get("clashy-x"); !ok || c.File != cmd {
+		t.Fatalf("command row: %+v", c)
+	}
+	if slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "commands"+string(filepath.Separator)+"x.md") }) {
+		t.Fatalf("recorded %+v", h.errs.entries)
 	}
 }
 

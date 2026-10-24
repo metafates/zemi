@@ -66,6 +66,7 @@ local TIPS = {
 	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
 	{ "/review", "fill /review", " has several agents review your changes" },
 	{ "alt+m", nil, " jumps to an earlier message" },
+	{ "+", "fill +", " attaches a skill to the prompt" },
 }
 local TIP = TIPS[math.floor(os.time() / 3600) % #TIPS + 1]
 

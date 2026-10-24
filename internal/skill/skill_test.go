@@ -111,7 +111,8 @@ func TestParseInvocation(t *testing.T) {
 // published skills are written for longer limits than zemi's index.
 // The two relaxations: frontmatter name and description are optional, the
 // directory and the body's first line stand in; a present-but-mismatched
-// name stays an error, and a Dir prefix joins every discovered name.
+// name stays an error, and a Dir prefix is the fallback name for a bare one
+// another skill already holds.
 func TestParseRelaxationsAndPrefix(t *testing.T) {
 	loose := filepath.Join(t.TempDir(), "loose")
 	writeFile(t, filepath.Join(loose, "SKILL.md"), "---\nuser-invocable: false\n---\n\nFirst line is the trigger.\n\nBody.\n")
@@ -127,8 +128,14 @@ func TestParseRelaxationsAndPrefix(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "greet", "SKILL.md"), "---\nname: greet\ndescription: say hi\n---\nbody")
 	got, warns := Discover(Dir{Path: base, Source: Plugin, Prefix: "fix-", Root: "/r", Data: "/d"})
-	if len(got) != 1 || got[0].Name != "fix-greet" || got[0].Root != "/r" || len(warns) != 0 {
-		t.Fatalf("prefixed: %+v %q", got, warns)
+	if len(got) != 1 || got[0].Name != "greet" || got[0].Root != "/r" || len(warns) != 0 {
+		t.Fatalf("bare: %+v %q", got, warns)
+	}
+	taken := t.TempDir()
+	writeFile(t, filepath.Join(taken, "greet", "SKILL.md"), "---\nname: greet\ndescription: taken\n---\nbody")
+	got, warns = Discover(Dir{Path: taken, Source: User}, Dir{Path: base, Source: Plugin, Prefix: "fix-", Root: "/r", Data: "/d"})
+	if len(got) != 2 || got[0].Name != "greet" || got[1].Name != "fix-greet" || len(warns) != 0 {
+		t.Fatalf("fallback: %+v %q", got, warns)
 	}
 }
 

@@ -305,7 +305,7 @@ func TestSessionStartCapture(t *testing.T) {
 }
 
 // TestClaudePluginLayers: a Claude plugin's skills, commands and agents load
-// under the plugin prefix, the commands as model-invocable skill rows beside
+// under their bare names, the commands as model-invocable skill rows beside
 // their /command, the agent's Claude tool names aliased and its unknown
 // model dropped, and the bodies carry the plugin root.
 func TestClaudePluginLayers(t *testing.T) {
@@ -319,25 +319,25 @@ func TestClaudePluginLayers(t *testing.T) {
 	for _, s := range h.skillsReg.list() {
 		skills[s.Name] = s
 	}
-	greet := skills["fix-greet"]
+	greet := skills["greet"]
 	if greet.Name == "" || greet.Description != "Greet the user warmly." || greet.Root != root || greet.UserInvocable {
-		t.Fatalf("fix-greet: %+v", greet)
+		t.Fatalf("greet: %+v", greet)
 	}
-	pr := skills["fix-pr"]
+	pr := skills["pr"]
 	if pr.Name == "" || pr.UserInvocable || pr.File == "" || pr.Description != "Draft a PR description" {
-		t.Fatalf("fix-pr: %+v", pr)
+		t.Fatalf("pr: %+v", pr)
 	}
-	if c := h.Commands.Lookup("fix-pr"); c == nil || c.Path != skillFile(pr) {
-		t.Fatalf("the /fix-pr command: %+v", c)
+	if c := h.Commands.Lookup("pr"); c == nil || c.Path != skillFile(pr) {
+		t.Fatalf("the /pr command: %+v", c)
 	}
 	var reviewer AgentDef
 	for _, d := range h.agentDefs() {
-		if d.Name == "fix-reviewer" {
+		if d.Name == "reviewer" {
 			reviewer = d
 		}
 	}
 	if reviewer.Name == "" || !slices.Equal(reviewer.Tools, []string{"shell", "read"}) || reviewer.Model != "" {
-		t.Fatalf("fix-reviewer: %+v", reviewer)
+		t.Fatalf("reviewer: %+v", reviewer)
 	}
 	if !strings.Contains(reviewer.System, root) {
 		t.Fatal("the agent body did not get the plugin root")
@@ -475,7 +475,7 @@ func TestClaudeCommandBodySubstitution(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	if err := h.RunCommand(t.Context(), "fix-pr", ""); err != nil {
+	if err := h.RunCommand(t.Context(), "pr", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
