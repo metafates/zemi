@@ -53,7 +53,13 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		return v, true
 	}
 	if path := h.planPath(h.AgentSessionID()); path != "" {
-		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
+		err := os.MkdirAll(filepath.Dir(path), 0o700)
+		if err == nil {
+			err = os.WriteFile(path, []byte(plan+"\n"), 0o600)
+		}
+		if err != nil {
+			h.Log.Warn("plan not saved", "origin", "plan", "error", err)
+		} else {
 			v.Path = path
 		}
 	}
