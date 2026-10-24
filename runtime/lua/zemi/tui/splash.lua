@@ -51,7 +51,7 @@ local function flow(segs, room, indent)
 			end
 			local row = rows[#rows]
 			row[#row + 1] = { text = seg, hl = s.hl, click = s.click }
-			w = w + zemi.ui.width(word)
+			w = w + zemi.ui.width(seg)
 		end
 	end
 	return rows
