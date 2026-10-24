@@ -297,12 +297,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if c.empty() && a.restoreQueue() {
 			return nil
 		}
-		if !c.up() {
+		if !a.composerMove(-1) {
 			a.seedHistory()
 			c.histPrev()
 		}
 	case "down":
-		if !c.down() {
+		if !a.composerMove(1) {
 			c.histNext()
 		}
 	case "ctrl+d", "ctrl+u":

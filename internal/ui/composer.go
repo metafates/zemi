@@ -177,31 +177,32 @@ func (c *composerState) lineSpan() (int, int) {
 	return start, end
 }
 
-// up moves the cursor one line up, keeping the column; reports whether it
-// moved.
-func (c *composerState) up() bool {
-	start, _ := c.lineSpan()
-	if start == 0 {
-		return false
+// rowStarts maps each visual row to the rune index it starts at: the rows
+// are contiguous except across a hard break, which skips its '\n'.
+func rowStarts(rows [][]rune, soft []bool) []int {
+	out := make([]int, len(rows))
+	at := 0
+	for i, r := range rows {
+		out[i] = at
+		at += len(r)
+		if !soft[i] {
+			at++
+		}
 	}
-	col := c.cursor - start
-	c.cursor = start - 1
-	prevStart, _ := c.lineSpan()
-	c.cursor = min(prevStart+col, start-1)
-	return true
+	return out
 }
 
-// down moves the cursor one line down, keeping the column; reports whether
-// it moved.
-func (c *composerState) down() bool {
-	start, end := c.lineSpan()
-	if end == len(c.runes()) {
+// composerMove moves the cursor one visual row up (-1) or down (1),
+// keeping the column; false on the first or last row, where up and down
+// recall history instead.
+func (a *App) composerMove(delta int) bool {
+	glyph, _, _ := a.draftMode()
+	row, col, rows, soft := a.wrapComposer(draftWrap(a.composerW, glyph))
+	to := row + delta
+	if to < 0 || to >= len(rows) {
 		return false
 	}
-	col := c.cursor - start
-	c.cursor = end + 1
-	_, nextEnd := c.lineSpan()
-	c.cursor = min(end+1+col, nextEnd)
+	a.composer.cursor = rowStarts(rows, soft)[to] + min(col, len(rows[to]))
 	return true
 }
 
@@ -369,6 +370,15 @@ func (c *composerState) histNext() {
 
 const composerMaxRows = 8
 
+// draftWrap is the cells a draft row wraps at on w: one kept free for the
+// cursor mark, two more where a shell or slash glyph opens the gutter.
+func draftWrap(w int, glyph string) int {
+	if glyph != "" {
+		return w - 3
+	}
+	return w - 1
+}
+
 // composerRows renders the composer as visual rows wrapped to width w: at
 // most composerMaxRows rows, scrolled to keep the cursor row in view with a
 // row of headroom below it, the rows past either edge fading toward the
@@ -378,12 +388,8 @@ const composerMaxRows = 8
 // replaces it without moving a cell.
 func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	glyph, promptHL, _ := a.draftMode()
-	// one cell stays free for the cursor mark at the end of a full row, and a
-	// shell or slash draft keeps the two its glyph and gutter take
-	wrap := w - 1
-	if glyph != "" {
-		wrap = w - 3
-	}
+	wrap := draftWrap(w, glyph)
+	a.composerW = w
 	cursorRow, cursorCol, rows, soft := a.wrapComposer(wrap)
 	start := max(0, cursorRow-composerMaxRows+1)
 	if cursorRow < len(rows)-1 {

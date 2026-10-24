@@ -61,6 +61,10 @@ type App struct {
 
 	composer composerState
 
+	// composerW is the width the composer last drew its rows at, so the up
+	// and down moves wrap at what the user sees; 0 before the first frame.
+	composerW int
+
 	histLoaded bool // the stored messages already seeded the composer history
 
 	// Scrolled regions by layout node id (DESIGN §8 scrollback); scrollDef

@@ -89,26 +89,38 @@ func TestComposerUndo(t *testing.T) {
 	}
 }
 
-func TestComposerLineMoves(t *testing.T) {
-	c := &composerState{}
-	c.insert("one\ntwoth\nthree")
-	c.cursor = 5 // "o" of "twoth"
-	if !c.up() || c.cursor != 1 {
-		t.Fatalf("up: cursor=%d, want 1", c.cursor)
-	}
-	if c.up() {
-		t.Fatalf("up from first line moved")
-	}
-	c.cursor = 5
-	if !c.down() || c.cursor != 11 { // col 1 lands after 't' of "three"
-		t.Fatalf("down: cursor=%d, want 11", c.cursor)
-	}
-	// A shorter line below keeps the column when possible.
-	c2 := &composerState{}
-	c2.insert("abcdef\nx\nlonger")
-	c2.cursor = 3
-	if !c2.down() || c2.cursor != 8 {
-		t.Fatalf("down to short line: cursor=%d, want 8", c2.cursor)
+// TestComposerRowMoves: up and down move by the visual row the composer
+// draws, so a wrapped line walks its own rows and history only recalls off
+// the drawn first or last row.
+func TestComposerRowMoves(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composer.pushHistory("recalled")
+	const nine = "aaaaaaaaa"
+	wrapped := nine + nine + "aaaaaa" // draws three rows at rune offsets 0, 9, 18
+	for _, c := range []struct {
+		name, text, key, want string
+		cursor, wantCur       int
+	}{
+		{"up within a wrapped line", wrapped, "up", wrapped, 12, 3},
+		{"down within a wrapped line", wrapped, "down", wrapped, 10, 19},
+		{"up from the first row recalls", wrapped, "up", "recalled", 2, 8},
+		{"down from the last row stays", wrapped, "down", wrapped, 20, 20},
+		{"up over a hard break", "ab\ncd", "up", "ab\ncd", 4, 1},
+		{"down over a hard break", "ab\ncd", "down", "ab\ncd", 1, 4},
+		{"down from a row's end", "ab\ncd", "down", "ab\ncd", 2, 5},
+		{"down clamps to the row below", "abcdefghij\nx", "down", "abcdefghij\nx", 5, 10},
+		{"up clamps to the row above", "abcdefghij\nx", "up", "abcdefghij\nx", 10, 1},
+		{"a shell draft wraps two cells short", "!" + nine + nine, "up", "!" + nine + nine, 11, 4},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app.composerRows(10, "")
+			app.composer.text, app.composer.cursor = c.text, c.cursor
+			app.composer.histIdx = len(app.composer.history) // each case starts at the draft
+			app.composerKey(c.key, tea.KeyPressMsg{})
+			if app.composer.text != c.want || app.composer.cursor != c.wantCur {
+				t.Fatalf("text=%q cursor=%d, want %q %d", app.composer.text, app.composer.cursor, c.want, c.wantCur)
+			}
+		})
 	}
 }
 
