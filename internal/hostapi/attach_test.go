@@ -20,8 +20,9 @@ import (
 )
 
 // TestPlusSkillAttachment: a +name token in the message attaches the skill
-// behind the marker, $ARGUMENTS filled from the message after the token;
-// a name nothing offers stays as typed, byte for byte.
+// behind the marker, body as written - the model binds the request from the
+// typed message; a repeated mention attaches once and a name nothing offers
+// stays as typed, byte for byte.
 func TestPlusSkillAttachment(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostSkills(t)
@@ -36,17 +37,18 @@ func TestPlusSkillAttachment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("review-pr", "name: review-pr\ndescription: review a PR\n", "Review PR $ARGUMENTS.")
-	write("typst", "name: typst\ndescription: typeset\n", "Typeset the document.")
+	write("humanize", "name: humanize\ndescription: make it human\n", "Rewrite $ARGUMENTS in a human voice.")
 	write("big", "name: big\ndescription: huge\n", strings.Repeat("step\n", tools.SkillMaxOut/4))
 	h.syncSkills()
 	if err := h.setSkillEnabled("lint", false); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "notes.md"), []byte("project notes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, c := range []struct{ name, text, want string }{
-		{"filled", "+review-pr 12", "Review PR 12."},
-		{"two skills", "+review-pr 12 then +lint the tree", "Review PR 12 then +lint the tree."},
+		{"body as written", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
 		{"a disabled skill attaches", "+lint go", "Body."},
 		{"a big skill is cut", "+big", "Read the cut lines with the read tool"},
 	} {
@@ -56,12 +58,18 @@ func TestPlusSkillAttachment(t *testing.T) {
 			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
 		}
 	}
-	if n := strings.Count(mustAttached(t, h, "+review-pr 12 then +lint the tree"), "<skill>"); n != 2 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill>"); n != 2 {
 		t.Errorf("two skills attached %d elements", n)
 	}
 	// a repeated mention attaches once, like a repeated @file
-	if n := strings.Count(mustAttached(t, h, "+typst a +typst b"), "<skill>"); n != 1 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill>"); n != 1 {
 		t.Errorf("a repeated skill attached %d elements", n)
+	}
+	// the typed message carries the request: the body's $ARGUMENTS stays
+	// literal and the file beside the mention attaches once
+	got := mustAttached(t, h, "+humanize this @notes.md")
+	if n := strings.Count(got, "<file path="); n != 1 || !strings.Contains(got, "Rewrite $ARGUMENTS") || !strings.Contains(got, "project notes") {
+		t.Errorf("mention with a file attached %d files: %q", n, got)
 	}
 	// a token the regex takes but no skill answers is prose, whole
 	for _, text := range []string{"diff:\n+fmt.Println(x)", "+5 tasks", "C++", "a+b", "unknown +nosuch here"} {

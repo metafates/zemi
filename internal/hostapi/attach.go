@@ -76,22 +76,22 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
-	for _, m := range attachRef.FindAllStringSubmatchIndex(typed, -1) {
-		if m[4] >= 0 { // a +skill attaches once, like a repeated @file; a name
-			// and an abs path cannot collide (ValidName allows no /)
-			if !seen.Has(typed[m[4]:m[5]]) {
-				seen.Add(typed[m[4]:m[5]])
-				h.attachSkill(&b, typed[m[4]:m[5]], typed[m[5]:])
+	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
+		if m[2] != "" { // a +skill attaches once, like a repeated @file; a
+			// name and an abs path cannot collide (ValidName allows no /)
+			if !seen.Has(m[2]) {
+				seen.Add(m[2])
+				h.attachSkill(&b, m[2])
 			}
 			continue
 		}
 		// a chip names a file zemi itself copied, or one of the project's: the
 		// copy wins, since a name saveDrop handed out is not the project's
-		chip, name := m[6] >= 0, ""
+		chip, name := m[3] != "", ""
 		if chip {
-			name = typed[m[8]:m[9]]
+			name = m[4]
 		} else {
-			name = strings.TrimRight(typed[m[2]:m[3]], ".,;:!?)")
+			name = strings.TrimRight(m[1], ".,;:!?)")
 		}
 		var path perm.Path
 		drop := false
