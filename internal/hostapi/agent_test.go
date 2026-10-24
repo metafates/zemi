@@ -1055,6 +1055,39 @@ func TestTurnDoneDropsTheRetry(t *testing.T) {
 	}
 }
 
+// TestHeldErrorKeepsItsUsage: a send the provider refused (overflow, images,
+// the output cap) ends the send, not the turn - sendCompacting resends, and
+// the refused send's steps' usage banks for the send that finishes the turn
+// instead of dropping from the readout. Session billing stays per stream.
+func TestHeldErrorKeepsItsUsage(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sa := h.streamHooks()
+	sa.TextDelta("half the work")
+	h.agents.mu.Lock()
+	h.agents.holdOverflow = true // sendCompacting armed the overflow resend
+	h.agents.mu.Unlock()
+	sa.TurnDone(&fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true},
+		fantasy.Usage{InputTokens: 100, OutputTokens: 20})
+	if u := h.agents.cutUsage; u.InputTokens != 100 || u.OutputTokens != 20 {
+		t.Fatalf("banked usage = %+v, want the refused send's", u)
+	}
+	sa.TextDelta("and the rest")
+	sa.TurnDone(nil, fantasy.Usage{}) // the resend finishes the turn
+	h.evlog.mu.Lock()
+	var finish map[string]any
+	for _, e := range h.evlog.entries {
+		if e.name == EventAgentFinish {
+			finish = e.payload
+		}
+	}
+	h.evlog.mu.Unlock()
+	u, _ := finish["usage"].(map[string]any)
+	if u["in"] != int64(100) || u["out"] != int64(20) {
+		t.Fatalf("agent.finish usage = %v, want the refused send's tokens carried", u)
+	}
+}
+
 // TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
 // them share one clock, so a zemi on a clock behind the wall one (a plugin
 // test's) counts no negative elapsed.

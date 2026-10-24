@@ -226,10 +226,10 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// still ran, so their usage and rows are kept
 	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
-	// a Full cut ends the send, not the turn: sendCompacting compacts and
-	// sends again, so the finish, the notification and the title wait, and
-	// the cut steps' usage joins the final payload
-	if err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
+	// a Full cut or a held error ends the send, not the turn: sendCompacting
+	// compacts and sends again, so the finish, the notification and the title
+	// wait, and the sent steps' usage joins the final payload
+	if hold || err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
 		ag.cutUsage = addUsage(ag.cutUsage, usage)
 		hold = true
 	} else {
