@@ -175,6 +175,19 @@ func waitDone(t *testing.T, h *recHooks) {
 	}
 }
 
+// TestBareRunnerSends: a runner nobody gave hooks still turns - Send
+// substitutes a no-op, so no hook call guards for nil.
+func TestBareRunnerSends(t *testing.T) {
+	m := &mockModel{steps: [][]fantasy.StreamPart{callStep("{}"), textParts("done")}}
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	if err := r.Send(t.Context(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.History) != 4 { // user, the call, its result, the reply
+		t.Fatalf("history: %d", len(r.History))
+	}
+}
+
 func TestTurnStreamsAndPersists(t *testing.T) {
 	m := &mockModel{parts: textParts("hel", "lo "+"world")}
 	hooks := newRecHooks()

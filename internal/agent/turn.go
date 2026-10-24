@@ -49,6 +49,34 @@ type StreamHooks interface {
 	TurnDone(err error, usage fantasy.Usage)
 }
 
+// noopHooks stands in for a runner nobody gave hooks, so a bare runner
+// turns and no hook call site guards for nil.
+type noopHooks struct{}
+
+func (noopHooks) TextDelta(string)                                                    {}
+func (noopHooks) ReasoningDelta(string)                                               {}
+func (noopHooks) ToolCallPending(string, string)                                      {}
+func (noopHooks) ToolInputDelta(string, string)                                       {}
+func (noopHooks) ToolCallStart(string, string, string)                                {}
+func (noopHooks) ToolCallRunning(string)                                              {}
+func (noopHooks) ToolCallEnd(string, string, fantasy.ToolResultOutputContent, string) {}
+func (noopHooks) StepStart()                                                          {}
+func (noopHooks) StreamDone(fantasy.Usage)                                            {}
+func (noopHooks) StepDone(Step)                                                       {}
+func (noopHooks) Retrying(error, time.Duration)                                       {}
+func (noopHooks) TurnDone(error, fantasy.Usage)                                       {}
+
+// hooks is the runner's stream hooks, a no-op when none were set; the
+// runners in production take theirs before the first Send.
+func (r *Runner) hooks() StreamHooks {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.Hooks == nil {
+		return noopHooks{}
+	}
+	return r.Hooks
+}
+
 // Step is one finished model call of a turn.
 type Step struct {
 	N     int // 1-based within the send
@@ -214,12 +242,7 @@ func (t runningTool) ProviderOptions() fantasy.ProviderOptions {
 }
 
 func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-	t.r.mu.Lock()
-	hooks := t.r.Hooks
-	t.r.mu.Unlock()
-	if hooks != nil {
-		hooks.ToolCallRunning(call.ID)
-	}
+	t.r.hooks().ToolCallRunning(call.ID)
 	return t.AgentTool.Run(ctx, call)
 }
 
@@ -276,10 +299,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.active, r.cut, r.live = true, false, nil
 	tctx, cancel := context.WithCancel(tools.CallScope(ctx))
 	r.cancel = cancel
-	hooks := r.Hooks
-	persist := r.Persist
-	full := r.Full
+	persist, full := r.Persist, r.Full
 	r.mu.Unlock()
+	hooks := r.hooks()
 	defer func() {
 		r.mu.Lock()
 		r.active = false
