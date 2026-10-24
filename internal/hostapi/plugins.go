@@ -249,10 +249,10 @@ func (h *Host) layerPrefix(root, sub string) string {
 }
 
 // claudeCommandSkills turns a Claude plugin's commands/*.md into
-// model-invocable, not-user-invocable skill rows named <prefix><stem>:
-// Claude loads commands and skills as one thing, zemi's /command stays
-// mdcommands'. A name that would break skill.ValidName is skipped, warned
-// by the command load.
+// model-invocable skill rows named <prefix><stem> (invoked with +name like
+// every skill): Claude loads commands and skills as one thing, zemi's
+// /command stays mdcommands'. A name that would break skill.ValidName is
+// skipped, warned by the command load.
 func (h *Host) claudeCommandSkills(root, prefix, data string) []skill.Skill {
 	entries, err := os.ReadDir(filepath.Join(root, "commands"))
 	if err != nil {
