@@ -224,9 +224,8 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	return out
 }
 
-// SkillMentions lists every skill for the + popup: name and description
-// with the argument hint, disabled ones included, since naming one is the
-// request.
+// SkillMentions lists every skill for the + popup: name and description,
+// disabled ones included, since naming one is the request.
 func (h *Host) SkillMentions() []CompletionItem {
 	out := make([]CompletionItem, 0, 8)
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
@@ -235,7 +234,7 @@ func (h *Host) SkillMentions() []CompletionItem {
 			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
 			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
 		}
-		out = append(out, CompletionItem{Text: s.Name, Desc: strings.TrimSpace(listDesc(desc) + " " + s.ArgumentHint)})
+		out = append(out, CompletionItem{Text: s.Name, Desc: listDesc(desc)})
 	}
 	return out
 }

@@ -8,6 +8,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -15,7 +16,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/skill"
 )
 
 var positionalArg = regexp.MustCompile(`\$([1-9])`)
@@ -31,6 +31,21 @@ func expandPromptArgs(body, args string) string {
 		}
 		return ""
 	})
+}
+
+// hint is argument-hint, which Claude Code's docs write as a flow list
+// (`[pr-number]`): any shape is its text, so a cosmetic key never drops a file.
+type hint string
+
+func (h *hint) UnmarshalYAML(unmarshal func(any) error) error {
+	var v any
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	if v != nil {
+		*h = hint(fmt.Sprint(v))
+	}
+	return nil
 }
 
 // MarkdownCommandsStep registers the markdown commands. It runs after the
@@ -58,9 +73,9 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			return false
 		}
 		var fm struct {
-			Description  string     `yaml:"description"`
-			ArgumentHint skill.Hint `yaml:"argument-hint"`
-			Arguments    any        `yaml:"arguments"`
+			Description  string `yaml:"description"`
+			ArgumentHint hint   `yaml:"argument-hint"`
+			Arguments    any    `yaml:"arguments"`
 		}
 		if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 			warn("frontmatter: " + err.Error())

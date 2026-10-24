@@ -67,7 +67,6 @@ type Skill struct {
 	// UserInvocable is the frontmatter's user-invocable key, kept as parsed
 	// metadata: a skill is invoked with +name, never a command of its own.
 	UserInvocable bool
-	ArgumentHint  string
 }
 
 // maxNameLen caps a name: a skill's directory, a workflow file, a
@@ -108,11 +107,8 @@ func Parse(dir string, source Source, prefix string) (Skill, error) {
 	if fm.Name != "" && fm.Name != base {
 		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", base, fm.Name)
 	}
-	if source != Recipe { // a recipe is the model's own procedure
-		sk.ArgumentHint = string(fm.ArgumentHint)
-		if fm.UserInvocable != nil {
-			sk.UserInvocable = *fm.UserInvocable
-		}
+	if source != Recipe && fm.UserInvocable != nil { // a recipe is the model's own procedure
+		sk.UserInvocable = *fm.UserInvocable
 	}
 	desc := fm.Description
 	if strings.TrimSpace(desc) == "" { // Claude's fallback: the body speaks first
@@ -167,22 +163,6 @@ type front struct {
 	Name          string `yaml:"name"`
 	Description   string `yaml:"description"`
 	UserInvocable *bool  `yaml:"user-invocable"`
-	ArgumentHint  Hint   `yaml:"argument-hint"`
-}
-
-// Hint is argument-hint, which Claude Code's docs write as a flow list
-// (`[pr-number]`): any shape is its text, so a cosmetic key never drops a file.
-type Hint string
-
-func (h *Hint) UnmarshalYAML(unmarshal func(any) error) error {
-	var v any
-	if err := unmarshal(&v); err != nil {
-		return err
-	}
-	if v != nil {
-		*h = Hint(fmt.Sprint(v))
-	}
-	return nil
 }
 
 func frontmatter(data []byte) (front, error) {

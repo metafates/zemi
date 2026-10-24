@@ -69,7 +69,7 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 }
 
 // TestSkillMentions: the + popup's rows come from every skill, disabled ones
-// included and the argument hint riding the description, plus the project's.
+// included and described by the description alone, plus the project's.
 func TestSkillMentions(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostSkills(t)
@@ -94,7 +94,7 @@ func TestSkillMentions(t *testing.T) {
 	}
 	for _, c := range []CompletionItem{
 		{Text: "local-run", Desc: "run the local suite"}, // disabled skills stay reachable
-		{Text: "review-pr", Desc: "review a PR <pr number>"},
+		{Text: "review-pr", Desc: "review a PR"},         // an argument-hint changes nothing
 		{Text: "lint", Desc: "project lint"},
 	} {
 		if got[c.Text] != c {

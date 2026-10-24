@@ -81,29 +81,26 @@ func TestParseInvocation(t *testing.T) {
 		name, extra string
 		source      Source
 		user        bool
-		hint        string
 		wantErr     bool
 	}{
 		{name: "plain", source: User},
 		{name: "user-invocable", extra: "user-invocable: true", source: User, user: true},
 		{name: "no command unless asked", extra: "user-invocable: false", source: User},
-		// Claude's key for a user-only skill is ignored: the model loads
+		// Claude's keys for a user-only skill are ignored: the model loads
 		// every skill, and it asks for a command on its own
-		{name: "the model-invocation key is ignored", extra: "disable-model-invocation: true", source: User},
-		{name: "hint", extra: "argument-hint: <pr>", source: Plugin, hint: "<pr>"},
-		{name: "hint as a flow list", extra: "argument-hint: [pr-number]", source: User, hint: "[pr-number]"},
-		{name: "a recipe takes neither", extra: "user-invocable: true\nargument-hint: <x>", source: Recipe},
+		{name: "the model-invocation keys are ignored", extra: "disable-model-invocation: true\nargument-hint: [pr]", source: User},
+		{name: "a recipe takes no user-invocable", extra: "user-invocable: true", source: Recipe},
 		{name: "quoted bool", extra: `user-invocable: "true"`, source: User, wantErr: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "x")
-			writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+c.extra+"\n---\nBody $ARGUMENTS.\n")
+			writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+c.extra+"\n---\nBody.\n")
 			sk, err := Parse(dir, c.source, "")
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err=%v", err)
 			}
-			if err == nil && (sk.UserInvocable != c.user || sk.ArgumentHint != c.hint) {
+			if err == nil && sk.UserInvocable != c.user {
 				t.Fatalf("got %+v", sk)
 			}
 		})
