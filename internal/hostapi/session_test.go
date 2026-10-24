@@ -691,36 +691,39 @@ func TestForkKeepsTodos(t *testing.T) {
 // the model, both live and after a resume.
 func TestPlanRowOutput(t *testing.T) {
 	t.Parallel()
-	const raw = "The user approved the plan. " + tools.ImplementPlan + "\nThe plan is saved at /p/s1.md."
-	const want = "approved, saved to /p/s1.md"
-	for name, got := range map[string]func() string{
-		"live": func() string {
-			h, _ := newTestHostDB(t)
-			hk := h.streamHooks()
-			hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
-			hk.ToolCallEnd("c1", tools.ToolPlan, out(raw), "")
-			hk.TurnDone(nil, fantasy.Usage{})
-			tr := h.Session().Transcript
-			return tr[len(tr)-1].Output
-		},
-		"resume": func() string {
-			var rows []*store.Message
-			for _, m := range []fantasy.Message{
-				{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: tools.ToolPlan, Input: `{"plan":"x"}`}}},
-				{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: raw}}}},
-			} {
-				parts, err := json.Marshal(m, json.Deterministic(true))
-				if err != nil {
-					t.Fatal(err)
-				}
-				rows = append(rows, &store.Message{Role: string(m.Role), PartsJSON: string(parts)})
-			}
-			_, tr := historyFrom(rows)
-			return tr[len(tr)-1].Output
-		},
+	for _, c := range []struct{ name, raw, want string }{
+		{"approved", "The user approved the plan. " + tools.ImplementPlan + "\nThe plan is saved at /p/s1.md.", "approved, saved to /p/s1.md"},
+		{"held", "The user approved the plan; the user has not asked for it yet, so do not start implementing: stop here and wait for them to say when.\nThe plan is saved at /p/s1.md.", "approved (held), saved to /p/s1.md"},
 	} {
-		if g := got(); g != want {
-			t.Errorf("%s: output %q, want %q", name, g, want)
+		for name, got := range map[string]func(string) string{
+			"live": func(raw string) string {
+				h, _ := newTestHostDB(t)
+				hk := h.streamHooks()
+				hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
+				hk.ToolCallEnd("c1", tools.ToolPlan, out(raw), "")
+				hk.TurnDone(nil, fantasy.Usage{})
+				tr := h.Session().Transcript
+				return tr[len(tr)-1].Output
+			},
+			"resume": func(raw string) string {
+				var rows []*store.Message
+				for _, m := range []fantasy.Message{
+					{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: tools.ToolPlan, Input: `{"plan":"x"}`}}},
+					{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: raw}}}},
+				} {
+					parts, err := json.Marshal(m, json.Deterministic(true))
+					if err != nil {
+						t.Fatal(err)
+					}
+					rows = append(rows, &store.Message{Role: string(m.Role), PartsJSON: string(parts)})
+				}
+				_, tr := historyFrom(rows)
+				return tr[len(tr)-1].Output
+			},
+		} {
+			if g := got(c.raw); g != c.want {
+				t.Errorf("%s %s: output %q, want %q", name, c.name, g, c.want)
+			}
 		}
 	}
 }

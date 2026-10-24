@@ -146,6 +146,7 @@ const ImplementPlan = "Implement it; track its steps with todos if it has severa
 // The plan results PlanOutcome reads back.
 const (
 	planApproved = "The user approved the plan"
+	planHeld     = "The user approved the plan; the user has not asked for it yet"
 	planChanges  = "The user has not approved the plan and asked for changes: "
 	planRevise   = "\nRevise the plan"
 	planSaved    = "\nThe plan is saved at "
@@ -159,11 +160,16 @@ func PlanOutcome(output string) (verdict, path string) {
 		feedback, _, _ = strings.Cut(feedback, planRevise)
 		return "changes requested: " + feedback, ""
 	}
-	if !strings.HasPrefix(output, planApproved) {
+	switch {
+	case strings.HasPrefix(output, planHeld): // before planApproved, its prefix
+		verdict = "approved (held)"
+	case strings.HasPrefix(output, planApproved):
+		verdict = "approved"
+	default:
 		return output, ""
 	}
 	_, path, _ = strings.Cut(output, planSaved)
-	return "approved", strings.TrimSuffix(path, ".")
+	return verdict, strings.TrimSuffix(path, ".")
 }
 
 // planArgs is the plan tool's input and its schema source.
@@ -190,7 +196,7 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 		p.outcome(ctx, Outcome{Stopped: true})
 		return stopTurn(userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Hold:
-		return endTurn(planApproved + "; the user has not asked for it yet, so do not start implementing: stop here and wait for them to say when." + saved), nil
+		return endTurn(planHeld + ", so do not start implementing: stop here and wait for them to say when." + saved), nil
 	case v.Approved:
 		return fantasy.NewTextResponse(planApproved + "." + implement), nil
 	}

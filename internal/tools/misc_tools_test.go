@@ -163,7 +163,7 @@ func TestPlanOutcome(t *testing.T) {
 		stop          bool
 	}{
 		{"approved and saved", PlanVerdict{Approved: true, Path: "/p.md"}, "approved", "/p.md", false},
-		{"approved and held", PlanVerdict{Approved: true, Hold: true, Path: "/p.md"}, "approved", "/p.md", true},
+		{"approved and held", PlanVerdict{Approved: true, Hold: true, Path: "/p.md"}, "approved (held)", "/p.md", true},
 		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", "", false},
 	} {
 		p, _ := testPipeline(t, false)
