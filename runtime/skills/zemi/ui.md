@@ -30,7 +30,7 @@ Rules for `render(ctx)`:
 - A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
 - Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long session this way, 30 ms a render at most).
 - Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`, each linking to one of them or naming a palette role, or the knot ramp's `Knot0`..`Knot31`, which take `{ shade = i / 31 }` and run through the theme's rule, accent and literal.
-- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `more:<idx>` what a fold row hides, `step:<idx>` its calls, `call:<idx>` a call's or a thought's own view, which `/call <idx>` opens by itself - the rail never expands one - `agent:<run id>` and `workflow:<run id>` a run's view, `job:<id>` a handed-off job's output). A click leaves the tail of the scrolled region its widget draws in, so the rows it redraws (a digest opening over its rail) grow under the reader's place instead of scrolling it away; `zemi.ui.scroll.bottom` brings the tail back.
+- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `more:<idx>` what a fold row hides, `step:<idx>` its calls, `call:<idx>` a call's or a thought's own view, which `/call <idx>` opens by itself - the rail never expands one - `agent:<run id>` and `workflow:<run id>` a run's view, `job:<id>` a handed-off job's output, `moreq:<idx>` the `… N earlier` row's reveal). A click leaves the tail of the scrolled region its widget draws in, so the rows it redraws (a digest opening over its rail) grow under the reader's place instead of scrolling it away; `zemi.ui.scroll.bottom` brings the tail back.
 
 ```lua
 -- a tip of your own in place of the default splash's
@@ -44,7 +44,7 @@ zemi.ui.widget.add({
 		if not text.empty_chat(ctx) then return {} end
 		local rows = default.splash(ctx)
 		for i, row in ipairs(rows) do
-			if row[2] and row[2].text == "● Tip  " then
+			if row[1] and row[1].text == "● Tip  " then
 				rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
 				-- a default tip that wraps goes on in the next row: blank it, keeping the row
 				if rows[i + 1] and rows[i + 1][2] then rows[i + 1] = { { text = "" } } end

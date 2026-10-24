@@ -38,6 +38,7 @@ local function flow(segs, room, indent)
 	local w = indent
 	for _, s in ipairs(segs) do
 		for word in s.text:gmatch("%s*%S+%s*") do
+			local seg = word
 			if w > indent and w + zemi.ui.width((word:gsub("%s+$", ""))) > room then
 				if #rows == 2 then
 					local last = rows[2][#rows[2]]
@@ -46,10 +47,10 @@ local function flow(segs, room, indent)
 				end
 				rows[2] = { { text = string.rep(" ", indent), copy = false } }
 				w = indent
-				word = word:gsub("^%s+", "")
+				seg = seg:gsub("^%s+", "")
 			end
 			local row = rows[#rows]
-			row[#row + 1] = { text = word, hl = s.hl, click = s.click }
+			row[#row + 1] = { text = seg, hl = s.hl, click = s.click }
 			w = w + zemi.ui.width(word)
 		end
 	end

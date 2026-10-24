@@ -686,7 +686,8 @@ function M.click(ev)
 	elseif call then
 		assert(zemi.command.run("call", call))
 	elseif job then
-		assert(zemi.command.run("jobs", "view " .. job))
+		-- a restart sweeps handed-off jobs; a stale click does nothing
+		zemi.command.run("jobs", "view " .. job)
 	else
 		local kind, id = ev.id:match("^(%a+):(-?%d+)$")
 		if kind == "moreq" then
