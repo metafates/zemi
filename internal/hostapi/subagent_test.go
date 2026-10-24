@@ -864,6 +864,9 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 			case strings.Contains(last, "<agent-update "):
 				marks[1], saw = pinState(h), last
 				return textParts("read it")
+			case strings.Contains(last, "<agent-report "):
+				// the call woke on the update, so the run reports as a message
+				return textParts("noted")
 			}
 			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
 		}}, nil
@@ -1416,5 +1419,187 @@ func TestForegroundRunPanicAnswersTheCall(t *testing.T) {
 	})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "boom") {
 		t.Fatalf("a panicked run answered %q (error %v), want the panic as a tool error", resp.Content, err)
+	}
+}
+
+// TestWaitValidation: wait stands alone - it refuses stop, send_to, a prompt,
+// and a run of another session.
+func TestWaitValidation(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	other := &agentRun{id: "rOther", agent: "explore", parent: "another-session", status: RunRunning, cancel: func() {}}
+	if err := h.tasks.add(other); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"wait beside stop", `{"wait":"rOther","stop":true}`, "set one of wait or stop, not both"},
+		{"wait beside send_to", `{"wait":"rOther","send_to":"rOther"}`, "set one of wait or send_to, not both"},
+		{"wait with a prompt", `{"wait":"all","prompt":"hello"}`, "wait takes no prompt"},
+		{"another session's run", `{"wait":"rOther"}`, "belongs to another session"},
+		{"no such run", `{"wait":"nope"}`, "no agent run"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: c.input})
+			if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("%s = %q (error %v), want %q", c.name, resp.Content, err, c.want)
+			}
+		})
+	}
+}
+
+// finishedRows counts the report notices a run drew: its update notice names
+// it too, so the count is of the "finished" row alone.
+func finishedRows(h *Host, id string) int {
+	n := 0
+	for _, m := range h.Session().Transcript {
+		if m.Kind == RowNotice && strings.Contains(m.Text, " "+id+" ") && strings.Contains(m.Text, "finished") {
+			n++
+		}
+	}
+	return n
+}
+
+// TestWaitWakesOnUpdate: a wait on a running run returns when the run sends an
+// update, naming it, while the run goes on; the run's report still arrives as
+// a message when it ends.
+func TestWaitWakesOnUpdate(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	start := make(chan struct{})
+	hold := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				if !toolResult {
+					<-start // the child sends its update only once the wait holds
+					return toolCallParts("u1", "update", `{"text":"found the flake"}`)
+				}
+				<-hold // and ends only once the test saw the wait wake
+				return textParts("child done")
+			case strings.Contains(last, "<agent-update"), strings.Contains(last, "<agent-report"):
+				return textParts("noted")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	def, _ := h.agentDef("explore")
+	id, err := h.startBackgroundAgent(t.Context(), def, "dig", "look")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := h.tasks.find(id)
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "w", Input: `{"wait":"` + id + `"}`})
+		answers <- resp
+	}()
+	waitFor(t, func() error {
+		run.mu.Lock()
+		defer run.mu.Unlock()
+		if len(run.updates) == 0 {
+			return errors.New("the wait never registered")
+		}
+		return nil
+	})
+	close(start)
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, "sent an update") || !strings.Contains(resp.Content, id) {
+		t.Fatalf("the wait answered %q, want the update named", resp.Content)
+	}
+	if !run.isRunning() {
+		t.Fatal("the wait woke only at the run's end")
+	}
+	close(hold)
+	waitFor(t, func() error {
+		if run.isRunning() {
+			return errors.New("the run never ended")
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	if n := finishedRows(h, id); n != 1 {
+		t.Fatalf("%d report rows for %s, want 1", n, id)
+	}
+}
+
+// TestForegroundWakesOnUpdate: a foreground run's call returns when the run
+// sends an update, handing the run off like a message the user took; the
+// caller then waits on the run and its report arrives as a message.
+func TestForegroundWakesOnUpdate(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	sid := seedSession(t, h)
+	start := make(chan struct{})
+	hold := make(chan struct{})
+	var run *agentRun
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				if !toolResult {
+					<-start // the child sends its update only once the call waits
+					return toolCallParts("u1", "update", `{"text":"need a decision"}`)
+				}
+				<-hold // and ends only once the test saw the call wake
+				return textParts("child done")
+			case strings.Contains(last, "<agent-update"):
+				// the caller reads the update, then waits on the run it handed off
+				return toolCallParts("w1", "agent", fmt.Sprintf(`{"wait":%q}`, run.id))
+			case strings.Contains(last, "<agent-report"), strings.Contains(last, "its report arrives as a message"):
+				return textParts("noted")
+			}
+			return toolCallParts("c1", "agent", `{"description":"dig","prompt":"look","agent":"general"}`)
+		}}, nil
+	}
+	calls := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "c1", Input: `{"description":"dig","prompt":"look","agent":"general"}`})
+		calls <- resp
+	}()
+	waitFor(t, func() error {
+		runs := h.tasks.runsOf(sid)
+		if len(runs) != 1 {
+			return fmt.Errorf("%d runs started, want one", len(runs))
+		}
+		run = runs[0]
+		run.mu.Lock()
+		defer run.mu.Unlock()
+		if len(run.updates) == 0 {
+			return errors.New("the call never registered")
+		}
+		return nil
+	})
+	close(start)
+	resp := waitCall(t, calls)
+	if !strings.Contains(resp.Content, "sent an update") || !strings.Contains(resp.Content, "call agent with wait") {
+		t.Fatalf("the call answered %q, want the update and the wait advice", resp.Content)
+	}
+	if !run.isRunning() || !run.handedOff() {
+		t.Fatal("the run did not go on detached")
+	}
+	waitFor(t, func() error {
+		run.mu.Lock()
+		defer run.mu.Unlock()
+		if len(run.updates) == 0 {
+			return errors.New("the follow-up wait never registered")
+		}
+		return nil
+	})
+	close(hold)
+	waitIdle(t, h)
+	if n := finishedRows(h, run.id); n != 1 {
+		t.Fatalf("%d report rows for %s, want 1", n, run.id)
 	}
 }

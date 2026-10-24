@@ -130,19 +130,20 @@ type agentRun struct {
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
 	calls     int
-	tokens    int64          // billed input and output of its steps
-	cost      float64        // 0 when the model has no prices
-	tr        []ChatMessage  // the prompt, tool rows and replies so far
-	text      string         // reply text streamed since the last row
-	reason    string         // thinking streamed since the last row, drawn live until it settles
-	thinkAt   time.Time      // when the open reasoning block began, zero when none is
-	thought   time.Duration  // closed reasoning blocks since the last row
-	rows      map[string]int // tool call id -> tr index
-	rev       uint64         // bumped on every tr write (run.mu held): the chat caches the shown run's rows by it
-	queue     []string       // messages waiting for the next step boundary
-	closed    bool           // past its last step boundary: a message would be lost
-	dropped   int            // queued messages the run ended before reading
-	end       chan struct{}  // closed when the run's current attempt ends, fresh per attempt
+	tokens    int64           // billed input and output of its steps
+	cost      float64         // 0 when the model has no prices
+	tr        []ChatMessage   // the prompt, tool rows and replies so far
+	text      string          // reply text streamed since the last row
+	reason    string          // thinking streamed since the last row, drawn live until it settles
+	thinkAt   time.Time       // when the open reasoning block began, zero when none is
+	thought   time.Duration   // closed reasoning blocks since the last row
+	rows      map[string]int  // tool call id -> tr index
+	rev       uint64          // bumped on every tr write (run.mu held): the chat caches the shown run's rows by it
+	queue     []string        // messages waiting for the next step boundary
+	closed    bool            // past its last step boundary: a message would be lost
+	dropped   int             // queued messages the run ended before reading
+	end       chan struct{}   // closed when the run's current attempt ends, fresh per attempt
+	updates   []chan struct{} // update waiters, each closed once its send succeeds
 	// the attempt in flight after a provider retry, as the session turn's
 	// stream keeps it: Retrying sets it, the next streamed part clears it
 	retries  int
@@ -683,6 +684,36 @@ func (run *agentRun) waitEnd() chan struct{} {
 	return run.end
 }
 
+// waitUpdate registers a waiter for the run's next update and returns its
+// channel with the cancel that deregisters it: wakeUpdates closes every
+// waiter's channel once, so a wait never misses a wake and never wakes twice
+// for one update.
+func (run *agentRun) waitUpdate() (chan struct{}, func()) {
+	ch := make(chan struct{})
+	run.mu.Lock()
+	run.updates = append(run.updates, ch)
+	run.mu.Unlock()
+	return ch, func() {
+		run.mu.Lock()
+		defer run.mu.Unlock()
+		if i := slices.Index(run.updates, ch); i >= 0 {
+			run.updates = slices.Delete(run.updates, i, i+1)
+		}
+	}
+}
+
+// wakeUpdates closes and drops every update waiter, after the update's send
+// succeeded.
+func (run *agentRun) wakeUpdates() {
+	run.mu.Lock()
+	waiters := run.updates
+	run.updates = nil
+	run.mu.Unlock()
+	for _, ch := range waiters {
+		close(ch)
+	}
+}
+
 // callMark is a run's outcome as the chat marks the call that handed off to
 // it: the row was written as CallBG and would otherwise read as running.
 func callMark(s RunStatus) CallStatus {
@@ -808,6 +839,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
+	run.wakeUpdates()
 	return nil
 }
 
