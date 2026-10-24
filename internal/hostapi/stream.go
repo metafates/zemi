@@ -244,6 +244,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}
 	ag.turnStart = time.Time{}
+	// the retry state is the turn's too: a turn that ended during a backoff
+	// (esc, or the last retry failing) reports no retry while idle
+	ag.retries, ag.retryAt, ag.retryWhy = 0, time.Time{}, ""
 	// a call still open here was cut off: by the user, or by the error that
 	// ended the turn
 	for i, t := range ag.tools {

@@ -1037,6 +1037,24 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	}
 }
 
+// TestTurnDoneDropsTheRetry: a turn that ends during a retry backoff (esc,
+// or the last retry failing) leaves no retry in the view - TurnDone is the
+// turn-end funnel and resets what beginTurn armed.
+func TestTurnDoneDropsTheRetry(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sa := h.streamHooks()
+	sa.StepStart()
+	sa.Retrying(errors.New("overloaded"), 3*time.Second)
+	if live := h.AgentStream(); !live.Retrying || live.Retries != 1 {
+		t.Fatalf("setup: view = retrying %v (n=%d), want the retry the hook reported", live.Retrying, live.Retries)
+	}
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+	if live := h.AgentStream(); live.Retrying || live.Retries != 0 || live.RetryWhy != "" {
+		t.Fatalf("idle view = retrying %v (n=%d why=%q), want the retry dropped with the turn", live.Retrying, live.Retries, live.RetryWhy)
+	}
+}
+
 // TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
 // them share one clock, so a zemi on a clock behind the wall one (a plugin
 // test's) counts no negative elapsed.
