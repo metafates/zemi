@@ -327,7 +327,7 @@ Directories (XDG; Windows keeps the same roots under the user's home,
   types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
   zemi.db                 global store (proposals, the user partition's memory ledger, skills, kv)
-  scratch/<session id>/   per-session scratchpad, every model command's $TMPDIR (§9 write root)
+  scratch/<session id>/   per-session scratchpad: spill output, the read-only agent's writes (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
@@ -1434,7 +1434,7 @@ permission gate like tools do (`lua.http.<method>`); zemi.http follows no
 redirect: the call errors and the caller requests the location header
 itself. Subprocess
 environments are the parent's whole environ: a command the model starts
-adds the non-interactive vars and points `TMPDIR` at the scratchpad;
+adds the non-interactive vars;
 `zemi.job.start` appends the job's opt-in extras (`env = { ... }`,
 Lua-supplied values only, never looked up from the parent by name) as
 given; model `job_start` takes

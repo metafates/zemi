@@ -1,9 +1,9 @@
 // scratch.go gives each session a scratchpad: a directory for the agent's
 // temporary files (notes, drafts, command output, scripts, handoffs between
-// subagents), every model command's $TMPDIR, which the file tools read,
-// write and edit without asking, plan mode included. A pipeline binds it
-// once (tools.Pipeline.Pad). Pads live in <state>/scratch, outside every
-// repository, and are removed once unused for scratchTTL.
+// subagents), which the file tools read, write and edit without asking,
+// plan mode included. A pipeline binds it once (tools.Pipeline.Pad). Pads
+// live in <state>/scratch, outside every repository, and are removed once
+// unused for scratchTTL.
 
 package hostapi
 

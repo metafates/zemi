@@ -97,8 +97,8 @@ func TestBootSweep(t *testing.T) {
 
 // TestPadBoundPerPipeline: a pipeline keeps the pad it was built with once
 // the session moves on (a background run, /new), so the run reads and writes
-// the pad its prompt names with no ask and its commands get it as $TMPDIR;
-// another session's pad is not the run's to use.
+// the pad its prompt names with no ask; another session's pad is not the
+// run's to use.
 func TestPadBoundPerPipeline(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)

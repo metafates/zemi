@@ -1,8 +1,8 @@
 // job_tools.go ships the job_* built-ins: background processes the model
 // can start, read, list and kill. Jobs share the Lua job discipline (DESIGN
 // §6.5): the child env is the full parent environ plus the non-interactive
-// vars and TMPDIR set to the pad, output lands in capped buffers, and the
-// working directory is the project directory.
+// vars, output lands in capped buffers, and the working directory is the
+// project directory.
 
 package tools
 

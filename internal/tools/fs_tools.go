@@ -374,16 +374,14 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-// cmdEnv is the environment of a command the model starts: the pad is its
-// temp dir, so a file it leaves there is where the prompt says. The touch
-// tells another process's sweep the pad is used.
+// cmdEnv is the environment of a command the model starts. The touch tells
+// another process's sweep the pad is used.
 func (p *Pipeline) cmdEnv() []string {
 	env := append([]string{}, os.Environ()...)
 	env = append(env, proc.NonInteractiveEnv...)
 	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
 		now := time.Now()
 		_ = os.Chtimes(p.Pad, now, now)
-		env = append(env, "TMPDIR="+p.Pad, "TMP="+p.Pad, "TEMP="+p.Pad)
 	}
 	return env
 }
