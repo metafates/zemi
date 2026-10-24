@@ -337,10 +337,11 @@ local function builder(ctx, width)
 	end
 
 	-- One call as its own row: the verb and the label or input, what it
-	-- changed or how long it runs at the right, and under it what it said.
+	-- changed or how long it runs at the right, and under it what it said,
+	-- unless terse folds it into that header alone.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { nest: string? } nest: the two cells a row hangs by, its branch mark.
+	---@param o { nest: string?, terse: boolean? } nest: the two cells a row hangs by, its branch mark; terse: a superseded call of the live rail reads as its header.
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
 		-- NOTE: every running row reads as asked about while a prompt is open,
@@ -351,6 +352,7 @@ local function builder(ctx, width)
 		-- siblings follow, a gap under the last one, so the tree stays joined
 		local pad = o.nest
 		local below = pad and (pad == "└ " and "  " or "│ ") or nil
+		local terse = o.terse
 		-- a running row reads Dim beside its spinner until it ends
 		local dim = not asked and MARK_OF[t.status] == nil
 		local inner = width - 2 - (pad and 2 or 0)
@@ -429,14 +431,16 @@ local function builder(ctx, width)
 		local answered = name == "question" and output:find("\t") ~= nil
 		-- the command a description stands for, then progress, then the job
 		-- a timed-out command went on as, which the row carries
-		if not answered and label ~= "" and input ~= "" and not fmt.looks(t) then
-			-- a labelled counted call on the rail shows its command
-			detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
+		if not terse then
+			if not answered and label ~= "" and input ~= "" and not fmt.looks(t) then
+				-- a labelled counted call on the rail shows its command
+				detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
+			end
+			if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
+			-- the job a timed-out command went on as opens its own view; the
+			-- wording holds after the job exits and after a restart
+			if (t.job or "") ~= "" then detail("backgrounded as " .. t.job, "Dim", "job:" .. t.job) end
 		end
-		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
-		-- the job a timed-out command went on as opens its own view; the
-		-- wording holds after the job exits and after a restart
-		if (t.job or "") ~= "" then detail("backgrounded as " .. t.job, "Dim", "job:" .. t.job) end
 		-- the result's last lines: always for a failure, for what the user
 		-- answered (question, plan); what the
 		-- user just decided needs no restating: the model's text carries the
@@ -660,7 +664,12 @@ local function builder(ctx, width)
 				i = i + #group
 			else
 				local at = #B.lines + 1
-				B.tool(t, idx, {})
+				-- a live rail folds a call the turn has superseded into its
+				-- header: the newest entry, a running one, a failure and an ask
+				-- keep the rows under theirs
+				local terse = o.live and not o.full and i < last and t.status ~= "run" and not fail
+					and kind ~= "question" and kind ~= "plan" or nil
+				B.tool(t, idx, { terse = terse })
 				markCall(at, idx)
 				i = i + 1
 			end
