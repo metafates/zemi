@@ -139,7 +139,7 @@ and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
-(`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`, then skill commands) -> `app.ready`.
+(`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
 **Project trust** (internal/cli/boot.go `trustGate`, DESIGN §5): one decision per repository, keyed by

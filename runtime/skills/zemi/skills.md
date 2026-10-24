@@ -2,7 +2,7 @@
 
 ## Skills (`skills/<name>/SKILL.md`)
 
-A skill is a procedure: the model loads it when its description matches the task, and the user can run it. Frontmatter, then the steps:
+A skill is a procedure: the model loads it when its description matches the task, and the user attaches it with `+name`. Frontmatter, then the steps:
 
 ```markdown
 ---
@@ -15,12 +15,12 @@ description: Load before running the integration tests, or when they fail on a m
 
 - `name` is the directory's name: a lowercase letter or digit, then lowercase letters, digits or `-`, up to 64. It may be left out; the directory's name is it. A written name that does not match the directory is an error.
 - `description` is the trigger: when to load it, not a summary. It is cut to 512 runes when the skill is parsed, with a warning, and every request carries its first 240, then `...`. It may be left out; the body's first non-empty line is it.
-- `user-invocable: true` also makes it the command `/<name> [request]`, which sends the skill with the request; `argument-hint: <pr number>` shows after it in the palette, and `$ARGUMENTS` in the body becomes the request. The palette shows its description beside zemi's own commands, so lead it with a verb ("Run the integration tests; load before..."). When `/<name>` is already zemi's own command, or one from the skill's own place, that command stays, the skill is no command, and `/errors` says so; a command from anywhere else is replaced.
-- Claude's `disable-model-invocation` is ignored: the model may load every skill. `user-invocable: false` keeps a skill off the command palette.
+- `argument-hint: <pr number>` shows beside the description in the `+` popup, and `$ARGUMENTS` in the body becomes the rest of the message after the `+name` token.
+- Claude's `disable-model-invocation` is ignored: the model may load every skill. A `user-invocable` key is accepted and ignored.
 - Material the steps need only sometimes goes in files beside SKILL.md, named in the body; the skill tool hands the model the skill's directory, where it reads one when needed, so SKILL.md stays short.
-- User skills go in `<config>/skills/`, then `~/.agents/skills/` (shared with other agents; a name in both loads from the config dir), on by default; the user toggles them in `/skills`, which takes the command along. A `zemi-skill.lua` beside a `<config>/skills/` skill's SKILL.md runs at startup, after init.lua, while the skill is on; one in `~/.agents/skills/` never runs.
+- User skills go in `<config>/skills/`, then `~/.agents/skills/` (shared with other agents; a name in both loads from the config dir), on by default; the user toggles them in `/skills`. A `zemi-skill.lua` beside a `<config>/skills/` skill's SKILL.md runs at startup, after init.lua, while the skill is on; one in `~/.agents/skills/` never runs.
 - A trusted project's `.agents/skills/` skills are always on and run no Lua; a user skill of the same name wins. They load at startup, with every reload (a change under `.agents` starts one) and on `/trust`.
-- `/skills use <name> [request]` sends the skill with a request, one that is off or no command too; the chat shows the command line, the model gets the body.
+- `+name` in a message attaches the skill, one that is off too: type `+` in the composer to pick from the popup, go on writing your prompt, and the model gets the body behind the message as typed, `$ARGUMENTS` filled from what follows the token. A `+word` that names no skill is left as written.
 
 ## Prompt commands (`commands/<name>.md`)
 

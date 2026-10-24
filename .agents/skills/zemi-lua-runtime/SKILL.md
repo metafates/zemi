@@ -123,18 +123,16 @@ lines and tells the model what will not load. `/skills` and its commands read th
 and drops the pinned prompt. Invariants:
 
 - **Any origin may enable/disable** (`zemi.skills.enable`). A disabled skill leaves the index
-  but `/skills use` still sends it (the body rides behind `agent.AttachMarker`, like a markdown
-  command's).
+  but `+name` in a message still attaches it (the body rides behind `agent.AttachMarker`, like a
+  markdown command's).
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning when parsed, and to 240 plus `...` in the line a request carries); bodies load
   on demand via the `skill` tool.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
   step after user init.lua, as user origin; enabling later does not run it.
-- **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
-  over a builtin or same-origin command and over any other by `mayReplace`
-  (`addSkillCommand`; a toggle reloads config to rebuild it); the index and the skill tool take
-  every enabled skill, so Claude's `disable-model-invocation` hides nothing; recipes ignore the
-  command fields.
+- **Invocation**: `+name` in a message attaches the skill (`attachSkill`, the lookup the `+`
+  popup's `SkillMentions` rows share); the index and the skill tool take every enabled skill,
+  so Claude's `disable-model-invocation` hides nothing; recipes ignore the invocation fields.
 
 ## Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 

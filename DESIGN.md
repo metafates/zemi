@@ -1652,7 +1652,7 @@ UI extensibility contract:
   pending. A trigger popup with nothing to offer is
   not drawn and takes no keys, so prose with a `#` in it still submits. A
   popup's top border names what it lists where zemi knows the name: `Files`
-  for `@`, `Commands` for the palette; a source's own trigger titles nothing,
+  for `@`, `Skills` for `+`, `Commands` for the palette; a source's own trigger titles nothing,
   since zemi cannot know what it means.
 - One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
   human narrows by typing: the palette, argument candidates, `@` files
@@ -2794,15 +2794,14 @@ editor) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
 plugin skill's flag goes with the plugin when it is turned off. The model sees name +
 description in context and the full body on demand through the `skill`
-tool. A skill whose frontmatter says `user-invocable: true` is also the
-command `/<name>`, registered after every other command under the
-skill's origin, never over a builtin command or one of its own origin,
-and over any other by the registry's last-writer rule. Every enabled
+tool. The user attaches a skill with `+name` in a message: the `+` popup
+lists every skill, disabled ones included, and the send expands the token
+behind the message as typed, `$ARGUMENTS` filled from the rest of the
+message; an unknown `+word` is left as written. Every enabled
 skill is in the index and the skill tool: Claude's
-`disable-model-invocation` is accepted and ignored, and the command fields
-are the skill's own. `/skills` browses, toggles (toggling a skill with a command
-reloads config, which rebuilds the commands) and uses them (a row's
-detail carries the whole body and opens it in the editor). Discovery lists only `enabled` skills to the model, and enable
+`disable-model-invocation` is accepted and ignored. `/skills` browses and
+toggles them (a row's detail carries the whole body and opens it in the
+editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, any origin).
 
 A trusted project's skills (`.agents/skills` at the repository root, the
