@@ -944,6 +944,22 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a go row key closes a list that rebuilds",
+			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "x", Keys: []hostapi.ItemKey{{Key: "r", Desc: "resume", Run: "zz resume", Verb: hostapi.VerbGo}}}}, Reload: func() []hostapi.OverlayItem {
+				return []hostapi.OverlayItem{{Text: "x", Keys: []hostapi.ItemKey{{Key: "r", Desc: "resume", Run: "zz resume", Verb: hostapi.VerbGo}}}}
+			}},
+			nil,
+			func(a *App) string {
+				ran := ""
+				a.host.Commands.Add(&hostapi.Command{
+					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+				})
+				a.overlayKey("r", "r")
+				return fail(ran == "resume" && len(a.overlays) == 0, "ran "+ran)
+			},
+		},
+		{
 			"a danger list key acts on its second press, which esc and a wheel drop and a refresh keeps",
 			hostapi.Overlay{ID: "p", Items: []hostapi.OverlayItem{{Text: "x"}}},
 			nil,

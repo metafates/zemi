@@ -627,7 +627,7 @@ type ItemKey struct {
 	Key, Desc string
 	Run, Fill string
 	ID        string // hands it to the overlay's on_action
-	Verb      Verb   // VerbOpen: what it opens sits over the list, which stays
+	Verb      Verb   // VerbOpen: what it opens sits over the list, which stays; VerbGo: it takes the chat, so even a toggle list closes
 	Danger    bool   // acts on its second press, like a list key
 	Raw       any    // what on_action gets
 }

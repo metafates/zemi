@@ -1039,7 +1039,7 @@ function zemi.event.stats() end
 ---@field desc? string named beside the key in the footer, a lowercase word or phrase like every hint ("open the view", "rewind")
 ---@field id? string hands the key to the overlay's on_action, which takes it over fill and run
 ---@field fill? string put in the composer, closing the list
----@field run? string a command line, run on the row; with `verb = "open"` the screen it opens sits over the list, which stays
+---@field run? string a command line, run on the row; with `verb = "open"` the screen it opens sits over the list, which stays, and with `verb = "go"` it takes the chat, closing even a `reload` list
 ---@field danger? boolean cannot be undone: the first press only arms it, and the footer says to press it again
 ---@field verb? zemi.OverlayVerb "open" for a run that opens a screen
 

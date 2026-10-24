@@ -391,6 +391,14 @@ func TestSessionLifecycle(t *testing.T) {
 	if !slices.Equal(acts, want) {
 		t.Fatalf("session keys: %q, want %q", acts, want)
 	}
+	// resume takes the chat, so its key closes the list even though it rebuilds
+	for _, it := range ui.opened[0].Items {
+		for _, k := range it.Keys {
+			if k.Key == "r" && k.Verb != VerbGo {
+				t.Fatal("the resume key does not go")
+			}
+		}
+	}
 	pad := h.scratchFor(first)
 	if err := os.MkdirAll(pad, 0o700); err != nil {
 		t.Fatal(err)

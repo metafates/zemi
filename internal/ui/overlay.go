@@ -646,6 +646,11 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 		if k.Fill == "" && k.Verb == hostapi.VerbOpen {
 			return // the screen it opened sits over this list
 		}
+		if k.Fill == "" && k.Verb == hostapi.VerbGo {
+			// the run took the chat the list browses: the list goes with it
+			a.closeOverlayByID(strings.TrimSuffix(o.ID, "#detail"))
+			return
+		}
 	default:
 		return
 	}

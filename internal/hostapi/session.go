@@ -205,7 +205,7 @@ func (h *Host) sessionItems() ([]OverlayItem, error) {
 			item.Fields = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
 			item.Detail = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item.Keys = []ItemKey{
-				{Key: "r", Desc: "resume", Run: "resume " + s.ID},
+				{Key: "r", Desc: "resume", Run: "resume " + s.ID, Verb: VerbGo},
 				{Key: "n", Desc: "rename", Run: "sessions rename " + s.ID + " "},
 				{Key: "x", Desc: "delete", Danger: true, Run: "sessions delete " + s.ID + " --yes"},
 			}
