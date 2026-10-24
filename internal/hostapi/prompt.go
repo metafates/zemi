@@ -423,7 +423,7 @@ func (h *Host) instructionFile(p string) bool {
 // command. scratchOwn names a subagent run's own directory in its task,
 // since per run it would bust the cached prompt.
 const (
-	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in the project: nothing there is part of the project. Writes there settle like any write. Deleting there asks only where any command would."
+	scratchUse   = "The scratchpad (under Environment) is this session's scratch space for files that should not live in the project or the shared temp dirs. Nothing there is part of the project. Writes there settle like any write. Deleting there asks only where any command would."
 	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Writes there settle like any write."
 	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."

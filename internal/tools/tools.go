@@ -228,10 +228,10 @@ type Pipeline struct {
 	// Content (DESIGN §10.4). nil = memory tool error.
 	Remember func(p *Pipeline, call MemoryCall) (string, error)
 
-	// Pad is the scratchpad this pipeline was bound to, "" for none: every
-	// command's $TMPDIR, where cut output is saved in full and the file
-	// tools read and write without asking. Bound once, so a run that
-	// outlives its session keeps the pad its prompt names.
+	// Pad is the scratchpad this pipeline was bound to, "" for none: where
+	// cut output is saved in full and the file tools read and write without
+	// asking. Bound once, so a run that outlives its session keeps the pad
+	// its prompt names.
 	Pad string
 
 	// Seen maps absolute paths to the modification time the model read
@@ -508,7 +508,7 @@ func (p *Pipeline) unexpandedText(path string) string {
 	case strings.HasPrefix(path, "~") && home != "":
 		return msg + ": home is " + home + "."
 	case p.Pad != "":
-		return msg + ": the scratchpad, $TMPDIR in commands, is " + p.Pad + "."
+		return msg + ": the scratchpad is " + p.Pad + "."
 	}
 	return msg + "."
 }
