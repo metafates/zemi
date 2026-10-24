@@ -670,6 +670,26 @@ func TestSessionsAllUnreadable(t *testing.T) {
 	}
 }
 
+// TestModelsOverBrokenInit: an init.lua that fails after adding providers
+// still boots soft, but the list it prints is incomplete, so the run is a
+// failure, the way health reads the same state.
+func TestModelsOverBrokenInit(t *testing.T) {
+	home := t.TempDir()
+	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
+		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
+	}
+	base := t.TempDir()
+	t.Chdir(base)
+	t.Setenv("PWD", base)
+	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
+error("boom after the providers")`)
+	var out, errOut strings.Builder
+	code := execute([]string{"models"}, &out, &errOut, func(options) int { return 0 })
+	if code != 1 || !strings.Contains(out.String(), "gw/m1") {
+		t.Errorf("code = %d, stdout %q, stderr %q; want 1 with the model list on stdout", code, out.String(), errOut.String())
+	}
+}
+
 // wireProbe is not a wire type: it pins the walk's pointer, slice and map
 // cases, and that a value leaves writeJSON as it entered.
 type wireProbe struct {

@@ -761,6 +761,11 @@ func modelsCommand(o *options) *cobra.Command {
 				return exitError(1)
 			}
 			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
+			// a broken init.lua boots soft, so the list is incomplete; health
+			// exits 1 on the same state
+			if h.InitError() != "" {
+				return status(1)
+			}
 			return nil
 		},
 	}
