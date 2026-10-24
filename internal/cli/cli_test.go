@@ -614,6 +614,8 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "search shows the match", args: []string{"sessions", "search", "kubelet"}, stdout: "\n      the kubelet gave up on the node\n"},
 		{name: "search as JSON", args: []string{"sessions", "search", "--json", "kubelet"}, stdout: `"hits":1,"match":"the kubelet gave up on the node"`},
 		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
+		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: could not read 1 project store: " + perm.TildePath(garbage) + ": "},
+		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
 		// -r takes any session id: this project's, or one another project holds
 		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},
 		{name: "-r keeps this project", args: []string{"-r", ids[perm.CanonPath(base)]}, root: base},

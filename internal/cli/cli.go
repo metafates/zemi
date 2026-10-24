@@ -703,18 +703,32 @@ func projectsCommand(o *options) *cobra.Command {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
 			}
 			out, cp := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
+			var unreadable []string
+			for _, p := range ps {
+				if p.StatsErr != nil {
+					unreadable = append(unreadable, fmt.Sprintf("%s: %v", perm.TildePath(p.Root), p.StatsErr))
+				}
+			}
+			if len(unreadable) > 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: could not read %d project %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
+			}
 			if !*asJSON && cp != colorprofile.NoTTY && len(ps) > 0 {
 				fmt.Fprintln(out, paint(cp, "title", fmt.Sprintf("%-16s  %-9s  %4s  %s", "used", "trust", "sess", "root")))
 			}
 			for _, p := range ps {
 				if *asJSON {
+					statsErr := ""
+					if p.StatsErr != nil {
+						statsErr = sanitize.Line(p.StatsErr.Error())
+					}
 					writeJSON(out, struct {
-						Root     string    `json:"root"`
-						Trust    string    `json:"trust"`
-						Used     time.Time `json:"used,omitzero"`
-						Sessions int       `json:"sessions"`
-						Memories int       `json:"memories"`
-					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories})
+						Root       string    `json:"root"`
+						Trust      string    `json:"trust"`
+						Used       time.Time `json:"used,omitzero"`
+						Sessions   int       `json:"sessions"`
+						Memories   int       `json:"memories"`
+						StatsError string    `json:"stats_error,omitempty"`
+					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories, StatsError: statsErr})
 					continue
 				}
 				used := "-"
