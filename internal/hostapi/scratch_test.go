@@ -74,6 +74,25 @@ func TestScratchSweep(t *testing.T) {
 			t.Errorf("%s: kept %v, want %v", c.name, err == nil, c.kept)
 		}
 	}
+	// writePadRoot is idempotent: rewriting the same root leaves the pad's
+	// times alone, so an ensure cannot keep a pad fresh forever.
+	h.writePadRoot(live, time.Now())
+	mark := filepath.Join(live, ".root")
+	padBefore, err := os.Stat(live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileBefore, err := os.Stat(mark)
+	if err != nil {
+		t.Fatal(err)
+	}
+	padT, fileT := padBefore.ModTime(), fileBefore.ModTime()
+	h.writePadRoot(live, time.Now())
+	padAfter, _ := os.Stat(live)
+	fileAfter, _ := os.Stat(mark)
+	if !padAfter.ModTime().Equal(padT) || !fileAfter.ModTime().Equal(fileT) {
+		t.Error("a second writePadRoot of the same root moved the pad's times")
+	}
 }
 
 // TestScratchDeadPad: a .root naming no particular project never counts as

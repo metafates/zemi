@@ -104,7 +104,8 @@ func (h *Host) sweepScratch(root string, t time.Time) {
 // deadPad reports a pad whose .root names a directory that is gone: the
 // session's project was removed, so nothing in the pad can be wanted
 // again. A root that is no particular project - a missing marker, an
-// empty one, / or $HOME - never counts, and such a pad keeps its TTL.
+// empty one, / or $HOME - never counts, and a root that fails to stat
+// for any other reason keeps its TTL: those pads age out by use alone.
 func deadPad(pad string) bool {
 	b, err := os.ReadFile(filepath.Join(pad, ".root"))
 	if err != nil {
@@ -116,7 +117,7 @@ func deadPad(pad string) bool {
 		return false
 	}
 	_, err = os.Stat(root)
-	return err != nil
+	return os.IsNotExist(err)
 }
 
 // usedSince reports anything under dir, dir included, modified after t: a
