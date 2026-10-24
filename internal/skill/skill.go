@@ -38,8 +38,9 @@ func (s Source) Stored() bool { return s != Project && s != Recipe }
 type Dir struct {
 	Path   string
 	Source Source
-	// Prefix joins every discovered name, Root and Data ride the parsed
-	// skills' substitutions: a Claude-layout plugin's, "" for the rest.
+	// Prefix is the fallback name a Claude-layout plugin's skills load
+	// under when another skill already holds the bare one; "" for the
+	// rest. Root and Data ride the parsed skills' substitutions.
 	Prefix     string
 	Root, Data string
 }
@@ -206,10 +207,11 @@ func readSkillFile(path string) ([]byte, error) {
 
 // Discover merges skill directories in the order given, higher trust first:
 // on a name clash the earlier one wins (§10.5), with a warning only when two
-// plugins ship one name, since any other clash is an override by design.
-// A skill that does not parse is skipped with a warning, never fatal: a
-// broken skill must not hide the others. A missing or unreadable directory
-// is skipped.
+// plugins ship one name, since any other clash is an override by design. A
+// prefixing Dir loads under the bare name first and falls back to
+// Prefix+name only when the bare one is already taken. A skill that does not
+// parse is skipped with a warning, never fatal: a broken skill must not hide
+// the others. A missing or unreadable directory is skipped.
 func Discover(dirs ...Dir) (skills []Skill, warnings []error) {
 	seen := map[string]Skill{}
 	for _, d := range dirs {
@@ -225,14 +227,19 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []error) {
 			if !e.IsDir() {
 				continue
 			}
-			name := d.Prefix + e.Name()
-			if kept, ok := seen[name]; ok {
+			name, prefix := e.Name(), ""
+			if d.Prefix != "" {
+				if _, taken := seen[name]; taken {
+					name, prefix = d.Prefix+name, d.Prefix
+				}
+			}
+			if kept, taken := seen[name]; taken {
 				if kept.Source == Plugin && d.Source == Plugin {
 					warnings = append(warnings, fmt.Errorf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), name, kept.Dir))
 				}
 				continue
 			}
-			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source, d.Prefix)
+			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source, prefix)
 			if err != nil {
 				warnings = append(warnings, err)
 				if !errors.Is(err, ErrDescriptionCut) {
