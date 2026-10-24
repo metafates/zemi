@@ -1712,15 +1712,22 @@ func (h *Host) showAgent(id string) error {
 			return err
 		}
 	}
+	ui.OpenOverlay(h.agentShowOverlay(run))
+	h.watchAgents()
+	return nil
+}
+
+// agentShowOverlay is a run's preview: the view a /agents row's enter opens,
+// and the one a chat click opens. The watch rebuilds it while the run lives.
+func (h *Host) agentShowOverlay(run *agentRun) Overlay {
 	status, calls, took, _ := run.state()
 	tokens, cost := run.usage()
-	fields, detail, parts, pending := h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
-	ui.OpenOverlay(Overlay{
-		ID: "agent:" + id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
+	fields, detail, parts, pending := h.agentView(agentRow{id: run.id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+	return Overlay{
+		ID: "agent:" + run.id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
 		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts, Empty: pending,
-		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id}},
-	})
-	return nil
+		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + run.id}},
+	}
 }
 
 // agentsOverlay is /agents: the runs this process holds, then one row per
@@ -1762,20 +1769,30 @@ func (h *Host) agentsOverlay() Overlay {
 	return Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open", Wide: true}
 }
 
-// watchAgents keeps /agents current while a run lives: its elapsed time, its
-// state and its mark come from the run, which the rows snapshot when they are
-// built.
+// watchAgents keeps /agents and the open run previews current while a run
+// lives: their elapsed time, state and marks come from the runs, which the
+// rows snapshot when they are built.
 func (h *Host) watchAgents() {
 	h.overlayTicker("agents view", h.claimAgentsView, func() bool {
 		running := h.tasks.running()
 		if !running {
 			h.agentsView.Store(false)
 		}
-		if ui := h.hooks(); ui != nil {
-			ui.RefreshOverlay("agents", h.agentsOverlay)
-		}
+		h.refreshAgents()
 		return running
 	})
+}
+
+// refreshAgents rebuilds /agents and the run previews that are open.
+func (h *Host) refreshAgents() {
+	ui := h.hooks()
+	if ui == nil {
+		return
+	}
+	ui.RefreshOverlay("agents", h.agentsOverlay)
+	for _, run := range h.tasks.runList() {
+		ui.RefreshOverlay("agent:"+run.id, func() Overlay { return h.agentShowOverlay(run) })
+	}
 }
 
 // claimAgentsView takes the agents view's one ticker: false while it runs.

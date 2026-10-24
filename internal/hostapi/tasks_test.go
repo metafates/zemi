@@ -629,6 +629,25 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if len(o.Parts) == 0 || o.Parts[0].Text != "look" {
 		t.Fatalf("parts %+v", o.Parts)
 	}
+	// the watch keeps the open preview current: a tick rebuilds it from the
+	// run, so a view of a run that ended stops saying running
+	run.mu.Lock()
+	run.status = RunDone
+	run.tr = append(run.tr, ChatMessage{Role: "assistant", Text: "two files changed"})
+	run.mu.Unlock()
+	h.refreshAgents()
+	if !slices.Contains(ui.refreshed, "agents") || !slices.Contains(ui.refreshed, "agent:"+run.id) {
+		t.Fatalf("the tick refreshed %v", ui.refreshed)
+	}
+	var next Overlay
+	for _, o := range ui.rebuilt {
+		if o.ID == "agent:"+run.id {
+			next = o
+		}
+	}
+	if next.Mark != MarkOK || next.Empty != "" || len(next.Parts) != 2 || next.Parts[1].Text != "two files changed" {
+		t.Fatalf("the rebuilt view is %+v", next)
+	}
 	if err := cmd.GoFn(h, "show nope"); err == nil {
 		t.Fatal("an unknown id opened a view")
 	}
