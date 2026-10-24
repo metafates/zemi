@@ -5,12 +5,13 @@
 package hostapi
 
 import (
-	"charm.land/fantasy"
 	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
 	"time"
+
+	"charm.land/fantasy"
 )
 
 // errPanicked is the failure an async handle's wait reads when the goroutine
