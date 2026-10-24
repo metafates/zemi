@@ -113,26 +113,15 @@ func (f *listFilter) edit(key, text string) bool {
 		f.active = false
 		f.set("")
 		return true
-	case key == "left":
-		q.left()
-	case key == "right":
-		q.right()
-	case key == "backspace":
-		q.backspace()
-		f.set(q.text)
-	case key == "ctrl+w" || key == "alt+backspace":
-		q.delWord()
-		f.set(q.text)
-	case key == "delete":
-		q.delete()
-		f.set(q.text)
-	case text != "":
-		q.insert(text)
-		f.set(q.text)
+	case text != "" || isEditKey(key):
+		q.typeKey(key, text)
+		if q.text != f.query {
+			f.set(q.text)
+		}
+		f.cursor = q.cursor
 	default:
 		return false
 	}
-	f.cursor = q.cursor
 	return true
 }
 

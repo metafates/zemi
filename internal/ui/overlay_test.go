@@ -133,6 +133,13 @@ func TestOverlayFilter(t *testing.T) {
 		{"esc on a kept query clears, a second closes", hostapi.Overlay{}, runes("/t", "enter", "esc", "esc"), func(a *App) string { return closedWith(a, "") }},
 		{"/ on a kept query types on", hostapi.Overlay{}, runes("/t", "enter", "/", "w"), func(a *App) string { return state(a, true, "tw", 1, 0) }},
 		{"backspace on an empty query stops typing", hostapi.Overlay{}, runes("/", "backspace"), func(a *App) string { return state(a, false, "", 5, 0) }},
+		{"the composer's editing keys work in a filter", hostapi.Overlay{}, runes("/gamma three", "ctrl+a", "right", "alt+f", "ctrl+e", "ctrl+a", "delete"), func(a *App) string {
+			st := a.overlays[0]
+			if st.query != "amma three" || st.cursor != 0 {
+				return fmt.Sprintf("query=%q cursor=%d", st.query, st.cursor)
+			}
+			return state(a, true, "amma three", len(st.visible), st.selected)
+		}},
 		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 5, 2) }},
 		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "alpha one") }},
 		{"a typing filter takes the key", hostapi.Overlay{Items: keyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},

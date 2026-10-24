@@ -183,9 +183,24 @@ func (c *composerState) down() bool {
 	return true
 }
 
+// isEditKey reports whether key moves or edits a typed line, without
+// applying it.
+func isEditKey(key string) bool {
+	switch key {
+	case "backspace", "delete", "left", "right", "alt+left", "alt+b", "ctrl+left",
+		"alt+right", "alt+f", "ctrl+right", "home", "ctrl+a", "end", "ctrl+e",
+		"ctrl+w", "alt+backspace":
+		return true
+	}
+	return false
+}
+
 // editKey applies a cursor move or deletion key; it reports whether key was
 // one.
 func (c *composerState) editKey(key string) bool {
+	if !isEditKey(key) {
+		return false
+	}
 	switch key {
 	case "backspace":
 		c.backspace()
@@ -205,8 +220,6 @@ func (c *composerState) editKey(key string) bool {
 		c.lineEnd()
 	case "ctrl+w", "alt+backspace":
 		c.delWord()
-	default:
-		return false
 	}
 	return true
 }

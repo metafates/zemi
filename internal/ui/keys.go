@@ -506,17 +506,10 @@ func listMove(key string) int {
 // so the half-page pair scrolls whatever stands above it, typed or not.
 func lineKey(key string) bool { return key == "home" || key == "end" }
 
-// lineEditKey reports whether key edits a typed line: the composer's editing
-// keys (composerState.editKey) and its undo, which a waiting ask yields to a
+// lineEditKey reports whether key edits a typed line: the composer's
+// editing keys (isEditKey) and its undo, which a waiting ask yields to a
 // draft typed under it.
-func lineEditKey(key string) bool {
-	switch key {
-	case "backspace", "delete", "left", "right", "alt+left", "alt+b", "alt+right", "alt+f",
-		"ctrl+left", "ctrl+right", "home", "end", "ctrl+a", "ctrl+e", "ctrl+w", "alt+backspace", "ctrl+z":
-		return true
-	}
-	return false
-}
+func lineEditKey(key string) bool { return key == "ctrl+z" || isEditKey(key) }
 
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.
