@@ -889,7 +889,7 @@ var (
 	// a zemi.agent.send from a plugin, with its first line that has something in
 	// it: an element whose text opens with blank lines has no line to name it by
 	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
-	loopSent   = regexp.MustCompile(attachedTag + `loop>\nRun (\d+) of: (?s:(.*?))\n</`)
+	loopSent   = regexp.MustCompile(attachedTag + `loop>\n` + strings.ReplaceAll(regexp.QuoteMeta(loopRunPrefix), "%d", `(\d+)`) + `(?s:(.*?))\n</`)
 	// a running agent's own line, with its first
 	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
 )
@@ -929,9 +929,9 @@ func reportStatus(word string) CallStatus {
 }
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
-// agent.AttachMarker (a joined queue may carry several), the plugins' sends,
-// the loop's runs and the read-only agent's nudge, so a reply that follows no user
-// row says why; none for none of them.
+// agent.AttachMarker (a joined queue may carry several), the plugins' sends
+// and the loop's runs, so a reply that follows no user row says why; none for
+// none of them.
 func reportHeads(tail string) []notice {
 	var heads []notice
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {

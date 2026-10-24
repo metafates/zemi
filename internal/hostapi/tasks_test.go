@@ -268,7 +268,7 @@ not a report
 			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
 			want: []notice{{Text: "Agent r1 (explore): kept going", Run: "r1"}},
 		},
-		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []notice{{Text: "Loop run 1: check a"}}},
+		{name: "a loop note", tail: loopNote(&Loop{Runs: 1, Prompt: "check a"}), want: []notice{{Text: "Loop run 1: check a"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
