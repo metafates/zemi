@@ -33,6 +33,7 @@ func newTestApp(t *testing.T, projectDir string) *App {
 }
 
 func TestComposerEdit(t *testing.T) {
+	const accent = "\u0301" // a combining acute, one grapheme with its base
 	run := func(name string, mutate func(c *composerState), wantText string, wantCur int) {
 		t.Run(name, func(t *testing.T) {
 			c := &composerState{}
@@ -45,8 +46,13 @@ func TestComposerEdit(t *testing.T) {
 	run("insert", func(c *composerState) { c.insert("hello"); c.insert(" world") }, "hello world", 11)
 	run("backspace", func(c *composerState) { c.insert("ab"); c.backspace() }, "a", 1)
 	run("backspace-empty", func(c *composerState) { c.backspace() }, "", 0)
+	run("backspace-keeps-mark", func(c *composerState) { c.insert("cafe" + accent); c.backspace() }, "caf", 3)
+	run("backspace-mark-run", func(c *composerState) { c.insert("e" + accent + accent); c.backspace() }, "", 0)
+	run("backspace-lone-mark", func(c *composerState) { c.insert(accent); c.backspace() }, "", 0)
 	run("delete", func(c *composerState) { c.insert("abc"); c.cursor = 1; c.delete() }, "ac", 1)
 	run("delete-eof", func(c *composerState) { c.insert("ab"); c.delete() }, "ab", 2)
+	run("delete-keeps-mark", func(c *composerState) { c.insert("a" + accent + "b"); c.cursor = 0; c.delete() }, "b", 0)
+	run("delete-mark-run", func(c *composerState) { c.insert("a" + accent + accent + "b"); c.cursor = 0; c.delete() }, "b", 0)
 	run("left-right", func(c *composerState) { c.insert("ab"); c.left(); c.left(); c.right() }, "ab", 1)
 	run("left-home", func(c *composerState) { c.insert("ab"); c.left(); c.left(); c.left() }, "ab", 0)
 	run("newline", func(c *composerState) { c.insert("a"); c.insert("\n"); c.insert("b") }, "a\nb", 3)

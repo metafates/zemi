@@ -108,24 +108,46 @@ func (c *composerState) expand(text string) string {
 	return strings.NewReplacer(pairs...).Replace(text)
 }
 
-// backspace deletes the rune before the cursor, or a whole paste token.
+// isMark reports a combining mark: it extends the rune before it into one
+// cluster. NOTE: base+marks only, not full grapheme handling (no ZWJ, no
+// regional indicators).
+func isMark(r rune) bool {
+	return unicode.In(r, unicode.Mn, unicode.Me, unicode.Mc)
+}
+
+// backspace deletes the cluster before the cursor - a base with the marks
+// that render on it - or a whole paste token.
 func (c *composerState) backspace() {
 	if c.cursor == 0 {
 		return
 	}
-	n := 1
-	if tok := pasteToken.FindString(string(c.runes()[:c.cursor])); c.pastes[tok] != "" {
-		n = len([]rune(tok))
+	r := c.runes()
+	if tok := pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
+		c.replace(c.cursor-len([]rune(tok)), "")
+		return
 	}
-	c.replace(c.cursor-n, "")
+	i := c.cursor
+	for i > 0 && isMark(r[i-1]) {
+		i--
+	}
+	if i > 0 {
+		i-- // the base the marks sit on
+	}
+	c.replace(i, "")
 }
 
+// delete removes the cluster at the cursor: a base with the marks that
+// follow it.
 func (c *composerState) delete() {
 	r := c.runes()
 	if c.cursor >= len(r) {
 		return
 	}
-	c.text = string(r[:c.cursor]) + string(r[c.cursor+1:])
+	end := c.cursor + 1
+	for end < len(r) && isMark(r[end]) {
+		end++
+	}
+	c.text = string(r[:c.cursor]) + string(r[end:])
 }
 
 func (c *composerState) left() {
