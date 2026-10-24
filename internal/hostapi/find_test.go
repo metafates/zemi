@@ -153,10 +153,14 @@ func (f findFixture) hits(t *testing.T, found Found, id string) []string {
 	return nil
 }
 
-// TestListAllSessions: every project's sessions, this project first.
+// TestListAllSessions: every project's sessions, this project first, and the
+// store it cannot read comes back named, as a search's skips are.
 func TestListAllSessions(t *testing.T) {
 	f := newFindFixture(t)
-	groups := ListAllSessions(f.dirs)
+	groups, skipped := ListAllSessions(f.dirs)
+	if !slices.Equal(skipped, []string{f.garbage}) {
+		t.Errorf("skipped = %v, want the unreadable store %s", skipped, f.garbage)
+	}
 	if len(groups) != 2 || groups[0].Root != f.dirs.TrustRoot() || groups[1].Root != f.root {
 		t.Fatalf("groups = %+v, want this project then %s", groups, f.root)
 	}

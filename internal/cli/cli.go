@@ -286,7 +286,8 @@ func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Comple
 	}
 	if c.Flags().Lookup("resume") != nil {
 		root := dirs.TrustRoot()
-		for _, g := range hostapi.ListAllSessions(dirs) {
+		groups, _ := hostapi.ListAllSessions(dirs)
+		for _, g := range groups {
 			where := ""
 			if perm.CanonPath(g.Root) != perm.CanonPath(root) {
 				where = filepath.Base(g.Root) + ": "
@@ -536,7 +537,10 @@ func sessionsCommand(o *options) *cobra.Command {
 			dirs := o.dirs
 			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
 			if *all {
-				groups := hostapi.ListAllSessions(dirs)
+				groups, skipped := hostapi.ListAllSessions(dirs)
+				if n := len(skipped); n > 0 {
+					fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s\n", n, hostapi.Plural(n, "store", "stores"))
+				}
 				if len(groups) == 0 {
 					fmt.Fprintln(c.ErrOrStderr(), "zemi: no sessions in any project yet")
 					return nil
@@ -699,18 +703,32 @@ func projectsCommand(o *options) *cobra.Command {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
 			}
 			out, cp := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
+			var unreadable []string
+			for _, p := range ps {
+				if p.StatsErr != nil {
+					unreadable = append(unreadable, fmt.Sprintf("%s: %v", perm.TildePath(p.Root), p.StatsErr))
+				}
+			}
+			if len(unreadable) > 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: could not read %d project %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
+			}
 			if !*asJSON && cp != colorprofile.NoTTY && len(ps) > 0 {
 				fmt.Fprintln(out, paint(cp, "title", fmt.Sprintf("%-16s  %-9s  %4s  %s", "used", "trust", "sess", "root")))
 			}
 			for _, p := range ps {
 				if *asJSON {
+					statsErr := ""
+					if p.StatsErr != nil {
+						statsErr = p.StatsErr.Error()
+					}
 					writeJSON(out, struct {
-						Root     string    `json:"root"`
-						Trust    string    `json:"trust"`
-						Used     time.Time `json:"used,omitzero"`
-						Sessions int       `json:"sessions"`
-						Memories int       `json:"memories"`
-					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories})
+						Root       string    `json:"root"`
+						Trust      string    `json:"trust"`
+						Used       time.Time `json:"used,omitzero"`
+						Sessions   int       `json:"sessions"`
+						Memories   int       `json:"memories"`
+						StatsError string    `json:"stats_error,omitempty"`
+					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories, StatsError: statsErr})
 					continue
 				}
 				used := "-"
@@ -743,6 +761,11 @@ func modelsCommand(o *options) *cobra.Command {
 				return exitError(1)
 			}
 			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
+			// a broken init.lua boots soft, so the list is incomplete; health
+			// exits 1 on the same state
+			if h.InitError() != "" {
+				return status(1)
+			}
 			return nil
 		},
 	}

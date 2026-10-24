@@ -228,22 +228,30 @@ func SessionProject(dirs config.Dirs, id string) (root string, ok bool) {
 }
 
 // ListAllSessions groups every project's top-level sessions, last used first.
-// A store it cannot read is left out: the list is a convenience, not a report.
-func ListAllSessions(dirs config.Dirs) []ProjectSessions {
-	var out []ProjectSessions
+// A store it cannot read is left out and returned named, as a search's skips
+// are; the list alone would read as "no sessions" over a store that has them.
+func ListAllSessions(dirs config.Dirs) (groups []ProjectSessions, skipped []string) {
 	for _, root := range projectRoots(dirs) {
 		db, err := store.OpenRead(store.ProjectDBPath(dirs.StateHome, root))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		if err != nil {
+			skipped = append(skipped, root)
 			continue
 		}
 		list, err := db.ListSessions(-1)
 		db.Close()
-		if err != nil || len(list) == 0 {
+		if err != nil {
+			skipped = append(skipped, root)
 			continue
 		}
-		out = append(out, ProjectSessions{Root: root, Sessions: list})
+		if len(list) == 0 {
+			continue
+		}
+		groups = append(groups, ProjectSessions{Root: root, Sessions: list})
 	}
-	return out
+	return groups, skipped
 }
 
 // findID is the one screen a session search opens: the input, the searching

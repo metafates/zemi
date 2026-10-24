@@ -586,6 +586,17 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		ids[perm.CanonPath(p.root)] = sid
 	}
 	theirs := ids[perm.CanonPath(other)]
+	// a store no SQLite reads, never opened so the file stays what it is
+	garbage := t.TempDir()
+	skipDir := filepath.Dir(store.ProjectDBPath(dirs.StateHome, garbage))
+	if err := os.MkdirAll(skipDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"root": garbage + "\n", "zemi.db": "not a database"} {
+		if err := os.WriteFile(filepath.Join(skipDir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, c := range []struct {
 		name           string
 		args           []string
@@ -595,6 +606,7 @@ func TestSessionsAcrossProjects(t *testing.T) {
 	}{
 		{name: "-a lists another project's session", args: []string{"sessions", "-a"}, stdout: theirs + "  "},
 		{name: "-a names the project first", args: []string{"sessions", "-a"}, stdout: perm.TildePath(other) + "\n"},
+		{name: "-a names the unreadable store", args: []string{"sessions", "-a"}, stderr: "zemi: skipped 1 unreadable store\n"},
 		{name: "-a as JSON carries the project", args: []string{"sessions", "-a", "--json"}, stdout: `"id":"` + theirs + `"`},
 		{name: "-a as JSON names its root", args: []string{"sessions", "-a", "--json"}, stdout: `"project":"` + other + `"`},
 		{name: "search finds a word", args: []string{"sessions", "search", "kubelet"}, stdout: theirs + "  "},
@@ -602,6 +614,8 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "search shows the match", args: []string{"sessions", "search", "kubelet"}, stdout: "\n      the kubelet gave up on the node\n"},
 		{name: "search as JSON", args: []string{"sessions", "search", "--json", "kubelet"}, stdout: `"hits":1,"match":"the kubelet gave up on the node"`},
 		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
+		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: could not read 1 project store: " + perm.TildePath(garbage) + ": "},
+		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
 		// -r takes any session id: this project's, or one another project holds
 		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},
 		{name: "-r keeps this project", args: []string{"-r", ids[perm.CanonPath(base)]}, root: base},
@@ -620,6 +634,59 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		if c.root != "" && perm.CanonPath(got.dirs.TrustRoot()) != perm.CanonPath(c.root) {
 			t.Errorf("%s: started in %q, want %q", c.name, got.dirs.TrustRoot(), c.root)
 		}
+	}
+}
+
+// TestSessionsAllUnreadable: when every store is unreadable, -a names the
+// skips instead of claiming there are no sessions.
+func TestSessionsAllUnreadable(t *testing.T) {
+	home := t.TempDir()
+	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
+		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
+	}
+	base := t.TempDir()
+	t.Chdir(base)
+	t.Setenv("PWD", base)
+	dirs, err := config.ResolveDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zemi.db"), []byte("not a database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut strings.Builder
+	code := execute([]string{"sessions", "-a"}, &out, &errOut, func(options) int { return 0 })
+	for _, want := range []string{"zemi: skipped 1 unreadable store", "zemi: no sessions in any project yet"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("stderr %q, want %q", errOut.String(), want)
+		}
+	}
+	if code != 0 {
+		t.Errorf("code = %d, want 0; stdout %q", code, out.String())
+	}
+}
+
+// TestModelsOverBrokenInit: an init.lua that fails after adding providers
+// still boots soft, but the list it prints is incomplete, so the run is a
+// failure, the way health reads the same state.
+func TestModelsOverBrokenInit(t *testing.T) {
+	home := t.TempDir()
+	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
+		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
+	}
+	base := t.TempDir()
+	t.Chdir(base)
+	t.Setenv("PWD", base)
+	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
+error("boom after the providers")`)
+	var out, errOut strings.Builder
+	code := execute([]string{"models"}, &out, &errOut, func(options) int { return 0 })
+	if code != 1 || !strings.Contains(out.String(), "gw/m1") {
+		t.Errorf("code = %d, stdout %q, stderr %q; want 1 with the model list on stdout", code, out.String(), errOut.String())
 	}
 }
 
