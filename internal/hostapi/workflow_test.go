@@ -150,6 +150,11 @@ func TestWorkflowRun(t *testing.T) {
 			want:   "{\n  \"n\": 2\n}",
 		},
 		{
+			name:   "no args reads nil, so the builtins' guard holds",
+			script: `if type(wf.args) == "string" then return wf.args end return "no args"`,
+			want:   "no args",
+		},
+		{
 			name:   "pipeline keeps item order and passes item and index",
 			script: `return table.concat(wf.pipeline({"a", "b"}, function(x) return wf.agent(x) end, function(r, it, i) return r .. it .. i end), ",")`,
 			want:   "a!a1,b!b2",
