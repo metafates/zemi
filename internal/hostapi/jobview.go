@@ -110,7 +110,7 @@ func (h *Host) jobsOverlay() Overlay {
 			Run:     "jobs view " + j.ID, Verb: VerbOpen,
 		}
 		if j.Running() {
-			item.Keys = []ItemKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID}}
+			item.Keys = []ItemKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID, Danger: true}}
 			running = append(running, item)
 			continue
 		}
@@ -143,7 +143,7 @@ func (h *Host) jobOverlay(j *tools.Job) Overlay {
 		o.Empty = "(no output yet)"
 	}
 	if j.Running() {
-		o.Keys = []OverlayKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID}}
+		o.Keys = []OverlayKey{{Key: "s", Desc: "stop", Run: "jobs stop " + j.ID, Danger: true}}
 	}
 	return o
 }

@@ -2302,11 +2302,11 @@ func TestCallRowClickIDs(t *testing.T) {
 		return click
 	}
 	for text, want := range map[string]string{
-		"· 1 file":               "turn:2",
-		"│ ✻ thought 6.0s":       "call:5",
-		"│ ✓ edit /w/a.go +1 -1": "call:-1",
-		"│ ✓ read 2 files":       "step:-2",
-		"│ running as job-1":     "job:job-1",
+		"· 1 file":                "turn:2",
+		"│ ✻ thought 6.0s":        "call:5",
+		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
+		"│ ✓ read 2 files":        "step:-2",
+		"│ backgrounded as job-1": "job:job-1",
 	} {
 		if got := ids()[text]; got != want {
 			t.Errorf("%q = %q, want %q (rows %v)", text, got, want, ids())
@@ -2390,7 +2390,7 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│     running as job-1", "│ ⧗ start dev server", "│     running as job-2",
+		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│     backgrounded as job-1", "│ ⧗ start dev server", "│     backgrounded as job-2",
 		"│     … 27 more lines", "│     l4", "│     l6", "│ ✓ edit a.go", "+1 -1", "│ ✗ run the unit tests", "│   ⎿ go test ./...", "│     --- FAIL: TestX",
 		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",

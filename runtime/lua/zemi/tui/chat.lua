@@ -434,8 +434,9 @@ local function builder(ctx, width)
 			detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
 		end
 		if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
-		-- the job a timed-out command went on as opens its own view
-		if (t.job or "") ~= "" then detail("running as " .. t.job, "Dim", "job:" .. t.job) end
+		-- the job a timed-out command went on as opens its own view; the
+		-- wording holds after the job exits and after a restart
+		if (t.job or "") ~= "" then detail("backgrounded as " .. t.job, "Dim", "job:" .. t.job) end
 		-- the result's last lines: always for a failure, for what the user
 		-- answered (question, plan); what the
 		-- user just decided needs no restating: the model's text carries the

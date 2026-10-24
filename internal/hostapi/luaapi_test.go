@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -104,6 +105,40 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 		local ok = zemi.http.get("%[1]s/x"):wait()
 		assert(ok ~= nil and ok.status == 200, "the server answers")
 	`, srv.URL))
+}
+
+// TestLuaAPITimerInterval: an interval whose millisecond conversion
+// overflows, or a sub-millisecond repeat, refuses instead of arming a spin.
+func TestLuaAPITimerInterval(t *testing.T) {
+	t.Parallel()
+	_, r := newTestHost(t)
+	runUser(t, r, `
+		local calls = { { zemi.timer.after, 4e15 }, { zemi.timer.every, 4e15 }, { zemi.timer.every, 0.5 } }
+		for _, c in ipairs(calls) do
+			local ok, err = pcall(c[1], c[2], function() end)
+			assert(not ok, "interval " .. tostring(c[2]) .. " must refuse")
+			assert(tostring(err):find("zemi.timer", 1, true), tostring(err))
+		end
+		assert(pcall(zemi.timer.after, 0, function() end), "after(0) stays legal")
+	`)
+}
+
+// TestLuaHTTPBodyCap: a body past the 1 MiB cap fails the call with the cap
+// named; one at the cap arrives whole.
+func TestLuaHTTPBodyCap(t *testing.T) {
+	t.Parallel()
+	_, r := newTestHostDB(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		n, _ := strconv.Atoi(req.URL.Query().Get("n"))
+		w.Write(make([]byte, n))
+	}))
+	defer srv.Close()
+	runUser(t, r, fmt.Sprintf(`
+		local at = zemi.http.get("%[1]s/x?n=%[2]d"):wait()
+		assert(at ~= nil and #at.body == %[2]d, "a body at the cap arrives whole")
+		local over, err = zemi.http.get("%[1]s/x?n=%[3]d"):wait()
+		assert(over == nil and tostring(err):find("1 MiB", 1, true), tostring(err))
+	`, srv.URL, 1<<20, 1<<20+1))
 }
 
 // TestLuaAPIIO pins the io surface: http.request with method,

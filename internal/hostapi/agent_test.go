@@ -1899,3 +1899,20 @@ func TestTypedSendMarksOnlyAQueuedMessage(t *testing.T) {
 	close(gate)
 	waitIdle(t, h)
 }
+
+// TestFlushKeepsJob: a shell row that settles keeps the job pointer its live
+// row carried, so the chat still opens the job after the turn ends.
+func TestFlushKeepsJob(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{ID: "t1", Name: "shell", Input: "make build", Status: CallOK, Job: "job-1", Output: "still running"},
+	}})
+	h.agents.mu.Lock()
+	h.flushOutput(TurnStat{})
+	h.agents.mu.Unlock()
+	last := h.Session().Transcript[len(h.Session().Transcript)-1]
+	if last.Kind != RowTool || last.Job != "job-1" {
+		t.Fatalf("settled row = %+v, want the job pointer kept", last)
+	}
+}

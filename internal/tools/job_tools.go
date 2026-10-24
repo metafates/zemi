@@ -258,10 +258,12 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		}
 		j.mu.Unlock()
 		close(j.done)
-		m.evictFinished()
+		// OnChange before the eviction sweep: the exit refresh must still
+		// find the job, or an open view of it never leaves "running"
 		if m.OnChange != nil {
 			m.OnChange()
 		}
+		m.evictFinished()
 	}()
 	return j.ID
 }
