@@ -244,7 +244,7 @@ func (h *Host) SendPrompt(prompt string) error {
 			return h.RunCommand(context.Background(), name, args+attached)
 		}
 	}
-	return h.AgentSend(prompt)
+	return h.AgentSend(agent.Defuse(prompt))
 }
 
 // RunCommand runs a command by name as if typed.
