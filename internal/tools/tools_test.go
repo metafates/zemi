@@ -691,11 +691,11 @@ func TestEditSafety(t *testing.T) {
 	}
 }
 
-// TestScratchpad: the pad is a command's $TMPDIR whoever allowed it and is
-// no project a rewind restores, and its writes gate like any other write -
-// the ask-everything gate asks, one with no asker runs - except a read-only
-// agent, whose pad is the one place it may write. A path a shell would
-// expand is refused naming the real one.
+// TestScratchpad: the pad is no project a rewind restores, and its writes
+// gate like any other write - the ask-everything gate asks, one with no
+// asker runs - except a read-only agent, whose pad is the one place it may
+// write. A path a shell would expand is refused naming the real one, and a
+// command keeps the caller's environ.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	free := perm.RealPath(t.TempDir())
@@ -714,7 +714,7 @@ func TestScratchpad(t *testing.T) {
 		{"write asks", ToolWrite, `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"write in a temp dir asks", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"read", ToolRead, `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
+		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
 	} {
@@ -760,8 +760,8 @@ func TestScratchpad(t *testing.T) {
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)
 	}
-	if res, _ := runShell(t.Context(), p, shellArgs{Command: `printf %s "$TMPDIR"`}); res.Content != pad {
-		t.Errorf("a shell command's $TMPDIR is %q, want %q", res.Content, pad)
+	if res, _ := runShell(t.Context(), p, shellArgs{Command: `printf %s "$TMPDIR"`}); res.Content != os.Getenv("TMPDIR") {
+		t.Errorf("a shell command's TMPDIR is %q, want the caller's %q", res.Content, os.Getenv("TMPDIR"))
 	}
 }
 

@@ -89,11 +89,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		once []string
 	}{
 		// the lua tool's description: read-only scripts run, changing ones ask
-		{keep: []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "needs the user's approval once", "lua.md", "under 150 characters"}, gone: []string{"in one message", "keep your own files"}, once: []string{"in one response"}},
+		{keep: []string{"Scratchpad: ", "this session's scratch space", "offset and limit", `"job_start"`, "say first what you will write", "needs the user's approval once", "lua.md", "under 150 characters"}, gone: []string{"in one message", "keep your own files"}, once: []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{name: "explore", keep: []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, gone: []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit", "under 150 characters"}},
-		{name: "general", keep: []string{"Scratchpad: " + pad, "is $TMPDIR in every command you run"}, gone: []string{"keep your own files", "You are read-only", "under 150 characters"}},
+		{name: "general", keep: []string{"Scratchpad: " + pad, "this session's scratch space"}, gone: []string{"keep your own files", "You are read-only", "under 150 characters"}},
 		// an agent file's read_only keeps its tools and is told what they can do
 		{name: "reviewer", keep: []string{"You are read-only"}},
 		// a definition's allowlist drops the tools and their prompt sections
