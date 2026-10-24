@@ -752,7 +752,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				return agent.Spec{}, fmt.Errorf("%s.%s must be a number, not a %T", at, k, v)
 			}
 		}
-		id, _ := e["id"].(string)
+		id, ok := e["id"].(string)
+		if !ok || id == "" {
+			return agent.Spec{}, fmt.Errorf("%s.id is required", at)
+		}
 		display, _ := e["display"].(string)
 		spec.Models = append(spec.Models, agent.Model{
 			ID:                  id,

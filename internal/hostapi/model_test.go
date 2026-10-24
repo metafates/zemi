@@ -259,6 +259,21 @@ func TestProviderObjectMode(t *testing.T) {
 	}
 }
 
+// TestProviderModelID: a models entry with no id is refused at the same
+// boundary as the provider's own id, not registered as a blank /model row.
+func TestProviderModelID(t *testing.T) {
+	t.Parallel()
+	_, r := newTestHost(t)
+	for _, c := range []struct{ src, want string }{
+		{`zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://x", models = { { display = "no id" } } })`, "models[1].id is required"},
+		{`zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://x", models = { { id = "m" }, { id = "" } } })`, "models[2].id is required"},
+	} {
+		if err := runChunk(t, r, c.src); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err %v, want %q", c.src, err, c.want)
+		}
+	}
+}
+
 // TestSetModelArgs: /model's grammar. The cases share one host, in order.
 func TestSetModelArgs(t *testing.T) {
 	t.Parallel()
