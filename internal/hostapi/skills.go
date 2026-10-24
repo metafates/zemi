@@ -107,11 +107,12 @@ func (h *Host) syncSkills() {
 		if !h.isClaudePlugin(p) {
 			continue
 		}
-		// a Claude-layout plugin's names are prefixed and its bodies carry
-		// the plugin vars; its commands load as model-invocable rows too
+		// a Claude-layout plugin's skills keep their bare name unless another
+		// skill holds it and its bodies carry the plugin vars; its commands
+		// load as model-invocable rows too
 		d := &dirs[len(dirs)-1]
 		d.Prefix, d.Root, d.Data = h.pluginPrefix(p), p, h.pluginDataDir(h.PluginOf(p))
-		commands = append(commands, h.claudeCommandSkills(p, d.Prefix, d.Data)...)
+		commands = append(commands, h.claudeCommandSkills(p, d.Data)...)
 	}
 	found := h.discoverSkills(dirs...)
 	for _, s := range found {
@@ -123,17 +124,26 @@ func (h *Host) syncSkills() {
 		}
 	}
 	// the command rows go through the same seen-set as Discover: on a clash
-	// with a skills/ dir row the earlier one wins, loudly
+	// the bare name retries the plugin-prefixed one, then the earlier row
+	// wins, loudly
 	seen := make(map[string]string, len(found))
 	for _, s := range found {
 		seen[s.Name] = s.Dir
 	}
 	for _, s := range commands {
-		if at, clash := seen[s.Name]; clash {
-			h.RecordErrorOnce("skills", fmt.Sprintf("%s: skill %s is already in %s", s.File, s.Name, at))
+		if _, clash := seen[s.Name]; !clash {
+			seen[s.Name] = s.Dir
+			found = append(found, s)
 			continue
 		}
-		seen[s.Name] = s.Dir
+		pre := h.pluginPrefix(s.Root) + s.Name
+		if _, taken := seen[pre]; taken || !skill.ValidName(pre) {
+			h.RecordErrorOnce("skills", fmt.Sprintf("%s: skill %s is already in %s", s.File, s.Name, seen[s.Name]))
+			continue
+		}
+		h.Log.Warn(fmt.Sprintf("skill %s is already in %s, loaded as %s", s.Name, seen[s.Name], pre), "origin", "skills", "file", s.File)
+		s.Name = pre
+		seen[pre] = s.Dir
 		found = append(found, s)
 	}
 	rows := make([]*store.Skill, 0, len(found))
@@ -522,6 +532,16 @@ func (h *Host) skillByName(name string) (skill.Skill, bool) {
 	return skill.Skill{}, false
 }
 
+// skillBase is the name a skill keeps before a collision prefixed it: the
+// dir's, or a command row's file stem, with the plugin that ships it.
+func (h *Host) skillBase(s skill.Skill) (base, plugin string) {
+	base = filepath.Base(s.Dir)
+	if s.File != "" {
+		base = strings.TrimSuffix(filepath.Base(s.File), ".md")
+	}
+	return base, h.PluginOf(s.Dir)
+}
+
 // attachSkill puts a +name skill behind the marker: the body as written, the
 // note pointing at the typed message for the request. A name nothing offers
 // stays prose, like an @ word naming no file.
@@ -535,6 +555,9 @@ func (h *Host) attachSkill(b *strings.Builder, name string) {
 		return // the body is gone since it was typed: the token stays prose
 	}
 	note := fmt.Sprintf("The user attached this skill with +%s in the message above; follow it for their request.\n\n", s.Name)
+	if base, by := h.skillBase(s); base != s.Name {
+		note = fmt.Sprintf("The user attached this skill with +%s (%s from the %s plugin) in the message above; follow it for their request.\n\n", s.Name, base, by)
+	}
 	b.WriteString(agent.AttachElement(fmt.Sprintf("skill name=%q", s.Name), note+text+skillNote(s)))
 }
 
@@ -631,6 +654,9 @@ func (h *Host) skillItems() []OverlayItem {
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
 		item := OverlayItem{Text: s.Name, Desc: listDesc(s.Description), Section: sourceSection(s.Source)}
+		if base, by := h.skillBase(s); base != s.Name {
+			item.Text = base + "@" + by
+		}
 		var keys []ItemKey
 		state := "on"
 		switch {
