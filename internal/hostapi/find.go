@@ -176,21 +176,23 @@ func searchStore(db *store.DB, root, query string, words []string) ([]FoundSessi
 const snippetLen = 180
 
 // snippet is one hit's text as a result shows it: the user's own words, on
-// one line, a window around the first match.
+// one line, a window around the first match. A hit inside the attachments
+// (which the store matched but the cut text does not hold) takes its window
+// from the whole message, so the row shows what matched.
 func snippet(text, role string, words []string) string {
+	shown := text
 	if role == string(fantasy.MessageRoleUser) {
-		text, _ = agent.CutAttached(text)
+		shown, _ = agent.CutAttached(text)
 	}
-	line := sanitize.Line(text)
+	line := sanitize.Line(shown)
+	at := earliest(line, words)
+	if at < 0 && shown != text {
+		line = sanitize.Line(text)
+		at = earliest(line, words)
+	}
 	runes := []rune(line)
 	if len(runes) <= snippetLen {
 		return line
-	}
-	at := -1 // the earliest of the query's words in the text
-	for _, w := range words {
-		if i, _ := foldIndex(line, w); i >= 0 && (at < 0 || i < at) {
-			at = i
-		}
 	}
 	start := 0
 	if at >= 0 {
@@ -204,6 +206,17 @@ func snippet(text, role string, words []string) string {
 		cut += "…"
 	}
 	return cut
+}
+
+// earliest is the byte offset of the query's first word in line, -1 for none.
+func earliest(line string, words []string) int {
+	at := -1
+	for _, w := range words {
+		if i, _ := foldIndex(line, w); i >= 0 && (at < 0 || i < at) {
+			at = i
+		}
+	}
+	return at
 }
 
 // SessionProject is the project root whose store holds session id: the

@@ -153,6 +153,25 @@ func (f findFixture) hits(t *testing.T, found Found, id string) []string {
 	return nil
 }
 
+// TestFindHitInsideAttachment: the store matches the whole message, so a hit
+// inside what zemi attached takes its window from the whole text - a window
+// of the typed words would not show what matched.
+func TestFindHitInsideAttachment(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := store.ShortID()
+	if err := h.DB.CreateSession(sid, "", "lockfile", ""); err != nil {
+		t.Fatal(err)
+	}
+	addTo(t, h.DB, sid, "user", "what is in the lock file?"+agent.Attached("file", "the Cargo.lock pins serde 1.0.2"))
+	found := FindSessions(h.Dirs, "serde")
+	if len(found.Sessions) != 1 || found.Sessions[0].Count != 1 || len(found.Sessions[0].Hits) != 1 {
+		t.Fatalf("search = %+v, want one hit", found)
+	}
+	if hit := found.Sessions[0].Hits[0]; !strings.Contains(hit, "serde") {
+		t.Errorf("snippet = %q, want the text that matched", hit)
+	}
+}
+
 // TestListAllSessions: every project's sessions, this project first, and the
 // store it cannot read comes back named, as a search's skips are.
 func TestListAllSessions(t *testing.T) {
