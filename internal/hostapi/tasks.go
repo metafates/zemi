@@ -879,8 +879,8 @@ func (h *Host) notifyReport(r report) {
 const reportTag = `agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`
 
 // attachedTag opens an element right behind agent.AttachMarker (the tail
-// starts past the first one), so a stray line in a file or a send draws no row.
-// NOTE: text that carries the marker itself still draws one.
+// starts past the first one), so a stray line in a file or a send draws no row;
+// no body carries the marker, agent.AttachElement defuses it.
 var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
 
 var (

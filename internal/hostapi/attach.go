@@ -159,7 +159,10 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		case !utf8.Valid(data):
 			note("it is not text")
 		default:
-			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", name, data)
+			// the body shows as written; a file carrying its own close tag blurs
+			// where it ends, model-side only (NOTE: the ceiling - real escaping
+			// would change the bytes of every attached file)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("file path=%q", name), string(data)))
 		}
 	}
 	switch len(refused) {

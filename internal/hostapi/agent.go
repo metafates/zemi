@@ -557,7 +557,10 @@ func (h *Host) AgentSend(text string) error {
 // workflow call waiting on a long run hands off and the turn reads the message
 // at its next step boundary instead of waiting for that run (DESIGN §4). A
 // message that starts a turn marks nothing: its own calls wait as usual.
+// A literal marker in the user's words is defused: a paste carries it, and it
+// must not cut the user's own words out of their message.
 func (h *Host) AgentSendUser(text string) error {
+	text = agent.Defuse(text)
 	queued, err := h.agentSend(text)
 	if queued {
 		h.UserSpoke()

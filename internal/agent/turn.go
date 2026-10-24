@@ -177,8 +177,17 @@ var ErrTurnActive = errors.New("agent: a turn is already active")
 
 // AttachMarker starts what zemi appends to a user message for the model:
 // attachments, shell output, agent reports and notes. Everything that shows,
-// stores or recalls the user's words cuts the text there.
+// stores or recalls the user's words cuts the text there. Content zemi does
+// not compose (a file body, command output, pasted text) has every literal
+// marker defused first, so no body can forge a block of the trailer.
 const AttachMarker = "\n\n<attached-files>"
+
+// Defuse rewrites every AttachMarker in text to one newline and a space short
+// of the real one: the words around it read on, and the space keeps a blank
+// line before it (or the element body's own opening) from re-forming it.
+func Defuse(text string) string {
+	return strings.ReplaceAll(text, AttachMarker, "\n <attached-files>")
+}
 
 // Attached puts text the user did not type (piped stdin, a command file's
 // body, a note from zemi) behind AttachMarker as one element, so it never
@@ -190,10 +199,11 @@ func Attached(tag, text string) string {
 }
 
 // AttachElement is one labeled element of the trailer Attached wraps, the
-// shape every element of an attached-files block shares.
+// shape every element of an attached-files block shares. The body is defused,
+// so a body carrying the marker cannot re-open the trailer inside itself.
 func AttachElement(tag, text string) string {
 	name, _, _ := strings.Cut(tag, " ")
-	return "\n<" + tag + ">\n" + text + "\n</" + name + ">"
+	return Defuse("\n<" + tag + ">\n" + text + "\n</" + name + ">")
 }
 
 // CutAttached splits a message into what was typed and its trailer.
