@@ -2,7 +2,6 @@
 // under the config dir (user origin), an enabled plugin (plugin origin) or a
 // trusted repository's .agents (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
 // and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
-// The step also registers the /<name> commands of skills that ask for one.
 
 package hostapi
 
@@ -97,10 +96,4 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		}
 		return true
 	})
-	// last, so a skill that asks for a command yields to every one above
-	for _, s := range h.enabledSkills() {
-		if s.UserInvocable {
-			h.addSkillCommand(s, gen)
-		}
-	}
 }

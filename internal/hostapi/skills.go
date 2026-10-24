@@ -405,48 +405,11 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		return err
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
-	if s, ok := h.skillsReg.get(name); ok && s.UserInvocable {
-		// the markdown commands step builds /<name> or puts back the command
-		// the skill displaced; booting, it has yet to run
-		_ = h.ReloadConfig()
-	}
 	return nil
 }
 
 func skillFile(s skill.Skill) string {
 	return cmp.Or(s.File, filepath.Join(s.Dir, "SKILL.md"))
-}
-
-// hasSkillCommand reports whether /<name> is the skill's own command.
-func (h *Host) hasSkillCommand(s skill.Skill) bool {
-	c := h.Commands.Lookup(s.Name)
-	return c != nil && c.Path == skillFile(s)
-}
-
-// addSkillCommand makes a skill that asks for it the command /<name>. It
-// yields to a builtin command and to one of its own origin: a file in
-// commands/ or a zemi.command.add says "I want /x", a flag in a skill an
-// installer wrote does not. Any other holder is replaced.
-func (h *Host) addSkillCommand(s skill.Skill, gen Gen) {
-	origin := lua.Origin(s.Source)
-	old := h.Commands.Lookup(s.Name)
-	if old != nil && old.Path == skillFile(s) {
-		return
-	}
-	if old == nil || (old.Origin != lua.OriginBuiltin && old.Origin != origin) {
-		var err error
-		if old, err = h.Commands.Add(&Command{
-			Name: s.Name, NArgs: NArgsAny, Desc: strings.TrimSpace(listDesc(s.Description) + " " + s.ArgumentHint),
-			Origin: origin, Path: skillFile(s), Gen: gen,
-			GoFn: func(h *Host, args string) error {
-				typed, stdin := agent.CutAttached(args)
-				return h.sendSkill(s, strings.TrimSpace("/"+s.Name+" "+typed), strings.TrimSpace(typed), stdin)
-			},
-		}); err == nil {
-			return
-		}
-	}
-	h.RecordErrorOnce("skills", fmt.Sprintf("%s: /%s is already a %s command; /skills use %s sends the skill", s.Name, s.Name, old.Origin, s.Name))
 }
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
@@ -484,17 +447,13 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 	}
 }
 
-// skillsCommand dispatches /skills [enable|disable <name> | use <name> [request]].
+// skillsCommand dispatches /skills [enable|disable <name>].
 func (h *Host) skillsCommand(args string) error {
-	typed, stdin := agent.CutAttached(args)
+	typed, _ := agent.CutAttached(args)
 	fields := strings.Fields(typed)
 	switch {
 	case len(fields) == 0:
 		return h.openSkills("")
-	case len(fields) >= 2 && fields[0] == "use":
-		// the request stays as typed, line breaks included
-		request := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(typed), "use"))
-		return h.useSkill(fields[1], strings.TrimSpace(strings.TrimPrefix(request, fields[1])), stdin)
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
 		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
@@ -508,7 +467,7 @@ func (h *Host) skillsCommand(args string) error {
 	case (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes") && fields[0] == "delete":
 		return h.deleteRecipe(fields[1], len(fields) == 3)
 	default:
-		return Usagef("usage: /skills | /skills enable|disable|open|delete <name> | /skills use <name> [request]")
+		return Usagef("usage: /skills | /skills enable|disable|open|delete <name>")
 	}
 }
 
@@ -542,31 +501,15 @@ func (h *Host) openSkillFile(name string) error {
 	if err != nil {
 		return err
 	}
-	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
-		if s.Name != name {
-			continue
-		}
-		if s.Source == skill.Builtin {
-			return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; Read it in its /skills row shows the text", name)
-		}
-		h.openInEditor(ui, skillFile(s), "the skill")
-		return nil
+	s, ok := h.skillByName(name)
+	if !ok {
+		return Usagef("no skill %q", name)
 	}
-	return Usagef("no skill %q", name)
-}
-
-// useSkill sends the command line as typed with the skill behind
-// agent.AttachMarker, which the transcript, titles, rewind and memory quotes
-// cut off: the deterministic path when the model did not load it on its
-// own. A disabled skill is reachable here: naming it is the request, so its
-// description need not ride every prompt.
-func (h *Host) useSkill(name, request, stdin string) error {
-	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
-		if s.Name == name {
-			return h.sendSkill(s, strings.TrimSpace("/skills use "+name+" "+request), request, stdin)
-		}
+	if s.Source == skill.Builtin {
+		return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; Read it in its /skills row shows the text", name)
 	}
-	return Usagef("no skill %q", name)
+	h.openInEditor(ui, skillFile(s), "the skill")
+	return nil
 }
 
 // skillByName finds a skill in the registry or the project's, disabled ones
@@ -717,14 +660,10 @@ func (h *Host) skillItems() []OverlayItem {
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
-		use := "/skills use " + s.Name + " "
-		if h.hasSkillCommand(s) {
-			use = "/" + s.Name + " "
-		}
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
 			keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "skills open " + s.Name})
 		}
-		item.Keys = append(keys, ItemKey{Key: "u", Desc: "use now", Fill: use})
+		item.Keys = keys
 		if s.Source == skill.Recipe {
 			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name + " --yes"})
 		}
@@ -735,29 +674,21 @@ func (h *Host) skillItems() []OverlayItem {
 	return items
 }
 
-// usedBy says who runs a skill: the model through its index, the user
-// through its command.
+// usedBy says who runs a skill: the model while it is on, the user's
+// +name token when it is off.
 func (h *Host) usedBy(s skill.Skill, on bool) string {
-	var who []string
 	if on {
-		who = append(who, "the model")
+		return "the model"
 	}
-	if h.hasSkillCommand(s) {
-		who = append(who, "/"+s.Name)
-	}
-	out := cmp.Or(strings.Join(who, " and "), "/skills use only")
-	if on && s.UserInvocable && !h.hasSkillCommand(s) {
-		out += "; /" + s.Name + " is another command"
-	}
-	return out
+	return "+" + s.Name + " only"
 }
 
 // skillsCommands is /skills.
 func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
-		Name: "skills", NArgs: NArgsAny, Desc: "turn skills on or off, or use one",
+		Name: "skills", NArgs: NArgsAny, Desc: "turn skills on or off",
 		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-		GoComplete: SubcommandCompleter([]string{"enable", "disable", "use", "open", "delete"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"enable", "disable", "open", "delete"}, func(h *Host, sub string) []string {
 			var names []string
 			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 				if !(sub == "open" && s.Source == skill.Builtin) && !(sub == "delete" && s.Source != skill.Recipe) {

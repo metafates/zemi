@@ -64,8 +64,8 @@ type Skill struct {
 	// body, set for a Claude-layout plugin's entries, "" for everything else.
 	File       string
 	Root, Data string
-	// UserInvocable: the skill is also /<name>, a command its frontmatter
-	// asks for; the model loads every skill either way.
+	// UserInvocable is the frontmatter's user-invocable key, kept as parsed
+	// metadata: a skill is invoked with +name, never a command of its own.
 	UserInvocable bool
 	ArgumentHint  string
 }

@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"cmp"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,12 +10,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/set"
@@ -213,62 +210,32 @@ func TestSkillsUserHooksStep(t *testing.T) {
 	}
 }
 
-// TestSkillCommands: the invocation fields decide whether the model sees a
-// skill and whether it is a command, which yields to a builtin command and
-// to one of its own origin, and replaces a less trusted one.
-func TestSkillCommands(t *testing.T) {
-	const asks = "d\nuser-invocable: true"
-	file := func(path, content string) {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	userCmd := func(h *Host) { file(filepath.Join(h.Dirs.ConfigHome, "commands", "x.md"), "the user's x\n") }
+// TestSkillRows: what the model sees and what a /skills row says. No skill
+// is a command of its own: the user invokes one with +name in a message.
+func TestSkillRows(t *testing.T) {
+	const asks = "d\nuser-invocable: true\nargument-hint: <n>"
 	user := func(desc string) func(h *Host) {
 		return func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", desc, "") }
 	}
-	both := func(a, b func(h *Host)) func(h *Host) { return func(h *Host) { a(h); b(h) } }
 	project := func(h *Host) { writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "x", asks, "") }
-	projectCmd := func(h *Host) {
-		file(filepath.Join(h.Dirs.ProjectDir, ".agents", "commands", "x.md"), "the project's x\n")
-	}
-	const mine, other = "the model and /x", "the model; /x is another command"
 	for _, c := range []struct {
 		name      string
-		skill     string // "x" when empty
 		write     func(h *Host)
-		toggle    []bool // after boot, each followed by the reload it asks for
 		untrusted bool
+		off       bool
 		indexed   bool
-		cmd       lua.Origin // of the skill's own command
-		other     lua.Origin // of /<skill> when it is another command
-		err       string
-		used      string // its /skills detail's "used by"; "" when not listed
+		used      string
 	}{
 		{name: "plain", write: user("d"), indexed: true, used: "the model"},
-		{name: "asks for a command", write: user(asks), indexed: true, cmd: lua.OriginUser, used: mine},
 		// the model loads every skill: Claude's key hides nothing
 		{name: "the model-invocation key is ignored", write: user("d\ndisable-model-invocation: true"), indexed: true, used: "the model"},
-		{name: "asks for no command", write: user("d\nuser-invocable: false"), indexed: true, used: "the model"},
-		{name: "a builtin command stays", skill: "skills", write: func(h *Host) { writeSkill(t, h.userSkillsDir(), "skills", asks, "") }, indexed: true, other: lua.OriginBuiltin, err: "skills: /skills is already a builtin command", used: "the model; /skills is another command"},
-		{name: "a markdown command of its origin stays", write: both(user(asks), userCmd), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
-		{name: "a lua command of its origin stays", write: both(user(asks), func(h *Host) {
-			file(filepath.Join(h.Dirs.ConfigHome, "init.lua"), `zemi.command.add("x", function() end)`)
-		}), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
-		{name: "a project command yields to a user skill", write: both(user(asks), projectCmd), indexed: true, cmd: lua.OriginUser, used: mine},
-		{name: "a plugin skill takes a user command's name", write: both(userCmd, func(h *Host) {
-			writeSkill(t, filepath.Join(h.Dirs.DataHome, "plugins", "local", "p", "skills"), "x", asks, "")
-		}), indexed: true, cmd: lua.OriginPlugin, used: mine},
-		{name: "a trusted project skill", write: project, indexed: true, cmd: lua.OriginProject, used: mine},
+		{name: "user-invocable stays metadata", write: user(asks), indexed: true, used: "the model"},
+		{name: "a trusted project skill", write: project, indexed: true, used: "the model"},
 		{name: "an untrusted project skill", write: project, untrusted: true},
 		{name: "a recipe takes neither field", write: func(h *Host) {
 			writeSkill(t, h.recipesDir(), "x", "d\nuser-invocable: true", "")
 		}, indexed: true, used: "the model"},
-		{name: "off puts back the command it displaced", write: both(user(asks), projectCmd), toggle: []bool{false}, other: lua.OriginProject, used: "/skills use only"},
-		{name: "on brings it back", write: user(asks), toggle: []bool{false, true}, indexed: true, cmd: lua.OriginUser, used: mine},
+		{name: "off leaves the +name token", write: user("d"), off: true, used: "+x only"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -280,50 +247,34 @@ func TestSkillCommands(t *testing.T) {
 				lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser),
 				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
 			}
-			var reloads atomic.Int32
-			h.SetReload(func() error {
-				defer reloads.Add(1)
-				return h.ForceReload(t.Context(), steps)
-			}, nil)
 			if err := r.Boot(t.Context(), steps); err != nil {
 				t.Fatal(err)
 			}
 			h.SetUIHooks(&fakeUI{})
-			for i, on := range c.toggle {
-				if err := h.setSkillEnabled("x", on); err != nil {
+			if c.off {
+				if err := h.setSkillEnabled("x", false); err != nil {
 					t.Fatal(err)
 				}
-				waitFor(t, func() error {
-					if n := reloads.Load(); n != int32(i+1) {
-						return fmt.Errorf("reloads=%d", n)
-					}
-					return nil
-				})
 			}
-			name := cmp.Or(c.skill, "x")
-			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == name })
-			mine, project := h.skillsIndexPrompt()
-			if prompt := strings.Contains(mine+project, "- "+name+": "); indexed != c.indexed || prompt != c.indexed {
+			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == "x" })
+			mine, proj := h.skillsIndexPrompt()
+			if prompt := strings.Contains(mine+proj, "- x: "); indexed != c.indexed || prompt != c.indexed {
 				t.Errorf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
 			}
-			var cmd, other lua.Origin
-			if got := h.Commands.Lookup(name); got != nil && strings.HasSuffix(got.Path, filepath.Join(name, "SKILL.md")) {
-				cmd = got.Origin
-			} else if got != nil {
-				other = got.Origin
-			}
-			errs := fmt.Sprint(h.errs.entries)
-			if cmd != c.cmd || other != c.other || c.err == "" && strings.Contains(errs, "skills") || !strings.Contains(errs, c.err) {
-				t.Errorf("command origin %q, other %q, want %q, %q; errors %s", cmd, other, c.cmd, c.other, errs)
+			if got := h.Commands.Lookup("x"); got != nil {
+				t.Errorf("/x registered: %+v", got)
 			}
 			used := ""
 			for _, it := range h.skillItems() {
-				if it.Text == name && it.Section != "Builtin" {
+				if it.Text == "x" && it.Section != "Builtin" {
 					used = dumpFields(it.Fields)
 				}
 			}
 			if c.used == "" && used != "" || c.used != "" && !strings.Contains(used, "[used by "+c.used+"]") {
 				t.Errorf("fields %q, want used by %q", used, c.used)
+			}
+			if err := h.skillsCommand("use x"); !errors.Is(err, ErrUsage) {
+				t.Errorf("/skills use x: %v, want a usage error", err)
 			}
 		})
 	}
@@ -369,70 +320,6 @@ func TestLearnListAndDecide(t *testing.T) {
 		`local ok, e = zemi.learn.decide("missing", "accept") assert(ok == nil and e:find("no such proposal"), tostring(e))`,
 		"project.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project-origin decide: %v", err)
-	}
-}
-
-// TestSkillsUse: /skills use and a skill's own command send the command line
-// as typed and the skill without frontmatter behind the marker, $ARGUMENTS
-// filled, ahead of piped stdin; /skills use reaches a disabled skill too.
-func TestSkillsUse(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostSkillsNoBoot(t)
-	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
-	for name, body := range map[string]string{
-		"big":       "description: huge\n---\n\n" + strings.Repeat("step\n", tools.SkillMaxOut/4),
-		"review-pr": "description: review a PR\nuser-invocable: true\n---\nReview PR $ARGUMENTS.\n",
-	} {
-		if err := os.MkdirAll(filepath.Join(h.userSkillsDir(), name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(h.userSkillsDir(), name, "SKILL.md"), []byte("---\nname: "+name+"\n"+body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.MarkdownCommandsStep()}); err != nil {
-		t.Fatal(err)
-	}
-	reflectStub(t, h, "ok")
-	// a disabled skill is reviewed code: naming it is the request
-	if err := h.setSkillEnabled("local-run", false); err != nil {
-		t.Fatal(err)
-	}
-	stdin := agent.Attached("stdin", "the spec")
-	for _, c := range []struct {
-		name, args, typed string
-		tail              []string // in order
-	}{
-		{"plain request", "skills use local-run make a landing page", "/skills use local-run make a landing page", []string{"<skill>", "Skill directory: ", "Body."}},
-		{"line breaks survive", "skills use local-run first\n\nsecond", "/skills use local-run first\n\nsecond", []string{"Body."}},
-		{"stdin after the skill", "skills use local-run fix it" + stdin, "/skills use local-run fix it", []string{"Body.", stdin}},
-		{"no request", "skills use local-run", "/skills use local-run", []string{"Body."}},
-		{"a big skill is cut", "skills use big", "/skills use big", []string{"Read the cut lines with the read tool"}},
-		{"arguments filled", "skills use review-pr 12", "/skills use review-pr 12", []string{"Review PR 12."}},
-		{"the skill's own command", "review-pr 12" + stdin, "/review-pr 12", []string{"Review PR 12.", stdin}},
-	} {
-		name, args, _ := strings.Cut(c.args, " ")
-		if err := h.RunCommand(t.Context(), name, args); err != nil {
-			t.Errorf("%s: %v", c.name, err)
-			continue
-		}
-		waitIdle(t, h)
-		typed, tail := agent.CutAttached(lastUserText(t, h))
-		if typed != c.typed || strings.Contains(tail, "run the local suite") {
-			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
-		}
-		rest := tail
-		for _, want := range c.tail {
-			_, after, ok := strings.Cut(rest, want)
-			if !ok {
-				t.Errorf("%s: tail lacks %q after what came before:\n%s", c.name, want, tail)
-				break
-			}
-			rest = after
-		}
-	}
-	if err := h.skillsCommand("use nothing"); err == nil || !strings.Contains(err.Error(), "no skill") {
-		t.Errorf("unknown skill: err = %v", err)
 	}
 }
 
