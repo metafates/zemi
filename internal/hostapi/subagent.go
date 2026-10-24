@@ -1657,7 +1657,7 @@ func (h *Host) agentsCommands() []*Command {
 			}
 			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id>, step <run> <row>, stop [id])", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "stop"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "step", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {
 				return nil
 			}
