@@ -116,6 +116,16 @@ func TestOpenReadUnmigrated(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("a migrated store reads: %d, %v", n, err)
 	}
+	// query_only: a write through a read-only open fails, never half-applies
+	db, err = OpenRead(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Query(`INSERT INTO kv VALUES ('x', '{}', 0)`); err == nil || !strings.Contains(err.Error(), "readonly") {
+		db.Close()
+		t.Fatalf("a write through a read-only open: %v, want a readonly refusal", err)
+	}
+	db.Close()
 
 	raw, err := sql.Open("sqlite", path)
 	if err != nil {
