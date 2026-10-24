@@ -1060,6 +1060,21 @@ func (h *Host) refreshViewed(run *agentRun) {
 	}
 }
 
+// storedStatus reads a run_status back from the store, which is written only
+// where a run ends: none is done, and 'running' is one this process does not
+// hold - a crash left it behind - so it reads as cancelled, as a journal with
+// no end line does.
+func storedStatus(s string) RunStatus {
+	switch st := RunStatus(s); st {
+	case "":
+		return RunDone
+	case RunRunning:
+		return RunCancelled
+	default:
+		return st
+	}
+}
+
 // loadRun rebuilds a finished run from its child session.
 func (h *Host) loadRun(id string) (*agentRun, error) {
 	if h.DB == nil {
@@ -1077,7 +1092,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	run := &agentRun{
 		id: id, agent: sess.Agent, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
-		sessionID: id, status: cmp.Or(RunStatus(sess.RunStatus), RunDone), tr: tr,
+		sessionID: id, status: storedStatus(sess.RunStatus), tr: tr,
 	}
 	_ = h.tasks.add(run)
 	return run, nil
@@ -1140,7 +1155,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
 			if !held.Has(c.ID) && !inFlows.Has(c.ID) {
-				row(c.ID, cmp.Or(RunStatus(c.RunStatus), RunDone), cmp.Or(c.Title, c.Agent), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Agent, 0, nil)
+				row(c.ID, storedStatus(c.RunStatus), cmp.Or(c.Title, c.Agent), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Agent, 0, nil)
 			}
 		}
 	}

@@ -594,6 +594,33 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	}
 }
 
+// TestStoredRunningReadsCancelled: a run_status left 'running' in the store
+// is one this process does not hold, so it reads as cancelled - listed under
+// Earlier, not Running, and viewed it does not tick the frame.
+func TestStoredRunningReadsCancelled(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	child := sid + "c"
+	if err := h.DB.CreateSession(child, sid, "stalerun1", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.SetSessionRunStatus(child, "running"); err != nil {
+		t.Fatal(err)
+	}
+	rows := dumpItems(h.agentRunItems())
+	if strings.Contains(rows, "section:Running") || !strings.Contains(rows, "fields:[status cancelled") {
+		t.Fatalf("the stored 'running' row reads as running:\n%s", rows)
+	}
+	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
+	if err := h.ViewAgent(child); err != nil {
+		t.Fatal(err)
+	}
+	if h.ViewedRunRunning() {
+		t.Fatal("a stored 'running' row viewed keeps the frame ticking")
+	}
+}
+
 func TestAgentSendsWhileBackground(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
