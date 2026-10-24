@@ -615,6 +615,20 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 	}
 }
 
+// TestBgTurnFolds: a turn whose calls all went to the background folds into
+// its digest too, or its rail would hang open over the events that follow it.
+func TestBgTurnFolds(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 140, 30)
+	host.AppendMessage("user", "review it")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "agent", Label: "Review rail-fold branch", Status: "bg", Run: "rr1"})
+	appendReply(host, "the review is running", hostapi.TurnStat{})
+	rows := chatRows(t, app, 138)
+	if !slices.Contains(rows, "· 1 agent run") || slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "Review rail-fold branch") }) {
+		t.Fatalf("the background turn does not fold:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
 // TestLoneThoughtDigestOpensItsText: a run of one thought opens from its
 // digest as the text alone, the digest already naming the thought.
 func TestLoneThoughtDigestOpensItsText(t *testing.T) {

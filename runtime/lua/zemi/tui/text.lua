@@ -223,8 +223,15 @@ local NEWS = { shell = true }
 local function counted(t) return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil end
 
 -- Whether a call folds into its turn's digest: it counts, and its diff is
--- its own work or there is none; a command's diff is news.
-local function digests(t) return counted(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)]) end
+-- its own work or there is none; a command's diff is news. A background
+-- hand-off counts too, or a turn that left its work running folds to nothing
+-- and its rail hangs open.
+local function digests(t)
+	if t.status == "bg" then local f = M.family(M.tool(t))
+		return f ~= nil and ((t.diff or "") == "" or not NEWS[M.tool(t)])
+	end
+	return counted(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)])
+end
 
 --- Whether a call only looked around and reads as its step's row: it counts
 --- and shows no diff of its own.
