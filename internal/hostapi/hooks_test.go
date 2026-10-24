@@ -337,7 +337,7 @@ func TestClaudePluginLayers(t *testing.T) {
 		}
 	}
 	if reviewer.Name == "" || !slices.Equal(reviewer.Tools, []string{"shell", "read"}) || reviewer.Model != "" {
-		t.Fatalf("fix-reviewer: %+v", reviewer)
+		t.Fatalf("reviewer: %+v", reviewer)
 	}
 	if !strings.Contains(reviewer.System, root) {
 		t.Fatal("the agent body did not get the plugin root")

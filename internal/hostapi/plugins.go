@@ -33,9 +33,9 @@ type pluginLoad struct {
 
 // pluginGrant is what the plugins step fixed for one generation: the roots it
 // loaded, the capabilities each manifest declared, and which roots are
-// Claude-layout (their layered names are prefixed and their MCP servers and
-// hooks load). One swap, so a reload, a disable or a delete cannot leave a
-// stale grant.
+// Claude-layout (their layered names fall back to a prefix and their MCP
+// servers and hooks load). One swap, so a reload, a disable or a delete
+// cannot leave a stale grant.
 type pluginGrant struct {
 	roots  []string
 	uses   map[string][]string // by plugin name
