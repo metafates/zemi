@@ -2337,7 +2337,9 @@ func TestCallRowClickIDs(t *testing.T) {
 // of them, a labelled one its own row with
 // no command under it, while edits and failures keep their rows, every mark
 // at column 2 behind the bar; a kept command shows the model's description
-// with the command under it.
+// with the command under it. A call the turn has superseded reads as its
+// header alone, its job line gone with the rest; the running one, a failure,
+// a stopped call and an ask keep their rows.
 func TestToolRows(t *testing.T) {
 	t.Parallel()
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
@@ -2390,7 +2392,7 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│     backgrounded as job-1", "│ ⧗ start dev server", "│     backgrounded as job-2",
+		"│ ✓ read 2 files", "│ ✓ vet the code", "│ ✓ search pattern pattern pattern", "│ ⧗ build it", "│ ⧗ start dev server",
 		"│     … 27 more lines", "│     l4", "│     l6", "│ ✓ edit a.go", "+1 -1", "│ ✗ run the unit tests", "│   ⎿ go test ./...", "│     --- FAIL: TestX",
 		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",
@@ -2402,8 +2404,8 @@ func TestToolRows(t *testing.T) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "go vet ./...") || strings.Contains(frame, "7 - old") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
-		t.Fatalf("a folded call's output stays out, a verdict row shows only the verdict:\n%s", frame)
+	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "go vet ./...") || strings.Contains(frame, "7 - old") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") || strings.Contains(frame, "backgrounded as") {
+		t.Fatalf("a folded call's output stays out, a verdict row shows only the verdict, a superseded call its header:\n%s", frame)
 	}
 }
 

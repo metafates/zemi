@@ -2150,7 +2150,10 @@ rides the `memories.md` line and its ledger entries.
   rows that follow it
   and a gap under the last, its output behind the `⎿` under that, a lone one
   as its own row, a labelled call a row of its own, its label (its command shows
-  once opened), a thought a row of its own. The rail itself opens and closes on
+  once opened), a thought a row of its own. On the live turn's rail a call the
+  turn has superseded reads as its header alone, what it said a click away; the
+  newest call, a running one, a failure and an ask keep the rows under theirs.
+  The rail itself opens and closes on
   a bar-only row, and another stands between two entries of different kinds or
   on either side of a call that failed or that the user stopped; entries of one
   kind, running or settled, stand together.
