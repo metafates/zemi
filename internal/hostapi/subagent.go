@@ -1479,14 +1479,14 @@ func (h *Host) agentsCommands() []*Command {
 	return []*Command{{
 		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start, or make one",
 		GoFn: func(h *Host, args string) error {
-			typed, stdin := agent.CutAttached(args)
+			typed, attached := agent.CutAttached(args)
 			sub, id, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			switch id = strings.TrimSpace(id); sub {
 			case "":
 				return h.openAgents()
 			case "new":
 				// the line as typed, newlines included, with the prompt behind it
-				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())) + stdin)
+				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())) + attached)
 			case "open":
 				return h.openAgentFile(id)
 			case "view":

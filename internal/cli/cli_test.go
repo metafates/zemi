@@ -371,7 +371,7 @@ func TestTrustGateInertWritesNothing(t *testing.T) {
 }
 
 // TestSendPromptRunsCommands: a prompt on the command line that names a
-// command runs it, the way the composer would, with piped stdin behind the
+// command runs it, the way the composer would, with attached text behind the
 // marker; anything else is a message.
 func TestSendPromptRunsCommands(t *testing.T) {
 	_, h, _ := newTrustGate(t)
@@ -382,11 +382,11 @@ func TestSendPromptRunsCommands(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	stdin := agent.Attached("stdin", "diff --git a/x b/x")
+	attached := agent.Attached("stdin", "diff --git a/x b/x")
 	for _, c := range []struct{ prompt, args string }{
 		{"/note the args", "the args"},
 		{"/note\nnext line", "next line"},
-		{"/note" + stdin, stdin},
+		{"/note" + attached, attached},
 	} {
 		got = "unset"
 		if err := h.SendPrompt(c.prompt); err != nil || got != c.args {

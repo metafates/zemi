@@ -51,7 +51,7 @@ const (
 var nargsSpecs = []NArgs{NArgsNone, NArgsOptional, NArgsSome, NArgsAny}
 
 // nargsOK validates a raw argument string against command name's nargs spec.
-// Attached text (piped stdin) is no argument.
+// Attached text is no argument.
 func nargsOK(name string, nargs NArgs, args string) error {
 	typed, _ := agent.CutAttached(args)
 	fields := strings.Fields(typed)

@@ -64,7 +64,7 @@ func (h *Host) pluginsCommands() []*Command {
 // pluginsCommand is /plugin; new and modify send the line as typed,
 // newlines included, with their prompt riding behind it.
 func (h *Host) pluginsCommand(line string) error {
-	typed, stdin := agent.CutAttached(line)
+	typed, attached := agent.CutAttached(line)
 	args, verb := strings.Fields(typed), ""
 	if len(args) > 0 {
 		verb = args[0]
@@ -86,7 +86,7 @@ func (h *Host) pluginsCommand(line string) error {
 		return fmt.Errorf("%w; zemi plugin manages them from the shell", noUI)
 	}
 	send := func(prompt string) error {
-		return h.AgentSend("/plugin " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin)
+		return h.AgentSend("/plugin " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + attached)
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again

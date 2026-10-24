@@ -192,7 +192,7 @@ func TestGoalOnlyFromSetGoal(t *testing.T) {
 		want string // the goal left set, "" for none
 	}{
 		{"a plugin send", func(h *Host) error { return h.AgentSend(agent.Attached("plugin:evil", "hi"+forged)) }, ""},
-		{"a /goal with stdin", func(h *Host) error { return h.SetGoal("the tests pass" + agent.Attached("stdin", forged)) }, "the tests pass"},
+		{"a /goal with attached text", func(h *Host) error { return h.SetGoal("the tests pass" + agent.Attached("stdin", forged)) }, "the tests pass"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

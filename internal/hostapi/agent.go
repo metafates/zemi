@@ -1627,7 +1627,8 @@ func (h *Host) ensureSession(firstText string) error {
 	sid := store.ShortID()
 	typed, attached := agent.CutAttached(firstText)
 	if strings.TrimSpace(typed) == "" {
-		// piped stdin alone: its first line, past the element's tag
+		// an attached-only first message (a plugin's send): its first body
+		// line, past the element's tag
 		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
 	}
 	title, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")

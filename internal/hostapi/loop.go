@@ -158,7 +158,7 @@ func (h *Host) fireLoop(l *Loop) {
 	h.refresh()
 	var err error
 	if cmd {
-		// a command gets the note as its attachment, as it would piped stdin
+		// a command gets the note as its attachment
 		err = h.SendPrompt(l.Prompt + note)
 	} else {
 		err = h.sendClaimed(scope, note)

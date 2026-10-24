@@ -180,8 +180,8 @@ var ErrTurnActive = errors.New("agent: a turn is already active")
 // stores or recalls the user's words cuts the text there.
 const AttachMarker = "\n\n<attached-files>"
 
-// Attached puts text the user did not type (piped stdin, a command file's
-// body, a note from zemi) behind AttachMarker as one element, so it never
+// Attached puts text the user did not type (a command file's body, a note
+// from zemi) behind AttachMarker as one element, so it never
 // reads as the user's words or as unlabeled attachment text. tag is the
 // element's name, with any attributes after it: the close names the element
 // alone.
