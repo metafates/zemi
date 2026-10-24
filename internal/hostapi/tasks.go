@@ -1125,6 +1125,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id}}
 		item.Section = "Earlier in this session"
 		if status == RunRunning {
+			item.Keys = append(item.Keys, ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + id, Danger: true})
 			item.Section = "Running"
 			running = append(running, item)
 			return

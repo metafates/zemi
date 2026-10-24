@@ -580,7 +580,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	rows := dumpItems(h.agentRunItems())
 	// the row is named by the run's label and its desc keeps the definition;
 	// enter opens its preview (the facts and the task), v its transcript
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
