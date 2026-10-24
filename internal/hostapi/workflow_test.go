@@ -1620,6 +1620,21 @@ func TestAgentView(t *testing.T) {
 	}
 }
 
+// TestFlowViewNamesItsError: a failed run's view carries why it failed, as
+// the agent view does; a run with none has no error row.
+func TestFlowViewNamesItsError(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	f := &flowRun{id: "0000000b", description: "d", status: RunFailed, limit: 1, err: errors.New("the script raised")}
+	if got := dumpFields(h.flowOverlay(f).Fields); !strings.Contains(got, "[error the script raised]") {
+		t.Fatalf("fields %s, want the error", got)
+	}
+	f.err = nil
+	if got := dumpFields(h.flowOverlay(f).Fields); strings.Contains(got, "[error") {
+		t.Fatalf("a run with no error carries one: %s", got)
+	}
+}
+
 // TestWatchFlows: one ticker claims the views, and it lets go only once no
 // run lives.
 func TestWatchFlows(t *testing.T) {
