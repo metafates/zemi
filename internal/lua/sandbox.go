@@ -693,7 +693,11 @@ func (s *Sandbox) RegisterProtectedValue(path string, v glua.LValue) error {
 func (s *Sandbox) CheckIntegrity() error {
 	for _, c := range s.integrity {
 		n := 0
-		c.table.ForEach(func(k, v glua.LValue) { n++ })
+		// Next yields the stored key values; ForEach would box every key
+		// into the callback (one alloc per member per request).
+		for k, _ := c.table.Next(glua.LNil); k != glua.LNil; k, _ = c.table.Next(k) {
+			n++
+		}
 		if n != len(c.members) {
 			return fmt.Errorf("integrity: namespace %s changed size (%d != %d)", c.name, n, len(c.members))
 		}
