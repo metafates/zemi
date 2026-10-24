@@ -839,7 +839,7 @@ func transcriptText(history []fantasy.Message) string {
 					fmt.Fprintf(&b, "user: %s\n", typed)
 				}
 				if extra != "" {
-					fmt.Fprintf(&b, "attached, not typed by the user: %s\n", truncRunes(strings.TrimSpace(strings.TrimSuffix(extra, "</attached-files>")), 2000))
+					fmt.Fprintf(&b, "attached, not typed by the user: %s\n", truncRunes(strings.TrimSpace(strings.ReplaceAll(extra, "\n</attached-files>", "")), 2000))
 				}
 			case fantasy.FilePart:
 				// the summarizer only reads this text: name what it cannot see

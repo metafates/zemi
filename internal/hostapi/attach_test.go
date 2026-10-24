@@ -48,23 +48,23 @@ func TestPlusSkillAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, c := range []struct{ name, text, want string }{
-		{"body as written", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
-		{"a disabled skill attaches", "+lint go", "Body."},
-		{"a big skill is cut", "+big", "Read the cut lines with the read tool"},
+	for _, c := range []struct{ name, skill, text, want string }{
+		{"body as written", "humanize", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
+		{"a disabled skill attaches", "lint", "+lint go", "Body."},
+		{"a big skill is cut", "big", "+big", "Read the cut lines with the read tool"},
 	} {
 		got, _ := h.expandAttachments(c.text, true)
 		typed, tail := agent.CutAttached(got)
-		if typed != c.text || !strings.Contains(tail, "<skill>") || !strings.Contains(tail, c.want) {
+		if typed != c.text || !strings.Contains(tail, "<skill name=\""+c.skill+"\">") || !strings.Contains(tail, c.want) {
 			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
 		}
 	}
-	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill>"); n != 2 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill name="); n != 2 {
 		t.Errorf("two skills attached %d elements", n)
 	}
 	// a repeated mention attaches once, like a repeated @file, and both
 	// tokens survive in the typed text
-	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill>"); n != 1 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill name="); n != 1 {
 		t.Errorf("a repeated skill attached %d elements", n)
 	}
 	if typed, _, _ := strings.Cut(mustExpand(t, h, "+humanize a +humanize b"), agent.AttachMarker); typed != "+humanize a +humanize b" {
@@ -121,7 +121,7 @@ func TestExpandAttachments(t *testing.T) {
 	if !strings.HasPrefix(got, "look at @main.go, @notes.md and @missing.go"+agent.AttachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
-	if !strings.Contains(got, `<file path="main.go">`) || !strings.Contains(got, "package main // attached") {
+	if !strings.Contains(got, "<file path=\"main.go\">\npackage main // attached\n</file>") {
 		t.Fatalf("main.go not attached: %q", got)
 	}
 	for _, leak := range []string{"outside-secret", "missing.go\">"} {
@@ -146,8 +146,8 @@ func TestExpandAttachments(t *testing.T) {
 	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
 	got, _ = h.expandAttachments("@big.txt @blob.txt", true)
 	for _, want := range []string{
-		`<file path="big.txt">not attached: it is over the 64 KB`,
-		`<file path="blob.txt">not attached: it is not text`,
+		"<file path=\"big.txt\">\nnot attached: it is over the 64 KB",
+		"<file path=\"blob.txt\">\nnot attached: it is not text",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
@@ -159,7 +159,7 @@ func TestExpandAttachments(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(proj, "src"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, `<file path="src/">not attached: it is a directory</file>`) {
+	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, "not attached: it is a directory") || !strings.Contains(got, `<file path="src/">`) {
 		t.Fatalf("the directory must say why: %q", got)
 	}
 
@@ -365,7 +365,7 @@ func TestImageAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, `<image path="shot.png">omitted`) {
+	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, "<image path=\"shot.png\">\nomitted") {
 		t.Fatalf("text-only model: %#v", msg.Content)
 	}
 	msg := h.composeUserMessage("what is wrong in @shot.png", true)

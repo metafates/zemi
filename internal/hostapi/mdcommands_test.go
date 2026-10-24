@@ -27,7 +27,7 @@ func TestExpandPromptArgs(t *testing.T) {
 
 // TestMarkdownCommandSends: a commands/<name>.md file becomes /<name>, and
 // running it sends the expanded body behind the typed line, so only what
-// the user typed reads as their words; piped stdin stays behind it too.
+// the user typed reads as their words; attached text stays behind it too.
 func TestMarkdownCommandSends(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)

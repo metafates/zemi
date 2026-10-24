@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -268,7 +269,7 @@ not a report
 			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
 			want: []notice{{Text: "Agent r1 (explore): kept going", Run: "r1"}},
 		},
-		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []notice{{Text: "Loop run 1: check a"}}},
+		{name: "a loop note", tail: loopNote(&Loop{Runs: 1, Prompt: "check a"}), want: []notice{{Text: "Loop run 1: check a"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
@@ -722,6 +723,40 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	waitIdle(t, h)
 	if tr := h.Session().Transcript; tr[len(tr)-1].Text != "ok: next" {
 		t.Fatalf("send after the stored report: %+v", tr)
+	}
+}
+
+// TestUpdateStoredWhenSessionMoved: an update that lands after the user moved
+// on is stored in the update's own shape, so a resume draws the row the live
+// update drew, body line and all.
+func TestUpdateStoredWhenSessionMoved(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	parent := seedSession(t, h)
+	def, _ := h.agentDef("explore")
+	run, _ := h.newRun(t.Context(), def, "left behind", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.deliverUpdate(run, "kept going"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := h.DB.Messages(parent)
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("update never stored: %v", err)
+	}
+	var m fantasy.Message
+	if err := json.Unmarshal([]byte(rows[len(rows)-1].PartsJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	_, tail := agent.CutAttached(concatText(m.Content))
+	want := []notice{{Text: "Agent " + run.id + " (explore): kept going", Run: run.id}}
+	if heads := reportHeads(tail); !slices.Equal(heads, want) {
+		t.Fatalf("resumed row = %+v, want %+v", heads, want)
 	}
 }
 

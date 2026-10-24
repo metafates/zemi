@@ -29,6 +29,10 @@ const (
 // loopTag opens a loop run's note; a turn whose text holds it is a loop run.
 const loopTag = agent.AttachMarker + "\n<loop>\n"
 
+// loopRunPrefix leads a loop run's body with its run number; loopSent
+// (tasks.go) parses the same words back out for the chat row.
+const loopRunPrefix = "Run %d of: "
+
 // Loop is the live session's loop (/loop): a prompt sent again on a timer,
 // or when the model says, while this process keeps the session open. It is
 // never stored: a resumed session must not start spending on its own.
@@ -154,7 +158,7 @@ func (h *Host) fireLoop(l *Loop) {
 	h.refresh()
 	var err error
 	if cmd {
-		// a command gets the note as its attachment, as it would piped stdin
+		// a command gets the note as its attachment
 		err = h.SendPrompt(l.Prompt + note)
 	} else {
 		err = h.sendClaimed(scope, note)
@@ -169,7 +173,7 @@ func loopNote(l *Loop) string {
 	if l.Every == 0 {
 		next = "This runs again on its own. End your reply with a last line `next: <delay>` from 1m to 1h: short while something is about to change, long while nothing moves. End with `next: done` once the task is complete."
 	}
-	return agent.Attached("loop", fmt.Sprintf("Run %d of: %s\n%s", l.Runs, l.Prompt, next))
+	return agent.Attached("loop", fmt.Sprintf(loopRunPrefix+"%s\n%s", l.Runs, l.Prompt, next))
 }
 
 // loopTurnEnded runs after each turn: an interrupted turn nobody typed stops

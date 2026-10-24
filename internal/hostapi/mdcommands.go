@@ -101,8 +101,8 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: f.origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's
 			GoFn: func(h *Host, args string) error {
-				typed, stdin := agent.CutAttached(args)
-				return h.AgentSend(strings.TrimSpace("/"+name+" "+typed) + agent.Attached("command", expandPromptArgs(body, typed)) + stdin)
+				typed, attached := agent.CutAttached(args)
+				return h.AgentSend(strings.TrimSpace("/"+name+" "+typed) + agent.Attached("command", expandPromptArgs(body, typed)) + attached)
 			},
 		})
 		if err != nil {
