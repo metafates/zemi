@@ -83,7 +83,9 @@ func OpenRead(path string) (*DB, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)"}
+	// query_only makes the read-only promise SQLite's own: a statement that
+	// writes fails even when mode=ro would let a temp write through
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)"}
 	d, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
@@ -169,7 +171,14 @@ func (s *DB) SessionCount() (int, error) {
 	return n, err
 }
 
+// Close closes the database.
 func (s *DB) Close() error { return s.db.Close() }
+
+// Query runs one statement and returns its rows; a read-only open refuses
+// anything that writes.
+func (s *DB) Query(query string, args ...any) (*sql.Rows, error) {
+	return s.db.Query(query, args...)
+}
 
 //go:embed migrations/*.sql
 var migrations embed.FS

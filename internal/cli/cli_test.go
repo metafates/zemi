@@ -127,8 +127,8 @@ func TestCLI(t *testing.T) {
 		{name: "complete a session id", args: []string{"__complete", "-r", ""}, stdout: sid + "\tfix the failing test\n"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
 		{name: "complete a session of another project", args: []string{"__complete", "-C", dir, "-r", ""}, stdout: sid + "\t"},
-		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 1, stderr: "zemi: -C nope: no such file or directory"},
-		{name: "-C a dir", args: []string{"-C", dir, "hi"}, want: &options{prompt: "hi", dir: dir}},
+		{name: "-C a missing dir", args: []string{"-C", "nope", "fix", "it"}, code: 1, stderr: "zemi: -C nope: no such file or directory"},
+		{name: "-C a dir", args: []string{"-C", dir, "fix", "it"}, want: &options{prompt: "fix it", dir: dir}},
 	} {
 		if err := os.Chdir(base); err != nil {
 			t.Fatal(err)
