@@ -670,9 +670,9 @@ local function builder(ctx, width)
 end
 
 -- A click on the chat's rows: on a call's or a thought's row opens a view of
---- it, on an agent's row shows that run, on a workflow's its view, on a job's
---- line its output, and on a fold row (a digest, a step, a burst's `… N
---- earlier`) opens or closes what it stands for in place.
+--- it, on an agent's row opens its preview, on a workflow's its view, on a
+--- job's line its output, and on a fold row (a digest, a step, a burst's
+--- `… N earlier`) opens or closes what it stands for in place.
 ---@param ev zemi.WidgetClick
 function M.click(ev)
 	local run, flow, call, job =
@@ -681,7 +681,7 @@ function M.click(ev)
 		ev.id:match("^call:(-?%d+)$"),
 		ev.id:match("^job:(.+)$")
 	if run then
-		assert(zemi.command.run("agents", "view " .. run))
+		assert(zemi.command.run("agents", "show " .. run))
 	elseif flow then
 		assert(zemi.command.run("workflows", "view " .. flow))
 	elseif call then

@@ -1640,14 +1640,16 @@ func (h *Host) agentsCommands() []*Command {
 				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())) + attached)
 			case "open":
 				return h.openAgentFile(id)
+			case "show":
+				return h.showAgent(id)
 			case "view":
 				return h.ViewAgent(id)
 			case "stop":
 				return h.stopRun(id)
 			}
-			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, view <id>, stop [id])", sub)
+			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id>, stop [id])", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"new", "open", "view", "stop"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {
 				return nil
 			}
@@ -1691,6 +1693,33 @@ func (h *Host) openAgents() error {
 	}
 	ui.OpenOverlay(h.agentsOverlay())
 	h.watchAgents()
+	return nil
+}
+
+// showAgent opens a run's preview: the view a /agents row's enter opens,
+// from a click on the chat's agent row. v still opens the transcript.
+func (h *Host) showAgent(id string) error {
+	if id == "" {
+		return Usagef("/agents show <id>")
+	}
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	run := h.tasks.find(id)
+	if run == nil {
+		if run, err = h.loadRun(id); err != nil {
+			return err
+		}
+	}
+	status, calls, took, _ := run.state()
+	tokens, cost := run.usage()
+	fields, detail, parts, pending := h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+	ui.OpenOverlay(Overlay{
+		ID: "agent:" + id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
+		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts, Empty: pending,
+		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id}},
+	})
 	return nil
 }
 

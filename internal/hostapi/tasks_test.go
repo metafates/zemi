@@ -595,6 +595,45 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	}
 }
 
+// TestAgentShowOpensPreview: a chat click's `agents show <id>` opens the
+// run's preview - the view a /agents row's enter opens - with v still opening
+// the transcript, and an unknown id opens nothing.
+func TestAgentShowOpensPreview(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look around", "look", true)
+	run.tr = append(run.tr, ChatMessage{Kind: RowTool, Tool: "shell", Label: "run the tests"})
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	cmd := h.agentsCommands()[0]
+	if err := cmd.GoFn(h, "show "+run.id); err != nil {
+		t.Fatal(err)
+	}
+	opened := ui.overlays()
+	if len(opened) != 1 {
+		t.Fatalf("opened %d overlays", len(opened))
+	}
+	o := opened[0]
+	if o.ID != "agent:"+run.id || o.Title != "look around" || o.Mark != MarkSpin {
+		t.Fatalf("overlay %+v", o)
+	}
+	if len(o.Keys) != 1 || o.Keys[0].Key != "v" || o.Keys[0].Run != "agents view "+run.id {
+		t.Fatalf("keys %+v", o.Keys)
+	}
+	if o.Empty != "run the tests" {
+		t.Fatalf("pending %q, want the call's label", o.Empty)
+	}
+	if len(o.Parts) == 0 || o.Parts[0].Text != "look" {
+		t.Fatalf("parts %+v", o.Parts)
+	}
+	if err := cmd.GoFn(h, "show nope"); err == nil {
+		t.Fatal("an unknown id opened a view")
+	}
+}
+
 // TestStoredRunningReadsCancelled: a run_status left 'running' in the store
 // is one this process does not hold, so it reads as cancelled - listed under
 // Earlier, not Running, and viewed it does not tick the frame.
