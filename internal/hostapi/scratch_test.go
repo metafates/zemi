@@ -39,10 +39,10 @@ func TestScratchSweep(t *testing.T) {
 		{"a pad written deep inside", filepath.Join(root, "b", "d", "e", "out.txt"), nil, true, true, false},
 		{"a pad nobody used", filepath.Join(root, "c", "d", "out.txt"), nil, false, false, false},
 		{"a pad holding a read-only tree", filepath.Join(root, "d", "gomod", "out.txt"), nil, false, false, true},
-		{"a pad of a removed project", filepath.Join(root, "e", "out.txt"), str(filepath.Join(t.TempDir(), "gone")), true, false, false},
-		{"a pad of a live project", filepath.Join(root, "f", "out.txt"), str(t.TempDir()), true, true, false},
-		{"a pad of a live project gone stale", filepath.Join(root, "g", "out.txt"), str(t.TempDir()), false, false, false},
-		{"a pad whose root is empty", filepath.Join(root, "h", "out.txt"), str(""), true, true, false},
+		{"a pad of a removed project", filepath.Join(root, "e", "out.txt"), new(filepath.Join(t.TempDir(), "gone")), true, false, false},
+		{"a pad of a live project", filepath.Join(root, "f", "out.txt"), new(t.TempDir()), true, true, false},
+		{"a pad of a live project gone stale", filepath.Join(root, "g", "out.txt"), new(t.TempDir()), false, false, false},
+		{"a pad whose root is empty", filepath.Join(root, "h", "out.txt"), new(""), true, true, false},
 	}
 	for _, c := range cases {
 		if err := os.MkdirAll(filepath.Dir(c.file), 0o700); err != nil || os.WriteFile(c.file, nil, 0o600) != nil {
@@ -75,9 +75,6 @@ func TestScratchSweep(t *testing.T) {
 		}
 	}
 }
-
-// str is a case table's pointer to a .root line.
-func str(s string) *string { return &s }
 
 // TestScratchDeadPad: a .root naming no particular project never counts as
 // dead, so a missing marker, a wiped home or the filesystem root cannot
