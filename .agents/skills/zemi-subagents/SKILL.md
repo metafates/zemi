@@ -120,9 +120,10 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
   system prompt (which runs of one agent share in the provider cache), to keep its files in
   `<pad>/<agent>-<run id>`. `ensureScratch` (building the environment prompt) creates the live
-  pad and hands `sweepScratch` to `GoSafe`, off the send path, which removes pads with nothing
-  in them changed for a week, never the live one (NOTE: another window's pad unused that long
-  goes too).
+  pad, writes `.root` (0600, the session's trust root) and hands `sweepScratch` to `GoSafe`, off
+  the send path, which removes pads with nothing in them changed for a week, and at once a pad
+  whose `.root` names a project that no longer exists (an empty, / or $HOME root never counts),
+  never the live one (NOTE: another window's pad unused that long goes too).
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
