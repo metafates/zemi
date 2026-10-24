@@ -811,9 +811,9 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	return nil
 }
 
-// updateMessage is the user message an update reaches the model as, behind
-// the marker where @ refs do not attach: a report's shape under a tag of its
-// own, so the chat draws the update's line rather than the user's words.
+// updateMessage is the user message an update reaches the model as, live and
+// stored: behind the marker where @ refs do not attach, under the tag the
+// chat reads the update's line from.
 func (h *Host) updateMessage(pad, id, agentName, text string) string {
 	return agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", id, agentName), h.truncOutput(pad, "agent", text))
 }
@@ -859,7 +859,12 @@ func (h *Host) notifyReport(r report) {
 		parent = f.parent
 	}
 	if parent != "" && h.DB != nil {
-		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), r)), json.Deterministic(true))
+		pad := h.scratchFor(parent)
+		msg := h.reportMessage(pad, r)
+		if r.status == updateStatus {
+			msg = h.updateMessage(pad, r.id, r.agent, r.body)
+		}
+		parts, err := json.Marshal(agent.UserMessage(msg), json.Deterministic(true))
 		if err == nil {
 			err = h.DB.AddMessage(&store.Message{SessionID: parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}
