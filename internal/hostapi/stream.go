@@ -244,6 +244,14 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}
 	ag.turnStart = time.Time{}
+	// a held send banks its elapsed beside its usage: the resend reset
+	// turnStart, and the readout at the turn's end joins the legs
+	if hold {
+		ag.cutMS += stat.ElapsedMS
+	} else {
+		stat.ElapsedMS += ag.cutMS
+		ag.cutMS = 0
+	}
 	// the retry state is the turn's too: a turn that ended during a backoff
 	// (esc, or the last retry failing) reports no retry while idle
 	ag.retries, ag.retryAt, ag.retryWhy = 0, time.Time{}, ""

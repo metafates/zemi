@@ -193,6 +193,7 @@ type agentHost struct {
 	holdCap      bool          // a refused output cap is resent without it, not reported
 	holdCut      bool          // a Full cut is compacted and resent, not reported; off once the compaction failed
 	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
+	cutMS        int64         // their clock, banked beside cutUsage for the turn's readout
 
 	// brain is the # Brain section, pinned at session open (DESIGN §10.7) and rebuilt
 	// at compaction and a mid-session trust flip, brainGlobs the pointer

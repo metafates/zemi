@@ -1057,22 +1057,35 @@ func TestTurnDoneDropsTheRetry(t *testing.T) {
 
 // TestHeldErrorKeepsItsUsage: a send the provider refused (overflow, images,
 // the output cap) ends the send, not the turn - sendCompacting resends, and
-// the refused send's steps' usage banks for the send that finishes the turn
-// instead of dropping from the readout. Session billing stays per stream.
+// the refused send's steps' usage and elapsed time bank for the send that
+// finishes the turn instead of dropping from the readout. Session billing
+// stays per stream.
 func TestHeldErrorKeepsItsUsage(t *testing.T) {
 	t.Parallel()
-	h, _ := newTestHostDB(t)
+	log := slog.New(slog.DiscardHandler)
+	clock := &fakeClock{now: testEpoch}
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
 	sa := h.streamHooks()
 	sa.TextDelta("half the work")
 	h.agents.mu.Lock()
+	h.agents.beginTurn()         // the refused send began
 	h.agents.holdOverflow = true // sendCompacting armed the overflow resend
 	h.agents.mu.Unlock()
+	clock.set(testEpoch.Add(3 * time.Second))
 	sa.TurnDone(&fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true},
 		fantasy.Usage{InputTokens: 100, OutputTokens: 20})
 	if u := h.agents.cutUsage; u.InputTokens != 100 || u.OutputTokens != 20 {
 		t.Fatalf("banked usage = %+v, want the refused send's", u)
 	}
+	h.agents.mu.Lock()
+	h.agents.beginTurn() // the resend
+	h.agents.mu.Unlock()
 	sa.TextDelta("and the rest")
+	clock.set(testEpoch.Add(5 * time.Second))
 	sa.TurnDone(nil, fantasy.Usage{}) // the resend finishes the turn
 	h.evlog.mu.Lock()
 	var finish map[string]any
@@ -1085,6 +1098,10 @@ func TestHeldErrorKeepsItsUsage(t *testing.T) {
 	u, _ := finish["usage"].(map[string]any)
 	if u["in"] != int64(100) || u["out"] != int64(20) {
 		t.Fatalf("agent.finish usage = %v, want the refused send's tokens carried", u)
+	}
+	tr := h.Session().Transcript
+	if last := tr[len(tr)-1]; last.Stat == nil || last.Stat.ElapsedMS != 5000 {
+		t.Fatalf("the turn's readout counts %+v, want the whole turn's 5000 ms", last.Stat)
 	}
 }
 
