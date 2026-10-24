@@ -719,7 +719,7 @@ func projectsCommand(o *options) *cobra.Command {
 				if *asJSON {
 					statsErr := ""
 					if p.StatsErr != nil {
-						statsErr = sanitize.Line(p.StatsErr.Error())
+						statsErr = p.StatsErr.Error()
 					}
 					writeJSON(out, struct {
 						Root       string    `json:"root"`

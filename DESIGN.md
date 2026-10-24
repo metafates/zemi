@@ -2425,7 +2425,7 @@ rides the `memories.md` line and its ledger entries.
   |---|---|
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd`; `-a` adds `project` |
   | `zemi sessions search` | `id`, `title`, `updated`, `project`, `hits`, `match` |
-  | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories` |
+  | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
 - **Golden tests**: the TUI renders each widget's segment rows to a string;
