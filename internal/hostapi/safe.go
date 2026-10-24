@@ -60,6 +60,7 @@ func (h *Host) clearCrashedTurn(r any) {
 	ag.compacting, ag.checkingGoal = false, false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
+	ag.cutUsage, ag.cutMS = fantasy.Usage{}, 0
 	ag.mu.Unlock()
 }
 
