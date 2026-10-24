@@ -1229,7 +1229,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	}
 	if in.Wait != "" {
 		if in.Wait == "all" {
-			return t.waitAll(ctx), nil
+			return t.waitAll(ctx, call.ID), nil
 		}
 		run, err := t.h.sessionRun(in.Wait)
 		if err != nil {
@@ -1305,15 +1305,18 @@ func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fant
 		if !run.isRunning() {
 			break // it ended as it updated: the run-end answer is the truth
 		}
+		h.setToolOutcome(callID, tools.Outcome{Run: run.id})
 		return fantasy.NewTextResponse(updateWaitText(run))
 	case <-h.userSpoke():
 		// the user's own message takes the run: its report goes to the session
 		if run.detach() {
+			h.setToolOutcome(callID, tools.Outcome{Run: run.id})
 			return fantasy.NewTextResponse(bgAgentText(run.id))
 		}
 		<-end
 	case <-ctx.Done():
 		// esc stops the wait, not the run
+		h.setToolOutcome(callID, tools.Outcome{Run: run.id})
 		return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call agent again with wait " + run.id + ", or read its report when it arrives.")
 	}
 	return answer()
@@ -1329,7 +1332,7 @@ func updateWaitText(run *agentRun) string {
 // of them sends an update, or the user types: the join a fleet of detached
 // agents otherwise has none of. The reports arrive as messages of their own,
 // so the answer only sums the runs.
-func (t *agentTool) waitAll(ctx context.Context) fantasy.ToolResponse {
+func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResponse {
 	h := t.h
 	var waited []*agentRun // every run this wait covered, for the final sum
 	for {
@@ -1367,11 +1370,12 @@ func (t *agentTool) waitAll(ctx context.Context) fantasy.ToolResponse {
 				waited = append(waited, r)
 			}
 		}
-		wake, resp := t.awaitRuns(ctx, change, runs)
+		wake, resp := t.awaitRuns(ctx, callID, change, runs)
 		if resp != nil {
 			return *resp
 		}
 		if wake != nil {
+			t.h.setToolOutcome(callID, tools.Outcome{Run: wake.id})
 			return fantasy.NewTextResponse(updateWaitText(wake))
 		}
 		// the registry changed and runs remain: wait again
@@ -1381,7 +1385,7 @@ func (t *agentTool) waitAll(ctx context.Context) fantasy.ToolResponse {
 // awaitRuns waits once for a snapshot of running runs and reports what woke
 // it: the run whose update fired, or the response to answer with (nil to have
 // the caller re-snapshot). Its waiters deregister when it returns.
-func (t *agentTool) awaitRuns(ctx context.Context, change <-chan struct{}, runs []*agentRun) (wake *agentRun, resp *fantasy.ToolResponse) {
+func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan struct{}, runs []*agentRun) (wake *agentRun, resp *fantasy.ToolResponse) {
 	type waiter struct {
 		run    *agentRun
 		update chan struct{}
@@ -1410,9 +1414,11 @@ func (t *agentTool) awaitRuns(ctx context.Context, change <-chan struct{}, runs 
 			text = fmt.Sprintf("Started background agents %s. Their reports arrive as messages when they finish; do not wait for them.", strings.Join(handed, ", "))
 		}
 		resp := fantasy.NewTextResponse(text)
+		t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0]})
 		return nil, &resp
 	case <-ctx.Done():
 		// esc stops the wait, not the runs
+		t.h.setToolOutcome(callID, tools.Outcome{Run: runs[0].id})
 		resp := fantasy.NewTextResponse("Stopped waiting; the agents go on.")
 		return nil, &resp
 	}
