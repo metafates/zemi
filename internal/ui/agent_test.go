@@ -1132,29 +1132,30 @@ func TestInterruptKeys(t *testing.T) {
 	stop := tea.KeyPressMsg{Code: -2} // ends the turn
 	box := tea.KeyPressMsg{Code: -3}  // opens a test overlay
 	for _, c := range []struct {
-		name               string
-		active, view, busy bool
-		rewind             bool
-		draft              string
-		keys               []tea.KeyPressMsg
-		cancel, armed      bool
-		composer, row      string
+		name                      string
+		active, view, busy, quest bool
+		rewind                    bool
+		draft                     string
+		keys                      []tea.KeyPressMsg
+		cancel, armed             bool
+		composer, row             string
 	}{
-		{"esc arms", true, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
-		{"esc esc interrupts", true, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
-		{"esc arms again after 3s", true, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
-		{"esc in an agent view goes back and disarms", true, true, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
-		{"idle esc esc opens rewind, the draft kept", false, false, false, true, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", "No prompts to rewind"},
-		{"idle esc arms again after 3s", false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", ""},
-		{"esc armed to interrupt never rewinds after the turn ends", true, false, false, false, "", []tea.KeyPressMsg{esc, stop, esc}, false, false, "", ""},
-		{"esc esc with a busy job cancels it, no rewind", false, false, true, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
-		{"esc in an overlay closes it and never arms rewind", false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
-		{"ctrl+c interrupts at once", true, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
-		{"ctrl+c clears a draft, up restores it", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
-		{"a broken prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
-		{"a timed out prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
-		{"ctrl+c drops a held prefix", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
+		{"esc arms", true, false, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
+		{"esc esc interrupts", true, false, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
+		{"esc arms again after 3s", true, false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
+		{"esc in an agent view goes back and disarms", true, true, false, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
+		{"idle esc esc opens rewind, the draft kept", false, false, false, false, true, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", "No prompts to rewind"},
+		{"idle esc arms again after 3s", false, false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", ""},
+		{"esc armed to interrupt never rewinds after the turn ends", true, false, false, false, false, "", []tea.KeyPressMsg{esc, stop, esc}, false, false, "", ""},
+		{"esc esc with a busy job cancels it, no rewind", false, false, true, false, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
+		{"esc in an overlay closes it and never arms rewind", false, false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
+		{"ctrl+c interrupts at once", true, false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
+		{"ctrl+c clears a draft, up restores it", false, false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c on an empty composer arms quit", false, false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
+		{"a broken prefix replays", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
+		{"a timed out prefix replays", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
+		{"ctrl+c drops a held prefix", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
+		{"interrupt dismisses a parked question ask", true, false, false, true, false, "", nil, true, false, "also this", "ctrl+c quit"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -1175,6 +1176,10 @@ func TestInterruptKeys(t *testing.T) {
 				if err := host.AgentSend("also this"); err != nil {
 					t.Fatal(err)
 				}
+			}
+			var qdone chan questionResult
+			if c.quest {
+				qdone = askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}}})
 			}
 			if c.view {
 				clock = clock.Add(time.Hour)
@@ -1198,6 +1203,14 @@ func TestInterruptKeys(t *testing.T) {
 				}
 			}
 			for app.Pump() {
+			}
+			if c.quest {
+				// choosePerm's "No, and tell zemi" reaches interrupt with the
+				// ask still up; the parked tool goroutine must be released
+				app.interrupt()
+				if r := awaitAnswer(t, app, qdone); r.ok || len(r.answers) != 0 {
+					t.Fatalf("interrupt left the question ask: %+v ok=%v", r.answers, r.ok)
+				}
 			}
 			if c.busy {
 				select {

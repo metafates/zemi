@@ -375,6 +375,14 @@ func (a *App) leaveAgentView() {
 // interrupt cancels the running turn and hands queued messages back to the
 // composer; the working row keeps its ctrl+c quit hint until the turn ends.
 func (a *App) interrupt() {
+	// a turn parked in a plan or question ask waits on a channel no cancel
+	// reaches; dismiss it with the verdict a cancelled turn discards anyway
+	if a.planAsk != nil {
+		a.finishPlan(tools.PlanVerdict{}, false)
+	}
+	if a.question != nil {
+		a.finishQuestion(false)
+	}
 	a.host.AgentCancel()
 	a.restoreQueue()
 	a.cancelling = a.host.AgentActive()
