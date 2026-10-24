@@ -227,7 +227,9 @@ local function counted(t) return (t.kind or "tool") == "tool" and t.status == "o
 -- hand-off counts too, or a turn that left its work running folds to nothing
 -- and its rail hangs open.
 local function digests(t)
-	if t.status == "bg" then return M.family(M.tool(t)) ~= nil end
+	if t.status == "bg" then local f = M.family(M.tool(t))
+		return f ~= nil and ((t.diff or "") == "" or not NEWS[M.tool(t)])
+	end
 	return counted(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)])
 end
 
