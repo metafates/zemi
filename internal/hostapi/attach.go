@@ -52,10 +52,10 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}
 }
 
-// attachRef finds what attaches: a typed @name, and the [Image name] or
-// [File name] chip zemi writes for a file it copied in, or for a project path
-// an @ word cannot carry whole.
-var attachRef = regexp.MustCompile(`(?:^|\s)@(\S+)|\[(Image|File) ([^\]\n]+)\]`)
+// attachRef finds what attaches: a typed @name, a +skill mention, and the
+// [Image name] or [File name] chip zemi writes for a file it copied in, or
+// for a project path an @ word cannot carry whole.
+var attachRef = regexp.MustCompile(`(?:^|\s)(?:@(\S+)|\+([a-z][a-z0-9-]*))|\[(Image|File) ([^\]\n]+)\]`)
 
 func overLimit(limit int64) string {
 	if limit >= 1<<20 {
@@ -76,12 +76,18 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
-	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
+	for _, m := range attachRef.FindAllStringSubmatchIndex(typed, -1) {
+		if m[4] >= 0 { // a +skill: the rest of the message is its request
+			h.attachSkill(&b, typed[m[4]:m[5]], typed[m[5]:])
+			continue
+		}
 		// a chip names a file zemi itself copied, or one of the project's: the
 		// copy wins, since a name saveDrop handed out is not the project's
-		chip, name := m[2] != "", m[3]
-		if !chip {
-			name = strings.TrimRight(m[1], ".,;:!?)")
+		chip, name := m[6] >= 0, ""
+		if chip {
+			name = typed[m[8]:m[9]]
+		} else {
+			name = strings.TrimRight(typed[m[2]:m[3]], ".,;:!?)")
 		}
 		var path perm.Path
 		drop := false

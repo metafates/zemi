@@ -569,6 +569,34 @@ func (h *Host) useSkill(name, request, stdin string) error {
 	return Usagef("no skill %q", name)
 }
 
+// skillByName finds a skill in the registry or the project's, disabled ones
+// included.
+func (h *Host) skillByName(name string) (skill.Skill, bool) {
+	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return skill.Skill{}, false
+}
+
+// attachSkill puts a +name skill behind the marker: the body with
+// $ARGUMENTS filled from the message that named it, as sendSkill builds one.
+// A name nothing offers stays prose, like an @ word naming no file.
+func (h *Host) attachSkill(b *strings.Builder, name, rest string) {
+	s, ok := h.skillByName(name)
+	if !ok {
+		return
+	}
+	text, err := tools.SkillText(tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data})
+	if err != nil {
+		return // the body is gone since it was typed: the token stays prose
+	}
+	text = strings.ReplaceAll(text, "$ARGUMENTS", strings.TrimSpace(rest)) + skillNote(s)
+	note := fmt.Sprintf("The user attached the skill %s with +%s in the message above; follow it for their request.\n\n", s.Name, s.Name)
+	b.WriteString(agent.AttachElement("skill", note+text))
+}
+
 // sendSkill sends line with the skill attached, $ARGUMENTS in it filled
 // with the request; the model loading a skill on its own sees it as written.
 func (h *Host) sendSkill(s skill.Skill, line, request, stdin string) error {

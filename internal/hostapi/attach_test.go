@@ -19,6 +19,67 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+// TestPlusSkillAttachment: a +name token in the message attaches the skill
+// behind the marker, $ARGUMENTS filled from the message after the token;
+// a name nothing offers stays as typed, byte for byte.
+func TestPlusSkillAttachment(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	dir := h.userSkillsDir()
+	writeSkill(t, dir, "lint", "lint the tree", "")
+	write := func(name, front, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "SKILL.md"), []byte("---\n"+front+"---\n\n"+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("review-pr", "name: review-pr\ndescription: review a PR\n", "Review PR $ARGUMENTS.")
+	write("big", "name: big\ndescription: huge\n", strings.Repeat("step\n", tools.SkillMaxOut/4))
+	h.syncSkills()
+	if err := h.setSkillEnabled("lint", false); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct{ name, text, want string }{
+		{"filled", "+review-pr 12", "Review PR 12."},
+		{"two skills", "+review-pr 12 then +lint the tree", "Review PR 12 then +lint the tree."},
+		{"a disabled skill attaches", "+lint go", "Body."},
+		{"a big skill is cut", "+big", "Read the cut lines with the read tool"},
+	} {
+		got, _ := h.expandAttachments(c.text, true)
+		typed, tail := agent.CutAttached(got)
+		if typed != c.text || !strings.Contains(tail, "<skill>") || !strings.Contains(tail, c.want) {
+			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
+		}
+	}
+	if n := strings.Count(mustAttached(t, h, "+review-pr 12 then +lint the tree"), "<skill>"); n != 2 {
+		t.Errorf("two skills attached %d elements", n)
+	}
+	// a token the regex takes but no skill answers is prose, whole
+	for _, text := range []string{"diff:\n+fmt.Println(x)", "+5 tasks", "C++", "a+b", "unknown +nosuch here"} {
+		if got, _ := h.expandAttachments(text, true); got != text {
+			t.Errorf("%q changed to %q", text, got)
+		}
+	}
+}
+
+// mustAttached is expandAttachments' trailer for text.
+func mustAttached(t *testing.T, h *Host, text string) string {
+	t.Helper()
+	_, tail := agent.CutAttached(mustExpand(t, h, text))
+	return tail
+}
+
+// mustExpand is expandAttachments' text for text.
+func mustExpand(t *testing.T, h *Host, text string) string {
+	t.Helper()
+	got, _ := h.expandAttachments(text, true)
+	return got
+}
+
 // TestExpandAttachments: project files referenced with @ attach; files
 // outside the project, missing ones and symlinks leading out of it do not.
 func TestExpandAttachments(t *testing.T) {

@@ -186,8 +186,14 @@ const AttachMarker = "\n\n<attached-files>"
 // element's name, with any attributes after it: the close names the element
 // alone.
 func Attached(tag, text string) string {
+	return AttachMarker + AttachElement(tag, text) + "\n</attached-files>"
+}
+
+// AttachElement is one labeled element of the trailer Attached wraps, the
+// shape every element of an attached-files block shares.
+func AttachElement(tag, text string) string {
 	name, _, _ := strings.Cut(tag, " ")
-	return AttachMarker + "\n<" + tag + ">\n" + text + "\n</" + name + ">\n</attached-files>"
+	return "\n<" + tag + ">\n" + text + "\n</" + name + ">"
 }
 
 // CutAttached splits a message into what was typed and its trailer.
