@@ -224,6 +224,22 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	return out
 }
 
+// SkillMentions lists every skill for the + popup: name and description
+// with the argument hint, disabled ones included, since naming one is the
+// request.
+func (h *Host) SkillMentions() []CompletionItem {
+	out := make([]CompletionItem, 0, 8)
+	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
+		desc := s.Description
+		if s.Root != "" {
+			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
+			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
+		}
+		out = append(out, CompletionItem{Text: s.Name, Desc: strings.TrimSpace(listDesc(desc) + " " + s.ArgumentHint)})
+	}
+	return out
+}
+
 // enabledSkills is the registry's enabled skills, then the project's.
 func (h *Host) enabledSkills() []skill.Skill {
 	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skill.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })

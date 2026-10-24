@@ -71,6 +71,41 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 	}
 }
 
+// TestSkillMentions: the + popup's rows come from every skill, disabled ones
+// included and the argument hint riding the description, plus the project's.
+func TestSkillMentions(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
+	dir := filepath.Join(h.userSkillsDir(), "review-pr")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"),
+		[]byte("---\nname: review-pr\ndescription: review a PR\nargument-hint: <pr number>\n---\n\nReview $ARGUMENTS.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
+	h.SetProjectTrusted(true)
+	h.syncSkills()
+	if err := h.setSkillEnabled("local-run", false); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]CompletionItem{}
+	for _, c := range h.SkillMentions() {
+		got[c.Text] = c
+	}
+	for _, c := range []CompletionItem{
+		{Text: "local-run", Desc: "run the local suite"}, // disabled skills stay reachable
+		{Text: "review-pr", Desc: "review a PR <pr number>"},
+		{Text: "lint", Desc: "project lint"},
+	} {
+		if got[c.Text] != c {
+			t.Errorf("row %q = %+v, want %+v", c.Text, got[c.Text], c)
+		}
+	}
+}
+
 // TestSkillsEnabledDefaults covers §10.5: a skill starts enabled and the
 // skill index the model sees lists enabled skills only.
 func TestSkillsEnabledDefaults(t *testing.T) {

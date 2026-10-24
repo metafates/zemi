@@ -14,7 +14,8 @@ import (
 
 // fileCompleter is the composer popup after a trigger that starts a word:
 // "@" lists project files, scanned off the UI goroutine and ranked here,
-// and any trigger lists what its Lua sources offer (extra, first).
+// "+" lists the skills, fetched the same way, and any trigger lists what
+// its Lua sources offer (extra, first).
 type fileCompleter struct {
 	open     bool
 	trigger  rune
@@ -23,7 +24,8 @@ type fileCompleter struct {
 	files    []string // paths relative to the session cwd
 	bases    []string // each file's last element
 	matches  []hostapi.Hit
-	extra    []listItem // the Lua sources' items, ahead of matches
+	skills   []hostapi.CompletionItem // the + rows, fetched once per open
+	extra    []listItem               // the skill and Lua sources' items, ahead of matches
 	selected int
 	view     viewport
 	size     boxSize // the last drawn size, kept for a frame with no matches to show
@@ -55,8 +57,9 @@ func (a *App) updateCompletion() tea.Cmd {
 		i--
 	}
 	files := i < cur && r[i] == '@'
-	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
-	if !files && !lua {
+	plus := i < cur && r[i] == '+'
+	lua := i < cur && !plus && a.host.HasCompletions(string(r[i]), "")
+	if !files && !plus && !lua {
 		a.completion.close()
 		return nil
 	}
@@ -67,6 +70,25 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	f.start, f.trigger, f.open, f.selected = i, r[i], true, 0
 	f.token = string(r[i+1 : cur])
+	if plus {
+		// the rows are fetched once per open, like the file scan; typing
+		// narrows what the last fetch gave
+		if opening {
+			f.skills = nil
+			a.background(func() {
+				items := a.host.SkillMentions()
+				a.do(func() {
+					if !f.open || f.trigger != '+' {
+						return // the popup closed, or another trigger took it
+					}
+					f.skills = items
+					f.extra = matchRows(candRows(items), f.token, true)
+					f.selected = max(0, min(f.selected, f.count()-1))
+				})
+			})
+		}
+		f.extra = matchRows(candRows(f.skills), f.token, true)
+	}
 	if lua {
 		// until the sources answer, the rows they gave for a shorter word
 		// narrow, so a fast tab never takes a row the word left
@@ -129,11 +151,14 @@ func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
 // trigger with nothing to offer stays out of the way of prose.
 func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
-// title names what the popup lists: the one trigger zemi knows the meaning
+// title names what the popup lists for the triggers zemi knows the meaning
 // of; a Lua source's own trigger names nothing here.
 func (f *fileCompleter) title() string {
-	if f.trigger == '@' {
+	switch f.trigger {
+	case '@':
 		return "Files"
+	case '+':
+		return "Skills"
 	}
 	return ""
 }
@@ -217,10 +242,10 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 }
 
 // acceptCompletion replaces what follows the trigger with the selected match
-// (plus a trailing space) and closes the popup. A row a Lua source offered
-// keeps the trigger, which is its own; a project file becomes the host's token
-// for it, an @reference where one carries the path whole, which the user can
-// go on editing.
+// (plus a trailing space) and closes the popup. A skill or Lua-source row
+// keeps the trigger, which is its own; a project file becomes the host's
+// token for it, an @reference where one carries the path whole, which the
+// user can go on editing.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {

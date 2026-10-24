@@ -34,6 +34,7 @@ var goKeys = [][2]string{
 	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},
+	{"+", "attach a skill"},
 	{"ctrl+space", "show completions; tab, enter accept"},
 	{"!cmd", "run a shell command with your next message"},
 }

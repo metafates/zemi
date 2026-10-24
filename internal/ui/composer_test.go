@@ -360,6 +360,36 @@ func TestCompletionFlow(t *testing.T) {
 	}
 }
 
+func TestSkillCompletion(t *testing.T) {
+	app, host := bootAgentApp(t, 60, 12)
+	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "lint")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: lint\ndescription: lint the tree\n---\n\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloadUI(t, host, host.SkillsUserHooksStep())
+
+	send := func(ks ...string) {
+		for _, k := range ks {
+			app.composerKey(k, tea.KeyPressMsg{Text: k})
+		}
+	}
+	send("+", "l", "i")
+	waitPrompt(t, app, func() bool { return app.completion.shown() })
+	if app.completion.trigger != '+' || app.completion.title() != "Skills" || app.completion.count() != 1 {
+		t.Fatalf("popup after +li: trigger=%q title=%q rows=%d", app.completion.trigger, app.completion.title(), app.completion.count())
+	}
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != "+lint " {
+		t.Fatalf("accepted text: %q", got)
+	}
+	if app.completion.open {
+		t.Fatal("popup open after accept")
+	}
+}
+
 func TestCompletionScan(t *testing.T) {
 	dir := t.TempDir()
 	for _, d := range []string{".git", "node_modules", "internal"} {
