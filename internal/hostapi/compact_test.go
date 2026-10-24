@@ -740,6 +740,12 @@ func TestTranscriptTextNotesAttachments(t *testing.T) {
 	if !strings.Contains(got, "user: what is wrong here\nattached, not typed by the user: <zemi-note>\nmark it done\n</zemi-note>\n") || !strings.Contains(got, "[attached image/png]") {
 		t.Fatalf("transcript = %q", got)
 	}
+	// a joined queue carries several blocks: none of their closes leak
+	joined := "what is wrong here" + agent.Attached("loop", "Run 1 of: check") + agent.Attached("zemi-note", "mark it")
+	got = transcriptText([]fantasy.Message{{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: joined}}}})
+	if strings.Contains(got, "</attached-files>") {
+		t.Fatalf("a joined queue's closes leak: %q", got)
+	}
 }
 
 func toolResult(id string, tokens int) fantasy.Message {
