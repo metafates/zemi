@@ -489,7 +489,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			if authTried || bearer == "" || !t.cfg.Auth.reject(bearer) {
 				return ErrAuthRequired
 			}
-			authTried = true // the fresh token rides the next post
+			authTried = true
 			continue
 		}
 		// the server forgot the session (a redeploy): the spec says start another

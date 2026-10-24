@@ -90,7 +90,7 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 		answer := "deny" // a panic in the ask fails closed
 		cut := h.askCut.Load()
 		h.GoSafe("zemi.perm.ask", func() {
-			// closed even when the ask panics; answer stays "deny"
+			// closed even when the ask panics
 			defer close(done)
 			allowed, _ := h.ask(req)
 			switch {
