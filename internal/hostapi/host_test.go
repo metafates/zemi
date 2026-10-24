@@ -745,6 +745,30 @@ func TestConfigSet(t *testing.T) {
 	}
 }
 
+// TestConfigEditList: a list key's edit prompt pre-fills the grammar
+// configSet reads back, so enter on the shown value stores the same list.
+func TestConfigEditList(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	key := config.KeyModelsFavorites
+	ui := &fakeUI{}
+	for _, want := range [][]string{{"acme/one", "acme/two"}, {}} {
+		h.Settings.SetQuiet(key, want)
+		if err := h.openConfigEdit(ui, key); err != nil {
+			t.Fatal(err)
+		}
+		text := ui.overlays()[len(ui.opened)-1].Default
+		if err := h.configSet(key, text); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := h.Settings.Get(key)
+		list, ok := got.([]string)
+		if !ok || !slices.Equal(list, want) {
+			t.Errorf("enter on %q stored %v, want %v", text, got, want)
+		}
+	}
+}
+
 // TestLuaLiteral: a value /config lua shows reads back as itself in Lua.
 func TestLuaLiteral(t *testing.T) {
 	L := glua.NewState()
