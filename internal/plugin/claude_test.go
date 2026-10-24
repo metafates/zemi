@@ -358,6 +358,34 @@ func TestClaudeProvides(t *testing.T) {
 			want: []string{"1 skill", "1 agent"},
 		},
 		{
+			name: "workflows count beside the rest",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": "Demo"}`,
+				".zemi/workflows/a.lua":      "a",
+				".zemi/workflows/deep/b.lua": "b",
+				".zemi/workflows/c.txt":      "not a workflow",
+				"workflows/old.lua":          "the layout load refuses",
+			},
+			want: []string{"2 workflows"},
+		},
+		{
+			name: "hook events zemi refuses leave no hooks line",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": "Demo"}`,
+				"hooks/hooks.json":           `{"hooks": {"PreToolUse": [], "PermissionRequest": []}}`,
+			},
+			want: nil,
+		},
+		{
+			name: "supported hook events survive beside refused ones, deduped",
+			files: map[string]string{
+				".claude-plugin/plugin.json": `{"name": "Demo", "hooks": "./more-hooks.json"}`,
+				"hooks/hooks.json":           `{"hooks": {"PreToolUse": [], "SessionStart": []}}`,
+				"more-hooks.json":            `{"hooks": {"SessionStart": []}}`,
+			},
+			want: []string{"hooks: SessionStart"},
+		},
+		{
 			name: "a malformed manifest provides nothing",
 			files: map[string]string{
 				".claude-plugin/plugin.json": `{"name": `,

@@ -587,6 +587,23 @@ func TestMarketplace(t *testing.T) {
 					t.Fatalf("marketplaces: %+v, %v", ms, err)
 				}
 				added = ms[0].Added
+				// the drill-down's provides read each entry's material on disk
+				provs := EntryProvides(d, "demo-market")
+				if got := provs["Rel One"]; !slices.Equal(got, []string{"2 skills"}) {
+					t.Errorf("rel-one provides %v, want 2 skills", got)
+				}
+				if got := provs["entry-manifest"]; !slices.Equal(got, []string{"2 commands", "mcp: srv", "hooks: PostToolUse"}) {
+					t.Errorf("entry-manifest provides %v", got)
+				}
+				if got, ok := provs["Own Manifest"]; !ok || len(got) != 0 {
+					t.Errorf("own-manifest provides %v, %v, want present and empty", got, ok)
+				}
+				if got := provs["loose"]; !slices.Equal(got, []string{"1 command"}) {
+					t.Errorf("loose provides %v, want 1 command", got)
+				}
+				if _, ok := provs["git-one"]; ok {
+					t.Error("git-one's clone was never fetched, yet provides read it")
+				}
 			},
 		},
 		{

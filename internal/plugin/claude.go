@@ -749,6 +749,13 @@ func (e MarketplacePlugin) manifestJSON() ([]byte, error) {
 	})
 }
 
+// ClaudeHookEvents is the Claude hook events zemi runs; anything else a
+// plugin declares is refused at load, so the display summary leaves it out.
+var ClaudeHookEvents = []string{
+	"PermissionDenied", "PostToolUse", "SessionEnd", "SessionStart",
+	"Stop", "SubagentStart", "SubagentStop",
+}
+
 // claudeProvides summarizes what a Claude-layout plugin contributes, for
 // display: the layered dirs' component counts, the MCP servers and the hook
 // events. Not a Uses list - CheckUses would refuse every word here.
@@ -767,10 +774,16 @@ func claudeProvides(dir string, raw []byte) []string {
 		{"skill", m.SkillsSet, m.Skills, func(n string) bool { return n == "SKILL.md" }},
 		{"agent", m.AgentsSet, m.Agents, mdFile},
 		{"command", m.CommandsSet, m.Commands, mdFile},
+		{"workflow", false, nil, luaFile},
 	} {
 		roots := c.paths
 		if !c.set {
-			roots = []string{filepath.Join(dir, c.what+"s")}
+			// workflows layer under CodeDir like load layers them; the markdown ones sit at the root
+			where := c.what + "s"
+			if c.what == "workflow" {
+				where = filepath.Join(CodeDir, where)
+			}
+			roots = []string{filepath.Join(dir, where)}
 		}
 		if n := countClaude(roots, c.keep); n > 0 {
 			what := c.what
@@ -788,16 +801,25 @@ func claudeProvides(dir string, raw []byte) []string {
 		out = append(out, "mcp: "+strings.Join(names, ","))
 	}
 	if len(m.Hooks) > 0 {
-		events := make([]string, len(m.Hooks))
-		for i, g := range m.Hooks {
-			events[i] = g.Event
+		var events []string
+		seen := map[string]bool{}
+		for _, g := range m.Hooks {
+			if seen[g.Event] || !slices.Contains(ClaudeHookEvents, g.Event) {
+				continue
+			}
+			seen[g.Event] = true
+			events = append(events, g.Event)
 		}
-		out = append(out, "hooks: "+strings.Join(events, ","))
+		if len(events) > 0 {
+			out = append(out, "hooks: "+strings.Join(events, ","))
+		}
 	}
 	return out
 }
 
 func mdFile(name string) bool { return strings.HasSuffix(name, ".md") }
+
+func luaFile(name string) bool { return strings.HasSuffix(name, ".lua") }
 
 // countClaude counts the component files under roots, where a root may be a
 // single file; 0 for a root that is not there.

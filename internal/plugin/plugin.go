@@ -1180,6 +1180,56 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 	return p, nil
 }
 
+// EntryProvides summarizes what each entry of a registered marketplace's
+// plugin contributes, for the drill-down: the material the link model keeps
+// on disk, the marketplace clone itself for a relative source, the entry's
+// cache clone for the rest. A fetched entry with nothing to show sits in the
+// map with an empty summary; one whose material was never fetched is absent,
+// and browsing never clones.
+func EntryProvides(d config.Dirs, mkt string) map[string][]string {
+	clone := filepath.Join(d.PluginsRoot(), "marketplaces", mkt)
+	m, err := ReadMarketplace(clone)
+	if err != nil {
+		return nil
+	}
+	out := make(map[string][]string, len(m.Plugins))
+	for _, e := range m.Plugins {
+		name := e.installName()
+		var dir string
+		switch e.Source.Kind {
+		case SourceRelative:
+			dir = clone
+			if filepath.Clean(e.Source.Dir) != "." {
+				dir = filepath.Join(clone, e.Source.Dir)
+			}
+		case SourceGitSubdir:
+			if name != "" {
+				dir = filepath.Join(cacheDir(d, mkt, name), e.Source.Dir)
+			}
+		case SourceGit, SourceURL, SourceGithub:
+			if name != "" {
+				dir = cacheDir(d, mkt, name)
+			}
+		default:
+			continue
+		}
+		if dir == "" {
+			continue
+		}
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, ClaudeManifestFile))
+		if err != nil {
+			if raw, err = e.manifestJSON(); err != nil {
+				continue
+			}
+		}
+		out[e.Name] = claudeProvides(dir, raw)
+	}
+	return out
+}
+
 // kindLinkKind is the row kind a source kind installs as: the marketplace
 // clone's own material links, another repo's clones into the cache.
 func kindLinkKind(kind SourceKind) InstallKind {

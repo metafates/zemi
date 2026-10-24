@@ -568,7 +568,10 @@ drill-down whose info row names the source and whose rows are the clone
 manifest's entries, `u` updating the clone and `x` removing the
 marketplace on both, the remove refused with the plugins whose installs
 still update from it; none registered, the section's one row fills
-`/plugin marketplace add `. Four
+`/plugin marketplace add `. An entry's detail names what it
+provides - the live catalog for an installed one, its on-disk material
+otherwise, `not installed` when that was never fetched - counts and server
+and hook names, the hook events zemi refuses left out. Four
 verbs need the screen, so only `/plugin` takes them: `toggle <name>`,
 `open <name>` (its `.zemi/init.lua` in the editor, or its directory without one),
 `new [what it should do]`, the list's first row, and `modify <name> [what

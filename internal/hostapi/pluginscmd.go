@@ -397,6 +397,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 		return []OverlayItem{{Text: "Could not read the manifest", Desc: m.Err}}
 	}
 	installed := plugin.InstalledEntries(h.Dirs, name)
+	live, provs := h.pluginProvides(), plugin.EntryProvides(h.Dirs, name)
 	items := []OverlayItem{{
 		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %s", m.Added.Format(time.DateOnly), pluginCount(len(m.Entries))),
 		Section: "Marketplace",
@@ -443,8 +444,17 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 				Desc:   strings.Join(desc, " · "),
 				Detail: e.Description,
 			}
-			for _, f := range fieldList("version", e.Version, "category", e.Category, "author", e.Author,
-				"homepage", e.Homepage, "grants", strings.Join(e.Uses, ", ")) {
+			// provides reads the live catalog for an installed entry, the
+			// entry's on-disk material for the rest; one whose material was
+			// never fetched says so rather than reading as "provides nothing"
+			prov := "not installed"
+			if inst, ok := installed[e.Name]; ok {
+				prov = strings.Join(live[inst], " · ")
+			} else if p, ok := provs[e.Name]; ok {
+				prov = strings.Join(p, " · ")
+			}
+			for _, f := range fieldList("version", e.Version, "category", e.Category, "provides", prov,
+				"author", e.Author, "homepage", e.Homepage, "grants", strings.Join(e.Uses, ", ")) {
 				if f.Value != "" {
 					item.Fields = append(item.Fields, f)
 				}
@@ -541,12 +551,35 @@ func (h *Host) pluginStatus(p plugin.Plugin) (ServiceStatus, error) {
 	return StatusStarting, nil
 }
 
-// pluginProvides lists what each plugin provides, by plugin name.
+// pluginProvides lists what each plugin provides, by plugin name. A
+// component's file resolves its symlink, so a linked install's material (its
+// path runs through marketplaces/) still matches the plugin root it links
+// from; the name comes from the link, whose base is the install's.
 func (h *Host) pluginProvides() map[string][]string {
+	type root struct {
+		real, name string
+	}
+	var roots []root
+	if g := h.pluginGrant.Load(); g != nil {
+		for _, r := range g.roots {
+			real, err := filepath.EvalSymlinks(r)
+			if err != nil {
+				continue
+			}
+			roots = append(roots, root{real, filepath.Base(r)})
+		}
+	}
 	out := map[string][]string{}
 	add := func(path, what string) {
-		if n := h.PluginOf(path); n != "" {
-			out[n] = append(out[n], what)
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return
+		}
+		for _, r := range roots {
+			if real == r.real || strings.HasPrefix(real, r.real+string(filepath.Separator)) {
+				out[r.name] = append(out[r.name], what)
+				return
+			}
 		}
 	}
 	for _, c := range h.Commands.List() {

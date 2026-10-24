@@ -51,7 +51,7 @@ func TestPluginsCommand(t *testing.T) {
 		filepath.Join(dirs.PluginsRoot(), "local", "a", plugin.ManifestFile): `{"version": "0.1.0", "description": "a todo list in the statusline", "author": "me", "homepage": "https://a"}`,
 		filepath.Join(dirs.PluginsRoot(), "local", "a", "README.md"):         "# a\n\nA todo list in the statusline.",
 		filepath.Join(dirs.PluginsRoot(), "local", "b", plugin.InitFile):     "error('broken')",
-		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\n",
+		filepath.Join(src, plugin.InitFile):                                  "-- the x plugin\nzemi.command.add('tick', function() end, {})",
 		filepath.Join(mkt, plugin.ZemiMarketplaceFile): fmt.Sprintf(`{"name": "test", "plugins": [
 			{"name": "x", "source": {"source": "git", "url": "file://%s"}, "description": "the x plugin", "category": "tools"},
 			{"name": "two", "source": "./two", "description": "the two plugin"}]}`,
@@ -120,7 +120,7 @@ func TestPluginsCommand(t *testing.T) {
 				"danger:true desc:remove key:x run:plugin marketplace remove test",
 				"section:tools text:x", "desc:the x plugin", "key:i run:plugin install x@test",
 				"section:Other text:two", "desc:the two plugin", "key:i run:plugin install two@test",
-				"[category tools]",
+				"[category tools]", "[provides not installed]",
 			},
 			not: []string{"installed as x"},
 		},
@@ -134,7 +134,7 @@ func TestPluginsCommand(t *testing.T) {
 		},
 		{
 			name: "the drill-down marks an entry installed", args: "marketplace test",
-			want: []string{"desc:installed as x"},
+			want: []string{"desc:installed as x", "[provides not installed]"},
 			not:  []string{"key:i run:plugin install x@test"},
 		},
 		{
@@ -178,6 +178,14 @@ func TestPluginsCommand(t *testing.T) {
 	// the install completer offers the entries the registered marketplaces list
 	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugin install ")); !strings.Contains(got, "x@test") {
 		t.Errorf("/plugin install completes %s, want x@test", got)
+	}
+	// an installed entry reads its provides from the live catalog, which the
+	// install's reload fills
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	if items := dumpItems(h.marketplaceItemsOf("test")); !strings.Contains(items, "[provides command /tick]") {
+		t.Fatalf("installed provides: %s", items)
 	}
 }
 

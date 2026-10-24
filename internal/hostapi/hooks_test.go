@@ -15,6 +15,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -178,6 +179,20 @@ func TestHookMatcher(t *testing.T) {
 		}
 		if got := m(c.tool); got != c.want {
 			t.Errorf("matcher %q on %s: %v, want %v", c.matcher, c.tool, got, c.want)
+		}
+	}
+}
+
+// TestHookEventsAgree: the events the display summary shows and the ones the
+// loader runs are the same set, so provides never advertises what load
+// refuses nor hides what it runs.
+func TestHookEventsAgree(t *testing.T) {
+	if len(hookEventMap) != len(plugin.ClaudeHookEvents) {
+		t.Fatalf("hookEventMap runs %d events, the provides summary names %d", len(hookEventMap), len(plugin.ClaudeHookEvents))
+	}
+	for e := range hookEventMap {
+		if !slices.Contains(plugin.ClaudeHookEvents, e) {
+			t.Errorf("hookEventMap runs %s, which the provides summary hides", e)
 		}
 	}
 }
