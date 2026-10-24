@@ -1616,6 +1616,9 @@ func TestAgentView(t *testing.T) {
 			if c.wantNoParts && parts != nil || !c.wantNoParts && len(parts) == 0 {
 				t.Fatalf("parts %+v", parts)
 			}
+			if len(parts) > 0 && parts[0].Fill != FillCanvas {
+				t.Fatalf("the task sits on %v, want the canvas", parts[0].Fill)
+			}
 		})
 	}
 }

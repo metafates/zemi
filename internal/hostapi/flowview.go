@@ -166,7 +166,7 @@ func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail stri
 		parts = append(parts, BodyPart{Text: answer, Lang: "markdown"})
 	}
 	if prompt != "" {
-		parts = append([]BodyPart{{Text: prompt}}, parts...)
+		parts = append([]BodyPart{{Text: prompt, Fill: FillCanvas}}, parts...)
 	}
 	for _, p := range parts {
 		if detail != "" {
