@@ -705,7 +705,7 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and every command is denied. Report a change instead of making it."
 	}
 	if hasTool(toolset, tools.ToolUpdate) {
-		update = "\n\nUse the update tool when your caller should not wait for the run's end to hear something: a finding it asked for, a blocker, a question. One or two lines is enough. It reads the line while you run and may steer you on it, so read what comes back and follow it."
+		update = "\n\nUse the update tool only when your caller's attention is needed now: a question or a decision you cannot settle yourself, a blocker, or a finding it explicitly asked to hear at once. Never to narrate progress or announce completion - the final report is that. One or two lines; it reads the line while you run and may steer you on it, so read what comes back and follow it."
 	}
 	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
@@ -1144,7 +1144,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	props, req := tools.ArgsOf(agentArgs{})
 	for _, name := range []string{"description", "agent"} {
 		p := props[name].(map[string]any)
-		p["description"] = p["description"].(string) + "; required unless send_to is set"
+		p["description"] = p["description"].(string) + "; required unless send_to or wait is set"
 	}
 	props["agent"].(map[string]any)["enum"] = t.names()
 	return fantasy.ToolInfo{
@@ -1229,7 +1229,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	}
 	if in.Wait != "" {
 		if in.Wait == "all" {
-			return t.waitAll(ctx, call.ID), nil
+			return t.waitAll(ctx), nil
 		}
 		run, err := t.h.sessionRun(in.Wait)
 		if err != nil {
@@ -1329,7 +1329,7 @@ func updateWaitText(run *agentRun) string {
 // of them sends an update, or the user types: the join a fleet of detached
 // agents otherwise has none of. The reports arrive as messages of their own,
 // so the answer only sums the runs.
-func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResponse {
+func (t *agentTool) waitAll(ctx context.Context) fantasy.ToolResponse {
 	h := t.h
 	var waited []*agentRun // every run this wait covered, for the final sum
 	for {
@@ -1530,8 +1530,9 @@ func (t *updateTool) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(updateArgs{})
 	return fantasy.ToolInfo{
 		Name: tools.ToolUpdate,
-		Description: "Tell your caller one or two lines it should not wait for the run's end to read: a finding it asked for, a blocker, a question." +
-			" The caller may steer you in answer, so read what comes back. Do not repeat what you already sent.",
+		Description: "Tell your caller one or two lines when its attention is needed now: a question or a decision you cannot settle yourself, a blocker, or a finding it explicitly asked to hear at once." +
+			" Never to narrate progress or announce completion - the final report is that." +
+			" The caller may steer you in answer, so read what comes back and follow it. Do not repeat what you already sent.",
 		Parameters: props,
 		Required:   required,
 		Parallel:   true,

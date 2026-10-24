@@ -1778,8 +1778,7 @@ func TestWaitAllNothingRunning(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
-	done := &agentRun{id: "rDone", agent: "explore", parent: h.AgentSessionID(), status: RunDone,
-		started: time.Now().Add(-time.Minute), finished: time.Now(), cancel: func() {}}
+	done := &agentRun{id: "rDone", agent: "explore", parent: h.AgentSessionID(), status: RunDone, started: time.Now().Add(-time.Minute), finished: time.Now(), cancel: func() {}}
 	if err := h.tasks.add(done); err != nil {
 		t.Fatal(err)
 	}

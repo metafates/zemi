@@ -64,11 +64,13 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `agentRun` too (`agent` `fork`), and its `forkBase` is where its own messages start in the
   history: the conversation it opened with is not its report, and `send_to` refuses a fork this
   process forgot, whose rows hold its own work alone. `send_to` with `stop` kills a running run
-  (the model's one stop, as `/agents stop` is the user's; a stopped run reports nothing), `wait`
-  beside it blocks for its end instead, and the two refuse each other. A run's queue is
+  (the model's one stop, as `/agents stop` is the user's; a stopped run reports nothing); `wait`
+  stands alone - a run id, or `all` for every run of the session - blocks for its end and wakes
+  early when a run sends an update, and refuses `stop` and `send_to`. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
-  message is never accepted and then dropped. A foreground `agent` or `workflow` call waits for
+    message is never accepted and then dropped. A foreground `agent` or
+  `workflow` call waits for
   its run off the turn's goroutine (a workflow run is `startFlow` and its `flowRun.done`); the
   user's own typed line (`Host.AgentSendUser`, from the composer's `sendMessage` in palette.go or
   a command-line prompt, and never a report, a plugin send or a loop) hands the
