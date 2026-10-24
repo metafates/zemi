@@ -73,9 +73,10 @@ fmt:
 	@if command -v $(GOLANGCI) >/dev/null; then $(GOLANGCI) fmt ./...; else gofmt -w $(GO_FILES); fi
 	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) runtime testdata; fi
 
-# regenerate internal/ui/testdata/*.golden, then review the diff
+# regenerate internal/ui/testdata/*.golden and the db skill's schema, then review the diff
 golden:
 	go test -timeout 300s ./internal/ui -update
+	go test -timeout 300s ./internal/store -run TestSchemaDocIsCurrent -update
 
 # type-check runtime/ Lua against runtime/types; skipped without the binary
 luals:
