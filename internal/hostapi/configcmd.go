@@ -355,7 +355,9 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 		text, ok := v.(string)
 		if !ok {
 			if list, isList := v.([]string); isList {
-				text = strings.Join(list, ", ") // the grammar configSet reads back
+				// NOTE: the list grammar splits on comma and space, so an entry
+				// holding either cannot round-trip; same ceiling as configSet.
+				text = strings.Join(list, ", ")
 			} else {
 				text = luaLiteral(v) // a number as /config set reads it
 			}
