@@ -77,7 +77,8 @@ func isBusy(err error) bool {
 
 // OpenRead opens an existing store read-only: no migration, no sweep and
 // no checkpoint on close, so a look waits on no lock a running zemi holds.
-// A missing file is fs.ErrNotExist.
+// A missing file is fs.ErrNotExist; one this binary's migrations have not
+// reached is ErrUnmigrated.
 func OpenRead(path string) (*DB, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
@@ -87,7 +88,32 @@ func OpenRead(path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	return &DB{db: d, path: path}, nil
+	s := &DB{db: d, path: path}
+	if s.unmigrated() {
+		d.Close()
+		return nil, fmt.Errorf("%s: %w", path, ErrUnmigrated)
+	}
+	return s, nil
+}
+
+// ErrUnmigrated is a store the embedded migrations have not run on, which a
+// listing command cannot read: the remedy is one real open in its project
+// (zemi health, or the TUI), which migrates - a read never does.
+var ErrUnmigrated = errors.New("store predates this zemi; run zemi health in its project once to migrate it")
+
+// unmigrated reports a store the embedded migrations have not reached: their
+// version table is missing (a 0-byte or pre-goose file) or behind their count.
+func (s *DB) unmigrated() bool {
+	var v sql.NullInt64
+	err := s.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&v)
+	return err != nil || v.Int64 < int64(migrationCount())
+}
+
+// migrationCount is the newest version the embedded migrations reach; the
+// files are numbered 0001.. in step with goose's versions.
+func migrationCount() int {
+	files, _ := fs.Glob(migrations, "migrations/*.sql")
+	return len(files)
 }
 
 // ErrInUse is a store another connection holds open: another zemi.

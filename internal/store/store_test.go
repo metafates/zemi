@@ -86,6 +86,60 @@ func TestMigrationKeepsData(t *testing.T) {
 	}
 }
 
+// TestOpenReadUnmigrated: a read-only open refuses a store this binary's
+// migrations have not reached, naming the store and the remedy, and migrates
+// nothing; a store at the current schema reads.
+func TestOpenReadUnmigrated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenRead(path)
+	if !errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "zemi health") {
+		t.Fatalf("a 0-byte store: %v, want ErrUnmigrated naming the store and the remedy", err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession(ShortID(), "", "a session", ""); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = OpenRead(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := db.SessionCount()
+	db.Close()
+	if err != nil || n != 1 {
+		t.Fatalf("a migrated store reads: %d, %v", n, err)
+	}
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`UPDATE goose_db_version SET version_id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+	if _, err := OpenRead(path); !errors.Is(err, ErrUnmigrated) {
+		t.Fatalf("a store behind the migrations: %v, want ErrUnmigrated", err)
+	}
+	raw, err = sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := raw.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 1 {
+		raw.Close()
+		t.Fatalf("a refused read migrated to %d, %v; want it untouched at 1", version, err)
+	}
+	raw.Close()
+}
+
 // TestConcurrentOpen: two processes creating one store at once, as restored
 // terminal panes do, both start.
 func TestConcurrentOpen(t *testing.T) {
