@@ -47,23 +47,23 @@ func TestPlusSkillAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, c := range []struct{ name, text, want string }{
-		{"body as written", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
-		{"a disabled skill attaches", "+lint go", "Body."},
-		{"a big skill is cut", "+big", "Read the cut lines with the read tool"},
+	for _, c := range []struct{ name, skill, text, want string }{
+		{"body as written", "humanize", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
+		{"a disabled skill attaches", "lint", "+lint go", "Body."},
+		{"a big skill is cut", "big", "+big", "Read the cut lines with the read tool"},
 	} {
 		got, _ := h.expandAttachments(c.text, true)
 		typed, tail := agent.CutAttached(got)
-		if typed != c.text || !strings.Contains(tail, "<skill>") || !strings.Contains(tail, c.want) {
+		if typed != c.text || !strings.Contains(tail, "<skill name=\""+c.skill+"\">") || !strings.Contains(tail, c.want) {
 			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
 		}
 	}
-	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill>"); n != 2 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill name="); n != 2 {
 		t.Errorf("two skills attached %d elements", n)
 	}
 	// a repeated mention attaches once, like a repeated @file, and both
 	// tokens survive in the typed text
-	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill>"); n != 1 {
+	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill name="); n != 1 {
 		t.Errorf("a repeated skill attached %d elements", n)
 	}
 	if typed, _, _ := strings.Cut(mustExpand(t, h, "+humanize a +humanize b"), agent.AttachMarker); typed != "+humanize a +humanize b" {

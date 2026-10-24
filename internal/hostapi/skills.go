@@ -534,8 +534,8 @@ func (h *Host) attachSkill(b *strings.Builder, name string) {
 	if err != nil {
 		return // the body is gone since it was typed: the token stays prose
 	}
-	note := fmt.Sprintf("The user attached the skill %s with +%s in the message above; follow it for their request.\n\n", s.Name, s.Name)
-	b.WriteString(agent.AttachElement("skill", note+text+skillNote(s)))
+	note := fmt.Sprintf("The user attached this skill with +%s in the message above; follow it for their request.\n\n", s.Name)
+	b.WriteString(agent.AttachElement(fmt.Sprintf("skill name=%q", s.Name), note+text+skillNote(s)))
 }
 
 // openSkills lists discovered skills with their state; space toggles the
