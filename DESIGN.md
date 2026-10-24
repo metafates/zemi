@@ -937,7 +937,9 @@ otherwise return a decision table:
   deliberately diverges).
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil; `permission.request`
-  also takes `{ decision = "ask" }`, which runs the ask path. Lua can deny;
+  also takes `{ decision = "ask" }`, which runs the ask path, and
+  `composer.submit` a rewrite, `{ decision = "rewrite", text = "..." }`,
+  which sends the rewritten line. Lua can deny;
   it can never grant.
 
 `tool.post` is not vetoable, but it may rewrite what the model gets. Its
@@ -964,7 +966,7 @@ zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
 zemi.agent.cancel()
 zemi.agent.run({ agent = "explore", prompt = "...",              -- subagent,
                  description = "..." },                          -- async
-               function(result, err) end)    -- returns a handle: h:cancel()
+               function(result, err) end)    -- returns a handle: h:wait(), h:cancel()
 zemi.agent.list()                    -- the agent definitions and their source
 
 zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
@@ -1462,7 +1464,8 @@ zemi.ui.overlay.open({
 	on_select = function(m) zemi.model.set(m.id) end,
 })
 
--- Pickers in the shape of vim.ui.select: on_choice(item), nil on cancel
+-- Pickers in the shape of vim.ui.select: on_choice(item), nil on cancel,
+  and the returned handle's `wait()` suspends a task for the same answer
 zemi.ui.select(zemi.model.list(), {
 	prompt = "Model",
 	format_item = function(m) return m.display end,
@@ -1696,7 +1699,7 @@ whose rows join the Go checks in `/health` and `zemi health`, and `list`, which 
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
-`zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
+`zemi.mcp` (`add`, `del`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.perm` (`ask`, a plugin needs `perm` in its uses, §9).
 
 `zemi.learn.decide` and `zemi.skills.enable` are open to any origin: the
@@ -1760,7 +1763,8 @@ a running process, not session state (`/loop`).
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`,
 `memory(scope, updated_at)`, `sessions(parent_id)`,
-`sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`.
+`sessions(updated_at)`, `todos(session_id)`, `checkpoints(session_id)`,
+`checkpoints(created_at)`, `memory_ops(session_id)`.
 
 The schema is embedded goose migrations under `internal/store/migrations`,
 one transaction each, applied on open under a `zemi.db.lock` file lock so
@@ -1982,8 +1986,8 @@ rides the `memories.md` line and its ledger entries.
   types on), and esc clears it, then closes. A detail view opens with its
   item's `fields` set as a table (names in a dim column, a field with no value
   left out), then its `detail` prose, and lists nothing: its keys are the
-  list's and the row's, and the footer names them; `y` copies the fields as
-  `name: value` lines above the prose. A Go screen's body may come in
+  list's and the row's, and the footer names them; `y` copies the `detail`
+  prose, falling back to the fields as `name: value` lines when it is empty. A Go screen's body may come in
   parts, each drawn the way its text is written - markdown, a unified diff,
   or a language to highlight it as - and a body its work rewrites (`Live`)
   keeps the reader's place, or follows its tail while they never scrolled.
@@ -2180,7 +2184,7 @@ rides the `memories.md` line and its ledger entries.
   over its content in the form it is written: a command highlighted as bash
   with what it answered apart under it, a file change as the numbered diff,
   a thought as markdown, a question as the answers it got. `o` opens the job
-  a command went on as, `y` copies the whole view, and one of a call that
+  a command went on as, `y` copies the view's body, and one of a call that
   still runs refreshes as it runs. `ctrl+j`/`ctrl+k` step to the next and the
   previous row of the run, the live turn's calls among them, and the level the
   view came from steps with it, so going back lands on the call that was
@@ -2457,7 +2461,8 @@ rides the `memories.md` line and its ledger entries.
   agent, owner, script; the pipeline fills read-only and the script
   name.
 - The gate (tools.Pipeline.Check): a read-only agent's action denies,
-  except a write in its scratchpad; then the veto settles: a denial
+  except a write in its scratchpad; job_kill asks the gate nothing, so it
+  denies by itself; then the veto settles: a denial
   refuses, an ask decision runs the ask path; what survives runs.
 - The vetoable `permission.request` event runs at the gate, once per
   action request; a handler denies, or returns `decision = "ask"` to
