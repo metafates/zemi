@@ -1184,11 +1184,6 @@ func inputDiff(name, input string) string {
 	return capLines(tools.ChangeDiff(name, in), 24)
 }
 
-// toolStatus is a finished call's row status, read from the result itself:
-// a tool that answers an error did not do what it was asked, whatever its
-// text says, and cancelled is the user denying, dismissing or interrupting
-// it, which is a stop rather than a failure. The only chooser of a
-// CallStatus, so no caller can hand it an outcome it made up.
 // toolStatus is a finished call's row status, from the outcome its tool
 // reported and the result itself: a background hand-off, a call that
 // answered with a failure inside, or a stop the user asked for. The only
