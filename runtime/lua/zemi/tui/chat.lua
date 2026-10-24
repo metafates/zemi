@@ -667,8 +667,8 @@ local function builder(ctx, width)
 				-- a live rail folds a call the turn has superseded into its
 				-- header: the newest entry, a running one, a failure and an ask
 				-- keep the rows under theirs
-				local terse = o.live and not o.full and i < last and t.status ~= "run" and not fail
-					and kind ~= "question" and kind ~= "plan" or nil
+				local keep = i == last or t.status == "run" or fail or kind == "question" or kind == "plan"
+				local terse = o.live and not o.full and not keep or nil
 				B.tool(t, idx, { terse = terse })
 				markCall(at, idx)
 				i = i + 1
