@@ -667,6 +667,45 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a view's pending line sits pinned under a long body",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "run", Detail: strings.Repeat("line\n", 40), Empty: "thinking"}}},
+			[]string{"enter"},
+			func(a *App) string {
+				d := &a.overlays[1]
+				at := func() (int, string) {
+					for i, r := range a.overlayBox(d, 80, 20, true) {
+						for _, sg := range r {
+							if sg.Text == "thinking" {
+								return i, sg.HL
+							}
+						}
+					}
+					return -1, ""
+				}
+				i, style := at()
+				a.wheel(0, 0, 1)
+				d.selected = 1
+				j, _ := at()
+				return fail(i > 0 && style == hostapi.ChromeHint && i == j, fmt.Sprintf("pending row %d -> %d, hl %q", i, j, style))
+			},
+		},
+		{
+			"a rebuilt view's pending line drops once the answer landed",
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "run", Detail: "the task", Empty: "thinking"}}},
+			[]string{"enter"},
+			func(a *App) string {
+				next := a.overlays[0].o
+				next.Items = []hostapi.OverlayItem{{Text: "run", Detail: "the task\n\nthe answer"}}
+				a.replaceOverlay(0, next)
+				a.refreshDetail(0)
+				var box string
+				for _, r := range a.overlayBox(&a.overlays[1], 80, 20, true) {
+					box += hostapi.SegsText(r) + "\n"
+				}
+				return fail(!strings.Contains(box, "thinking") && strings.Contains(box, "the answer"), box)
+			},
+		},
+		{
 			"y copies a view's body alone, not the facts table before it",
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "mcp", Detail: "prose", Fields: []hostapi.Field{{Name: "status", Value: "ready"}}}}},
 			[]string{"enter"},

@@ -143,8 +143,9 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 // agentView is an agent run's row view, the same in /agents and a workflow's
 // run: its facts, then its task and, once it has ended, what it answered. A
 // row with nothing to read (queued, reused, stored) sets the facts alone; a
-// failed one carries its error as a field.
-func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail string, parts []BodyPart) {
+// failed one carries its error as a field. A running one also names what it
+// is doing, as the pending line under its body, never in its text.
+func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail string, parts []BodyPart, pending string) {
 	usage := fmt.Sprintf("%d %s · %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
 	if a.cost > 0 {
 		usage += " · " + fmtCost(a.cost)
@@ -155,15 +156,20 @@ func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail stri
 	}
 	fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
 	if run == nil {
-		return fields, "", nil
+		return fields, "", nil, ""
 	}
 	prompt := sanitize.String(run.prompt())
-	if a.status == RunFailed {
+	answer := run.answer()
+	switch {
+	case a.status == RunFailed:
 		if err := run.errText(); err != "" {
 			fields = append(fields, Field{"error", err})
 		}
-	} else if answer := run.answer(); answer != "" && (a.status == RunDone || a.status == RunWarn) {
+	case answer != "" && (a.status == RunDone || a.status == RunWarn):
 		parts = append(parts, BodyPart{Text: answer, Lang: "markdown"})
+	case a.status == RunRunning && (answer == "" || answer == prompt):
+		// answer() reads the prompt back before the run has written a row
+		pending = run.pending()
 	}
 	if prompt != "" {
 		parts = append([]BodyPart{{Text: prompt, Fill: FillCanvas}}, parts...)
@@ -174,7 +180,7 @@ func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail stri
 		}
 		detail += p.Text
 	}
-	return fields, detail, parts
+	return fields, detail, parts, pending
 }
 
 // flowAgentItem is an agent's row in a run's view, keyed by its call's
@@ -189,10 +195,10 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	run := h.tasks.find(a.id)
-	fields, detail, parts := h.agentView(a, run)
+	fields, detail, parts, pending := h.agentView(a, run)
 	item := OverlayItem{
 		ID: strconv.Itoa(a.call), Text: a.description, Desc: desc, Section: section, Mark: RunMarks[string(a.status)],
-		Fields: fields, Detail: detail, Parts: parts,
+		Fields: fields, Detail: detail, Parts: parts, Empty: pending,
 	}
 	if a.id == "" {
 		return item

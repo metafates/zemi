@@ -624,7 +624,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Empty: r.Empty, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}

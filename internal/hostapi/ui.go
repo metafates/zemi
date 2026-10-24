@@ -614,6 +614,7 @@ type OverlayItem struct {
 	Keys                                                           []ItemKey  // what acts on the row: from the list by its character, in the footer of its view
 	Fields                                                         []Field    // the row's view: facts set above Detail
 	Parts                                                          []BodyPart // the row's view's body in Detail's place, each drawn the way its text is written
+	Empty                                                          string     // the row's view's pending line, under the body while the work runs
 	Row                                                            []Segment  // the row render_item drew, nil for the text alone
 	// raw is the Lua value the row was parsed from, which its callbacks get
 	// back: a Go screen's row has none.

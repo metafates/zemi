@@ -434,6 +434,24 @@ func (run *agentRun) answer() string {
 	return run.lastText("")
 }
 
+// pending is the one line a running run's preview shows while its answer is
+// still pending: "thinking" while a reasoning block is open, else the last
+// transcript row's label (its tool, when the model wrote none), else what a
+// run that has not reached its first step says.
+func (run *agentRun) pending() string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if !run.thinkAt.IsZero() {
+		return "thinking"
+	}
+	if n := len(run.tr); n > 0 {
+		if s := cmp.Or(run.tr[n-1].Label, run.tr[n-1].Tool); s != "" {
+			return clipLine(s, 80)
+		}
+	}
+	return "(no answer yet)"
+}
+
 // errText is what a failed or stopped run ended with, "" for any other.
 func (run *agentRun) errText() string {
 	run.mu.Lock()
@@ -1184,7 +1202,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 			tokens, cost := run.usage()
 			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) +
 				fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")) + " · " + desc
-			item.Fields, item.Detail, item.Parts = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+			item.Fields, item.Detail, item.Parts, item.Empty = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
 		} else {
 			// a stored row holds what its session row says; its transcript loads on demand
 			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) + " · " + desc
