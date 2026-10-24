@@ -619,8 +619,15 @@ func TestStoredRunningReadsCancelled(t *testing.T) {
 	if h.ViewedRunRunning() {
 		t.Fatal("a stored 'running' row viewed keeps the frame ticking")
 	}
-	// a live run the chat shows still ticks: the stored read is what changed
-	h.view = &agentRun{id: "live", status: RunRunning, cancel: func() {}}
+	// a live run the registry holds still ticks: ViewAgent finds it there
+	// before any store read, and that is the term the frame's clock tests
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
 	if !h.ViewedRunRunning() {
 		t.Fatal("a live viewed run does not tick the frame")
 	}
