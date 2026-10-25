@@ -495,6 +495,7 @@ func TestGlobAndGrep(t *testing.T) {
 	// git lists untracked files first, right after its stderr warning about
 	// the unreadable dir, which must not garble notes.txt
 	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "void"), 0o755)
 	os.Chmod(filepath.Join(dir, "locked"), 0)
 	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "locked"), 0o755) })
 	glob, grep := toolNamed(t, "glob", p), toolNamed(t, "grep", p)
@@ -520,7 +521,11 @@ func TestGlobAndGrep(t *testing.T) {
 		{tool: glob, input: `{"pattern":"**/*.txt"}`, want: "src/a.txt", not: "gen/"},
 		{tool: glob, input: `{"pattern":"**/*.go"}`, want: "main.go"},
 		{tool: grep, input: `{"pattern":"package priv"}`, want: "private/k.go:1", not: "lnk.txt"},
-		{tool: grep, input: `{"pattern":"outside"}`, want: "no matches", not: "swap/"},
+		{tool: grep, input: `{"pattern":"outside"}`, want: `(no matches for "outside" in`, not: "swap/"},
+		{tool: glob, input: `{"pattern":"*.zig"}`, want: `(no files match "*.zig" under ` + dir + `)`},
+		{tool: grep, input: `{"pattern":"package","include":"*.zig"}`, want: `(no files match include "*.zig" under ` + dir + `; not searched)`, not: "in 0 files"},
+		{tool: grep, input: `{"pattern":"zzz","path":"sub"}`, want: `(no matches for "zzz" in 1 files under ` + dir + `/sub)`},
+		{tool: grep, input: `{"pattern":"zzz","path":"void"}`, want: `(no matches for "zzz" in 0 files under ` + dir + `/void)`},
 		{tool: grep, input: `{"pattern":"package","path":"sub/x.go"}`, want: "sub/x.go:1: package sub", not: "main.go"},
 		{tool: grep, input: `{"pattern":"sub("}`, want: "(pattern taken literally)\n", not: "bad pattern"},
 		{tool: grep, input: `{"pattern":"sub("}`, want: "call.go:1: x := sub(1)", not: "x.go"},

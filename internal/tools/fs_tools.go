@@ -1106,7 +1106,7 @@ func runGlob(ctx context.Context, p *Pipeline, in globArgs) (fantasy.ToolRespons
 		shown++
 	}
 	if shown == 0 {
-		out = append(out, "(no matches)")
+		out = append(out, fmt.Sprintf("(no files match %q under %s)", pattern, filepath.ToSlash(filepath.Clean(root))))
 	}
 	if len(files) == ListLimit {
 		out = append(out, fmt.Sprintf("... (listing stopped at %d files; narrow the path)", ListLimit))
@@ -1152,6 +1152,7 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	capped := len(files) == ListLimit
+	listed := len(files)
 	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) })
 	hits, err := Grep(ctx, root, files, re, grepMaxMatches)
 	if err != nil {
@@ -1170,11 +1171,16 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 	switch {
 	case len(hits) == grepMaxMatches:
 		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
-	case capped:
+	case capped && len(files) > 0:
 		out = append(out, fmt.Sprintf("... (searched the first %d files; narrow the path)", ListLimit))
 	}
 	if len(hits) == 0 {
-		out = append(out, "(no matches)")
+		rootName := filepath.ToSlash(filepath.Clean(root))
+		if listed > 0 && len(files) == 0 {
+			out = append(out, fmt.Sprintf("(no files match include %q under %s; not searched)", include, rootName))
+		} else {
+			out = append(out, fmt.Sprintf("(no matches for %q in %d files under %s)", pattern, len(files), rootName))
+		}
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }

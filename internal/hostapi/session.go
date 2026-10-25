@@ -566,7 +566,7 @@ func planArg(input string) string {
 	return in.Plan
 }
 
-const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
+const titleSystem = `Name the coding conversation below for a session list, from the user's first message alone. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task's subject, not the message's framing (no "Feedback", "Question" or "Greeting" labels), file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.`
 
 // autoTitle names a new session from its first user message with a short
 // model call in the background; any failure keeps the first-line title.
