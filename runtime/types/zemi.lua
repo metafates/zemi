@@ -2671,6 +2671,7 @@ function zemi.skills.disable(name) end
 ---@field enabled_tools? string[]
 ---@field disabled_tools? string[]
 ---@field timeout? integer Seconds.
+---@field group? string Groups the server under one name: /mcp toggles the whole group, and a name is a server or a group, never both.
 
 ---@alias zemi.ServiceStatus
 ---| "idle" # a language server that starts on its first file
@@ -2679,13 +2680,15 @@ function zemi.skills.disable(name) end
 ---| "failed" # error says why
 ---| "needs sign-in" # an MCP server waiting for /mcp sign-in
 ---| "stopped"
----| "off" # a plugin turned off
+---| "off" # a plugin or MCP server the user turned off
 
 ---@class zemi.MCPInfo
 ---@field name string
----@field status zemi.ServiceStatus "starting", "ready", "failed", "needs sign-in" or "stopped".
+---@field status zemi.ServiceStatus "starting", "ready", "failed", "needs sign-in", "stopped" or "off".
 ---@field error string
 ---@field tools string[] The tools the model gets, after enabled_tools and disabled_tools.
+---@field group string The group's name, "" for none.
+---@field enabled boolean The persisted /mcp switch, not the running status.
 
 ---@class zemi.mcp
 zemi.mcp = {}
@@ -2712,6 +2715,17 @@ function zemi.mcp.del(name) end
 
 ---@return zemi.MCPInfo[]
 function zemi.mcp.list() end
+
+--- Flip a server's persisted switch, or a whole group's at once. A disabled
+--- server keeps its /mcp row and starts when turned back on. Raises for a
+--- name that is neither a server nor a group.
+---
+--- ```lua
+--- zemi.mcp.enable("work", false) -- the whole group off
+--- ```
+---@param name string
+---@param on boolean
+function zemi.mcp.enable(name, on) end
 
 ---@class zemi.LSPSpec
 ---@field command string

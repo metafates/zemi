@@ -1710,7 +1710,7 @@ whose rows join the Go checks in `/health` and `zemi health`, and `list`, which 
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
-`zemi.mcp` (`add`, `del`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
+`zemi.mcp` (`add`, `del`, `list`, `enable`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.perm` (`ask`, a plugin needs `perm` in its uses, §9).
 
 `zemi.learn.decide` and `zemi.skills.enable` are open to any origin: the
@@ -2982,7 +2982,14 @@ the AfterWrite hook scrubs what the user approves.
   description a catalog of names by server) and the tools a search loaded,
   at most five per search, kept per session and per subagent run. A lua
   script reaches any of them by name, deferred or not, through the same gate,
-  and `zemi.tool.list()` names the run's MCP tools beside its own.
+  and `zemi.tool.list()` names the run's MCP tools beside its own. A server
+  carries a `group` label: `/mcp` draws each group with its own switch (on
+  only when every member is on, so space turns a mixed or off group on and
+  an all-on group off) and `/mcp enable|disable|toggle` and `zemi.mcp.enable`
+  act on a group or one server. The switches persist per server in the
+  global store's kv (`mcp:<name>`, sparse: absent is on); a disabled server
+  registers as `off` and never starts, and a name is a server or a group,
+  never both.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
   its decision's source: a plugin's declared capability, a hook's veto,
   the user, or a fail-closed default), decisions

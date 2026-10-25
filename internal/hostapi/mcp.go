@@ -9,6 +9,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +35,7 @@ import (
 
 // mcpSpec is one server registration.
 type mcpSpec struct {
+	Group         string
 	Command       string
 	Args          []string
 	Env           map[string]string
@@ -55,6 +57,7 @@ type mcpServer struct {
 	client      *mcp.Client
 	tools       []mcp.Tool
 	status      ServiceStatus
+	enabled     bool // the user's persisted switch, off never starts
 	err         string
 	signIn      string // the sign-in URL while one waits in the browser
 	authorizing bool   // a flow is between its start and its park, so no second one starts
@@ -84,42 +87,220 @@ func (h *Host) addMCP(name string, spec mcpSpec) error {
 	if (spec.Command == "") == (spec.URL == "") {
 		return errors.New("give exactly one of command or url")
 	}
-	s := &mcpServer{name: name, spec: spec, status: StatusStarting}
-	if h.Inert {
+	if err := h.checkMCPGroupName(name, spec.Group); err != nil {
+		return err
+	}
+	enabled := h.mcpEnabled(name)
+	s := &mcpServer{name: name, spec: spec, status: StatusStarting, enabled: enabled}
+	if h.Inert || !enabled {
 		s.status = StatusOff
 	}
 	h.mcp.mu.Lock()
 	old, parked := h.mcp.servers[name], h.mcp.parked[name]
 	delete(h.mcp.parked, name)
 	// a reload that adds a live server again keeps it: a restart would lose
-	// its state (a browser, a connection) and move the tool list
-	if old == nil && parked != nil && parked.keeps(spec) {
+	// its state (a browser, a connection) and move the tool list. A disabled
+	// switch never adopts one.
+	if old == nil && parked != nil && enabled && parked.keeps(spec) {
 		h.mcp.servers[name] = parked
 		h.mcp.mu.Unlock()
+		if parked.group() != spec.Group {
+			parked.adoptGroup(spec.Group)
+			h.mcpChanged()
+		}
 		return nil
 	}
 	h.mcp.servers[name] = s
-	h.mcp.mu.Unlock()
+	// the replaced servers stop inside the section: two racing adds each read
+	// the other's insert as old, so the loser's child never runs on
 	for _, o := range []*mcpServer{old, parked} {
 		if o != nil {
 			o.stop()
 		}
 	}
-	if !h.Inert {
+	h.mcp.mu.Unlock()
+	// a racing add for the same name may have stopped s between the sections
+	s.mu.Lock()
+	starting := s.status == StatusStarting
+	s.mu.Unlock()
+	if starting {
 		h.GoSafe("mcp start "+name, func() { h.startMCP(s) })
 	}
 	return nil
+}
+
+// checkMCPGroupName refuses a group that would make one name both a server
+// and a group: toggle resolves a server first, so a colliding group would be
+// unreachable. Parked servers stay out: the config's final state decides.
+func (h *Host) checkMCPGroupName(name, group string) error {
+	if group != "" {
+		if !mcpServerName.MatchString(group) {
+			return fmt.Errorf("group name %q must match [a-z0-9][a-z0-9-]{0,31}", group)
+		}
+		if group == name {
+			return fmt.Errorf("group %q cannot be the server's own name", group)
+		}
+	}
+	h.mcp.mu.Lock()
+	defer h.mcp.mu.Unlock()
+	for _, s := range h.mcp.servers {
+		if group != "" && s.name == group {
+			return fmt.Errorf("group %q is already a server's name", group)
+		}
+		if s.group() == name {
+			return fmt.Errorf("server name %q is already a group's name", name)
+		}
+	}
+	return nil
+}
+
+// mcpEnabled reads a server's persisted switch; no row, or no store, is on.
+func (h *Host) mcpEnabled(name string) bool {
+	if h.GlobalDB == nil {
+		return true
+	}
+	v, err := h.GlobalDB.GetKV("mcp:" + name)
+	if err != nil {
+		return true
+	}
+	return !kvFalse(v)
+}
+
+// setMCPEnabled writes a server's persisted switch.
+func (h *Host) setMCPEnabled(name string, on bool) error {
+	if h.GlobalDB == nil {
+		return errors.New("MCP state store unavailable")
+	}
+	if on {
+		_, err := h.GlobalDB.DelKV("mcp:" + name)
+		return err
+	}
+	return h.GlobalDB.SetKV("mcp:"+name, "false")
+}
+
+// kvFalse reports a kv value that is the JSON false, never a string
+// comparison: user Lua shares the kv table and stores "false" quoted, and
+// null is not off.
+func kvFalse(v string) bool {
+	var anyv any
+	return json.Unmarshal([]byte(v), &anyv) == nil && anyv == false
+}
+
+// setMCPOn flips one server's persisted switch and starts or stops it to
+// match. The persisted side moves first, so a crash between the two lands on
+// it; a server already in the wanted state only picks up the switch.
+func (h *Host) setMCPOn(name string, on bool) error {
+	s, err := h.mcpServerNamed(name)
+	if err != nil {
+		return err
+	}
+	if err := h.setMCPEnabled(name, on); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	running := s.status != StatusOff
+	s.mu.Unlock()
+	if on == running {
+		return nil
+	}
+	return h.addMCP(name, s.specSnapshot())
+}
+
+// mcpTarget resolves a toggle name to its server, else to the servers of the
+// group by that name, in name order.
+func (h *Host) mcpTarget(name string) (*mcpServer, []*mcpServer) {
+	h.mcp.mu.Lock()
+	defer h.mcp.mu.Unlock()
+	if s := h.mcp.servers[name]; s != nil {
+		return s, nil
+	}
+	var group []*mcpServer
+	for _, s := range h.mcp.servers {
+		if s.group() == name {
+			group = append(group, s)
+		}
+	}
+	slices.SortFunc(group, func(a, b *mcpServer) int { return cmp.Compare(a.name, b.name) })
+	return nil, group
+}
+
+// setMCPName sets one server, or a whole group, to on or off.
+func (h *Host) setMCPName(name string, on bool) error {
+	s, group := h.mcpTarget(name)
+	if s != nil {
+		return h.setMCPOn(name, on)
+	}
+	if len(group) == 0 {
+		return Usagef("no MCP server or group %q", name)
+	}
+	for _, m := range group {
+		// by name each step: a member a reload dropped mid-toggle is skipped
+		if _, err := h.mcpServerNamed(m.name); err != nil {
+			continue
+		}
+		if err := h.setMCPOn(m.name, on); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// toggleMCPName flips one server, or a whole group at once: any member off
+// and the group comes on together, all on and it goes off together.
+func (h *Host) toggleMCPName(name string) error {
+	s, group := h.mcpTarget(name)
+	switch {
+	case s != nil:
+		return h.setMCPOn(name, !s.enabledFlag())
+	case len(group) > 0:
+		return h.setMCPName(name, slices.ContainsFunc(group, func(m *mcpServer) bool { return !m.enabledFlag() }))
+	default:
+		return Usagef("no MCP server or group %q", name)
+	}
 }
 
 // signInTimeout is how long one sign-in flow may take.
 const signInTimeout = 5 * time.Minute
 
 // keeps reports whether s can serve spec as it is: a failed server restarts,
-// one waiting for a sign-in keeps waiting, since a start would fail the same way.
+// one waiting for a sign-in keeps waiting, since a start would fail the same
+// way. The group is a label, not connection state, so a moved group adopts
+// instead of restarting.
 func (s *mcpServer) keeps(spec mcpSpec) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return (s.status == StatusReady || s.status == StatusStarting || s.status == StatusSignIn) && reflect.DeepEqual(s.spec, spec)
+	mine, theirs := s.spec, spec
+	mine.Group, theirs.Group = "", ""
+	return (s.status == StatusReady || s.status == StatusStarting || s.status == StatusSignIn) && reflect.DeepEqual(mine, theirs)
+}
+
+// enabledFlag is the server's persisted switch.
+func (s *mcpServer) enabledFlag() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.enabled
+}
+
+// group is the server's group name; the group moves at runtime, so the spec
+// is read only under the lock.
+func (s *mcpServer) group() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.spec.Group
+}
+
+// specSnapshot copies the spec under the lock.
+func (s *mcpServer) specSnapshot() mcpSpec {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.spec
+}
+
+// adoptGroup takes a spec's new group without a restart.
+func (s *mcpServer) adoptGroup(group string) {
+	s.mu.Lock()
+	s.spec.Group = group
+	s.mu.Unlock()
 }
 
 func (h *Host) startMCP(s *mcpServer) {
@@ -683,7 +864,8 @@ func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy
 func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// add(name, { command, args, env, url, headers, client_id,
-	// client_secret, callback_port, enabled_tools, disabled_tools, timeout }).
+	// client_secret, callback_port, enabled_tools, disabled_tools, timeout,
+	// group }).
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		opts := L.CheckTable(2)
@@ -692,6 +874,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 			URL: rawString(L, opts, "url"), Headers: rawStringMap(L, opts, "headers"),
 			ClientID: rawString(L, opts, "client_id"), ClientSecret: rawString(L, opts, "client_secret"),
 			EnabledTools: rawStrings(L, opts, "enabled_tools"), DisabledTools: rawStrings(L, opts, "disabled_tools"),
+			Group: rawString(L, opts, "group"),
 		}
 		if n, ok := opt[glua.LNumber](L, opts, "callback_port"); ok {
 			spec.CallbackPort = int(n)
@@ -714,7 +897,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 					names = append(names, t.Name)
 				}
 			}
-			rows = append(rows, map[string]any{"name": s.name, "status": string(s.status), "error": s.err, "tools": names})
+			rows = append(rows, map[string]any{"name": s.name, "status": string(s.status), "error": s.err, "tools": names, "group": s.spec.Group, "enabled": s.enabled})
 			s.mu.Unlock()
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -733,9 +916,22 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		h.mcp.mu.Unlock()
 		if ok {
 			s.stop()
+			// the switch goes with the server, so a re-add starts fresh; a
+			// del works where no store exists
+			_ = h.setMCPEnabled(name, true)
 		}
 		L.Push(glua.LBool(ok))
 		return 1
+	}))
+	// enable(name, on): flip a server's persisted switch, or a whole group's;
+	// raises for a name that is neither. A call from init.lua pins the switch
+	// against every reload, like any config write.
+	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int {
+		name := L.CheckString(1)
+		if err := h.setMCPName(name, L.CheckBool(2)); err != nil {
+			L.RaiseError("zemi.mcp.enable: %v", err)
+		}
+		return 0
 	}))
 	return tb
 }
@@ -756,6 +952,22 @@ func (h *Host) mcpCommands() []*Command {
 				}
 				h.Notify(slog.LevelInfo, "Server restarting", name)
 				return nil
+			case "enable", "disable", "toggle":
+				name = strings.TrimSpace(name)
+				if name == "" {
+					return Usagef("usage: /mcp %s <server or group>", sub)
+				}
+				var err error
+				if sub == "toggle" {
+					err = h.toggleMCPName(name)
+				} else {
+					err = h.setMCPName(name, sub == "enable")
+				}
+				if err != nil {
+					return err
+				}
+				h.Notify(slog.LevelInfo, "MCP "+sub+"d", name)
+				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
 			case "sign-in-all":
@@ -766,10 +978,17 @@ func (h *Host) mcpCommands() []*Command {
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out"}, func(h *Host, _ string) []string {
+		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out", "enable", "disable", "toggle"}, func(h *Host, sub string) []string {
 			var names []string
 			for _, s := range h.mcp.list() {
 				names = append(names, s.name)
+				// the toggle verbs act on groups too; restart and sign-in do not
+				switch sub {
+				case "enable", "disable", "toggle":
+					if g := s.group(); g != "" && !slices.Contains(names, g) {
+						names = append(names, g)
+					}
+				}
 			}
 			return names
 		}),
@@ -781,7 +1000,10 @@ func (h *Host) restartMCP(name string) error {
 	if err != nil {
 		return err
 	}
-	return h.addMCP(name, s.spec)
+	if !s.enabledFlag() {
+		return Usagef("%s is off; turn it on in /mcp first", name)
+	}
+	return h.addMCP(name, s.specSnapshot())
 }
 
 // openMCP is /mcp; confirm arms the action that runs it (Overlay.Confirm).
@@ -833,56 +1055,113 @@ var mcpMarks = map[ServiceStatus]MarkKind{
 	StatusSignIn: MarkWait, StatusStopped: MarkStop, StatusOff: MarkStop,
 }
 
+// mcpItems lists the servers as a tree: a group's switch reads on only when
+// every member is on, so space on it turns a mixed or off group on and an
+// all-on group off. No Fields on the group row: a row with a view opens it on
+// enter instead of toggling.
 func (h *Host) mcpItems() []OverlayItem {
+	servers := h.mcp.list()
+	groups := map[string][]*mcpServer{}
+	var solo []*mcpServer
+	for _, s := range servers {
+		if g := s.group(); g == "" {
+			solo = append(solo, s)
+			continue
+		} else {
+			groups[g] = append(groups[g], s)
+		}
+	}
 	var items []OverlayItem
-	for _, s := range h.mcp.list() {
-		s.mu.Lock()
-		status, errText, signIn := s.status, s.err, s.signIn
-		var tools []string
-		for _, t := range s.tools {
-			if s.offered(t.Name) {
-				tools = append(tools, t.Name)
+	for _, g := range slices.Sorted(maps.Keys(groups)) {
+		members := groups[g]
+		on := 0
+		for _, m := range members {
+			if m.enabledFlag() {
+				on++
 			}
 		}
-		all := len(s.tools)
-		s.mu.Unlock()
-		desc := string(status)
-		if status == StatusReady {
-			desc = fmt.Sprintf("ready · %d %s", len(tools), Plural(len(tools), "tool", "tools"))
-			if len(tools) < all {
-				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
-			}
-		} else if signIn != "" {
-			desc = "waiting in the browser"
+		items = append(items, OverlayItem{
+			ID:   "mcp group " + g,
+			Text: g,
+			Row:  []Segment{{Text: "  "}, {Text: g, HL: "Title"}},
+			Desc: fmt.Sprintf("%d of %d on", on, len(members)),
+			On:   new(on == len(members)),
+			Run:  "mcp toggle " + g,
+			Keys: []ItemKey{
+				{Key: "e", Desc: "enable all", Run: "mcp enable " + g},
+				{Key: "d", Desc: "disable all", Run: "mcp disable " + g},
+			},
+		})
+		for _, s := range members {
+			items = append(items, h.mcpItem(s, g))
 		}
-		where := []string{"command", strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")}
-		if s.spec.URL != "" {
-			where = []string{"url", s.spec.URL}
-		}
-		if len(tools) > 20 {
-			tools = append(tools[:20], "…")
-		}
-		fields := fieldList(where[0], where[1], "status", string(status), "sign in at", signIn,
-			"tools", strings.Join(tools, ", "), "error", strings.TrimPrefix(errText, "mcp: "))
-		keys := []ItemKey{{Key: "r", Desc: "restart", Run: "mcp restart " + s.name}}
-		if status == StatusSignIn {
-			keys = append(keys, ItemKey{Key: "s", Desc: "sign in", Run: "mcp sign-in " + s.name})
-		}
-		if s.spec.URL != "" {
-			_, signedIn := h.mcpAuth(s).Ref().Get()
-			if signedIn {
-				keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
-			}
-		}
-		item := OverlayItem{Text: s.name, Desc: desc, Mark: mcpMarks[status], Fields: fields, Keys: keys}
-		if signIn != "" {
-			// the URL is too long for a toast; y copies it when the browser
-			// was blocked
-			item.Copy = signIn
-		}
-		items = append(items, item)
+	}
+	for _, s := range solo {
+		items = append(items, h.mcpItem(s, ""))
 	}
 	return items
+}
+
+// mcpItem is one server row: the switch is the persisted switch, the mark and
+// desc the runtime state, and enter still opens the detail. A group's member
+// rows carry the tree line.
+func (h *Host) mcpItem(s *mcpServer, group string) OverlayItem {
+	s.mu.Lock()
+	status, errText, signIn := s.status, s.err, s.signIn
+	spec := s.spec
+	var tools []string
+	for _, t := range s.tools {
+		if s.offered(t.Name) {
+			tools = append(tools, t.Name)
+		}
+	}
+	all := len(s.tools)
+	s.mu.Unlock()
+	desc := string(status)
+	if status == StatusReady {
+		desc = fmt.Sprintf("ready · %d %s", len(tools), Plural(len(tools), "tool", "tools"))
+		if len(tools) < all {
+			desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
+		}
+	} else if signIn != "" {
+		desc = "waiting in the browser"
+	}
+	where := []string{"command", strings.Join(append([]string{spec.Command}, spec.Args...), " ")}
+	if spec.URL != "" {
+		where = []string{"url", spec.URL}
+	}
+	if len(tools) > 20 {
+		tools = append(tools[:20], "…")
+	}
+	fields := fieldList(where[0], where[1], "status", string(status), "sign in at", signIn,
+		"tools", strings.Join(tools, ", "), "error", strings.TrimPrefix(errText, "mcp: "))
+	var keys []ItemKey
+	if status != StatusOff { // a disabled server has nothing to restart
+		keys = append(keys, ItemKey{Key: "r", Desc: "restart", Run: "mcp restart " + s.name})
+	}
+	if status == StatusSignIn {
+		keys = append(keys, ItemKey{Key: "s", Desc: "sign in", Run: "mcp sign-in " + s.name})
+	}
+	if spec.URL != "" {
+		_, signedIn := h.mcpAuth(s).Ref().Get()
+		if signedIn {
+			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
+		}
+	}
+	item := OverlayItem{
+		ID: "mcp " + s.name, Text: s.name, Desc: desc,
+		Mark: mcpMarks[status], On: new(s.enabledFlag()), Run: "mcp toggle " + s.name,
+		Fields: fields, Keys: keys,
+	}
+	if group != "" {
+		item.Row = []Segment{{Text: "│ ", HL: "Dim"}, {Text: s.name}}
+	}
+	if signIn != "" {
+		// the URL is too long for a toast; y copies it when the browser
+		// was blocked
+		item.Copy = signIn
+	}
+	return item
 }
 
 func hasHeader(headers map[string]string, name string) bool {
@@ -974,8 +1253,12 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	return err
 }
 
-// signedInMCP restarts a server whose sign-in just succeeded.
+// signedInMCP restarts a server whose sign-in just succeeded, unless the user
+// turned it off while the browser was open: the grant is saved either way.
 func (h *Host) signedInMCP(name string) {
+	if s, err := h.mcpServerNamed(name); err == nil && !s.enabledFlag() {
+		return
+	}
 	h.Notify(slog.LevelInfo, "Signed in", name)
 	if err := h.restartMCP(name); err != nil {
 		h.Notify(slog.LevelError, "Could not restart "+name, err.Error())
@@ -1049,7 +1332,7 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 		return err
 	}
 	auth := h.mcpAuth(s)
-	if _, signedIn := auth.Ref().Get(); s.spec.URL == "" || !signedIn {
+	if _, signedIn := auth.Ref().Get(); s.specSnapshot().URL == "" || !signedIn {
 		return Usagef("%s is not signed in", name)
 	}
 	if !yes {
@@ -1059,8 +1342,14 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 		return err
 	}
 	// NOTE: a start is assumed to fail the same way, so none runs; a server
-	// whose auth is optional waits for a sign-in until Restart.
-	out := &mcpServer{name: name, spec: s.spec, status: StatusSignIn}
+	// whose auth is optional waits for a sign-in until Restart. A disabled
+	// server stays off: the grant is gone, but nothing was running anyway.
+	enabled := s.enabledFlag()
+	status := StatusSignIn
+	if !enabled {
+		status = StatusOff
+	}
+	out := &mcpServer{name: name, spec: s.specSnapshot(), status: status, enabled: enabled}
 	h.mcp.mu.Lock()
 	// a reload may have replaced or dropped s since; that server stays
 	swapped := h.mcp.servers[name] == s
