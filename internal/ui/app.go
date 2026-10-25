@@ -1302,7 +1302,7 @@ const modalFade = 0.7
 // map dims the chat around what it is looking at, which is why it can be seen.
 func (a *App) fadeRows(rows [][]hostapi.Segment) {
 	for i, row := range rows {
-		if a.highlight > 0 && (rowAnchor(row) == a.highlight || rowCall(row) == a.highlight) {
+		if a.highlight != 0 && (rowAnchor(row) == a.highlight || rowCall(row) == a.highlight) {
 			continue
 		}
 		for k, s := range row {

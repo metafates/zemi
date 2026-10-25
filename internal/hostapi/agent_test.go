@@ -687,7 +687,11 @@ func (f *fakeUI) overlays() []Overlay {
 	defer f.mu.Unlock()
 	return slices.Clone(f.opened)
 }
-func (f *fakeUI) CloseOverlay(id string)               { f.closed = append(f.closed, id) }
+func (f *fakeUI) CloseOverlay(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = append(f.closed, id)
+}
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
 func (f *fakeUI) Refresh()                             {}
 func (f *fakeUI) Scroll(ScrollAction, string)          {}

@@ -165,8 +165,12 @@ func (h *Host) refreshMessagesFrom(p pickTr) {
 		open = append(open, id)
 		ui.RefreshOverlay(id, func() Overlay { return o })
 	}
+	// a level the conversation dropped leaves the store; one a caller tracked
+	// while the rebuild ran stays, or its first flush would never reach it
 	h.msgMu.Lock()
-	h.msgLevels = open
+	h.msgLevels = slices.DeleteFunc(h.msgLevels, func(id string) bool {
+		return !slices.Contains(open, id)
+	})
 	h.msgMu.Unlock()
 }
 
