@@ -2388,9 +2388,11 @@ rides the `memories.md` line and its ledger entries.
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. While any blocking prompt waits
-  (permission, plan, question, trust) typing drafts into the composer and re-arms
-  the grace per key, so the `y`, `n`, `a` and `1`-`9` of a message never answer;
-  on an empty composer past the grace they answer as keys. Every Go-owned prompt
+  (permission, plan, question, trust) it owns every key: keys still in flight
+  as the box opened are swallowed by the grace, past it the ask's keys answer,
+  a draft under the box is kept untouched and the composer takes keys again
+  the moment the box closes, and typing goes through the ask's own input paths
+  (the plan's `e`, the permission's `t`, a question's typed answer). Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
   last, and under them its one field, a note on the pick that `n` focuses or the typed
   answer, drawn always so focusing it moves nothing; a batch's Submit tab, whose one

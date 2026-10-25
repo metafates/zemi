@@ -202,7 +202,7 @@ cmd_wait() {
 
 cmd_ask() {
 	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
-	# the first key can land in the draft grace; resend until the box is gone
+	# the first key can land in the grace; resend until the box is gone
 	i=0
 	while [ "$i" -lt 10 ]; do
 		case "$(cap)" in

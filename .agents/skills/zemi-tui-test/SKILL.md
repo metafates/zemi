@@ -26,7 +26,7 @@ $S/zemi-lab prompt 'call shell {"command":"ls","about":"list"}'
 $S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps SGR colors
 $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
-$S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the draft grace
+$S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the grace
 $S/zemi-lab size 60 15             # narrow and short layouts
 $S/zemi-lab db                     # this project's zemi.db; logs is the launch log
 $S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
@@ -56,8 +56,8 @@ installs one whose `permission.request` handler returns `{decision = "ask"}` (a 
 ## Reading a screen
 
 - A permission ask is a prompt box under the chat; `y` yes, `n` no, `t` no and tell, or
-  click. Keys typed while it is up route to the composer first (draft grace), which is why
-  `ask` resends until the box is gone.
+  click. Keys typed as the box opened are swallowed by the grace, past it they answer the
+  ask (a draft under it is kept), which is why `ask` resends until the box is gone.
 - Compare captures for row shifts: the same state change must not add or remove a row
   (house rule). Diff two captures with `diff <(...) <(...)`.
 - The pane title marks state: a spinner while a turn runs, `? ` while an ask is up -

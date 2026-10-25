@@ -525,8 +525,8 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		return cmd
 	case tea.PasteMsg:
 		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
-		if handled, cmd := a.pasteChrome(s); handled {
-			return cmd
+		if a.pasteChrome(s) {
+			return nil
 		}
 		// a dropped file arrives as a paste of its path
 		if paths, ok := parseDrop(s); ok {

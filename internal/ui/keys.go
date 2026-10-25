@@ -157,8 +157,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.Quit()
 		}
 	case modalTrust:
-		if taken, cmd := a.askGuard(&a.trust.opened, false, key, msg); taken {
-			return cmd
+		if a.askGuard(&a.trust.opened, false) {
+			return nil
 		}
 		tp := a.trust
 		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(trustAnswers), len(trustAnswers), key) {
@@ -180,8 +180,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if pa == nil {
 			return nil
 		}
-		if taken, cmd := a.askGuard(&pa.opened, pa.answer == nil, key, msg); taken {
-			return cmd
+		if a.askGuard(&pa.opened, pa.answer == nil) {
+			return nil
 		}
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
@@ -202,21 +202,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 					return nil
 				}
 			}
-			// a printable key starts a draft while the ask waits, so a
-			// message typed under the box is never lost
-			if keyText(msg) != "" {
-				pa.opened = a.now()
-				return a.composerKey(key, msg)
-			}
 		}
 	case modalPlan:
-		if taken, cmd := a.askGuard(&a.planAsk.opened, false, key, msg); taken {
-			return cmd
+		if a.askGuard(&a.planAsk.opened, false) {
+			return nil
 		}
 		a.planKey(key, keyText(msg))
 	case modalQuestion:
-		if taken, cmd := a.askGuard(&a.question.opened, false, key, msg); taken {
-			return cmd
+		if a.askGuard(&a.question.opened, false) {
+			return nil
 		}
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
@@ -517,11 +511,6 @@ func listMove(key string) int {
 // so the half-page pair scrolls whatever stands above it, typed or not.
 func lineKey(key string) bool { return key == "home" || key == "end" }
 
-// lineEditKey reports whether key edits a typed line: the composer's
-// editing keys (isEditKey) and its undo, which a waiting ask yields to a
-// draft typed under it.
-func lineEditKey(key string) bool { return key == "ctrl+z" || isEditKey(key) }
-
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.
 func (a *App) typing(top modal) bool {
@@ -541,22 +530,11 @@ func (a *App) typing(top modal) bool {
 	}
 }
 
-// askGuard is the guard the four blocking asks share (DESIGN §8): with a
-// draft being typed under the box, the typing and line-edit keys draft and
-// re-arm the grace per key, so the y, n and digits of a message never answer
-// it; on an empty composer, keys typed as the box opened are still in flight,
-// as are keys on an answered permission box. It reports whether the key was
-// taken, with the cmd a draft key returned (a file scan); the ask's own keys
-// run when it was not.
-func (a *App) askGuard(opened *time.Time, answered bool, key string, msg tea.KeyPressMsg) (bool, tea.Cmd) {
-	if !a.composer.empty() {
-		if keyText(msg) != "" || key == "enter" || lineEditKey(key) {
-			*opened = a.now()
-			return true, a.composerKey(key, msg)
-		}
-		return false, nil
-	}
-	return answered || a.fresh(*opened), nil
+// askGuard is the guard the four blocking asks share (DESIGN §8): keys still
+// in flight as the box opened, and keys on an answered permission box, are
+// swallowed; past the grace every key is the ask's, draft or not.
+func (a *App) askGuard(opened *time.Time, answered bool) bool {
+	return answered || a.fresh(*opened)
 }
 
 // runRHS executes a keymap right-hand side on the background worker.
@@ -754,13 +732,12 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 }
 
 // pasteChrome sends a paste to the topmost filter or input instead of the
-// composer hidden under it; prompts without text input swallow it, but a
-// draft under a waiting permission ask takes it, like its typing.
-func (a *App) pasteChrome(text string) (bool, tea.Cmd) {
+// composer hidden under it; prompts without text input swallow it.
+func (a *App) pasteChrome(text string) bool {
 	line := strings.Join(strings.Fields(text), " ")
 	switch a.topChrome() {
 	case noModal:
-		return false, nil
+		return false
 	case modalQuestion:
 		qp := a.question
 		if qp.reviewing() {
@@ -782,16 +759,8 @@ func (a *App) pasteChrome(text string) (bool, tea.Cmd) {
 		} else if st.filterable {
 			st.edit("", line)
 		}
-	case modalPerm:
-		if !a.composer.empty() {
-			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
-			a.composer.paste(line)
-			a.composer.snapshot(prev, false)
-			a.publishComposer()
-			return true, a.updateCompletion()
-		}
-	case modalTrust, modalBoot: // no text input: swallowed
+	case modalPerm, modalTrust, modalBoot: // no text input: swallowed
 	}
 	a.bump()
-	return true, nil
+	return true
 }
