@@ -1475,7 +1475,10 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 		// before the snapshot: a bump between the two is a wake this
 		// iteration re-snapshots, never a missed one
 		change := h.tasks.onChange()
-		runs := h.tasks.runningOf(h.AgentSessionID())
+		// a workflow's own agents are the flow's business: the flow itself is
+		// in the snapshot, and a handoff must not detach what reports to a
+		// script, not to the conversation
+		runs := slices.DeleteFunc(h.tasks.runningOf(h.AgentSessionID()), func(r *agentRun) bool { return r.workflow != "" })
 		flows := h.tasks.runningFlows(h.AgentSessionID())
 		if len(runs) == 0 && len(flows) == 0 {
 			if len(waited) > 0 || len(waitedF) > 0 {
