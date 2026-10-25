@@ -1057,8 +1057,6 @@ zemi.ui.widget.add({
 			-- is open, so a thought that ended does not go on spinning over the
 			-- calls that follow it. Each finished thought is a rail row of its own,
 			-- framed as an entry is.
-			local live_at, live_end = 0, 0
-			if tail_first > 0 then live_at = #B.lines + 1 end
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
@@ -1078,19 +1076,28 @@ zemi.ui.widget.add({
 				B.gap("activity")
 				B.thinking(nil)
 			end
+			local live_from = 0
 			if #tools > 0 then
+				live_from = #B.lines + 1
 				B.gap("activity")
 				-- the picker's rail view opens this run as it opens a settled one:
-				-- every row, until the menu closes back to its own short rail
-				B.rail(tools, 1, #tools, { live = true, full = tail_first > 0 and tail_first == (ctx.rail or 0) })
+				-- every row, until the menu closes back to its own short rail. A
+				-- negative rail names the live-only run a text tail leaves the
+				-- calls in, which has no settled rows to unfold.
+				B.rail(tools, 1, #tools, {
+					live = true,
+					full = (ctx.rail or 0) < 0 or tail_first > 0 and tail_first == (ctx.rail or 0),
+				})
 			end
-			live_end = #B.lines
-			-- the live block is rows of the run its settled rows begin: the
-			-- picker's run row bands it, and the band grows as the rail does
-			if live_at > 0 then
-				for n = live_at, live_end do
+			-- the live rail is rows of the run it extends: the settled tail's
+			-- run, else the live-only one the picker names by its first call.
+			-- The thinking rows above carry no marker, so the reader's place
+			-- stops at the last settled call; the band's span covers them.
+			if live_from > 0 then
+				local run = tail_first > 0 and tail_first or -1
+				for n = live_from, #B.lines do
 					local row = B.lines[n]
-					if row[1] and fmt.cells(row) > 0 then row[1].anchor = tail_first end
+					if row[1] and fmt.cells(row) > 0 then row[1].anchor = run end
 				end
 			end
 			if text ~= "" then

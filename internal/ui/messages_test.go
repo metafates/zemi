@@ -1332,3 +1332,43 @@ func TestMessagesOpenSelectsTheClosestCall(t *testing.T) {
 		t.Fatalf("opened on %q, want the call nearest the view's middle", got)
 	}
 }
+
+// TestMessagesThinkingTail: the thinking rows the turn draws above its live
+// rail name no row the reader can be at, so the tail place stays the last
+// settled call, and the band still covers the thinking rows as part of the
+// run's drawing.
+func TestMessagesThinkingTail(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	reloadUI(t, host)
+	host.AppendMessage("user", "think then hold")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "f1.go", Label: "read f1", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "f2.go", Label: "read f2", Status: "ok"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Thinking: true, Reasoning: "what next", Tools: []hostapi.StreamTool{
+		{ID: "c3", Name: "shell", Input: "sleep 25", Label: "hold the turn", Status: "run"},
+	}})
+	app.renderSync(t)
+	app.Frame()
+	if got := app.chatRow(); got != 3 {
+		t.Fatalf("the tail place at the thinking window is %d, want the last settled call", got)
+	}
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.Frame()
+	top := &app.overlays[len(app.overlays)-1]
+	if got := top.items[top.visible[top.selected]].label; got != "read f2" {
+		t.Fatalf("opened on %q, want the call at the reader's place", got)
+	}
+	// the picked call's rows alone carry the band, the thinking rows above
+	// them fade like the rest
+	if banded := bandedChatText(t, app); len(banded) != 1 || !strings.Contains(banded[0], "read f2") {
+		t.Fatalf("band at the thinking window:\n%s", strings.Join(banded, "\n"))
+	}
+	chat := app.scrolls["chat"]
+	if from, to := spanOf(chat.lines, top.selectedAnchor(), true); from < 0 || from != to {
+		t.Fatalf("the pick's span %d..%d, want the one row the call draws", from, to)
+	}
+}

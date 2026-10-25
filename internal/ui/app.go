@@ -1207,15 +1207,16 @@ func (a *App) chatRow() int {
 	if row := drawnRow(chat.lines, mid, -1, 1); row > 0 {
 		return row
 	}
-	// nothing below the middle names a row (the live rail fills the view's
-	// end): the nearest one above it is the place
+	// nothing at or below the middle names a row (the view's end is blanks,
+	// a live rail, an unanchored tail): the nearest one above it is the place
 	return drawnRow(chat.lines, mid-1, -1, -1)
 }
 
 // drawnRow is the transcript row of the line at from walking by step until
-// one names the reader's place: a call of a rail, else a unit's anchor. A
-// rail's air rows carry the run's first anchor but stand between calls, and
-// a live call's row is no place yet, so neither stops the walk.
+// one names the reader's place: a call of a rail, else a row that names a
+// unit (a message, a run's digest, a step's group row). A rail's air rows
+// carry the run's first anchor but stand between calls, and a live call's row
+// is no place yet, so neither stops the walk.
 func drawnRow(lines [][]hostapi.Segment, from, stop, step int) int {
 	for i := from; i != stop && i >= 0 && i < len(lines); i += step {
 		row := lines[i]

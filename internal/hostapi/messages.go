@@ -52,9 +52,10 @@ func (h *Host) MessagesCommand(args string) error {
 // pickTr is the conversation the picker reads: the session's transcript plus,
 // while a turn runs, the calls it has not settled yet. The chat draws those
 // on its live rail and marks them call = -i for the i-th of them, so a live
-// call's anchor is negative and bands its own live rows. A run the transcript
-// ends in is what they extend; until one call settles the picker shows the
-// conversation without them.
+// call's anchor is negative and bands its own live rows. They extend the run
+// the transcript's activity tail is in; a tail that is a message (a flushed
+// text row) leaves them a run of their own, which the chat anchors by the
+// first call's -1.
 type pickTr struct {
 	tr   []ChatMessage
 	live []ChatMessage
@@ -94,10 +95,7 @@ func (h *Host) pickerTranscriptLocked() pickTr {
 		_, rows, _, _ := run.view(stream)
 		return pickTr{tr: rows}
 	}
-	if !stream.Active || len(sess.Transcript) == 0 {
-		return pickTr{tr: sess.Transcript}
-	}
-	if last := sess.Transcript[len(sess.Transcript)-1]; last.Kind != RowTool && last.Kind != RowReasoning {
+	if !stream.Active || len(stream.Tools) == 0 {
 		return pickTr{tr: sess.Transcript}
 	}
 	live := make([]ChatMessage, len(stream.Tools))
@@ -194,11 +192,15 @@ func (h *Host) messagesLevel(id string, p pickTr) (Overlay, bool) {
 }
 
 // trackMessages remembers the levels the picker opened, so they rebuild as the
-// transcript grows.
+// transcript grows. One copy each: every flush rebuilds them all.
 func (h *Host) trackMessages(ids ...string) {
 	h.msgMu.Lock()
 	defer h.msgMu.Unlock()
-	h.msgLevels = append(h.msgLevels, ids...)
+	for _, id := range ids {
+		if !slices.Contains(h.msgLevels, id) {
+			h.msgLevels = append(h.msgLevels, id)
+		}
+	}
 }
 
 // messagesRunAt is the activity run holding a transcript row, 0 for none.

@@ -254,12 +254,17 @@ func TestMessagesLiveCalls(t *testing.T) {
 		t.Fatalf("open at the run: %+v, %+v", list, rail)
 	}
 
-	// a prompt the turn streams under is no run the calls extend: the list
-	// shows it alone until one call settles
+	// a prompt the turn streams under is no run the calls extend: the calls
+	// hold a run of their own, named by the first call's -1, until one settles
 	h.AppendMessage("user", "next")
 	o = h.messagesList(h.pickerTranscript(), 0)
-	if n := len(o.Items); n != 3 {
-		t.Fatalf("%d rows with nothing settled: %+v", n, o.Items)
+	run = o.Items[3]
+	if run.Text != "2 steps" || run.Anchor != -1 || run.Run != "messages rail -1" {
+		t.Fatalf("live-only run row = %+v", run)
+	}
+	ro, ok = h.messagesRailOverlay(h.pickerTranscript(), -1, 0)
+	if !ok || len(ro.Items) != 2 || ro.Items[0].Anchor != -1 || ro.Items[1].Anchor != -2 {
+		t.Fatalf("live-only rail = %+v ok=%v", ro.Items, ok)
 	}
 
 	// the turn idle, the calls settle into the transcript and turn 2 folds
