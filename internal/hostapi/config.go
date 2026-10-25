@@ -287,8 +287,9 @@ func (h *Host) loadPicks() {
 			if !known && !errors.As(err, &bad) && settingPlugin(path) == "" && !strings.HasPrefix(string(path), "models.") {
 				if _, derr := h.GlobalDB.DelKV(k); derr != nil {
 					h.Log.Warn("could not drop a dead pick", "origin", "config", "path", path, "error", derr)
+				} else {
+					h.Log.Info("dropped dead pick", "origin", "config", "path", path)
 				}
-				h.Log.Info("dropped dead pick", "origin", "config", "path", path)
 				continue
 			}
 			h.Log.Warn("kept pick left out", "origin", "config", "path", path, "error", err)

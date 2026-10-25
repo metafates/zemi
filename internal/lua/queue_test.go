@@ -1,8 +1,10 @@
 package lua
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -188,7 +190,13 @@ func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
 // Lua request fails fast), and ForceReload recovers.
 func TestQueueWatchdogAbandonHot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		r := newTestRuntime(t)
+		var logs bytes.Buffer
+		r := NewRuntime(RuntimeOptions{Log: slog.New(slog.NewTextHandler(&logs, nil))})
+		if err := r.Boot(t.Context(), nil); err != nil {
+			t.Fatalf("Boot: %v", err)
+		}
+		// a synctest bubble does not end while the dispatcher waits for requests
+		t.Cleanup(func() { close(r.current().stop) })
 		release := make(chan struct{})
 		defer close(release)
 
@@ -207,6 +215,15 @@ func TestQueueWatchdogAbandonHot(t *testing.T) {
 		}
 		if !r.IsHot() {
 			t.Fatal("runtime not hot after abandon")
+		}
+		// the abandoned request names itself: the soft-budget warn carries the
+		// handler, the hot cause the class and the name together
+		logged := logs.String()
+		if !strings.Contains(logged, `msg="handler exceeded soft budget"`) || !strings.Contains(logged, "class=io handler=test budget=10ms") {
+			t.Fatalf("soft-budget warn does not name the handler: %s", logged)
+		}
+		if !strings.Contains(logged, "request in class io (test) exceeded ceiling 50ms + grace 50ms") {
+			t.Fatalf("abandon cause does not name the request: %s", logged)
 		}
 		if _, err := r.Do(t.Context(), ClassUI, 0, 0, "test",
 			func(L *glua.LState) ([]any, error) { return nil, nil }); !errors.Is(err, ErrHot) {
