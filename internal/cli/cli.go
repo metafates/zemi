@@ -869,6 +869,7 @@ type table struct {
 	cols   []tableCol
 	rows   [][]string
 	noHead bool // a title above already says what the columns are
+	head   bool // the header prints off a terminal too: a query's columns are its answer
 }
 
 func (t *table) row(cells ...string) { t.rows = append(t.rows, cells) }
@@ -878,7 +879,7 @@ func (t table) print(w io.Writer) {
 	if len(t.rows) == 0 {
 		return
 	}
-	headed := t.p != colorprofile.NoTTY && !t.noHead
+	headed := (t.p != colorprofile.NoTTY || t.head) && !t.noHead
 	width := make([]int, len(t.cols))
 	for i, c := range t.cols {
 		width[i] = c.width

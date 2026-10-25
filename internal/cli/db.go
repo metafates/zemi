@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
@@ -88,9 +90,13 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string
 		}
 		return rows.Err()
 	}
-	var table [][]string
+	tcols := make([]tableCol, len(cols))
+	for i, c := range cols {
+		tcols[i] = tableCol{head: c}
+	}
+	t := table{p: colorprofile.Detect(out, os.Environ()), head: true, cols: tcols}
 	for rows.Next() {
-		if len(table) >= dbRowCap {
+		if len(t.rows) >= dbRowCap {
 			fmt.Fprintf(errw, "zemi: showing the first %d rows; add LIMIT or narrow the query\n", dbRowCap)
 			break
 		}
@@ -101,45 +107,12 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string
 		for i, v := range vals {
 			cells[i] = dbCell(v)
 		}
-		table = append(table, cells)
+		t.row(cells...)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	width := make([]int, len(cols))
-	for i, c := range cols {
-		width[i] = ansi.StringWidth(c)
-	}
-	for _, r := range table {
-		for i, cell := range r {
-			width[i] = max(width[i], ansi.StringWidth(cell))
-		}
-	}
-	pad := func(s string, w int) string { return s + strings.Repeat(" ", w-ansi.StringWidth(s)) }
-	for i, c := range cols {
-		if i > 0 {
-			fmt.Fprint(out, "  ")
-		}
-		if i < len(cols)-1 {
-			fmt.Fprint(out, pad(c, width[i]))
-		} else {
-			fmt.Fprint(out, c)
-		}
-	}
-	fmt.Fprintln(out)
-	for _, r := range table {
-		for i, cell := range r {
-			if i > 0 {
-				fmt.Fprint(out, "  ")
-			}
-			if i < len(cols)-1 {
-				fmt.Fprint(out, pad(cell, width[i]))
-			} else {
-				fmt.Fprint(out, cell)
-			}
-		}
-		fmt.Fprintln(out)
-	}
+	t.print(out)
 	return nil
 }
 
