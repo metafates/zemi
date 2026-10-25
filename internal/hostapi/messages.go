@@ -62,6 +62,9 @@ type pickTr struct {
 
 // at is the row idx names: 1.. for transcript rows, -1.. for the live calls.
 func (p pickTr) at(idx int) ChatMessage {
+	if idx == 0 {
+		return ChatMessage{}
+	}
 	if idx > 0 {
 		if idx <= len(p.tr) {
 			return p.tr[idx-1]
@@ -169,7 +172,7 @@ func (h *Host) refreshMessagesFrom(p pickTr) {
 	// while the rebuild ran stays, or its first flush would never reach it
 	h.msgMu.Lock()
 	h.msgLevels = slices.DeleteFunc(h.msgLevels, func(id string) bool {
-		return !slices.Contains(open, id)
+		return slices.Contains(levels, id) && !slices.Contains(open, id)
 	})
 	h.msgMu.Unlock()
 }
@@ -443,7 +446,7 @@ func turnElements(p pickTr, rows []int) []msgElement {
 
 // messageCallRow is one call or thought of a rail: what it reads as, and the
 // view or run its key opens over the list. A live call (a negative row) is
-// still running: it bands and copies but opens no view of its own.
+// still running: it bands and copies but opens no call view of its own.
 func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}

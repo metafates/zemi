@@ -936,23 +936,26 @@ zemi.ui.widget.add({
 		-- calls are no unit of their own, but the picker names that run by it.
 		-- Reading the transcript converts every row, so it is read only when
 		-- what names the run changed - the count or the rail - and the last
-		-- answer stands otherwise.
-		local live_first = 0
-		if active and not replying then
+		-- answer stands otherwise. The run stands while the turn is active
+		-- even once the reply streams (calls open beside it), but only an
+		-- answering turn folds its settled rows: live_first is tail_first then.
+		local tail_first = 0
+		if active then
 			local rail = ctx.rail or 0
 			if live_count ~= count or live_rail ~= rail then
 				local tr = ctx.transcript or {}
 				if #tr > 0 and activity(tr[#tr]) then
-					live_first = #tr
-					while live_first > 1 and activity(tr[live_first - 1]) do
-						live_first = live_first - 1
+					tail_first = #tr
+					while tail_first > 1 and activity(tr[tail_first - 1]) do
+						tail_first = tail_first - 1
 					end
 				end
-				live_count, live_rail, live_known = count, rail, live_first
+				live_count, live_rail, live_known = count, rail, tail_first
 			else
-				live_first = live_known
+				tail_first = live_known
 			end
 		end
+		local live_first = not replying and tail_first or 0
 		if not done then
 			-- ctx.transcript copies every row into Lua, so only a miss reads it
 			local tr = ctx.transcript or {}
@@ -1055,7 +1058,7 @@ zemi.ui.widget.add({
 			-- calls that follow it. Each finished thought is a rail row of its own,
 			-- framed as an entry is.
 			local live_at, live_end = 0, 0
-			if live_first > 0 then live_at = #B.lines + 1 end
+			if tail_first > 0 then live_at = #B.lines + 1 end
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
@@ -1079,7 +1082,7 @@ zemi.ui.widget.add({
 				B.gap("activity")
 				-- the picker's rail view opens this run as it opens a settled one:
 				-- every row, until the menu closes back to its own short rail
-				B.rail(tools, 1, #tools, { live = true, full = live_first > 0 and live_first == (ctx.rail or 0) })
+				B.rail(tools, 1, #tools, { live = true, full = tail_first > 0 and tail_first == (ctx.rail or 0) })
 			end
 			live_end = #B.lines
 			-- the live block is rows of the run its settled rows begin: the
@@ -1087,7 +1090,7 @@ zemi.ui.widget.add({
 			if live_at > 0 then
 				for n = live_at, live_end do
 					local row = B.lines[n]
-					if row[1] and fmt.cells(row) > 0 then row[1].anchor = live_first end
+					if row[1] and fmt.cells(row) > 0 then row[1].anchor = tail_first end
 				end
 			end
 			if text ~= "" then

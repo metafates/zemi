@@ -628,7 +628,7 @@ type scrollState struct {
 	// it, and so does a submit or a click
 	focus  int
 	placed int
-	// band caches bandMessage's rows: two transcript scans and a clone of the
+	// band caches bandSpan's rows: two transcript scans and a clone of the
 	// line slice per paint while a following list is up, for rows that change
 	// only when the region re-renders (a fresh wrapped slice), the pick or the
 	// width does. bandSrc holds the rows the cache was built from, so a

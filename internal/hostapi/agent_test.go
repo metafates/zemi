@@ -662,6 +662,7 @@ type fakeUI struct {
 	screenshot          string
 	chatRow             int
 	copied              string
+	onRefresh           func(id string)   // runs inside RefreshOverlay, mid-rebuild
 	edit                func(path string) // what the user does in the editor
 	relaunched, resumed string
 }
@@ -680,6 +681,9 @@ func (f *fakeUI) RefreshOverlay(id string, build func() Overlay) {
 	if build != nil {
 		f.rebuilt = append(f.rebuilt, build())
 	}
+	if f.onRefresh != nil {
+		f.onRefresh(id)
+	}
 }
 
 func (f *fakeUI) overlays() []Overlay {
@@ -687,6 +691,7 @@ func (f *fakeUI) overlays() []Overlay {
 	defer f.mu.Unlock()
 	return slices.Clone(f.opened)
 }
+
 func (f *fakeUI) CloseOverlay(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

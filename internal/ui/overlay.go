@@ -716,6 +716,9 @@ func (a *App) closeOverlays(id string) {
 	}
 	top := len(a.overlays) > 0 && closes(a.overlays[len(a.overlays)-1])
 	a.overlays = slices.DeleteFunc(a.overlays, closes)
+	// a pending jump of a level that died without a cancel (a rewind closed
+	// the picker) must not fire on whatever later draws that row
+	delete(a.pendingAnchor, a.scrollDef)
 	if n := len(a.overlays); top && n > 0 && a.overlays[n-1].o.Reload != nil {
 		a.reloadOverlay(a.overlays[n-1].o, nil)
 	}

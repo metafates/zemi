@@ -79,7 +79,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   is written (markdown, `diff`, a chroma language in a canvas well) at the width the box takes. A list with `Overlay.Follow` moves the stage's scrolled
   region to the unit its selected item names by `OverlayItem.Anchor`, the number the chat stamps on
   every row of a unit (`Segment.Anchor`, `unitAt`, `jumpTop`: centered when the message fits, else
-  its first row under the pins), and bands that message with `FillBand` (`bandMessage`, the
+  its first row under the pins), and bands the rows the pick draws with `FillBand` (`bandSpan`, the
   scrollbar cell aside, and the reply's readout, which `chat.lua` keeps out of the anchor) while
   keeping it out of the modal fade (`fadeRows`); it opens on the item the reader is at (`followRow`:
   the row the view was placed at, kept in `scrollState.focus` with the top its jump left in `placed`

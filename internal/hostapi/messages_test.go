@@ -274,3 +274,29 @@ func TestMessagesLiveCalls(t *testing.T) {
 		t.Fatalf("settled run row = %+v", run)
 	}
 }
+
+// TestRefreshMessagesKeepsNewLevels: a level tracked while a rebuild runs
+// stays tracked, so the flush that lands after it reaches it; a level the
+// conversation dropped leaves the store.
+func TestRefreshMessagesKeepsNewLevels(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.AppendMessage("user", "one")
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "read", Text: "a.go", Status: CallOK})
+	h.trackMessages("messages")
+	// the refresh rebuilds the stale levels; the rail level of the run that
+	// just appeared is tracked by the rebuild's own refresh callback, the way
+	// an open landing mid-rebuild would
+	ui.onRefresh = func(string) { h.trackMessages("messages rail 2") }
+	h.refreshMessagesFrom(h.pickerTranscript())
+	if !slices.Contains(h.msgLevels, "messages rail 2") {
+		t.Fatalf("levels = %v, the level tracked mid-rebuild is gone", h.msgLevels)
+	}
+	// a level the conversation dropped leaves the store
+	h.refreshMessagesFrom(pickTr{tr: nil})
+	if slices.Contains(h.msgLevels, "messages rail 2") {
+		t.Fatalf("levels = %v, the dropped level stayed", h.msgLevels)
+	}
+}
