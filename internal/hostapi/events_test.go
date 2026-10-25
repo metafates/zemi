@@ -337,6 +337,35 @@ func TestVetoAskLeg(t *testing.T) {
 	}
 }
 
+// TestVetoReasonReachesTheDenial: the reason a permission.request handler
+// denies with rides the verdict the gate logs and the denial text the model
+// gets, truncated like the gate's other text.
+func TestVetoReasonReachesTheDenial(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		reason string
+		want   string
+	}{
+		{"the handler's reason rides the denial", "edited", "permission denied (event): tool.shell: edited"},
+		{"no reason reads as before", "", "permission denied (event): tool.shell"},
+		{"a long reason truncates", strings.Repeat("x", 300), "permission denied (event): tool.shell: " + strings.Repeat("x", 200) + "..."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			runUser(t, r, `zemi.event.on("permission.request", function()
+				return { decision = "deny", reason = `+strconv.Quote(c.reason)+` }
+			end)`)
+			v := h.PipelineFor().Check(tools.Request{Tool: string(tools.ToolShell), Subject: perm.SubjectShell, Arg: "echo three"})
+			if v.Allowed || v.DecidedBy != tools.ByEvent {
+				t.Fatalf("Check = %+v, want an event denial", v)
+			}
+			if got := tools.DeniedText(v, perm.SubjectShell); got != c.want {
+				t.Fatalf("denial text = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // TestVetoAtTheGate: the veto runs once per Check, the ask it settles does
 // not run it again, and a host-API call from Lua (no asker) runs it never.
 func TestVetoAtTheGate(t *testing.T) {

@@ -192,10 +192,10 @@ type Pipeline struct {
 	Pre PreHook // nil = no tool.pre events
 	Ask Asker   // nil = no overlay to ask: the veto is skipped and actions run
 	// Veto runs the permission.request event for an action request and
-	// answers "deny", "ask" or "". Fired only when Ask is set: a gate
-	// without an asker (a Lua call from the actor goroutine) cannot
-	// survive the veto's own interpreter round-trip.
-	Veto func(req Request) string
+	// answers "deny" (with the handler's reason), "ask" or "". Fired only
+	// when Ask is set: a gate without an asker (a Lua call from the actor
+	// goroutine) cannot survive the veto's own interpreter round-trip.
+	Veto func(req Request) (decision, reason string)
 	// Log records every gate decision: allowed by default at debug, a user
 	// or event decision at info, a refusal at warn; nil = silent.
 	Log *slog.Logger
@@ -344,9 +344,10 @@ func (p *Pipeline) check(req Request) Verdict {
 		return readOnlyVerdict
 	}
 	if p.Ask != nil && p.Veto != nil {
-		switch p.Veto(req) {
+		decision, reason := p.Veto(req)
+		switch decision {
 		case VetoDeny:
-			return Verdict{DecidedBy: ByEvent}
+			return Verdict{DecidedBy: ByEvent, Reason: truncLine(reason)}
 		case VetoAsk:
 			return p.resolveAsk(req)
 		}

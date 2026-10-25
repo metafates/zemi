@@ -633,6 +633,62 @@ func TestHeldPrompt(t *testing.T) {
 	}
 }
 
+// TestHeldCommandPrompt: the command line's slash prompt (the CLI holds no
+// "/..."-prompt) runs as the command it names through SendHeld's fallback,
+// the way a composer submit would, and one that refuses still shows the
+// refusal it gives from the composer.
+func TestHeldCommandPrompt(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		refusing bool
+	}{
+		{"a held command runs with its args", false},
+		{"a held command's refusal shows", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{})
+			ran := make(chan string, 1)
+			if _, err := h.Commands.Add(&Command{
+				Name: "heldmark", NArgs: NArgsAny,
+				Origin: lua.OriginBuiltin, Gen: h.currentGen(),
+				GoFn: func(h *Host, args string, _ bool) error {
+					ran <- args
+					if c.refusing {
+						// a refusal is the command's own toast, as /compact's is
+						h.Notify(slog.LevelWarn, "Nothing to hold yet", "")
+					}
+					return nil
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.SendHeld("/heldmark the args"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case got := <-ran:
+				if !c.refusing && got != "the args" {
+					t.Fatalf("ran with %q", got)
+				}
+			default:
+				t.Fatal("the held command never ran")
+			}
+			if !c.refusing {
+				return
+			}
+			waitFor(t, func() error {
+				for _, n := range h.evlog.notes {
+					if strings.Contains(n.title, "Nothing to hold yet") {
+						return nil
+					}
+				}
+				return errors.New("no refusal toast")
+			})
+		})
+	}
+}
+
 // TestHistoryCarriesAcrossTurns: the runner is rebuilt on every send, and the
 // second turn's prompt still carries the first exchange (system, context,
 // user, assistant, user), and both turns land in the transcript.

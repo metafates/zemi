@@ -90,7 +90,7 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 			asked = append(asked, req)
 			return false, "overlay"
 		}
-		p.Veto = func(Request) string { return VetoAsk }
+		p.Veto = func(Request) (string, string) { return VetoAsk, "" }
 	}
 	return p, &asked
 }
@@ -116,11 +116,11 @@ func TestGateLogsDecisions(t *testing.T) {
 		},
 		{"a veto denial is a warning", func(p *Pipeline) {
 			p.Ask = func(Request) (bool, string) { return false, "" }
-			p.Veto = func(Request) string { return VetoDeny }
-		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false"}},
+			p.Veto = func(Request) (string, string) { return VetoDeny, "edited" }
+		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false", "reason=edited"}},
 		{"the user's answer is info", func(p *Pipeline) {
 			p.Ask = func(Request) (bool, string) { return true, ByUser }
-			p.Veto = func(Request) string { return VetoAsk }
+			p.Veto = func(Request) (string, string) { return VetoAsk, "" }
 		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
 		{
 			"a read-only denial is a warning", func(p *Pipeline) { p.ReadOnly = func() bool { return true } },
@@ -154,13 +154,14 @@ func TestVetoGate(t *testing.T) {
 		name       string
 		ask        bool
 		veto       string
+		reason     string
 		want       Verdict
 		wantVeto   bool
 		wantAskRun bool
 	}{
-		{name: "a veto denies", ask: true, veto: VetoDeny, want: Verdict{DecidedBy: ByEvent}, wantVeto: true},
+		{name: "a veto denies", ask: true, veto: VetoDeny, reason: "edited", want: Verdict{DecidedBy: ByEvent, Reason: "edited"}, wantVeto: true},
 		{name: "a veto ask runs the asker", ask: true, veto: VetoAsk, want: Verdict{DecidedBy: "overlay"}, wantVeto: true, wantAskRun: true},
-		{name: "no opinion runs", ask: true, veto: "", want: Verdict{Allowed: true, DecidedBy: ByDefault}, wantVeto: true},
+		{name: "no opinion runs", ask: true, want: Verdict{Allowed: true, DecidedBy: ByDefault}, wantVeto: true},
 		{name: "no asker skips the veto", veto: VetoDeny, want: Verdict{Allowed: true, DecidedBy: ByDefault}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -169,7 +170,7 @@ func TestVetoGate(t *testing.T) {
 			if c.ask {
 				p.Ask = func(Request) (bool, string) { asked = true; return false, "overlay" }
 			}
-			p.Veto = func(Request) string { ran = true; return c.veto }
+			p.Veto = func(Request) (string, string) { ran = true; return c.veto, c.reason }
 			if got := p.Check(Request{Subject: perm.SubjectWrite, Arg: "/x"}); got != c.want {
 				t.Fatalf("Check = %+v, want %+v", got, c.want)
 			}

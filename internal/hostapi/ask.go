@@ -20,8 +20,8 @@ func (h *Host) askHook() tools.Asker {
 // vetoHook is the tools.Pipeline veto: the permission.request event, once
 // per action request at the gate. "ask" hands the request to the ask path;
 // a denial reports on permission.resolved as an ask would have.
-func (h *Host) vetoHook() func(tools.Request) string {
-	return func(req tools.Request) string {
+func (h *Host) vetoHook() func(tools.Request) (string, string) {
+	return func(req tools.Request) (string, string) {
 		var res VetoResult
 		h.outsideReload(func() {
 			res = h.EmitVetoable(context.Background(), EventPermissionRequest,
@@ -30,11 +30,11 @@ func (h *Host) vetoHook() func(tools.Request) string {
 		switch {
 		case res.Denied:
 			h.resolved(req, false, "event")
-			return tools.VetoDeny
+			return tools.VetoDeny, res.Reason
 		case res.Ask:
-			return tools.VetoAsk
+			return tools.VetoAsk, ""
 		}
-		return ""
+		return "", ""
 	}
 }
 
