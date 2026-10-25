@@ -686,7 +686,7 @@ func callKey(ctx context.Context, id string) string {
 // whether it did; other tools are ignored. The agent runner calls it from
 // fantasy's OnToolCall and owes a CallDone for every recorded id.
 func CallStart(ctx context.Context, id, tool, input string) bool {
-	if tool != ToolWrite && tool != ToolEdit {
+	if tool != string(ToolWrite) && tool != string(ToolEdit) {
 		return false
 	}
 	var in struct {

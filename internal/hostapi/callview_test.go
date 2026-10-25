@@ -142,7 +142,7 @@ func TestCallInput(t *testing.T) {
 		{"question", "Where?", ""},
 		{"shell", "", ""},
 	} {
-		if got := callInput(ChatMessage{Tool: c.tool, Text: c.text}); got != c.want {
+		if got := callInput(ChatMessage{Tool: tools.ToolName(c.tool), Text: c.text}); got != c.want {
 			t.Errorf("callInput(%s, %q) = %q, want %q", c.tool, c.text, got, c.want)
 		}
 	}

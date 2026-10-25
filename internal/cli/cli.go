@@ -325,7 +325,7 @@ func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 	if err != nil || len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	ps, _ := plugin.Scan(dirs)
+	ps, _, _ := plugin.Scan(dirs)
 	var out []cobra.Completion
 	for _, p := range ps {
 		out = append(out, p.Name)
@@ -439,10 +439,11 @@ func pluginCommand(o *options) *cobra.Command {
 		switch {
 		case c.Name() == "plugin":
 			var ps []plugin.Plugin
-			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
+			var skipped []plugin.Skipped
+			if ps, skipped, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugin marketplace add <source> adds one")
 			}
-			printPlugins(c.OutOrStdout(), ps, *asJSON)
+			printPlugins(c.OutOrStdout(), ps, skipped, *asJSON)
 		case c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "marketplace":
 			var ms []plugin.MarketplaceInfo
 			if ms, err = plugin.Marketplaces(dirs); err == nil && len(ms) == 0 {
@@ -988,8 +989,9 @@ type marketplaceEntry struct {
 }
 
 // printPlugins writes one aligned line per plugin, the free-text columns last
-// so cut and awk read the name, and a header only on a terminal.
-func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
+// so cut and awk read the name, and a header only on a terminal. An entry the
+// name rule refused follows the table as its own line.
+func printPlugins(w io.Writer, ps []plugin.Plugin, skipped []plugin.Skipped, asJSON bool) {
 	t := table{p: colorprofile.Detect(w, os.Environ()), cols: []tableCol{
 		{head: "name"},
 		{head: "version", role: "hint"},
@@ -1021,6 +1023,12 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 		t.row(pl.Name, version, on, source, pl.Marketplace, strings.Join(pl.Uses, ","))
 	}
 	t.print(w)
+	// plain lines only: --json stays one Plugin object per line
+	if !asJSON {
+		for _, s := range skipped {
+			fmt.Fprintln(w, s)
+		}
+	}
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is
@@ -1072,7 +1080,7 @@ func headlessTrust() func(root, cwd, state string) string {
 // applyOptions applies the flags after boot, so they win over init.lua.
 func applyOptions(h *hostapi.Host, o options) error {
 	if o.model != "" {
-		if err := h.SetModel("default " + o.model); err != nil {
+		if err := h.SetTargetModel("default", o.model); err != nil {
 			return err
 		}
 	}

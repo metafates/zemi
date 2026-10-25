@@ -542,7 +542,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			name, args := hostapi.SplitCommand(under.Click)
 			act = func() {
 				if name != "reload" {
-					a.runCommand(name, args)
+					a.runCommand(name, args, false)
 				} else {
 					a.host.GoSafe("reload", a.host.Reload) // off the UI goroutine, as the typed /reload
 				}
@@ -660,7 +660,7 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		switch {
 		case err == nil, lua.Dropped(err):
 		default:
-			a.host.RecordError("click "+s.Widget, err.Error())
+			a.host.RecordError("click", s.Widget, err.Error())
 			a.Notify(slog.LevelError, "Could not handle the click on "+s.Widget, err.Error())
 		}
 	})

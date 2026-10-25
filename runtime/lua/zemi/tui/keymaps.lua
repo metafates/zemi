@@ -18,5 +18,5 @@ zemi.keymap.set("alt+down", "zemi.ui.scroll.sticky_down", { desc = "scroll chat 
 zemi.keymap.set(
 	"alt+m",
 	function() assert(zemi.command.run("messages")) end,
-	{ desc = "jump to a message or copy one" }
+	{ desc = "read, copy or rewind a message" }
 )

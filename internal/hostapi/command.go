@@ -124,7 +124,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		}
 		if cmd.GoFn != nil {
 			h.GoSafe("command "+name, func() {
-				if err := cmd.GoFn(h, args); err != nil {
+				if err := cmd.GoFn(h, args, false); err != nil {
 					h.CommandFailed(name, err)
 				}
 			})
@@ -174,7 +174,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 		if err != nil {
 			if !lua.Dropped(err) {
 				h.Log.Error("command completer failed", "origin", "ui", "command", name, "error", err)
-				h.RecordError("command "+name+" complete", err.Error())
+				h.RecordError("command", name+" complete", err.Error())
 			}
 			return nil
 		}
@@ -228,7 +228,7 @@ func (h *Host) CommandFailed(name string, err error) {
 		h.Notify(slog.LevelWarn, "Could not run /"+name, err.Error())
 		return
 	}
-	h.RecordError("command "+name, err.Error())
+	h.RecordError("command", name, err.Error())
 	h.Notify(slog.LevelError, "Could not run /"+name, err.Error())
 }
 
@@ -241,14 +241,24 @@ func (h *Host) SendPrompt(prompt string) error {
 	if rest, ok := strings.CutPrefix(typed, "/"); ok {
 		name, args := SplitCommand(rest)
 		if h.Commands.Lookup(name) != nil {
-			return h.RunCommand(context.Background(), name, args+attached)
+			return h.RunCommand(context.Background(), name, args+attached, false)
 		}
 	}
 	return h.AgentSend(agent.Defuse(prompt))
 }
 
-// RunCommand runs a command by name as if typed.
-func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
+// ConfirmArgs splits a command line's consent: confirm is an armed danger
+// key's press and answers by itself, else a typed trailing " --yes" does and
+// comes off the rest.
+func ConfirmArgs(args string, confirm bool) (rest string, yes bool) {
+	rest, yes = strings.CutSuffix(strings.TrimSpace(args), " --yes")
+	return rest, yes || confirm
+}
+
+// RunCommand runs a command by name as if typed. confirm says the caller
+// already consented (a danger key's armed press), so a command that asks
+// first may act; the typed line passes false and carries its own --yes.
+func (h *Host) RunCommand(ctx context.Context, name, argString string, confirm bool) error {
 	cmd := h.Commands.Lookup(name)
 	if cmd == nil {
 		return fmt.Errorf("not a command: %s", name)
@@ -257,13 +267,23 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 		return err
 	}
 	if cmd.GoFn != nil {
-		err := cmd.GoFn(h, argString)
+		err := cmd.GoFn(h, argString, confirm)
 		if errors.Is(err, ErrNeedsTUI) {
 			err = fmt.Errorf("/%s %w", name, err)
 		}
 		return err
 	}
 	return h.runLuaCommand(ctx, cmd, argString)
+}
+
+// sendCommandPrompt speaks a command's line to the model as if the user had
+// typed it: the /name line with its typed arguments, then the elements
+// riding behind it (the command's prompt, the user's attachments), in
+// order. The /cmd prefix is model-facing decoration: AgentSend does not
+// route a line to a command (only SendPrompt does), so it names what ran
+// for the model; it runs nothing.
+func (h *Host) sendCommandPrompt(name, typed string, riding ...string) error {
+	return h.AgentSend("/" + name + " " + typed + strings.Join(riding, ""))
 }
 
 // AskFirst opens a destructive command's screen with the action whose run is
@@ -307,7 +327,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 		case lua.Dropped(err):
 			h.Log.Debug("keymap dropped", "origin", "ui", "keys", b.Key, "error", err)
 		default:
-			h.RecordError("keymap "+b.Key, err.Error())
+			h.RecordError("keymap", b.Key, err.Error())
 			h.Log.Error("keymap rhs failed", "origin", "ui", "keys", b.Key, "error", err)
 			h.Notify(slog.LevelError, "Could not run "+b.Key, err.Error())
 		}
@@ -320,12 +340,12 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 			report(err)
 		})
 	case rhs.Command != "":
-		return h.RunCommand(ctx, rhs.Command, "")
+		return h.RunCommand(ctx, rhs.Command, "", false)
 	case rhs.API != "":
 		name, args, _ := strings.Cut(rhs.API, " ")
 		fn, ok := h.hostActions[name]
 		if !ok || fn == nil {
-			return errReserved
+			return fmt.Errorf("%w: %q", errReserved, name)
 		}
 		return fn(h, args)
 	}

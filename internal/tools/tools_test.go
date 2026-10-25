@@ -106,25 +106,25 @@ func TestGateLogsDecisions(t *testing.T) {
 	}{
 		{
 			"a read settles on its own", func(p *Pipeline) {},
-			Request{Tool: ToolRead, Subject: perm.SubjectRead, Arg: "/x"},
+			Request{Tool: string(ToolRead), Subject: perm.SubjectRead, Arg: "/x"},
 			[]string{"level=DEBUG", "by=default", "allowed=true"},
 		},
 		{
 			"an action runs by default", func(p *Pipeline) {},
-			Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"},
+			Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"},
 			[]string{"level=DEBUG", "by=default", "allowed=true"},
 		},
 		{"a veto denial is a warning", func(p *Pipeline) {
 			p.Ask = func(Request) (bool, string) { return false, "" }
 			p.Veto = func(Request) string { return VetoDeny }
-		}, Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false"}},
+		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false"}},
 		{"the user's answer is info", func(p *Pipeline) {
 			p.Ask = func(Request) (bool, string) { return true, ByUser }
 			p.Veto = func(Request) string { return VetoAsk }
-		}, Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
+		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
 		{
 			"a read-only denial is a warning", func(p *Pipeline) { p.ReadOnly = func() bool { return true } },
-			Request{Tool: ToolShell, Subject: perm.SubjectShell, Arg: "ls"},
+			Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"},
 			[]string{"level=WARN", `by="read-only agent"`, "allowed=false"},
 		},
 	} {
@@ -716,12 +716,12 @@ func TestScratchpad(t *testing.T) {
 		want              string
 		asks              bool
 	}{
-		{"write asks", ToolWrite, `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
-		{"write in a temp dir asks", ToolWrite, `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
-		{"read", ToolRead, `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad is PAD.`, false},
-		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
-		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
+		{"write asks", string(ToolWrite), `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"write in a temp dir asks", string(ToolWrite), `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"read", string(ToolRead), `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
+		{"$TMPDIR", string(ToolWrite), `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad is PAD.`, false},
+		{"~", string(ToolRead), `{"path":"~/n.md","limit":0}`, nil, "home is", false},
+		{"%TEMP%", string(ToolWrite), `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
 	} {
 		if c.before != nil {
 			c.before()
@@ -739,10 +739,10 @@ func TestScratchpad(t *testing.T) {
 	ro, roAsked := testPipeline(t, false)
 	ro.Pad = pad
 	ro.ReadOnly = func() bool { return true }
-	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); !v.Allowed || len(*roAsked) != 0 {
+	if v := ro.Check(Request{Tool: string(ToolWrite), Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "n.md")}); !v.Allowed || len(*roAsked) != 0 {
 		t.Fatalf("a read-only agent's pad write: %+v, asked %+v", v, *roAsked)
 	}
-	if v := ro.Check(Request{Tool: ToolWrite, Subject: perm.SubjectWrite, Arg: filepath.Join(proj, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly {
+	if v := ro.Check(Request{Tool: string(ToolWrite), Subject: perm.SubjectWrite, Arg: filepath.Join(proj, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly {
 		t.Fatalf("a read-only agent's project write: %+v", v)
 	}
 	// an ungated pipeline writes the pad and a temp dir, and the pad is no
@@ -752,11 +752,11 @@ func TestScratchpad(t *testing.T) {
 	allow.Checkpoint = p.Checkpoint
 	freeNote := filepath.Join(free, "notes.txt")
 	for _, path := range []string{filepath.Join(pad, "made.txt"), freeNote} {
-		if res := call(t, toolNamed(t, ToolWrite, allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
+		if res := call(t, toolNamed(t, string(ToolWrite), allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
 			t.Errorf("ungated write to %s: %q", path, res.Content)
 		}
 	}
-	if res := call(t, toolNamed(t, ToolEdit, allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
+	if res := call(t, toolNamed(t, string(ToolEdit), allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
 		t.Errorf("ungated edit in the pad: %q", res.Content)
 	}
 	if len(checkpoints) != 1 || checkpoints[0] != freeNote {
@@ -781,7 +781,7 @@ func TestReadSaysWhatTheModelSees(t *testing.T) {
 		{"takes images", nil, "(text or image)", "cannot see images"},
 		{"text only", func() bool { return false }, "cannot see images: do not take screenshots", "(text or image)"},
 	} {
-		desc := toolNamed(t, ToolRead, &Pipeline{Images: c.images}).Info().Description
+		desc := toolNamed(t, string(ToolRead), &Pipeline{Images: c.images}).Info().Description
 		if !strings.Contains(desc, c.says) || strings.Contains(desc, c.unwanted) {
 			t.Errorf("%s: %q", c.name, desc)
 		}

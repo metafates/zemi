@@ -21,7 +21,7 @@ func TestGoldenSkillsList(t *testing.T) {
 	}
 	ctx := t.Context()
 	reloadUI(t, host, host.SkillsUserHooksStep())
-	if err := host.RunCommand(ctx, "skills", ""); err != nil {
+	if err := host.RunCommand(ctx, "skills", "", false); err != nil {
 		t.Fatal(err)
 	}
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })

@@ -93,7 +93,7 @@ func TestGoldenMemory(t *testing.T) {
 	}
 	run := func(args string) {
 		t.Helper()
-		if err := host.RunCommand(ctx, "memory", args); err != nil {
+		if err := host.RunCommand(ctx, "memory", args, false); err != nil {
 			t.Fatal(err)
 		}
 		for app.Pump() {

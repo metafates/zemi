@@ -38,7 +38,7 @@ func TestManifest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(local, "bare", InitFile), []byte("-- the bare plugin\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ps, err := List(t.Context(), d)
+	ps, _, err := List(t.Context(), d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,6 +130,35 @@ func TestManifestError(t *testing.T) {
 		if got := authorName(m.Author); got != c.author {
 			t.Errorf("%s: author %q, want %q", c.name, got, c.author)
 		}
+	}
+}
+
+// TestScanSkipped: a dir whose name the rule refuses comes back as a skipped
+// entry with the why, never as a plugin; a plain file is neither.
+func TestScanSkipped(t *testing.T) {
+	d := config.Dirs{DataHome: t.TempDir()}
+	local := filepath.Join(d.PluginsRoot(), "local")
+	write(t, local, map[string]string{
+		"good/.zemi/plugin.json": `{"uses": ["http"]}`,
+		"notes.txt":              "not a plugin",
+	})
+	ps, _, err := Scan(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps) != 1 || ps[0].Name != "good" {
+		t.Fatalf("plugins %v, want only good", ps)
+	}
+	want := []Skipped{{Name: "Bad Name", Why: nameWhy, Local: true}}
+	if err := os.Mkdir(filepath.Join(local, "Bad Name"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, skipped, err := Scan(d)
+	if err != nil || !slices.Equal(skipped, want) {
+		t.Fatalf("skipped %v (%v), want %v", skipped, err, want)
+	}
+	if got := skipped[0].String(); got != "ignored: Bad Name ("+nameWhy+")" {
+		t.Errorf("String() = %q", got)
 	}
 }
 
@@ -320,7 +349,7 @@ func TestPlugins(t *testing.T) {
 			c.before()
 		}
 		var out strings.Builder
-		ps, err := List(t.Context(), d)
+		ps, _, err := List(t.Context(), d)
 		if c.args == nil {
 			for _, p := range ps {
 				fmt.Fprintln(&out, p.Name, p.Version, p.Enabled, cmp.Or(p.URL, p.Dir), p.Marketplace)
@@ -349,7 +378,7 @@ func TestPlugins(t *testing.T) {
 	leak := filepath.Join(tmp, "leak.lua")
 	os.WriteFile(leak, []byte("-- leaked\n"), 0o644)
 	os.Symlink(leak, filepath.Join(local, InitFile))
-	if ps, _ := List(t.Context(), d); ps[0].Desc != "" {
+	if ps, _, _ := List(t.Context(), d); ps[0].Desc != "" {
 		t.Errorf("%s: description %q read through a symlink", ps[0].Name, ps[0].Desc)
 	}
 	if off, _ := os.ReadFile(filepath.Join(d.PluginsRoot(), "disabled")); len(off) != 0 {
@@ -595,7 +624,7 @@ func TestMarketplace(t *testing.T) {
 	}
 	provides := func(t *testing.T, name string) []string {
 		t.Helper()
-		ps, err := Scan(d)
+		ps, _, err := Scan(d)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -773,7 +802,7 @@ func TestMarketplace(t *testing.T) {
 				if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", "strict_one", ManifestFile)); err == nil {
 					t.Error("the entry manifest was written into the clone")
 				}
-				ps, err := Scan(d)
+				ps, _, err := Scan(d)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -857,7 +886,7 @@ func TestMarketplace(t *testing.T) {
 			want: "marketplace demo-market updated rel-one 1.0.0 -> 1.1.0",
 			check: func(t *testing.T) {
 				// the link needs no re-copy: the pull moved what it points into
-				ps, err := List(t.Context(), d)
+				ps, _, err := List(t.Context(), d)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -883,7 +912,7 @@ func TestMarketplace(t *testing.T) {
 			before: func() { bump("1.1.0", "0.3.0", "0.1.0", "0.5.0") },
 			args:   []string{"marketplace", "update", "demo-market"}, want: "entry-manifest 0.2.0 -> 0.3.0",
 			check: func(t *testing.T) {
-				ps, err := Scan(d)
+				ps, _, err := Scan(d)
 				if err != nil {
 					t.Fatal(err)
 				}

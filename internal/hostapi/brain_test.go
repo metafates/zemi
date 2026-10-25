@@ -490,12 +490,12 @@ func TestBrainWriteToolScrubs(t *testing.T) {
 	path := filepath.Join(private.Dir, "map.md")
 	var tool fantasy.AgentTool
 	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name == tools.ToolWrite {
+		if tl.Info().Name == string(tools.ToolWrite) {
 			tool = tl
 		}
 	}
 	input := fmt.Sprintf(`{"path":%q,"content":"---\ndescription: map\nread_if: before code\n---\napi_key = ghp_0123456789abcdefghijklmnopqrstuv\n"}`, path)
-	resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWrite, Input: input})
+	resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: string(tools.ToolWrite), Input: input})
 	if err != nil {
 		t.Fatal(err)
 	}

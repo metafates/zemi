@@ -79,7 +79,7 @@ func TestResumeShowsPlan(t *testing.T) {
 		t.Fatalf("no plan message: %+v", tr)
 	}
 	row := tr[body+1]
-	if row.Kind != RowTool || row.Tool != "plan" || !strings.Contains(row.Output, "approved") {
+	if row.Kind != RowTool || row.Tool != tools.ToolPlan || !strings.Contains(row.Output, "approved") {
 		t.Fatalf("plan message not above its row: %+v", row)
 	}
 }

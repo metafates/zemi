@@ -489,7 +489,7 @@ type jobKillArgs struct {
 func runJobKill(ctx context.Context, p *Pipeline, in jobKillArgs) (fantasy.ToolResponse, error) {
 	if p.ReadOnly != nil && p.ReadOnly() {
 		// job_kill makes no gate request, so the gate's read-only deny cannot reach it
-		return fantasy.NewTextErrorResponse(DeniedText(readOnlyVerdict, ToolJobKill+" "+in.ID)), nil
+		return fantasy.NewTextErrorResponse(DeniedText(readOnlyVerdict, string(ToolJobKill)+" "+in.ID)), nil
 	}
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil

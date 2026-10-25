@@ -207,7 +207,7 @@ zemi.ui.layout.set({
 	for _, k := range "hello" {
 		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
 	}
-	host.RecordError("test", "boom")
+	host.RecordError("test", "", "boom")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	lines := strings.Split(frame, "\r\n")
@@ -224,7 +224,7 @@ zemi.ui.layout.set({
 func TestErrorPillDrawsOnce(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
-	host.RecordError("test", "boom")
+	host.RecordError("test", "", "boom")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	if n := strings.Count(frame, "errors /errors"); n != 1 {

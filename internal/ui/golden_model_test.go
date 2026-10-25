@@ -22,7 +22,7 @@ func TestGoldenModelRoles(t *testing.T) {
 	// main.go owns /model
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args) },
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.SetModel(args) },
 	})
 	frame := func(name string) {
 		for app.Pump() {
@@ -30,7 +30,7 @@ func TestGoldenModelRoles(t *testing.T) {
 		app.renderSync(t)
 		t.Run(name, func(t *testing.T) { golden.RequireEqual(t, app.Frame()) })
 	}
-	app.runCommand("model", "roles")
+	app.runCommand("model", "roles", false)
 	frame("roles")
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})

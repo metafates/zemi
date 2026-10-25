@@ -302,7 +302,7 @@ func TestTrustCommand(t *testing.T) {
 		tg, _, _ := newTrustGate(t) // outside the bubble, which waits for every goroutine in it: a host's never exit
 		synctest.Test(t, func(t *testing.T) {
 			tg.ask = func(_, _, state string) string {
-				if state != "not trusted" {
+				if state != config.Untrusted {
 					t.Errorf("/trust shows state %q", state)
 				}
 				return c.answer
@@ -384,7 +384,7 @@ func TestSendPromptRunsCommands(t *testing.T) {
 	got := ""
 	if _, err := h.Commands.Add(&hostapi.Command{
 		Name: "note", NArgs: "*", Desc: "d", Origin: lua.OriginUser,
-		GoFn: func(_ *hostapi.Host, args string) error { got = args; return nil },
+		GoFn: func(_ *hostapi.Host, args string, confirm bool) error { got = args; return nil },
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestHeadlessNotices(t *testing.T) {
 	}
 	if _, err := h.Commands.Add(&hostapi.Command{
 		Name: "screen", Desc: "d", Origin: lua.OriginUser,
-		GoFn: func(h *hostapi.Host, _ string) error { _, err := h.Screen(); return err },
+		GoFn: func(h *hostapi.Host, _ string, confirm bool) error { _, err := h.Screen(); return err },
 	}); err != nil {
 		t.Fatal(err)
 	}

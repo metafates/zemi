@@ -52,7 +52,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "plugins",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			ps, err := plugin.Scan(h.Dirs)
+			ps, _, err := plugin.Scan(h.Dirs)
 			if err == nil {
 				// a failed scan lists no plugins, and the sweep would take every
 				// plugin's saved tokens with it
@@ -62,10 +62,10 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.Log.Warn("installs not re-linked", "origin", "plugins", "error", err)
 			}
 			if err == nil {
-				ps, err = plugin.Scan(h.Dirs)
+				ps, _, err = plugin.Scan(h.Dirs)
 				for _, p := range ps {
 					if p.ManifestErr != nil {
-						h.RecordErrorOnce("plugin "+p.Name, p.ManifestErr.Error())
+						h.RecordErrorOnce("plugin", p.Name, p.ManifestErr.Error())
 					}
 				}
 			}
@@ -190,7 +190,7 @@ func pickPlugins(ps []plugin.Plugin, pluginsRoot string) (run []plugin.Plugin, r
 // PluginDir is the directory of the plugin named name that the plugins step
 // would load, turned off or not, or why it would load none.
 func PluginDir(d config.Dirs, name string) (string, error) {
-	ps, err := plugin.Scan(d)
+	ps, _, err := plugin.Scan(d)
 	if err != nil {
 		return "", err
 	}
@@ -532,12 +532,12 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 			}
 			if kept, taken := seen[name]; taken {
 				if a, b := h.PluginOf(kept), h.PluginOf(path); a != "" && b != "" && a != b {
-					h.RecordErrorOnce("plugins", fmt.Sprintf("%s %s is already provided by plugin %s, not %s", strings.TrimSuffix(sub, "s"), name, a, b))
+					h.RecordErrorOnce("plugins", "", fmt.Sprintf("%s %s is already provided by plugin %s, not %s", strings.TrimSuffix(sub, "s"), name, a, b))
 				}
 				continue
 			}
 			if !skill.ValidName(name) {
-				h.RecordErrorOnce(sub, path+": name must be "+skill.NameRule)
+				h.RecordErrorOnce(sub, "", path+": name must be "+skill.NameRule)
 				continue
 			}
 			if load(layerFile{name, path, d.origin, d.prefix}) {

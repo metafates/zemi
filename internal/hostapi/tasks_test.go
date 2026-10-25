@@ -614,7 +614,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	cmd := h.agentsCommands()[0]
-	if err := cmd.GoFn(h, "show "+run.id); err != nil {
+	if err := cmd.GoFn(h, "show "+run.id, false); err != nil {
 		t.Fatal(err)
 	}
 	opened := ui.overlays()
@@ -644,7 +644,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if err := h.tasks.add(idle); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.GoFn(h, "show "+idle.id); err != nil {
+	if err := cmd.GoFn(h, "show "+idle.id, false); err != nil {
 		t.Fatal(err)
 	}
 	if last := ui.overlays(); len(last) != 2 || last[1].ID != "agent:"+idle.id || last[1].Next != "" || last[1].Prev != "" {
@@ -669,7 +669,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if next.Mark != MarkOK || next.Empty != "" || len(next.Parts) != 2 || next.Parts[1].Text != "two files changed" {
 		t.Fatalf("the rebuilt view is %+v", next)
 	}
-	if err := cmd.GoFn(h, "show nope"); err == nil {
+	if err := cmd.GoFn(h, "show nope", false); err == nil {
 		t.Fatal("an unknown id opened a view")
 	}
 }
@@ -686,7 +686,7 @@ func TestAgentViewRestoresItsScreen(t *testing.T) {
 	}
 	h.SetUIHooks(&fakeUI{})
 	cmd := h.agentsCommands()[0]
-	if err := cmd.GoFn(h, "view "+run.id+" show"); err != nil {
+	if err := cmd.GoFn(h, "view "+run.id+" show", false); err != nil {
 		t.Fatal(err)
 	}
 	if h.viewedRun() != run {
@@ -695,19 +695,19 @@ func TestAgentViewRestoresItsScreen(t *testing.T) {
 	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "agents show "+run.id {
 		t.Fatalf("esc restores menu %q back %q", menu, back)
 	}
-	if err := cmd.GoFn(h, "view "+run.id+" list"); err != nil {
+	if err := cmd.GoFn(h, "view "+run.id+" list", false); err != nil {
 		t.Fatal(err)
 	}
 	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "agents" {
 		t.Fatalf("the list's esc restores menu %q back %q", menu, back)
 	}
-	if err := cmd.GoFn(h, "view "+run.id); err != nil {
+	if err := cmd.GoFn(h, "view "+run.id, false); err != nil {
 		t.Fatal(err)
 	}
 	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "" {
 		t.Fatalf("a plain view restores menu %q back %q", menu, back)
 	}
-	if err := cmd.GoFn(h, "view "+run.id+" nope"); err == nil {
+	if err := cmd.GoFn(h, "view "+run.id+" nope", false); err == nil {
 		t.Fatal("an unknown screen opened a view")
 	}
 }

@@ -34,7 +34,7 @@ func (h *Host) uiAsk(L *glua.LState, api string, o Overlay, cb *glua.LFunction) 
 	if ui := h.hooks(); ui != nil {
 		ui.OpenOverlay(o)
 	} else {
-		h.RecordError(api, "no UI is running to answer it")
+		h.RecordError(api, "", "no UI is running to answer it")
 		o.Answered(nil)
 		// off the interpreter: a task here would wait on the queue it sits in
 		at := h.callerOf(L)
@@ -926,7 +926,7 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() []Overlay
 		}
 		_, err := h.RT.RunTask(context.Background(), t)
 		if err != nil && !lua.Dropped(err) {
-			h.RecordError("overlay "+o.ID+" reload", err.Error())
+			h.RecordError("overlay", o.ID+" reload", err.Error())
 		}
 		return items
 	}
@@ -973,7 +973,7 @@ func (h *Host) checkTheme(name string) error {
 // typo, or a pick of a removed plugin's theme, draws whorl instead.
 func (h *Host) CheckTheme() {
 	if name := h.Settings.Str(config.KeyUITheme); h.Themes.Get(name) == nil {
-		h.RecordErrorOnce("ui.theme", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
+		h.RecordErrorOnce("ui.theme", "", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
 	}
 }
 

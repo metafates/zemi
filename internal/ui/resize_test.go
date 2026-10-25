@@ -28,7 +28,7 @@ func TestGoldenHelpOverlay(t *testing.T) {
 	ran := false
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(*hostapi.Host, string) error { ran = true; return nil },
+		GoFn: func(*hostapi.Host, string, bool) error { ran = true; return nil },
 	})
 	host.OpenHelp()
 	for app.Pump() {
@@ -48,7 +48,7 @@ func TestGoldenHelpOverlay(t *testing.T) {
 // actions as a list.
 func TestGoldenOverlayDetail(t *testing.T) {
 	app, host := bootAgentAppPinned(t, 80, 24)
-	host.RecordError("mcp gitlab", `mcp: initialize: Post "http://127.0.0.1:1/mcp": dial tcp 127.0.0.1:1: connect: connection refused`)
+	host.RecordError("mcp", "gitlab", `mcp: initialize: Post "http://127.0.0.1:1/mcp": dial tcp 127.0.0.1:1: connect: connection refused`)
 	if err := host.OpenErrors(""); err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestToastCap(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	home, _ := os.UserHomeDir()
 	body := "@user:" + home + "/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
-	host.RecordError("keymap ctrl+t", body)
+	host.RecordError("keymap", "ctrl+t", body)
 	app.pushToast(slog.LevelError, "Could not run ctrl+t", body)
 	var rows []string
 	for _, r := range toastTray(app.toasts, 80, 24) {

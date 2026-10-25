@@ -347,7 +347,7 @@ func TestVetoAtTheGate(t *testing.T) {
 			zemi.state.set("seen", (zemi.state.get("seen") or 0) + 1)
 			return { decision = "ask" }
 		end)`)
-	v := h.PipelineFor().Check(tools.Request{Tool: tools.ToolShell, Subject: perm.SubjectShell, Arg: "ls"})
+	v := h.PipelineFor().Check(tools.Request{Tool: string(tools.ToolShell), Subject: perm.SubjectShell, Arg: "ls"})
 	if v.Allowed || v.DecidedBy != tools.ByNobody {
 		t.Errorf("headless ask = %+v, want ByNobody", v)
 	}

@@ -10,6 +10,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestPanicsDoNotKillZemi: a panicking host goroutine is recovered into
@@ -114,7 +115,7 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		if last.Kind != "error" || last.Text != c.text || string(last.Status) != c.status {
 			t.Fatalf("%v: last row = %+v", c.err, last)
 		}
-		if call := tr[len(tr)-2]; call.Tool != "read" || string(call.Status) != c.call {
+		if call := tr[len(tr)-2]; call.Tool != tools.ToolRead || string(call.Status) != c.call {
 			t.Fatalf("%v: open call = %+v", c.err, call)
 		}
 	}

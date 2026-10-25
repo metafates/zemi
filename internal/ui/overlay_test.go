@@ -567,7 +567,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran := ""
 				a.host.Commands.Add(&hostapi.Command{
 					Name: "copy", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+					GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 				})
 				a.overlayKey("enter", "")
 				if ran != "reply" || len(a.overlays) != 0 {
@@ -918,7 +918,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran := ""
 				a.host.Commands.Add(&hostapi.Command{
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+					GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 				})
 				if a.overlayKey("p", "p"); ran != "pause" || len(a.overlays) != 0 {
 					return "ran " + ran
@@ -937,7 +937,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran := ""
 				a.host.Commands.Add(&hostapi.Command{
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+					GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 				})
 				a.overlayKey("p", "p")
 				return fail(ran == "pause" && len(a.overlays) == 1, "ran "+ran)
@@ -953,7 +953,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran := ""
 				a.host.Commands.Add(&hostapi.Command{
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+					GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 				})
 				a.overlayKey("r", "r")
 				return fail(ran == "resume" && len(a.overlays) == 0, "ran "+ran)
@@ -967,7 +967,7 @@ func TestOverlayNavigation(t *testing.T) {
 				ran := ""
 				a.host.Commands.Add(&hostapi.Command{
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+					GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 				})
 				o := hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "x"}}, Keys: []hostapi.OverlayKey{{Key: "x", Desc: "stop workflow", Run: "zz stop", Danger: true}}}
 				a.openOverlay(o)
@@ -1741,7 +1741,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 	clear(app.lastSel)
 	ran = ""
 	for _, name := range []string{"res", "view"} {
-		app.host.Commands.Add(&hostapi.Command{Name: name, NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error {
+		app.host.Commands.Add(&hostapi.Command{Name: name, NArgs: "?", GoFn: func(_ *hostapi.Host, args string, confirm bool) error {
 			ran += name + " " + args
 			if name == "view" {
 				app.openOverlay(hostapi.Overlay{ID: "view " + args, Title: "View", Origin: lua.OriginBuiltin, Body: "text"})
@@ -1812,7 +1812,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 
 	// a danger row still arms on enter, its label the confirmation
 	app.overlays = nil
-	app.host.Commands.Add(&hostapi.Command{Name: "del", NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error { ran = "del " + args; return nil }})
+	app.host.Commands.Add(&hostapi.Command{Name: "del", NArgs: "?", GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = "del " + args; return nil }})
 	ran = ""
 	app.openOverlay(hostapi.Overlay{ID: "d", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "current"}, {Text: "wipe", Danger: true, Run: "del w"}}})
 	pressKeys(app, "j", "enter")
@@ -1909,7 +1909,7 @@ func TestOverlayReopensOnItsRow(t *testing.T) {
 	}
 	a.host.Commands.Add(&hostapi.Command{
 		Name: "open", NArgs: hostapi.NArgsAny, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string) error { // the screen the row opens closes the menu, as /agents view does
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { // the screen the row opens closes the menu, as /agents view does
 			if ui, err := h.Screen(); err == nil {
 				ui.CloseOverlay("menu")
 				ui.OpenOverlay(hostapi.Overlay{ID: "view:" + args, Title: "View", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "x"}, {Text: "y"}}})

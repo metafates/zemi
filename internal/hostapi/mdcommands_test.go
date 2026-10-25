@@ -59,7 +59,7 @@ func TestMarkdownCommandSends(t *testing.T) {
 		{"main.go", "/fix main.go" + body},
 		{"main.go" + agent.Attached("stdin", "panic: x"), "/fix main.go" + body + agent.Attached("stdin", "panic: x")},
 	} {
-		if err := h.RunCommand(t.Context(), "fix", c.args); err != nil {
+		if err := h.RunCommand(t.Context(), "fix", c.args, false); err != nil {
 			t.Fatal(err)
 		}
 		waitIdle(t, h)

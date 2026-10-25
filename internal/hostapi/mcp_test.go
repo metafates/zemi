@@ -68,7 +68,7 @@ func TestLuaToolDrivesDeferredMCP(t *testing.T) {
 	var tool fantasy.AgentTool
 	set := h.mainTools()
 	for _, c := range set {
-		if c.Info().Name == tools.ToolLua {
+		if c.Info().Name == string(tools.ToolLua) {
 			tool = c
 		}
 	}
@@ -78,7 +78,7 @@ func TestLuaToolDrivesDeferredMCP(t *testing.T) {
 	run := func(script string) string {
 		t.Helper()
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": script}, json.Deterministic(true))
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tools.ToolLua, Input: string(input)})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: string(tools.ToolLua), Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -550,7 +550,7 @@ func (m *toolsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Str
 	}
 	var names []string
 	for _, tl := range call.Tools {
-		if n := tl.GetName(); strings.HasPrefix(n, mcpToolPrefix) || n == tools.ToolSearch {
+		if n := tl.GetName(); strings.HasPrefix(n, mcpToolPrefix) || n == string(tools.ToolSearch) {
 			names = append(names, n)
 		}
 	}
@@ -616,7 +616,7 @@ func TestMCPDeferred(t *testing.T) {
 			})
 			m := &toolsModel{scriptModel: &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 				if q, ok := strings.CutPrefix(last, "search:"); ok && !toolResult {
-					return toolCallParts("s1", tools.ToolSearch, fmt.Sprintf(`{"query":%q}`, q))
+					return toolCallParts("s1", string(tools.ToolSearch), fmt.Sprintf(`{"query":%q}`, q))
 				}
 				if name, ok := strings.CutPrefix(last, "call:"); ok && !toolResult {
 					return toolCallParts("c1", name, `{"text":"x"}`)

@@ -478,7 +478,7 @@ func TestParseNetURL(t *testing.T) {
 func TestMemoryExamplesStore(t *testing.T) {
 	var desc string
 	for _, tl := range All(&Pipeline{}) {
-		if tl.Info().Name == ToolMemory {
+		if tl.Info().Name == string(ToolMemory) {
 			desc = tl.Info().Description
 		}
 	}

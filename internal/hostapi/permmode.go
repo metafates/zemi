@@ -28,7 +28,7 @@ func (h *Host) CheckToolNames() {
 	}
 	for _, name := range h.luaTools.overridden() {
 		if !slices.Contains(names, name) && !strings.HasPrefix(name, "mcp_") {
-			h.RecordErrorOnce("tools", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, ", ")))
+			h.RecordErrorOnce("tools", "", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, ", ")))
 		}
 	}
 }

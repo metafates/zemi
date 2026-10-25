@@ -343,7 +343,7 @@ func TestPluginsStep(t *testing.T) {
 			fmt.Fprintf(&out, "provides: %s\n", strings.Join(h.pluginProvides()["a"], " · "))
 			h.errs.mu.Lock()
 			for _, e := range h.errs.entries {
-				fmt.Fprintf(&out, "error: %s: %s\n", e.source, strings.ReplaceAll(e.msg, h.pluginsRoot(), "<plugins>"))
+				fmt.Fprintf(&out, "error: %s: %s\n", e.source(), strings.ReplaceAll(e.msg, h.pluginsRoot(), "<plugins>"))
 			}
 			h.errs.mu.Unlock()
 			for _, row := range h.goHealthRows() {
@@ -642,7 +642,7 @@ func TestPluginSettings(t *testing.T) {
 			}
 			h.errs.mu.Lock()
 			for _, e := range h.errs.entries {
-				fmt.Fprintf(&out, "error: %s: %s\n", e.source, e.msg)
+				fmt.Fprintf(&out, "error: %s: %s\n", e.source(), e.msg)
 			}
 			h.errs.mu.Unlock()
 			got := out.String()

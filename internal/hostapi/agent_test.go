@@ -53,7 +53,7 @@ func TestCommandSendsTypedLine(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
-	h.RecordError("lua", "boom")
+	h.RecordError("lua", "", "boom")
 	h.Dirs.DataHome = t.TempDir()
 	if err := h.materializeBuiltinSkills(); err != nil {
 		t.Fatal(err)
@@ -64,9 +64,9 @@ func TestCommandSendsTypedLine(t *testing.T) {
 		file  string
 	}{
 		{"/init", h.InitProject, ""},
-		{"/plugin new show cost", func() error { return h.pluginsCommand("new show cost") }, "plugins.md"},
-		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs") }, "agents.md"},
-		{"/workflows new hunts a flake", func() error { return h.workflowCommands()[0].GoFn(h, "new hunts a flake") }, "workflows.md"},
+		{"/plugin new show cost", func() error { return h.pluginsCommand("new show cost", false) }, "plugins.md"},
+		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs", false) }, "agents.md"},
+		{"/workflows new hunts a flake", func() error { return h.workflowCommands()[0].GoFn(h, "new hunts a flake", false) }, "workflows.md"},
 		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }, "debug.md"},
 	} {
 		sent := m.streams.Load()
@@ -971,7 +971,7 @@ func TestTodoNag(t *testing.T) {
 			s.ToolCallEnd(strconv.Itoa(i), "read", out(""), "")
 		}
 		s.StepDone(agent.Step{})
-		s.ToolCallEnd("t", tools.ToolTodos, out(""), "")
+		s.ToolCallEnd("t", string(tools.ToolTodos), out(""), "")
 		s.StepDone(agent.Step{})
 		for range todoNagAfter - 2 {
 			s.StepDone(agent.Step{})
@@ -1641,14 +1641,14 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 		return out
 	}
 	for name := range headlessExcluded {
-		if names()[name] {
+		if names()[string(name)] {
 			t.Errorf("the toolset still ships %q", name)
 		}
 	}
 
 	h.SetUIHooks(&fakeUI{})
 	for name := range headlessExcluded {
-		if !names()[name] {
+		if !names()[string(name)] {
 			t.Errorf("the TUI toolset lost %q", name)
 		}
 	}

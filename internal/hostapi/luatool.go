@@ -102,7 +102,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
 	props, required := tools.ArgsOf(luaArgs{})
 	return fantasy.ToolInfo{
-		Name: tools.ToolLua,
+		Name: string(tools.ToolLua),
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
 			" io is unavailable and os is only time, date, clock: files go through zemi.fs, commands through zemi.tool.call(\"shell\")." +
@@ -191,7 +191,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		script := &luaScript{ctx: sctx, id: call.ID, tools: map[string]fantasy.AgentTool{}, calls: newLuaCalls(luaToolCallsMax)}
 		for _, tool := range set {
 			// a script cannot start another script
-			if name := tool.Info().Name; name != tools.ToolLua {
+			if name := tool.Info().Name; name != string(tools.ToolLua) {
 				script.tools[name] = tool
 			}
 		}

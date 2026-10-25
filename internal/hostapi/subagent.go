@@ -62,7 +62,7 @@ const forkAgent = "fork"
 
 // readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []string{tools.ToolRead, tools.ToolGlob, tools.ToolGrep, tools.ToolSkill}
+var readOnlyTools = []string{string(tools.ToolRead), string(tools.ToolGlob), string(tools.ToolGrep), string(tools.ToolSkill)}
 
 var builtinAgents = []AgentDef{
 	{
@@ -107,12 +107,12 @@ func (h *Host) agentDefs() []AgentDef {
 	defs := slices.Clone(builtinAgents)
 	h.layerFiles("agents", ".md", func(f layerFile) bool {
 		if f.name == forkAgent {
-			h.RecordErrorOnce("agents", f.path+" is ignored: fork continues the caller's conversation, so there is no definition to write")
+			h.RecordErrorOnce("agents", "", f.path+" is ignored: fork continues the caller's conversation, so there is no definition to write")
 			return false
 		}
 		d, err := h.parseAgentFile(f.name, f.path, f.origin, f.prefix != "")
 		if err != nil {
-			h.RecordErrorOnce("agents", err.Error())
+			h.RecordErrorOnce("agents", "", err.Error())
 			return false
 		}
 		defs = append(defs, d)
@@ -242,7 +242,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 		tool := strings.TrimPrefix(n, "-")
 		if claude {
 			if mapped := claudeTool(tool); zemiToolNames.Has(mapped) {
-				tool = mapped
+				tool = string(mapped)
 			} else {
 				if !deny { // a negation of what zemi does not have is safe to drop
 					dropped = append(dropped, n)
@@ -832,7 +832,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.retryAt = time.Time{}
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: name, Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
+	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name), Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
 	run.touch()
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
@@ -938,7 +938,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 // tools at all and invent its report. A "-name" entry removes that tool
 // instead, so a list that only removes still gets the tools a later
 // release adds.
-func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[string]) (kept []fantasy.AgentTool, unknown []string) {
+func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[tools.ToolName]) (kept []fantasy.AgentTool, unknown []string) {
 	keep, drop, have := set.Set[string]{}, set.Set[string]{}, set.Set[string]{}
 	for _, n := range want {
 		if name, cut := strings.CutPrefix(n, "-"); cut {
@@ -950,14 +950,14 @@ func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[string]) (
 	for _, t := range all {
 		name := t.Info().Name
 		have.Add(name)
-		if skip.Has(name) || drop.Has(name) || (len(keep) > 0 && !keep.Has(name)) {
+		if skip.Has(tools.ToolName(name)) || drop.Has(name) || (len(keep) > 0 && !keep.Has(name)) {
 			continue
 		}
 		kept = append(kept, t)
 	}
 	for _, n := range want {
 		name := strings.TrimPrefix(n, "-")
-		if !have.Has(name) && !skip.Has(name) {
+		if !have.Has(name) && !skip.Has(tools.ToolName(name)) {
 			unknown = append(unknown, name)
 		}
 	}
@@ -969,13 +969,13 @@ func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[string]) (
 // which lands after the filter so no allowlist takes the way back to its caller.
 // Naming update there, or -update, is accepted and ignored: every run holds it.
 func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
-	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == tools.ToolUpdate })
+	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == string(tools.ToolUpdate) })
 	kept, unknown = filterTools(h.allTools(pipe), want, subagentExcluded)
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 
-func hasTool(toolset []fantasy.AgentTool, name string) bool {
-	return slices.ContainsFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == name })
+func hasTool(toolset []fantasy.AgentTool, name tools.ToolName) bool {
+	return slices.ContainsFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == string(name) })
 }
 
 // setToolDetail updates the live progress line under a running tool row.
@@ -1149,7 +1149,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	props["agent"].(map[string]any)["enum"] = t.names()
 	return fantasy.ToolInfo{
-		Name:        tools.ToolAgent,
+		Name:        string(tools.ToolAgent),
 		Description: b.String(),
 		Parameters:  props,
 		Required:    req,
@@ -1199,10 +1199,10 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if strings.TrimSpace(in.Prompt) == "" && !in.Stop && in.Wait == "" {
 		return fantasy.NewTextErrorResponse("prompt is required"), nil
 	}
-	if resp, stop := t.h.preCheck(tools.ToolAgent, call.Input); stop {
+	if resp, stop := t.h.preCheck(string(tools.ToolAgent), call.Input); stop {
 		return resp, nil
 	}
-	defer t.h.postNotify(ctx, t.pipe.Pad, tools.ToolAgent, call.Input, &reply, time.Now())
+	defer t.h.postNotify(ctx, t.pipe.Pad, string(tools.ToolAgent), call.Input, &reply, time.Now())
 	if in.SendTo != "" {
 		run, err := t.h.sessionRun(in.SendTo)
 		if err != nil {
@@ -1707,7 +1707,7 @@ type updateArgs struct {
 func (t *updateTool) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(updateArgs{})
 	return fantasy.ToolInfo{
-		Name: tools.ToolUpdate,
+		Name: string(tools.ToolUpdate),
 		Description: "Tell your caller one or two lines when its attention is needed now: a question or a decision you cannot settle yourself, a blocker, or a finding it explicitly asked to hear at once." +
 			" Never to narrate progress or announce completion - the final report is that." +
 			" The caller may steer you in answer, so read what comes back and follow it. Do not repeat what you already sent.",
@@ -1726,7 +1726,7 @@ func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	if text == "" {
 		return fantasy.NewTextErrorResponse("text is required"), nil
 	}
-	if resp, stop := t.h.preCheck(tools.ToolUpdate, call.Input); stop {
+	if resp, stop := t.h.preCheck(string(tools.ToolUpdate), call.Input); stop {
 		return resp, nil
 	}
 	run := runOf(ctx)
@@ -1734,7 +1734,7 @@ func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 		return fantasy.NewTextErrorResponse("there is no caller to update"), nil
 	}
 	reply = fantasy.NewTextResponse("Sent to the caller.")
-	defer t.h.postNotify(ctx, t.pipe.Pad, tools.ToolUpdate, call.Input, &reply, time.Now())
+	defer t.h.postNotify(ctx, t.pipe.Pad, string(tools.ToolUpdate), call.Input, &reply, time.Now())
 	// its own result is the only place a child learns the line never landed
 	if err := t.h.deliverUpdate(run, text); err != nil {
 		reply = fantasy.NewTextErrorResponse(err.Error())
@@ -1807,7 +1807,7 @@ const newAgentPrompt = "I want a new zemi subagent that does what the command ab
 func (h *Host) agentsCommands() []*Command {
 	return []*Command{{
 		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start, or make one",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
 			sub, id, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			switch id = strings.TrimSpace(id); sub {
@@ -1815,7 +1815,7 @@ func (h *Host) agentsCommands() []*Command {
 				return h.openAgents()
 			case "new":
 				// the line as typed, newlines included, with the prompt behind it
-				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())) + attached)
+				return h.sendCommandPrompt("agents", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())), attached)
 			case "open":
 				return h.openAgentFile(id)
 			case "show":

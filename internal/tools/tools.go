@@ -28,31 +28,35 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// ToolName is the name of a builtin tool, the constants below; ChatMessage
+// carries one so a row's tool is checked, not compared by literal.
+type ToolName string
+
 // Builtin tool names, one definition each: everything that refers to a tool
 // by name (the registry here, and the host's gate, prompt and history logic)
 // uses these, so renaming a tool is one line, not a recount of literals.
 const (
-	ToolShell    = "shell"
-	ToolRead     = "read"
-	ToolWrite    = "write"
-	ToolEdit     = "edit"
-	ToolGlob     = "glob"
-	ToolGrep     = "grep"
-	ToolTodos    = "todos"
-	ToolQuestion = "question"
-	ToolPlan     = "plan"
-	ToolSkill    = "skill"
-	ToolJobStart = "job_start"
-	ToolJobRead  = "job_read"
-	ToolJobList  = "job_list"
-	ToolJobKill  = "job_kill"
-	ToolMemory   = "memory"
+	ToolShell    ToolName = "shell"
+	ToolRead     ToolName = "read"
+	ToolWrite    ToolName = "write"
+	ToolEdit     ToolName = "edit"
+	ToolGlob     ToolName = "glob"
+	ToolGrep     ToolName = "grep"
+	ToolTodos    ToolName = "todos"
+	ToolQuestion ToolName = "question"
+	ToolPlan     ToolName = "plan"
+	ToolSkill    ToolName = "skill"
+	ToolJobStart ToolName = "job_start"
+	ToolJobRead  ToolName = "job_read"
+	ToolJobList  ToolName = "job_list"
+	ToolJobKill  ToolName = "job_kill"
+	ToolMemory   ToolName = "memory"
 	// Host tools built by the host, not here, but named by the same rule.
-	ToolAgent    = "agent"
-	ToolWorkflow = "workflow"
-	ToolLua      = "lua"
-	ToolUpdate   = "update"
-	ToolSearch   = "tool_search"
+	ToolAgent    ToolName = "agent"
+	ToolWorkflow ToolName = "workflow"
+	ToolLua      ToolName = "lua"
+	ToolUpdate   ToolName = "update"
+	ToolSearch   ToolName = "tool_search"
 )
 
 // Outcome is what a call did beyond its text: the job or run it handed the
@@ -462,10 +466,10 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		// the tool then refuses; the tool checks again under the file lock
 		switch fi, err := os.Stat(str(input["path"])); {
 		case err == nil:
-			if msg := pipe.stale(str(input["path"]), fi, t.info.Name == ToolEdit); msg != "" {
+			if msg := pipe.stale(str(input["path"]), fi, ToolName(t.info.Name) == ToolEdit); msg != "" {
 				return fantasy.NewTextErrorResponse(msg), nil
 			}
-		case t.info.Name != ToolWrite && errors.Is(err, os.ErrNotExist):
+		case ToolName(t.info.Name) != ToolWrite && errors.Is(err, os.ErrNotExist):
 			// a missing file is write's normal case; an edit of one is a typo
 			return fantasy.NewTextErrorResponse(pipe.notFound(str(input["path"]), err)), nil
 		}
@@ -750,14 +754,14 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 
 // All returns the builtin tools bound to a pipeline; nil gives their schemas.
 func All(p *Pipeline) []fantasy.AgentTool {
-	mk := func(name, desc string, parallel bool, args any,
+	mk := func(name ToolName, desc string, parallel bool, args any,
 		subjects func(*Pipeline, map[string]any) ([]Request, error),
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error),
 	) fantasy.AgentTool {
 		props, required := ArgsOf(args)
 		return &tool{
 			info: fantasy.ToolInfo{
-				Name: name, Description: desc,
+				Name: string(name), Description: desc,
 				Parameters: props, Required: required, Parallel: parallel,
 			},
 			subjects: subjects,
@@ -776,7 +780,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 	pathIn := func(in map[string]any) string { return str(in["path"]) }
 	// changeReq is write's and edit's one request, previewing what it would do
-	changeReq := func(tool string) func(*Pipeline, map[string]any) ([]Request, error) {
+	changeReq := func(tool ToolName) func(*Pipeline, map[string]any) ([]Request, error) {
 		return func(_ *Pipeline, in map[string]any) ([]Request, error) {
 			return []Request{{Subject: perm.SubjectWrite, Arg: pathIn(in), Preview: ChangeDiff(tool, in)}}, nil
 		}
@@ -914,7 +918,7 @@ func runMemory(_ context.Context, p *Pipeline, call MemoryCall) (fantasy.ToolRes
 // ChangeDiff renders what write or edit would do to its file as
 // a unified diff against the current content. When an edit does not apply
 // (the tool will report that), it falls back to changePreview.
-func ChangeDiff(tool string, in map[string]any) string {
+func ChangeDiff(tool ToolName, in map[string]any) string {
 	path := str(in["path"])
 	// it runs before the gate, on the model's path: a FIFO or /dev/zero
 	// must not block or exhaust memory

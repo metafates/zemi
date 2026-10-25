@@ -187,7 +187,7 @@ type Command struct {
 	NArgs    NArgs
 	Complete *glua.LFunction
 	Fn       *glua.LFunction
-	GoFn     func(h *Host, args string) error
+	GoFn     func(h *Host, args string, confirm bool) error
 	// GoComplete offers argument candidates for Go-owned commands (lead is
 	// the argument under the cursor, line the text up to it).
 	GoComplete func(h *Host, lead, line string) []string

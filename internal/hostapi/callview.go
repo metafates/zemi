@@ -20,7 +20,7 @@ import (
 func (h *Host) callCommands() []*Command {
 	return []*Command{{
 		Name: "call", NArgs: NArgsSome, Hidden: true, Desc: "open a chat row's own view (the chat's rows do this when clicked)",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			n, err := strconv.Atoi(strings.TrimSpace(args))
 			if err != nil {
 				return Usagef("/call <row> (a chat row's index, negative for the live turn's calls)")
@@ -112,7 +112,7 @@ func (h *Host) settledRow(n int) int {
 // streamRow is a live call as the chat draws it, with how long it has run.
 func streamRow(t StreamTool, took time.Duration) (ChatMessage, time.Duration) {
 	return ChatMessage{
-		Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label,
+		Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label,
 		Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
 	}, took
 }
@@ -204,7 +204,7 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 
 // callTitles name a call's view by what it is, not by the verb its row reads
 // with; any other tool reads as its own name's words.
-var callTitles = map[string]string{
+var callTitles = map[tools.ToolName]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
 	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill",
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
@@ -224,7 +224,7 @@ var callMarks = map[CallStatus]MarkKind{
 
 // callArg names what a call was given, so the facts table says what it acted
 // on before the body says what came back.
-var callArg = map[string]string{
+var callArg = map[tools.ToolName]string{
 	tools.ToolRead: "file", tools.ToolEdit: "file", tools.ToolWrite: "file", tools.ToolGrep: "pattern",
 	tools.ToolGlob: "pattern", tools.ToolSkill: "skill",
 	tools.ToolMemory: "memory", tools.ToolTodos: "what",
@@ -359,7 +359,7 @@ func (h *Host) callStep(n int) (prev, next string) {
 			return ""
 		}
 		if tr[i].Run != "" {
-			return runStepView(tr[i].Tool, tr[i].Run)
+			return runStepView(string(tr[i].Tool), tr[i].Run)
 		}
 		return "call " + strconv.Itoa(i+1)
 	}
@@ -420,7 +420,7 @@ func (h *Host) callStep(n int) (prev, next string) {
 // workflow's its view, an agent's its preview. A step lands there, so the
 // walk shows what the row shows anywhere else.
 func runStepView(tool, run string) string {
-	if tool == tools.ToolWorkflow {
+	if tools.ToolName(tool) == tools.ToolWorkflow {
 		return "workflows view " + run
 	}
 	return "agents show " + run
@@ -454,15 +454,14 @@ func callTitle(m ChatMessage) string {
 	if t, ok := callTitles[m.Tool]; ok {
 		return t
 	}
-	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(m.Tool, "mcp_"), "_", " "))
+	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(string(m.Tool), "mcp_"), "_", " "))
 }
 
 // callOutput is what the call answered, as its view shows it: a question's
 // answers read as a table under their questions, and a file call's diff is
 // the answer it gives, so it stands alone.
 func callOutput(m ChatMessage) string {
-	switch m.Tool {
-	case tools.ToolQuestion:
+	if m.Tool == tools.ToolQuestion {
 		var b strings.Builder
 		for i, l := range strings.Split(strings.TrimRight(m.Output, "\n"), "\n") {
 			fields := strings.SplitN(l, "\t", 3)

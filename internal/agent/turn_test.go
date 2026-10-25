@@ -517,7 +517,7 @@ func TestToolLoopWindow(t *testing.T) {
 		steps = append(steps, call("wander", strconv.Itoa(len(steps)))) // distinct: no loop in sight
 	}
 	for range 2 * loopMinSteps {
-		steps = append(steps, call("echo", "{}"), call(tools.ToolJobRead, "{}")) // the loop, behind a poll per step
+		steps = append(steps, call("echo", "{}"), call(string(tools.ToolJobRead), "{}")) // the loop, behind a poll per step
 	}
 	if !repeatsToolCalls(steps) {
 		t.Fatal("a loop past many distinct steps and polls was not seen")

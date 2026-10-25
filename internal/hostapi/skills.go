@@ -139,7 +139,7 @@ func (h *Host) syncSkills() {
 		}
 		pre := h.pluginPrefix(s.Root) + s.Name
 		if _, taken := seen[pre]; taken || !skill.ValidName(pre) {
-			h.RecordErrorOnce("skills", fmt.Sprintf("%s: skill %s is already in %s", s.File, s.Name, seen[s.Name]))
+			h.RecordErrorOnce("skills", "", fmt.Sprintf("%s: skill %s is already in %s", s.File, s.Name, seen[s.Name]))
 			continue
 		}
 		h.Log.Warn(fmt.Sprintf("skill %s is already in %s, loaded as %s", s.Name, seen[s.Name], pre), "origin", "skills", "file", s.File)
@@ -339,7 +339,7 @@ func (h *Host) discoverSkills(dirs ...skill.Dir) []skill.Skill {
 			h.Log.Warn(strings.TrimPrefix(w.Error(), "skills: "), "origin", "skills")
 			continue
 		}
-		h.RecordErrorOnce("skills", strings.TrimPrefix(w.Error(), "skills: "))
+		h.RecordErrorOnce("skills", "", strings.TrimPrefix(w.Error(), "skills: "))
 	}
 	return found
 }
@@ -429,7 +429,7 @@ func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skill.Skill) 
 	if err := h.RT.EvalFileInline(ctx, L, s.Hook, lua.OriginUser); err != nil {
 		// /errors and /health, like a dropped skill file: a dead hook is
 		// silent otherwise, and the skill looks enabled
-		h.RecordErrorOnce("skills", s.Name+": enable hook failed: "+err.Error())
+		h.RecordErrorOnce("skills", "", s.Name+": enable hook failed: "+err.Error())
 		return err
 	}
 	h.Log.Info("enable hook ran", "origin", "skills", "skill", s.Name)
@@ -455,10 +455,12 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 	}
 }
 
-// skillsCommand dispatches /skills [enable|disable <name>].
-func (h *Host) skillsCommand(args string) error {
+// skillsCommand dispatches /skills [enable|disable <name>]; confirm (an
+// armed danger key's press) runs a delete without its --yes.
+func (h *Host) skillsCommand(args string, confirm bool) error {
 	typed, _ := agent.CutAttached(args)
-	fields := strings.Fields(typed)
+	rest, yes := ConfirmArgs(typed, confirm)
+	fields := strings.Fields(rest)
 	switch {
 	case len(fields) == 0:
 		return h.openSkills("")
@@ -472,8 +474,8 @@ func (h *Host) skillsCommand(args string) error {
 		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
 	case len(fields) == 2 && fields[0] == "open":
 		return h.openSkillFile(fields[1])
-	case (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes") && fields[0] == "delete":
-		return h.deleteRecipe(fields[1], len(fields) == 3)
+	case len(fields) == 2 && fields[0] == "delete":
+		return h.deleteRecipe(fields[1], yes)
 	default:
 		return Usagef("usage: /skills | /skills enable|disable|open|delete <name>")
 	}
@@ -514,7 +516,7 @@ func (h *Host) openSkillFile(name string) error {
 		return Usagef("no skill %q", name)
 	}
 	if s.Source == skill.Builtin {
-		return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; Read it in its /skills row shows the text", name)
+		return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; its /skills row shows the text", name)
 	}
 	h.openInEditor(ui, skillFile(s), "the skill")
 	return nil
@@ -677,7 +679,7 @@ func (h *Host) skillItems() []OverlayItem {
 		}
 		item.Keys = keys
 		if s.Source == skill.Recipe {
-			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name + " --yes"})
+			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name})
 		}
 		item.Fields = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
 		item.Detail = body // enter reads the skill itself: its description is the row's desc
@@ -699,7 +701,7 @@ func (h *Host) usedBy(s skill.Skill, on bool) string {
 func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
 		Name: "skills", NArgs: NArgsAny, Desc: "turn skills on or off",
-		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
+		GoFn: func(h *Host, args string, confirm bool) error { return h.skillsCommand(args, confirm) },
 		GoComplete: SubcommandCompleter([]string{"enable", "disable", "open", "delete"}, func(h *Host, sub string) []string {
 			var names []string
 			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {

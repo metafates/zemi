@@ -135,7 +135,7 @@ func TestLoop(t *testing.T) {
 					return textParts(c.reply)
 				}}, nil
 			}
-			if _, err := h.Commands.Add(&Command{Name: "note", NArgs: NArgsAny, Desc: "d", Origin: lua.OriginUser, GoFn: func(h *Host, args string) error {
+			if _, err := h.Commands.Add(&Command{Name: "note", NArgs: NArgsAny, Desc: "d", Origin: lua.OriginUser, GoFn: func(h *Host, args string, confirm bool) error {
 				return h.AgentSend("/note" + args)
 			}}); err != nil {
 				t.Fatal(err)

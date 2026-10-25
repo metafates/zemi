@@ -96,7 +96,7 @@ func (h *Host) SetGoal(args string) error {
 	ag.mu.Lock()
 	ag.goalPending = cond
 	ag.mu.Unlock()
-	err := h.AgentSend("/goal " + cond + attached + goalAttached(cond))
+	err := h.sendCommandPrompt("goal", cond, attached, goalAttached(cond))
 	if err != nil {
 		ag.mu.Lock()
 		ag.goalPending = ""

@@ -159,7 +159,7 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 		t.Fatalf("listed %v", seen)
 	}
 	h.SetUIHooks(&fakeUI{})
-	if err := h.skillsCommand("open zemi"); !errors.Is(err, ErrUsage) {
+	if err := h.skillsCommand("open zemi", false); !errors.Is(err, ErrUsage) {
 		t.Fatalf("/skills open zemi: %v", err)
 	}
 }
@@ -273,7 +273,7 @@ func TestSkillRows(t *testing.T) {
 			if c.used == "" && used != "" || c.used != "" && !strings.Contains(used, "[used by "+c.used+"]") {
 				t.Errorf("fields %q, want used by %q", used, c.used)
 			}
-			if err := h.skillsCommand("use x"); !errors.Is(err, ErrUsage) {
+			if err := h.skillsCommand("use x", false); !errors.Is(err, ErrUsage) {
 				t.Errorf("/skills use x: %v, want a usage error", err)
 			}
 		})
@@ -532,12 +532,12 @@ func TestRecipes(t *testing.T) {
 		{name: "a name a user skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
 		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load"},
 		{name: "only a recipe is deleted", do: func() {
-			if h.skillsCommand("delete ship") == nil || h.skillsCommand("delete lint") == nil {
+			if h.skillsCommand("delete ship", false) == nil || h.skillsCommand("delete lint", false) == nil {
 				t.Error("deleted a skill that is no recipe")
 			}
 		}, prompt: late, tool: written},
 		{name: "delete removes it and pins again", do: func() {
-			if err := h.skillsCommand("delete late --yes"); err != nil {
+			if err := h.skillsCommand("delete late --yes", false); err != nil {
 				t.Error(err)
 			}
 		}, prompt: []string{"rig", "tok"}, tool: []string{"rig", "tok"}},

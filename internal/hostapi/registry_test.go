@@ -132,7 +132,7 @@ func TestCommandCaseCollision(t *testing.T) {
 	}
 
 	// An identical name replaces, whatever registered it.
-	replacement := &Command{Name: "Reload", GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin}
+	replacement := &Command{Name: "Reload", GoFn: func(*Host, string, bool) error { return nil }, Origin: lua.OriginBuiltin}
 	if _, err := r.Add(replacement); err != nil {
 		t.Fatalf("same-origin identical-name re-add: %v", err)
 	}

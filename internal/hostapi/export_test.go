@@ -320,13 +320,13 @@ func TestToolSummary(t *testing.T) {
 		{"", `{"limit":5,"filter":{"a":"b"},"q":"open","z":"x"}`, "open"},
 		{"", `{"limit":5}`, `{"limit":5}`},
 		{"", `{"send_to":"dc11086e","prompt":"second question"}`, "to dc11086e: second question"},
-		{tools.ToolWorkflow, `{"script":"local wf = zemi.workflow\nreturn 1"}`, "workflow"},
-		{tools.ToolWorkflow, `{"script":"-- scan the tree\nreturn 1"}`, "scan the tree"},
-		{tools.ToolWorkflow, `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
-		{tools.ToolWorkflow, `{"run":"abc123","action":"stop"}`, "stop abc123"},
-		{tools.ToolWorkflow, `{"run":"abc123"}`, "status abc123"},
-		{tools.ToolLua, `{"about":"Check the plugin","script":"return 1"}`, ""},
-		{tools.ToolLua, `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
+		{string(tools.ToolWorkflow), `{"script":"local wf = zemi.workflow\nreturn 1"}`, "workflow"},
+		{string(tools.ToolWorkflow), `{"script":"-- scan the tree\nreturn 1"}`, "scan the tree"},
+		{string(tools.ToolWorkflow), `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
+		{string(tools.ToolWorkflow), `{"run":"abc123","action":"stop"}`, "stop abc123"},
+		{string(tools.ToolWorkflow), `{"run":"abc123"}`, "status abc123"},
+		{string(tools.ToolLua), `{"about":"Check the plugin","script":"return 1"}`, ""},
+		{string(tools.ToolLua), `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
 	} {
 		if got := toolSummary(c.tool, c.in); got != c.want {
 			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)

@@ -132,7 +132,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 
 	var reply, detail, runID string
 	for _, m := range h.Session().Transcript {
-		if m.Kind == "tool" && m.Tool == "agent" {
+		if m.Kind == "tool" && m.Tool == tools.ToolAgent {
 			detail, runID = m.Detail, m.Run
 		}
 		if m.Role == "assistant" && m.Kind == "" {
@@ -379,7 +379,7 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 func TestSubagentAsksAsAgent(t *testing.T) {
 	for _, tc := range []struct{ name, tool string }{
 		{"lua tool", "weather"},
-		{"forgetting a memory the user saved", tools.ToolMemory},
+		{"forgetting a memory the user saved", string(tools.ToolMemory)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -691,7 +691,7 @@ func TestAgentsList(t *testing.T) {
 		t.Fatal(err)
 	}
 	agents := h.Commands.Lookup("agents")
-	if err := agents.GoFn(h, ""); err != nil || len(ui.opened) != 1 {
+	if err := agents.GoFn(h, "", false); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("open: %v", err)
 	}
 	rows := map[string]string{}
@@ -727,7 +727,7 @@ func TestAgentsList(t *testing.T) {
 			}
 		}
 	}
-	if err := h.Commands.Lookup("jobs").GoFn(h, "stop "+id); err != nil {
+	if err := h.Commands.Lookup("jobs").GoFn(h, "stop "+id, false); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
@@ -747,7 +747,7 @@ func TestUpdateToolReportsAFailedSend(t *testing.T) {
 	run, _ := h.newRun(t.Context(), AgentDef{Name: "general"}, "d", "look", true)
 	tool := &updateTool{h: h, pipe: h.PipelineFor()}
 	ctx := context.WithValue(t.Context(), runKey{}, run)
-	resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "1", Name: tools.ToolUpdate, Input: `{"text":"found it"}`})
+	resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "1", Name: string(tools.ToolUpdate), Input: `{"text":"found it"}`})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "did not reach the caller") {
 		t.Fatalf("a failed update = %+v, %v", resp, err)
 	}
@@ -1745,7 +1745,7 @@ func TestWaitHoldsForAWorkflowAgent(t *testing.T) {
 	started := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-			ID: "c1", Name: tools.ToolWorkflow,
+			ID: "c1", Name: string(tools.ToolWorkflow),
 			Input: `{"script":"-- gate\nzemi.workflow.agent('firstwork')\nreturn zemi.workflow.agent('secondwork')","background":true}`,
 		})
 		started <- resp

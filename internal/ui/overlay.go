@@ -246,7 +246,9 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	top := &a.overlays[len(a.overlays)-1]
 	for idx, it := range top.items {
 		for _, k := range it.row.Keys {
-			if k.Run == o.Confirm {
+			// the confirm names the typed form, whose --yes a key's run drops
+			// when the danger flag carries the consent
+			if k.Run == o.Confirm || k.Run == strings.TrimSuffix(o.Confirm, " --yes") {
 				top.selected = max(slices.Index(top.visible, idx), 0)
 				top.keyArmed = k.Key
 				return
@@ -646,7 +648,7 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 	case k.ID != "" && o.OnAction != nil:
 		a.background(func() { a.host.OverlayAction(context.Background(), o, item, k.Raw) })
 	case k.Fill != "" || k.Run != "":
-		a.runOverlayRow(hostapi.OverlayItem{Run: k.Run, Fill: k.Fill})
+		a.runOverlayRow(hostapi.OverlayItem{Run: k.Run, Fill: k.Fill, Danger: k.Danger})
 		if k.Fill == "" && k.Verb == hostapi.VerbOpen {
 			return // the screen it opened sits over this list
 		}
@@ -862,7 +864,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			return nil
 		}
 		if run := o.Keys[i].Run; run != "" {
-			a.runOverlayRow(hostapi.OverlayItem{Run: run})
+			a.runOverlayRow(hostapi.OverlayItem{Run: run, Danger: o.Keys[i].Danger})
 			if o.Reload != nil { // the list shows what the key changed
 				a.reloadOverlay(o, nil)
 				return nil
@@ -1060,7 +1062,7 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 		o, value := st.o, in.text
 		if o.Run != "" {
 			name, args := hostapi.SplitCommand(o.Run + " " + value)
-			if err := a.runCommandErr(name, args); err != nil {
+			if err := a.runCommandErr(name, args, false); err != nil {
 				st.inputErr = err.Error()
 				a.bump()
 				return
@@ -1129,7 +1131,8 @@ func (a *App) cancelMenu() {
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
 // palette) and "run", which only builtin and user overlays keep. A screen it
-// opens is a level of this list, so it reopens on the row the list left.
+// opens is a level of this list, so it reopens on the row the list left. A
+// danger row's run is confirmed: the key armed, so the command need not ask.
 func (a *App) runOverlayRow(r hostapi.OverlayItem) tea.Cmd {
 	var cmd tea.Cmd
 	if r.Fill != "" {
@@ -1140,7 +1143,7 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) tea.Cmd {
 	if r.Run != "" {
 		name, args := hostapi.SplitCommand(r.Run)
 		a.byRow = true // the screen it opens is a level of this list
-		a.runCommand(name, args)
+		a.runCommand(name, args, r.Danger)
 	}
 	return cmd
 }

@@ -66,7 +66,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		name, path := f.name, f.path
 		warn := func(msg string) {
 			h.Log.Warn(path+": "+msg, "origin", "commands")
-			h.RecordError("command "+name, msg)
+			h.RecordError("command", name, msg)
 		}
 		block, body, err := readFrontmatterFile(path)
 		if err != nil {
@@ -100,9 +100,9 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		_, err = h.Commands.Add(&Command{
 			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: f.origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's
-			GoFn: func(h *Host, args string) error {
+			GoFn: func(h *Host, args string, confirm bool) error {
 				typed, attached := agent.CutAttached(args)
-				return h.AgentSend(strings.TrimSpace("/"+name+" "+typed) + agent.Attached("command", expandPromptArgs(body, typed)) + attached)
+				return h.sendCommandPrompt(name, strings.TrimSpace(typed), agent.Attached("command", expandPromptArgs(body, typed)), attached)
 			},
 		})
 		if err != nil {

@@ -969,7 +969,7 @@ func TestGoldenModelPicker(t *testing.T) {
 	var ran string // main.go owns /model
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+		GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 	})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if ran != "openai/gpt-5" {
@@ -1251,7 +1251,7 @@ func TestAgentViewEscRestoresItsMenus(t *testing.T) {
 	app, host := bootAgentApp(t, 90, 16)
 	testStore(t, host)
 	open := func(id string) *hostapi.Command {
-		return &hostapi.Command{Name: id, GoFn: func(h *hostapi.Host, _ string) error {
+		return &hostapi.Command{Name: id, GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			ui, err := h.Screen()
 			if err != nil {
 				return err
@@ -1441,12 +1441,12 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""
 	host.Commands.Add(&hostapi.Command{
-		Name: "greet", NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+		Name: "greet", NArgs: "?", GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = args; return nil },
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
 	host.Commands.Add(&hostapi.Command{
-		Name: "quiet", GoFn: func(*hostapi.Host, string) error { return nil },
+		Name: "quiet", GoFn: func(*hostapi.Host, string, bool) error { return nil },
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"loud"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
@@ -1455,7 +1455,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		many = append(many, fmt.Sprint("x", i))
 	}
 	host.Commands.Add(&hostapi.Command{
-		Name: "many", NArgs: "*", GoFn: func(*hostapi.Host, string) error { return nil },
+		Name: "many", NArgs: "*", GoFn: func(*hostapi.Host, string, bool) error { return nil },
 		GoComplete: func(*hostapi.Host, string, string) []string { return append(many, "zed") },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
@@ -2083,8 +2083,8 @@ func TestConfigEdit(t *testing.T) {
 		{"editor.command", "editor", "", "vim", "this run  vim", ""},
 		{"agent.max_background", "agent", "4", "x", "default   4", "agent.max_background is a number"},
 	} {
-		app.runCommand("config", "")
-		app.runCommand("config", "edit "+c.path)
+		app.runCommand("config", "", false)
+		app.runCommand("config", "edit "+c.path, false)
 		for app.Pump() {
 		}
 		if st := app.overlays[len(app.overlays)-1]; !st.o.Input || st.input.text != c.prefill {
@@ -2100,7 +2100,7 @@ func TestConfigEdit(t *testing.T) {
 			if n != 1 || app.overlays[0].o.ID != "config" {
 				t.Fatalf("%s: overlays after enter: %d", c.path, n)
 			}
-			app.runCommand("config", c.section)
+			app.runCommand("config", c.section, false)
 			for app.Pump() {
 			}
 			items := app.overlays[len(app.overlays)-1].o.Items
@@ -2135,8 +2135,8 @@ func TestConfigEditErrorStays(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
 	reloadUI(t, host)
-	app.runCommand("config", "")
-	app.runCommand("config", "edit session.recap")
+	app.runCommand("config", "", false)
+	app.runCommand("config", "edit session.recap", false)
 	for app.Pump() {
 	}
 	for range 12 {
@@ -2452,7 +2452,7 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")
 			for _, tool := range c.tools {
-				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool, Text: "x", Status: "ok"})
+				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName(tool), Text: "x", Status: "ok"})
 			}
 			appendReply(host, "done", hostapi.TurnStat{})
 			if got := digests(); !slices.Contains(got, "· "+c.want) {

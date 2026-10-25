@@ -117,7 +117,7 @@ func TestMainCommandArgs(t *testing.T) {
 		{"new", "idea: add caching", "/new takes no arguments"},
 		{"resume", "some-id", "session store unavailable"},
 	} {
-		if got := fmt.Sprint(h.RunCommand(t.Context(), c.name, c.args)); got != c.want {
+		if got := fmt.Sprint(h.RunCommand(t.Context(), c.name, c.args, false)); got != c.want {
 			t.Errorf("/%s %s = %q, want %q", c.name, c.args, got, c.want)
 		}
 	}

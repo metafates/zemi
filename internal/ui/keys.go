@@ -359,11 +359,12 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 // reopens the screen the view came from over it.
 func (a *App) leaveAgentView() {
 	if menu := a.host.ViewedAgentMenu(); menu != "" {
-		a.runCommand(menu, "")
+		a.runCommand(menu, "", false)
 	}
 	a.armed = armed{}
 	if back := a.host.LeaveAgentView(); back != "" {
-		a.runCommand(hostapi.SplitCommand(back))
+		name, args := hostapi.SplitCommand(back)
+		a.runCommand(name, args, false)
 	}
 }
 
@@ -579,13 +580,13 @@ func (a *App) background(fn func()) {
 
 // runCommand runs a slash command fire-and-forget: Lua and Go alike on the
 // background worker, so a Go command that loads the store (/resume, /fork)
-// never blocks a key.
-func (a *App) runCommand(name, args string) {
+// never blocks a key. confirm says an armed danger key ran it.
+func (a *App) runCommand(name, args string, confirm bool) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn != nil {
-		a.background(func() { a.runGo(name, args) })
+		a.background(func() { a.runGo(name, args, confirm) })
 		return
 	}
-	if err := a.runCommandErr(name, args); err != nil {
+	if err := a.runCommandErr(name, args, confirm); err != nil {
 		a.host.CommandFailed(name, err)
 	}
 }
@@ -594,17 +595,17 @@ func (a *App) runCommand(name, args string) {
 // itself: an input overlay keeps its box open and names the failure where
 // the value was typed, so a Go command runs inline. Lua commands report
 // through CommandFailed as always.
-func (a *App) runCommandErr(name, args string) error {
+func (a *App) runCommandErr(name, args string, confirm bool) error {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
-		a.background(func() { a.runGo(name, args) })
+		a.background(func() { a.runGo(name, args, confirm) })
 		return nil
 	}
-	return a.host.RunCommand(context.Background(), name, args)
+	return a.host.RunCommand(context.Background(), name, args, confirm)
 }
 
 // runGo runs a Go command, reporting a failure the way any command's is.
-func (a *App) runGo(name, args string) {
-	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
+func (a *App) runGo(name, args string, confirm bool) {
+	if err := a.host.RunCommand(context.Background(), name, args, confirm); err != nil {
 		a.host.CommandFailed(name, err)
 	}
 }

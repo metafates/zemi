@@ -247,7 +247,7 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 			if head == "" && !strings.Contains(text, "\n") {
 				head, text = text, ""
 			}
-			fmt.Fprintf(b, "\n**%s** %s%s\n", sanitize.String(m.Tool), head, callEnd(m.Status))
+			fmt.Fprintf(b, "\n**%s** %s%s\n", sanitize.String(string(m.Tool)), head, callEnd(m.Status))
 			lang := ""
 			if m.Tool == tools.ToolShell {
 				lang = "sh"
@@ -264,7 +264,7 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 			if !list {
 				b.WriteString("\n")
 			}
-			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(m.Tool), clipLine(cmp.Or(m.Label, m.Text), 120), callEnd(m.Status))
+			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(string(m.Tool)), clipLine(cmp.Or(m.Label, m.Text), 120), callEnd(m.Status))
 		case m.Kind == RowNotice, m.Kind == RowCompact:
 			fmt.Fprintf(b, "\n_%s_\n", text)
 		default:

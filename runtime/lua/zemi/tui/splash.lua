@@ -65,7 +65,7 @@ local TIPS = {
 	{ "/btw ", "fill /btw ", " asks a side question the conversation does not keep" },
 	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
 	{ "/review", "fill /review", " has several agents review your changes" },
-	{ "alt+m", nil, " jumps to an earlier message" },
+	{ "alt+m", nil, " read, copy or rewind a message" },
 	{ "+", "fill +", " attaches a skill to the prompt" },
 }
 local TIP = TIPS[math.floor(os.time() / 3600) % #TIPS + 1]

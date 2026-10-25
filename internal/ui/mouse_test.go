@@ -132,7 +132,7 @@ func TestMouseHover(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	<-done
 
-	if _, err := app.host.Commands.Add(&hostapi.Command{Name: "help", Desc: "show keys", GoFn: func(*hostapi.Host, string) error { return nil }}); err != nil {
+	if _, err := app.host.Commands.Add(&hostapi.Command{Name: "help", Desc: "show keys", GoFn: func(*hostapi.Host, string, bool) error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})

@@ -435,7 +435,7 @@ func todosIn(rows []*store.Message) []store.Todo {
 		for _, part := range m.Content {
 			switch p := part.(type) {
 			case fantasy.ToolCallPart:
-				if p.ToolName == tools.ToolTodos {
+				if p.ToolName == string(tools.ToolTodos) {
 					calls[p.ToolCallID] = p.Input
 				}
 			case fantasy.ToolResultPart:

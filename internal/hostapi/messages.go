@@ -17,14 +17,15 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // messagesCommands is /messages: the conversation as one list, and the
 // levels under it a list row opens.
 func (h *Host) messagesCommands() []*Command {
 	return []*Command{{
-		Name: "messages", NArgs: NArgsAny, Desc: "the conversation as one list: read, copy or rewind a message",
-		GoFn: func(h *Host, args string) error { return h.MessagesCommand(args) },
+		Name: "messages", NArgs: NArgsAny, Desc: "read, copy or rewind a message",
+		GoFn: func(h *Host, args string, confirm bool) error { return h.MessagesCommand(args) },
 	}}
 }
 
@@ -101,7 +102,7 @@ func (h *Host) pickerTranscriptLocked() pickTr {
 	live := make([]ChatMessage, len(stream.Tools))
 	for i, t := range stream.Tools {
 		live[i] = ChatMessage{
-			Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: t.Name,
+			Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name),
 			Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail,
 			Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output,
 		}
@@ -347,7 +348,7 @@ func (h *Host) rewindKey(keys []OverlayKey) []OverlayKey {
 // rewindTo runs the rewind command on a row's stored message, the way
 // /rewind <id> does.
 func (h *Host) rewindTo(id string) {
-	if err := h.RunCommand(context.Background(), "rewind", id); err != nil {
+	if err := h.RunCommand(context.Background(), "rewind", id, false); err != nil {
 		h.Notify(slog.LevelWarn, "Could not rewind", err.Error())
 	}
 }
@@ -453,7 +454,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
-	head := cmp.Or(m.Label, strings.TrimSpace(m.Tool+" "+messageHead(text)), m.Tool)
+	head := cmp.Or(m.Label, strings.TrimSpace(string(m.Tool)+" "+messageHead(text)), string(m.Tool))
 	glyph, hl := "│", "Dim"
 	if m.Kind == RowReasoning {
 		head, glyph = cmp.Or(m.Label, messageHead(text), "thought"), "✻"
@@ -461,7 +462,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	// enter is the row's place in the chat, l the view or run under it; the
 	// job a call started opens from that view, so no key names it twice
 	switch {
-	case m.Run != "" && m.Tool == "workflow":
+	case m.Run != "" && m.Tool == tools.ToolWorkflow:
 		item.Run = "workflows view " + m.Run
 	case m.Run != "":
 		item.Run = "agents show " + m.Run

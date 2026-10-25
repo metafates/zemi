@@ -171,12 +171,12 @@ func TestLuaToolWaitFreesInterpreter(t *testing.T) {
 				done <- resp
 			}()
 			// a command runs while execute waits
-			waitFor(t, func() error { return h.RunCommand(t.Context(), "ready", "") })
+			waitFor(t, func() error { return h.RunCommand(t.Context(), "ready", "", false) })
 			var err error
 			if c.act == "reload" {
 				err = r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration)
 			} else {
-				err = h.RunCommand(t.Context(), "release", "")
+				err = h.RunCommand(t.Context(), "release", "", false)
 			}
 			if err != nil {
 				t.Fatal(err)

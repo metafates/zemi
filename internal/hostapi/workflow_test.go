@@ -250,7 +250,7 @@ func TestWorkflowCallWarns(t *testing.T) {
 	tool := h.workflowTool(h.PipelineFor())
 	call := func(script string) string {
 		t.Helper()
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: tools.ToolWorkflow, Input: `{"script":` + strconv.Quote("local wf = zemi.workflow\n"+script) + `}`})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: string(tools.ToolWorkflow), Input: `{"script":` + strconv.Quote("local wf = zemi.workflow\n"+script) + `}`})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -927,7 +927,7 @@ func TestWorkflowWait(t *testing.T) {
 			started := make(chan fantasy.ToolResponse, 1)
 			go func() {
 				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-					ID: "c1", Name: tools.ToolWorkflow,
+					ID: "c1", Name: string(tools.ToolWorkflow),
 					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')","background":true}`,
 				})
 				started <- resp
@@ -941,7 +941,7 @@ func TestWorkflowWait(t *testing.T) {
 			waited := make(chan fantasy.ToolResponse, 1)
 			go func() {
 				resp, _ := tool.Run(ctx, fantasy.ToolCall{
-					ID: "c2", Name: tools.ToolWorkflow,
+					ID: "c2", Name: string(tools.ToolWorkflow),
 					Input: `{"run":"` + f.id + `","action":"wait"}`,
 				})
 				waited <- resp
@@ -1000,7 +1000,7 @@ func TestWorkflowWaitWakesOnAgent(t *testing.T) {
 	started := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-			ID: "c1", Name: tools.ToolWorkflow,
+			ID: "c1", Name: string(tools.ToolWorkflow),
 			Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
 		})
 		started <- resp
@@ -1018,7 +1018,7 @@ func TestWorkflowWaitWakesOnAgent(t *testing.T) {
 	waited := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-			ID: "c2", Name: tools.ToolWorkflow,
+			ID: "c2", Name: string(tools.ToolWorkflow),
 			Input: `{"run":"` + f.id + `","action":"wait"}`,
 		})
 		waited <- resp
@@ -1078,7 +1078,7 @@ func TestWaitAllJoinsFlows(t *testing.T) {
 	started := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-			ID: "c1", Name: tools.ToolWorkflow,
+			ID: "c1", Name: string(tools.ToolWorkflow),
 			Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
 		})
 		started <- resp
@@ -1162,7 +1162,7 @@ func TestWaitAllHandsOffFlowToUser(t *testing.T) {
 			started := make(chan fantasy.ToolResponse, 1)
 			go func() {
 				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
-					ID: "c1", Name: tools.ToolWorkflow,
+					ID: "c1", Name: string(tools.ToolWorkflow),
 					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
 				})
 				started <- resp
@@ -1270,7 +1270,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			calls := make(chan fantasy.ToolResponse, 1)
 			go func() {
 				resp, _ := h.workflowTool(h.PipelineFor()).Run(ctx,
-					fantasy.ToolCall{ID: "1", Name: tools.ToolWorkflow, Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')"}`})
+					fantasy.ToolCall{ID: "1", Name: string(tools.ToolWorkflow), Input: `{"script":"-- gate\nreturn zemi.workflow.agent('x')"}`})
 				calls <- resp
 			}()
 			f := waitLiveFlow(t, h)
@@ -1345,7 +1345,7 @@ func TestSpentSignalDoesNotDetachCall(t *testing.T) {
 	calls := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := h.workflowTool(h.PipelineFor()).Run(t.Context(),
-			fantasy.ToolCall{ID: "1", Name: tools.ToolWorkflow, Input: `{"script":"-- late\nreturn zemi.workflow.agent('y')"}`})
+			fantasy.ToolCall{ID: "1", Name: string(tools.ToolWorkflow), Input: `{"script":"-- late\nreturn zemi.workflow.agent('y')"}`})
 		calls <- resp
 	}()
 	f := waitLiveFlow(t, h)
@@ -1412,7 +1412,7 @@ func TestTurnReadsTheUsersMessageWhileARunWaits(t *testing.T) {
 				case strings.Contains(last, "<agent-report"): // the run's report arrives
 					return textParts("noted")
 				case !toolResult:
-					return toolCallParts("c1", tools.ToolWorkflow, `{"script":"-- wait\nreturn zemi.workflow.agent('x')"}`)
+					return toolCallParts("c1", string(tools.ToolWorkflow), `{"script":"-- wait\nreturn zemi.workflow.agent('x')"}`)
 				}
 				return textParts("read it")
 			},
@@ -1544,7 +1544,7 @@ func TestWorkflowToolListsRuns(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil || os.WriteFile(filepath.Join(dir, "count.lua"), []byte(`return zemi.workflow.agent("x")`), 0o644) != nil {
 		t.Fatal(err)
 	}
-	if err := h.workflowCommands()[0].GoFn(h, "run count"); err != nil {
+	if err := h.workflowCommands()[0].GoFn(h, "run count", false); err != nil {
 		t.Fatal(err)
 	}
 	f := h.tasks.flowList()[0]
@@ -1587,7 +1587,7 @@ func TestWorkflowUserStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			h.modelFn = func() (fantasy.LanguageModel, error) { return nil, ErrNoModel }
-			if err := h.workflowCommands()[0].GoFn(h, "run count"); err == nil || h.AgentSessionID() != "" {
+			if err := h.workflowCommands()[0].GoFn(h, "run count", false); err == nil || h.AgentSessionID() != "" {
 				t.Fatalf("a start with no model: %v, session %q", err, h.AgentSessionID())
 			}
 			// the report's turn carries what the command had attached, a loop's note
@@ -1596,7 +1596,7 @@ func TestWorkflowUserStart(t *testing.T) {
 					return textParts(map[bool]string{true: "ok", false: "no note"}[strings.Contains(last, loopTag)])
 				}}, nil
 			}
-			if err := h.workflowCommands()[0].GoFn(h, "run count"+agent.Attached("loop", "Run 1 of: /workflows run count")); err != nil {
+			if err := h.workflowCommands()[0].GoFn(h, "run count"+agent.Attached("loop", "Run 1 of: /workflows run count"), false); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
@@ -1799,7 +1799,7 @@ return wf.agent("look")`})
 	if err := h.openFlow(f.id); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.workflowCommands()[0].GoFn(h, "view "+f.id+" "+run.id); err != nil {
+	if err := h.workflowCommands()[0].GoFn(h, "view "+f.id+" "+run.id, false); err != nil {
 		t.Fatal(err)
 	}
 	if h.viewedRun() != run {

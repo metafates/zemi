@@ -600,7 +600,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 		}
 		h.lsp.mu.Unlock()
 		err := fmt.Errorf("%s exited", def.Name)
-		h.RecordError("lsp", err.Error())
+		h.RecordError("lsp", "", err.Error())
 		return nil, err
 	default:
 	}
@@ -863,7 +863,7 @@ func (h *Host) lspRows() []lspRow {
 func (h *Host) lspCommands() []*Command {
 	return []*Command{{
 		Name: "lsp", NArgs: NArgsAny, Desc: "manage language servers", Hidden: true,
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
 				name = strings.TrimSpace(name)
 				h.lsp.mu.Lock()

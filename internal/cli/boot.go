@@ -102,7 +102,7 @@ func launch(o options) int {
 		app.SignalBoot(err)
 		if err != nil {
 			// /errors is where both the user and the agent look first
-			host.RecordError("boot", err.Error())
+			host.RecordError("boot", "", err.Error())
 			return
 		}
 		markConfig()
@@ -117,7 +117,7 @@ func launch(o options) int {
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
-			host.RecordError("flag", err.Error())
+			host.RecordError("flag", "", err.Error())
 			app.Notify(slog.LevelError, "Could not apply a flag", err.Error())
 		}
 		host.KeepPicks.Store(true)
@@ -353,7 +353,7 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 		mark()
 		if err := h.ForceReload(context.Background(), steps); err != nil {
 			h.Log.Error("force reload failed", "origin", "reload", "error", err)
-			h.RecordError("reload", err.Error())
+			h.RecordError("reload", "", err.Error())
 			h.Notify(slog.LevelError, "Could not reload the config", err.Error())
 			return err
 		}
@@ -448,19 +448,19 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 	}
 	efforts = append(efforts, "default")
 	return []*hostapi.Command{
-		{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
+		{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string, bool) error {
 			quit()
 			return nil
 		}},
-		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenHelp()
 		}},
-		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.NewSession()
 		}},
-		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "list this project's sessions, rename or delete one", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "list this project's sessions, rename or delete one", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
-				id, yes := strings.CutSuffix(strings.TrimSpace(id), " --yes")
+				id, yes := hostapi.ConfirmArgs(id, confirm)
 				return h.DeleteSession(id, yes)
 			}
 			// the row action the sessions picker runs: sessions rename <id> [title]
@@ -481,10 +481,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return err
 		}},
-		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.ResumeSession(strings.TrimSpace(args))
 		}},
-		{Name: "rewind", NArgs: hostapi.NArgsOptional, Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "rewind", NArgs: hostapi.NArgsOptional, Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenRewind()
 			}
@@ -494,67 +494,67 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return err
 		}},
-		{Name: "effort", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "effort", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenEffortPicker()
 			}
 			return h.SetConfig("agent.effort", args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return efforts }},
-		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenUsage()
 		}},
-		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "prompt", Desc: "show the system prompt the model gets", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenPrompt()
 		}},
-		{Name: "logs", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "logs", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenLogs()
 		}},
-		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.InitProject()
 		}},
-		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown ([full] [path]; full adds reasoning, tool calls and agent runs)", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown ([full] [path]; full adds reasoning, tool calls and agent runs)", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			path, full := strings.CutPrefix(strings.TrimSpace(args)+" ", "full ")
 			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
-		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply, a code block, or an earlier message", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply, a code block, or an earlier message", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.CopyReply(args)
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},
-		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			_, err := h.ForkSession()
 			return err
 		}},
-		{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			// the composer matches /reload before the registry; this
 			// serves the palette, keymaps and zemi.command.run
 			return h.ReloadConfig()
 		}},
-		{Name: "errors", NArgs: hostapi.NArgsAny, Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "errors", NArgs: hostapi.NArgsAny, Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenErrors(args)
 		}},
-		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			if _, err := h.Screen(); err != nil {
 				return fmt.Errorf("%w; --trust trusts the project", err)
 			}
 			trust()
 			return nil
 		}},
-		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenHealth()
 		}},
-		{Name: "compact", NArgs: hostapi.NArgsAny, Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "compact", NArgs: hostapi.NArgsAny, Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.CompactNow(args)
 		}},
-		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetGoal(args)
 		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Goal(); return ok })},
-		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; alone, show it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetLoop(args)
 		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Loop(); return ok })},
-		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.Btw(args)
 		}},
-		{Name: "model", NArgs: hostapi.NArgsAny, Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "model", NArgs: hostapi.NArgsAny, Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetModel(args)
 		}, GoComplete: (*hostapi.Host).CompleteModel},
 	}
@@ -592,7 +592,7 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 				h.SetInitError(hostapi.Headline(err.Error()))
 			}
 			h.Log.Error(s.Name+" failed", "origin", "boot", "error", err)
-			h.RecordError("boot "+s.Name, err.Error())
+			h.RecordError("boot", s.Name, err.Error())
 			if headless { // no /errors pill to notice
 				fmt.Fprintln(h.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
 			}
@@ -697,7 +697,7 @@ func (tg *trustGate) command() func() {
 		// the prompt blocks until answered: off the UI goroutine
 		tg.h.GoSafe("trust", func() {
 			root, was := tg.dirs.TrustRoot(), tg.h.ProjectTrusted()
-			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: config.Trusted, false: "not trusted"}[was])
+			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: config.Trusted, false: config.Untrusted}[was])
 			if answer == "later" {
 				return
 			}

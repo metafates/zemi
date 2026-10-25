@@ -296,7 +296,7 @@ var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
 // MCP tools. The lua tool builds its scripts' calls through it, so a script
 // reaches exactly what the run has.
-func (h *Host) toolBuilder(skip set.Set[string]) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
+func (h *Host) toolBuilder(skip set.Set[tools.ToolName]) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
 	return func(pipe *tools.Pipeline) ([]fantasy.AgentTool, []string) {
 		return filterTools(h.allTools(pipe), nil, skip)
 	}
@@ -312,7 +312,7 @@ func (h *Host) mainTools() []fantasy.AgentTool {
 // toolsFor builds one run's tool set over a pipeline it owns, whose Images says
 // which model the set is built for.
 func (h *Host) toolsFor(pipe *tools.Pipeline) []fantasy.AgentTool {
-	var skip set.Set[string]
+	var skip set.Set[tools.ToolName]
 	if h.hooks() == nil {
 		skip = headlessExcluded
 	}
@@ -507,7 +507,7 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		info := t.Info()
 		schema, _ := json.Marshal(info.Parameters, json.Deterministic(true))
 		n := len(info.Name) + len(info.Description) + len(schema)
-		if strings.HasPrefix(info.Name, mcpToolPrefix) || info.Name == tools.ToolSearch {
+		if strings.HasPrefix(info.Name, mcpToolPrefix) || info.Name == string(tools.ToolSearch) {
 			mcp += n
 		} else {
 			builtin += n
@@ -1297,14 +1297,15 @@ func (h *Host) cutAssistantRows(n int) {
 // inputDiff is a file tool's change as its input describes it, before it
 // runs. It reads the file: call it outside the locks UI readers share.
 func inputDiff(name, input string) string {
-	if name != tools.ToolWrite && name != tools.ToolEdit {
+	n := tools.ToolName(name)
+	if n != tools.ToolWrite && n != tools.ToolEdit {
 		return ""
 	}
 	var in map[string]any
 	if json.Unmarshal([]byte(input), &in) != nil {
 		return ""
 	}
-	return capLines(tools.ChangeDiff(name, in), 24)
+	return capLines(tools.ChangeDiff(n, in), 24)
 }
 
 // toolStatus is a finished call's row status, from the outcome its tool
@@ -1372,7 +1373,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
@@ -1515,14 +1516,14 @@ func toolSummary(tool, input string) string {
 		}
 		return cmd
 	}
-	if tool == tools.ToolWorkflow { // the run as /workflows names it, else what a control does to which run
+	if tools.ToolName(tool) == tools.ToolWorkflow { // the run as /workflows names it, else what a control does to which run
 		str := func(k string) string { s, _ := m[k].(string); return s }
 		if label := flowLabel(str("description"), str("name"), str("script")); label != "" || str("run") == "" {
 			return cmp.Or(label, "workflow")
 		}
 		return cmp.Or(str("action"), string(actStatus)) + " " + str("run")
 	}
-	if tool == tools.ToolLua { // the about is its label, and a script reads as nothing short
+	if tools.ToolName(tool) == tools.ToolLua { // the about is its label, and a script reads as nothing short
 		path, _ := m["path"].(string)
 		return path
 	}
@@ -2249,7 +2250,13 @@ func (h *Host) SetModel(args string) error {
 	case len(f) > 2 || !h.isTarget(f[0]):
 		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
-	role, id := f[0], f[1]
+	return h.SetTargetModel(f[0], f[1])
+}
+
+// SetTargetModel sets one target's model: "default" (or "") follows models.default.
+// It validates, writes through the watched setting and shows the pick; Go
+// callers with a role and id in hand call it directly.
+func (h *Host) SetTargetModel(role, id string) error {
 	if id == "default" { // a target following its own model, else the default
 		id = ""
 	}
@@ -2575,7 +2582,7 @@ func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 		}
 		for _, part := range m.Content {
 			call, ok := part.(fantasy.ToolCallPart)
-			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit}, call.ToolName) {
+			if !ok || !slices.Contains([]string{string(tools.ToolRead), string(tools.ToolWrite), string(tools.ToolEdit)}, call.ToolName) {
 				continue
 			}
 			var in struct {

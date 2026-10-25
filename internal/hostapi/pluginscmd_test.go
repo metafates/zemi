@@ -60,6 +60,8 @@ func TestPluginsCommand(t *testing.T) {
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte(text), 0o644)
 	}
+	// a dir the name rule refused: the list names it with its layer's rows
+	os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", "Bad Name"), 0o755)
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"commit", "-qm", "x"}, {"tag", "v1.0.0"}, {"clone", "-q", "--bare", ".", "../x.git"}} {
 		if out, err := (proc.Git{Dir: src, Foreign: true}).Run(t.Context(), args...); err != nil {
 			t.Fatal(err, out)
@@ -97,7 +99,7 @@ func TestPluginsCommand(t *testing.T) {
 				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
 				"[author me]", "[homepage https://a]", "detail:# a",
 				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugin disable a",
-				"danger:true desc:delete key:x run:plugin delete a --yes",
+				"danger:true desc:delete key:x run:plugin delete a",
 			},
 			not: []string{"key:u"},
 		},
@@ -131,7 +133,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
-				"danger:true desc:delete key:x run:plugin delete x --yes",
+				"danger:true desc:delete key:x run:plugin delete x",
 			},
 		},
 		{
@@ -145,7 +147,7 @@ func TestPluginsCommand(t *testing.T) {
 		},
 		{name: "an unknown verb names its grammar", args: "check", want: []string{"usage: /plugin"}, err: "usage"},
 	} {
-		if err := h.RunCommand(t.Context(), "plugin", c.args); c.err != "" {
+		if err := h.RunCommand(t.Context(), "plugin", c.args, false); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
 				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
 			}
@@ -180,6 +182,15 @@ func TestPluginsCommand(t *testing.T) {
 	// the install completer offers the entries the registered marketplaces list
 	if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugin install ")); !strings.Contains(got, "x@test") {
 		t.Errorf("/plugin install completes %s, want x@test", got)
+	}
+	// a skipped dir sits beside its layer's rows, where one section header
+	// covers both: the Local skip lands between the Local plugins and the
+	// Installed ones, never under a second header at the list's bottom
+	rows := dumpItems(h.pluginItems())
+	local, skip, installed := strings.LastIndex(rows, "section:Local text:a"),
+		strings.Index(rows, "text:ignored: Bad Name"), strings.Index(rows, "section:Installed text:x")
+	if local < 0 || !(local < skip && skip < installed) {
+		t.Fatalf("skipped row out of place: %s", rows)
 	}
 	// an installed entry reads its provides from the live catalog, which the
 	// install's reload fills
@@ -225,7 +236,7 @@ func TestPluginsOpen(t *testing.T) {
 	edited := make(chan string, 1)
 	h.SetUIHooks(&fakeUI{edit: func(path string) { edited <- path }})
 	for name, want := range map[string]string{"lua": "lua/" + plugin.InitFile, "skills": "skills"} {
-		if err := h.RunCommand(t.Context(), "plugin", "open "+name); err != nil {
+		if err := h.RunCommand(t.Context(), "plugin", "open "+name, false); err != nil {
 			t.Fatal(err)
 		}
 		if got := <-edited; got != filepath.Join(dirs.PluginsRoot(), "local", want) {
@@ -281,7 +292,7 @@ func TestPluginsSend(t *testing.T) {
 				t.Fatalf("/plugin modify completes %s", got)
 			}
 			os.Symlink("mine", filepath.Join(data, "plugins", "local", "linked"))
-			err := h.pluginsCommand(c.args)
+			err := h.pluginsCommand(c.args, false)
 			if c.err != "" {
 				if err == nil || !strings.Contains(err.Error(), c.err) {
 					t.Fatalf("err %v, want %q", err, c.err)

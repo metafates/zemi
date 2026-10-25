@@ -93,7 +93,7 @@ func (r *toolReg) list() []*luaTool {
 func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 	var out strings.Builder
 	for _, t := range h.luaTools.list() {
-		if t.Prompt == "" || !hasTool(toolset, t.Name) {
+		if t.Prompt == "" || !hasTool(toolset, tools.ToolName(t.Name)) {
 			continue
 		}
 		out.WriteString("\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)])
@@ -133,7 +133,7 @@ func (r *toolReg) purge(gen Gen) {
 // get two tools of one name and fantasy runs the last one. tool_search joins
 // the set only past ten MCP tools, so it is reserved here by name.
 func (h *Host) builtinToolNames() []string {
-	names := []string{tools.ToolSearch}
+	names := []string{string(tools.ToolSearch)}
 	for _, t := range h.builtinTools(nil) {
 		names = append(names, t.Info().Name)
 	}
@@ -346,7 +346,7 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input 
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		err = context.Cause(ctx)
 	case raised:
-		h.RecordError("tool "+t.Name, err.Error())
+		h.RecordError("tool", t.Name, err.Error())
 		err = errText(err)
 	}
 	if err != nil {
@@ -511,7 +511,7 @@ func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]
 
 // postChain runs handlers as tool.post for one call of name.
 func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
-	if !lspQuietTool.Has(name) {
+	if !lspQuietTool.Has(tools.ToolName(name)) {
 		h.lspDirty()
 	}
 	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": output, "changed": changed, "ms": took.Milliseconds()}

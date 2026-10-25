@@ -346,7 +346,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := h.NewSession(); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.memoryCommand("forget " + projectMemories(t, h)[0].ID + " --yes"); err != nil {
+	if err := h.memoryCommand("forget "+projectMemories(t, h)[0].ID+" --yes", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.ResumeSession(first); err != nil {
@@ -386,7 +386,7 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	want := []string{
 		"r resume resume " + first, "n rename sessions rename " + first + " ",
-		"x delete sessions delete " + first + " --yes",
+		"x delete sessions delete " + first,
 	}
 	if !slices.Equal(acts, want) {
 		t.Fatalf("session keys: %q, want %q", acts, want)
@@ -707,8 +707,8 @@ func TestPlanRowOutput(t *testing.T) {
 			"live": func(raw string) string {
 				h, _ := newTestHostDB(t)
 				hk := h.streamHooks()
-				hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
-				hk.ToolCallEnd("c1", tools.ToolPlan, out(raw), "")
+				hk.ToolCallStart("c1", string(tools.ToolPlan), `{"plan":"x"}`)
+				hk.ToolCallEnd("c1", string(tools.ToolPlan), out(raw), "")
 				hk.TurnDone(nil, fantasy.Usage{})
 				tr := h.Session().Transcript
 				return tr[len(tr)-1].Output
@@ -716,7 +716,7 @@ func TestPlanRowOutput(t *testing.T) {
 			"resume": func(raw string) string {
 				var rows []*store.Message
 				for _, m := range []fantasy.Message{
-					{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: tools.ToolPlan, Input: `{"plan":"x"}`}}},
+					{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: string(tools.ToolPlan), Input: `{"plan":"x"}`}}},
 					{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: raw}}}},
 				} {
 					parts, err := json.Marshal(m, json.Deterministic(true))

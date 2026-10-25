@@ -377,7 +377,7 @@ type ChatMessage struct {
 	Kind   RowKind
 	Text   string // tool rows: the input summary
 	Label  string // tool rows: the model's description of a command
-	Tool   string
+	Tool   tools.ToolName
 	Status CallStatus // tool and shell rows; an error row an interrupt left is CallCancelled
 	Detail string     // tool rows: subagent or workflow progress summary; notice rows: a hint drawn after the text, never copied
 	Tail   string     // a running shell row: its output tail, which its view reads as it grows
@@ -408,13 +408,13 @@ func MoreLines(n int) string {
 // shortOutput: a plan's verdict and an answered question call's
 // "question\tanswer\tnote" lines, since their results are written for the model.
 func rowOutput(tool, out string) string {
-	switch tool {
-	case tools.ToolPlan:
+	switch {
+	case tools.ToolName(tool) == tools.ToolPlan:
 		verdict, path := tools.PlanOutcome(out)
 		if out = verdict; path != "" {
 			out += ", saved to " + perm.TildePath(path)
 		}
-	case tools.ToolQuestion:
+	case tools.ToolName(tool) == tools.ToolQuestion:
 		if qa := tools.QuestionAnswers(out); qa != nil {
 			line := func(s string) string { return clipLine(s, 300) }
 			rows := make([]string, len(qa))
@@ -1353,7 +1353,7 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 	h.Log.Error("event handler failed", "origin", "events",
 		"event", hd.Event, "id", hd.ID, "from", string(hd.Origin), "error", err,
 	)
-	h.RecordError("event "+hd.Event, err.Error())
+	h.RecordError("event", hd.Event, err.Error())
 }
 
 // widget rendering
@@ -2252,7 +2252,7 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 	failed := func(err error) error {
 		if err != nil && !lua.Dropped(err) {
 			h.Log.Error("overlay "+what+" failed", "origin", "ui", "id", o.ID, "error", err)
-			h.RecordError("overlay "+o.ID+" "+what, err.Error())
+			h.RecordError("overlay", o.ID+" "+what, err.Error())
 		}
 		return err
 	}

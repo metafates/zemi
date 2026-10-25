@@ -38,7 +38,7 @@ func (h *Host) syncTypes() {
 		return
 	}
 	trees := []string{h.Dirs.ConfigHome}
-	ps, err := plugin.Scan(h.Dirs)
+	ps, _, err := plugin.Scan(h.Dirs)
 	if err != nil {
 		h.Log.Warn("plugins not scanned for editor configs", "origin", "types", "error", err)
 	}

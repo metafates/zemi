@@ -651,7 +651,7 @@ var pollingTools = set.Of(tools.ToolJobRead, tools.ToolJobList)
 // workflow tool's wait action, the agent tool's wait flag. Waiting is how the
 // model joins a run, so a step of it says nothing about progress either.
 func IsWaitCall(name, input string) bool {
-	if name != tools.ToolWorkflow && name != tools.ToolAgent {
+	if tools.ToolName(name) != tools.ToolWorkflow && tools.ToolName(name) != tools.ToolAgent {
 		return false
 	}
 	var in struct {
@@ -693,7 +693,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		}
 		sig, polling := "", false
 		for _, c := range calls {
-			if pollingTools.Has(c.ToolName) || IsWaitCall(c.ToolName, c.Input) {
+			if pollingTools.Has(tools.ToolName(c.ToolName)) || IsWaitCall(c.ToolName, c.Input) {
 				polling = true
 				break
 			}

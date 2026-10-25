@@ -298,7 +298,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 			items, err := h.callCompleter(L, s.fn, luaCaller{gen: s.gen, origin: s.origin, path: s.path}, lead, line)
 			if err != nil {
 				h.Log.Error("completion source failed", "origin", "ui", "id", s.id, "error", err)
-				h.RecordError("completion "+s.id, err.Error())
+				h.RecordError("completion", s.id, err.Error())
 				continue
 			}
 			out = append(out, items...)

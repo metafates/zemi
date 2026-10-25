@@ -253,8 +253,8 @@ func TestLuaToolReloads(t *testing.T) {
 			return err
 		}, "(zemi reloaded the changed config)\nreturn: false"},
 		{"errors the reload recorded are listed", true, func(h *Host) error {
-			h.RecordError("boot plugins", "plugin x: init.lua:3: boom")
-			h.RecordError("render", "not the reload's")
+			h.RecordError("boot", "plugins", "plugin x: init.lua:3: boom")
+			h.RecordError("render", "", "not the reload's")
 			return nil
 		}, "(zemi reloaded the changed config; 1 error)\nerror: boot plugins: plugin x: init.lua:3: boom\nreturn: true"},
 		{"a replay that stopped says why", true, func(*Host) error {
@@ -303,7 +303,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	set := h.mainTools()
 	var tool fantasy.AgentTool
 	for _, c := range set {
-		if c.Info().Name == tools.ToolLua {
+		if c.Info().Name == string(tools.ToolLua) {
 			tool = c
 		}
 	}
@@ -313,7 +313,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	run := func(script string) string {
 		t.Helper()
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": script}, json.Deterministic(true))
-		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tools.ToolLua, Input: string(input)})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: string(tools.ToolLua), Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}

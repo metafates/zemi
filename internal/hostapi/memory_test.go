@@ -705,7 +705,7 @@ func TestMemoryListActions(t *testing.T) {
 				if id, text, ok := strings.Cut(c, "="); ok {
 					_, err = h.rewriteMemory(id, text)
 				} else {
-					err = h.memoryCommand(c + " --yes")
+					err = h.memoryCommand(c+" --yes", false)
 				}
 				if err == nil {
 					applied++
@@ -720,14 +720,14 @@ func TestMemoryListActions(t *testing.T) {
 				t.Fatalf("keys after %d actions: %+v", applied, keys)
 			}
 			for range applied {
-				if err := h.memoryCommand("undo --yes"); err != nil {
+				if err := h.memoryCommand("undo --yes", false); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if got := stores(); got != start {
 				t.Fatalf("undone:\n got %s\nwant %s", got, start)
 			}
-			if err := h.memoryCommand("undo --yes"); !errors.Is(err, ErrUsage) || len(h.memoryOverlay().Keys) != 0 {
+			if err := h.memoryCommand("undo --yes", false); !errors.Is(err, ErrUsage) || len(h.memoryOverlay().Keys) != 0 {
 				t.Fatalf("an undo past the first action: %v", err)
 			}
 		})
@@ -1221,7 +1221,7 @@ func TestPromoteMemory(t *testing.T) {
 			t.Fatal(err)
 		}
 		p := h.memoryProposals()[0]
-		if err := h.memoryCommand("accept " + p.ID + " --yes"); err != nil {
+		if err := h.memoryCommand("accept "+p.ID+" --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		_, user := h.brainParts()
@@ -1232,7 +1232,7 @@ func TestPromoteMemory(t *testing.T) {
 		if lines, _ := brain.Lines(user); slices.ContainsFunc(lines, func(l brain.Line) bool { return l.ID == m.ID }) {
 			t.Fatal("the line stayed live")
 		}
-		if err := h.memoryCommand("undo --yes"); err != nil {
+		if err := h.memoryCommand("undo --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(user.Dir, "out.md")); !errors.Is(err, fs.ErrNotExist) {
@@ -1252,13 +1252,13 @@ func TestPromoteMemory(t *testing.T) {
 		if _, err := call(h, "sess0001", m.ID, "out.md", "d", "r"); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+		if err := h.memoryCommand("accept "+h.memoryProposals()[0].ID+" --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(h.partition("project").Dir, "out.md"), []byte("edited by hand\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("undo --yes"); err != nil {
+		if err := h.memoryCommand("undo --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		b, err := os.ReadFile(filepath.Join(h.partition("project").Dir, "out.md"))
@@ -1279,7 +1279,7 @@ func TestPromoteMemory(t *testing.T) {
 		if _, err := call(h, "sess0001", m.ID, "out.md", "d", "r"); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+		if err := h.memoryCommand("accept "+h.memoryProposals()[0].ID+" --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		// the replace supersedes the promoted id with a text-less entry
@@ -1289,7 +1289,7 @@ func TestPromoteMemory(t *testing.T) {
 		if _, err := h.memoryTool(h.PipelineFor(), "sess0001", tools.MemoryCall{Scope: "project", Text: "a plain fact, kept", Replaces: m.ID}); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("undo --yes"); err != nil {
+		if err := h.memoryCommand("undo --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(h.partition("project").Dir, "out.md")); err != nil {
@@ -1333,7 +1333,7 @@ func TestPromoteMemory(t *testing.T) {
 		if _, err := call(h, sid, user1.ID, "same.md", "d", "r"); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+		if err := h.memoryCommand("accept "+h.memoryProposals()[0].ID+" --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		_, user := h.brainParts()
@@ -1376,13 +1376,13 @@ func TestPromoteMemory(t *testing.T) {
 		if _, err := call(h, sid, archived, "old.md", "an archived fact", "r"); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("accept " + h.memoryProposals()[0].ID + " --yes"); err != nil {
+		if err := h.memoryCommand("accept "+h.memoryProposals()[0].ID+" --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(private.Dir, "old.md")); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.memoryCommand("undo --yes"); err != nil {
+		if err := h.memoryCommand("undo --yes", false); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(private.Dir, "old.md")); !errors.Is(err, fs.ErrNotExist) {
@@ -1546,7 +1546,7 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if h.Commands.Lookup("memory") == nil {
 		t.Fatal("memory commands not registered")
 	}
-	if err := h.memoryCommand("forget"); err == nil {
+	if err := h.memoryCommand("forget", false); err == nil {
 		t.Fatal("forget without an id must fail")
 	}
 	if err := h.Remember("deploy by hand"); err != nil {
@@ -1555,36 +1555,36 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	// typed, a forget asks first: headless it names the --yes form, and with
 	// a screen /memory opens on that memory
 	id := projectMemories(t, h)[0].ID
-	if err := h.memoryCommand("forget " + id); err == nil || !strings.Contains(err.Error(), "/memory forget "+id+" --yes runs it without asking") {
+	if err := h.memoryCommand("forget "+id, false); err == nil || !strings.Contains(err.Error(), "/memory forget "+id+" --yes runs it without asking") {
 		t.Fatalf("a headless forget: %v", err)
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.memoryCommand("forget " + id); err != nil {
+	if err := h.memoryCommand("forget "+id, false); err != nil {
 		t.Fatal(err)
 	}
 	confirm := "memory forget " + id + " --yes"
 	if o := ui.overlays(); len(o) != 1 || o[0].Confirm != confirm || !strings.Contains(fmt.Sprint(o[0].Items), confirm) || len(projectMemories(t, h)) != 1 {
 		t.Fatalf("a typed forget: %+v, %d memories", o, len(projectMemories(t, h)))
 	}
-	if err := h.memoryCommand("forget " + id + " --yes"); err != nil {
+	if err := h.memoryCommand("forget "+id+" --yes", false); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Memory forgotten" || n.body != "deploy by hand" {
 		t.Fatalf("toast: %+v", n)
 	}
 	// opening the list starts with nothing to undo
-	if err := h.memoryCommand(""); err != nil {
+	if err := h.memoryCommand("", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.memoryCommand("undo --yes"); !errors.Is(err, ErrUsage) {
+	if err := h.memoryCommand("undo --yes", false); !errors.Is(err, ErrUsage) {
 		t.Fatalf("an undo reached past the list's opening: %v", err)
 	}
 	// a row another window took is a usage error; a note may start with a verb
-	if err := h.memoryCommand("accept " + id + " --yes"); !errors.Is(err, ErrUsage) {
+	if err := h.memoryCommand("accept "+id+" --yes", false); !errors.Is(err, ErrUsage) {
 		t.Fatalf("a gone row: %v", err)
 	}
-	if err := h.memoryCommand("edit tests first"); err != nil || projectMemories(t, h)[0].Text != "edit tests first" {
+	if err := h.memoryCommand("edit tests first", false); err != nil || projectMemories(t, h)[0].Text != "edit tests first" {
 		t.Fatalf("a note starting with a verb: %v", err)
 	}
 }

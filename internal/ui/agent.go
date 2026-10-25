@@ -962,13 +962,13 @@ func permTitle(req hostapi.PermRequest) string {
 	switch server, mcp := strings.CutPrefix(req.Subject, "mcp."); {
 	case req.Subject == perm.SubjectShell:
 		return "Run this command?"
-	case req.Subject == perm.SubjectRead && req.Tool == tools.ToolSkill:
+	case req.Subject == perm.SubjectRead && req.Tool == string(tools.ToolSkill):
 		return "Load this skill?"
 	case req.Subject == perm.SubjectRead:
 		return "Read this file?"
-	case req.Tool == tools.ToolWrite:
+	case req.Tool == string(tools.ToolWrite):
 		return "Write this file?"
-	case req.Tool == tools.ToolEdit:
+	case req.Tool == string(tools.ToolEdit):
 		return "Edit this file?"
 	case req.Subject == perm.SubjectWrite:
 		return "Change this file?"

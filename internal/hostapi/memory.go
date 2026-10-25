@@ -299,21 +299,23 @@ func (h *Host) Remember(text string) error {
 
 // memoryCommand dispatches /memory: no argument opens the list, and
 // forget <id> asks there first (AskFirst). The list's actions on a row end
-// in --yes, a form no note takes, so any other text is a note to keep.
-func (h *Host) memoryCommand(args string) error {
-	f := strings.Fields(args)
+// in --yes, a form no note takes, so any other text is a note to keep;
+// confirm (an armed danger key's press) acts without it.
+func (h *Host) memoryCommand(args string, confirm bool) error {
+	rest, yes := ConfirmArgs(args, confirm)
+	f := strings.Fields(rest)
 	switch {
 	case len(f) == 0:
 		return h.openMemory("")
-	case len(f) == 2 && f[0] == "forget":
+	case len(f) == 2 && f[0] == "forget" && !yes:
 		_, m, err := h.locateMemory(f[1])
 		if err != nil {
 			return err
 		}
 		return AskFirst("memory forget "+m.ID+" --yes", "", h.openMemory)
-	case len(f) == 2 && f[0] == "undo" && f[1] == "--yes":
+	case len(f) == 1 && f[0] == "undo" && yes:
 		return h.undoMemory()
-	case len(f) != 3 || f[2] != "--yes":
+	case !yes || len(f) != 2:
 		if f[0] == "forget" {
 			return Usagef("usage: /memory forget <id> [--yes]")
 		}
@@ -1769,7 +1771,7 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	}
 	switch {
 	case m.Origin == store.OriginUser:
-		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text}
+		req := tools.Request{Tool: string(tools.ToolMemory), Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text}
 		if v := p.CheckDenied(req); !v.Allowed {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, m.ID)
 		}

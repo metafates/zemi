@@ -421,9 +421,9 @@ func (t *PluginTest) drive(L *glua.LState, name, own string, act func(ctx contex
 	})
 }
 
-func (t *PluginTest) recorded(source, msg string) {
+func (t *PluginTest) recorded(kind, name, msg string) {
 	t.mu.Lock()
-	t.errs = append(t.errs, errEntry{source: source, msg: msg})
+	t.errs = append(t.errs, errEntry{kind: kind, name: name, msg: msg})
 	t.mu.Unlock()
 }
 
@@ -433,9 +433,9 @@ func (t *PluginTest) unowned(mark int, own, when string) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, e := range t.errs[mark:] {
-		if own == "" || !strings.HasPrefix(e.source, own) {
+		if own == "" || !strings.HasPrefix(e.source(), own) {
 			first, _, _ := strings.Cut(e.msg, "\n")
-			return "error in " + e.source + " " + when + ":\n" + first
+			return "error in " + e.source() + " " + when + ":\n" + first
 		}
 	}
 	return ""
@@ -485,7 +485,7 @@ func (t *PluginTest) command(L *glua.LState, driver, name string) *Command {
 func (t *PluginTest) runCmd(L *glua.LState) int {
 	c, args := t.command(L, "run", strings.TrimPrefix(L.CheckString(1), "/")), L.OptString(2, "")
 	return t.drive(L, "run", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		return nil, errText(t.h.RunCommand(ctx, c.Name, args))
+		return nil, errText(t.h.RunCommand(ctx, c.Name, args, false))
 	})
 }
 
@@ -757,7 +757,7 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		}
 		name, cmdArgs := SplitCommand(row.Run)
 		c := t.command(L, "answer", name)
-		act = func(ctx context.Context) error { return t.h.RunCommand(ctx, c.Name, cmdArgs) }
+		act = func(ctx context.Context) error { return t.h.RunCommand(ctx, c.Name, cmdArgs, false) }
 	}
 	return t.drive(L, "answer", "overlay "+o.ID, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		t.ui.close(o.ID)

@@ -541,7 +541,7 @@ func TestPaletteComplete(t *testing.T) {
 	for _, name := range []string{"q", "qa", "echo"} {
 		if _, err := app.host.Commands.Add(&hostapi.Command{
 			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-			GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil },
+			GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = name + " " + args; return nil },
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -626,7 +626,7 @@ func TestPaletteDispatch(t *testing.T) {
 	for _, name := range []string{"zq", "zqa", "echo", "reloadall"} {
 		if _, err := app.host.Commands.Add(&hostapi.Command{
 			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-			GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil },
+			GoFn: func(_ *hostapi.Host, args string, confirm bool) error { ran = name + " " + args; return nil },
 		}); err != nil {
 			t.Fatal(err)
 		}

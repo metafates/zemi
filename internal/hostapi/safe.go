@@ -72,5 +72,5 @@ func (h *Host) logPanic(where string, r any) {
 	h.Log.Error(fmt.Sprintf("recovered panic in %s: %v", where, r), "origin", "panic",
 		"stack", string(debug.Stack()),
 	)
-	h.RecordError("panic "+where, fmt.Sprint(r))
+	h.RecordError("panic", where, fmt.Sprint(r))
 }

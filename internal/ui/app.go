@@ -887,7 +887,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		// a dropped request (hot mode, a reload) keeps the lines unflagged
 		if !lua.Dropped(msg.err) && c.err != msg.err.Error() {
 			c.err = msg.err.Error()
-			a.host.RecordError("widget "+msg.id, c.err)
+			a.host.RecordError("widget", msg.id, c.err)
 		}
 		a.log.Debug("widget render failed; keeping last good lines", "origin", "ui",
 			"widget", msg.id, "error", msg.err,

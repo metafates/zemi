@@ -337,7 +337,7 @@ func (h *Host) startMCP(s *mcpServer) {
 			return
 		}
 		h.Log.Warn("server failed", "origin", "mcp", "server", s.name, "error", err)
-		h.RecordError("mcp "+s.name, err.Error())
+		h.RecordError("mcp", s.name, err.Error())
 	}
 	client, err := mcp.Start(ctx, cfg)
 	if err != nil {
@@ -423,7 +423,7 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 		}
 	}
 	if len(unknown) > 0 {
-		h.RecordErrorOnce("mcp "+s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
+		h.RecordErrorOnce("mcp", s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
 	}
 }
 
@@ -616,7 +616,7 @@ func (h *Host) deferMCP(set []fantasy.AgentTool, loaded *sync.Map) ([]fantasy.Ag
 	if len(deferred) <= mcpDeferAt {
 		return set, nil
 	}
-	always = append(always, tools.ToolSearch)
+	always = append(always, string(tools.ToolSearch))
 	active := func() []string {
 		out := slices.Clone(always)
 		loaded.Range(func(k, _ any) bool { out = append(out, k.(string)); return true })
@@ -668,7 +668,7 @@ type toolSearchArgs struct {
 func (t *toolSearch) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(toolSearchArgs{})
 	return fantasy.ToolInfo{
-		Name:        tools.ToolSearch,
+		Name:        string(tools.ToolSearch),
 		Description: t.desc,
 		Parameters:  props,
 		Required:    required,
@@ -680,11 +680,11 @@ func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := t.h.preCheck(tools.ToolSearch, call.Input); stop {
+	if resp, stop := t.h.preCheck(string(tools.ToolSearch), call.Input); stop {
 		return resp, nil
 	}
 	// every deferred tool shares the run's pipeline
-	defer t.h.postNotify(ctx, t.tools[0].pipe.Pad, tools.ToolSearch, call.Input, &reply, time.Now())
+	defer t.h.postNotify(ctx, t.tools[0].pipe.Pad, string(tools.ToolSearch), call.Input, &reply, time.Now())
 	var fresh, had []string
 	for _, n := range searchMCP(t.tools, in.Query, t.loaded) {
 		if _, dup := t.loaded.LoadOrStore(n, true); dup {
@@ -940,7 +940,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) mcpCommands() []*Command {
 	return []*Command{{
 		Name: "mcp", NArgs: NArgsAny, Desc: "manage MCP servers",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
 			switch sub {
 			case "":
@@ -973,8 +973,8 @@ func (h *Host) mcpCommands() []*Command {
 			case "sign-in-all":
 				return h.signInAllMCP()
 			case "sign-out":
-				name, yes := strings.CutSuffix(strings.TrimSpace(name), " --yes")
-				return h.signOutMCP(name, yes)
+				name, confirm = ConfirmArgs(name, confirm)
+				return h.signOutMCP(name, confirm)
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
@@ -1145,7 +1145,7 @@ func (h *Host) mcpItem(s *mcpServer, group string) OverlayItem {
 	if spec.URL != "" {
 		_, signedIn := h.mcpAuth(s).Ref().Get()
 		if signedIn {
-			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name + " --yes"})
+			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name})
 		}
 	}
 	item := OverlayItem{
@@ -1247,7 +1247,7 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	s.mu.Unlock()
 	h.mcpChanged()
 	if err != nil && !errors.Is(err, context.Canceled) {
-		h.RecordError("mcp "+s.name, err.Error())
+		h.RecordError("mcp", s.name, err.Error())
 		h.Notify(slog.LevelError, "Could not sign in to "+s.name, err.Error())
 	}
 	return err

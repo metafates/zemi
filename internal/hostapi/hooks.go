@@ -154,7 +154,7 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 		for tok := range strings.SplitSeq(m, "|") {
 			tok = strings.ToLower(tok)
 			if mapTool {
-				tok = claudeTool(tok)
+				tok = string(claudeTool(tok))
 			}
 			want.Add(tok)
 		}
@@ -169,18 +169,18 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 
 // claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
 // else lowercases.
-var claudeToolAlias = map[string]string{
+var claudeToolAlias = map[string]tools.ToolName{
 	"bash": tools.ToolShell,
 	"task": tools.ToolAgent, "todowrite": tools.ToolTodos, "todoread": tools.ToolTodos,
 }
 
 // claudeTool maps a Claude tool name to zemi's.
-func claudeTool(name string) string {
+func claudeTool(name string) tools.ToolName {
 	if n := strings.ToLower(strings.TrimSpace(name)); n != "" {
 		if m, ok := claudeToolAlias[n]; ok {
 			return m
 		}
-		return n
+		return tools.ToolName(n)
 	}
 	return ""
 }

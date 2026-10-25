@@ -456,7 +456,7 @@ func (run *agentRun) pending() string {
 		return "thinking"
 	}
 	if n := len(run.tr); n > 0 {
-		if s := cmp.Or(run.tr[n-1].Label, run.tr[n-1].Tool); s != "" {
+		if s := cmp.Or(run.tr[n-1].Label, string(run.tr[n-1].Tool)); s != "" {
 			return clipLine(s, 80)
 		}
 	}

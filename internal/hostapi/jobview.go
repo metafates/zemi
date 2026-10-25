@@ -22,7 +22,7 @@ const jobViewLines = 200
 func (h *Host) jobsCommands() []*Command {
 	return []*Command{{
 		Name: "jobs", NArgs: NArgsAny, Desc: "see the background processes, read their output or stop them",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
 			switch sub, id = strings.TrimSpace(sub), strings.TrimSpace(id); sub {
 			case "":

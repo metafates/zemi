@@ -129,7 +129,7 @@ func TestClaudeHooksLoad(t *testing.T) {
 	if len(toolPost) != 1 || toolPost[0].event != "PostToolUse" || toolPost[0].root != root {
 		t.Fatalf("tool.post entries: %+v", toolPost)
 	}
-	if toolPost[0].match == nil || !toolPost[0].match(tools.ToolShell) || toolPost[0].match(tools.ToolRead) {
+	if toolPost[0].match == nil || !toolPost[0].match(string(tools.ToolShell)) || toolPost[0].match(string(tools.ToolRead)) {
 		t.Fatalf("matcher: aliased Bash must match shell only: %+v", toolPost[0])
 	}
 	if len(h.hookReg.handlers("agent.finish")) != 1 || len(h.hookReg.handlers("session.start")) != 1 {
@@ -245,7 +245,7 @@ func TestClaudeHookChild(t *testing.T) {
 	// the pipe matcher is aliased: a tool the matcher does not name fires
 	// nothing. The Read hook firing proves the drain ran past the skipped one.
 	os.Remove(inPath)
-	h.consultHooks("tool.post", map[string]any{"tool_name": tools.ToolRead, "tool_input": nil})
+	h.consultHooks("tool.post", map[string]any{"tool_name": string(tools.ToolRead), "tool_input": nil})
 	waitFile(t, drainPath)
 	if _, err := os.Stat(inPath); err == nil {
 		t.Fatal("fired for a tool outside the matcher")
@@ -490,7 +490,7 @@ func TestClaudeCommandBodySubstitution(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	if err := h.RunCommand(t.Context(), "pr", ""); err != nil {
+	if err := h.RunCommand(t.Context(), "pr", "", false); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)

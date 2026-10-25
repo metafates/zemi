@@ -324,9 +324,9 @@ func (h *Host) reflectClaimed(sid, claim string) bool {
 			h.cutMu.Unlock()
 		}
 		err = fmt.Errorf("gave up after %d tries: %w", try, err)
-		h.RecordError("reflector", err.Error())
+		h.RecordError("reflector", "", err.Error())
 	case err != nil:
-		h.RecordError("reflector", err.Error())
+		h.RecordError("reflector", "", err.Error())
 	}
 	h.agents.mu.Lock()
 	h.agents.reflectErr = err
@@ -702,7 +702,7 @@ func (h *Host) reflectorCommands() []*Command {
 	return []*Command{{
 		Name: "reflect", Hidden: true,
 		Desc: "turn this session into memories",
-		GoFn: func(h *Host, args string) error { return h.reflectCommand() },
+		GoFn: func(h *Host, args string, confirm bool) error { return h.reflectCommand() },
 	}}
 }
 

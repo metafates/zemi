@@ -221,7 +221,7 @@ func (a *App) runSlashCommand(text string) {
 		return
 	}
 	a.clearComposer()
-	a.runCommand(cmd.Name, args)
+	a.runCommand(cmd.Name, args, false)
 }
 
 // sendMessage runs the composer.submit vetoable event, then appends the

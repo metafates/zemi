@@ -163,7 +163,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 			if changed != "" {
 				t.Diff = changed // shell: what the command changed, failed or not
 			}
-			if name == tools.ToolShell {
+			if name == string(tools.ToolShell) {
 				t.Detail, t.Tail = "", "" // its last line and tail, which the result now holds
 			}
 			row = *t
@@ -185,7 +185,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 		s.h.Log.Info("tool call", "origin", "agent", "tool", name, "id", id,
 			"status", string(row.Status), "ms", ms)
 	}
-	if name == tools.ToolTodos {
+	if name == string(tools.ToolTodos) {
 		ag.mu.Lock()
 		ag.todoTouched = true
 		ag.mu.Unlock()

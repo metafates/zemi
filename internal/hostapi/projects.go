@@ -164,9 +164,9 @@ func (h *Host) projectsCommands() []*Command {
 
 // projectsCommand is /projects. A verb's argument is the rest of the line,
 // so a root with spaces needs no quoting.
-func (h *Host) projectsCommand(line string) error {
+func (h *Host) projectsCommand(line string, confirm bool) error {
 	verb, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
-	arg, yes := strings.CutSuffix(strings.TrimSpace(arg), " --yes")
+	arg, yes := ConfirmArgs(arg, confirm)
 	ui, noUI := h.Screen()
 	if verb == "" {
 		if noUI != nil {
@@ -367,7 +367,7 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 		if p.Trust != "" {
 			keys = append(keys, ItemKey{Key: "f", Desc: "forget trust", Run: "projects forget " + p.Root})
 		}
-		item.Keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "projects delete " + p.Root + " --yes"})
+		item.Keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "projects delete " + p.Root})
 		items = append(items, item)
 	}
 	return items, max(sel, 0)

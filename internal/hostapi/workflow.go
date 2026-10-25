@@ -83,7 +83,7 @@ func (h *Host) workflows() []Workflow {
 	h.layerFiles("workflows", ".lua", func(f layerFile) bool {
 		src, err := readRegularFile(f.path)
 		if err != nil {
-			h.RecordErrorOnce("workflows", err.Error())
+			h.RecordErrorOnce("workflows", "", err.Error())
 			return false
 		}
 		out = append(out, Workflow{Name: f.name, Description: leadingComment(src), Path: f.path, Source: f.origin})
@@ -1494,7 +1494,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	}
 	desc.WriteString("\n\nA saved workflow is <name>.lua under the workflows/ folder of the config directory or of the repository's .agents/: the same script shape, `zemi.workflow.args` its args string. Run it by name, list it with action list.")
 	return fantasy.ToolInfo{
-		Name:        tools.ToolWorkflow,
+		Name:        string(tools.ToolWorkflow),
 		Description: desc.String(),
 		Parameters:  props,
 		Required:    required,
@@ -1507,10 +1507,10 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := h.preCheck(tools.ToolWorkflow, call.Input); stop {
+	if resp, stop := h.preCheck(string(tools.ToolWorkflow), call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, t.pipe.Pad, tools.ToolWorkflow, call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, string(tools.ToolWorkflow), call.Input, &reply, time.Now())
 	// a run started in /workflows has no call of the model's behind it: list is
 	// how the model learns it is there, and the id to act on
 	if in.Action == "list" && in.Run == "" && in.Name == "" && in.Script == "" {
@@ -1568,8 +1568,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
-	if v := t.pipe.CheckDenied(tools.Request{Tool: tools.ToolWorkflow, Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
-		return fantasy.NewTextErrorResponse(tools.DeniedText(v, tools.ToolWorkflow+" "+arg)), nil
+	if v := t.pipe.CheckDenied(tools.Request{Tool: string(tools.ToolWorkflow), Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
+		return fantasy.NewTextErrorResponse(tools.DeniedText(v, string(tools.ToolWorkflow)+" "+arg)), nil
 	}
 	spec.done = h.deliverFlow("")
 	if spec.background {
@@ -1630,8 +1630,8 @@ func (h *Host) approveRerun(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if v := pipe.CheckDenied(tools.Request{Tool: tools.ToolWorkflow, Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); !v.Allowed {
-		return "", errors.New(tools.DeniedText(v, tools.ToolWorkflow+" "+id))
+	if v := pipe.CheckDenied(tools.Request{Tool: string(tools.ToolWorkflow), Subject: perm.SubjectWorkflow, Arg: id, Preview: src}); !v.Allowed {
+		return "", errors.New(tools.DeniedText(v, string(tools.ToolWorkflow)+" "+id))
 	}
 	return src, nil
 }
@@ -1800,7 +1800,7 @@ const newWorkflowPrompt = "I want a new zemi workflow that does what the command
 func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
 		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, act on them, or make one",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
 			f := strings.Fields(typed)
 			if len(f) == 0 {
@@ -1815,7 +1815,7 @@ func (h *Host) workflowCommands() []*Command {
 			verb := f[0]
 			if verb == "new" {
 				// the line as typed, newlines included, with the prompt behind it
-				return h.AgentSend("/workflows " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newWorkflowPrompt, h.zemiSkillDir())) + attached)
+				return h.sendCommandPrompt("workflows", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(newWorkflowPrompt, h.zemiSkillDir())), attached)
 			}
 			id := arg(1)
 			if id == "" {
@@ -1912,7 +1912,7 @@ func (h *Host) workflowCommands() []*Command {
 		},
 	}, {
 		Name: "review", NArgs: NArgsOptional, Desc: "review your changes, a base ref or a commit, with several agents",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
 			return h.runSaved(strings.TrimSpace("/review "+typed), attached, "review", strings.TrimSpace(typed))
 		},

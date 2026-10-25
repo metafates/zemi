@@ -439,7 +439,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	var shown errEntry
 	boot := false
 	for _, e := range h.errs.entries {
-		if strings.HasPrefix(e.source, "boot") {
+		if strings.HasPrefix(e.source(), "boot") {
 			shown, boot = e, true
 		}
 	}
@@ -454,7 +454,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		if boot {
 			level = HealthError
 		}
-		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)), "errors")
+		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source(), Headline(shown.msg)), "errors")
 	} else {
 		add(HealthOK, "errors", "none since start")
 	}
@@ -462,7 +462,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	if h.ProjectTrusted() {
 		add(HealthOK, "trust", "trusted: "+perm.TildePath(h.Dirs.TrustRoot()), "trust")
 	} else {
-		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust", "trust")
+		add(HealthWarn, "trust", "untrusted: the project's config, instructions and language servers are off; /trust", "trust")
 	}
 
 	counts, servers := map[ServiceStatus]int{}, h.mcp.list()
@@ -500,7 +500,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	case len(lsps) > 0:
 		add(HealthOK, "lsp", strings.Join(lsps, ", "))
 	case !h.ProjectTrusted():
-		add(HealthOK, "lsp", "the project's servers are off: not trusted (/trust)")
+		add(HealthOK, "lsp", "the project's servers are off: untrusted (/trust)")
 	default:
 		add(HealthOK, "lsp", "none for this project: install "+builtinCommands()+", or zemi.lsp.add one")
 	}

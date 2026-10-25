@@ -476,7 +476,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			if _, bad := errors.AsType[*config.BadValueError](err); !bad {
 				L.RaiseError("zemi.config.set: %v", err)
 			}
-			h.RecordErrorOnce("config", err.Error())
+			h.RecordErrorOnce("config", "", err.Error())
 			return 0
 		}
 		// a replay writing what the last load wrote keeps what /model, the

@@ -25,10 +25,22 @@ import (
 const errLogMax = 50
 
 type errEntry struct {
-	at     time.Time
-	source string
-	msg    string
+	at         time.Time
+	kind, name string // the source as "kind name"; name empty for a bare kind
+	msg        string
 }
+
+// errSource is a record's source as it renders: "kind name", or a bare kind.
+func errSource(kind, name string) string {
+	if name == "" {
+		return kind
+	}
+	return kind + " " + name
+}
+
+// source renders the entry the way it was composed before: one string,
+// "kind name" or a bare kind.
+func (e errEntry) source() string { return errSource(e.kind, e.name) }
 
 type errLog struct {
 	mu      sync.RWMutex
@@ -36,21 +48,22 @@ type errLog struct {
 	unseen  bool
 }
 
-// RecordError keeps one error (sanitized) and raises the badge. The same
-// message twice in a row is kept once, at the later time.
-func (h *Host) RecordError(source, msg string) {
+// RecordError keeps one error (sanitized) and raises the badge. kind names
+// what failed and name what it acted on ("mcp" and a server's name); the
+// same message twice in a row is kept once, at the later time.
+func (h *Host) RecordError(kind, name, msg string) {
 	l := &h.errs
 	l.mu.Lock()
 	msg = sanitize.String(msg)
 	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
 		l.entries[n-1].at = h.now() // the badge is back, so the row says when
 	} else {
-		l.entries = appendLast(l.entries, errEntry{h.now(), source, msg}, errLogMax)
+		l.entries = appendLast(l.entries, errEntry{at: h.now(), kind: kind, name: name, msg: msg}, errLogMax)
 	}
 	l.unseen = true
 	l.mu.Unlock()
 	if h.test != nil {
-		h.test.recorded(source, msg)
+		h.test.recorded(kind, name, msg)
 	}
 	h.refresh()
 }
@@ -63,8 +76,8 @@ func (h *Host) errorsSince(t time.Time, prefix string) []string {
 	defer l.mu.RUnlock()
 	var out []string
 	for _, e := range l.entries {
-		if !e.at.Before(t) && strings.HasPrefix(e.source, prefix) {
-			out = append(out, "error: "+e.source+": "+Headline(e.msg))
+		if !e.at.Before(t) && strings.HasPrefix(e.source(), prefix) {
+			out = append(out, "error: "+e.source()+": "+Headline(e.msg))
 		}
 	}
 	return out
@@ -82,15 +95,15 @@ func (h *Host) Recorded(msg string) bool {
 // RecordErrorOnce logs and records an error unless the list already holds
 // it. Skills, agents and workflows are re-discovered on every turn and
 // reload, and one broken file must not refill the badge or the log.
-func (h *Host) RecordErrorOnce(source, msg string) {
+func (h *Host) RecordErrorOnce(kind, name, msg string) {
 	msg = sanitize.String(msg)
 	l := &h.errs
 	l.mu.RLock()
-	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.source == source && e.msg == msg })
+	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.kind == kind && e.name == name && e.msg == msg })
 	l.mu.RUnlock()
 	if !dup {
-		h.Log.Warn(msg, "origin", source)
-		h.RecordError(source, msg)
+		h.Log.Warn(msg, "origin", errSource(kind, name))
+		h.RecordError(kind, name, msg)
 	}
 }
 
@@ -107,7 +120,7 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 		rows := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) { // newest first, like /errors
 			rows = append(rows, map[string]any{
-				"index": i, "at": e.at.Format(time.TimeOnly), "source": e.source, "message": e.msg,
+				"index": i, "at": e.at.Format(time.TimeOnly), "source": e.source(), "message": e.msg,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -151,7 +164,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		if f[0] == "ask" {
 			e := entries[i]
-			prompt := "/errors ask " + e.source + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, h.zemiSkillDir(), e.msg))
+			prompt := "/errors ask " + e.source() + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source(), h.zemiSkillDir(), e.msg))
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
 					h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
@@ -169,11 +182,11 @@ func (h *Host) OpenErrors(args string) error {
 		if noModel == nil {
 			keys = append(keys, ItemKey{Key: "a", Desc: "ask zemi to fix it", Run: fmt.Sprintf("errors ask %d", i)})
 		}
-		if kind, name, ok := strings.Cut(e.source, " "); ok && (kind == "mcp" || kind == "lsp") {
-			keys = append(keys, ItemKey{Key: "r", Desc: "restart", Run: kind + " restart " + name})
+		if (e.kind == "mcp" || e.kind == "lsp") && e.name != "" {
+			keys = append(keys, ItemKey{Key: "r", Desc: "restart", Run: e.kind + " restart " + e.name})
 		}
 		items = append(items, OverlayItem{
-			Text:   e.source,
+			Text:   e.source(),
 			Desc:   at + " · " + Headline(e.msg),
 			Fields: fieldList("at", at, "error", ShortChunk(e.msg)),
 			Keys:   keys,

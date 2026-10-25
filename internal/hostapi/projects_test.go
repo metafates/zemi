@@ -95,7 +95,7 @@ func TestProjectsCommand(t *testing.T) {
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "key:current",
 				"desc:missing                  · now", "[trust trusted] [sessions ]",
 				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: " + SessionMark("sid-other") + " fix the flaky test]",
-				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other + " --yes",
+				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other,
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
 			not: []string{"run:projects switch " + gone},
@@ -117,7 +117,7 @@ func TestProjectsCommand(t *testing.T) {
 		h.agents.active = c.busy
 		h.agents.mu.Unlock()
 		ui.relaunched = ""
-		if err := h.RunCommand(t.Context(), "projects", c.args); c.err != "" {
+		if err := h.RunCommand(t.Context(), "projects", c.args, false); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
 				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
 			}
@@ -159,7 +159,7 @@ func TestProjectsCommand(t *testing.T) {
 	}
 	h.SetUIHooks(nil)
 	for _, args := range []string{"", "switch " + other} {
-		if err := h.RunCommand(t.Context(), "projects", args); !errors.Is(err, ErrNeedsTUI) {
+		if err := h.RunCommand(t.Context(), "projects", args, false); !errors.Is(err, ErrNeedsTUI) {
 			t.Fatalf("headless /projects %s: %v", args, err)
 		}
 	}

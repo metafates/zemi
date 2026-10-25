@@ -22,9 +22,9 @@ func TestModelPickerFitsItsRows(t *testing.T) {
 			{ id = "`+id+`", display = "A very long display name indeed" }, { id = "short", display = "Short" } } })`)
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args) },
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.SetModel(args) },
 	})
-	app.runCommand("model", "")
+	app.runCommand("model", "", false)
 	whole := func() bool { return strings.Contains(ansi.Strip(app.Frame()), id) }
 	for i := range 3 {
 		for app.Pump() {

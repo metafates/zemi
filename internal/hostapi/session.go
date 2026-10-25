@@ -207,7 +207,7 @@ func (h *Host) sessionItems() ([]OverlayItem, error) {
 			item.Keys = []ItemKey{
 				{Key: "r", Desc: "resume", Run: "resume " + s.ID, Verb: VerbGo},
 				{Key: "n", Desc: "rename", Run: "sessions rename " + s.ID + " "},
-				{Key: "x", Desc: "delete", Danger: true, Run: "sessions delete " + s.ID + " --yes"},
+				{Key: "x", Desc: "delete", Danger: true, Run: "sessions delete " + s.ID},
 			}
 		}
 		items = append(items, item)
@@ -505,7 +505,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				}
 			case fantasy.ToolCallPart:
 				replyText()
-				if p.ToolName == tools.ToolPlan {
+				if p.ToolName == string(tools.ToolPlan) {
 					// the plan shows as a message above its row, as the live turn drew it
 					if plan := strings.TrimSpace(planArg(p.Input)); plan != "" {
 						tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
@@ -516,14 +516,14 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				delete(pending, p.ToolCallID)
 				rm := meta[p.ToolCallID]
 				tr = append(tr, ChatMessage{
-					Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName,
+					Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(p.ToolName),
 					Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: cmp.Or(rm.Status, CallOK),
 					Diff: tc.Diff, Run: cmp.Or(tc.Run, rm.Run), Job: rm.Job, Detail: tc.Detail,
 				})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
-					tr[i].Output = rowOutput(tr[i].Tool, out)
+					tr[i].Output = rowOutput(string(tr[i].Tool), out)
 					if rm := meta[p.ToolCallID]; rm.Status != "" {
 						tr[i].Status = rm.Status
 					} else if agent.ErrResult(p.Output) {
@@ -665,7 +665,7 @@ func (h *Host) noSession(id string, err error) error {
 // none opens the prompt to type one.
 func (h *Host) renameCommands() []*Command {
 	return []*Command{{
-		Name: "rename", NArgs: NArgsOptional, Desc: "name this session", GoFn: func(h *Host, args string) error {
+		Name: "rename", NArgs: NArgsOptional, Desc: "name this session", GoFn: func(h *Host, args string, confirm bool) error {
 			return h.RenameSession("", strings.TrimSpace(args))
 		},
 	}}

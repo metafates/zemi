@@ -734,7 +734,7 @@ func tailStart(history []fantasy.Message, keep int64) int {
 // keptTools name results that are not output: a skill body is
 // instructions, and question and plan carry the user's own words, which
 // nothing else in the history holds.
-var keptTools = []string{tools.ToolSkill, tools.ToolQuestion, tools.ToolPlan}
+var keptTools = []tools.ToolName{tools.ToolSkill, tools.ToolQuestion, tools.ToolPlan}
 
 // pruneToolOutput clears tool results older than the newest kept tokens of
 // them when that frees at least max(kept/2, pruneMinTokens), and returns
@@ -750,7 +750,7 @@ func pruneToolOutput(history []fantasy.Message, threshold int64, inTurn bool) ([
 	keep := set.Set[string]{}
 	for _, m := range history {
 		for _, part := range m.Content {
-			if p, ok := part.(fantasy.ToolCallPart); ok && slices.Contains(keptTools, p.ToolName) {
+			if p, ok := part.(fantasy.ToolCallPart); ok && slices.Contains(keptTools, tools.ToolName(p.ToolName)) {
 				keep.Add(p.ToolCallID)
 			}
 		}

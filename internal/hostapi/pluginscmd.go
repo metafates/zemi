@@ -49,7 +49,7 @@ func (h *Host) pluginsCommands() []*Command {
 			case "marketplace":
 				return []string{"add", "list", "remove", "update"}
 			}
-			ps, _ := plugin.Scan(h.Dirs)
+			ps, _, _ := plugin.Scan(h.Dirs)
 			var names []string
 			for _, p := range ps {
 				if sub != "modify" || p.Local {
@@ -63,16 +63,19 @@ func (h *Host) pluginsCommands() []*Command {
 
 // pluginsCommand is /plugin; new and modify send the line as typed,
 // newlines included, with their prompt riding behind it.
-func (h *Host) pluginsCommand(line string) error {
+func (h *Host) pluginsCommand(line string, confirm bool) error {
 	typed, attached := agent.CutAttached(line)
 	args, verb := strings.Fields(typed), ""
 	if len(args) > 0 {
 		verb = args[0]
 	}
-	// a delete typed without --yes asks first (AskFirst)
-	ask := verb == "delete" && len(args) == 2
-	if verb == "delete" && len(args) == 3 && args[2] == "--yes" {
-		args = args[:2]
+	// a delete typed without --yes asks first (AskFirst); an armed key's
+	// press is the consent the flag would carry. Other verbs take no --yes.
+	ask := false
+	if verb == "delete" {
+		rest, yes := ConfirmArgs(typed, confirm)
+		args = strings.Fields(rest)
+		ask = len(args) == 2 && !yes
 	}
 	// new and modify only send, so they run before the UI attaches too
 	ui, noUI := h.Screen()
@@ -86,7 +89,7 @@ func (h *Host) pluginsCommand(line string) error {
 		return fmt.Errorf("%w; zemi plugin manages them from the shell", noUI)
 	}
 	send := func(prompt string) error {
-		return h.AgentSend("/plugin " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + attached)
+		return h.sendCommandPrompt("plugin", strings.TrimSpace(typed), agent.Attached("command", prompt), attached)
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again
@@ -252,7 +255,7 @@ func pluginsErr(verb string, err error) error {
 
 // pluginNamed finds a plugin by name, a local one first.
 func (h *Host) pluginNamed(name string) (plugin.Plugin, error) {
-	ps, err := plugin.Scan(h.Dirs)
+	ps, _, err := plugin.Scan(h.Dirs)
 	if err != nil {
 		return plugin.Plugin{}, err
 	}
@@ -276,7 +279,7 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 // pluginItems lists the plugins and marketplaces under the list's action rows,
 // which carry the empty state, so a rebuild keeps it true.
 func (h *Host) pluginItems() []OverlayItem {
-	ps, err := plugin.List(context.Background(), h.Dirs)
+	ps, skipped, err := plugin.List(context.Background(), h.Dirs)
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the plugins", err.Error())
 	}
@@ -294,7 +297,25 @@ func (h *Host) pluginItems() []OverlayItem {
 	}
 	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install, addMarket}
 	provides := h.pluginProvides()
+	// Scan reads local/ before installed/, and so does skipped; a dir the name
+	// rule refused never loads, so name it where its author looks for it,
+	// beside its layer's rows and the section header they share
+	layer, next := true, 0
+	skips := func(of bool) {
+		for ; next < len(skipped) && skipped[next].Local == of; next++ {
+			s := skipped[next]
+			section := "Installed"
+			if of {
+				section = "Local"
+			}
+			items = append(items, OverlayItem{Text: s.String(), Section: section})
+		}
+	}
 	for _, p := range ps {
+		if p.Local != layer {
+			skips(layer)
+			layer = p.Local
+		}
 		status, loadErr := h.pluginStatus(p)
 		var desc []string
 		if status == StatusFailed {
@@ -327,7 +348,7 @@ func (h *Host) pluginItems() []OverlayItem {
 		if p.Local {
 			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugin modify " + p.Name + " "})
 		}
-		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name + " --yes"})
+		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name})
 		readme := plugin.Readme(p.Dir)
 		fields := fieldList("source", source, "status", string(status), "version", version,
 			"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "))
@@ -349,6 +370,8 @@ func (h *Host) pluginItems() []OverlayItem {
 			Detail: cmp.Or(readme, pluginDetail(p)), Keys: keys, Fields: fields,
 		})
 	}
+	skips(layer)
+	skips(!layer)
 	items = append(items, marketplaceRows(ms)...)
 	return items
 }

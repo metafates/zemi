@@ -36,6 +36,18 @@ import (
 	"github.com/metafates/zemi/internal/set"
 )
 
+// Skipped is a plugins-dir entry the name rule refuses: a directory its
+// author meant as a plugin. A display fact for the lists, not an error.
+type Skipped struct {
+	Name  string
+	Why   string
+	Local bool // which list said it: local/ or installed/
+}
+
+// String is how a skipped entry reads in every list: the CLI's line and the
+// /plugin row's text.
+func (s Skipped) String() string { return "ignored: " + s.Name + " (" + s.Why + ")" }
+
 // Plugin is one directory under installed/ or local/; an installed one is a
 // symlink into marketplace material.
 type Plugin struct {
@@ -176,6 +188,9 @@ func manifestOf(dir string) (m manifest, err error) {
 // holds a dot, which require("<name>") would read as a directory
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
+// nameWhy is why a plugins-dir entry is not a plugin name.
+const nameWhy = "lowercase letters, digits, - and _ only"
+
 // netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
 const netTimeout = 2 * time.Minute
 
@@ -185,14 +200,14 @@ var ErrUsage = errors.New("usage: plugin marketplace add <source> | marketplace 
 // List reads every plugin, local ones first, each group by name, with the
 // marketplace each install came from and the entry's metadata where the
 // plugin's own manifest has none. It runs only local git reads.
-func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
-	ps, err := Scan(d)
+func List(ctx context.Context, d config.Dirs) ([]Plugin, []Skipped, error) {
+	ps, skipped, err := Scan(d)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	mf, err := readMarketplaces(d)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	manifests := map[string]Marketplace{}
 	for i, p := range ps {
@@ -228,35 +243,43 @@ func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 		ps[i].Author = cmp.Or(ps[i].Author, e.Author.Name)
 		ps[i].Homepage = cmp.Or(ps[i].Homepage, e.Homepage)
 	}
-	return ps, nil
+	return ps, skipped, nil
 }
 
 // Scan is List without git: Name, Dir, Local, Enabled and the manifest's
 // declared uses, for the boot step that loads plugins. A row's declared
 // capabilities fill in for a source that carries no manifest of its own.
-func Scan(d config.Dirs) ([]Plugin, error) {
+func Scan(d config.Dirs) ([]Plugin, []Skipped, error) {
 	off, err := disabled(d)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	mf, err := readMarketplaces(d)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var ps []Plugin
+	var skipped []Skipped
 	for _, kind := range []string{"local", "installed"} {
+		local := kind == "local"
 		dir := filepath.Join(d.PluginsRoot(), kind)
 		entries, err := os.ReadDir(dir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, e := range entries {
 			// a symlink is listed, so the loader can judge the link and say
 			// why it refuses one it cannot follow
-			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
+			if !nameRe.MatchString(e.Name()) {
+				if e.IsDir() || e.Type()&fs.ModeSymlink != 0 {
+					skipped = append(skipped, Skipped{Name: e.Name(), Why: nameWhy, Local: local})
+				}
+				continue
+			}
+			if e.IsDir() || e.Type()&fs.ModeSymlink != 0 {
 				root := filepath.Join(dir, e.Name())
 				m, merr := manifestOf(root)
-				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off.Has(e.Name()), Uses: m.Uses, ManifestErr: merr}
+				p := Plugin{Name: e.Name(), Dir: root, Local: local, Enabled: !off.Has(e.Name()), Uses: m.Uses, ManifestErr: merr}
 				if reg, ok := mf.Installs[e.Name()]; ok && len(p.Uses) == 0 {
 					p.Uses = reg.Uses
 				}
@@ -267,7 +290,7 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 			}
 		}
 	}
-	return ps, nil
+	return ps, skipped, nil
 }
 
 // Code reports whether an entry of a plugin's root holds what zemi loads or
@@ -595,7 +618,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			return err
 		}
 		if !nameRe.MatchString(arg) {
-			return fmt.Errorf("%s is not a plugin name: zemi installs plugins from marketplaces; add one with plugin marketplace add <source>", arg)
+			return fmt.Errorf("%q is not a plugin name: zemi installs plugins from marketplaces; add one with plugin marketplace add <source>", arg)
 		}
 		return installBare(ctx, d, arg, out)
 	case (verb == "enable" || verb == "disable") && len(rest) == 1:

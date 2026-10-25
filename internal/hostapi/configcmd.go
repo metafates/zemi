@@ -18,7 +18,7 @@ import (
 func (h *Host) configCommands() []*Command {
 	return []*Command{{
 		Name: "config", NArgs: NArgsAny, Desc: "see and change every setting",
-		GoFn: func(h *Host, args string) error { return h.configCommand(args) },
+		GoFn: func(h *Host, args string, confirm bool) error { return h.configCommand(args) },
 		GoComplete: SubcommandCompleter([]string{"set", "toggle", "reset", "edit", "lua", "open"}, func(h *Host, sub string) []string {
 			if sub == "lua" || sub == "open" {
 				return nil
@@ -31,7 +31,7 @@ func (h *Host) configCommands() []*Command {
 		}),
 	}, {
 		Name: "theme", NArgs: NArgsOptional, Desc: "pick the theme; the screen repaints in it as you pick",
-		GoFn: func(h *Host, args string) error {
+		GoFn: func(h *Host, args string, confirm bool) error {
 			if args = strings.TrimSpace(args); args != "" {
 				return h.SetConfig(config.KeyUITheme, args)
 			}
@@ -199,7 +199,7 @@ func (h *Host) configSet(path config.Key, value string) error {
 func (h *Host) SetConfig(path config.Key, val any) error {
 	s, _ := val.(string)
 	if role, ok := config.ModelRole(path); ok {
-		return h.SetModel(role + " " + cmp.Or(s, "default"))
+		return h.SetTargetModel(role, cmp.Or(s, "default"))
 	}
 	//nolint:exhaustive // a model target's key is no builtin constant
 	switch path {

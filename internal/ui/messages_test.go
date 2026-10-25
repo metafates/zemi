@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestUnitAt: a row whose own anchor is not drawn belongs to the nearest unit
@@ -337,7 +338,7 @@ func TestMessagesOpenOnRun(t *testing.T) {
 	for _, tool := range []struct{ name, text, label string }{
 		{"read", "a.go", "read a"}, {"glob", "*.go", "find files"}, {"shell", "go test", "run the tests"},
 	} {
-		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool.name, Text: tool.text, Label: tool.label, Status: "ok"})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName(tool.name), Text: tool.text, Label: tool.label, Status: "ok"})
 	}
 	appendReply(host, "reply two", hostapi.TurnStat{})
 	// a long tail, so the run's digest can stand at the view's top
@@ -735,7 +736,7 @@ func messagesApp(t *testing.T) (*App, *hostapi.Host) {
 	app, host := bootAgentApp(t, 110, 34)
 	if _, err := host.Commands.Add(&hostapi.Command{
 		Name: "messages", NArgs: hostapi.NArgsAny,
-		GoFn: func(h *hostapi.Host, args string) error { return h.MessagesCommand(args) },
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.MessagesCommand(args) },
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -880,7 +881,7 @@ func TestMessagesRail(t *testing.T) {
 		{"grep", "Parse", "find Parse"},
 		{"shell", "go test ./...", "run the tests"},
 	} {
-		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool.name, Text: tool.text, Label: tool.label, Status: "ok"})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName(tool.name), Text: tool.text, Label: tool.label, Status: "ok"})
 	}
 	appendReply(host, "all green", hostapi.TurnStat{})
 	app.renderSync(t)

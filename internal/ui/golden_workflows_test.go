@@ -80,7 +80,7 @@ func TestGoldenWorkflows(t *testing.T) {
 		}
 		return elapsed.ReplaceAllString(out, "0.0s")
 	}
-	if err := host.RunCommand(ctx, "workflows", ""); err != nil {
+	if err := host.RunCommand(ctx, "workflows", "", false); err != nil {
 		t.Fatal(err)
 	}
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
