@@ -1261,7 +1261,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, rows...)
 	h.tMu.Unlock()
-	h.refreshMessages() // the picker shows a row as it settles
+	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
 }
 
 // joinReasoning appends a late reasoning chunk to the row the thought it

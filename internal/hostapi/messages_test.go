@@ -29,7 +29,7 @@ func TestMessagesList(t *testing.T) {
 	h.tMu.Lock()
 	h.session = &Session{Transcript: tr}
 	h.tMu.Unlock()
-	o := h.messagesList(tr, 0)
+	o := h.messagesList(pickTr{tr: tr}, 0)
 	if o.ID != "messages" || o.Title != "Messages" || !o.Follow || o.Anchor != OverlayBottomRight {
 		t.Fatalf("list: %s %q follow=%v anchor=%q", o.ID, o.Title, o.Follow, o.Anchor)
 	}
@@ -60,10 +60,10 @@ func TestMessagesList(t *testing.T) {
 	}
 	// the reader's row names the element holding it: a message row by its
 	// transcript row, a row inside a run by the run's digest
-	if sel := h.messagesList(tr, 4).Selected; sel != 2 {
+	if sel := h.messagesList(pickTr{tr: tr}, 4).Selected; sel != 2 {
 		t.Errorf("the reader at row 4 selects %d, want the reply", sel)
 	}
-	if sel := h.messagesList(tr, 3).Selected; sel != 1 {
+	if sel := h.messagesList(pickTr{tr: tr}, 3).Selected; sel != 1 {
 		t.Errorf("the reader in the run selects %d, want the digest", sel)
 	}
 	// a prompt names the message r rewinds to
@@ -181,5 +181,96 @@ func TestMessagesRun(t *testing.T) {
 	}
 	if first := items[0]; first.Text != "find the widget" || first.Anchor != 1 {
 		t.Fatalf("prompt = %+v", first)
+	}
+}
+
+// TestMessagesLiveCalls: the picker reads the conversation the chat draws -
+// the calls a running turn has not settled yet are rows of the run its
+// settled rows end in, listed call by call in the rail level and counted by
+// the list's run row, though still running ones open no view of their own.
+// Nothing lists while no call has settled (the run does not exist yet), and
+// a reply that started folds the run the way the chat does.
+func TestMessagesLiveCalls(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.AppendMessage("user", "watch the dev server")
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "npm run dev", Label: "start the dev server", Status: CallBG, Job: "job-1", Output: "started job-1"})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "job_read", Text: "job-1", Status: CallOK, Output: "job-1: running"})
+	seed := func(tools ...StreamTool) {
+		h.SeedStream(StreamSnapshot{Active: true, Tools: tools})
+	}
+	live := []StreamTool{
+		{ID: "c3", Name: "job_read", Input: "job-1", Status: CallRun},
+		{ID: "c4", Name: "edit", Input: "f1.go", Label: "fix f1", Status: CallOK},
+	}
+	seed(live...)
+
+	o := h.messagesList(h.pickerTranscript(), 0)
+	run := o.Items[1]
+	if run.Text != "4 steps" || run.Anchor != 2 || run.Run != "messages rail 2" {
+		t.Fatalf("run row = %+v, want the live calls counted", run)
+	}
+
+	ro, ok := h.messagesRailOverlay(h.pickerTranscript(), 2, 0)
+	if !ok {
+		t.Fatal("no rail view")
+	}
+	type row struct {
+		label  string
+		anchor int
+		run    string
+	}
+	var got []row
+	for _, it := range ro.Items {
+		got = append(got, row{it.Text, it.Anchor, it.Run})
+	}
+	want := []row{
+		{"start the dev server", 2, "call 2"},
+		{"job_read job-1", 3, "call 3"},
+		{"job_read job-1", -1, ""},
+		{"fix f1", -2, ""},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("rail rows = %+v, want %+v", got, want)
+	}
+	// the live edit is a row the reader can pick: its mark says it is done,
+	// and y copies the input the call acted on
+	edit := ro.Items[3]
+	if edit.Mark != MarkOK || edit.Copy != "f1.go" {
+		t.Errorf("live edit = %+v", edit)
+	}
+	if call := messageCallRow(-2, pickTr{live: []ChatMessage{{Kind: RowTool, Tool: "read", Text: "a.go"}}}.at(-2)); call.Run != "" || call.Verb != "" {
+		t.Errorf("a live call opens %+v", call.Run)
+	}
+
+	// /messages with the reader in the run opens the rail on their row
+	ui.chatRow = 3
+	if err := h.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	if list, rail := ui.opened[0], ui.opened[1]; list.Selected != 1 || rail.ID != "messages rail 2" || rail.Selected != 1 {
+		t.Fatalf("open at the run: %+v, %+v", list, rail)
+	}
+
+	// a prompt the turn streams under is no run the calls extend: the list
+	// shows it alone until one call settles
+	h.AppendMessage("user", "next")
+	o = h.messagesList(h.pickerTranscript(), 0)
+	if n := len(o.Items); n != 3 {
+		t.Fatalf("%d rows with nothing settled: %+v", n, o.Items)
+	}
+
+	// the turn idle, the calls settle into the transcript and turn 2 folds
+	// them into a run row of its own
+	seed(
+		StreamTool{ID: "c3", Name: "job_read", Input: "job-1", Status: CallOK},
+		StreamTool{ID: "c4", Name: "edit", Input: "f1.go", Label: "fix f1", Status: CallOK},
+	)
+	h.flushOutput(TurnStat{})
+	o = h.messagesList(h.pickerTranscript(), 0)
+	if run := o.Items[3]; run.Text != "2 steps" || run.Anchor != 5 {
+		t.Fatalf("settled run row = %+v", run)
 	}
 }

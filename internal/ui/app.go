@@ -82,8 +82,12 @@ type App struct {
 	// be filling in above.
 	pendingAnchor map[string]int
 	// highlight is the transcript row the open messages picker selects, whose
-	// rows the paint bands; 0 when nothing follows.
+	// rows the paint bands; 0 when nothing follows. railPick says the row
+	// names one call of a rail (the picker's rail level), so the band and the
+	// jump cover that call alone; otherwise the row names a whole unit, a
+	// run's drawing included.
 	highlight int
+	railPick  bool
 	// rail is the activity run the open list walks call by call, which the
 	// chat draws whole so each call it names has a row; 0 when none.
 	rail int
@@ -1200,17 +1204,31 @@ func (a *App) chatRow() int {
 	if mid < 0 || mid >= len(chat.lines) {
 		return 0
 	}
-	return drawnRow(chat.lines, mid, -1, 1)
+	if row := drawnRow(chat.lines, mid, -1, 1); row > 0 {
+		return row
+	}
+	// nothing below the middle names a row (the live rail fills the view's
+	// end): the nearest one above it is the place
+	return drawnRow(chat.lines, mid-1, -1, -1)
 }
 
 // drawnRow is the transcript row of the line at from walking by step until
-// one names a row: a call of a rail, else a unit's anchor.
+// one names the reader's place: a call of a rail, else a unit's anchor. A
+// rail's air rows carry the run's first anchor but stand between calls, and
+// a live call's row is no place yet, so neither stops the walk.
 func drawnRow(lines [][]hostapi.Segment, from, stop, step int) int {
 	for i := from; i != stop && i >= 0 && i < len(lines); i += step {
-		if c := rowCall(lines[i]); c > 0 {
-			return c
+		row := lines[i]
+		if bareBar(row) {
+			continue
 		}
-		if anchor := rowAnchor(lines[i]); anchor > 0 {
+		if c := rowCall(row); c != 0 {
+			if c > 0 {
+				return c
+			}
+			continue // a live call's row: not the reader's place
+		}
+		if anchor := rowAnchor(row); anchor > 0 {
 			return anchor
 		}
 	}

@@ -88,6 +88,9 @@ end
 ---@type integer|string
 local opened_in = 0
 local live_tools = 0
+-- the live run's first row, kept across the renders whose settled cache skips
+-- the transcript read: the count and the rail name it, and a new view voids both
+local live_count, live_rail, live_known = -1, -1, 0
 
 ---@class zemi.tui.chat
 ---@field click fun(ev: zemi.WidgetClick) The shipped chat's `on_click`, keyed by its click ids, so a replacement chat keeps its rows acting.
@@ -761,6 +764,7 @@ zemi.ui.widget.add({
 		local ident = ctx.view and ctx.view.id or epoch
 		if ident ~= opened_in then
 			steps, unfolded, whole, queued_open, opened_in = {}, {}, {}, nil, ident
+			live_count, live_rail, live_known = -1, -1, 0
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
@@ -930,16 +934,23 @@ zemi.ui.widget.add({
 			and settled
 		-- the row the run this turn is still adding to starts at: the live turn's
 		-- calls are no unit of their own, but the picker names that run by it.
-		-- Reading the transcript converts every row, so a settled cache skips
-		-- it: live_first then only feeds the rail's full flag, false at rail 0.
+		-- Reading the transcript converts every row, so it is read only when
+		-- what names the run changed - the count or the rail - and the last
+		-- answer stands otherwise.
 		local live_first = 0
-		if active and not replying and (not done or (ctx.rail or 0) ~= 0) then
-			local tr = ctx.transcript or {}
-			if #tr > 0 and activity(tr[#tr]) then
-				live_first = #tr
-				while live_first > 1 and activity(tr[live_first - 1]) do
-					live_first = live_first - 1
+		if active and not replying then
+			local rail = ctx.rail or 0
+			if live_count ~= count or live_rail ~= rail then
+				local tr = ctx.transcript or {}
+				if #tr > 0 and activity(tr[#tr]) then
+					live_first = #tr
+					while live_first > 1 and activity(tr[live_first - 1]) do
+						live_first = live_first - 1
+					end
 				end
+				live_count, live_rail, live_known = count, rail, live_first
+			else
+				live_first = live_known
 			end
 		end
 		if not done then
@@ -1043,6 +1054,8 @@ zemi.ui.widget.add({
 			-- is open, so a thought that ended does not go on spinning over the
 			-- calls that follow it. Each finished thought is a rail row of its own,
 			-- framed as an entry is.
+			local live_at, live_end = 0, 0
+			if live_first > 0 then live_at = #B.lines + 1 end
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
@@ -1067,6 +1080,15 @@ zemi.ui.widget.add({
 				-- the picker's rail view opens this run as it opens a settled one:
 				-- every row, until the menu closes back to its own short rail
 				B.rail(tools, 1, #tools, { live = true, full = live_first > 0 and live_first == (ctx.rail or 0) })
+			end
+			live_end = #B.lines
+			-- the live block is rows of the run its settled rows begin: the
+			-- picker's run row bands it, and the band grows as the rail does
+			if live_at > 0 then
+				for n = live_at, live_end do
+					local row = B.lines[n]
+					if row[1] and fmt.cells(row) > 0 then row[1].anchor = live_first end
+				end
 			end
 			if text ~= "" then
 				B.gap("text")

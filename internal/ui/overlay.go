@@ -223,7 +223,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			delete(a.pendingAnchor, a.scrollDef)
 			// a pick whose row the view does not show (a turn's prompt over
 			// the tail) is brought into view as any move would
-			if from, to := unitRows(chat.lines, st.followed); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+			if from, to := spanOf(chat.lines, st.followed, o.Rail != 0); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
 				a.pendingAnchor[a.scrollDef] = st.followed
 			}
 			st.restore = &followMark{top: chat.top, focus: chat.focus, follow: chat.follow}
@@ -357,6 +357,9 @@ func (a *App) syncFollow() {
 		return
 	}
 	st := &a.overlays[i]
+	// a rail level's pick is one call of the rail it walks; every other
+	// following list's pick names the whole unit its anchor draws
+	a.railPick = st.o.Rail != 0
 	if a.highlight = st.selectedAnchor(); a.highlight == 0 {
 		return
 	}
@@ -475,12 +478,13 @@ func (a *App) refreshDetail(i int) {
 }
 
 // itemKey names an item across rebuilds: its id, its transcript row (a list
-// of one turn's rows repeats labels), else its text.
+// of one turn's rows repeats labels; a live call's row is negative), else
+// its text.
 func itemKey(r hostapi.OverlayItem) string {
 	switch {
 	case r.ID != "":
 		return r.ID
-	case r.Anchor > 0:
+	case r.Anchor != 0:
 		return "row " + strconv.Itoa(r.Anchor)
 	}
 	return r.Text

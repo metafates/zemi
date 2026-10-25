@@ -377,7 +377,7 @@ func TestRefreshMessagesUnderTheTurnLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		h.agents.mu.Lock()
-		h.refreshMessages()
+		h.refreshMessagesFrom(h.pickerTranscriptLocked())
 		h.agents.mu.Unlock()
 		close(done)
 	}()

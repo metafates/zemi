@@ -993,3 +993,342 @@ func TestMessagesRail(t *testing.T) {
 		t.Fatalf("rail %d, the run still open:\n%s", app.rail, frame())
 	}
 }
+
+// pickLabels is the top overlay's visible rows as "label anchor=… run=…".
+func pickLabels(app *App) []string {
+	top := &app.overlays[len(app.overlays)-1]
+	var out []string
+	for _, idx := range top.visible {
+		it := top.items[idx]
+		out = append(out, fmt.Sprintf("%q anchor=%d run=%q", it.label, it.row.Anchor, it.row.Run))
+	}
+	return out
+}
+
+// walkToList moves the selection of the top overlay to the row whose label
+// has sub, one key at a time, pumping between.
+func walkToList(t *testing.T, app *App, sub string) {
+	t.Helper()
+	top := &app.overlays[len(app.overlays)-1]
+	at := -1
+	for k, idx := range top.visible {
+		if strings.Contains(top.items[idx].label, sub) {
+			at = k
+		}
+	}
+	if at < 0 {
+		t.Fatalf("no row with %q:\n%s", sub, strings.Join(pickLabels(app), "\n"))
+	}
+	for top.selected != at {
+		if top.selected > at {
+			press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"})
+		} else {
+			press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"})
+		}
+		for app.Pump() {
+		}
+	}
+}
+
+// bandedChatText is the text of the chat rows the picker's pick is banded on,
+// first drawn first, as the last frame composed them.
+func bandedChatText(t *testing.T, app *App) []string {
+	t.Helper()
+	chat := app.scrolls["chat"]
+	if chat == nil {
+		t.Fatal("no chat scroll")
+	}
+	var out []string
+	for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
+		if row := dropCells(app.lastRows[y], chat.rect.Min.X); len(row) > 0 && banded(row[0]) {
+			out = append(out, hostapi.SegsText(app.lastRows[y]))
+		}
+	}
+	return out
+}
+
+// TestRailBandCoversTheRun: the list's run row stands for the whole run, so
+// the band covers every row the chat draws for it - the digest alone when
+// the run folded, the digest and its whole rail when the reader opened it in
+// the chat.
+func TestRailBandCoversTheRun(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 150, 30)
+	host.AppendMessage("user", "one")
+	appendReply(host, strings.Repeat("early. ", 80), hostapi.TurnStat{})
+	host.AppendMessage("user", "two")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "f1.go", Label: "read f1", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "f2.go", Label: "read f2", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet ./...", Label: "vet", Status: "ok"})
+	appendReply(host, strings.Repeat("tail padding. ", 80), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	// the run drew folded: the band is its digest row alone
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	walkToList(t, app, "step")
+	app.Frame()
+	banded := bandedChatText(t, app)
+	if len(banded) != 1 || !strings.Contains(banded[0], "· 2 files") {
+		t.Fatalf("folded band:\n%s", strings.Join(banded, "\n"))
+	}
+	// the reader opens the run in the chat and picks the run row again: the
+	// band now covers the digest and every rail row, air rows included
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	x, y := findCell(t, app, "· ")
+	clickAt(app, x, y)
+	app.renderSync(t)
+	app.Frame()
+	// /messages opens the run's rail on the call nearest the reader; h backs
+	// to the root list, where the run row stands for the whole open rail
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	for range 3 {
+		for app.Pump() {
+		}
+		app.renderSync(t)
+		app.Frame()
+	}
+	walkToList(t, app, "step")
+	app.Frame()
+	banded = bandedChatText(t, app)
+	if len(banded) < 6 || !strings.Contains(banded[0], "2 files") ||
+		!slices.ContainsFunc(banded, func(r string) bool { return strings.Contains(r, "read f1") }) ||
+		!slices.ContainsFunc(banded, func(r string) bool { return strings.Contains(r, "vet") }) {
+		t.Fatalf("whole-rail band:\n%s", strings.Join(banded, "\n"))
+	}
+	for k, row := range banded {
+		if strings.TrimSpace(row) == "" {
+			t.Fatalf("row %d of %d banded empty: %q", k, len(banded), row)
+		}
+	}
+}
+
+// TestRailBandGrowsWithTheLiveRail: the run row's band stretches over the
+// live tail while the turn adds to it, and a call joining the rail moves the
+// band's end down without moving a row above it.
+func TestRailBandGrowsWithTheLiveRail(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 24)
+	host.AppendMessage("user", "watch the turn")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "npm run dev", Label: "start the dev server", Status: "bg", Job: "job-1"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "job_read", Text: "job-1", Status: "ok"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{ID: "c3", Name: "shell", Input: "go test ./...", Label: "run the tests", Status: "run"},
+	}})
+	app.renderSync(t)
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	// the rail level opened on the reader's row; h backs to the root list,
+	// where the run row stands for the live rail too
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	for range 3 {
+		for app.Pump() {
+		}
+		app.renderSync(t)
+		app.Frame()
+	}
+	walkToList(t, app, "step")
+	app.Frame()
+	chat := app.scrolls["chat"]
+	drop := func() [][]hostapi.Segment {
+		rows := make([][]hostapi.Segment, 0, chat.rect.Dy())
+		for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
+			rows = append(rows, dropCells(app.lastRows[y], chat.rect.Min.X))
+		}
+		return rows
+	}
+	beforeFrame := drop()
+	before := bandedChatText(t, app)
+	firstY := -1
+	for y, row := range beforeFrame {
+		if len(row) > 0 && banded(row[0]) {
+			firstY = chat.rect.Min.Y + y
+			break
+		}
+	}
+	// the run the turn is still adding to draws whole, so the band covers
+	// every row of it: the settled calls and the live tail
+	if len(before) < 6 ||
+		!slices.ContainsFunc(before, func(r string) bool { return strings.Contains(r, "start the dev server") }) ||
+		!slices.ContainsFunc(before, func(r string) bool { return strings.Contains(r, "go test") }) {
+		t.Fatalf("live band:\n%s", strings.Join(before, "\n"))
+	}
+	// another call joins the live rail: the band follows it down and the rows
+	// above the run do not move
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{ID: "c3", Name: "shell", Input: "go test ./...", Label: "run the tests", Status: "ok"},
+		{ID: "c4", Name: "edit", Input: "f1.go", Label: "fix f1", Status: "run"},
+	}})
+	app.renderSync(t)
+	app.Frame()
+	afterFrame := drop()
+	after := bandedChatText(t, app)
+	if len(after) <= len(before) || !slices.ContainsFunc(after, func(r string) bool { return strings.Contains(r, "fix f1") }) {
+		t.Fatalf("grown band (%d rows over %d):\n%s", len(after), len(before), strings.Join(after, "\n"))
+	}
+	grewY := -1
+	for y, row := range afterFrame {
+		if len(row) > 0 && banded(row[0]) {
+			grewY = chat.rect.Min.Y + y
+			break
+		}
+	}
+	if grewY != firstY {
+		t.Fatalf("the band's first row moved from %d to %d", firstY, grewY)
+	}
+	for i := 0; chat.rect.Min.Y+i < firstY; i++ {
+		if !slices.Equal(afterFrame[i], beforeFrame[i]) {
+			t.Fatalf("row %d above the band moved", chat.rect.Min.Y+i)
+		}
+	}
+}
+
+// TestRailBandCoversOneCall: the rail level's pick is one call, so the band
+// covers its head and its detail rows alone - the first action included, the
+// digest row and the neighbours never - and a live call bands its live row.
+func TestRailBandCoversOneCall(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "walk the rail")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "f1.go", Label: "read f1", Status: "err", Output: "no such file\nstat f1.go: no such file or directory"})
+	for i := 2; i <= 3; i++ {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: fmt.Sprintf("f%d.go", i), Label: fmt.Sprintf("read f%d", i), Status: "ok"})
+	}
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet", Label: "vet", Status: "ok"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{ID: "c5", Name: "grep", Input: "Parse", Label: "find Parse", Status: "run"},
+	}})
+	app.renderSync(t)
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	pump := func() {
+		for range 2 {
+			for app.Pump() {
+			}
+			app.renderSync(t)
+			app.Frame()
+		}
+	}
+	pump()
+	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
+	label := func() string { it := top().items[top().visible[top().selected]]; return it.label }
+	if got := label(); got != "vet" {
+		t.Fatalf("opened on %q, want the call at the reader's row", got)
+	}
+	// the first action bands its head and the detail under it, no more
+	for range 4 {
+		if top().items[top().visible[top().selected]].label == "read f1" {
+			break
+		}
+		press(t, app, tea.KeyPressMsg{Code: 'k', Text: "k"})
+		for app.Pump() {
+		}
+	}
+	pump()
+	if got := label(); got != "read f1" {
+		t.Fatalf("walked to %q", got)
+	}
+	banded := bandedChatText(t, app)
+	if len(banded) != 4 || !strings.Contains(banded[0], "read f1") || !strings.Contains(banded[1], "f1.go") ||
+		!strings.Contains(banded[2], "no such file") || !strings.Contains(banded[3], "stat f1.go") {
+		t.Fatalf("first action band:\n%s", strings.Join(banded, "\n"))
+	}
+	// walking down bands each call alone, the digest row clean
+	for _, want := range []string{"read f2", "read f3", "vet"} {
+		press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"})
+		pump()
+		banded := bandedChatText(t, app)
+		if len(banded) == 0 || !strings.Contains(banded[0], want) || len(banded) > 2 {
+			t.Fatalf("pick %q bands:\n%s", want, strings.Join(banded, "\n"))
+		}
+		for _, row := range banded {
+			if strings.HasPrefix(row, "· ") {
+				t.Fatalf("the digest row banded for %q:\n%s", want, strings.Join(banded, "\n"))
+			}
+		}
+	}
+	// a live call is a row of its own: walking onto it bands the live rail's
+	// row, and the pick stays on screen
+	press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	pump()
+	if got := label(); got != "find Parse" {
+		t.Fatalf("walked to %q, want the live call", got)
+	}
+	banded = bandedChatText(t, app)
+	if len(banded) != 2 || !strings.Contains(banded[0], "find Parse") || !strings.Contains(banded[1], "Parse") {
+		t.Fatalf("live call band:\n%s", strings.Join(banded, "\n"))
+	}
+	if chat := app.scrolls["chat"]; chat.viewH > 0 {
+		from, _ := spanOf(chat.lines, top().selectedAnchor(), true)
+		if from < 0 || from < chat.top || from >= chat.top+chat.viewH {
+			t.Fatalf("the live pick is off screen: row %d of view %d..%d", from, chat.top, chat.top+chat.viewH)
+		}
+	}
+}
+
+// TestMessagesOpenSelectsTheClosestCall: /messages opens the rail on the
+// action nearest where the reader is - the call at or under the view's
+// middle when they scrolled, the last settled one at the tail - never the
+// rail's first action.
+func TestMessagesOpenSelectsTheClosestCall(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	reloadUI(t, host)
+	host.AppendMessage("user", "one")
+	appendReply(host, strings.Repeat("early. ", 80), hostapi.TurnStat{})
+	host.AppendMessage("user", "a long run")
+	for i := 1; i <= 8; i++ {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: fmt.Sprintf("f%d.go", i), Label: fmt.Sprintf("read f%d", i), Status: "ok"})
+	}
+	appendReply(host, strings.Repeat("tail padding. ", 80), hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	// the run drew folded; the digest clicked open, then the view parked with
+	// the middle of it on the run's sixth row
+	x, y := findCell(t, app, "· ")
+	clickAt(app, x, y)
+	app.renderSync(t)
+	app.Frame()
+	chat := app.scrolls["chat"]
+	mid := -1
+	for i, row := range chat.lines {
+		if strings.Contains(hostapi.SegsText(row), "read f6") {
+			mid = i
+		}
+	}
+	if mid < 0 || chat.rows <= chat.viewH {
+		t.Fatalf("no mid row to park on: %d, %d rows", mid, chat.rows)
+	}
+	delete(app.pendingScroll, "chat")
+	chat.top, chat.focus, chat.follow = max(mid-(chat.viewH-1)/2, 0), 0, false
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	top := &app.overlays[len(app.overlays)-1]
+	if got := top.items[top.visible[top.selected]].label; !strings.Contains(got, "read f6") && !strings.Contains(got, "read f7") {
+		t.Fatalf("opened on %q, want the call nearest the view's middle", got)
+	}
+}

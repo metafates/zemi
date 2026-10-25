@@ -673,8 +673,8 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	// a following list's jump outranks a parked edge, and leaves none behind
 	jumped := 0
 	if at, ok := a.pendingAnchor[n.ID]; ok {
-		if unit := unitAt(lines, at); unit > 0 {
-			from, to := unitRows(lines, unit)
+		if unit := unitAt(lines, at); unit != 0 {
+			from, to := spanOf(lines, at, a.railPick)
 			st.top = jumpTop(lines, from, to, st.viewH)
 			st.follow = st.bottom && st.top >= st.rows-st.viewH
 			st.focus, jumped = at, at
@@ -692,10 +692,15 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	// the pick of the top following list stays in view while it is up: a rail
 	// its level walks grows under the row it names, and a view pinned to the
 	// tail would carry that row off the top as the run opened. Only a paint
-	// whose rows changed, so a scroll of the chat is never yanked back
-	if a.highlight > 0 && jumped == 0 && st.rows != prevRows {
-		if from, to := unitRows(lines, a.highlight); from >= 0 && (from < st.top || to >= st.top+st.viewH) {
-			st.top, st.follow = jumpTop(lines, from, to, st.viewH), false
+	// whose rows changed, so a scroll of the chat is never yanked back. A
+	// pick taller than the view never fits: only its first row escaping the
+	// top is lost, the growth below is what the reader watches.
+	if a.highlight != 0 && jumped == 0 && st.rows != prevRows {
+		if from, to := spanOf(lines, a.highlight, a.railPick); from >= 0 {
+			off := from < st.top || (to-from+1 <= st.viewH && to >= st.top+st.viewH)
+			if off {
+				st.top, st.follow = jumpTop(lines, from, to, st.viewH), false
+			}
 		}
 	}
 	if jumped > 0 {
@@ -704,10 +709,11 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	st.pinRows(lines, w)
 	// the picker's message is banded under the pins, which stay chrome
 	draw := lines
-	if n.ID == a.scrollDef && a.highlight > 0 {
+	if n.ID == a.scrollDef && a.highlight != 0 {
 		same := len(st.bandSrc) == len(lines) && (len(lines) == 0 || &st.bandSrc[0] == &lines[0])
 		if !same || st.bandAt != a.highlight || st.bandW != w-1 {
-			st.band = bandMessage(lines, a.highlight, w-1)
+			from, to := spanOf(lines, a.highlight, a.railPick)
+			st.band = bandSpan(lines, from, to, w-1)
 			st.bandSrc, st.bandAt, st.bandW = lines, a.highlight, w-1
 		}
 		draw = st.band
@@ -777,6 +783,12 @@ func rowCall(row []hostapi.Segment) int {
 	return 0
 }
 
+// bareBar is a rail's air row: the bar alone. It carries the run's anchor
+// but stands between the rows that name the reader's place.
+func bareBar(row []hostapi.Segment) bool {
+	return len(row) == 1 && row[0].Text == "│"
+}
+
 // unitAt is the anchor of the unit a transcript row is drawn in: the row's
 // own when a row carries it, else the nearest anchor before it, which is how
 // a notice inside a folded burst or a call inside its run's digest finds the
@@ -794,13 +806,10 @@ func unitAt(lines [][]hostapi.Segment, n int) int {
 	return best
 }
 
-// unitRows is the rows a named transcript row draws, first to last: the
-// rows of the call it is, when a rail drew it, else the message's. -1 when
-// no row carries it.
-func unitRows(lines [][]hostapi.Segment, anchor int) (from, to int) {
-	if from, to := callRows(lines, anchor); from >= 0 {
-		return from, to
-	}
+// unitSpan is the rows a unit's anchor draws: the rows carrying it, which
+// the chat stamps on every row of the unit - a rail's air rows included, the
+// live turn's rows its run names too. -1 when none does.
+func unitSpan(lines [][]hostapi.Segment, anchor int) (from, to int) {
 	from, to = -1, -1
 	for i, row := range lines {
 		if rowAnchor(row) != anchor {
@@ -812,6 +821,16 @@ func unitRows(lines [][]hostapi.Segment, anchor int) (from, to int) {
 		to = i
 	}
 	return from, to
+}
+
+// unitRows is the rows a named transcript row draws, first to last: the
+// rows of the call it is, when a rail drew it, else the message's. -1 when
+// no row carries it.
+func unitRows(lines [][]hostapi.Segment, anchor int) (from, to int) {
+	if from, to := callRows(lines, anchor); from >= 0 {
+		return from, to
+	}
+	return unitSpan(lines, anchor)
 }
 
 // callRows are the rows one call of a rail draws, head and lines under it,
@@ -884,6 +903,19 @@ func (sp unitSpans) rows(n int) (from, to int) {
 	return s[0], s[1]
 }
 
+// spanOf is the rows a picker's pick draws: a rail level's pick names one
+// call of the rail, the root list's names the whole unit the chat draws for
+// its anchor - the digest alone when the run folded, the digest and its rail
+// when it did not, the live turn's tail included.
+func spanOf(lines [][]hostapi.Segment, n int, rail bool) (from, to int) {
+	if rail {
+		if from, to := callRows(lines, n); from >= 0 {
+			return from, to
+		}
+	}
+	return unitSpan(lines, n)
+}
+
 // jumpTop is where a following list puts the view for a unit's rows: the
 // middle of the view when the whole message fits, else its first row, which
 // then has to stand below the pinned headers that draw over the view's start.
@@ -903,11 +935,10 @@ func jumpTop(lines [][]hostapi.Segment, from, to, viewH int) int {
 	return top
 }
 
-// bandMessage is lines with the rows of anchor banded to width cells: the
-// tint a picked list row gets (FillBand, which every text role is clamped
-// to read on), over the whole message. Untouched rows are shared, not copied.
-func bandMessage(lines [][]hostapi.Segment, anchor, width int) [][]hostapi.Segment {
-	from, to := unitRows(lines, unitAt(lines, anchor))
+// bandSpan is lines with rows from..to banded to width cells: the tint a
+// picked list row gets (FillBand, which every text role is clamped to read
+// on), over the rows the pick draws. Untouched rows are shared, not copied.
+func bandSpan(lines [][]hostapi.Segment, from, to, width int) [][]hostapi.Segment {
 	if from < 0 {
 		return lines
 	}
