@@ -656,6 +656,20 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if last := ui.overlays(); len(last) != 3 || last[2].ID != "agent:"+idle.id || last[2].Next != "" {
 		t.Fatalf("the call-less preview is %+v", last[len(last)-1])
 	}
+	// a finished run's transcript opens by v: the walk follows a run as it
+	// works, so a done one steps nowhere even with a call behind it
+	done, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "did the work", "work", true)
+	done.tr = append(done.tr, ChatMessage{Kind: RowTool, Tool: "shell", Label: "run the tests"})
+	done.status = RunDone
+	if err := h.tasks.add(done); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.GoFn(h, "show "+done.id); err != nil {
+		t.Fatal(err)
+	}
+	if last := ui.overlays(); len(last) != 4 || last[3].ID != "agent:"+done.id || last[3].Next != "" {
+		t.Fatalf("the finished preview is %+v", last[len(last)-1])
+	}
 	// the watch keeps the open preview current: a tick rebuilds it from the
 	// run, so a view of a run that ended stops saying running
 	run.mu.Lock()

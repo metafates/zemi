@@ -1921,8 +1921,12 @@ func (h *Host) agentShowOverlay(run *agentRun) Overlay {
 
 // agentStepNext names the call view a run's preview steps into: its first
 // call or thought row, a run digest passed over, read against the run once
-// stepAgent has shown it. "" when the run made no call.
+// stepAgent has shown it. The walk follows a run as it works; a finished
+// one's transcript opens by v, and its views walk the rail from there.
 func agentStepNext(run *agentRun) string {
+	if status, _, _, _ := run.state(); status != RunRunning {
+		return ""
+	}
 	tr := run.transcript()
 	for i, m := range tr {
 		if m.Kind != RowTool && m.Kind != RowReasoning {
