@@ -753,7 +753,7 @@ func TestWorkflowBranchFailWarns(t *testing.T) {
 		{
 			name:   "a branch that raises on its own is named",
 			script: `local out = wf.parallel({function() return wf.agent("ok") end, function() error("branch boom") end}) return out[1]`,
-			want:   "branch 2 failed: ",
+			want:   "branch 2 failed: workflow.lua:2: branch boom",
 		},
 		{
 			name:    "a branch a failed agent sank is not named twice",
@@ -1697,18 +1697,43 @@ func TestAgentView(t *testing.T) {
 	}
 }
 
-// TestFlowViewNamesItsError: a failed run's view carries why it failed, as
-// the agent view does; a run with none has no error row.
+// TestFlowViewNamesItsError: a failed run's view carries why it failed, a
+// warn one the branches that failed, as the agent view does; a run with
+// neither has no error row.
 func TestFlowViewNamesItsError(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	f := &flowRun{id: "0000000b", description: "d", status: RunFailed, limit: 1, err: errors.New("the script raised")}
-	if got := dumpFields(h.flowOverlay(f).Fields); !strings.Contains(got, "[error the script raised]") {
-		t.Fatalf("fields %s, want the error", got)
-	}
-	f.err = nil
-	if got := dumpFields(h.flowOverlay(f).Fields); strings.Contains(got, "[error") {
-		t.Fatalf("a run with no error carries one: %s", got)
+	for _, c := range []struct {
+		name    string
+		f       *flowRun
+		want    string
+		notWant string
+	}{
+		{
+			"a failed one names its error",
+			&flowRun{id: "0000000b", description: "d", status: RunFailed, limit: 1, err: errors.New("the script raised")},
+			"[error the script raised]", "",
+		},
+		{
+			"a warn one names its branch failures",
+			&flowRun{id: "0000000c", description: "d", status: RunWarn, limit: 1, fails: []string{"branch 2 failed: boom", "branch 3 failed: bang"}},
+			"[error branch 2 failed: boom; branch 3 failed: bang]", "",
+		},
+		{
+			"a run with neither has no error row",
+			&flowRun{id: "0000000d", description: "d", status: RunDone, limit: 1},
+			"", "[error",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := dumpFields(h.flowOverlay(c.f).Fields)
+			if c.want != "" && !strings.Contains(got, c.want) {
+				t.Fatalf("fields %s, want %s", got, c.want)
+			}
+			if c.notWant != "" && strings.Contains(got, c.notWant) {
+				t.Fatalf("fields %s, want no %s", got, c.notWant)
+			}
+		})
 	}
 }
 

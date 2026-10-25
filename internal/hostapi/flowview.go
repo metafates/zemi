@@ -41,6 +41,8 @@ func flowFields(f *flowRun, v flowView) []string {
 	}
 	if f.err != nil {
 		fields = append(fields, "error", f.err.Error())
+	} else if len(f.fails) > 0 { // a warn with no error names the branches that failed instead
+		fields = append(fields, "error", strings.Join(f.fails, "; "))
 	}
 	return fields
 }
