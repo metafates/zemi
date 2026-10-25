@@ -842,7 +842,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runPlan)),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it; job_read's wait_ms is how a read holds. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
 			jobStartArgs{},
 			shellRequests,
