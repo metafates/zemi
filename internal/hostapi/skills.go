@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
@@ -241,8 +242,7 @@ func (h *Host) SkillMentions() []CompletionItem {
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		desc := s.Description
 		if s.Root != "" {
-			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
-			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
+			desc = plugin.ExpandRootData(desc, s.Root, s.Data)
 		}
 		out = append(out, CompletionItem{Text: s.Name, Desc: listDesc(desc)})
 	}
@@ -379,8 +379,7 @@ func (h *Host) skillsIndexPrompt() (mine, project string) {
 		}
 		desc := s.Description
 		if s.Root != "" { // the fallback description is the first body line
-			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_ROOT}", s.Root)
-			desc = strings.ReplaceAll(desc, "${CLAUDE_PLUGIN_DATA}", s.Data)
+			desc = plugin.ExpandRootData(desc, s.Root, s.Data)
 		}
 		desc = truncRunes(desc, skillDescMax)
 		lines[i].WriteString("- " + s.Name + ": " + desc + "\n")

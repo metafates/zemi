@@ -55,6 +55,10 @@ type Plugin struct {
 	// for a local plugin or a clone from before marketplaces.
 	Marketplace string
 
+	// ManifestErr is why .zemi/plugin.json did not parse, nil when it read;
+	// a manifest that did not parse declares nothing.
+	ManifestErr error
+
 	// Provides is what a Claude-layout plugin contributes beyond that
 	// vocabulary, display-only: CheckUses never sees it.
 	Provides []string
@@ -75,7 +79,7 @@ const InitFile = CodeDir + "/init.lua"
 
 // manifestBytes is the raw manifest of the plugin in dir, nil for the plugins
 // that have none: the reader takes the first 4 KB of a regular file.
-func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile)) }
+func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile), headMax) }
 
 // manifest is ManifestFile parsed; every field is optional.
 type manifest struct {
@@ -136,17 +140,21 @@ func Readme(dir string) string {
 	return ""
 }
 
-// manifestOf parses the manifest of the plugin in dir; a missing or malformed
-// one is the zero manifest, which declares nothing. Description, author and
-// homepage fall back to a Claude manifest beside it, which a Claude-layout
-// plugin keeps.
-func manifestOf(dir string) manifest {
-	var m manifest
-	_ = json.Unmarshal(manifestBytes(dir), &m)
+// manifestOf parses the manifest of the plugin in dir; a missing one is the
+// zero manifest, which declares nothing, and a malformed one is the zero
+// manifest with its parse error: what a truncated parse leaves half-filled is
+// not a declaration to grant on. Description, author and homepage fall back
+// to a Claude manifest beside it, which a Claude-layout plugin keeps.
+func manifestOf(dir string) (m manifest, err error) {
+	if raw := manifestBytes(dir); raw != nil {
+		if err = json.Unmarshal(raw, &m); err != nil {
+			m = manifest{} // a half-filled parse declares nothing
+		}
+	}
 	if m.Description == "" || len(m.Author) == 0 || m.Homepage == "" {
 		if IsClaude(dir) {
 			var j claudeManifestJSON
-			if err := json.Unmarshal(readHead(filepath.Join(dir, ClaudeManifestFile)), &j); err == nil {
+			if err := json.Unmarshal(readHead(filepath.Join(dir, ClaudeManifestFile), headMax), &j); err == nil {
 				if m.Description == "" {
 					m.Description = j.Description
 				}
@@ -161,7 +169,7 @@ func manifestOf(dir string) manifest {
 			}
 		}
 	}
-	return m
+	return m, err
 }
 
 // a dot dir, such as a clone in flight, is never a plugin, and no name
@@ -247,7 +255,8 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 			// why it refuses one it cannot follow
 			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
 				root := filepath.Join(dir, e.Name())
-				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off.Has(e.Name()), Uses: manifestOf(root).Uses}
+				m, merr := manifestOf(root)
+				p := Plugin{Name: e.Name(), Dir: root, Local: kind == "local", Enabled: !off.Has(e.Name()), Uses: m.Uses, ManifestErr: merr}
 				if reg, ok := mf.Installs[e.Name()]; ok && len(p.Uses) == 0 {
 					p.Uses = reg.Uses
 				}
@@ -285,10 +294,11 @@ func OldLayout(dir string) error {
 }
 
 // ClaudeRaw is the Claude manifest bytes of the plugin in dir: the file
-// beside it, else the entry-carried manifest its install row carries, nil
-// for a plugin that is neither. What IsClaude reads, link-aware.
+// beside it, else the entry-carried manifest its install row carries,
+// keyed by the install name (dir's base), nil for a plugin that is
+// neither. What IsClaude reads, link-aware.
 func ClaudeRaw(d config.Dirs, dir string) []byte {
-	if raw := readHead(filepath.Join(dir, ClaudeManifestFile)); raw != nil {
+	if raw := readHead(filepath.Join(dir, ClaudeManifestFile), headMax); raw != nil {
 		return raw
 	}
 	if reg, ok := MarketplaceOf(d, filepath.Base(dir)); ok && len(reg.Manifest) > 0 {
@@ -1348,7 +1358,7 @@ func relinkInstall(ctx context.Context, d config.Dirs, mkt, name string, e Marke
 // manifest, so a symlinked install loads and grants without one. A source
 // with a manifest carries nothing.
 func sidecar(src string, e MarketplacePlugin) (uses []string, manifest jsontext.Value) {
-	if manifestBytes(src) != nil || readHead(filepath.Join(src, ClaudeManifestFile)) != nil {
+	if manifestBytes(src) != nil || readHead(filepath.Join(src, ClaudeManifestFile), headMax) != nil {
 		return nil, nil
 	}
 	return e.Uses, e.entryManifest()
@@ -1515,8 +1525,9 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p := Plugin{Name: filepath.Base(dir), Dir: dir, Local: local, Enabled: enabled}
 	// the manifest is the plugin's own answer; init.lua's line fills in only
 	// what it leaves out
-	m := manifestOf(dir)
+	m, merr := manifestOf(dir)
 	p.Version, p.Desc, p.Uses = m.Version, m.Description, m.Uses
+	p.ManifestErr = merr
 	p.Author, p.Homepage = authorName(m.Author), m.Homepage
 	if line := firstLine(filepath.Join(dir, InitFile)); p.Desc == "" && strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
@@ -1543,13 +1554,17 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 
 // firstLine reads line 1 of a regular file, or "" for anything else.
 func firstLine(path string) string {
-	line, _, _ := strings.Cut(string(readHead(path)), "\n")
+	line, _, _ := strings.Cut(string(readHead(path, headMax)), "\n")
 	return line
 }
 
-// readHead reads the first 4 KB of a regular file: a clone can hold a symlink
-// to /dev/zero or a FIFO, which would never end.
-func readHead(path string) []byte {
+// headMax is what readHead reads by default: a manifest and the metadata
+// readers take the first 4 KB.
+const headMax = 4 << 10
+
+// readHead reads the first limit bytes of a regular file: a clone can hold a
+// symlink to /dev/zero or a FIFO, which would never end.
+func readHead(path string, limit int64) []byte {
 	lfi, err := os.Lstat(path)
 	if err != nil || !lfi.Mode().IsRegular() {
 		return nil
@@ -1563,7 +1578,7 @@ func readHead(path string) []byte {
 	if fi, err := f.Stat(); err != nil || !os.SameFile(lfi, fi) {
 		return nil
 	}
-	data, _ := io.ReadAll(io.LimitReader(f, 4<<10))
+	data, _ := io.ReadAll(io.LimitReader(f, limit))
 	return data
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -428,8 +429,7 @@ func SkillText(s SkillInfo) (string, error) {
 		return "", err
 	}
 	if s.Root != "" {
-		body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_ROOT}", s.Root)
-		body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_DATA}", s.Data)
+		body = plugin.ExpandRootData(body, s.Root, s.Data)
 	}
 	// the body is the whole procedure, loaded once: a cut leaves the model
 	// acting on half of it, so say where the rest is, cutting the file whole

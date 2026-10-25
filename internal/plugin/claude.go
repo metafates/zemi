@@ -12,7 +12,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"syscall"
 )
 
 // ClaudeDir marks a plugin as a Claude Code plugin; the manifest is
@@ -35,7 +33,7 @@ const (
 
 // IsClaude reports whether dir holds a Claude manifest.
 func IsClaude(dir string) bool {
-	return readHead(filepath.Join(dir, ClaudeManifestFile)) != nil
+	return readHead(filepath.Join(dir, ClaudeManifestFile), headMax) != nil
 }
 
 // ClaudeAuthor is a manifest's author.
@@ -419,8 +417,7 @@ func ExpandClaude(s, root, data string) string {
 	if !strings.Contains(s, "${") {
 		return s
 	}
-	s = strings.ReplaceAll(s, "${CLAUDE_PLUGIN_ROOT}", root)
-	s = strings.ReplaceAll(s, "${CLAUDE_PLUGIN_DATA}", data)
+	s = ExpandRootData(s, root, data)
 	return claudeVarRe.ReplaceAllStringFunc(s, func(match string) string {
 		parts := claudeVarRe.FindStringSubmatch(match)
 		if v, ok := os.LookupEnv(parts[1]); ok {
@@ -431,6 +428,16 @@ func ExpandClaude(s, root, data string) string {
 		}
 		return match
 	})
+}
+
+// ExpandRootData substitutes what a Claude plugin's own paths stand for in s:
+// its root and its data dir.
+func ExpandRootData(s, root, data string) string {
+	if !strings.Contains(s, "${") {
+		return s
+	}
+	s = strings.ReplaceAll(s, "${CLAUDE_PLUGIN_ROOT}", root)
+	return strings.ReplaceAll(s, "${CLAUDE_PLUGIN_DATA}", data)
 }
 
 // SanitizeName folds a Claude name into zemi's: lowercase, runs of anything
@@ -465,23 +472,9 @@ func replaceNamed(servers []ClaudeMCPServer, s ClaudeMCPServer) []ClaudeMCPServe
 }
 
 // readJSONFile reads a JSON data file of a plugin or a marketplace, at most
-// 4 MB, with readHead's regular-file guard: a clone may hold a link to
-// /dev/zero. The official marketplace's manifest is past 190 KB.
+// 4 MB: the official marketplace's manifest is past 190 KB.
 func readJSONFile(path string) jsontext.Value {
-	lfi, err := os.Lstat(path)
-	if err != nil || !lfi.Mode().IsRegular() {
-		return nil
-	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	if fi, err := f.Stat(); err != nil || !os.SameFile(lfi, fi) {
-		return nil
-	}
-	data, _ := io.ReadAll(io.LimitReader(f, 4<<20))
-	return jsontext.Value(data)
+	return jsontext.Value(readHead(path, 4<<20))
 }
 
 // ClaudeMarketplaceFile is the marketplace manifest inside ClaudeDir, one of

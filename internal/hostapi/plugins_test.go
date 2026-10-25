@@ -20,6 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
+	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -87,6 +88,14 @@ func TestPluginsStep(t *testing.T) {
 				"health: 1 plugin: 1 failed, 0 ready",
 			},
 			not: []string{"a ran"},
+		},
+		{
+			name: "a manifest that does not parse is recorded and declares nothing",
+			plugins: map[string]string{
+				"local/a/.zemi/init.lua":    `print("a ran")`,
+				"local/a/.zemi/plugin.json": `{"uses": ["http"`,
+			},
+			want: []string{"a ran", "error: plugin a: "},
 		},
 		{name: "none, and the row still shows", want: []string{"health: none on"}},
 		{
@@ -830,6 +839,253 @@ func TestPluginUses(t *testing.T) {
 					return nil
 				})
 				waitIdle(t, h)
+			}
+		})
+	}
+}
+
+// TestPluginUsesLinkedInstall re-proves the gate on a marketplace install: an
+// installed plugin is a symlink into its marketplace material, and the gate,
+// require and state must name the plugin from the material its code resolves
+// to, not the link.
+func TestPluginUsesLinkedInstall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) }))
+	defer srv.Close()
+	for _, c := range []struct {
+		name, uses string
+		want       string // in the boot error; "" for a clean boot
+	}{
+		{name: "an undeclared call fires the gate", want: `plugin a declares no "http"`},
+		{name: "a declared call boots", uses: `["http"]`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir(), StateHome: t.TempDir()}
+			log := slog.New(slog.DiscardHandler)
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
+			h := NewHost(r, log, config.NewStore(), dirs)
+			t.Cleanup(h.Close)
+			mat := filepath.Join(dirs.PluginsRoot(), "marketplaces", "m", "p")
+			manifest := "{}"
+			if c.uses != "" {
+				manifest = `{"uses": ` + c.uses + `}`
+			}
+			files := map[string]string{
+				filepath.Join(mat, plugin.InitFile): `require("./extra").ran = true
+					zemi.state.set("k", 1)
+					zemi.http.get("` + srv.URL + `/x")`,
+				filepath.Join(mat, ".zemi", "extra.lua"): `return {}`,
+				filepath.Join(mat, plugin.ManifestFile):  manifest,
+			}
+			for file, body := range files {
+				if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "installed"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(mat, filepath.Join(dirs.PluginsRoot(), "installed", "a")); err != nil {
+				t.Fatal(err)
+			}
+			err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()})
+			if c.want != "" {
+				if err == nil || !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("Boot err = %v, want it to name %q", err, c.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Boot: %v", err)
+			}
+			if v, _ := h.GlobalDB.GetKV("plugin:a:k"); v != "1" {
+				t.Errorf("state key plugin:a:k = %s", v)
+			}
+			if got := h.PluginOf(filepath.Join(mat, plugin.InitFile)); got != "a" {
+				t.Errorf("PluginOf(%s) = %q, want a", mat, got)
+			}
+		})
+	}
+}
+
+// TestPluginSidecarGrant: a linked install whose material carries no
+// manifest of its own loads the marketplace entry its row carries (the
+// sidecar), so its mcp servers and hooks grant. A row looked up by the
+// material's directory name instead of the install name is never found, and
+// the plugin silently grants none of it.
+func TestPluginSidecarGrant(t *testing.T) {
+	t.Parallel()
+	const entry = `{"name": "Sub One",
+		"mcpServers": {"srv": {"command": "srv"}},
+		"hooks": {"PostToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "fmt.sh"}]}]}}`
+	for _, c := range []struct {
+		name      string
+		manifest  string // the sidecar: the entry manifest the row carries
+		wantSrv   bool
+		wantHooks int
+	}{
+		{
+			name: "the entry manifest in the row grants hooks and mcp", manifest: entry,
+			wantSrv: true, wantHooks: 1,
+		},
+		{name: "a row without a manifest grants none"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			tmp, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+			material := filepath.Join(dirs.PluginsRoot(), "marketplaces", "m", "sub")
+			row := `{"installs": {"a": {"marketplace": "m", "entry": "Sub One", "kind": "link", "id": "row-1"`
+			if c.manifest != "" {
+				row += `, "manifest": ` + c.manifest
+			}
+			files := map[string]string{
+				filepath.Join(dirs.PluginsRoot(), "marketplaces.json"): row + `}}}`,
+			}
+			for p, src := range files {
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// the material holds neither manifest: the entry in the row is
+			// the only manifest the install has
+			if err := os.MkdirAll(material, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "installed"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(material, filepath.Join(dirs.PluginsRoot(), "installed", "a")); err != nil {
+				t.Fatal(err)
+			}
+			log := slog.New(slog.DiscardHandler)
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
+			h := NewHost(r, log, config.NewStore(), dirs)
+			h.Inert = true
+			t.Cleanup(h.Close)
+			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
+				t.Fatal(err)
+			}
+			h.mcp.mu.Lock()
+			srv := h.mcp.servers["a-srv"]
+			h.mcp.mu.Unlock()
+			if (srv != nil) != c.wantSrv {
+				t.Fatalf("mcp server a-srv present = %v, want %v", srv != nil, c.wantSrv)
+			}
+			if srv != nil {
+				if srv.spec.Command != "srv" {
+					t.Errorf("a-srv command = %q, want srv", srv.spec.Command)
+				}
+				if srv.spec.Env["CLAUDE_PLUGIN_ROOT"] != material || srv.spec.Env["CLAUDE_PLUGIN_DATA"] != h.pluginDataDir("a") {
+					t.Errorf("a-srv env = %v, want root %s and data %s", srv.spec.Env, material, h.pluginDataDir("a"))
+				}
+				if !h.isClaudePlugin(material) {
+					t.Error("the material is not granted as a Claude layout")
+				}
+			}
+			hooks := h.hookReg.handlers(EventToolPost)
+			if len(hooks) != c.wantHooks {
+				t.Fatalf("PostToolUse hooks = %d, want %d", len(hooks), c.wantHooks)
+			}
+			if c.wantHooks == 1 && (hooks[0].command != "fmt.sh" || hooks[0].root != material) {
+				t.Errorf("hook = %+v, want fmt.sh at %s", hooks[0], material)
+			}
+		})
+	}
+}
+
+// TestPluginOfGrantRoots: a material nested in another plugin's attributes
+// to its own plugin, by longest root first, and a root perm.RealPath cannot
+// resolve ("" in the grant) attributes to nothing, not to every path.
+func TestPluginOfGrantRoots(t *testing.T) {
+	t.Parallel()
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+	mkt := filepath.Join(dirs.PluginsRoot(), "marketplaces", "m")
+	files := map[string]string{
+		filepath.Join(mkt, ".zemi", "init.lua"):                 "-- outer\n",
+		filepath.Join(mkt, "outer.lua"):                         "-- the outer plugin's file\n",
+		filepath.Join(mkt, "plugins", "b", ".zemi", "init.lua"): "-- inner\n",
+		filepath.Join(mkt, "plugins", "b", "inner.lua"):         "-- the inner plugin's file\n",
+	}
+	for p, src := range files {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "installed"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{
+		"a": mkt,
+		"b": filepath.Join(mkt, "plugins", "b"),
+	} {
+		if err := os.Symlink(target, filepath.Join(dirs.PluginsRoot(), "installed", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, path, want string }{
+		// the grant is name-sorted, a's root first: a prefix-first match
+		// would attribute the inner plugin's file to a
+		{"a nested material names its own plugin", filepath.Join(mkt, "plugins", "b", "inner.lua"), "b"},
+		{"the outer material names the outer plugin", filepath.Join(mkt, "outer.lua"), "a"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := h.PluginOf(c.path); got != c.want {
+				t.Errorf("PluginOf(%s) = %q, want %q", c.path, got, c.want)
+			}
+		})
+	}
+	// the grant as perm.RealPath's failure leaves it: "" first, where a
+	// bare prefix test claims every absolute path
+	h.pluginGrant.Store(&pluginGrant{roots: []string{"", mkt}, names: []string{"looped", "a"}})
+	for _, c := range []struct{ name, path, want string }{
+		{"an unresolvable root attributes nothing, not every absolute path", filepath.Join(tmp, "elsewhere", "x"), ""},
+		{"an unresolvable root does not shadow a resolvable one", filepath.Join(mkt, "outer.lua"), "a"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := h.PluginOf(c.path); got != c.want {
+				t.Errorf("PluginOf(%s) = %q, want %q", c.path, got, c.want)
+			}
+		})
+	}
+	// the Claude-layout expansion reads the same grant: the nested
+	// material expands against its own root, an unresolvable one against none
+	inner := filepath.Join(mkt, "plugins", "b")
+	h.pluginGrant.Store(&pluginGrant{
+		roots:  []string{mkt, inner, ""},
+		names:  []string{"a", "b", "looped"},
+		claude: set.Of(mkt, inner, ""),
+	})
+	for _, c := range []struct{ name, path, want string }{
+		{"the inner material expands against its own root", filepath.Join(inner, "cmd", "x.sh"), inner},
+		{"the outer material expands against the outer root", filepath.Join(mkt, "cmd", "x.sh"), mkt},
+		{"an unresolvable claude root expands against nothing", filepath.Join(tmp, "elsewhere", "cmd", "x.sh"), ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := h.claudeRootOf(c.path); got != c.want {
+				t.Errorf("claudeRootOf(%s) = %q, want %q", c.path, got, c.want)
 			}
 		})
 	}

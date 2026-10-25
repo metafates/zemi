@@ -539,35 +539,15 @@ func (h *Host) pluginStatus(p plugin.Plugin) (ServiceStatus, error) {
 	return StatusStarting, nil
 }
 
-// pluginProvides lists what each plugin provides, by plugin name. A
-// component's file resolves its symlink, so a linked install's material (its
-// path runs through marketplaces/) still matches the plugin root it links
-// from; the name comes from the link, whose base is the install's.
+// pluginProvides lists what each plugin provides, by plugin name. PluginOf
+// resolves a component's file and the grant roots, so a linked install's
+// material (its path runs through marketplaces/) attributes to the install
+// it links from.
 func (h *Host) pluginProvides() map[string][]string {
-	type root struct {
-		real, name string
-	}
-	var roots []root
-	if g := h.pluginGrant.Load(); g != nil {
-		for _, r := range g.roots {
-			real, err := filepath.EvalSymlinks(r)
-			if err != nil {
-				continue
-			}
-			roots = append(roots, root{real, filepath.Base(r)})
-		}
-	}
 	out := map[string][]string{}
 	add := func(path, what string) {
-		real, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return
-		}
-		for _, r := range roots {
-			if real == r.real || strings.HasPrefix(real, r.real+string(filepath.Separator)) {
-				out[r.name] = append(out[r.name], what)
-				return
-			}
+		if name := h.PluginOf(path); name != "" {
+			out[name] = append(out[name], what)
 		}
 	}
 	for _, c := range h.Commands.List() {

@@ -28,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
@@ -196,9 +197,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 	}
 	if claude {
 		if root := h.claudeRootOf(path); root != "" {
-			data := h.pluginDataDir(h.PluginOf(root))
-			d.System = strings.ReplaceAll(d.System, "${CLAUDE_PLUGIN_ROOT}", root)
-			d.System = strings.ReplaceAll(d.System, "${CLAUDE_PLUGIN_DATA}", data)
+			d.System = plugin.ExpandRootData(d.System, root, h.pluginDataDir(h.PluginOf(root)))
 		}
 		if strings.Contains(d.System, "!`") {
 			h.Log.Warn("agent body has !`cmd` shell blocks, they stay literal text", "origin", "agents", "path", path)

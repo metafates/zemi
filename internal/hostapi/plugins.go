@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
@@ -38,6 +39,7 @@ type pluginLoad struct {
 // cannot leave a stale grant.
 type pluginGrant struct {
 	roots  []string
+	names  []string            // roots[i] is the install of names[i]
 	uses   map[string][]string // by plugin name
 	claude set.Set[string]     // root -> it is a Claude-layout plugin
 }
@@ -61,21 +63,31 @@ func (h *Host) PluginsStep() lua.BootStep {
 			}
 			if err == nil {
 				ps, err = plugin.Scan(h.Dirs)
+				for _, p := range ps {
+					if p.ManifestErr != nil {
+						h.RecordErrorOnce("plugin "+p.Name, p.ManifestErr.Error())
+					}
+				}
 			}
 			run, loads := pickPlugins(ps, h.pluginsRoot())
-			grant := pluginGrant{roots: make([]string, len(run)), uses: map[string][]string{}, claude: set.Set[string]{}}
+			grant := pluginGrant{roots: make([]string, len(run)), names: make([]string, len(run)), uses: map[string][]string{}, claude: set.Set[string]{}}
 			hooks := map[string][]hookEntry{}
 			for i, p := range run {
 				kind := "installed"
 				if p.Local {
 					kind = "local"
 				}
-				root := filepath.Join(h.pluginsRoot(), kind, p.Name)
-				grant.roots[i] = root
+				// resolved, as the chunk paths are: an installed plugin is a
+				// symlink into its marketplace material
+				root := perm.RealPath(filepath.Join(h.pluginsRoot(), kind, p.Name))
+				grant.roots[i], grant.names[i] = root, p.Name
 				grant.uses[p.Name] = p.Uses
 				// zemi's own tree wins: a plugin carrying .zemi loads none of
 				// the Claude side (its servers, hooks and name prefixes)
-				raw := plugin.ClaudeRaw(h.Dirs, root)
+				// the install path, not the resolved root: the entry-carried
+				// manifest is keyed by install name, and the file leg reads
+				// through the link
+				raw := plugin.ClaudeRaw(h.Dirs, p.Dir)
 				if raw == nil {
 					continue
 				}
@@ -200,7 +212,7 @@ func PluginDir(d config.Dirs, name string) (string, error) {
 }
 
 // pluginDirs is the plugin roots the last boot fixed for its generation,
-// resolved as PluginOf reads them.
+// symlink-resolved like the chunk paths they name.
 func (h *Host) pluginDirs() []string {
 	if p := h.pluginGrant.Load(); p != nil {
 		return p.roots
@@ -223,14 +235,20 @@ func (h *Host) isClaudePlugin(root string) bool {
 // claudeRootOf is the Claude-layout plugin root path belongs to, or "".
 func (h *Host) claudeRootOf(path string) string {
 	sep := string(filepath.Separator)
+	var best string
 	if g := h.pluginGrant.Load(); g != nil {
+		// the longest root wins, so a material nested in another plugin's
+		// expands against its own; "" (an unresolvable root) is inside nothing
 		for root := range g.claude {
-			if strings.HasPrefix(path, root+sep) {
-				return root
+			if root == "" || (path != root && !strings.HasPrefix(path, root+sep)) {
+				continue
+			}
+			if best == "" || len(root) > len(best) {
+				best = root
 			}
 		}
 	}
-	return ""
+	return best
 }
 
 // pluginPrefix is the fallback name of a Claude-layout plugin's layered
@@ -402,16 +420,42 @@ func (h *Host) localPlugins() string {
 }
 
 // PluginOf names the plugin a file belongs to, its directory under
-// installed/ or local/, or "" for any other path.
+// installed/ or local/, or "" for any other path. The input and the grant
+// roots are resolved first: a linked install's files carry their marketplace
+// material path, which the grant maps back to the install it loaded.
 func (h *Host) PluginOf(path string) string {
-	sep := string(filepath.Separator)
-	rel, ok := strings.CutPrefix(path, h.pluginsRoot()+sep)
-	kind, rest, _ := strings.Cut(rel, sep)
-	name, _, _ := strings.Cut(rest, sep)
-	if !ok || kind != "local" && kind != "installed" {
+	if path == "" {
 		return ""
 	}
-	return name
+	if real := perm.RealPath(path); real != "" {
+		path = real
+	}
+	sep := string(filepath.Separator)
+	if rel, ok := strings.CutPrefix(path, h.pluginsRoot()+sep); ok {
+		kind, rest, _ := strings.Cut(rel, sep)
+		name, _, _ := strings.Cut(rest, sep)
+		if kind == "local" || kind == "installed" {
+			return name
+		}
+	}
+	if g := h.pluginGrant.Load(); g != nil {
+		// the longest root wins, so a material nested in another plugin's
+		// attributes to its own; "" (an unresolvable root, a symlink loop)
+		// is inside nothing
+		best := -1
+		for i, root := range g.roots {
+			if root == "" || (path != root && !strings.HasPrefix(path, root+sep)) {
+				continue
+			}
+			if best < 0 || len(root) > len(g.roots[best]) {
+				best = i
+			}
+		}
+		if best >= 0 {
+			return g.names[best]
+		}
+	}
+	return ""
 }
 
 // OriginBadge marks what plugins and project config draw or run

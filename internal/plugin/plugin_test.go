@@ -76,17 +76,60 @@ func TestManifestMetadata(t *testing.T) {
 	for _, c := range []struct{ name, author, home string }{
 		{"str", "Ada", "https://a"}, {"obj", "Grace", ""}, {"claude", "Edsger", "https://e"},
 	} {
-		m := manifestOf(filepath.Join(dir, c.name))
+		m, err := manifestOf(filepath.Join(dir, c.name))
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
 		if got := authorName(m.Author); got != c.author || m.Homepage != c.home {
 			t.Errorf("%s: author %q, homepage %q; want %q, %q", c.name, got, m.Homepage, c.author, c.home)
 		}
 	}
-	if m := manifestOf(filepath.Join(dir, "claude")); m.Description != "the claude one" {
-		t.Errorf("claude: description %q, want the claude manifest's own", m.Description)
+	if m, err := manifestOf(filepath.Join(dir, "claude")); err != nil || m.Description != "the claude one" {
+		t.Errorf("claude: description %q, %v; want the claude manifest's own", m.Description, err)
 	}
 	p := load(t.Context(), filepath.Join(dir, "claude"), true, true)
 	if p.Author != "Edsger" || p.Homepage != "https://e" || p.Desc != "the claude one" {
 		t.Errorf("load: author %q, homepage %q, desc %q", p.Author, p.Homepage, p.Desc)
+	}
+}
+
+// TestManifestError: a manifest that does not parse reports why and
+// declares nothing, its metadata still falling back to a Claude manifest
+// beside it; a missing one is no error.
+func TestManifestError(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		"gone/.zemi/init.lua":              "",
+		"bad/.zemi/plugin.json":            `{"uses": ["http"`,
+		"good/.zemi/plugin.json":           `{"uses": ["http"]}`,
+		"mixed/.zemi/plugin.json":          `{"uses": ["http"`,
+		"mixed/.claude-plugin/plugin.json": `{"name": "m", "description": "the claude one", "author": {"name": "Edsger"}, "homepage": "https://e"}`,
+	})
+	for _, c := range []struct {
+		name         string
+		uses         []string
+		desc, author string
+		wantEr       bool
+	}{
+		{name: "gone"},
+		{name: "bad", wantEr: true},
+		{name: "good", uses: []string{"http"}},
+		{name: "mixed", wantEr: true, desc: "the claude one", author: "Edsger"},
+	} {
+		m, err := manifestOf(filepath.Join(dir, c.name))
+		if c.wantEr != (err != nil) {
+			t.Errorf("%s: err = %v, want error %v", c.name, err, c.wantEr)
+		}
+		if !slices.Equal(m.Uses, c.uses) {
+			t.Errorf("%s: uses %v, want %v", c.name, m.Uses, c.uses)
+		}
+		if m.Description != c.desc {
+			t.Errorf("%s: description %q, want %q", c.name, m.Description, c.desc)
+		}
+		if got := authorName(m.Author); got != c.author {
+			t.Errorf("%s: author %q, want %q", c.name, got, c.author)
+		}
 	}
 }
 

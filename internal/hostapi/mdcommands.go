@@ -16,6 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/plugin"
 )
 
 var positionalArg = regexp.MustCompile(`\$([1-9])`)
@@ -92,8 +93,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			return false
 		}
 		if root := h.claudeRootOf(path); root != "" {
-			body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_ROOT}", root)
-			body = strings.ReplaceAll(body, "${CLAUDE_PLUGIN_DATA}", h.pluginDataDir(h.PluginOf(root)))
+			body = plugin.ExpandRootData(body, root, h.pluginDataDir(h.PluginOf(root)))
 		}
 		desc := listDesc(cmp.Or(fm.Description, clipRunes(strings.SplitN(body, "\n", 2)[0], 60)))
 		desc = strings.TrimSpace(desc + " " + string(fm.ArgumentHint))
