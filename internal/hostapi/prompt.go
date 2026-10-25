@@ -30,25 +30,20 @@ const contextBudget = 32 << 10
 
 // defaultSystemPrompt is the shipped prompt.
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
-	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
-	if !hasTool(toolset, tools.ToolQuestion) {
-		ask = strings.Replace(ask, " with the question tool", "", 1)
-	}
-	if !hasTool(toolset, tools.ToolRead) {
-		read = ""
+	read, code := "", ""
+	if hasTool(toolset, tools.ToolRead) {
+		read = readPrompt
 	}
 	if hasTool(toolset, tools.ToolLua) {
 		code = codemodePrompt
 	}
-	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
+	sys := strings.NewReplacer("{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
+	if !hasTool(toolset, tools.ToolQuestion) {
+		// the phrase occurs once, in the asking paragraph
+		sys = strings.Replace(sys, " with the question tool", "", 1)
+	}
+	return sys
 }
-
-// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}.
-const (
-	riskyActs    = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
-	carePrompt   = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
-	deniedPrompt = "If the user denies a call, do not retry it: change approach or ask why."
-)
 
 // batchPrompt opens every run's tool guidance, a subagent's included.
 const batchPrompt = `- Each step re-sends the whole conversation, so call independent tools together in one response (several reads, the build and the tests, two hypotheses), not one per step. When a call needs another's result, wait for it; never guess a parameter.`
@@ -66,9 +61,6 @@ const readPrompt = `
 const codemodePrompt = `
 - Codemode: when calls chain, one shape of call repeats, or output is far larger than you need, do it as one lua script that prints only what you need. Skip it when you must read a result to decide the next step, and write the first attempt from the API the lua tool documents.`
 
-// askingPrompt fills basePrompt's {Asking}.
-const askingPrompt = `When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.`
-
 const basePrompt = `You are zemi, a coding agent in the user's terminal.
 
 # Doing tasks
@@ -82,10 +74,10 @@ Most requests are small: find the code, read the part that matters, make the cha
 
 # Asking the user
 Do the work without asking: infer what the request leaves out from the code, and name an assumption only when the user would have chosen otherwise. Ask only when the code cannot answer something that changes the result, or you need a value only the user has.
-{Asking}
+When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.
 
 # Acting with care
-Editing files and running tests need no confirmation. {Care} Never bypass a safety check (--no-verify, deleting a test): unfamiliar files or branches may be the user's work in progress. {Denied}
+Editing files and running tests need no confirmation. Ask before what is hard to undo or leaves this machine: deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere. Approval for one action does not cover another. Never bypass a safety check (--no-verify, deleting a test): unfamiliar files or branches may be the user's work in progress. If the user denies a call, do not retry it: change approach or ask why.
 
 # Using tools
 {Batch}{Read}{Code}
@@ -104,8 +96,9 @@ A reply is one or two short sentences of plain prose, no headings, lists or note
 # Security
 Help with defensive security, authorized testing, CTFs and security education; refuse malware, credential theft, destructive attacks and detection evasion aimed at systems the user is not authorized to test. Never print, log, commit or store secrets.`
 
-// zemiPrompt joins every main-agent prompt: the
-// exact config directories config-writing relies on.
+// zemiPrompt is the # zemi block appended to every main agent's system
+// prompt: the exact config directories and Lua API paths config-writing
+// relies on.
 func (h *Host) zemiPrompt() string {
 	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi); the project's is under Environment." +
@@ -162,7 +155,7 @@ const contextOpener = "<context>\nzemi's notes for this session, not the user's 
 
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
-// files, the environment with the the run's scratchpad
+// files, the environment with the run's scratchpad
 // (readOnly: a read-only agent's) and the session's # Brain section.
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
 	system, ctxMsg, _ = h.systemFor(sys, toolset, pad, readOnly, "")
