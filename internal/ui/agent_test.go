@@ -799,7 +799,7 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
 	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
-	pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
+	pipe.Veto = func(tools.Request) (string, string) { return tools.VetoAsk, "" }
 	res := make(chan bool, 2)
 	for _, req := range []tools.Request{{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"}, {Subject: "tool.shell", Arg: "make test"}} {
 		go func() { res <- pipe.Check(req).Allowed }()
@@ -831,7 +831,7 @@ func TestPermissionTellNarrow(t *testing.T) {
 	app, host := bootAgentApp(t, 30, 30)
 	// the ask-everything policy a plugin's veto makes
 	pipe := host.PipelineFor()
-	pipe.Veto = func(tools.Request) string { return tools.VetoAsk }
+	pipe.Veto = func(tools.Request) (string, string) { return tools.VetoAsk, "" }
 	res := make(chan bool, 2)
 	for _, arg := range []string{"make test", "make lint"} {
 		go func() { res <- pipe.Check(tools.Request{Subject: "tool.shell", Arg: arg}).Allowed }()

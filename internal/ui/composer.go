@@ -397,6 +397,9 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		start = max(0, cursorRow-composerMaxRows+2)
 	}
 	focused := a.focusedNode() != "" // no cursor while a node has the keys
+	if a.topChrome() != noModal {    // a modal takes every key: the composer invites none of it
+		focused, placeholder = true, ""
+	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
 		text, col := rows[i], cursorCol

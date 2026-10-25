@@ -235,28 +235,36 @@ func TestComposerPlaceholder(t *testing.T) {
 	app.focusables = []string{"side"}
 	for _, c := range []struct {
 		name, text, focus, want string
-		cursor                  int // the cursor cell's column, -1 for none
+		cursor                  int  // the cursor cell's column, -1 for none
+		modal                   bool // a box over the composer has the keys
 	}{
-		{"empty", "", "", "Ask anything", 0},
-		{"typed", "h", "", "h", 1},
-		{"command draft", "/", "", "/", 2},
-		{"a node has the keys", "", "side", "Ask anything", -1},
+		{"empty", "", "", "Ask anything", 0, false},
+		{"typed", "h", "", "h", 1, false},
+		{"command draft", "/", "", "/", 2, false},
+		{"a node has the keys", "", "side", "Ask anything", -1, false},
+		{"a modal has the keys", "", "", "", -1, true},
 	} {
 		app.composer.text, app.composer.cursor = c.text, len(c.text)
 		app.host.SetFocus(c.focus)
+		if c.modal {
+			app.openOverlay(hostapi.Overlay{ID: "box", Title: "box"})
+		}
 		segs := app.composerRows(40, "Ask anything")[0]
 		cursor, col := -1, 0
 		for _, s := range segs {
 			if s.HL == hostapi.ChromeCursor {
 				cursor = col
 			}
-			if c.text == "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
+			if c.text == "" && c.want != "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
 				t.Errorf("%s: placeholder segment %+v copies or reads as text", c.name, s)
 			}
 			col += ansi.StringWidth(s.Text)
 		}
 		if got := strings.TrimRight(hostapi.SegsText(segs), " "); got != c.want || cursor != c.cursor {
 			t.Errorf("%s: row %q, cursor at %d; want %q at %d", c.name, got, cursor, c.want, c.cursor)
+		}
+		if c.modal {
+			app.cancelOverlay(app.overlays[len(app.overlays)-1].o)
 		}
 	}
 }
