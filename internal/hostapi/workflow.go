@@ -255,8 +255,12 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	h.GoSafe("workflow", func() {
 		defer h.drainQueue() // this run no longer holds a queued report back
 		// closed even when the run or its report panics, so nothing waiting
-		// on the run is left hanging
-		defer close(f.done)
+		// on the run is left hanging; the bump tells the registry's waiters,
+		// which see only the change channel, that this run ended
+		defer func() {
+			close(f.done)
+			h.tasks.bump()
+		}()
 		h.runFlow(ctx, f, spec)
 		if spec.done != nil && f.handedOff() {
 			spec.done(f)
@@ -986,6 +990,13 @@ func (f *flowRun) view() flowView {
 	return v
 }
 
+// state is the run's status word, under the same lock as every other read.
+func (f *flowRun) state() RunStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.status
+}
+
 // ended counts the rows neither running nor queued.
 func ended(rows []agentRow) int {
 	n := 0
@@ -1471,6 +1482,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(workflowArgs{})
 	desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
+		" A sibling - another agent run or workflow of this session - that finishes or sends an update ends the wait early with a line naming it, and the waited workflow keeps running: handle what arrived if needed, then wait again." +
 		" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
 	props["action"].(map[string]any)["enum"] = actions
 	props["concurrency"].(map[string]any)["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
@@ -1625,8 +1637,11 @@ func (h *Host) approveRerun(id string) (string, error) {
 }
 
 // wait blocks until run id ends, the user types, or the call is stopped: the
-// join a detached run otherwise has none of. It answers with the run's status
-// and never with its report, which the same instant sends as a message.
+// join a detached run otherwise has none of. A sibling - an agent run or
+// another workflow of this session - that ends or sends an update wakes the
+// wait too: the answer names the sibling and the workflow that still runs, so
+// the two are never confused. It answers with the run's status and never with
+// its report, which the same instant sends as a message.
 func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.ToolResponse {
 	h := t.h
 	f := h.tasks.flow(id)
@@ -1646,19 +1661,41 @@ func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.Tool
 		return fantasy.NewTextResponse(f.statusText() + "\nIt has ended; its report is in the conversation.")
 	}
 	h.setTool(callID, func(st *StreamTool) { st.Run = id })
-	select {
-	case <-f.done:
-	case <-h.userSpoke():
-		// the user's own message takes the run: its report goes to the session
-		if f.detach() {
-			return fantasy.NewTextResponse(bgFlowText(f))
-		}
-		<-f.done
-	case <-ctx.Done():
-		// esc stops the wait, not the run
-		return fantasy.NewTextResponse("Stopped waiting; workflow " + id + " goes on. Call it again with run=" + id + " and action wait, or read its report when it arrives.")
+	sibs := h.watchSiblings(h.AgentSessionID(), id)
+	defer sibs.stop()
+	end := func() fantasy.ToolResponse {
+		return fantasy.NewTextResponse(f.statusText() + "\nIts report arrives as a message of its own; do not wait for it again.")
 	}
-	return fantasy.NewTextResponse(f.statusText() + "\nIts report arrives as a message of its own; do not wait for it again.")
+	for {
+		// before any state read: a bump between the two is a wake this
+		// iteration re-checks, never a missed one
+		change := h.tasks.onChange()
+		select {
+		case <-f.done:
+			return end()
+		case <-h.userSpoke():
+			// the user's own message takes the run: its report goes to the session
+			if f.detach() {
+				return fantasy.NewTextResponse(bgFlowText(f))
+			}
+			<-f.done
+			return end()
+		case <-ctx.Done():
+			// esc stops the wait, not the run
+			return fantasy.NewTextResponse("Stopped waiting; workflow " + id + " goes on. Call it again with run=" + id + " and action wait, or read its report when it arrives.")
+		case <-change:
+			if !f.isRunning() {
+				return end()
+			}
+			if lines := h.sibMoves(sibs); len(lines) > 0 {
+				return fantasy.NewTextResponse(sibText(lines,
+					fmt.Sprintf("workflow %s (%s)", f.id, f.description),
+					fmt.Sprintf("wait it again (workflow run=%s with action wait)", f.id)))
+			}
+			// a run this wait does not name moved (a new sibling, this
+			// workflow's own agent): keep waiting
+		}
+	}
 }
 
 // control runs a control action on a run of this session.

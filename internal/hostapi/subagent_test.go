@@ -1620,6 +1620,197 @@ func TestForegroundWakesOnUpdate(t *testing.T) {
 	})
 }
 
+// TestWaitWakesOnSibling: a wait on one run wakes when a sibling run of the
+// session ends or sends an update, and the answer names the sibling and the
+// run that still goes on - the two are never confused. A workflow's own agent
+// ending is no sibling: its report goes to the script, and the wait holds.
+func TestWaitWakesOnSibling(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		want []string
+	}{
+		{name: "a sibling ends", want: []string{"finished", "still runs"}},
+		{name: "a sibling sends an update", want: []string{"sent an update", "still runs"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{})
+			seedSession(t, h)
+			slow := make(chan struct{})
+			fast := make(chan struct{})
+			fastAfter := make(chan struct{})
+			updateCase := c.name == "a sibling sends an update"
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+					if !strings.Contains(system, "a subagent of zemi") {
+						return textParts("ok")
+					}
+					if !toolResult {
+						if strings.Contains(last, "slowwork") {
+							<-slow
+							return textParts("slow done")
+						}
+						<-fast
+						if updateCase {
+							return toolCallParts("u1", "update", `{"text":"found it"}`)
+						}
+						return textParts("fast done")
+					}
+					// only the updating child's second call reaches here
+					<-fastAfter
+					return textParts("fast done")
+				}}, nil
+			}
+			def, _ := h.agentDef("explore")
+			slowID, err := h.startBackgroundAgent(t.Context(), def, "dig slow", "slowwork")
+			if err != nil {
+				t.Fatal(err)
+			}
+			fastID, err := h.startBackgroundAgent(t.Context(), def, "dig fast", "fastwork")
+			if err != nil {
+				t.Fatal(err)
+			}
+			slowRun, fastRun := h.tasks.find(slowID), h.tasks.find(fastID)
+			answers := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+					fantasy.ToolCall{ID: "w", Input: `{"wait":"` + slowID + `"}`})
+				answers <- resp
+			}()
+			waitFor(t, func() error {
+				for _, r := range []*agentRun{slowRun, fastRun} {
+					r.mu.Lock()
+					defer r.mu.Unlock()
+					if len(r.updates) == 0 {
+						return errors.New("the wait never registered " + r.id)
+					}
+				}
+				return nil
+			})
+			close(fast)
+			resp := waitCall(t, answers)
+			for _, want := range append(c.want, fastID, slowID) {
+				if !strings.Contains(resp.Content, want) {
+					t.Fatalf("the wait answered %q, want %q", resp.Content, want)
+				}
+			}
+			if !slowRun.isRunning() {
+				t.Fatal("the waited run did not go on")
+			}
+			close(fastAfter)
+			close(slow)
+			waitIdle(t, h)
+			for _, id := range []string{slowID, fastID} {
+				waitFor(t, func() error {
+					if n := finishedRows(h, id); n != 1 {
+						return fmt.Errorf("%d report rows for %s, want 1", n, id)
+					}
+					return nil
+				})
+			}
+		})
+	}
+}
+
+// TestWaitHoldsForAWorkflowAgent: a workflow's own agent ending does not wake
+// a wait on a sibling run - its report goes to the script, not to the
+// conversation - while the workflow's own end still does.
+func TestWaitHoldsForAWorkflowAgent(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	slow := make(chan struct{})
+	first := make(chan struct{})
+	second := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			if !strings.Contains(system, "a subagent of zemi") || toolResult {
+				return textParts("noted")
+			}
+			switch {
+			case strings.Contains(last, "firstwork"):
+				<-first
+				return textParts("first done")
+			case strings.Contains(last, "secondwork"):
+				<-second
+				return textParts("second done")
+			}
+			<-slow
+			return textParts("slow done")
+		}}, nil
+	}
+	tool := h.workflowTool(h.PipelineFor())
+	started := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+			ID: "c1", Name: tools.ToolWorkflow,
+			Input: `{"script":"-- gate\nzemi.workflow.agent('firstwork')\nreturn zemi.workflow.agent('secondwork')","background":true}`,
+		})
+		started <- resp
+	}()
+	f := waitLiveFlow(t, h)
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+		t.Fatalf("a background start = %q", resp.Content)
+	}
+	var inner *agentRun
+	waitFor(t, func() error {
+		for _, r := range h.tasks.runsOf(h.AgentSessionID()) {
+			if r.workflow != "" {
+				inner = r
+				return nil
+			}
+		}
+		return errors.New("the workflow's first agent never started")
+	})
+	def, _ := h.agentDef("explore")
+	slowID, err := h.startBackgroundAgent(t.Context(), def, "dig slow", "slowwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slowRun := h.tasks.find(slowID)
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(),
+			fantasy.ToolCall{ID: "w", Input: `{"wait":"` + slowID + `"}`})
+		answers <- resp
+	}()
+	waitFor(t, func() error {
+		slowRun.mu.Lock()
+		defer slowRun.mu.Unlock()
+		if len(slowRun.updates) == 0 {
+			return errors.New("the wait never registered")
+		}
+		return nil
+	})
+	close(first)
+	waitFor(t, func() error {
+		if status, _, _, _ := inner.state(); status == RunRunning {
+			return errors.New("the workflow's first agent never ended")
+		}
+		return nil
+	})
+	select {
+	case resp := <-answers:
+		t.Fatalf("the wait answered %q, want it still holding", resp.Content)
+	default:
+	}
+	close(second)
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, f.id) || strings.Contains(resp.Content, inner.id) {
+		t.Fatalf("the wait answered %q, want the workflow named and not its agent", resp.Content)
+	}
+	close(slow)
+	waitIdle(t, h)
+	waitFor(t, func() error {
+		if n := finishedRows(h, slowID); n != 1 {
+			return fmt.Errorf("%d report rows for %s, want 1", n, slowID)
+		}
+		return nil
+	})
+}
+
 // TestWaitAllWaitsForEveryRun: wait=all returns only when the session's last
 // running run ends, and its answer sums every run it waited on; the reports
 // themselves arrive as messages.

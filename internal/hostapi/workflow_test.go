@@ -969,6 +969,160 @@ func TestWorkflowWait(t *testing.T) {
 	}
 }
 
+// TestWorkflowWaitWakesOnAgent: a workflow's wait wakes when an agent run of
+// the session ends, and the answer names the agent and the workflow that
+// still runs - the two are never confused.
+func TestWorkflowWaitWakesOnAgent(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	gate := make(chan struct{})
+	fast := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			if !strings.Contains(system, "a subagent of zemi") || toolResult {
+				return textParts("noted")
+			}
+			if strings.Contains(last, "fastwork") {
+				<-fast
+				return textParts("fast done")
+			}
+			<-gate
+			return textParts("worked")
+		}}, nil
+	}
+	tool := h.workflowTool(h.PipelineFor())
+	started := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+			ID: "c1", Name: tools.ToolWorkflow,
+			Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
+		})
+		started <- resp
+	}()
+	f := waitLiveFlow(t, h)
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+		t.Fatalf("a background start = %q", resp.Content)
+	}
+	def, _ := h.agentDef("explore")
+	fastID, err := h.startBackgroundAgent(t.Context(), def, "dig fast", "fastwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fastRun := h.tasks.find(fastID)
+	waited := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+			ID: "c2", Name: tools.ToolWorkflow,
+			Input: `{"run":"` + f.id + `","action":"wait"}`,
+		})
+		waited <- resp
+	}()
+	waitFor(t, func() error {
+		fastRun.mu.Lock()
+		defer fastRun.mu.Unlock()
+		if len(fastRun.updates) == 0 {
+			return errors.New("the wait never registered the agent")
+		}
+		return nil
+	})
+	close(fast)
+	resp := waitCall(t, waited)
+	if !strings.Contains(resp.Content, fastID) || !strings.Contains(resp.Content, f.id) ||
+		!strings.Contains(resp.Content, "still runs") {
+		t.Fatalf("wait = %q (error %v)", resp.Content, resp.IsError)
+	}
+	if !f.isRunning() {
+		t.Fatal("the workflow did not go on")
+	}
+	close(gate)
+	waitIdle(t, h)
+	for _, id := range []string{f.id, fastID} {
+		waitFor(t, func() error {
+			if n := reportRows(h, id); n != 1 {
+				return fmt.Errorf("%d report rows for %s, want 1", n, id)
+			}
+			return nil
+		})
+	}
+}
+
+// TestWaitAllJoinsFlows: wait=all joins a workflow the session is running,
+// not only agent runs, and the sum names it.
+func TestWaitAllJoinsFlows(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	seedSession(t, h)
+	gate := make(chan struct{})
+	plain := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			if !strings.Contains(system, "a subagent of zemi") || toolResult {
+				return textParts("noted")
+			}
+			if strings.Contains(last, "plainwork") {
+				<-plain
+				return textParts("plain done")
+			}
+			<-gate
+			return textParts("worked")
+		}}, nil
+	}
+	tool := h.workflowTool(h.PipelineFor())
+	started := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+			ID: "c1", Name: tools.ToolWorkflow,
+			Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
+		})
+		started <- resp
+	}()
+	f := waitLiveFlow(t, h)
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+		t.Fatalf("a background start = %q", resp.Content)
+	}
+	def, _ := h.agentDef("explore")
+	plainID, err := h.startBackgroundAgent(t.Context(), def, "dig plain", "plainwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainRun := h.tasks.find(plainID)
+	answers := make(chan fantasy.ToolResponse, 1)
+	go func() {
+		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+		answers <- resp
+	}()
+	waitFor(t, func() error {
+		plainRun.mu.Lock()
+		defer plainRun.mu.Unlock()
+		if len(plainRun.updates) == 0 {
+			return errors.New("waitAll never waited on the agent")
+		}
+		return nil
+	})
+	close(gate)
+	waitFor(t, func() error {
+		if f.isRunning() {
+			return errors.New("the workflow never ended")
+		}
+		return nil
+	})
+	select {
+	case resp := <-answers:
+		t.Fatalf("waitAll answered %q while the agent still runs", resp.Content)
+	default:
+	}
+	close(plain)
+	resp := waitCall(t, answers)
+	if !strings.Contains(resp.Content, plainID) || !strings.Contains(resp.Content, f.id) ||
+		strings.Contains(resp.Content, "No agents are running") {
+		t.Fatalf("waitAll answered %q, want both lines", resp.Content)
+	}
+	waitIdle(t, h)
+}
+
 // TestWorkflowCallHandsOff: a foreground workflow call hands its run off when
 // the user's own message arrives, so the turn reads that message instead of
 // waiting: the call answers with the background text, the run stays live, and

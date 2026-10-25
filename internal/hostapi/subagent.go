@@ -12,6 +12,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1122,7 +1123,7 @@ type agentArgs struct {
 	Agent       string `json:"agent,omitempty" desc:"one of the Agents above"`
 	Background  bool   `json:"background,omitempty" desc:"run detached; the report arrives later as a message"`
 	SendTo      string `json:"send_to,omitempty" desc:"id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"`
-	Wait        string `json:"wait,omitempty" desc:"a run id, or \"all\" for every agent run of this session: block until it, or the last of them, ends instead of working on; a wait returns early when a run sends an update - read it, answer with send_to if needed, then wait again"`
+	Wait        string `json:"wait,omitempty" desc:"a run id, or \"all\" for every agent run and workflow of this session: block until it, or the last of them, ends instead of working on; a wait returns early when a run sends an update - read it, answer with send_to if needed, then wait again"`
 	Stop        bool   `json:"stop,omitempty" desc:"with send_to: kill the run; its report never arrives"`
 }
 
@@ -1134,7 +1135,8 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Calls sent together run at once." +
 		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
-		" wait blocks until a run, or every run of this session with \"all\", ends instead of working on; it returns early when a run sends an update: read it, answer with send_to if needed, then wait again.")
+		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on; it returns early when a run sends an update: read it, answer with send_to if needed, then wait again." +
+		" A sibling - another run or workflow of this session - that finishes or sends an update ends a wait early with a line naming it and the waited run, which keeps running: handle what arrived if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -1280,7 +1282,9 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 // wait blocks until a run of this session ends, the user types, or the call
 // is stopped: the join a detached agent otherwise has none of. It answers
 // with the run's status and never with its report, which the run's own end
-// sends as a message.
+// sends as a message. A sibling - another agent run or workflow of this
+// session - that ends or sends an update wakes the wait too: the answer names
+// the sibling and the run that still goes on, so the two are never confused.
 func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fantasy.ToolResponse {
 	h := t.h
 	answer := func() fantasy.ToolResponse {
@@ -1295,32 +1299,52 @@ func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fant
 		return answer()
 	}
 	h.setTool(callID, func(st *StreamTool) { st.Run = run.id })
+	sibs := h.watchSiblings(h.AgentSessionID(), run.id)
+	defer sibs.stop()
 	end := run.waitEnd()
-	update, cancel := run.waitUpdate()
-	defer cancel()
-	select {
-	case <-end:
-	case <-update:
-		// an update ends the wait early: the run keeps going as it was, and
-		// its report follows the path it already had
-		if !run.isRunning() {
-			break // it ended as it updated: the run-end answer is the truth
-		}
-		h.setToolOutcome(callID, tools.Outcome{Run: run.id})
-		return fantasy.NewTextResponse(updateWaitText(run))
-	case <-h.userSpoke():
-		// the user's own message takes the run: its report goes to the session
-		if run.detach() {
+	update, cancelUpdate := run.waitUpdate()
+	defer cancelUpdate()
+	for {
+		// before any state read: a bump between the two is a wake this
+		// iteration re-checks, never a missed one
+		change := h.tasks.onChange()
+		select {
+		case <-end:
+			return answer()
+		case <-update:
+			// an update ends the wait early: the run keeps going as it was, and
+			// its report follows the path it already had
+			if !run.isRunning() {
+				return answer() // it ended as it updated: the run-end answer is the truth
+			}
 			h.setToolOutcome(callID, tools.Outcome{Run: run.id})
-			return fantasy.NewTextResponse(bgAgentText(run.id))
+			return fantasy.NewTextResponse(updateWaitText(run))
+		case <-h.userSpoke():
+			// the user's own message takes the run: its report goes to the session
+			if run.detach() {
+				h.setToolOutcome(callID, tools.Outcome{Run: run.id})
+				return fantasy.NewTextResponse(bgAgentText(run.id))
+			}
+			<-end
+			return answer()
+		case <-ctx.Done():
+			// esc stops the wait, not the run
+			h.setToolOutcome(callID, tools.Outcome{Run: run.id})
+			return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call agent again with wait " + run.id + ", or read its report when it arrives.")
+		case <-change:
+			if !run.isRunning() {
+				return answer() // it ended as a sibling moved: the run-end answer is the truth
+			}
+			if lines := h.sibMoves(sibs); len(lines) > 0 {
+				h.setToolOutcome(callID, tools.Outcome{Run: run.id})
+				return fantasy.NewTextResponse(sibText(lines,
+					fmt.Sprintf("agent %s (%s)", run.id, run.label()),
+					"wait "+run.id+" again"))
+			}
+			// a run this wait does not name moved (a new sibling, a workflow's
+			// own agent): keep waiting
 		}
-		<-end
-	case <-ctx.Done():
-		// esc stops the wait, not the run
-		h.setToolOutcome(callID, tools.Outcome{Run: run.id})
-		return fantasy.NewTextResponse("Stopped waiting; agent " + run.id + " goes on. Call agent again with wait " + run.id + ", or read its report when it arrives.")
 	}
-	return answer()
 }
 
 // updateWaitText answers a wait an update woke: the line reads below as a
@@ -1329,25 +1353,139 @@ func updateWaitText(run *agentRun) string {
 	return fmt.Sprintf("agent %s (%s) sent an update while you waited; it reads below as a message. The run goes on - steer it with send_to if it needs one, then wait again.", run.id, run.description)
 }
 
-// waitAll blocks until every agent run this session is running has ended, one
-// of them sends an update, or the user types: the join a fleet of detached
-// agents otherwise has none of. The reports arrive as messages of their own,
-// so the answer only sums the runs.
+// sibWatch is what a wait watches besides the run it waits on: which sibling
+// runs and workflows of the session were going when the wait began, and each
+// plain sibling run's update channel. A change wake diffs against the entry
+// sets; a workflow's own agents are no sibling, since their reports go to the
+// script, never to the conversation.
+type sibWatch struct {
+	parent string
+	runs   map[string]bool
+	flows  map[string]bool
+	update map[string]<-chan struct{}
+	cancel []func()
+}
+
+// watchSiblings starts watching parent's other plain runs and workflows for
+// the wait of run id except ("" when the wait is a workflow's).
+func (h *Host) watchSiblings(parent, except string) *sibWatch {
+	w := &sibWatch{parent: parent, runs: map[string]bool{}, flows: map[string]bool{}, update: map[string]<-chan struct{}{}}
+	for _, r := range h.tasks.runningOf(parent) {
+		if r.id == except || r.workflow != "" {
+			continue
+		}
+		w.runs[r.id] = true
+		ch, cancel := r.waitUpdate()
+		w.cancel = append(w.cancel, cancel)
+		w.update[r.id] = ch
+	}
+	for _, f := range h.tasks.runningFlows(parent) {
+		if f.id != except {
+			w.flows[f.id] = true
+		}
+	}
+	return w
+}
+
+func (w *sibWatch) stop() {
+	for _, c := range w.cancel {
+		c()
+	}
+}
+
+// sibMoves names the watched siblings that moved since the wait began: an
+// ended run or workflow, a run that sent an update - one line each, the id
+// first, so a crowded session stays attributable.
+func (h *Host) sibMoves(w *sibWatch) []string {
+	var lines []string
+	for _, r := range h.tasks.runsOf(w.parent) {
+		if !w.runs[r.id] {
+			continue
+		}
+		if status, _, _, _ := r.state(); status != RunRunning {
+			lines = append(lines, fmt.Sprintf("agent %s (%s) %s", r.id, r.label(), sibWord(status)))
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(w.update)) {
+		select {
+		case <-w.update[id]:
+		default:
+			continue
+		}
+		if r := h.tasks.find(id); r != nil {
+			if status, _, _, _ := r.state(); status == RunRunning {
+				lines = append(lines, fmt.Sprintf("agent %s (%s) sent an update", id, r.label()))
+			}
+		}
+	}
+	for _, f := range h.tasks.flowList() {
+		if f.parent != w.parent || !w.flows[f.id] {
+			continue
+		}
+		if !f.isRunning() {
+			lines = append(lines, fmt.Sprintf("workflow %s (%s) %s", f.id, f.description, sibWord(f.state())))
+		}
+	}
+	return lines
+}
+
+// sibText answers a wait a sibling moved: the lines name what happened, still
+// names the run the wait keeps waiting on, resume says how to wait again -
+// so a sibling's end is never mistaken for the waited run's.
+func sibText(lines []string, still, resume string) string {
+	var b strings.Builder
+	if len(lines) == 1 {
+		fmt.Fprintf(&b, "%s while you waited on %s. It reads below as a message.", lines[0], still)
+	} else {
+		fmt.Fprintf(&b, "While you waited on %s, these moved:", still)
+		for _, l := range lines {
+			fmt.Fprintf(&b, "\n%s", l)
+		}
+		fmt.Fprintf(&b, "\nThey read below as messages, one each.")
+	}
+	fmt.Fprintf(&b, " %s still runs - handle what arrived if needed, then %s.", still, resume)
+	return b.String()
+}
+
+// sibWord is the status word a sibling line reads: "done" says nothing to a
+// model deciding what to do next.
+func sibWord(s RunStatus) string {
+	switch s {
+	case RunDone:
+		return "finished"
+	case RunWarn:
+		return "finished with a warning"
+	case RunCancelled:
+		return "was stopped"
+	default:
+		return string(s)
+	}
+}
+
+// waitAll blocks until every agent run and workflow this session is running
+// has ended, one of the agents sends an update, or the user types: the join a
+// fleet of detached agents otherwise has none of. The reports arrive as
+// messages of their own, so the answer only sums the runs.
 func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResponse {
 	h := t.h
 	var waited []*agentRun // every run this wait covered, for the final sum
+	var waitedF []*flowRun // every workflow it covered
 	for {
 		// before the snapshot: a bump between the two is a wake this
 		// iteration re-snapshots, never a missed one
 		change := h.tasks.onChange()
 		runs := h.tasks.runningOf(h.AgentSessionID())
-		if len(runs) == 0 {
-			if len(waited) > 0 {
+		flows := h.tasks.runningFlows(h.AgentSessionID())
+		if len(runs) == 0 && len(flows) == 0 {
+			if len(waited) > 0 || len(waitedF) > 0 {
 				var b strings.Builder
-				b.WriteString("Every agent run you waited on has ended; each report arrives as a message of its own.")
+				b.WriteString("Every agent run and workflow you waited on has ended; each report arrives as a message of its own.")
 				for _, r := range waited {
 					status, _, took, _ := r.state()
 					fmt.Fprintf(&b, "\n- agent %s %s (%s)", r.id, status, fmtDuration(took))
+				}
+				for _, f := range waitedF {
+					fmt.Fprintf(&b, "\n- workflow %s %s", f.id, f.state())
 				}
 				return fantasy.NewTextResponse(b.String())
 			}
@@ -1369,6 +1507,11 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 		for _, r := range runs {
 			if !slices.Contains(waited, r) {
 				waited = append(waited, r)
+			}
+		}
+		for _, f := range flows {
+			if !slices.Contains(waitedF, f) {
+				waitedF = append(waitedF, f)
 			}
 		}
 		wake, resp := t.awaitRuns(ctx, callID, change, runs)

@@ -337,6 +337,17 @@ func (r *taskReg) runningOf(parent string) []*agentRun {
 	})
 }
 
+// runningFlows returns the workflow runs parent is running right now, newest
+// first.
+func (r *taskReg) runningFlows(parent string) []*flowRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := slices.Collect(maps.Values(r.flows))
+	out = slices.DeleteFunc(out, func(f *flowRun) bool { return f.parent != parent || !f.isRunning() })
+	slices.SortFunc(out, func(a, b *flowRun) int { return b.started.Compare(a.started) })
+	return out
+}
+
 // bump wakes every waitAll selecting on the registry: a run ended or sent an
 // update, so what it re-snapshots may have changed.
 func (r *taskReg) bump() {
