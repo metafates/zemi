@@ -119,31 +119,36 @@ func outsideTemp(t *testing.T) string {
 }
 
 // runChunk runs src as a user chunk off the test goroutine and returns its
-// error: a slice gets 30s, not the interpreter's own ceiling, which a loaded
-// machine reaches on a chunk that starts processes. The select guard turns an
-// interpreter deadlock into a loud failure instead of a hung test binary.
-func runChunk(t *testing.T, r *lua.Runtime, src string) error {
+// values and error: a slice gets 30s, not the interpreter's own ceiling, which
+// a loaded machine reaches on a chunk that starts processes. The select guard
+// turns an interpreter deadlock into a loud failure instead of a hung test
+// binary.
+func runChunk(t *testing.T, r *lua.Runtime, src string) ([]any, error) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	done := make(chan error, 1)
+	type chunk struct {
+		vals []any
+		err  error
+	}
+	done := make(chan chunk, 1)
 	go func() {
-		_, err := r.Eval(ctx, src, "test.lua", lua.OriginUser, 30*time.Second, nil)
-		done <- err
+		vals, err := r.Eval(ctx, src, "test.lua", lua.OriginUser, 30*time.Second, nil)
+		done <- chunk{vals, err}
 	}()
 	select {
-	case err := <-done:
-		return err
+	case c := <-done:
+		return c.vals, c.err
 	case <-time.After(30 * time.Second):
 		t.Fatal("chunk did not complete within 30s (interpreter deadlock?)")
-		return nil
+		return nil, nil
 	}
 }
 
 // runUser executes src as a user-origin chunk and fails the test on error.
 func runUser(t *testing.T, r *lua.Runtime, src string) {
 	t.Helper()
-	if err := runChunk(t, r, src); err != nil {
+	if _, err := runChunk(t, r, src); err != nil {
 		t.Fatalf("user chunk: %v", err)
 	}
 }

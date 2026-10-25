@@ -1233,7 +1233,11 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	}
 	s.authorizing = true
 	s.mu.Unlock()
-	err := h.mcpAuth(s).Authorize(ctx, func(u string) {
+	authorize := h.mcpAuth(s).Authorize
+	if h.authFn != nil {
+		authorize = h.authFn
+	}
+	err := authorize(ctx, func(u string) {
 		// too long for a toast: /mcp shows it whole, to copy
 		s.mu.Lock()
 		s.signIn = u

@@ -353,6 +353,56 @@ func TestMCPSignInAll(t *testing.T) {
 	})
 }
 
+// TestMCPAuthorizeClaim pins signInMCP's two synchronous refusals and
+// authorizeMCP's claim: the check and the set of authorizing are one lock
+// section, so a second flow for one server loses with errAuthorizing and the
+// winner leaves no sign-in state behind.
+func TestMCPAuthorizeClaim(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	h.SetUIHooks(&fakeUI{})
+	runUser(t, r, `zemi.mcp.add("cmd", { command = "/nonexistent/cmd" })`)
+
+	for _, c := range []struct {
+		name, server, want string
+	}{
+		{"unknown name", "nope", `no MCP server "nope"`},
+		{"a command server", "cmd", "runs a local command"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := h.signInMCP(c.server); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("signInMCP(%q) = %v, want %q", c.server, err, c.want)
+			}
+		})
+	}
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	h.authFn = func(ctx context.Context, open func(string)) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}
+	s := &mcpServer{name: "web", spec: mcpSpec{URL: "https://mcp.example"}}
+	win := make(chan error, 1)
+	go func() { win <- h.authorizeMCP(t.Context(), s) }()
+	<-started
+	if err := h.authorizeMCP(t.Context(), s); !errors.Is(err, errAuthorizing) {
+		t.Errorf("second flow = %v, want errAuthorizing", err)
+	}
+	close(release)
+	if err := <-win; err != nil {
+		t.Errorf("first flow = %v, want nil", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.authorizing || s.signIn != "" {
+		t.Errorf("after the winner: authorizing=%v, signIn=%q", s.authorizing, s.signIn)
+	}
+}
+
 // TestMCPMedia: an image goes out the size the read tool's would, and one
 // no provider takes stays out with the reason in the text.
 func TestMCPMedia(t *testing.T) {

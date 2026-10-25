@@ -100,7 +100,7 @@ func TestCommandSendsTypedLine(t *testing.T) {
 // every substring in want.
 func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 	t.Helper()
-	err := runChunk(t, r, src)
+	_, err := runChunk(t, r, src)
 	if err == nil {
 		t.Fatalf("expected error containing %q, got success", want)
 	}

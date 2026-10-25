@@ -263,7 +263,7 @@ func TestProviderModelID(t *testing.T) {
 		{`zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://x", models = { { display = "no id" } } })`, "models[1].id is required"},
 		{`zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://x", models = { { id = "m" }, { id = "" } } })`, "models[2].id is required"},
 	} {
-		if err := runChunk(t, r, c.src); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := runChunk(t, r, c.src); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err %v, want %q", c.src, err, c.want)
 		}
 	}

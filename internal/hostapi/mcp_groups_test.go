@@ -5,7 +5,6 @@
 package hostapi
 
 import (
-	"context"
 	"encoding/json"
 	"encoding/json/jsontext"
 	"errors"
@@ -15,7 +14,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
@@ -82,22 +80,9 @@ func mcpStatus(s *mcpServer) ServiceStatus {
 // evalLua runs a user chunk and returns its first return value.
 func evalLua(t *testing.T, r *lua.Runtime, src string) any {
 	t.Helper()
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	done := make(chan error, 1)
-	var vals []any
-	go func() {
-		var err error
-		vals, err = r.Eval(ctx, src, "test.lua", lua.OriginUser, 30*time.Second, nil)
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("chunk: %v", err)
-		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("chunk did not complete within 30s (interpreter deadlock?)")
+	vals, err := runChunk(t, r, src)
+	if err != nil {
+		t.Fatalf("chunk: %v", err)
 	}
 	if len(vals) == 0 {
 		return nil
@@ -381,7 +366,7 @@ func TestMCPToggleLua(t *testing.T) {
 		t.Fatalf("solo = %v, want ungrouped, enabled", g)
 	}
 
-	err := runChunk(t, r, `zemi.mcp.enable("nope", true)`)
+	_, err := runChunk(t, r, `zemi.mcp.enable("nope", true)`)
 	if err == nil || !strings.Contains(err.Error(), "no MCP server or group") {
 		t.Fatalf("err = %v, want the both-worded miss", err)
 	}

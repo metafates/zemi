@@ -98,7 +98,7 @@ func TestLuaFsOutsideTheProject(t *testing.T) {
 	// an inert boot refuses every gated call but a read, so the refusal is
 	// what shows the write reached the gate
 	h.Inert = true
-	if err := runChunk(t, r, fmt.Sprintf(`zemi.fs.write(%q, "x")`, file)); err == nil || !strings.Contains(err.Error(), "lua.fs.write") {
+	if _, err := runChunk(t, r, fmt.Sprintf(`zemi.fs.write(%q, "x")`, file)); err == nil || !strings.Contains(err.Error(), "lua.fs.write") {
 		t.Fatalf("the gate missed the write: %v", err)
 	}
 	h.Inert = false
