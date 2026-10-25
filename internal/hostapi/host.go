@@ -1233,7 +1233,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		allowed = append(allowed, "rewrite")
 	}
 	ev := eventTable(name, "host", payload)
-	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
+	_, err := h.RT.Do(ctx, lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0, "hook "+name,
 		func(L *glua.LState) ([]any, error) {
 			for i, hd := range handlers {
 				ret, timedOut, err := h.callEvent(L, hd, ev)
@@ -1449,7 +1449,7 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 // renderWidget is RenderWidget with over's fields set over the ctx render
 // gets, which is how test.render supplies what a session would.
 func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, state UIState, over *glua.LTable) (lines [][]Segment, more bool, err error) {
-	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "widget render", func(L *glua.LState) ([]any, error) {
 		// a frame queued before a reload holds the old generation's function
 		if w.Gen != h.currentGen() {
 			return nil, lua.ErrReloaded
@@ -1606,7 +1606,7 @@ func segment(field func(string) any, widget string) Segment {
 // origin, like a keymap. The handler is looked up at click time because the
 // frame that drew the id may predate a reload.
 func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) error {
-	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "widget click", func(L *glua.LState) ([]any, error) {
 		w := h.Widgets.Get(id)
 		if w == nil || w.OnClick == nil || w.Gen != h.currentGen() {
 			return nil, lua.ErrReloaded
@@ -2396,7 +2396,7 @@ func (h *Host) ReloadConfig() error {
 	h.GoSafe("reload", func() {
 		// a reload cancels what the interpreter runs, which is the caller when
 		// Lua asked for it: wait for it to return (a wedged one times out)
-		_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
+		_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, "reload", func(*glua.LState) ([]any, error) { return nil, nil })
 		_ = h.reload()
 	})
 	return nil

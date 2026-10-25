@@ -154,7 +154,7 @@ func (h *Host) luaHealthRows() []HealthRow {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), lua.VetoCeiling(n, 1))
 	defer cancel()
-	vals, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+	vals, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "health checks", func(L *glua.LState) ([]any, error) {
 		return []any{h.inlineHealthRows(L)}, nil
 	})
 	if err != nil || len(vals) == 0 {

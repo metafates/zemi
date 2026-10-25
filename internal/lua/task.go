@@ -93,10 +93,10 @@ func (r *Runtime) next(ctx context.Context, tr *taskRun) ([]any, error) {
 	tr.wait = nil
 	if err := ctx.Err(); err != nil {
 		// only the actor may touch the thread the task leaves suspended
-		tr.gen.enqueue(newRequest(context.Background(), ClassIO, func(*glua.LState) ([]any, error) {
+		tr.gen.enqueue(newRequest(context.Background(), ClassIO, 0, 0, "task end", func(*glua.LState) ([]any, error) {
 			tr.gen.endTask(tr.th)
 			return nil, nil
-		}, 0, 0))
+		}))
 		return nil, err
 	}
 	if tr.gen.ctx.Err() != nil {
@@ -110,12 +110,12 @@ func (r *Runtime) next(ctx context.Context, tr *taskRun) ([]any, error) {
 func (r *Runtime) slice(ctx context.Context, tr *taskRun) ([]any, error) {
 	fn := func(L *glua.LState) ([]any, error) { return tr.run(L) }
 	if tr.th == nil {
-		return r.Do(ctx, tr.Class, tr.Ceiling, 0, fn)
+		return r.Do(ctx, tr.Class, tr.Ceiling, 0, "task callback", fn)
 	}
 	if r.hot.Load() {
 		return nil, ErrHot
 	}
-	return tr.gen.do(ctx, tr.Class, tr.Ceiling, 0, fn)
+	return tr.gen.do(ctx, tr.Class, tr.Ceiling, 0, "task callback", fn)
 }
 
 func (tr *taskRun) run(L *glua.LState) ([]any, error) {

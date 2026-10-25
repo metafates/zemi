@@ -2265,7 +2265,7 @@ func (h *Host) setWatched(path config.Key, val any) error {
 	}
 	if len(fired) > 0 {
 		h.GoSafe("config watches", func() {
-			_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+			_, _ = h.RT.Do(context.Background(), lua.ClassUI, 0, 0, "config watch", func(L *glua.LState) ([]any, error) {
 				h.deliverFired(L, fired)
 				return nil, nil
 			})

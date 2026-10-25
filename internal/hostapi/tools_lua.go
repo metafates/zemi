@@ -424,7 +424,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 	var rewritten map[string]any
 	// twice: the deny-only re-run after a rewrite calls every handler again
 	ceiling := lua.VetoCeiling(len(handlers), 2)
-	_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, func(L *glua.LState) ([]any, error) {
+	_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, "tool.pre "+name, func(L *glua.LState) ([]any, error) {
 		merged := maps.Clone(input)
 		if merged == nil {
 			merged = map[string]any{}

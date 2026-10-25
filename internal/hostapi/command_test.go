@@ -110,7 +110,7 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 	h, r := newTestHost(t)
 	called := 0
 	var fn *glua.LFunction
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 		fn = L.NewFunction(func(*glua.LState) int { called++; return 0 })
 		return nil, nil
 	}); err != nil {

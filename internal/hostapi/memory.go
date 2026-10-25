@@ -1265,11 +1265,14 @@ func (h *Host) memoryFileTool(sid, path, content string) (string, error) {
 	if !strings.HasSuffix(name, ".md") {
 		return "", errors.New("brain files are .md")
 	}
+	if strings.TrimSpace(content) == "" {
+		return "", errors.New("content is empty; pass the file's full content")
+	}
 	if len(content) > brain.ContentCap {
 		return "", fmt.Errorf("content is over the %d-byte cap; split or shorten it", brain.ContentCap)
 	}
-	if _, scrubbed := learn.ScrubSecrets(content); scrubbed {
-		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
+	if clean, scrubbed := learn.ScrubSecrets(content); scrubbed {
+		return "", secretRefusal(clean)
 	}
 	if h.memoryAuto() {
 		// auto replaces the file outright; the write entry keeps the prior
@@ -1394,8 +1397,8 @@ func (h *Host) promoteMemory(sid string, call tools.MemoryCall) (string, error) 
 		// the latest trail op is a replaces that carried no text
 		return "", fmt.Errorf("memory %s has no text to promote; it was replaced", call.Promote)
 	}
-	if _, scrubbed := learn.ScrubSecrets(string(brain.ComposeFile(call.Description, call.ReadIf, m.Text))); scrubbed {
-		return "", errors.New("a brain file cannot hold a secret; name the env var that holds it instead")
+	if clean, scrubbed := learn.ScrubSecrets(string(brain.ComposeFile(call.Description, call.ReadIf, m.Text))); scrubbed {
+		return "", secretRefusal(clean)
 	}
 	if err := brain.CheckPromote(h.partition(m.Scope), m.ID, call.Path, call.Description, call.ReadIf); err != nil {
 		return "", err
@@ -1668,6 +1671,12 @@ func redactedLines(clean string) []int {
 // journal line by line.
 func redactedNote(clean string) string {
 	return fmt.Sprintf("secret-shaped text was redacted on lines %v; name the env var or use a placeholder like $TOKEN", redactedLines(clean))
+}
+
+// secretRefusal is why a memory write is refused whole: nothing was written
+// or redacted, so the lines say where the given text still holds a secret.
+func secretRefusal(clean string) error {
+	return fmt.Errorf("a brain file cannot hold a secret; secret-shaped text on lines %v - name the env var or use a placeholder like $TOKEN", redactedLines(clean))
 }
 
 // scrubBrainWrite runs the recipe treatment on the file under the partition

@@ -169,7 +169,7 @@ func (h *Host) assembleSections() string {
 		return ""
 	}
 	var b strings.Builder
-	_, err := h.RT.Do(context.Background(), lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0,
+	_, err := h.RT.Do(context.Background(), lua.ClassUI, lua.VetoCeiling(len(handlers), 1), 0, "hook "+EventAgentAssemble,
 		func(L *glua.LState) ([]any, error) {
 			for _, hd := range handlers {
 				title, text := h.callAssembleHandler(L, hd)

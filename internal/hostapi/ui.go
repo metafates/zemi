@@ -943,7 +943,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	}
 	gen := h.currentGen()
 	h.GoSafe("event "+name, func() {
-		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, "hook "+name, func(L *glua.LState) ([]any, error) {
 			if h.currentGen() != gen {
 				return nil, nil
 			}

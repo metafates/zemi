@@ -290,7 +290,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 		return nil
 	}
 	var out []CompletionItem
-	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, "completion", func(L *glua.LState) ([]any, error) {
 		for _, s := range srcs {
 			if s.gen != h.currentGen() || len(out) >= maxCompletions {
 				continue

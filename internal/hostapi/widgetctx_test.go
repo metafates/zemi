@@ -275,7 +275,7 @@ func TestTableSegments(t *testing.T) {
 	w := h.Widgets.Get("s")
 	for i, direct := range []bool{true, true, false, false, false, false} {
 		var got [][]Segment
-		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 			if err := L.CallByParam(glua.P{Fn: w.Render, NRet: 1, Protect: true}); err != nil {
 				return nil, err
 			}
@@ -371,7 +371,7 @@ func TestAgentTableCachesToolRows(t *testing.T) {
 	}
 	rows := func(stream []StreamTool, now time.Time) []*glua.LTable {
 		var out []*glua.LTable
-		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 			tb := h.agentTable(L, StreamSnapshot{Tools: stream}, now).RawGetString("tools").(*glua.LTable)
 			for i := 1; i <= tb.Len(); i++ {
 				out = append(out, tb.RawGetInt(i).(*glua.LTable))
@@ -415,7 +415,7 @@ func TestUsageTablesCache(t *testing.T) {
 	h := newTestHostUI(t)
 	tables := func(s StreamSnapshot, priced bool) (*glua.LTable, *glua.LTable) {
 		var u, c *glua.LTable
-		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 			u, c = h.usageTables(L, s, priced)
 			return nil, nil
 		})
@@ -459,7 +459,7 @@ func TestTranscriptTableCachesRows(t *testing.T) {
 	h := newTestHostUI(t)
 	rows := func(epoch, edit int64, rev uint64, tr []ChatMessage) []*glua.LTable {
 		var out []*glua.LTable
-		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 			tb := h.transcriptTable(L, epoch, edit, rev, tr)
 			for i := 1; i <= tb.Len(); i++ {
 				out = append(out, tb.RawGetInt(i).(*glua.LTable))

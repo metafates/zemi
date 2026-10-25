@@ -652,7 +652,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			}
 			return veto("", "", nil), nil
 		}
-		_, err := t.h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		_, err := t.h.RT.Do(ctx, lua.ClassUI, 0, 0, "hook "+name, func(L *glua.LState) ([]any, error) {
 			t.h.recordEvent(name, "host", ev)
 			t.h.emitSync(L, hs, name, ev, "host")
 			return nil, nil

@@ -369,7 +369,7 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 		zemi.event.on("permission.request", function() end)
 		zemi.event.on("app.quit", function() end)
 		zemi.event.on("tool.pre", function() end)`)
-	if _, err := r.Do(t.Context(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, func(*glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, "test", func(*glua.LState) ([]any, error) {
 		<-t.Context().Done()
 		return nil, nil
 	}); !r.IsHot() {

@@ -80,7 +80,10 @@ func Dropped(err error) bool {
 type Fn func(L *glua.LState) ([]any, error)
 
 type request struct {
-	class   Class
+	class Class
+	// name is what the request runs ("hook tool.pre", "widget render"),
+	// so a slow or wedged handler names itself in the warn and the error.
+	name    string
 	fn      Fn
 	caller  context.Context
 	reply   chan result
@@ -119,9 +122,10 @@ type result struct {
 	err  error
 }
 
-func newRequest(ctx context.Context, class Class, fn Fn, ceiling, grace time.Duration) *request {
+func newRequest(ctx context.Context, class Class, ceiling, grace time.Duration, name string, fn Fn) *request {
 	return &request{
 		class:   class,
+		name:    name,
 		fn:      fn,
 		caller:  ctx,
 		reply:   make(chan result, 1),
@@ -272,7 +276,7 @@ func (g *Generation) execute(r *request) {
 	go func() {
 		slow := time.AfterFunc(SoftBudget, func() {
 			g.rt.log.Warn("handler exceeded soft budget", "origin", "lua",
-				"class", r.class.String(), "budget", SoftBudget.String(),
+				"class", r.class.String(), "handler", r.name, "budget", SoftBudget.String(),
 			)
 		})
 		defer slow.Stop()
@@ -288,8 +292,8 @@ func (g *Generation) execute(r *request) {
 				// Mark hot BEFORE answering: while hot every Lua request
 				// fails fast, so a request arriving after the abandon
 				// cannot enqueue onto the wedged interpreter.
-				g.rt.goHot(g, fmt.Errorf("request in class %s exceeded ceiling %s + grace %s",
-					r.class.String(), ceiling, grace))
+				g.rt.goHot(g, fmt.Errorf("request in class %s (%s) exceeded ceiling %s + grace %s",
+					r.class.String(), r.name, ceiling, grace))
 				r.reply <- result{err: ErrAbandoned}
 			}
 		}

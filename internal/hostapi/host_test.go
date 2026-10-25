@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/v2"
@@ -278,7 +279,7 @@ func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
 
 	called := false
 	var onSelect *glua.LFunction
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 		onSelect = L.NewFunction(func(*glua.LState) int { called = true; return 0 })
 		return nil, nil
 	}); err != nil {
@@ -463,7 +464,7 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	w := h.Widgets.List()[0]
 	rendered := make(chan struct{})
 	ctx := &waitedCtx{Context: t.Context(), waited: make(chan struct{}, 1)}
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 		go func() {
 			defer close(rendered)
 			h.RenderWidget(ctx, w, 40, 10, UIState{})
@@ -805,6 +806,50 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 	}
 }
 
+// TestLoadPicksDropsDeadKeys: a kept pick for a key nothing registers any
+// more is deleted from the store once, instead of warning at every boot; a
+// plugin- or model-shaped unknown pick may still register this boot, and a
+// bad value on a known key stays for its fix.
+func TestLoadPicksDropsDeadKeys(t *testing.T) {
+	t.Parallel()
+	var file bytes.Buffer
+	h, _ := newTestHostDB(t)
+	h.Log = slog.New(slog.NewTextHandler(&file, nil))
+	for _, kv := range [][2]string{
+		{"config:agent.max_steps", "500"},
+		{"config:plugins.plug.thing", "1"},
+		{"config:models.gpt9", `"big"`},
+		{"config:agent.compact_at", `"whenever"`},
+	} {
+		if err := h.GlobalDB.SetKV(kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.loadPicks()
+	if _, err := h.GlobalDB.GetKV("config:agent.max_steps"); err == nil {
+		t.Error("the dead pick row is still there")
+	}
+	if v, ok := h.picked["plugins.plug.thing"]; !ok || v != 1.0 {
+		t.Errorf("plugin pick: %v, %v", v, ok)
+	}
+	if v, ok := h.picked["models.gpt9"]; !ok || v != "big" {
+		t.Errorf("model pick: %v, %v", v, ok)
+	}
+	if v, _ := h.Settings.Get("agent.compact_at"); v != 80.0 {
+		t.Errorf("the bad value was set: %v", v)
+	}
+	if _, err := h.GlobalDB.GetKV("config:agent.compact_at"); err != nil {
+		t.Error("the bad-value row was deleted")
+	}
+	logs := file.String()
+	if n := strings.Count(logs, "dropped dead pick"); n != 1 {
+		t.Errorf("dropped dead pick logged %d times, want 1", n)
+	}
+	if n := strings.Count(logs, "kept pick left out"); n != 1 {
+		t.Errorf("kept pick left out logged %d times, want 1", n)
+	}
+}
+
 func TestSetModelFiresWatches(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
@@ -995,7 +1040,7 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	var boom *glua.LFunction
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 		boom = L.NewFunction(func(L *glua.LState) int { L.RaiseError("nope"); return 0 })
 		return nil, nil
 	}); err != nil {

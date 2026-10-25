@@ -77,7 +77,7 @@ func TestTask(t *testing.T) {
 			switch {
 			case c.plain:
 				go func() {
-					_, err := r.Do(ctx, ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+					_, err := r.Do(ctx, ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 						fn, _, err := task.Start(L)
 						if err != nil {
 							return nil, err
@@ -100,7 +100,7 @@ func TestTask(t *testing.T) {
 			if c.act != "" {
 				<-waiting
 				// the interpreter is free while the task waits
-				if _, err := r.Do(t.Context(), ClassUI, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
+				if _, err := r.Do(t.Context(), ClassUI, 0, 0, "test", func(*glua.LState) ([]any, error) { return nil, nil }); err != nil {
 					t.Fatalf("a request while the task waits: %v", err)
 				}
 				switch c.act {
@@ -113,7 +113,7 @@ func TestTask(t *testing.T) {
 				case "cancel":
 					cancel()
 				case "forge":
-					if _, err := r.Do(t.Context(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+					if _, err := r.Do(t.Context(), ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
 						fn, err := genOf(L).SB.CompileChunk(`local ok, err = pcall(coroutine.resume, ..., "forged")
 							assert(not ok and err:find("resumes only when", 1, true), tostring(err))`, OriginPlugin.ChunkName("p.lua"))
 						if err != nil {

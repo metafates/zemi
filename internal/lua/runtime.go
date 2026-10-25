@@ -318,8 +318,9 @@ func (r *Runtime) Booting() bool { return r.booting.Load() }
 func (r *Runtime) Reloading() bool { return r.reloading.Load() }
 
 // Do enqueues fn on the current generation and waits for the result.
-// ceiling == 0 selects the class default.
-func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Duration, fn Fn) ([]any, error) {
+// ceiling == 0 selects the class default; name is what fn runs, for the
+// soft-budget warn and the abandon error.
+func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Duration, name string, fn Fn) ([]any, error) {
 	if r.hot.Load() {
 		return nil, ErrHot
 	}
@@ -330,14 +331,14 @@ func (r *Runtime) Do(ctx context.Context, class Class, ceiling, grace time.Durat
 		}
 		return nil, errors.New("zemi: lua runtime not booted")
 	}
-	return gen.do(ctx, class, ceiling, grace, fn)
+	return gen.do(ctx, class, ceiling, grace, name, fn)
 }
 
-func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Duration, fn Fn) ([]any, error) {
+func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Duration, name string, fn Fn) ([]any, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	r := newRequest(ctx, class, fn, ceiling, grace)
+	r := newRequest(ctx, class, ceiling, grace, name, fn)
 	g.enqueue(r)
 	select {
 	case res := <-r.reply:

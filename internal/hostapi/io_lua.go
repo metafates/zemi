@@ -346,7 +346,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			stopID := h.stops.add(handle.stopIt)
 			var fire func() // the clock's call, on its goroutine
 			tick := func() {
-				_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+				_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, "timer callback", func(L *glua.LState) ([]any, error) {
 					if h.currentGen() != at.gen {
 						return nil, nil
 					}
@@ -942,7 +942,7 @@ func (s *lineSink) drain() {
 // deliver is a plain call, not a task: a batch every 30ms would cost a
 // task's thread each.
 func (s *lineSink) deliver(lines []string) {
-	_, err := s.h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+	_, err := s.h.RT.Do(context.Background(), lua.ClassIO, 0, 0, s.what, func(L *glua.LState) ([]any, error) {
 		if s.h.currentGen() != s.at.gen {
 			return nil, nil
 		}

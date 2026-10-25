@@ -163,7 +163,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			cands = append(cands, CompletionItem{Text: sanitize.String(s)})
 		}
 	case cmd.Complete != nil:
-		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "command completer", func(L *glua.LState) ([]any, error) {
 			// looked up before a reload, the function belongs to a dropped LState
 			if h.currentGen() != cmd.Gen {
 				return nil, lua.ErrReloaded

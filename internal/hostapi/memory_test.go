@@ -873,8 +873,21 @@ func TestMemoryFileMode(t *testing.T) {
 		},
 		{name: "missing frontmatter applies", path: "map.md", content: "just a body", want: "wrote map.md"},
 		{
+			name: "empty content refuses", path: "map.md", content: "",
+			want: "content is empty; pass the file's full content",
+		},
+		{
+			name: "whitespace content refuses", path: "map.md", content: " \n\t",
+			want: "content is empty; pass the file's full content",
+		},
+		{
 			name: "a secret in the content refuses", path: "map.md", content: fm + "token = ghp_0123456789abcdefghijklmnopqrstuv\n",
-			want: "cannot hold a secret",
+			want: "cannot hold a secret; secret-shaped text on lines [6]",
+		},
+		{
+			name: "the secret refusal names a single line", path: "map.md",
+			content: "token = ghp_0123456789abcdefghijklmnopqrstuv\n",
+			want:    "secret-shaped text on lines [1]",
 		},
 		{
 			name: "over the content cap refuses", path: "map.md", content: fm + strings.Repeat("w", 33<<10),
@@ -1089,7 +1102,14 @@ func TestPromoteMemory(t *testing.T) {
 			seed: func(t *testing.T, h *Host) store.Memory {
 				return seedLine(t, h, "project", store.OriginLearned, "a plain fact")
 			},
-			want: "cannot hold a secret",
+			want: "cannot hold a secret; secret-shaped text on lines [2]",
+		},
+		{
+			name: "a secret in the line refuses", path: "d.md", description: "d", readIf: "r",
+			seed: func(t *testing.T, h *Host) store.Memory {
+				return seedLine(t, h, "project", store.OriginLearned, "token = ghp_0123456789abcdefghijklmnopqrstuv")
+			},
+			want: "secret-shaped text on lines [5]",
 		},
 		{
 			name: "a collision refuses", path: "f00.md", description: "d", readIf: "r",

@@ -223,7 +223,7 @@ func pressWhileLuaBusy(t *testing.T, app *App, keys ...tea.KeyPressMsg) (release
 	t.Helper()
 	app.program = tea.NewProgram(nil)
 	busy, hold := make(chan struct{}), make(chan struct{})
-	go app.host.RT.Do(t.Context(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
+	go app.host.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(*glua.LState) ([]any, error) {
 		close(busy)
 		<-hold
 		return nil, nil

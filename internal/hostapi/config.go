@@ -253,7 +253,10 @@ func (h *Host) forgetPick(path config.Key) {
 }
 
 // loadPicks applies the kept picks before any Lua runs, so init.lua still
-// wins over them; a row the schema no longer takes is left out.
+// wins over them. A row whose key is neither in the schema nor plugin- or
+// model-shaped is dead: nothing later in the boot registers a builtin key,
+// so the row goes instead of warning at every boot; a bad value on a known
+// key stays, a transient one fixes itself.
 func (h *Host) loadPicks() {
 	keys, err := h.GlobalDB.KeysKV("config:")
 	if err != nil {
@@ -266,9 +269,10 @@ func (h *Host) loadPicks() {
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &v)
 		}
+		_, known := h.Settings.Get(path)
 		// a key the schema does not hold yet may still be registered later in
 		// this boot, by a plugin or by a model target, which applies its pick
-		if _, known := h.Settings.Get(path); err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(string(path), "models.")) {
+		if err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(string(path), "models.")) {
 			h.picked[path] = v
 			continue
 		}
@@ -279,6 +283,14 @@ func (h *Host) loadPicks() {
 			_, err = h.Settings.SetQuiet(path, v)
 		}
 		if err != nil {
+			var bad *config.BadValueError
+			if !known && !errors.As(err, &bad) && settingPlugin(path) == "" && !strings.HasPrefix(string(path), "models.") {
+				if _, derr := h.GlobalDB.DelKV(k); derr != nil {
+					h.Log.Warn("could not drop a dead pick", "origin", "config", "path", path, "error", derr)
+				}
+				h.Log.Info("dropped dead pick", "origin", "config", "path", path)
+				continue
+			}
 			h.Log.Warn("kept pick left out", "origin", "config", "path", path, "error", err)
 			continue
 		}
