@@ -92,6 +92,7 @@ func TestPluginsCommand(t *testing.T) {
 			name: "the list", args: "",
 			want: []string{
 				"text:Install a plugin verb:fill",
+				"text:Add a marketplace verb:fill", "desc:no marketplaces yet",
 				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
 				"[author me]", "[homepage https://a]", "detail:# a",
@@ -109,9 +110,10 @@ func TestPluginsCommand(t *testing.T) {
 			name: "marketplace add", args: "marketplace add " + mkt,
 			want: []string{
 				"info: Marketplace added: marketplace test added (2 plugins)",
-				"section:Marketplaces text:test", "desc:2 plugins",
+				"text:Add a marketplace verb:fill", "section:Marketplaces text:test", "desc:2 plugins",
 				"verb:open", "run:plugin marketplace test", "desc:update key:u run:plugin marketplace update test", "danger:true desc:remove key:x run:plugin marketplace remove test",
 			},
+			not: []string{"no marketplaces yet"},
 		},
 		{
 			name: "the marketplace drill-down", args: "marketplace test",

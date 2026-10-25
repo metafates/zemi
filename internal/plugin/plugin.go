@@ -779,7 +779,7 @@ func listMarketplaces(d config.Dirs, out io.Writer) error {
 		return err
 	}
 	for _, m := range ms {
-		fmt.Fprintf(out, "%s %s (%d plugins)\n", m.Name, m.Source, len(m.Entries))
+		fmt.Fprintf(out, "%s %s (%s)\n", m.Name, m.Source, Count(len(m.Entries)))
 		for _, e := range m.Entries {
 			line := []string{e.Name}
 			if e.Version != "" {
@@ -859,8 +859,17 @@ func addMarketplace(ctx context.Context, d config.Dirs, arg string, out io.Write
 			return err
 		}
 	}
-	fmt.Fprintf(out, "marketplace %s added (%d plugins)\n", name, len(m.Plugins))
+	fmt.Fprintf(out, "marketplace %s added (%s)\n", name, Count(len(m.Plugins)))
 	return nil
+}
+
+// Count names how many plugins a marketplace lists, the one wording the
+// toast, the list line and the /plugin rows use.
+func Count(n int) string {
+	if n == 1 {
+		return "1 plugin"
+	}
+	return fmt.Sprintf("%d plugins", n)
 }
 
 // removeMarketplace drops a marketplace: its clone, its cache clones and its

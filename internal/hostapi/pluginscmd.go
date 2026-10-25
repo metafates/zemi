@@ -273,18 +273,26 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 	})
 }
 
-// pluginItems lists the plugins under three action rows, which carry the empty
-// state, so a rebuild keeps it true.
+// pluginItems lists the plugins and marketplaces under the list's action rows,
+// which carry the empty state, so a rebuild keeps it true.
 func (h *Host) pluginItems() []OverlayItem {
 	ps, err := plugin.List(context.Background(), h.Dirs)
 	if err != nil {
 		h.Notify(slog.LevelError, "Could not read the plugins", err.Error())
 	}
+	ms, mktErr := plugin.Marketplaces(h.Dirs)
+	if mktErr != nil {
+		h.Notify(slog.LevelError, "Could not read the marketplaces", mktErr.Error())
+	}
 	install := OverlayItem{Text: "Install a plugin", Verb: VerbFill, Fill: "/plugin install "}
 	if len(ps) == 0 && err == nil {
 		install.Desc = "no plugins yet"
 	}
-	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install}
+	addMarket := OverlayItem{Text: "Add a marketplace", Verb: VerbFill, Fill: "/plugin marketplace add "}
+	if len(ms) == 0 && mktErr == nil {
+		addMarket.Desc = "no marketplaces yet"
+	}
+	items := []OverlayItem{{Text: "New plugin", Verb: VerbFill, Fill: "/plugin new "}, install, addMarket}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
@@ -341,34 +349,21 @@ func (h *Host) pluginItems() []OverlayItem {
 			Detail: cmp.Or(readme, pluginDetail(p)), Keys: keys, Fields: fields,
 		})
 	}
-	h.marketplaceItems(&items)
+	items = append(items, marketplaceRows(ms)...)
 	return items
 }
 
-// marketplaceItems appends the Marketplaces section: one row per registered
-// marketplace, or the filler row that adds one when none is.
-func (h *Host) marketplaceItems(items *[]OverlayItem) {
-	ms, err := plugin.Marketplaces(h.Dirs)
-	if err != nil {
-		h.Notify(slog.LevelError, "Could not read the marketplaces", err.Error())
-	}
-	if len(ms) == 0 {
-		if err == nil {
-			*items = append(*items, OverlayItem{
-				Text: "Add a marketplace", Verb: VerbFill, Fill: "/plugin marketplace add ",
-				Section: "Marketplaces", Desc: "none registered",
-			})
-		}
-		return
-	}
+// marketplaceRows lists the Marketplaces section: one row per registered
+// marketplace, whose enter opens its drill-down.
+func marketplaceRows(ms []plugin.MarketplaceInfo) []OverlayItem {
+	rows := make([]OverlayItem, 0, len(ms))
 	for _, m := range ms {
-		count := pluginCount(len(m.Entries))
 		// the source lives on the drill-down's info row, where it fits
-		desc := count
+		desc := plugin.Count(len(m.Entries))
 		if m.Err != "" {
 			desc = m.Err
 		}
-		*items = append(*items, OverlayItem{
+		rows = append(rows, OverlayItem{
 			Text: m.Name, Section: "Marketplaces",
 			Desc: desc,
 			Verb: VerbOpen, Run: "plugin marketplace " + m.Name,
@@ -378,6 +373,7 @@ func (h *Host) marketplaceItems(items *[]OverlayItem) {
 			},
 		})
 	}
+	return rows
 }
 
 // marketplaceItemsOf builds a marketplace's drill-down: an info row, the
@@ -399,7 +395,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	installed := plugin.InstalledEntries(h.Dirs, name)
 	live, provs := h.pluginProvides(), plugin.EntryProvides(h.Dirs, name)
 	items := []OverlayItem{{
-		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %s", m.Added.Format(time.DateOnly), pluginCount(len(m.Entries))),
+		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %s", m.Added.Format(time.DateOnly), plugin.Count(len(m.Entries))),
 		Section: "Marketplace",
 		Keys: []ItemKey{
 			{Key: "u", Desc: "update", Run: "plugin marketplace update " + name},
@@ -479,14 +475,6 @@ func (h *Host) openMarketplace(ui UIHooks, name string) {
 		Items: h.marketplaceItemsOf(name), Reload: func() []OverlayItem { return h.marketplaceItemsOf(name) },
 		BodyMD: true,
 	})
-}
-
-// pluginCount is a marketplace's entry count as a row says it.
-func pluginCount(n int) string {
-	if n == 1 {
-		return "1 plugin"
-	}
-	return fmt.Sprintf("%d plugins", n)
 }
 
 // cutLine is a description's first line, cut where a row's desc stops being

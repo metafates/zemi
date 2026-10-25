@@ -781,7 +781,7 @@ func TestMarketplace(t *testing.T) {
 			args: []string{"install", "nope"},
 			want: `no marketplace lists "nope" (searched bothz, demo-market)`, err: true,
 		},
-		{name: "a ghost marketplace registers", args: []string{"marketplace", "add", ghost}, want: "marketplace ghost added (1 plugins)"},
+		{name: "a ghost marketplace registers", args: []string{"marketplace", "add", ghost}, want: "marketplace ghost added (1 plugin)"},
 		{
 			name: "a ghost git entry installs from its own clone",
 			args: []string{"install", "ghost-one@ghost"}, want: "\nghost-one v0.1.0\n",
@@ -974,7 +974,7 @@ func TestMarketplace(t *testing.T) {
 		{
 			name: "a ref pins the clone to its branch",
 			args: []string{"marketplace", "add", "file://" + pinned + "#stable"},
-			want: "marketplace pinned-mkt added (1 plugins)",
+			want: "marketplace pinned-mkt added (1 plugin)",
 			check: func(t *testing.T) {
 				dir := filepath.Join(d.PluginsRoot(), "marketplaces", "pinned-mkt")
 				if _, err := os.Lstat(filepath.Join(dir, "p", "commands", "two.md")); err != nil {
@@ -1014,7 +1014,7 @@ func TestMarketplace(t *testing.T) {
 		},
 		{
 			name: "a marketplace of one root entry registers",
-			args: []string{"marketplace", "add", rootsrc}, want: "marketplace rootsrc-mkt added (1 plugins)",
+			args: []string{"marketplace", "add", rootsrc}, want: "marketplace rootsrc-mkt added (1 plugin)",
 		},
 		{
 			name: "an entry that is the marketplace's own repo links at the clone root",
