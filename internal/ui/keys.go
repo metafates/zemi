@@ -157,7 +157,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.Quit()
 		}
 	case modalTrust:
-		if a.askGuard(&a.trust.opened, false) {
+		if a.askGuard(a.trust.opened, false) {
 			return nil
 		}
 		tp := a.trust
@@ -180,7 +180,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if pa == nil {
 			return nil
 		}
-		if a.askGuard(&pa.opened, pa.answer == nil) {
+		if a.askGuard(pa.opened, pa.answer == nil) {
 			return nil
 		}
 		choices := pa.choices()
@@ -204,12 +204,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	case modalPlan:
-		if a.askGuard(&a.planAsk.opened, false) {
+		if a.askGuard(a.planAsk.opened, false) {
 			return nil
 		}
 		a.planKey(key, keyText(msg))
 	case modalQuestion:
-		if a.askGuard(&a.question.opened, false) {
+		if a.askGuard(a.question.opened, false) {
 			return nil
 		}
 		a.questionKey(key, keyText(msg))
@@ -533,8 +533,8 @@ func (a *App) typing(top modal) bool {
 // askGuard is the guard the four blocking asks share (DESIGN §8): keys still
 // in flight as the box opened, and keys on an answered permission box, are
 // swallowed; past the grace every key is the ask's, draft or not.
-func (a *App) askGuard(opened *time.Time, answered bool) bool {
-	return answered || a.fresh(*opened)
+func (a *App) askGuard(opened time.Time, answered bool) bool {
+	return answered || a.fresh(opened)
 }
 
 // runRHS executes a keymap right-hand side on the background worker.
