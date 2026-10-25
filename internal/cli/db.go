@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
@@ -18,8 +19,8 @@ import (
 // dbRowCap is how many rows the text table prints; a clipped one says so.
 const dbRowCap = 500
 
-// dbCellCap is a text cell's width, past which it shows an ellipsis; --json
-// carries every value whole.
+// dbCellCap is a text cell's width, past which it cuts and names the cut;
+// --json carries every value whole.
 const dbCellCap = 60
 
 func dbCommand(o *options) *cobra.Command {
@@ -143,7 +144,7 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string
 }
 
 // dbCell renders one value for the text table: NULL an empty cell, a blob as
-// its bytes, a one-line string capped at dbCellCap.
+// its bytes, a one-line string capped at dbCellCap, the tail naming the cut.
 func dbCell(v any) string {
 	switch x := v.(type) {
 	case nil:
@@ -151,7 +152,22 @@ func dbCell(v any) string {
 	case string:
 		x = strings.ReplaceAll(x, "\n", "\\n")
 		x = strings.ReplaceAll(x, "\t", "\\t")
-		return ansi.Truncate(x, dbCellCap, "...")
+		if ansi.StringWidth(x) <= dbCellCap {
+			return x
+		}
+		// the tail's own width comes out of the cap, so the count it names
+		// and the tail's length settle over a pass or two
+		tail := "..."
+		for range 3 {
+			kept := strings.TrimSuffix(ansi.Truncate(x, dbCellCap, tail), tail)
+			next := fmt.Sprintf("... (+%d chars; --json for the whole)",
+				utf8.RuneCountInString(x)-utf8.RuneCountInString(kept))
+			if next == tail {
+				break
+			}
+			tail = next
+		}
+		return ansi.Truncate(x, dbCellCap, tail)
 	case []byte:
 		return dbCell(string(x))
 	case int64:

@@ -2535,6 +2535,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			return h.memoryTool(p, h.AgentSessionID(), call)
 		},
 		Pad:          h.ScratchDir(),
+		ProjectDir:   h.Dirs.ProjectDir,
 		Seen:         h.readLog(),
 		Instructions: h.mainInstructions,
 	}

@@ -252,7 +252,7 @@ cmd_logs() {
 cmd_status() {
 	load
 	say "lab $NAME: $TREE"
-	say "  fake model 127.0.0.1:$PORT, tmux server $SERVER"
+	say "  fake model 127.0.0.1:${LAB_PORT:-?}, tmux server $SERVER"
 	tmux -L "$SERVER" list-sessions 2>/dev/null || say "  tmux server down"
 }
 

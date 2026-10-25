@@ -374,11 +374,18 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-// cmdEnv is the environment of a command the model starts. The touch tells
-// another process's sweep the pad is used.
+// cmdEnv is the environment of a command the model starts: the pad and the
+// project as names a script can read, and the touch tells another process's
+// sweep the pad is used.
 func (p *Pipeline) cmdEnv() []string {
 	env := append([]string{}, os.Environ()...)
 	env = append(env, proc.NonInteractiveEnv...)
+	if p.Pad != "" {
+		env = append(env, "ZEMI_SCRATCH="+p.Pad)
+	}
+	if p.ProjectDir != "" {
+		env = append(env, "ZEMI_PROJECT_DIR="+p.ProjectDir)
+	}
 	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
 		now := time.Now()
 		_ = os.Chtimes(p.Pad, now, now)

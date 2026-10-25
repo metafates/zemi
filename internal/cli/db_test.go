@@ -85,6 +85,7 @@ func TestDB(t *testing.T) {
 		{"an unmigrated store is refused", []string{"-C", stale, "db", "select 1"}, 1, "", "zemi health", ""},
 		{"global reads the global store", []string{"db", "--global", "select count(*) from sessions"}, 0, "count(*)\n0\n", "", ""},
 		{"the text table caps at 500", []string{"db", "with recursive t(n) as (select 1 union all select n+1 from t where n < 501) select n from t"}, 0, "499\n500\n", "showing the first 500 rows", "501"},
+		{"a cut cell names its cut", []string{"db", "with recursive t(n) as (select 1 union all select n+1 from t where n < 101) select group_concat('x', '') from t"}, 0, "+78 chars; --json for the whole)", "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// a -C case chdirs; every case starts from the project again

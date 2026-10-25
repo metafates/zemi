@@ -539,7 +539,11 @@ func sessionsCommand(o *options) *cobra.Command {
 			if *all {
 				groups, skipped := hostapi.ListAllSessions(dirs)
 				if n := len(skipped); n > 0 {
-					fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s\n", n, hostapi.Plural(n, "store", "stores"))
+					names := make([]string, n)
+					for i, root := range skipped {
+						names[i] = perm.TildePath(root)
+					}
+					fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", n, hostapi.Plural(n, "store", "stores"), strings.Join(names, ", "))
 				}
 				if len(groups) == 0 {
 					fmt.Fprintln(c.ErrOrStderr(), "zemi: no sessions in any project yet")
@@ -636,7 +640,11 @@ func searchCommand(o *options) *cobra.Command {
 			query := strings.Join(args, " ")
 			found := hostapi.FindSessions(o.dirs, query)
 			if n := len(found.Skipped); n > 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s\n", n, hostapi.Plural(n, "store", "stores"))
+				skipped := make([]string, n)
+				for i, root := range found.Skipped {
+					skipped[i] = perm.TildePath(root)
+				}
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", n, hostapi.Plural(n, "store", "stores"), strings.Join(skipped, ", "))
 			}
 			if len(found.Sessions) == 0 {
 				fmt.Fprintf(c.ErrOrStderr(), "zemi: no match for %q in %d %s\n", query, found.Projects, hostapi.Plural(found.Projects, "project", "projects"))

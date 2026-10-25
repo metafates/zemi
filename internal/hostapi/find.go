@@ -349,7 +349,11 @@ func (h *Host) findOverlay(res Found, query string, searching bool) Overlay {
 	o.Items = items
 	unreadable := ""
 	if len(res.Skipped) > 0 {
-		unreadable = fmt.Sprintf(" · %d unreadable", len(res.Skipped))
+		skipped := make([]string, len(res.Skipped))
+		for i, root := range res.Skipped {
+			skipped[i] = perm.TildePath(root)
+		}
+		unreadable = fmt.Sprintf(" · %d unreadable: %s", len(res.Skipped), strings.Join(skipped, ", "))
 	}
 	if len(res.Sessions) == 0 {
 		o.Empty = fmt.Sprintf("No match for %q in %d %s%s.", query, res.Projects, Plural(res.Projects, "project", "projects"), unreadable)

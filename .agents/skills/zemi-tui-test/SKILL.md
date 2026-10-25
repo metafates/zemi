@@ -33,7 +33,9 @@ $S/zemi-lab down                   # kill sessions and server, delete the tree (
 ```
 
 `prompt` clears a leftover draft first (one ctrl+c; a second would quit), types, sends
-Enter, and waits for the screen to settle - never a blind sleep. `up` flags: `-x W -y H`
+Enter, and waits for the screen to settle - never a blind sleep. It returns when the
+screen settles (a settle heuristic), which can be mid-turn - not a turn-end guarantee.
+`up` flags: `-x W -y H`
 (default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
 prompt). `zemi-lab attach` sits at the lab in a real terminal.
 
@@ -65,6 +67,8 @@ installs one whose `permission.request` handler returns `{decision = "ask"}` (a 
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
   keys until 201~) while zemi stays healthy: `respawn-pane` revives it. The lab sends one
   atomic call per command.
+- send-keys cannot inject a positioned mouse click: a click path is Go-test only, with
+  findCell and clickAt in internal/ui/mouse_test.go.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
 - Idle CPU: `ps -o %cpu -p $(pgrep -f "zemi --trust")` over 30 s must stay near 0.
 - Session rows, tool telemetry and usage are in the zemi.db `db` prints (SQLite).

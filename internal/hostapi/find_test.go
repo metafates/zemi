@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -215,7 +216,7 @@ func TestOpenFindSessions(t *testing.T) {
 	if !res.Refresh || !res.Wide || res.ID != "sessions search" || res.Title != "Search sessions" {
 		t.Errorf("result overlay = %+v", res)
 	}
-	if want := "4 hits in 2 sessions · 2 projects searched · 1 unreadable"; res.Body != want {
+	if want := "4 hits in 2 sessions · 2 projects searched · 1 unreadable: " + perm.TildePath(f.garbage); res.Body != want {
 		t.Errorf("body = %q, want %q", res.Body, want)
 	}
 	if len(res.Items) != 2 {

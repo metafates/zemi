@@ -783,6 +783,17 @@ func TestReadSaysWhatTheModelSees(t *testing.T) {
 	}
 }
 
+// TestCmdEnv: a command the model runs sees the pad and the project as
+// names a script can read; job_start starts with the same env.
+func TestCmdEnv(t *testing.T) {
+	pad, proj := t.TempDir(), t.TempDir()
+	p := &Pipeline{Pad: pad, ProjectDir: proj}
+	res, _ := runShell(t.Context(), p, shellArgs{Command: `printf '%s\n' "$ZEMI_SCRATCH" "$ZEMI_PROJECT_DIR"`})
+	if res.Content != pad+"\n"+proj {
+		t.Errorf("command env = %q, want the pad and the project", res.Content)
+	}
+}
+
 // TestReadAndShellShapes: read returns images as images, lists a directory
 // one level deep, and refuses binaries and offsets past the end; shell keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.

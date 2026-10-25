@@ -29,7 +29,7 @@
    return zemi.ui.screenshot() -- the drawn screen as plain text, nil, err before the first frame
    ```
 
-   It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's widget is checked by `test.render` in its tests instead, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed, and `/health` names widgets whose region the layout does not draw (`exit` aside: it prints on quit).
+   It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's widget is checked by `test.render` in its tests instead, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed, and `/health` names widgets whose region the layout does not draw (`exit` aside: it prints on quit). SKILL.md's Check a change runs these reads as one script against a config change.
 5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Without a TUI (`zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
 6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
@@ -39,6 +39,7 @@
    ```
 
    Each line is `time=... level=WARN msg=... origin=... key=value...`, a value with spaces or escapes quoted and a `zemi.log` field as `ctx.<key>=`. Origins worth grepping: `agent`, `reflector`, `memory`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`, and a Lua `zemi.log` line's `user`, `plugin` or `project`. A recovered panic logs its full stack under `origin=panic`.
+7. A trail that leads into zemi's Go code or a dependency reads the source where it already is: `go env GOMODCACHE` names the module cache, no network fetch.
 
 ## Common failures
 
