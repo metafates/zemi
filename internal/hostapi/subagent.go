@@ -1548,13 +1548,13 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 			}
 			t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0].id})
 			if len(handed) == 1 {
-				h := handed[0]
-				return fantasy.NewTextResponse(handoffText(h.kind, h.id, h.label,
+				hr := handed[0]
+				return fantasy.NewTextResponse(handoffText(hr.kind, hr.id, hr.label,
 					"wait all again if you still need to hold"))
 			}
 			lines := make([]string, len(handed))
-			for i, h := range handed {
-				lines[i] = fmt.Sprintf("%s %s (%s)", h.kind, h.id, h.label)
+			for i, hr := range handed {
+				lines[i] = fmt.Sprintf("%s %s (%s)", hr.kind, hr.id, hr.label)
 			}
 			return fantasy.NewTextResponse(fmt.Sprintf("The user's message took the turn while you waited; %s go on, and their reports arrive as messages. Handle the message, then wait all again if you still need to hold.", strings.Join(lines, ", ")))
 		}
