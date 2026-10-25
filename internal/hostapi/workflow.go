@@ -1676,18 +1676,22 @@ func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.Tool
 		case <-h.userSpoke():
 			// the user's own message takes the run: its report goes to the session
 			if f.detach() {
-				return fantasy.NewTextResponse(bgFlowText(f))
+				h.setToolOutcome(callID, tools.Outcome{Run: id})
+				return fantasy.NewTextResponse(handoffText("workflow", f.id, f.description,
+					"wait it again (workflow run="+id+" with action wait) if you still need it"))
 			}
 			<-f.done
 			return end()
 		case <-ctx.Done():
 			// esc stops the wait, not the run
+			h.setToolOutcome(callID, tools.Outcome{Run: id})
 			return fantasy.NewTextResponse("Stopped waiting; workflow " + id + " goes on. Call it again with run=" + id + " and action wait, or read its report when it arrives.")
 		case <-change:
 			if !f.isRunning() {
 				return end()
 			}
 			if lines := h.sibMoves(sibs); len(lines) > 0 {
+				h.setToolOutcome(callID, tools.Outcome{Run: id})
 				return fantasy.NewTextResponse(sibText(lines,
 					fmt.Sprintf("workflow %s (%s)", f.id, f.description),
 					fmt.Sprintf("wait it again (workflow run=%s with action wait)", f.id)))

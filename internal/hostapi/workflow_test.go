@@ -898,11 +898,13 @@ func TestWorkflowWait(t *testing.T) {
 	for _, c := range []struct {
 		name      string
 		esc       bool
+		speak     bool
 		want      string
 		stillLive bool
 	}{
 		{name: "the run ends", want: "Its report arrives as a message"},
 		{name: "esc stops waiting, not the run", esc: true, want: "Stopped waiting", stillLive: true},
+		{name: "the user's message takes the run", speak: true, want: "took the turn", stillLive: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -946,6 +948,8 @@ func TestWorkflowWait(t *testing.T) {
 			}()
 			if c.esc {
 				cancel()
+			} else if c.speak {
+				h.UserSpoke()
 			} else {
 				close(gate)
 			}

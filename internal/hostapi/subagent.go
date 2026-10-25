@@ -1323,7 +1323,8 @@ func (t *agentTool) wait(ctx context.Context, callID string, run *agentRun) fant
 			// the user's own message takes the run: its report goes to the session
 			if run.detach() {
 				h.setToolOutcome(callID, tools.Outcome{Run: run.id})
-				return fantasy.NewTextResponse(bgAgentText(run.id))
+				return fantasy.NewTextResponse(handoffText("agent", run.id, run.label(),
+					"wait "+run.id+" again if you still need it"))
 			}
 			<-end
 			return answer()
@@ -1544,21 +1545,27 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 	case <-change:
 	case <-t.h.userSpoke():
 		// the user's own messages take the runs: their reports go to the session
-		var handed []string
+		var handed []*agentRun
 		for _, r := range runs {
 			if r.detach() {
-				handed = append(handed, r.id)
+				handed = append(handed, r)
 			}
 		}
 		if len(handed) == 0 {
 			return nil, nil // every run ended as the user spoke: re-snapshot
 		}
-		text := bgAgentText(handed[0])
-		if len(handed) > 1 {
-			text = fmt.Sprintf("Started background agents %s. Their reports arrive as messages when they finish; wait for them with wait=\"all\".", strings.Join(handed, ", "))
+		var text string
+		if len(handed) == 1 {
+			text = handoffText("agent", handed[0].id, handed[0].label(), "wait all again if you still need to hold")
+		} else {
+			ids := make([]string, len(handed))
+			for i, r := range handed {
+				ids[i] = r.id
+			}
+			text = fmt.Sprintf("The user's message took the turn while you waited; agents %s go on, and their reports arrive as messages. Handle the message, then wait all again if you still need to hold.", strings.Join(ids, ", "))
 		}
 		resp := fantasy.NewTextResponse(text)
-		t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0]})
+		t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0].id})
 		return nil, &resp
 	case <-ctx.Done():
 		// esc stops the wait, not the runs
@@ -1582,6 +1589,13 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 // background start, or a foreground call the user's message handed off.
 func bgAgentText(id string) string {
 	return bgAgentStarted + id + ". Wait for it with wait=" + id + ", or read its report when it arrives as a message."
+}
+
+// handoffText answers a wait the user's own message took: the run was already
+// going, so nothing started - the turn reads the message and the run reports
+// to the conversation, where the wait can pick it up again.
+func handoffText(kind, id, label, resume string) string {
+	return fmt.Sprintf("The user's message took the turn while you waited on %s %s (%s); the run goes on, and its report arrives as a message. Handle the message, then %s.", kind, id, label, resume)
 }
 
 // foreground waits for a run and answers with its report, the row's
