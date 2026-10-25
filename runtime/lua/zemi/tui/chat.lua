@@ -515,15 +515,24 @@ local function builder(ctx, width)
 		end
 		local head = opened and "section" or nil
 		local click = "turn:" .. first
-		push({
-			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
-			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
-		})
+		B.digestRow(digest, click, head)
 		if not opened then return end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
 		B.rail(list, first, last, { unroll = first == last and list[first].kind == "reasoning" or nil, full = full })
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
+	end
+
+	-- The digest row a run folds to: the live turn draws it for a thought
+	-- that has not settled yet, so what the settle draws stands here already.
+	---@param digest string
+	---@param click string?
+	---@param sticky string?
+	function B.digestRow(digest, click, sticky)
+		push({
+			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = sticky },
+			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
+		})
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any
@@ -1060,6 +1069,19 @@ zemi.ui.widget.add({
 			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(ag.reasoning)
+				-- The thought no longer draws as the thinking block (the reply
+				-- streams): the digest row it will settle as stands here already,
+				-- so the settle shifts nothing. A thought the run above takes (a
+				-- call between), one a run's view places at its finish, and one
+				-- too short to name a digest draw nothing instead.
+			elseif
+				tail_first == 0
+				and not ctx.view
+				and (ag.thought or 0) >= 0.05
+				and (ag.reasoning or ""):find("%S")
+			then
+				B.gap("activity")
+				B.digestRow(fmt.thought(ag.thought or 0))
 			elseif
 				text == ""
 				and #tools == 0

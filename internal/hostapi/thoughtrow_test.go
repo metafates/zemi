@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestThoughtRowLandsWhenItsCallStarts: the thought the call after it closes
@@ -49,6 +51,66 @@ func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
 	}
 	unpark.Do(func() { close(release) })
 	waitIdle(t, h)
+}
+
+// TestThoughtRowHoldsWhileReplying: when the reply starts, the thinking block
+// folds to the digest row the thought settles as, and the settle that lands
+// later draws the same rows, so the streaming reply never shifts. A thought
+// the run above takes, and one too short to name a digest, draw nothing and
+// let the settle place their rows.
+func TestThoughtRowHoldsWhileReplying(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		row   string // the digest row the reply streams under, "" for none
+		drive func(hk agent.StreamHooks, clock *fakeClock)
+	}{
+		{"a thought", "· thought 3.0s", func(hk agent.StreamHooks, clock *fakeClock) {
+			hk.ReasoningDelta("pondering the ask.")
+			clock.set(testEpoch.Add(3 * time.Second))
+			hk.TextDelta("The reply")
+		}},
+		{"whitespace only", "", func(hk agent.StreamHooks, clock *fakeClock) {
+			hk.ReasoningDelta("   ")
+			clock.set(testEpoch.Add(3 * time.Second))
+			hk.TextDelta("The reply")
+		}},
+		{"a thought a call holds", "", func(hk agent.StreamHooks, clock *fakeClock) {
+			hk.ReasoningDelta("first thought.")
+			clock.set(testEpoch.Add(3 * time.Second))
+			hk.ToolCallPending("t1", "glob")
+			hk.ToolCallEnd("t1", "glob", out(""), "")
+			hk.ReasoningDelta("second thought.")
+			clock.set(testEpoch.Add(5 * time.Second))
+			hk.TextDelta("The reply")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			clock := &fakeClock{now: testEpoch}
+			h := newTestHostUI(t, clock)
+			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
+			h.agents.mu.Lock()
+			h.agents.active = true // a turn runs: the run-above guard reads the live tail
+			h.agents.mu.Unlock()
+			c.drive(h.streamHooks(), clock)
+			before := widgetText(t, h, "chat", UIState{})
+			if c.row == "" && strings.Contains(before, "\n· thought") {
+				t.Fatalf("a digest row drew where the settle places none:\n%s", before)
+			}
+			if c.row != "" && !strings.Contains(before, c.row) {
+				t.Fatalf("the thought's digest row is not drawn while the reply streams:\n%s", before)
+			}
+			h.agents.mu.Lock()
+			h.flushOutput(TurnStat{})
+			h.agents.mu.Unlock()
+			after := widgetText(t, h, "chat", UIState{})
+			if a, b := strings.Count(after, "\n"), strings.Count(before, "\n"); a != b {
+				t.Fatalf("the settle moved rows (%d -> %d):\nbefore:\n%s\nafter:\n%s", b, a, before, after)
+			}
+			if c.row != "" && after != before {
+				t.Fatalf("the settle rewrote the rows:\nbefore:\n%s\nafter:\n%s", before, after)
+			}
+		})
+	}
 }
 
 // widgetText draws widget id and returns the text of its rows.
