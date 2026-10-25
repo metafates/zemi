@@ -46,7 +46,7 @@ func TestGoldenWorkflows(t *testing.T) {
 	reloadUI(t, host)
 	runLua(t, app, fmt.Sprintf(`
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = %q, api_key = "k", models = { { id = "m" } } })
-		zemi.config.set("models.chat", "p/m")
+		zemi.config.set("models.default", "p/m")
 		zemi.workflow.run({ concurrency = 2, script = [[
 			-- Review the changes
 			local wf = zemi.workflow

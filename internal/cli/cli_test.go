@@ -455,7 +455,7 @@ func TestHeadlessNotices(t *testing.T) {
 }
 
 // TestModelFlag: -m writes the conversation's slot, models.default, and
-// leaves models.chat alone.
+// leaves the other slots alone.
 func TestModelFlag(t *testing.T) {
 	_, h, r := newTrustGate(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -471,9 +471,6 @@ func TestModelFlag(t *testing.T) {
 	if got := h.Settings.Str("models.default"); got != "a/main" {
 		t.Fatalf("models.default = %q, want the flag's model", got)
 	}
-	if got := h.Settings.Str("models.chat"); got != "" {
-		t.Fatalf("models.chat = %q, want the flag to leave it alone", got)
-	}
 	// a bare /model <id> follows the slot the same way
 	if err := h.SetModel("a/cheap"); err != nil {
 		t.Fatal(err)
@@ -481,11 +478,11 @@ func TestModelFlag(t *testing.T) {
 	if got := h.Settings.Str("models.default"); got != "a/cheap" {
 		t.Fatalf("models.default = %q, want the bare pick", got)
 	}
-	if err := h.SetModel("chat a/main"); err != nil {
+	if err := h.SetModel("titles a/main"); err != nil {
 		t.Fatal(err)
 	}
-	if got, def := h.Settings.Str("models.chat"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
-		t.Fatalf("a named slot wrote another: chat %q, default %q", got, def)
+	if got, def := h.Settings.Str("models.titles"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
+		t.Fatalf("a named slot wrote another: titles %q, default %q", got, def)
 	}
 }
 

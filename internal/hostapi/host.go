@@ -865,7 +865,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":       func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
+		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker("default") },
 		"zemi.ui.focus.set":  func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next": func(h *Host, _ string) error { return h.cycleFocus(1) },
 		"zemi.ui.focus.prev": func(h *Host, _ string) error { return h.cycleFocus(-1) },

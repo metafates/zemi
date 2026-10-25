@@ -1939,7 +1939,7 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
 	// the refusals before the session row, so a start that cannot run leaves
 	// no empty session
-	if _, err := h.resolveModel(h.roleModel("chat")); err != nil {
+	if _, err := h.resolveModel(h.roleModel("default")); err != nil {
 		return "", err
 	}
 	// the user has no foreground version of this run to fall back on,

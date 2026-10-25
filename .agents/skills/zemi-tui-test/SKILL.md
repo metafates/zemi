@@ -88,7 +88,7 @@ cat > $T/config/init.lua <<'L'
 zemi.provider.add({ id = "fake", kind = "openai_compat",
 	api_key = "x", base_url = "http://127.0.0.1:18472/v1",
 	models = { { id = "m", context_window = 128000 } } })
-zemi.config.set("models.chat", "fake/m")
+zemi.config.set("models.default", "fake/m")
 zemi.config.set("session.auto_title", false)
 L
 tmux -L zt new-session -d -s zt -x 140 -y 40 -c $T/proj \

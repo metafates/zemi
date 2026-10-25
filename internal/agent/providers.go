@@ -454,7 +454,7 @@ func (r *Registry) DropBuiltin() {
 	})
 }
 
-// Default is the "provider/model" models.chat runs when config names none: the
+// Default is the "provider/model" models.default runs when config names none: the
 // default model of the first spec the user added that has one, else of the
 // first such builtin (the catalog's order); "" when none has a model. A
 // user spec wins because the user typed it, while a builtin's key may be

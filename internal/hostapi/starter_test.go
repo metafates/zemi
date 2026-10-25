@@ -48,7 +48,7 @@ func TestStarterInitProviderBlock(t *testing.T) {
 	start := slices.Index(lines, "-- zemi.provider.add({")
 	end := start + slices.Index(lines[start:], "-- })")
 	del := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, `-- zemi.provider.del(`) })
-	chat := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, `-- zemi.config.set("models.chat"`) })
+	chat := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, `-- zemi.config.set("models.default"`) })
 	titles := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, `-- zemi.config.set("models.titles"`) })
 	if start < 0 || end < start || del < 0 || chat < 0 || titles < 0 {
 		t.Fatalf("starter provider block not found: %d %d %d %d %d", start, end, del, chat, titles)
@@ -62,7 +62,7 @@ func TestStarterInitProviderBlock(t *testing.T) {
 	if !ok || spec.BaseURL != "http://localhost:11434/v1" || len(spec.Models) != 1 || spec.Builtin {
 		t.Fatalf("provider = %+v, %v", spec, ok)
 	}
-	for _, key := range []config.Key{config.KeyModelsChat, config.KeyModelsTitles} {
+	for _, key := range []config.Key{config.KeyModelsDefault, config.KeyModelsTitles} {
 		if id := h.Settings.Str(key); !slices.Contains(h.ModelIDs(), id) {
 			t.Fatalf("%s = %q is not in the catalog", key, id)
 		}

@@ -688,7 +688,7 @@ func TestConfigSet(t *testing.T) {
 	}
 	// every other row changes on a screen of its own, which /config edit is
 	// unless the key has a picker
-	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.chat": "models"} {
+	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.titles": "models"} {
 		items := h.configItems(section)
 		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == path })]
 		if act := row.Keys[0]; act.Run != configPicker(config.Key(path)) || act.Desc != "change" {

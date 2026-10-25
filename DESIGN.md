@@ -778,9 +778,9 @@ the binary's API version is `zemi.api.version`.
 ### 6.1 Config and lifecycle
 
 ```lua
-zemi.config.get("models.chat")                -- dotted path lookup
+zemi.config.get("models.titles")             -- dotted path lookup
 zemi.config.set("ui.theme", "whorl")
-zemi.config.watch("models.chat", function(new, old) end)
+zemi.config.watch("models.titles", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
@@ -988,10 +988,10 @@ local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
                            max_output = 1024, on_done = function(text, err) end })
 h:wait()                             -- text, or nil, err; suspends the task (§4)
 h:cancel()
--- Models are targets: models.default is the root the conversation and every
--- role left unset run on; models.chat pins the conversation past it, and
--- models.agents, models.titles, models.compact and models.memory (the
--- reflector) follow the default while empty; zemi.config.set sets them.
+-- Models are targets: models.default runs the conversation and every
+-- role left unset follows it, and models.agents, models.titles,
+-- models.compact and models.memory (the reflector) take their own while
+-- empty; zemi.config.set sets them.
 -- zemi.model.add registers a slot with a model of its own, for code that runs
 -- a model on a job. A slot's own model names a builtin role or
 -- a provider/model id; an agent definition and a workflow take a target name

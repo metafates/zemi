@@ -1624,8 +1624,7 @@ function zemi.log.list() end
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
 ---@alias zemi.ModelTarget
----| "default"  # the root every role follows
----| "chat"     # the conversation
+---| "default"  # the conversation, and the root every role follows
 ---| "agents"   # subagents
 ---| "titles"   # session titles
 ---| "compact"  # summaries
@@ -1636,7 +1635,7 @@ function zemi.log.list() end
 ---@field id string "provider/model".
 ---@field display string
 ---@field has_key boolean
----@field roles zemi.ModelTarget[] The model targets that run on this model. "default" is models.default, "chat" models.chat.
+---@field roles zemi.ModelTarget[] The model targets that run on this model. "default" is models.default.
 
 ---@class zemi.provider
 zemi.provider = {}
@@ -1677,7 +1676,7 @@ function zemi.model.list() end
 ---@class zemi.ModelTargetSpec
 ---@field desc string What `/model roles` shows for the slot.
 ---@field model? zemi.ModelTarget|string The model the slot runs until someone picks: a builtin role name (resolved on every read) or a `"provider/model"` id; "" follows models.default.
----@field classify? boolean true for a slot `zemi.classify.ask` runs on: `/model <slot>` then offers the decisions models beside the chat ones.
+---@field classify? boolean true for a slot `zemi.classify.ask` runs on: `/model <slot>` then offers the decisions models beside the conversation's.
 
 --- Register a model slot of its own, for code that runs a model on a job and
 --- not a conversation: `/model roles` lists it among the roles and
@@ -1711,7 +1710,7 @@ function zemi.model.set(id) end
 ---@class zemi.ModelAsk
 ---@field prompt string
 ---@field system? string
----@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "chat" (models.chat) by default.
+---@field model? zemi.ModelTarget|string A target name or a "provider/model" id; "default" (models.default) by default.
 ---@field max_output? integer The reply's token cap, 1024 by default.
 ---@field schema? table The shape the reply must have, a JSON schema in the same fields a tool's schema has: `{ type = "object", properties = {...}, required = {...} }` for an object, or a bare `{ type = "string" }`, `{ type = "integer", minimum = 0, maximum = 9 }`, `{ type = "boolean" }` or `{ type = "array", items = ... }`. `enum` pins the values, `description` is read by the model. Any other field and any other type raises. With it the call returns a decoded value instead of text (see `zemi.ModelHandle.wait`).
 ---@field on_done? fun(value: any, err_or_raw: string?) Runs as a task when the reply is in: the reply's text alone without a `schema`, else the decoded value with the raw reply beside it, or nil and the error when the call failed.

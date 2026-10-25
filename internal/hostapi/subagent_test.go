@@ -625,7 +625,7 @@ func TestSubagentModelChoice(t *testing.T) {
 	if desc := h.agentTool(nil).Info().Description; strings.Contains(desc, "myllm/main") {
 		t.Fatalf("description lists models: %q", desc)
 	}
-	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: default, chat, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
+	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: default, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
 		t.Fatalf("unknown model: %v", err)
 	}
 }

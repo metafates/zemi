@@ -508,7 +508,7 @@ func (h *Host) goHealthRows() []HealthRow {
 }
 
 // modelRow is the conversation's model check. A reload toasts it, so a
-// models.chat nobody can run is not silent.
+// models.default nobody can run is not silent.
 func (h *Host) modelRow() HealthRow { return h.modelCheck("model", h.sessionModelID(), false) }
 
 // modelCheck is what a call on id would fail with, or an id the provider's

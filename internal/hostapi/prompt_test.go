@@ -318,7 +318,7 @@ func TestPromptPinned(t *testing.T) {
 			t.Cleanup(func() { imagesRejected.Delete("stub/m") })
 		}, true, 0},
 		{"model switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
-			runUser(t, r, `zemi.config.set("models.chat", "stub/m2")`)
+			runUser(t, r, `zemi.config.set("models.default", "stub/m2")`)
 		}, true, 0},
 		{"resume", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			sid := h.AgentSessionID()
@@ -334,7 +334,7 @@ func TestPromptPinned(t *testing.T) {
 			h, r := newTestHostDB(t)
 			h.Dirs.ConfigHome = t.TempDir()
 			h.SetProjectTrusted(true)
-			h.Settings.SetQuiet("models.chat", "stub/m")
+			h.Settings.SetQuiet("models.default", "stub/m")
 			m := reflectStub(t, h, "ok")
 			os.WriteFile(filepath.Join(h.Dirs.ProjectDir, cmp.Or(c.setup, "AGENTS.md")), []byte("run make test"), 0o644)
 			runUser(t, r, `local n = 0

@@ -884,7 +884,7 @@ func TestSendTo(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{}) // send_to is a TUI feature
 	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k", models = { { id = "a", max_output = 1000 }, { id = "b", max_output = 2000 } } })`)
-	h.Settings.SetQuiet("models.chat", "p/a")
+	h.Settings.SetQuiet("models.default", "p/a")
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 			if (last == "work" || last == "more") && !toolResult {

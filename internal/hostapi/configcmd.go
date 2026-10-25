@@ -199,7 +199,7 @@ func (h *Host) configSet(path config.Key, value string) error {
 func (h *Host) SetConfig(path config.Key, val any) error {
 	s, _ := val.(string)
 	if role, ok := config.ModelRole(path); ok {
-		return h.SetModel(role + " " + cmp.Or(s, "chat"))
+		return h.SetModel(role + " " + cmp.Or(s, "default"))
 	}
 	//nolint:exhaustive // a model target's key is no builtin constant
 	switch path {

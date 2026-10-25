@@ -16,7 +16,7 @@ func TestAutoTitle(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "c", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", body = { service_tier = "flex" }, models = { { id = "m" } } })
-		zemi.config.set("models.chat", "c/m")
+		zemi.config.set("models.default", "c/m")
 	`)
 	m := reflectStub(t, h, "Parser Fix")
 	h.SetUIHooks(&fakeUI{})

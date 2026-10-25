@@ -167,7 +167,7 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(v == nil and err == nil, "a key nobody set is nil with no error")
 		assert(zemi.env.get("ZEMI_NOT_SET_ANYWHERE") == nil, "an unset variable is nil, not the empty string")
 
-		local wid = zemi.config.watch("models.chat", function() end)
+		local wid = zemi.config.watch("models.titles", function() end)
 		assert(type(wid) == "string", "watch id type " .. type(wid))
 		assert(zemi.config.unwatch(wid) == true and zemi.config.unwatch(wid) == false, "unwatch is idempotent")
 
@@ -402,7 +402,7 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 func TestReloadBrokenInit(t *testing.T) {
 	const whole = `
 		zemi.config.set("models.agents", "fake/other")
-		zemi.config.set("models.chat", "fake/m")`
+		zemi.config.set("models.default", "fake/m")`
 	for _, c := range []struct {
 		name, init string
 		untrust    bool
@@ -447,7 +447,7 @@ func TestReloadBrokenInit(t *testing.T) {
 					t.Fatalf("reload %d: %v", i, err)
 				}
 			}
-			model, _ := h.Settings.Get("models.chat")
+			model, _ := h.Settings.Get("models.default")
 			agents, _ := h.Settings.Get("models.agents")
 			got := fmt.Sprintf("model %v, agents %v", model, agents)
 			if got != c.want {

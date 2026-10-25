@@ -132,11 +132,12 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- zemi.provider.del("openai")   -- drop one builtin provider
 -- zemi.config.set("providers.builtin", false)   -- or all of them
 
--- Model roles: chat runs the conversation and every role left unset; agents
+-- Model roles: default runs the conversation and every role left unset; agents
 -- (subagents), titles, compact (summaries) and memory (the reflector) each
--- take their own. Unset, chat is the default of the first provider you add
--- here, else of the first builtin one with a key. /model roles sets them too.
--- zemi.config.set("models.chat", "anthropic/claude-sonnet-4-6")
+-- take their own. Unset, default is the default model of the first provider
+-- you add here, else of the first builtin one with a key. /model roles sets
+-- them too.
+-- zemi.config.set("models.default", "anthropic/claude-sonnet-4-6")
 -- zemi.config.set("models.titles", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.

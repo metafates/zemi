@@ -222,7 +222,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	if prompt == "" {
 		L.RaiseError("zemi.model.ask: prompt is required")
 	}
-	ref := cmp.Or(rawString(L, spec, "model"), "chat")
+	ref := cmp.Or(rawString(L, spec, "model"), "default")
 	id := h.modelRef(ref)
 	system := rawString(L, spec, "system")
 	var schema *fantasy.Schema
@@ -343,7 +343,6 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 // the conversation and every role left unset run on it.
 var roles = []modelRole{
 	{"default", "the conversation, and every role left unset"},
-	{"chat", "the conversation, when it leaves the default"},
 	{"agents", "subagents"},
 	{"titles", "session titles"},
 	{"compact", "summaries"},
@@ -421,7 +420,7 @@ func (h *Host) registeredTargets() []*modelTarget {
 
 // targetNames is every slot /model sets by name: the builtin roles, then what
 // config registered, sorted. default is not one: it is the conversation's own
-// slot, set as chat.
+// slot, the root every other follows.
 func (h *Host) targetNames() []string {
 	names := roleNames()
 	for _, t := range h.registeredTargets() {

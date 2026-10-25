@@ -183,7 +183,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	start()
 	for _, c := range []struct {
 		name     string
-		key, set string // the key, and the call init.lua sets it with; "" is models.chat and zemi.config.set
+		key, set string // the key, and the call init.lua sets it with; "" is models.titles and zemi.config.set
 		config   []any  // what init.lua sets the key to, in order
 		pick     any    // through SetConfig; nil picks nothing, "reset" runs /config reset
 		want     any
@@ -212,7 +212,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "for good", restart: true, want: "", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
-		key := config.Key(cmp.Or(c.key, "models.chat"))
+		key := config.Key(cmp.Or(c.key, "models.titles"))
 		src := head
 		for _, v := range c.config {
 			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
@@ -1343,8 +1343,8 @@ func TestProviderModelNumbers(t *testing.T) {
 }
 
 // TestIdleStreamUsesItsModel: between turns the context window and the
-// image check follow the conversation's model (models.chat); compaction and
-// a subagent without a model follow models.chat too.
+// image check follow the conversation's model (models.default); compaction
+// and a subagent without a model follow models.default too.
 func TestIdleStreamUsesItsModel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
@@ -1363,10 +1363,10 @@ func TestIdleStreamUsesItsModel(t *testing.T) {
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
 	if id := h.roleModel("compact"); id != "a/big" {
-		t.Fatalf("summary model %q, want models.chat", id)
+		t.Fatalf("summary model %q, want models.default", id)
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/big" {
-		t.Fatalf("subagent model %q, want models.chat", id)
+		t.Fatalf("subagent model %q, want models.default", id)
 	}
 }
 
@@ -1427,7 +1427,7 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("no model: the picker did not open")
 	}
 	// an id naming the keyless builtin gets the same listing, not a "current" row
-	runUser(t, r, `zemi.config.set("models.chat", "deepseek/x")`)
+	runUser(t, r, `zemi.config.set("models.default", "deepseek/x")`)
 	if h.OpenModelPicker("") != nil {
 		t.Fatal("picker did not open")
 	}
@@ -1438,7 +1438,7 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
-		zemi.config.set("models.chat", "a/typo")`)
+		zemi.config.set("models.default", "a/typo")`)
 	if h.OpenModelPicker("") != nil {
 		t.Fatal("picker did not open")
 	}
@@ -1466,7 +1466,7 @@ func TestSetModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
-		zemi.config.set("models.chat", "a/main")`)
+		zemi.config.set("models.default", "a/main")`)
 	for _, c := range []struct {
 		name    string
 		do      func() error
@@ -1488,9 +1488,6 @@ func TestSetModel(t *testing.T) {
 		if (c.wantErr == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), c.wantErr) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
 		}
-	}
-	if err := h.SetModel("chat a/small"); err != nil { // the chat slot, named explicitly
-		t.Fatal(err)
 	}
 }
 
@@ -1687,8 +1684,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 2 and ps[1].id == "a" and ps[1].builtin == true and ps[2].builtin == true, "seed")
 	`)
-	if h.roleModel("chat") != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
-		t.Fatalf("catalog defaults: %s %s", h.roleModel("chat"), h.roleModel("titles"))
+	if h.roleModel("default") != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
+		t.Fatalf("catalog defaults: %s %s", h.roleModel("default"), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "a", kind = "anthropic", base_url = "http://gw", api_key = "mine", models = { { id = "m" } } })
@@ -1699,8 +1696,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 1 and ps[1].id == "a" and ps[1].builtin == false and ps[1].base_url == "http://gw", "override: " .. #ps)
 	`)
-	if h.roleModel("chat") != "a/m" || h.roleModel("titles") != "a/m" {
-		t.Fatalf("user defaults: %s %s", h.roleModel("chat"), h.roleModel("titles"))
+	if h.roleModel("default") != "a/m" || h.roleModel("titles") != "a/m" {
+		t.Fatalf("user defaults: %s %s", h.roleModel("default"), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "local", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "q" } } })

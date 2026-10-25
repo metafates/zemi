@@ -262,13 +262,13 @@ func (h *Host) Effort(modelID string) string {
 }
 
 // liveModelID is the model turns run on: the running turn's, else the
-// conversation's chat pick (ag.mu held).
+// conversation's default pick (ag.mu held).
 func (h *Host) liveModelID() string {
 	ag := h.agents
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	return h.roleModel("chat")
+	return h.roleModel("default")
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -305,7 +305,7 @@ func (h *Host) toolBuilder(skip set.Set[string]) func(*tools.Pipeline) ([]fantas
 // mainTools selects the conversation's tool set over a pipeline of its own.
 func (h *Host) mainTools() []fantasy.AgentTool {
 	pipe := h.PipelineFor()
-	pipe.Images = func() bool { return h.takesImages(h.roleModel("chat")) }
+	pipe.Images = func() bool { return h.takesImages(h.roleModel("default")) }
 	return h.toolsFor(pipe)
 }
 
@@ -333,7 +333,7 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 }
 
 func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) {
-	id := h.roleModel("chat")
+	id := h.roleModel("default")
 	model, err := h.resolveModel(id)
 	if err != nil {
 		return nil, err
@@ -432,7 +432,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // deleteRecipe). A reload drops nothing: the config watcher reloads on any
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
-	id := h.roleModel("chat")
+	id := h.roleModel("default")
 	key := []string{id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
 	infos := make([]fantasy.ToolInfo, len(toolset))
 	for i, t := range toolset {
@@ -720,7 +720,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		return err
 	}
 	// before the session row, so a send that cannot run leaves no empty session
-	id := h.roleModel("chat")
+	id := h.roleModel("default")
 	if _, err := h.resolveModel(id); err != nil {
 		return fail(err)
 	}
@@ -1327,12 +1327,12 @@ func toolStatus(result fantasy.ToolResultOutputContent, cancelled bool, o tools.
 }
 
 // turnModelID is the model the running turn bills to (ag.mu held); a turn
-// the host did not start (tests) bills to the chat role.
+// the host did not start (tests) bills to the default role.
 func (h *Host) turnModelID() string {
 	if m := h.agents.turnModel; m != "" {
 		return m
 	}
-	return h.roleModel("chat")
+	return h.roleModel("default")
 }
 
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
@@ -1844,7 +1844,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.bill(sid, h.roleModel("chat"), res.TotalUsage)
+	h.bill(sid, h.roleModel("default"), res.TotalUsage)
 	return strings.TrimSpace(concatText(res.Response.Content)), nil
 }
 
@@ -1959,8 +1959,8 @@ func strs[T ~string](vals []T) []string {
 
 // OpenModelPicker lists the registered models for a target, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
-// Name "" is /model and "chat" the model key's list, both of them the
-// conversation's: a pick there writes models.chat. Another
+// Name "" is /model and "default" the model key's list, both of them the
+// conversation's: a pick there writes models.default. Another
 // target's list opens on a row leaving it to its own model.
 func (h *Host) OpenModelPicker(name string) error {
 	ui, err := h.Screen()
@@ -1989,7 +1989,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
-	run, cur := "model ", h.roleModel("chat")
+	run, cur := "model ", h.roleModel("default")
 	switch name {
 	case "":
 		o.Items = []OverlayItem{
@@ -2120,12 +2120,11 @@ func (h *Host) toggleModelFavorite(id, name string) {
 }
 
 // ownRoles names the roles and targets config gave a model of their own,
-// chat and the default root apart: they are the picks that leave the shared
-// model.
+// the default root apart: they are the picks that leave the shared model.
 func (h *Host) ownRoles() []string {
 	var own []string
 	for _, n := range h.targetNames() {
-		if n != "chat" && n != "default" && h.Settings.Str(config.ModelKey(n)) != "" {
+		if n != "default" && h.Settings.Str(config.ModelKey(n)) != "" {
 			own = append(own, n)
 		}
 	}
@@ -2224,8 +2223,8 @@ func modelDesc(id string, m agent.Model) string {
 
 // SetModel runs /model's arguments from any goroutine: none opens the chat
 // list, "roles" the role list, "update" fetches the catalog, a role its
-// list, an id sets chat, and a role with an id, or "chat" to follow it,
-// sets that role. The config watches it fires run later on the interpreter
+// list, an id sets the conversation, and a role with an id, or "default" to
+// follow it, sets that role. The config watches it fires run later on the interpreter
 // queue. An id the provider does not list is set and toasted.
 func (h *Host) SetModel(args string) error {
 	f := strings.Fields(args)
@@ -2245,13 +2244,13 @@ func (h *Host) SetModel(args string) error {
 		return h.updateCatalog()
 	case len(f) == 1 && h.isTarget(f[0]):
 		return picker(f[0])
-	case len(f) == 1: // a bare id is the conversation's, not chat's alone
+	case len(f) == 1: // a bare id sets the conversation's slot
 		f = []string{"default", f[0]}
 	case len(f) > 2 || !h.isTarget(f[0]):
-		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> chat | default]; targets: %s", strings.Join(h.targetNames(), ", "))
+		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
 	role, id := f[0], f[1]
-	if id == "chat" || id == "default" { // a target following its own model, else the default
+	if id == "default" { // a target following its own model, else the default
 		id = ""
 	}
 	if err := h.modelSetErr(role, id); err != nil {
@@ -2315,7 +2314,7 @@ func (h *Host) CompleteModel(lead, line string) []string {
 	first = append(first, h.targetNames()...)
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
-		case sub == "chat" || sub == "default":
+		case sub == "default":
 			return ids
 		case h.isTarget(sub):
 			return append([]string{"default"}, ids...)
@@ -2499,7 +2498,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			}
 			text = agent.Attached(h.principal(L), text)
 		}
-		if _, err := h.resolveModel(h.roleModel("chat")); err != nil {
+		if _, err := h.resolveModel(h.roleModel("default")); err != nil {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {

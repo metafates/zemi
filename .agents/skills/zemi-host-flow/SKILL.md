@@ -186,8 +186,8 @@ applied one. A store made before goose only gains its version table: the baselin
 
 ## Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
-- **Models are targets.** `models.default` is the root: the conversation and every role left
-  unset run on it. `models.chat` is the conversation when it leaves the default; `models.agents`
+- **Models are targets.** `models.default` is the root: it runs the conversation and every
+  role left unset follows it; `models.agents`
   (subagents with no model of their own), `models.titles`, `models.compact`, `models.memory`
   (the reflector) each fall back to it while empty (`roleModel`). Nothing falls
   back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
