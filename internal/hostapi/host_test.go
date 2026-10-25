@@ -86,7 +86,7 @@ func TestToolStatus(t *testing.T) {
 		{"a dropped memory", outErr("dropped: quote not found in this session's messages"), false, tools.Outcome{}, CallErr},
 		{"a job that died", outErr("job-3 failed: exit status 1"), false, tools.Outcome{}, CallErr},
 		{"an ask the user denied", outErr("permission denied (user): fs.write /p/b.go"), false, tools.Outcome{Stopped: true}, CallStopped},
-		{"a question the user dismissed", outErr("The user dismissed the questions."), false, tools.Outcome{Stopped: true}, CallStopped},
+		{"a question the user dismissed", outErr("The user dismissed the questions. Stop and wait for them to say how to proceed."), false, tools.Outcome{Stopped: true}, CallStopped},
 		{"an interrupted turn", outErr("context canceled"), true, tools.Outcome{}, CallStopped},
 		{"a background agent", out("run=1"), false, tools.Outcome{Run: "1"}, CallBG},
 		{"a shell that handed off", out("still running"), false, tools.Outcome{Job: "job-3"}, CallBG},
@@ -213,7 +213,7 @@ func TestReloadConfig(t *testing.T) {
 				reloads.Add(1)
 				return nil
 			}, nil)
-			h.Commands.Add(&Command{Name: "reload", GoFn: func(h *Host, _ string) error { return h.ReloadConfig() }, Origin: lua.OriginBuiltin})
+			h.Commands.Add(&Command{Name: "reload", GoFn: func(h *Host, _ string, confirm bool) error { return h.ReloadConfig() }, Origin: lua.OriginBuiltin})
 			// A boot step is where config code runs. It cannot go through the
 			// queue: boot starts the dispatcher only after the steps.
 			cfg := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
@@ -259,7 +259,7 @@ func TestReloadConfig(t *testing.T) {
 func TestErrorsFromLua(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	h.RecordError("boot", `init.lua:1: zemi.provider.add: provider "x" already registered`)
+	h.RecordError("boot", "", `init.lua:1: zemi.provider.add: provider "x" already registered`)
 	runUser(t, r, `
 		local rows = zemi.errors.list()
 		assert(#rows == 1, "rows=" .. #rows)
@@ -620,7 +620,7 @@ func TestThemeCommand(t *testing.T) {
 		{"nope", "nord", "unknown theme"},
 		{"", "nord", ""},
 	} {
-		err := theme.GoFn(h, c.args)
+		err := theme.GoFn(h, c.args, false)
 		if c.err == "" && err != nil || c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)) || h.Settings.Str("ui.theme") != c.want {
 			t.Fatalf("/theme %s: %v, ui.theme %q", c.args, err, h.Settings.Str("ui.theme"))
 		}
@@ -980,7 +980,7 @@ func TestClickWidget(t *testing.T) {
 			t.Parallel()
 			h, r := newTestHost(t)
 			ran := make(chan string, 1)
-			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
+			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string, confirm bool) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}
@@ -1053,7 +1053,7 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	} {
 		h.errs.entries = nil
 		run()
-		if len(h.errs.entries) != 1 || h.errs.entries[0].source != source {
+		if len(h.errs.entries) != 1 || h.errs.entries[0].source() != source {
 			t.Errorf("%s: errors = %+v", source, h.errs.entries)
 		}
 	}
@@ -1151,7 +1151,7 @@ func TestSessionMark(t *testing.T) {
 // than that column reads as its result says.
 func TestHistoryRowFacts(t *testing.T) {
 	parts, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-		fantasy.ToolCallPart{ToolCallID: "t1", ToolName: tools.ToolShell, Input: `{"command":"make slow"}`},
+		fantasy.ToolCallPart{ToolCallID: "t1", ToolName: string(tools.ToolShell), Input: `{"command":"make slow"}`},
 		fantasy.ToolResultPart{ToolCallID: "t1", Output: fantasy.ToolResultOutputContentText{Text: "still running"}},
 	}})
 	if err != nil {

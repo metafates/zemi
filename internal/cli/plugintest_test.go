@@ -123,12 +123,16 @@ for i = 1, 300 do test("case " .. i, function() end) end
   .zemi/tests/fail.lua:48: did not raise, want an error containing "city"
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a driver under pcall", args: []string{"<plugin>", "under pcall"}, code: 1, want: `FAIL .zemi/tests/fail.lua:51: a driver under pcall
-  .zemi/tests/fail.lua:53: .zemi/tests/fail.lua:52: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err
+		{name: "eq on multibyte text", args: []string{"<plugin>", "multibyte"}, code: 1, want: `FAIL .zemi/tests/fail.lua:51: eq on multibyte text
+  .zemi/tests/fail.lua:52: got "...тной обрезки строки на гран...", want "...тной Обрезки строки на гран..." (first difference at char 25)
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a driver inside raises", args: []string{"<plugin>", "inside raises"}, code: 1, want: `FAIL .zemi/tests/fail.lua:56: a driver inside raises
-  .zemi/tests/fail.lua:57: a driver cannot run inside test.raises; drivers return nil, err instead of raising
+		{name: "a driver under pcall", args: []string{"<plugin>", "under pcall"}, code: 1, want: `FAIL .zemi/tests/fail.lua:58: a driver under pcall
+  .zemi/tests/fail.lua:60: .zemi/tests/fail.lua:59: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err
+0 passed, 1 failed (2 files, (T))
+`},
+		{name: "a driver inside raises", args: []string{"<plugin>", "inside raises"}, code: 1, want: `FAIL .zemi/tests/fail.lua:63: a driver inside raises
+  .zemi/tests/fail.lua:64: a driver cannot run inside test.raises; drivers return nil, err instead of raising
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, hangs: true, want: `FAIL .zemi/tests/fail.lua:26: a case that never settles
@@ -158,7 +162,7 @@ end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
-			want: "no case matches \"wether\" (37 cases in 2 files)\n",
+			want: "no case matches \"wether\" (38 cases in 2 files)\n",
 		},
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			".zemi/init.lua": `require("cp")`, ".zemi/lua/cp/init.lua": `require("cp.util")`, ".zemi/tests/a.lua": `zemi.test("a", function() end)`,

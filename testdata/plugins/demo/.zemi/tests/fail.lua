@@ -48,6 +48,13 @@ test("raises that did not raise", function()
 	test.raises(function() end, "city")
 end)
 
+test("eq on multibyte text", function()
+	test.eq(
+		"проверка мультибайтной обрезки строки на границе символов",
+		"проверка мультибайтной Обрезки строки на границе символов"
+	)
+end)
+
 test("a driver under pcall", function()
 	local ok, err = pcall(test.run, "demo")
 	assert(ok, err)

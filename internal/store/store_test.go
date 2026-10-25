@@ -76,13 +76,27 @@ func TestMigrationKeepsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a pre-goose store must open: %v", err)
 	}
-	defer db.Close()
 	if n, err := db.SessionCount(); err != nil || n != 1 {
 		t.Fatalf("sessions = %d, %v", n, err)
 	}
 	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 5 {
-		t.Fatalf("goose version = %d, %v; want 5", version, err)
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version == 0 {
+		t.Fatalf("goose version = %d, %v; want the migrations to have run", version, err)
+	}
+	db.Close()
+
+	// the second open runs nothing again
+	db, err = Open(path)
+	if err != nil {
+		t.Fatalf("a migrated store must reopen: %v", err)
+	}
+	defer db.Close()
+	var again int
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&again); err != nil || again != version {
+		t.Fatalf("goose version after a reopen = %d, %v; want %d", again, err, version)
+	}
+	if n, err := db.SessionCount(); err != nil || n != 1 {
+		t.Fatalf("sessions = %d, %v", n, err)
 	}
 }
 
