@@ -3,7 +3,6 @@ package cli
 
 import (
 	"bufio"
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/jsontext"
@@ -17,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -422,7 +422,7 @@ func nargs(maxN int) cobra.PositionalArgs {
 // works beside a running TUI, whose config watcher reloads on the change.
 func pluginCommand(o *options) *cobra.Command {
 	yes := false
-	var asJSON *bool
+	var asJSON, mktListJSON *bool
 	// git clones and fetches: an interrupt stops them and exits with 130
 	run := func(c *cobra.Command, args []string) error {
 		// asked before the signal context, so ctrl+c at the prompt ends zemi
@@ -442,12 +442,11 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 			printPlugins(c.OutOrStdout(), ps, *asJSON)
 		case c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "marketplace":
-			var buf bytes.Buffer
-			err = plugin.Run(ctx, dirs, []string{"marketplace", "list"}, &buf)
-			if err == nil && buf.Len() == 0 {
+			var ms []plugin.MarketplaceInfo
+			if ms, err = plugin.Marketplaces(dirs); err == nil && len(ms) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no marketplaces yet; zemi plugin marketplace add <source> adds one")
 			}
-			_, err = buf.WriteTo(c.OutOrStdout())
+			printMarketplaces(c.OutOrStdout(), ms, *mktListJSON)
 		case c.Parent().Name() == "marketplace":
 			err = plugin.Run(ctx, dirs, append([]string{"marketplace", c.Name()}, args...), c.OutOrStdout())
 		default:
@@ -490,11 +489,15 @@ func pluginCommand(o *options) *cobra.Command {
 		names      cobra.CompletionFunc
 	}{
 		{"add <source>", "register a marketplace repo: owner/repo, a git URL, or a local path", nargs(1), nil},
-		{"list", "show each marketplace and the entries it lists", cobra.NoArgs, nil},
+		{"list", "show the marketplaces; --json adds the entries they list", cobra.NoArgs, nil},
 		{"remove <name>", "drop a marketplace and its clone", nargs(1), completeMarketplaces},
 		{"update [name]", "pull one or all marketplace clones", cobra.MaximumNArgs(1), completeMarketplaces},
 	} {
-		mkt.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
+		sub := &cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run}
+		if v.use == "list" {
+			mktListJSON = jsonFlag(sub)
+		}
+		mkt.AddCommand(sub)
 	}
 	cmd.AddCommand(mkt)
 	// a local plugin is the user's own code with no copy anywhere, and off a
@@ -550,9 +553,6 @@ func sessionsCommand(o *options) *cobra.Command {
 					return nil
 				}
 				for _, g := range groups {
-					if !*asJSON {
-						fmt.Fprintln(out, paint(p, "title", perm.TildePath(g.Root)))
-					}
 					printSessions(out, p, g.Sessions, *asJSON, g.Root)
 				}
 				return nil
@@ -569,9 +569,6 @@ func sessionsCommand(o *options) *cobra.Command {
 			}
 			if err != nil {
 				return err
-			}
-			if !*asJSON && p != colorprofile.NoTTY {
-				fmt.Fprintln(out, paint(p, "title", fmt.Sprintf("%-8s  %-16s  %s", "session", "updated", "title")))
 			}
 			printSessions(out, p, list, *asJSON, "")
 			return nil
@@ -607,8 +604,20 @@ func sessionsCommand(o *options) *cobra.Command {
 }
 
 // printSessions writes sessions as id, updated, title rows, the id first so a
-// row is copied straight from the terminal into -r or export.
+// row is copied straight from the terminal into -r or export; a project names
+// an -a group, whose title prints above its rows instead of the header.
 func printSessions(out io.Writer, p colorprofile.Profile, list []*store.Session, asJSON bool, project string) {
+	t := table{p: p, cols: []tableCol{
+		{head: "session", role: "hint"},
+		{head: "updated", role: "hint"},
+		{head: "title"},
+	}}
+	if project != "" {
+		t.noHead = true
+		if !asJSON {
+			fmt.Fprintln(out, paint(p, "title", perm.TildePath(project)))
+		}
+	}
 	for _, s := range list {
 		updated := time.UnixMilli(s.UpdatedAt)
 		if asJSON {
@@ -621,8 +630,9 @@ func printSessions(out io.Writer, p colorprofile.Profile, list []*store.Session,
 			}{ID: s.ID, Title: sanitize.Line(s.Title), Updated: updated, CostUSD: s.Cost, Project: project})
 			continue
 		}
-		fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
+		t.row(s.ID, updated.Format(hostapi.StampLayout), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
 	}
+	t.print(out)
 }
 
 // projectsCommand is zemi projects: one line per project, the path last and
@@ -648,9 +658,13 @@ func projectsCommand(o *options) *cobra.Command {
 			if len(unreadable) > 0 {
 				fmt.Fprintf(c.ErrOrStderr(), "zemi: could not read %d project %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
 			}
-			if !*asJSON && cp != colorprofile.NoTTY && len(ps) > 0 {
-				fmt.Fprintln(out, paint(cp, "title", fmt.Sprintf("%-16s  %-9s  %4s  %s", "used", "trust", "sess", "root")))
-			}
+			// the root at column 36, for cut -c36-
+			t := table{p: cp, cols: []tableCol{
+				{head: "used", role: "hint", width: 16},
+				{head: "trust", role: "status", width: 9},
+				{head: "sess", width: 4, right: true},
+				{head: "root"},
+			}}
 			for _, p := range ps {
 				if *asJSON {
 					statsErr := ""
@@ -671,8 +685,9 @@ func projectsCommand(o *options) *cobra.Command {
 				if !p.Used.IsZero() {
 					used = p.Used.Format(hostapi.StampLayout)
 				}
-				fmt.Fprintf(out, "%s  %s  %4d  %s\n", pad(cp, "hint", used, 16), pad(cp, statusRole[p.TrustWord()], p.TrustWord(), 9), p.Sessions, p.Root)
+				t.row(used, p.TrustWord(), strconv.Itoa(p.Sessions), p.Root)
 			}
+			t.print(out)
 			return nil
 		},
 	}
@@ -838,20 +853,147 @@ func paint(p colorprofile.Profile, role, text string) string {
 	return st.Styled(text)
 }
 
-// pad is text painted in role and padded to w cells by its visible width,
-// so a column lines up with the escapes around it.
-func pad(p colorprofile.Profile, role, text string, w int) string {
-	return paint(p, role, text) + strings.Repeat(" ", max(w-ansi.StringWidth(text), 0))
+// tableCol describes one column of a table.
+type tableCol struct {
+	head  string // the header row's cell; a table naming none prints no header
+	role  string // a role name, or "status" to paint a body cell by its word
+	width int    // a column no narrower than this, 0 sizing it to its cells
+	right bool   // the cell sits against the column's right edge (a count)
+}
+
+// table is one listing's aligned rows: a column pads to its widest cell or
+// its own floor, a row's last column stays free so cut and awk read it, and
+// the header row is a terminal's alone.
+type table struct {
+	p      colorprofile.Profile
+	cols   []tableCol
+	rows   [][]string
+	noHead bool // a title above already says what the columns are
+}
+
+func (t *table) row(cells ...string) { t.rows = append(t.rows, cells) }
+
+// print writes the table to w.
+func (t table) print(w io.Writer) {
+	if len(t.rows) == 0 {
+		return
+	}
+	headed := t.p != colorprofile.NoTTY && !t.noHead
+	width := make([]int, len(t.cols))
+	for i, c := range t.cols {
+		width[i] = c.width
+		if headed {
+			width[i] = max(width[i], ansi.StringWidth(c.head))
+		}
+	}
+	for _, r := range t.rows {
+		for i, cell := range r {
+			width[i] = max(width[i], ansi.StringWidth(cell))
+		}
+	}
+	if headed {
+		cells, roles := make([]string, len(t.cols)), make([]string, len(t.cols))
+		for i, c := range t.cols {
+			cells[i], roles[i] = c.head, "title"
+		}
+		t.write(w, cells, roles, width)
+	}
+	for _, r := range t.rows {
+		roles := make([]string, len(t.cols))
+		for i, c := range t.cols {
+			roles[i] = c.role
+			if c.role == "status" {
+				roles[i] = statusRole[r[i]]
+			}
+		}
+		t.write(w, r, roles, width)
+	}
+}
+
+// write renders one row: every column but the last painted in its role and
+// padded, the last painted free.
+func (t table) write(w io.Writer, cells, roles []string, width []int) {
+	var b strings.Builder
+	for i, cell := range cells {
+		role := roles[i]
+		if i == len(cells)-1 {
+			b.WriteString(paint(t.p, role, cell))
+			break
+		}
+		gap := width[i] - ansi.StringWidth(cell)
+		if t.cols[i].right {
+			b.WriteString(strings.Repeat(" ", max(gap, 0)))
+			b.WriteString(paint(t.p, role, cell))
+		} else {
+			b.WriteString(paint(t.p, role, cell))
+			b.WriteString(strings.Repeat(" ", max(gap, 0)))
+		}
+		b.WriteString("  ")
+	}
+	fmt.Fprintln(w, b.String())
+}
+
+// printMarketplaces writes one row per marketplace, the entries it lists only
+// in the JSON: the count is what picking an install needs, the entries are
+// completion's and the overlay's.
+func printMarketplaces(w io.Writer, ms []plugin.MarketplaceInfo, asJSON bool) {
+	t := table{p: colorprofile.Detect(w, os.Environ()), cols: []tableCol{
+		{head: "name"},
+		{head: "source", role: "hint"},
+		{head: "plugins", right: true},
+		{head: "added", role: "hint"},
+	}}
+	for _, m := range ms {
+		if asJSON {
+			entries := make([]marketplaceEntry, len(m.Entries))
+			for i, e := range m.Entries {
+				entries[i] = marketplaceEntry{
+					Name: e.Name, Version: e.Version, Description: e.Description,
+					Category: e.Category, Author: e.Author, Homepage: e.Homepage, Uses: e.Uses,
+				}
+			}
+			writeJSON(w, struct {
+				Name    string             `json:"name"`
+				Source  string             `json:"source"`
+				Added   time.Time          `json:"added,omitzero"`
+				Entries []marketplaceEntry `json:"entries,omitempty"`
+				Error   string             `json:"error,omitempty"`
+			}{Name: m.Name, Source: m.Source, Added: m.Added, Entries: entries, Error: m.Err})
+			continue
+		}
+		count, note := strconv.Itoa(len(m.Entries)), ""
+		if m.Err != "" {
+			count, note = "-", m.Err
+		} else if !m.Added.IsZero() {
+			note = m.Added.Format(hostapi.StampLayout)
+		}
+		t.row(m.Name, m.Source, count, note)
+	}
+	t.print(w)
+}
+
+// marketplaceEntry is one entry of a marketplace as the JSON lists it.
+type marketplaceEntry struct {
+	Name        string   `json:"name"`
+	Version     string   `json:"version,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Author      string   `json:"author,omitempty"`
+	Homepage    string   `json:"homepage,omitempty"`
+	Uses        []string `json:"uses,omitempty"`
 }
 
 // printPlugins writes one aligned line per plugin, the free-text columns last
 // so cut and awk read the name, and a header only on a terminal.
 func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
-	p := colorprofile.Detect(w, os.Environ())
-	var rows [][6]string
-	if !asJSON && p != colorprofile.NoTTY && len(ps) > 0 {
-		rows = append(rows, [6]string{"name", "version", "on", "source", "marketplace", "uses"})
-	}
+	t := table{p: colorprofile.Detect(w, os.Environ()), cols: []tableCol{
+		{head: "name"},
+		{head: "version", role: "hint"},
+		{head: "on", role: "status"},
+		{head: "source", role: "hint"},
+		{head: "marketplace", role: "hint"},
+		{head: "uses", role: "hint"},
+	}}
 	for _, pl := range ps {
 		version, source, on := pl.Version, pl.URL, "on"
 		if pl.Local {
@@ -872,21 +1014,9 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 			}{Name: pl.Name, Version: version, Local: pl.Local, Enabled: pl.Enabled, Source: source, Marketplace: pl.Marketplace, Uses: pl.Uses})
 			continue
 		}
-		rows = append(rows, [6]string{pl.Name, version, on, source, pl.Marketplace, strings.Join(pl.Uses, ",")})
+		t.row(pl.Name, version, on, source, pl.Marketplace, strings.Join(pl.Uses, ","))
 	}
-	var width [5]int
-	for _, r := range rows {
-		for i := range width {
-			width[i] = max(width[i], ansi.StringWidth(r[i])+2)
-		}
-	}
-	for i, r := range rows {
-		roles := [6]string{"", "hint", statusRole[r[2]], "hint", "hint", "hint"}
-		if i == 0 && len(rows) > len(ps) {
-			roles = [6]string{"title", "title", "title", "title", "title", "title"}
-		}
-		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+pad(p, roles[3], r[3], width[3])+pad(p, roles[4], r[4], width[4])+paint(p, roles[5], r[5]))
-	}
+	t.print(w)
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is
@@ -959,10 +1089,11 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 	}
 	code, p := 0, colorprofile.Detect(stdout, os.Environ())
 	rows := h.HealthRows()
-	var nameW int
-	for _, r := range rows {
-		nameW = max(nameW, ansi.StringWidth(r.Name))
-	}
+	t := table{p: p, cols: []tableCol{
+		{role: "status", width: 5},
+		{role: ""},
+		{role: ""},
+	}}
 	for _, r := range rows {
 		if r.Level == hostapi.HealthError {
 			code = 1
@@ -975,8 +1106,9 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 			}{Level: r.Level, Name: r.Name, Detail: r.Detail})
 			continue
 		}
-		fmt.Fprintf(stdout, "%s %s %s\n", pad(p, statusRole[string(r.Level)], string(r.Level), 5), pad(p, "", r.Name, nameW), r.Detail)
+		t.row(string(r.Level), r.Name, r.Detail)
 	}
+	t.print(stdout)
 	return code
 }
 

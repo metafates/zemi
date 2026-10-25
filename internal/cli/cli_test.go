@@ -40,6 +40,10 @@ func TestCLI(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(home, "data", "plugins", "local", "ver", ".zemi", "plugin.json"), `{"version": "1.2.0", "uses": ["job"]}`)
+	writeFile(t, filepath.Join(home, "data", "plugins", "marketplaces.json"), `{"marketplaces": {"demo": {"source": "owner/repo", "added": "2026-01-02T00:00:00Z"}}}`)
+	writeFile(t, filepath.Join(home, "data", "plugins", "marketplaces", "demo", plugin.ZemiMarketplaceFile), `{"name": "demo", "plugins": [
+		{"name": "one", "source": "./p", "description": "the one"},
+		{"name": "two", "source": "./q", "version": "0.1.0"}]}`)
 	// stdin is no terminal, as for an agent's command
 	stdin, w, err := os.Pipe()
 	if err != nil {
@@ -115,6 +119,8 @@ func TestCLI(t *testing.T) {
 		{name: "plugins arity", args: []string{"plugin", "enable"}, code: 2, stderr: "zemi: plugin enable takes <name>\n"},
 		{name: "a range of args", args: []string{"plugin", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugin install takes <name>[@<marketplace>]\n"},
 		{name: "marketplace add takes a url", args: []string{"plugin", "marketplace", "add"}, code: 2, stderr: "zemi: plugin marketplace add takes <source>\n"},
+		{name: "marketplace list shows marketplaces, not entries", args: []string{"plugin", "marketplace", "list"}, stdout: "demo  owner/repo  2  ", notStdout: "the one"},
+		{name: "marketplace list as JSON carries the entries", args: []string{"plugin", "marketplace", "list", "--json"}, stdout: `"entries":[{"name":"one","description":"the one"},{"name":"two","version":"0.1.0"}]`},
 		{name: "completion help in zemi's words", args: []string{"completion", "--help"}, stdout: "print the bash completion script", notStdout: "Generate"},
 		{name: "delete off a terminal", args: []string{"plugin", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugin"}, stdout: "rub  local  on  "},
@@ -526,22 +532,26 @@ func TestCompleteEntries(t *testing.T) {
 	}
 }
 
-// TestPaint: the CLI paints only on a terminal, keeps bold alone under
-// NO_COLOR, and pads a column by the text it shows, not its escapes.
-func TestPaint(t *testing.T) {
-	for _, c := range []struct {
-		p          colorprofile.Profile
-		role, want string
-	}{
-		{colorprofile.NoTTY, "title", "on  "},
-		{colorprofile.Ascii, "title", "\x1b[1mon\x1b[m  "},
-		{colorprofile.Ascii, "ok", "on  "},
-		{colorprofile.ANSI, "ok", "\x1b[32mon\x1b[m  "},
-		{colorprofile.ANSI, "plain", "on  "},
-	} {
-		if got := pad(c.p, c.role, "on", 4); got != c.want {
-			t.Errorf("%v %s: %q, want %q", c.p, c.role, got, c.want)
-		}
+// TestTable: the table pads a column by the text it shows, not its escapes,
+// holds a column at its floor, right-aligns a count, and a header is a
+// terminal's alone.
+func TestTable(t *testing.T) {
+	build := func(p colorprofile.Profile, cell string) string {
+		t := table{p: p, cols: []tableCol{
+			{head: "name", role: "hint", width: 4},
+			{head: "n", right: true},
+		}}
+		t.row(cell, "5")
+		var b strings.Builder
+		t.print(&b)
+		return b.String()
+	}
+	if got := build(colorprofile.NoTTY, "on"); got != "on    5\n" {
+		t.Errorf("plain table = %q, want the column at its floor", got)
+	}
+	// the escape in the cell pads by the text it shows, and the header rides bold
+	if got := build(colorprofile.Ascii, "\x1b[1mon\x1b[m"); got != "\x1b[1mname\x1b[m  \x1b[1mn\x1b[m\n\x1b[1mon\x1b[m    5\n" {
+		t.Errorf("styled table = %q", got)
 	}
 }
 

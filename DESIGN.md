@@ -482,7 +482,8 @@ marketplace's life: the clone is checked out at the ref when added, the
 registry row keeps it, and `marketplace update` and the sweep fetch and read
 that ref (reset `FETCH_HEAD`) instead of floating to `origin/HEAD`.
 `marketplace list` shows each
-marketplace with its source and entries; `marketplace update [name]` pulls
+marketplace with its source, its entry count and when it was added (`--json` adds the
+entries themselves); `marketplace update [name]` pulls
 one or all clones, and the pulls are what an install update is: the
 installed plugins are symlinks into the material, so the pull moves them
 itself, and the row refreshes when the entry's version moved;
@@ -2443,6 +2444,7 @@ rides the `memories.md` line and its ledger entries.
   | command | fields per row |
   |---|---|
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd`; `-a` adds `project` |
+  | `zemi plugin marketplace list` | `name`, `source`, `added`, `entries`; an unreadable manifest an `error` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |

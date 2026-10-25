@@ -14,10 +14,10 @@ project's store through `hostapi.ListAllSessions`, skipping one it cannot read),
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
 `db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
-`plugin`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
-every listing shares. Their plain lines are colored only on a terminal (`paint` and `pad`
-over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot), with a
-header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as
+`plugin`, `health`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
+every listing shares. Their plain lines share one `table` renderer (aligned columns,
+`paint` over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot),
+with a header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as
 the first message, or run as a command when it names one (`Host.SendPrompt`, so `/review` works
 from the composer's first send); a prompt whose first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
@@ -51,7 +51,7 @@ warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so an early fai
 swallowed. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
 `RunCommand` names ("/help needs the TUI", status 1).
 
-`zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
+`zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits (`marketplace list` prints itself from `plugin.Marketplaces`, as the listing commands do): no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugin` (hostapi/plugincmd.go) takes the same verbs plus `toggle`,
 `open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (they run
