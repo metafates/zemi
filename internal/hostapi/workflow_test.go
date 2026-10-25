@@ -1127,6 +1127,106 @@ func TestWaitAllJoinsFlows(t *testing.T) {
 	waitIdle(t, h)
 }
 
+// TestWaitAllHandsOffFlowToUser: the user's message hands off a wait=all
+// holding a workflow too - with the flow alone, where no agent run is left to
+// detach, the join must still answer the user instead of holding.
+func TestWaitAllHandsOffFlowToUser(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		agent bool
+	}{
+		{name: "the flow alone"},
+		{name: "the flow and an agent", agent: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, _ := newTestHostDB(t)
+			h.SetUIHooks(&fakeUI{})
+			seedSession(t, h)
+			gate := make(chan struct{})
+			agentGate := make(chan struct{})
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+					if !strings.Contains(system, "a subagent of zemi") || toolResult {
+						return textParts("noted")
+					}
+					if strings.Contains(last, "plainwork") {
+						<-agentGate
+						return textParts("plain done")
+					}
+					<-gate
+					return textParts("worked")
+				}}, nil
+			}
+			tool := h.workflowTool(h.PipelineFor())
+			started := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+					ID: "c1", Name: tools.ToolWorkflow,
+					Input: `{"script":"-- gate\nreturn zemi.workflow.agent('flowwork')","background":true}`,
+				})
+				started <- resp
+			}()
+			f := waitLiveFlow(t, h)
+			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+				t.Fatalf("a background start = %q", resp.Content)
+			}
+			var plainRun *agentRun
+			if c.agent {
+				def, _ := h.agentDef("explore")
+				plainID, err := h.startBackgroundAgent(t.Context(), def, "dig plain", "plainwork")
+				if err != nil {
+					t.Fatal(err)
+				}
+				plainRun = h.tasks.find(plainID)
+			}
+			if !c.agent {
+				// the spoke is level-triggered within the turn, so a close
+				// before the wait starts still wakes it: the deterministic
+				// park signal the flow alone cannot offer
+				h.UserSpoke()
+			}
+			answers := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
+				answers <- resp
+			}()
+			if c.agent {
+				waitFor(t, func() error {
+					plainRun.mu.Lock()
+					defer plainRun.mu.Unlock()
+					if len(plainRun.updates) == 0 {
+						return errors.New("waitAll never waited on the agent")
+					}
+					return nil
+				})
+				h.UserSpoke()
+			}
+			resp := waitCall(t, answers)
+			if !strings.Contains(resp.Content, "took the turn") || !strings.Contains(resp.Content, f.id) {
+				t.Fatalf("waitAll answered %q, want the workflow handed off", resp.Content)
+			}
+			if c.agent && !strings.Contains(resp.Content, plainRun.id) {
+				t.Fatalf("waitAll answered %q, want the agent named too", resp.Content)
+			}
+			if !f.isRunning() || (c.agent && !plainRun.isRunning()) {
+				t.Fatal("a handed-off run did not go on")
+			}
+			close(gate)
+			if c.agent {
+				close(agentGate)
+			}
+			waitIdle(t, h)
+			waitFor(t, func() error {
+				if n := reportRows(h, f.id); n != 1 {
+					return fmt.Errorf("%d report rows for %s, want exactly 1", n, f.id)
+				}
+				return nil
+			})
+		})
+	}
+}
+
 // TestWorkflowCallHandsOff: a foreground workflow call hands its run off when
 // the user's own message arrives, so the turn reads that message instead of
 // waiting: the call answers with the background text, the run stays live, and

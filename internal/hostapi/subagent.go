@@ -1518,7 +1518,7 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 				waitedF = append(waitedF, f)
 			}
 		}
-		wake, resp := t.awaitRuns(ctx, callID, change, runs)
+		wake, resp, spoke := t.awaitRuns(ctx, callID, change, runs)
 		if resp != nil {
 			return *resp
 		}
@@ -1526,14 +1526,47 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 			t.h.setToolOutcome(callID, tools.Outcome{Run: wake.id})
 			return fantasy.NewTextResponse(updateWaitText(wake))
 		}
+		if spoke {
+			// the user's own messages take the runs: their reports go to the
+			// session. A run already ended as the user spoke detaches not, and
+			// the wait re-snapshots; a flow detaches the same way, for its end
+			// report reads as a message like an agent's
+			type handedRun struct{ kind, id, label string }
+			var handed []handedRun
+			for _, r := range runs {
+				if r.detach() {
+					handed = append(handed, handedRun{"agent", r.id, r.label()})
+				}
+			}
+			for _, f := range flows {
+				if f.detach() {
+					handed = append(handed, handedRun{"workflow", f.id, f.description})
+				}
+			}
+			if len(handed) == 0 {
+				continue // every run ended as the user spoke: re-snapshot
+			}
+			t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0].id})
+			if len(handed) == 1 {
+				h := handed[0]
+				return fantasy.NewTextResponse(handoffText(h.kind, h.id, h.label,
+					"wait all again if you still need to hold"))
+			}
+			lines := make([]string, len(handed))
+			for i, h := range handed {
+				lines[i] = fmt.Sprintf("%s %s (%s)", h.kind, h.id, h.label)
+			}
+			return fantasy.NewTextResponse(fmt.Sprintf("The user's message took the turn while you waited; %s go on, and their reports arrive as messages. Handle the message, then wait all again if you still need to hold.", strings.Join(lines, ", ")))
+		}
 		// the registry changed and runs remain: wait again
 	}
 }
 
 // awaitRuns waits once for a snapshot of running runs and reports what woke
-// it: the run whose update fired, or the response to answer with (nil to have
-// the caller re-snapshot). Its waiters deregister when it returns.
-func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan struct{}, runs []*agentRun) (wake *agentRun, resp *fantasy.ToolResponse) {
+// it: the run whose update fired, the response to answer with (nil to have
+// the caller re-snapshot), or spoke when the user's own message arrived - the
+// caller detaches, for the flows in its join are its to hand off too.
+func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan struct{}, runs []*agentRun) (wake *agentRun, resp *fantasy.ToolResponse, spoke bool) {
 	type waiter struct {
 		run    *agentRun
 		update chan struct{}
@@ -1547,45 +1580,25 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 	select {
 	case <-change:
 	case <-t.h.userSpoke():
-		// the user's own messages take the runs: their reports go to the session
-		var handed []*agentRun
-		for _, r := range runs {
-			if r.detach() {
-				handed = append(handed, r)
-			}
-		}
-		if len(handed) == 0 {
-			return nil, nil // every run ended as the user spoke: re-snapshot
-		}
-		var text string
-		if len(handed) == 1 {
-			text = handoffText("agent", handed[0].id, handed[0].label(), "wait all again if you still need to hold")
-		} else {
-			ids := make([]string, len(handed))
-			for i, r := range handed {
-				ids[i] = r.id
-			}
-			text = fmt.Sprintf("The user's message took the turn while you waited; agents %s go on, and their reports arrive as messages. Handle the message, then wait all again if you still need to hold.", strings.Join(ids, ", "))
-		}
-		resp := fantasy.NewTextResponse(text)
-		t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0].id})
-		return nil, &resp
+		return nil, nil, true
 	case <-ctx.Done():
 		// esc stops the wait, not the runs
-		t.h.setToolOutcome(callID, tools.Outcome{Run: runs[0].id})
+		if len(runs) > 0 {
+			t.h.setToolOutcome(callID, tools.Outcome{Run: runs[0].id})
+		}
 		resp := fantasy.NewTextResponse("Stopped waiting; the agents go on.")
-		return nil, &resp
+		return nil, &resp, false
 	}
 	// the bump's source is ambiguous: an update closes its waiter's channel,
 	// so a change that was really an update is named here
 	for _, w := range waiters {
 		select {
 		case <-w.update:
-			return w.run, nil
+			return w.run, nil, false
 		default:
 		}
 	}
-	return nil, nil
+	return nil, nil, false
 }
 
 // bgAgentText is what a call whose run reports as a message answers: a
