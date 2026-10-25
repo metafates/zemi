@@ -196,10 +196,11 @@ var builtinKinds = map[catwalk.Type]Kind{
 // NOTE: model options (temperature, top_p) are not carried.
 func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	env := func(ref string) (name, value string) {
-		if !strings.HasPrefix(ref, "$") {
+		name, ok := strings.CutPrefix(ref, "$")
+		if !ok {
 			return "", ref
 		}
-		return ref[1:], getenv(ref[1:])
+		return name, getenv(name)
 	}
 	c := Catalog{Keys: map[string]string{}}
 	for _, p := range providers {

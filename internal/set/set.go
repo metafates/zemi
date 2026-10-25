@@ -1,6 +1,11 @@
 // Package set holds zemi's one set type.
 package set
 
+import (
+	"maps"
+	"slices"
+)
+
 // Set is a set of T. It is a map underneath, so range and len read it
 // directly; writes go through Add and Remove.
 type Set[T comparable] map[T]struct{}
@@ -29,9 +34,5 @@ func (s Set[T]) Clone() Set[T] {
 
 // Slice returns the members in map order.
 func (s Set[T]) Slice() []T {
-	out := make([]T, 0, len(s))
-	for item := range s {
-		out = append(out, item)
-	}
-	return out
+	return slices.Collect(maps.Keys(s))
 }

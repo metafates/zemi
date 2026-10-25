@@ -518,27 +518,26 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		return st
 	}
 	for _, item := range o.Items {
-		r := item
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
-		r.Desc, r.Key, r.Section = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section)
-		r.Verb = hostapi.Verb(sanitize.Line(string(r.Verb)))
-		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview)                          // Detail is the detail view's Body, sanitized there
-		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, mark: markSeg(r.Mark), row: r} // a newline would break the box
-		if r.On != nil || r.Locked != nil {
-			it.key = switchSeg(r.On != nil && *r.On, r.Locked != nil)
+		item.Desc, item.Key, item.Section = oneLine.Replace(sanitize.String(item.Desc)), sanitize.Line(item.Key), sanitize.Line(item.Section)
+		item.Verb = hostapi.Verb(sanitize.Line(string(item.Verb)))
+		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                          // Detail is the detail view's Body, sanitized there
+		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Key), section: item.Section, mark: markSeg(item.Mark), row: item} // a newline would break the box
+		if item.On != nil || item.Locked != nil {
+			it.key = switchSeg(item.On != nil && *item.On, item.Locked != nil)
 		}
-		if r.Row != nil {
+		if item.Row != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
-			for _, seg := range r.Row {
+			for _, seg := range item.Row {
 				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
 			it.label = hostapi.SegsText(it.segs) // spaces kept: a filter's offsets index the segments
-		} else if r.Danger {
+		} else if item.Danger {
 			it.segs = []hostapi.Segment{{Text: it.label, HL: hostapi.ChromeDanger}}
 		}
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
-		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy+"  "+r.Preview)
+		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+item.Copy+"  "+item.Preview)
 	}
 	if o.Phases {
 		marks := map[string][]hostapi.MarkKind{}

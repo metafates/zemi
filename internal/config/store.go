@@ -444,8 +444,7 @@ func checkKind(def Setting, val any) (any, error) {
 	if def.Check != nil {
 		v, err := def.Check(val)
 		if err != nil {
-			var bad *BadValueError
-			if errors.As(err, &bad) && bad.Path == "" {
+			if bad, ok := errors.AsType[*BadValueError](err); ok && bad.Path == "" {
 				bad.Path = def.Path
 			}
 			return nil, err
