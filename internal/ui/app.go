@@ -1301,9 +1301,12 @@ const modalFade = 0.7
 // drag. A row a box drew on its panel sinks to the canvas with the rest: the
 // backdrop is one surface. The message a following list picked stays lit: the
 // map dims the chat around what it is looking at, which is why it can be seen.
+// A rail level's pick is one call and the run's first action carries the run's
+// own anchor, so there the pick matches by call alone; any other pick lights
+// the whole unit its anchor draws.
 func (a *App) fadeRows(rows [][]hostapi.Segment) {
 	for i, row := range rows {
-		if a.highlight != 0 && (rowAnchor(row) == a.highlight || rowCall(row) == a.highlight) {
+		if a.highlight != 0 && (rowCall(row) == a.highlight || (!a.railPick && rowAnchor(row) == a.highlight)) {
 			continue
 		}
 		for k, s := range row {

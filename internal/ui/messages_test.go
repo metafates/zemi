@@ -1248,12 +1248,33 @@ func TestRailBandCoversOneCall(t *testing.T) {
 	if got := label(); got != "read f1" {
 		t.Fatalf("walked to %q", got)
 	}
+	// the first action's transcript row is the run's own anchor, so the fade
+	// must light it by call: its rows lit, the neighbours dimmed
+	faded := func(text string) float64 {
+		for _, row := range app.lastRows {
+			for _, s := range row {
+				if strings.Contains(s.Text, text) {
+					return s.Fade
+				}
+			}
+		}
+		t.Fatalf("%q not on screen", text)
+		return -1
+	}
+	if f := faded("read f1"); f != 0 {
+		t.Fatalf("the pick reads as faded: %v", f)
+	}
+	if f := faded("read f2"); f != modalFade {
+		t.Fatalf("the neighbour escapes the fade: %v", f)
+	}
 	banded := bandedChatText(t, app)
 	if len(banded) != 4 || !strings.Contains(banded[0], "read f1") || !strings.Contains(banded[1], "f1.go") ||
 		!strings.Contains(banded[2], "no such file") || !strings.Contains(banded[3], "stat f1.go") {
 		t.Fatalf("first action band:\n%s", strings.Join(banded, "\n"))
 	}
-	// walking down bands each call alone, the digest row clean
+	// walking down bands each call alone, the digest row clean, and the fade
+	// follows: the pick lit, the one before it dimmed again
+	prev := ""
 	for _, want := range []string{"read f2", "read f3", "vet"} {
 		press(t, app, tea.KeyPressMsg{Code: 'j', Text: "j"})
 		pump()
@@ -1266,6 +1287,15 @@ func TestRailBandCoversOneCall(t *testing.T) {
 				t.Fatalf("the digest row banded for %q:\n%s", want, strings.Join(banded, "\n"))
 			}
 		}
+		if f := faded(want); f != 0 {
+			t.Fatalf("pick %q reads as faded: %v", want, f)
+		}
+		if prev != "" {
+			if f := faded(prev); f != modalFade {
+				t.Fatalf("%q stays lit under %q: %v", prev, want, f)
+			}
+		}
+		prev = want
 	}
 	// a live call is a row of its own: walking onto it bands the live rail's
 	// row, and the pick stays on screen
