@@ -492,8 +492,13 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 }
 
 // toolPostWait bounds one call's tool.post handlers in wall time, their
-// waits included; a slice of one gets the veto deadline on the interpreter.
+// waits included; a slice of one gets toolPostSlice on the interpreter.
 const toolPostWait = 30 * time.Second
+
+// toolPostSlice is a handler slice's ceiling. A var like luaToolCeiling: the
+// ceiling measures wall time, so a run whose machine is loaded stops an
+// innocent handler, and a test whose handler must land raises it.
+var toolPostSlice = lua.VetoDeadline
 
 // toolPost runs tool.post after a tool call and returns the output the
 // model gets (DESIGN §6.2): the handlers, then the tool's override posts, in
@@ -528,7 +533,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 		payload["output"] = out
 		var rewrite *string
 		t := h.luaTask(lua.ClassAgent, luaCaller{gen: hd.Gen, origin: hd.Origin, path: hd.Path}, hd.Fn, eventTable(EventToolPost, "host", payload))
-		t.Ceiling = lua.VetoDeadline
+		t.Ceiling = toolPostSlice
 		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
 			if len(rets) > 0 {
 				if tb, ok := rets[0].(*glua.LTable); ok {

@@ -444,6 +444,14 @@ func TestMCPOverlayRefresh(t *testing.T) {
 		defer ui.mu.Unlock()
 		return slices.Clone(ui.refreshed), slices.Clone(ui.rebuilt)
 	}
+	// becoming ready rebuilds the open /mcp once, after the waitFor above
+	// could see it: the counts below are relative to that rebuild
+	waitFor(t, func() error {
+		if ids, _ := snap(); len(ids) == 0 {
+			return errors.New("the ready rebuild has not landed")
+		}
+		return nil
+	})
 	ids0, _ := snap()
 	n := len(ids0)
 	h.mcpChanged()

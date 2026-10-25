@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race cover vet lint fmt golden luals stylua gofmt check install clean
+.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -50,6 +50,12 @@ test:
 
 race:
 	go test -race -timeout 600s ./...
+
+# the suite as a loaded machine sees it: raced and repeated, the way a
+# scheduling flake shows. Run before landing anything that waits on
+# goroutines: concurrency, timers, turn or step ordering, and their tests.
+flake:
+	go test -race -timeout 900s -count=3 ./...
 
 # coverage of every package by every test (hostapi's drive store, tools and
 # agent through the real flow); the total prints and bin/cover.out stays for

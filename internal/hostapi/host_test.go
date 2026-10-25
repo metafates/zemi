@@ -37,6 +37,7 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()})
+	t.Cleanup(h.Close) // the actor goroutine pins the Lua state: release both
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
@@ -50,6 +51,7 @@ func newTestHostUI(t *testing.T, clock ...lua.Clock) *Host {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS, Clock: cmp.Or(clock...)})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}

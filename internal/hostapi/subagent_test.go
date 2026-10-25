@@ -851,6 +851,7 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 	seedSession(t, h)
 	var marks [2]string // the pinned prefix at the child's call, and at the caller's next step
 	saw := ""
+	read := make(chan struct{})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
@@ -860,9 +861,18 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 					// a child that finds something the task waits on says so at once
 					return toolCallParts("t1", "update", `{"text":"the flaky test is in x_test.go"}`)
 				}
+				// the run must outlive its update: ended as it updated, the
+				// report joins the caller's same step boundary and the update
+				// is never that step's last message. A hang here fails the saw
+				// check below through waitIdle's deadline.
+				select {
+				case <-read:
+				case <-time.After(2 * time.Second):
+				}
 				return textParts("child done")
 			case strings.Contains(last, "<agent-update "):
 				marks[1], saw = pinState(h), last
+				close(read)
 				return textParts("read it")
 			case strings.Contains(last, "<agent-report "):
 				// the call woke on the update, so the run reports as a message

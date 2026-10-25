@@ -60,15 +60,14 @@ func TestJobsEvictFinished(t *testing.T) {
 			t.Fatal("timed out waiting for job exits")
 		}
 	}
+	// the last exits sweep under m.mu after their OnChange: reading here races
+	// that sweep, so wait for the settled cap before judging who stayed
+	waitFor(t, func() bool { return len(m.List()) == maxKeptJobs+1 })
 	if _, err := m.Get("job-1"); err != nil {
 		t.Fatalf("running job evicted: %v", err)
 	}
-	waitFor(t, func() bool { _, err := m.Get("job-2"); return err != nil })
 	if _, err := m.Get("job-6"); err != nil {
 		t.Fatalf("finished job inside the cap evicted: %v", err)
-	}
-	if got := len(m.List()); got != maxKeptJobs+1 {
-		t.Fatalf("List = %d jobs, want %d", got, maxKeptJobs+1)
 	}
 	close(waits["job-1"]) // let its add goroutine exit
 }

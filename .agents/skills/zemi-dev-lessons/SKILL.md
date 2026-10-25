@@ -39,7 +39,11 @@ Anything in the prefix that varies per request busts the provider cache for the 
 - `t.Parallel()` on slow process-driven tests (LSP, plugin test boots) more than halves the hostapi run. It is safe only with no `t.Setenv`, `t.Chdir`, package globals or shared ports.
 - Boot-time goroutines (the `git status` warm-up, MCP start) capture what they read by value; a test that mutates `h.Dirs` after boot races them.
 - A package global written per host races between parallel hosts; make it a field.
-- Run `make race` after touching concurrency.
+- Assert on the settled state, never a milestone on the way to it: when a background goroutine still owes its critical section (a job exit's eviction sweep, a report joining the transcript), an earlier condition holds while the state is still moving (`TestJobsEvictFinished` waits for the settled cap, not the first eviction).
+- A scripted handoff keeps the sender alive until the receiver has read: once the child ends, its follow-up joins the reader's same step boundary, and "the message was the last thing the model saw" becomes a coin flip (`TestAgentUpdateReachesTheCaller`'s child blocks on the read).
+- A test that counts events counts a background emitter too: a status change's own rebuild lands any time after its readiness is observable, so anchor the count to that rebuild first (`TestMCPOverlayRefresh` waits for the ready rebuild).
+- A product wall-time ceiling stops an innocent handler on a loaded machine: a test whose handler must land raises the ceiling var first (`toolPostSlice` and `luaToolCeiling`), and the test host closes its runtime on cleanup, or every leaked actor pins its Lua state.
+- Run `make flake` after touching concurrency, timers or turn ordering; `make race` alone runs each test once and lets a scheduling flake slip.
 
 ## Traps
 

@@ -101,6 +101,7 @@ make site               # serve the one-page site in docs/ at localhost:1314
 make first-run          # zemi as a newcomer sees it: fresh HOME and repo, deleted on exit; KEYS=0 without keys, DIR=<abs path>, ARGS=<flags>
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./...
+make flake              # the suite as a loaded machine sees it: -race, three repeats; the flake hunter
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # golangci-lint fmt over the Go files (gofmt without the binary), and stylua over the runtime/ and testdata/ Lua
 ```
@@ -112,7 +113,9 @@ skills in `~/.agents/skills`, which no override moves, must stay out (`make firs
 with a fresh `HOME`, for looking at a first run); most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted
 project: call `h.SetProjectTrusted(true)` when one needs project instructions, language servers
-or settled builds.
+or settled builds. `make check` runs each test once, so a scheduling flake slips it: a change
+that waits on goroutines - concurrency, timers, turn or step ordering, and the tests for them
+- runs `make flake` (-race, three repeats) before it lands.
 
 ## Where the rest lives
 
