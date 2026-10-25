@@ -19,7 +19,10 @@ every listing shares. Their plain lines share one `table` renderer (aligned colu
 `paint` over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot),
 with a header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as
 the first message, or run as a command when it names one (`Host.SendPrompt`, so `/review` works
-from the composer's first send); a prompt whose first word names a zemi command goes
+from the composer's first send); a message prompt is held (`Host.HoldPrompt`) from the TUI's first
+frame - it is the transcript's first row then and claims the turn it starts - and `SendHeld` runs
+that turn once boot and the MCP starts settle; esc takes it back to the composer. A prompt whose
+first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
 for a model call on a typo. Exit status 2 is anything that fails before the root's
 `PersistentPreRunE`, which cobra runs once flags and arguments passed; after it a command's

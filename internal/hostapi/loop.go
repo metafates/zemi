@@ -161,7 +161,7 @@ func (h *Host) fireLoop(l *Loop) {
 		// a command gets the note as its attachment
 		err = h.SendPrompt(l.Prompt + note)
 	} else {
-		err = h.sendClaimed(scope, note)
+		err = h.sendClaimed(scope, note, nil)
 	}
 	if err != nil {
 		_ = h.stopLoop(l, "Loop stopped: "+h.friendlyError(err))

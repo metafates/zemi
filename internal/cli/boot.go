@@ -65,6 +65,13 @@ func launch(o options) int {
 	host.SetUIHooks(app)
 	// a prompt or a resumed session fills the transcript, so no splash offers projects
 	trust.ask, trust.splash = app.AskTrust, o.prompt == "" && !o.cont && o.resume == ""
+	// The command line's prompt shows as the first message from the first
+	// frame and goes as the first turn once boot ends: the splash never shows
+	// over it. One that names a command (SendPrompt's) is no message to show,
+	// and one that rides a resume lands after the history it loads.
+	if o.prompt != "" && !o.cont && o.resume == "" && !strings.HasPrefix(o.prompt, "/") {
+		host.HoldPrompt(o.prompt)
+	}
 
 	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)

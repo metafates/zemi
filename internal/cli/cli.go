@@ -1130,10 +1130,11 @@ func stopSignals() []os.Signal {
 }
 
 // sendPrompt sends a command-line prompt once no MCP server is starting,
-// since its one send builds the tool set, unless ctx ends the wait.
+// since its one send builds the tool set, unless ctx ends the wait. The
+// prompt held at boot goes as the turn it claimed.
 func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return h.SendPrompt(prompt)
+	return h.SendHeld(prompt)
 }

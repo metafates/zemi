@@ -559,6 +559,80 @@ func TestJoinedReportsDrawHeads(t *testing.T) {
 	}
 }
 
+// TestHeldPrompt covers the command line's prompt held at boot: it is on the
+// transcript from the hold on, a send during the hold steers into the turn it
+// claimed, SendHeld runs that turn without adding the message twice, and a
+// hold the user took back (esc during boot) leaves nothing behind and starts
+// no turn.
+func TestHeldPrompt(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return textParts("done")
+		}}, nil
+	}
+
+	h.HoldPrompt("hello")
+	if !h.AgentActive() {
+		t.Fatal("a hold does not hold the agent")
+	}
+	if tr := h.Session().Transcript; len(tr) != 1 || tr[0].Text != "hello" || tr[0].Role != fantasy.MessageRoleUser {
+		t.Fatalf("held rows: %+v", tr)
+	}
+	// a message typed while boot runs steers into the turn the hold claimed
+	if err := h.AgentSend("also this"); err != nil {
+		t.Fatal(err)
+	}
+	if tr := h.Session().Transcript; len(tr) != 1 {
+		t.Fatalf("a steered message took a row of its own: %+v", tr)
+	}
+	if err := h.SendHeld("hello"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	var hellos, also int
+	for _, m := range h.Session().Transcript {
+		if m.Role != fantasy.MessageRoleUser {
+			continue
+		}
+		switch m.Text {
+		case "hello":
+			hellos++
+		case "also this":
+			also++
+		}
+	}
+	if hellos != 1 || also != 1 {
+		t.Fatalf("held %d times, steered %d: %+v", hellos, also, h.Session().Transcript)
+	}
+
+	// esc during boot takes the prompt back: the message leaves the
+	// transcript, the text returns to the composer, no turn starts
+	h.HoldPrompt("take this back")
+	if tr := h.Session().Transcript; len(tr) != 4 || tr[3].Text != "take this back" {
+		t.Fatalf("second held rows: %+v", tr)
+	}
+	h.AgentCancel()
+	if tr := h.Session().Transcript; len(tr) != 3 {
+		t.Fatalf("the taken-back message stayed: %+v", tr)
+	}
+	if got := ui.composed; len(got) != 1 || got[0] != "take this back" {
+		t.Fatalf("the prompt did not return to the composer: %q", got)
+	}
+	if err := h.SendHeld("take this back"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	for _, m := range h.Session().Transcript {
+		if m.Text == "take this back" {
+			t.Fatalf("a taken-back message went to the model: %+v", m)
+		}
+	}
+}
+
 // TestHistoryCarriesAcrossTurns: the runner is rebuilt on every send, and the
 // second turn's prompt still carries the first exchange (system, context,
 // user, assistant, user), and both turns land in the transcript.
@@ -662,6 +736,7 @@ type fakeUI struct {
 	screenshot          string
 	chatRow             int
 	copied              string
+	composed            []string          // the drafts ComposerSet put in the composer
 	onRefresh           func(id string)   // runs inside RefreshOverlay, mid-rebuild
 	edit                func(path string) // what the user does in the editor
 	relaunched, resumed string
@@ -697,14 +772,21 @@ func (f *fakeUI) CloseOverlay(id string) {
 	defer f.mu.Unlock()
 	f.closed = append(f.closed, id)
 }
-func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
-func (f *fakeUI) Refresh()                             {}
-func (f *fakeUI) Scroll(ScrollAction, string)          {}
-func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }
-func (f *fakeUI) KeyHelp() ([][2]string, [][2]string)  { return nil, nil }
-func (f *fakeUI) AgentStream()                         {}
-func (f *fakeUI) TurnDone(err string, stopped bool)    { f.turnsDone.Add(1) }
-func (f *fakeUI) ComposerEdit(ComposerOp, string, int) {}
+func (f *fakeUI) CloseLuaOverlays()                   { f.closedLua++ }
+func (f *fakeUI) Refresh()                            {}
+func (f *fakeUI) Scroll(ScrollAction, string)         {}
+func (f *fakeUI) LayoutRects() map[string]Rect        { return nil }
+func (f *fakeUI) KeyHelp() ([][2]string, [][2]string) { return nil, nil }
+func (f *fakeUI) AgentStream()                        {}
+func (f *fakeUI) TurnDone(err string, stopped bool)   { f.turnsDone.Add(1) }
+func (f *fakeUI) ComposerEdit(op ComposerOp, text string, cursor int) {
+	if op == ComposerSet {
+		f.mu.Lock()
+		f.composed = append(f.composed, text)
+		f.mu.Unlock()
+	}
+}
+
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {
 		f.edit(req.Path)

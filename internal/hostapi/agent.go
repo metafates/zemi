@@ -181,6 +181,11 @@ type agentHost struct {
 	turns      int
 	compacting bool // summarizing history before the next turn
 
+	// held is the command line's prompt, up as the first message from the
+	// TUI's first frame and claimed as a turn from then; SendHeld starts the
+	// turn once boot ends, AgentCancel takes the prompt back.
+	held *heldPrompt
+
 	// compactFails counts auto compactions in a row that failed or left the
 	// context full; at compactMaxFails auto compaction stops for the session.
 	// compacted has the next step judge the last compaction. holdOverflow
@@ -589,7 +594,94 @@ func (h *Host) agentSend(text string) (queued bool, err error) {
 	// send arriving meanwhile must queue instead of starting a second turn.
 	scope := h.claim()
 	ag.mu.Unlock()
-	return false, h.sendClaimed(scope, text)
+	return false, h.sendClaimed(scope, text, nil)
+}
+
+// heldPrompt is the command line's prompt: shown as the first message from
+// the TUI's first frame, claimed as a turn from then, and sent once boot
+// ends and the MCP starts settle.
+type heldPrompt struct {
+	scope     *turnScope
+	text      string
+	base      int  // transcript rows before the message's row landed
+	cancelled bool // the user took it back (AgentCancel); the turn never starts
+}
+
+// HoldPrompt shows a command-line prompt as the first message from the TUI's
+// first frame and claims the agent for its turn, which SendHeld starts once
+// boot ends: the wait for boot and the MCP starts reads as the wait for the
+// first token. A paste's literal marker is defused, like AgentSendUser's.
+func (h *Host) HoldPrompt(prompt string) {
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.active { // a send beat the hold
+		ag.mu.Unlock()
+		return
+	}
+	h.tMu.RLock()
+	base := len(h.session.Transcript)
+	h.tMu.RUnlock()
+	held := &heldPrompt{scope: h.claim(), text: agent.Defuse(prompt), base: base}
+	ag.held = held
+	ag.beginTurn()
+	ag.mu.Unlock()
+	h.startTurn(held.text, held)
+}
+
+// SendHeld sends the command line's prompt: the one held at boot (HoldPrompt)
+// starts the turn it claimed, its message having been on the transcript since
+// the first frame; anything else runs as SendPrompt does, a command by name
+// or a message to the model. A hold the user took back starts no turn.
+func (h *Host) SendHeld(prompt string) error {
+	ag := h.agents
+	ag.mu.Lock()
+	held := ag.held
+	ag.held = nil
+	ag.mu.Unlock()
+	if held == nil {
+		return h.SendPrompt(prompt)
+	}
+	if held.cancelled {
+		h.endScope(held.scope)
+		return nil
+	}
+	if err := h.sendClaimed(held.scope, held.text, held); err != nil {
+		// the turn never ran: the message leaves the transcript and the
+		// prompt returns to the composer, the way a cancelled one does
+		h.dropHeldRow(held)
+		if ui := h.hooks(); ui != nil {
+			ui.ComposerEdit(ComposerSet, held.text, -1)
+		}
+		return err
+	}
+	return nil
+}
+
+// heldRow reports whether the transcript still holds the held prompt's
+// message where it landed: the turn that finally sends the same text keeps
+// that row instead of adding a second one. A /new or a resume mid-boot
+// replaced the transcript, and the turn's rows follow what stands there now.
+func (h *Host) heldRow(held *heldPrompt) bool {
+	shown, _, _ := userRowsFor(held.text)
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
+	t := h.session.Transcript
+	return len(t) > held.base && t[held.base].Role == fantasy.MessageRoleUser && t[held.base].Text == shown
+}
+
+// dropHeldRow removes the held prompt's message from the transcript where it
+// landed: a hold that never became a turn leaves nothing behind.
+func (h *Host) dropHeldRow(held *heldPrompt) {
+	shown, _, _ := userRowsFor(held.text)
+	h.tMu.Lock()
+	t := h.session.Transcript
+	if len(t) > held.base && t[held.base].Role == fantasy.MessageRoleUser && t[held.base].Text == shown {
+		// replaced whole, like setTranscript: readers share the old array
+		h.session.Transcript = append(slices.Clip(t[:held.base]), t[held.base+1:]...)
+		h.trEpoch.Add(1)
+	}
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 // drainQueue starts a turn for what a background agent's report left queued
@@ -608,9 +700,11 @@ func (h *Host) drainQueue() {
 }
 
 // sendClaimed starts a turn for text on an agent already claimed with scope.
+// held is the prompt that went up at boot: its turn began there, so the clock
+// keeps running from the hold and its message is not added twice.
 // A panic before the turn goroutine starts is an error, so the caller keeps
 // the text and a loop stops.
-func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
+func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			h.clearCrashedTurn(r)
@@ -652,9 +746,11 @@ func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
 	if ag.byLoop = strings.Contains(text, loopTag); !ag.byLoop {
 		ag.goalRuns = 0 // someone started it: neither the goal nor a loop
 	}
-	ag.beginTurn()
+	if held == nil {
+		ag.beginTurn()
+	}
 	ag.mu.Unlock()
-	h.startTurn(text)
+	h.startTurn(text, held)
 	h.Log.Info("send", "origin", "agent", "session", h.AgentSessionID(),
 		"text", clipLine(sanitize.String(text), 120))
 
@@ -842,7 +938,7 @@ func (h *Host) handOff(scope *turnScope) {
 	}
 	// sending waits on the interpreter, and rewind may be called from Lua
 	h.GoSafe("agent send", func() {
-		if err := h.sendClaimed(scope, queued); err != nil {
+		if err := h.sendClaimed(scope, queued, nil); err != nil {
 			h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 		}
 	})
@@ -867,18 +963,22 @@ func (h *Host) runTurns(runner, prev *agent.Runner, from string, scope *turnScop
 	}
 }
 
-func (h *Host) startTurn(text string) {
-	h.appendUserRows(text)
-	h.agentStream()
-	h.EmitAsync(EventAgentStart, map[string]any{"text": text})
+func (h *Host) startTurn(text string, held *heldPrompt) {
+	h.appendUserRows(text, held)
+	if held == nil {
+		// a held turn already announced itself when the prompt went up
+		h.agentStream()
+		h.EmitAsync(EventAgentStart, map[string]any{"text": text})
+	}
 }
 
 // appendUserRows shows one message as the model reads it: what was typed,
 // then the notice row of each background report behind agent.AttachMarker,
-// the same cut a resumed transcript makes.
-func (h *Host) appendUserRows(text string) {
+// the same cut a resumed transcript makes. A held prompt's row went up at
+// boot (heldRow) and is kept while the transcript still holds it there.
+func (h *Host) appendUserRows(text string, held *heldPrompt) {
 	shown, heads, _ := userRowsFor(text)
-	if shown != "" {
+	if shown != "" && !(held != nil && h.heldRow(held)) {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: h.now().UnixMilli()})
 	}
 	for _, n := range heads {
@@ -942,7 +1042,7 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		h.refresh()
 		return nil, ""
 	}
-	h.startTurn(text)
+	h.startTurn(text, nil)
 	return next, text
 }
 
@@ -984,7 +1084,7 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 		h.refresh()
 		return nil, ""
 	}
-	h.startTurn(note)
+	h.startTurn(note, nil)
 	return next, note
 }
 
@@ -1007,7 +1107,7 @@ func (h *Host) deliverSteering() []string {
 	h.flushOutput(TurnStat{})
 	ag.mu.Unlock()
 	for _, m := range msgs {
-		h.appendUserRows(m)
+		h.appendUserRows(m, nil)
 	}
 	return msgs // Runner.Compose expands them
 }
@@ -1132,17 +1232,37 @@ func (ag *agentHost) beginTurn() {
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
 
-// AgentCancel aborts the active turn (DESIGN §6.3).
+// AgentCancel aborts the active turn (DESIGN §6.3). A prompt held at boot
+// has no turn to abort: it leaves the transcript and returns to the
+// composer, the claim stays held until SendHeld releases it.
 func (h *Host) AgentCancel() {
 	ag := h.agents
 	ag.mu.Lock()
+	held := ag.held
+	fresh := held != nil && !held.cancelled
+	if fresh {
+		held.cancelled = true
+	}
 	r := ag.runner
 	ag.mu.Unlock()
+	if fresh {
+		h.takeHeld(held)
+	}
 	if r != nil {
 		r.Cancel()
 	}
 	if t := h.turn.Load(); t != nil {
 		t.cancel()
+	}
+}
+
+// takeHeld returns a prompt the user took back to the composer: its message
+// leaves the transcript, so a hold that never became a turn leaves nothing
+// behind and the text is one enter away.
+func (h *Host) takeHeld(held *heldPrompt) {
+	h.dropHeldRow(held)
+	if ui := h.hooks(); ui != nil {
+		ui.ComposerEdit(ComposerSet, held.text, -1)
 	}
 }
 
