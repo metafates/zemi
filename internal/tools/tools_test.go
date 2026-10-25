@@ -783,8 +783,9 @@ func TestReadSaysWhatTheModelSees(t *testing.T) {
 	}
 }
 
-// TestCmdEnv: a command the model runs sees the pad and the project as
-// names a script can read; job_start starts with the same env.
+// TestCmdEnv: a shell command the model runs carries the pad and the
+// project as names a script can read; jobs share this env, since job_start
+// starts with the same cmdEnv.
 func TestCmdEnv(t *testing.T) {
 	pad, proj := t.TempDir(), t.TempDir()
 	p := &Pipeline{Pad: pad, ProjectDir: proj}
