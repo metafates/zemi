@@ -76,10 +76,10 @@ func TestCallView(t *testing.T) {
 		}
 	}
 	// the view steps along the turn's rail, a question is a call view too,
-	// and a run row is a step target like any other
+	// and a run row is a step target like any other, landing on its own view
 	for row, want := range map[int][2]string{
 		1: {"", "call 2"}, 2: {"call 1", "call 3"}, 4: {"call 3", "call 5"},
-		5: {"call 4", "call 6"}, 6: {"call 5", "call 7"}, 7: {"call 6", ""},
+		5: {"call 4", "call 6"}, 6: {"call 5", "agents show r9"}, 7: {"call 6", ""},
 	} {
 		o := h.callView(row, mustRow(t, h, row), 0)
 		if o.Prev != want[0] || o.Next != want[1] {
@@ -110,7 +110,7 @@ func TestCallView(t *testing.T) {
 	if err := h.openCall(-1); err != nil {
 		t.Fatal(err)
 	}
-	if first := ui.opened[len(ui.opened)-1]; first.Prev != "call 7" || first.Next != "call -2" {
+	if first := ui.opened[len(ui.opened)-1]; first.Prev != "agents show r9" || first.Next != "call -2" {
 		t.Fatalf("the first live call steps to %q and %q", first.Prev, first.Next)
 	}
 	if err := h.openCall(-2); err != nil {
@@ -174,7 +174,7 @@ func TestCallStepCrossesIntoTheLiveTurn(t *testing.T) {
 		t.Fatalf("the first live call steps to %q and %q", o.Prev, o.Next)
 	}
 	// a live call that went on as an agent run is a run row: a step lands on
-	// it like any other, both ways
+	// its preview, both ways
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{Name: "agent", Run: "r1", Status: CallRun},
 		{Name: "read", Input: "c.go", Status: CallRun},
@@ -182,7 +182,7 @@ func TestCallStepCrossesIntoTheLiveTurn(t *testing.T) {
 	if err := h.openCall(-2); err != nil {
 		t.Fatal(err)
 	}
-	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call -1" || o.Next != "" {
+	if o := ui.opened[len(ui.opened)-1]; o.Prev != "agents show r1" || o.Next != "" {
 		t.Fatalf("the call past a run row steps to %q and %q", o.Prev, o.Next)
 	}
 	if err := h.openCall(-1); err != nil {

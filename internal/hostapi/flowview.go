@@ -114,6 +114,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		Body: clipLine(f.about, 76), Empty: "No agent has started yet.",
 		Reload: func() []OverlayItem { return h.flowOverlay(f).Items },
 	}
+	o.Prev, o.Next = h.railStep(f.id)
 	for kv := flowFields(f, v); len(kv) > 0; kv = kv[2:] {
 		o.Fields = append(o.Fields, Field{kv[0], kv[1]})
 	}

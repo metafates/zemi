@@ -775,10 +775,7 @@ func (a *App) closeMenu(st *overlayState) {
 // now shows, so going back lands on the call that was read, not the one the
 // level was opened on.
 func (a *App) stepUnder(run string) {
-	row, err := strconv.Atoi(strings.TrimPrefix(run, "call "))
-	if err != nil {
-		return
-	}
+	row, rowErr := strconv.Atoi(strings.TrimPrefix(run, "call "))
 	// the step closes this view and opens the next one on a worker, so the
 	// level to move is the one a following list is: the nearest below
 	i := len(a.overlays) - 1
@@ -790,7 +787,9 @@ func (a *App) stepUnder(run string) {
 	}
 	under := &a.overlays[i]
 	for k, idx := range under.visible {
-		if under.items[idx].row.Anchor != row {
+		it := under.items[idx].row
+		// a call view names its row; a run's view names the run the row opened
+		if rowErr != nil && it.Run != run || rowErr == nil && it.Anchor != row {
 			continue
 		}
 		if under.selected != k {

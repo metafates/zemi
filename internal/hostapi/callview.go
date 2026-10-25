@@ -346,7 +346,7 @@ func (h *Host) skillBody(m ChatMessage) string {
 // ctrl+k walk it. The turn settles its calls into the transcript's tail while
 // it still writes the later ones, so the settled rows and the live calls are
 // one rail and a step crosses between them. Every rail row steps, a run
-// digest like any other: its view is its call's.
+// digest like any other: a step lands on the view the row itself opens.
 func (h *Host) callStep(n int) (prev, next string) {
 	tr := h.viewedTranscript()
 	s := h.AgentStream()
@@ -358,6 +358,9 @@ func (h *Host) callStep(n int) (prev, next string) {
 		if !rail(i) {
 			return ""
 		}
+		if tr[i].Run != "" {
+			return runStepView(tr[i].Tool, tr[i].Run)
+		}
 		return "call " + strconv.Itoa(i+1)
 	}
 	back := func(from int) string {
@@ -368,11 +371,12 @@ func (h *Host) callStep(n int) (prev, next string) {
 		}
 		return ""
 	}
-	// live scans the turn's unsettled calls for the first step target from
-	// j, walking the way dir points
 	live := func(j int) string {
 		if j < 0 || j >= len(s.Tools) {
 			return ""
+		}
+		if t := s.Tools[j]; t.Run != "" {
+			return runStepView(t.Name, t.Run)
 		}
 		return "call " + strconv.Itoa(-j-1)
 	}
@@ -410,6 +414,32 @@ func (h *Host) callStep(n int) (prev, next string) {
 		next = live(0)
 	}
 	return prev, next
+}
+
+// runStepView names the view a run's row opens, the one its click opens: a
+// workflow's its view, an agent's its preview. A step lands there, so the
+// walk shows what the row shows anywhere else.
+func runStepView(tool, run string) string {
+	if tool == tools.ToolWorkflow {
+		return "workflows view " + run
+	}
+	return "agents show " + run
+}
+
+// railStep is the walk around the transcript row that names run: the prev and
+// next step commands its view steps with, "" when no row of the transcript
+// the chat draws holds it - a run's view walks only where it stands.
+func (h *Host) railStep(run string) (prev, next string) {
+	tr := h.viewedTranscript()
+	for i, m := range tr {
+		if m.Kind == RowTool && m.Run == run {
+			return h.callStep(i + 1)
+		}
+	}
+	if j := slices.IndexFunc(h.AgentStream().Tools, func(t StreamTool) bool { return t.Run == run }); j >= 0 {
+		return h.callStep(-j - 1)
+	}
+	return "", ""
 }
 
 // callTitle names the view: a thought is a thought, a question it asks, and

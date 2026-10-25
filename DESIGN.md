@@ -2359,8 +2359,9 @@ rides the `memories.md` line and its ledger entries.
   (`step:<idx>`, opens its calls), a call's or a thought's row (`call:<idx>`,
   opens a view of that row alone), an agent tool
   row (`agent:<run id>`, from the row's `run` field, opens that run's
-  preview, whose `v` shows the transcript and ctrl+j steps into its first
-  call), a workflow row (`workflow:<run id>`, its view) and the job a
+  preview, whose `v` shows the transcript and whose ctrl+j/k step along the
+  rail around the row, as every rail action's view steps), a workflow row
+  (`workflow:<run id>`, its view, stepping the same way) and the job a
   call handed off to (`job:<id>`, its output); the splash's rows resume a session or
   switch to a project, and its tip's keys run their command or fill the composer (a `fill
   <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The stuck

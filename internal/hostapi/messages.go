@@ -464,7 +464,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	case m.Run != "" && m.Tool == "workflow":
 		item.Run = "workflows view " + m.Run
 	case m.Run != "":
-		item.Run = "agents view " + m.Run
+		item.Run = "agents show " + m.Run
 	case idx > 0:
 		item.Run = "call " + strconv.Itoa(idx)
 	}

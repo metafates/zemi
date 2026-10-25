@@ -596,8 +596,9 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 }
 
 // TestAgentShowOpensPreview: a chat click's `agents show <id>` opens the
-// run's preview - the view a /agents row's enter opens - with v still opening
-// the transcript, and an unknown id opens nothing.
+// run's preview - the view a /agents row's enter opens, and a rail action's
+// own view, so it walks the rail around the row that names it - with v still
+// opening the transcript, and an unknown id opens nothing.
 func TestAgentShowOpensPreview(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -606,6 +607,10 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
+	// the rail the preview walks: a call, the run's row, another call
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "a.go", Status: CallOK})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "agent", Run: run.id, Label: "look around", Status: CallOK, Output: "the report"})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "b.go", Status: CallOK})
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	cmd := h.agentsCommands()[0]
@@ -629,23 +634,12 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if len(o.Parts) == 0 || o.Parts[0].Text != "look" {
 		t.Fatalf("parts %+v", o.Parts)
 	}
-	// ctrl+j steps into the run's first call: the shell row is transcript
-	// row 2, behind the prompt, and the step shows the run before it opens
-	if o.Next != "agents step "+run.id+" 2" {
-		t.Fatalf("next %q", o.Next)
+	// the preview stands for the rail's agent row (row 2 of the transcript it
+	// walked from), so ctrl+j/k walk around it the way any call view steps
+	if o.Prev != "call 1" || o.Next != "call 3" {
+		t.Fatalf("the preview steps to %q and %q", o.Prev, o.Next)
 	}
-	if err := cmd.GoFn(h, "step "+run.id+" 2"); err != nil {
-		t.Fatal(err)
-	}
-	if h.viewedRun() != run {
-		t.Fatal("the step did not show the run")
-	}
-	steped := ui.overlays()
-	if len(steped) != 2 || steped[1].ID != "call:2" {
-		t.Fatalf("the step opened %v", steped)
-	}
-	h.ViewAgent("")
-	// a run that made no call has nowhere to step
+	// a run no row of the rail names steps nowhere
 	idle, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "just talk", "talk", true)
 	if err := h.tasks.add(idle); err != nil {
 		t.Fatal(err)
@@ -653,22 +647,8 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if err := cmd.GoFn(h, "show "+idle.id); err != nil {
 		t.Fatal(err)
 	}
-	if last := ui.overlays(); len(last) != 3 || last[2].ID != "agent:"+idle.id || last[2].Next != "" {
-		t.Fatalf("the call-less preview is %+v", last[len(last)-1])
-	}
-	// a finished run's transcript opens by v: the walk follows a run as it
-	// works, so a done one steps nowhere even with a call behind it
-	done, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "did the work", "work", true)
-	done.tr = append(done.tr, ChatMessage{Kind: RowTool, Tool: "shell", Label: "run the tests"})
-	done.status = RunDone
-	if err := h.tasks.add(done); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.GoFn(h, "show "+done.id); err != nil {
-		t.Fatal(err)
-	}
-	if last := ui.overlays(); len(last) != 4 || last[3].ID != "agent:"+done.id || last[3].Next != "" {
-		t.Fatalf("the finished preview is %+v", last[len(last)-1])
+	if last := ui.overlays(); len(last) != 2 || last[1].ID != "agent:"+idle.id || last[1].Next != "" || last[1].Prev != "" {
+		t.Fatalf("the rail-less preview is %+v", last[len(last)-1])
 	}
 	// the watch keeps the open preview current: a tick rebuilds it from the
 	// run, so a view of a run that ended stops saying running

@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1822,21 +1821,14 @@ func (h *Host) agentsCommands() []*Command {
 				return h.openAgentFile(id)
 			case "show":
 				return h.showAgent(id)
-			case "step":
-				rid, row, _ := strings.Cut(id, " ")
-				n, err := strconv.Atoi(strings.TrimSpace(row))
-				if rid == "" || err != nil {
-					return Usagef("/agents step <run> <row>")
-				}
-				return h.stepAgent(rid, n)
 			case "view":
 				return h.ViewAgent(id)
 			case "stop":
 				return h.stopRun(id)
 			}
-			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id>, step <run> <row>, stop [id])", sub)
+			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id>, stop [id])", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "step", "stop"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {
 				return nil
 			}
@@ -1905,48 +1897,20 @@ func (h *Host) showAgent(id string) error {
 }
 
 // agentShowOverlay is a run's preview: the view a /agents row's enter opens,
-// and the one a chat click opens. The watch rebuilds it while the run lives;
-// ctrl+j steps into its first call, the way the walk goes on between views.
+// and the one a chat click opens - a rail action's own view, so the walk
+// lands on it and ctrl+j/k step along the rail around its row. The watch
+// rebuilds it while the run lives; v shows the transcript.
 func (h *Host) agentShowOverlay(run *agentRun) Overlay {
 	status, calls, took, _ := run.state()
 	tokens, cost := run.usage()
 	fields, detail, parts, pending := h.agentView(agentRow{id: run.id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
-	return Overlay{
+	o := Overlay{
 		ID: "agent:" + run.id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
 		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts, Empty: pending,
 		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + run.id}},
-		Next: agentStepNext(run),
 	}
-}
-
-// agentStepNext names the call view a run's preview steps into: its first
-// call or thought row, a run digest passed over, read against the run once
-// stepAgent has shown it. The walk follows a run as it works; a finished
-// one's transcript opens by v, and its views walk the rail from there.
-func agentStepNext(run *agentRun) string {
-	if status, _, _, _ := run.state(); status != RunRunning {
-		return ""
-	}
-	tr := run.transcript()
-	for i, m := range tr {
-		if m.Kind != RowTool && m.Kind != RowReasoning {
-			continue
-		}
-		if m.Kind == RowTool && m.Run != "" {
-			continue
-		}
-		return "agents step " + run.id + " " + strconv.Itoa(i+1)
-	}
-	return ""
-}
-
-// stepAgent is a preview's ctrl+j: it shows the run and opens its row's call
-// view, so the walk runs on between call views of the same transcript.
-func (h *Host) stepAgent(id string, n int) error {
-	if err := h.ViewAgent(id); err != nil {
-		return err
-	}
-	return h.openCall(n)
+	o.Prev, o.Next = h.railStep(run.id)
+	return o
 }
 
 // agentsOverlay is /agents: the runs this process holds, then one row per
