@@ -361,7 +361,7 @@ local function builder(ctx, width)
 		local inner = width - 2 - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
 		-- the row is one line; a heredoc's lines wait in its click view
-		local input = (input:gsub("%s+", " "))
+		input = (input:gsub("%s+", " "))
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
@@ -456,10 +456,10 @@ local function builder(ctx, width)
 			-- a failure shows three lines where it says what went wrong: a
 			-- tool's first, a command's last (its stderr and exit status); a
 			-- click shows the rest
-			local err, tail = t.status == "err", name == "shell"
+			local err, fromTail = t.status == "err", name == "shell"
 			local from, to = 1, #out
 			if err and #out > 3 then
-				if tail then
+				if fromTail then
 					from = #out - 2
 				else
 					to = 3
@@ -486,7 +486,7 @@ local function builder(ctx, width)
 					end
 					if note ~= "" then detail("note: " .. note, "Dim") end
 				else
-					detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Dim")
+					detail(out[i], err and i == (fromTail and #out or 1) and "Danger" or "Dim")
 				end
 			end
 			if hidden > 0 and from == 1 then detail(cut, "Dim") end

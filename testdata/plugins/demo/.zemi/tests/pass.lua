@@ -27,6 +27,7 @@ test("a checkout shows on the next poll", function()
 end)
 
 test("outside a repository the widget draws nothing", function()
+	---@type string?
 	branch = nil
 	test.advance(30000)
 	test.eq(test.render("demo.branch"), {})
@@ -48,6 +49,7 @@ test("a picked snippet goes to the agent", function()
 	snips.add("review", "Review the diff")
 	assert(test.run("demo"))
 	local o = test.overlay()
+	assert(o)
 	test.eq({ o.title, o.items }, { "Snippets", { "review" } })
 	assert(test.answer("review"))
 	test.eq(test.overlay(), nil)
@@ -95,6 +97,7 @@ end)
 
 test("the schema refuses a missing city", function()
 	local _, err = test.tool("weather_now", {})
+	assert(err)
 	test.contains(err, "city")
 	test.eq(#wttr, 0)
 end)
@@ -147,7 +150,7 @@ end)
 test("gated calls fail closed, the stub answers first", function()
 	test.eq(
 		test.raises(function() zemi.http.get("https://example.com/") end),
-		'.zemi/tests/pass.lua:149: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
+		'.zemi/tests/pass.lua:152: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
 	)
 end)
 
