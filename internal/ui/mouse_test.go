@@ -375,7 +375,6 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 	}
 }
 
-// TestHoverStyle: a hover group draws over the text's own style.
 func TestHoverStyle(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
@@ -492,9 +491,6 @@ func TestMouseQuestion(t *testing.T) {
 	}
 }
 
-// TestToolRowClickExpands: in auto mode the command a tool ran is only on
-// its clipped row, so a click opens that one row (whole command plus the
-// output) without expanding the rest of the transcript.
 // TestToolRowClickOpens: in auto mode the command a tool ran is only on its
 // clipped row, so a click opens a view of that one row: the command whole,
 // its output under it, and the transcript around it untouched. A thought's

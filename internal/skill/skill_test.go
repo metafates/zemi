@@ -61,7 +61,7 @@ func TestParseErrors(t *testing.T) {
 		{"unterminated", "x", "---\nname: x\n", "unterminated"},
 		{"name mismatch", "x", "---\nname: y\ndescription: d\n---\n", "must match the directory"},
 		{"bad dir name", "Bad_Name", "---\nname: Bad_Name\ndescription: d\n---\n", "directory name"},
-		{"a SKILL.md over the cap", "x", strings.Repeat("a", MaxFileBytes+1), "SKILL.md exceeds"},
+		{"a SKILL.md over the cap", "x", strings.Repeat("a", MaxFileBytes+1), "SKILL.md: exceeds"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,34 +76,18 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+// Claude's invocation keys are accepted and ignored: the model loads every
+// skill, and it asks for a command on its own.
 func TestParseInvocation(t *testing.T) {
-	cases := []struct {
-		name, extra string
-		source      Source
-		user        bool
-		wantErr     bool
-	}{
-		{name: "plain", source: User},
-		{name: "user-invocable", extra: "user-invocable: true", source: User, user: true},
-		{name: "no command unless asked", extra: "user-invocable: false", source: User},
-		// Claude's keys for a user-only skill are ignored: the model loads
-		// every skill, and it asks for a command on its own
-		{name: "the model-invocation keys are ignored", extra: "disable-model-invocation: true\nargument-hint: [pr]", source: User},
-		{name: "a recipe takes no user-invocable", extra: "user-invocable: true", source: Recipe},
-		{name: "quoted bool", extra: `user-invocable: "true"`, source: User, wantErr: true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "x")
-			writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+c.extra+"\n---\nBody.\n")
-			sk, err := Parse(dir, c.source, "")
-			if (err != nil) != c.wantErr {
-				t.Fatalf("err=%v", err)
-			}
-			if err == nil && sk.UserInvocable != c.user {
-				t.Fatalf("got %+v", sk)
-			}
-		})
+	for _, extra := range []string{
+		`user-invocable: "true"`,
+		"disable-model-invocation: true\nargument-hint: [pr]",
+	} {
+		dir := filepath.Join(t.TempDir(), "x")
+		writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+extra+"\n---\nBody.\n")
+		if _, err := Parse(dir, User, ""); err != nil {
+			t.Fatalf("%q: %v", extra, err)
+		}
 	}
 }
 
@@ -117,7 +101,7 @@ func TestParseRelaxationsAndPrefix(t *testing.T) {
 	loose := filepath.Join(t.TempDir(), "loose")
 	writeFile(t, filepath.Join(loose, "SKILL.md"), "---\nuser-invocable: false\n---\n\nFirst line is the trigger.\n\nBody.\n")
 	sk, err := Parse(loose, User, "")
-	if err != nil || sk.Name != "loose" || sk.Description != "First line is the trigger." || sk.UserInvocable {
+	if err != nil || sk.Name != "loose" || sk.Description != "First line is the trigger." {
 		t.Fatalf("relaxed: %+v %v", sk, err)
 	}
 	mismatch := filepath.Join(t.TempDir(), "other")

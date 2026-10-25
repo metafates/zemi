@@ -65,9 +65,6 @@ type Skill struct {
 	// body, set for a Claude-layout plugin's entries, "" for everything else.
 	File       string
 	Root, Data string
-	// UserInvocable is the frontmatter's user-invocable key, kept as parsed
-	// metadata: a skill is invoked with +name, never a command of its own.
-	UserInvocable bool
 }
 
 // maxNameLen caps a name: a skill's directory, a workflow file, a
@@ -107,9 +104,6 @@ func Parse(dir string, source Source, prefix string) (Skill, error) {
 	}
 	if fm.Name != "" && fm.Name != base {
 		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", base, fm.Name)
-	}
-	if source != Recipe && fm.UserInvocable != nil { // a recipe is the model's own procedure
-		sk.UserInvocable = *fm.UserInvocable
 	}
 	desc := fm.Description
 	if strings.TrimSpace(desc) == "" { // Claude's fallback: the body speaks first
@@ -161,9 +155,8 @@ func SplitFrontmatter(s string) (block, body string, err error) {
 }
 
 type front struct {
-	Name          string `yaml:"name"`
-	Description   string `yaml:"description"`
-	UserInvocable *bool  `yaml:"user-invocable"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
 }
 
 func frontmatter(data []byte) (front, error) {
@@ -181,28 +174,38 @@ func frontmatter(data []byte) (front, error) {
 	return fm, nil
 }
 
-// readSkillFile reads a skill's SKILL.md, which must be a regular file: a
-// symlink reads outside the trees skills come from, and reading a FIFO blocks
-// the boot step or the turn that got here. Its size is bounded here, before
-// the read.
-func readSkillFile(path string) ([]byte, error) {
+// ReadRegular reads the file at path when it is a regular file of at most
+// max bytes, checked before the read: a symlink reads outside the trees
+// skill and config files come from, and a FIFO blocks the reader. The error
+// names the path.
+func ReadRegular(path string, max int64) ([]byte, error) {
 	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s: must not be a symlink", path)
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file", path)
+	}
+	if fi.Size() > max {
+		return nil, fmt.Errorf("%s: exceeds %d bytes", path, max)
+	}
+	return os.ReadFile(path)
+}
+
+// readSkillFile reads a skill's SKILL.md, its expected miss (no file) named
+// for the warning Parse reports.
+func readSkillFile(path string) ([]byte, error) {
+	data, err := ReadRegular(path, MaxFileBytes)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, errors.New("no SKILL.md")
 		}
-		return nil, fmt.Errorf("SKILL.md: %w", err)
+		return nil, err
 	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("SKILL.md must not be a symlink")
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, errors.New("SKILL.md is not a regular file")
-	}
-	if fi.Size() > MaxFileBytes {
-		return nil, fmt.Errorf("SKILL.md exceeds %d bytes", MaxFileBytes)
-	}
-	return os.ReadFile(path)
+	return data, nil
 }
 
 // Discover merges skill directories in the order given, higher trust first:

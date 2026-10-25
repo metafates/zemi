@@ -451,36 +451,6 @@ func TestPromptBudget(t *testing.T) {
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason.
-	// 22500: the lua tool's description and the codemode guideline (447 chars)
-	// say a script drives the run's tools, which is what makes one script
-	// cheaper than a step per call.
-	// 23000: the agent tool's description says a child sends its caller lines
-	// with the update tool while it runs, which the caller reads at its next
-	// step (89 chars).
-	// 23500: the fork option - the agent tool's description, its enum and its
-	// agent line say agent="fork" continues this conversation, and the
-	// delegating paragraph says when that pays (447 chars).
-	// 24000: the agent and workflow tool descriptions say a foreground call
-	// hands its run off on the user's message, so the turn reads it (291 chars).
-	// 24500: the memory tool's file mode: path, content and its brain-file
-	// paragraph write a private brain map (DESIGN §10.4).
-	// 25000: the workflow and agent tools' wait action and the clauses naming
-	// it, and the file tools' descriptions matching the code again (the free
-	// zone write's exemption, the tolerant edit match); 24577 then.
-	// The workflow tool's list action names the user's own runs, and the lua
-	// bullet and the lua tool's description say a script drives the run's tools,
-	// the MCP ones its own list defers included: 29 chars less than the text
-	// they replaced (24752 today).
-	// 26000: the lua tool's description states the zemi.fs signatures, the
-	// missing io and os libraries and the script-write gate: live runs spent
-	// 3-6 turns probing exactly these before a script worked (25699 today).
-	// 26100: the verify bullet sends the model to the repo's own check first
-	// (2026-10-10): datemix and vatdrift runs invented verifications that
-	// passed while the documented contract still failed (26026 today).
-	// 26200: edits and writes run sequentially now, so a same-response batch
-	// applies in order; the wording spent 164B teaching the batched edit and
-	// its check and the model kept them apart in 27 of 27 responses, so the
-	// teaching is gone and the ceiling keeps the headroom (2026-10-10).
 	const ceiling = 26200
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)

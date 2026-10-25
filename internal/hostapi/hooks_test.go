@@ -335,11 +335,11 @@ func TestClaudePluginLayers(t *testing.T) {
 		skills[s.Name] = s
 	}
 	greet := skills["greet"]
-	if greet.Name == "" || greet.Description != "Greet the user warmly." || greet.Root != root || greet.UserInvocable {
+	if greet.Name == "" || greet.Description != "Greet the user warmly." || greet.Root != root {
 		t.Fatalf("greet: %+v", greet)
 	}
 	pr := skills["pr"]
-	if pr.Name == "" || pr.UserInvocable || pr.File == "" || pr.Description != "Draft a PR description" {
+	if pr.Name == "" || pr.File == "" || pr.Description != "Draft a PR description" {
 		t.Fatalf("pr: %+v", pr)
 	}
 	if c := h.Commands.Lookup("pr"); c == nil || c.Path != skillFile(pr) {

@@ -110,7 +110,6 @@ func TestMarkdownSplitRender(t *testing.T) {
 	}
 }
 
-// TestMarkdownKeepsTabIndent: code indented with tabs keeps its indentation.
 func TestMarkdownKeepsTabIndent(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)

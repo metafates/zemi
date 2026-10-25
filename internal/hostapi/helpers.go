@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -174,19 +173,9 @@ func upperFirst(s string) string {
 	return string(unicode.ToUpper(r)) + s[n:]
 }
 
-// readRegularFile reads a config file, refusing symlinks and oversized files.
+// readRegularFile reads a config file under skill.ReadRegular's guard.
 func readRegularFile(path string) (string, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("%s: not a regular file", path)
-	}
-	if fi.Size() > maxAgentFileBytes {
-		return "", fmt.Errorf("%s: exceeds %d bytes", path, maxAgentFileBytes)
-	}
-	data, err := os.ReadFile(path)
+	data, err := skill.ReadRegular(path, maxAgentFileBytes)
 	return string(data), err
 }
 

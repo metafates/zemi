@@ -294,7 +294,6 @@ end })`)
 	}
 }
 
-// TestFarewell: what zemi prints to the shell on quit, the exit region.
 func TestFarewell(t *testing.T) {
 	for _, c := range []struct {
 		name      string
