@@ -268,31 +268,27 @@ func (h *Host) modelAsk(L *glua.LState) int {
 			return errors.Join(askErr, stub.err)
 		}
 	}
-	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	stopID := h.stops.add(cancel) // a reload cancels it, like a job
-	h.GoSafe("zemi.model.ask", func() {
-		// closed even when the call panics, so the wait reads the failure instead of its cap
-		defer close(done)
-		defer h.stops.remove(stopID)
-		defer cancel()
-		askErr = errPanicked
-		err := ask(ctx)
-		askErr = err
-		switch {
-		case onDone == nil:
-		case err != nil:
-			h.callLuaAsync("zemi.model.ask on_done", at, onDone, nil, err.Error())
-		case schema != nil:
-			h.callLuaAsync("zemi.model.ask on_done", at, onDone, obj, raw)
-		default:
-			h.callLuaAsync("zemi.model.ask on_done", at, onDone, text)
-		}
-	})
-	handle := L.NewTable()
-	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+	h.asyncTask(L, asyncTaskSpec{
+		subject: "zemi.model.ask", waitAPI: "model:wait", guard: "model:",
+		ctx: ctx, cancel: cancel,
 		// the idle timer already ends a stalled stream; this bounds a slow one
-		return waitHandle(L, "model:wait", done, 10*time.Minute, cancel, func(L *glua.LState, err error) []glua.LValue {
+		timeout: 10 * time.Minute,
+		stop:    cancel, withCancel: true, res: &askErr,
+		body: func(ctx context.Context) {
+			err := ask(ctx)
+			askErr = err
+			switch {
+			case onDone == nil:
+			case err != nil:
+				h.callLuaAsync("zemi.model.ask on_done", at, onDone, nil, err.Error())
+			case schema != nil:
+				h.callLuaAsync("zemi.model.ask on_done", at, onDone, obj, raw)
+			default:
+				h.callLuaAsync("zemi.model.ask on_done", at, onDone, text)
+			}
+		},
+		ret: func(L *glua.LState, err error) []glua.LValue {
 			if err != nil { // a timeout or a cancel: the call still runs, nothing it holds is settled
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
@@ -306,14 +302,8 @@ func (h *Host) modelAsk(L *glua.LState) int {
 				return []glua.LValue{lua.FromGo(L, obj), glua.LString(raw)}
 			}
 			return []glua.LValue{glua.LString(text)}
-		})
-	})))
-	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
-		cancel()
-		return 0
-	}))
-	lua.GuardFuncs(L, handle, "model:", h.guardLua)
-	L.Push(handle)
+		},
+	})
 	return 1
 }
 

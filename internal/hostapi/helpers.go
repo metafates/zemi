@@ -40,6 +40,48 @@ func waitHandle(L *glua.LState, api string, done <-chan struct{}, timeout time.D
 	})
 }
 
+// asyncTaskSpec is one async host call: the skeleton zemi.classify.ask,
+// zemi.model.ask, zemi.agent.run, zemi.http.* and zemi.tool.call share.
+type asyncTaskSpec struct {
+	subject    string // GoSafe's name
+	waitAPI    string // the wait's suspend name, its error prefix
+	guard      string // GuardFuncs prefix on the handle
+	ctx        context.Context
+	cancel     func()        // cancels ctx; a reload stops it through h.stops
+	timeout    time.Duration // the wait's cap; none when <= 0
+	stop       func()        // what the wait runs when it ends first; nil when none
+	withCancel bool          // the handle carries a cancel button
+	res        *error        // a panic before the result lands leaves *res at errPanicked
+	body       func(context.Context)
+	ret        func(*glua.LState, error) []glua.LValue
+}
+
+// asyncTask runs spec's body off the interpreter and pushes its handle.
+func (h *Host) asyncTask(L *glua.LState, spec asyncTaskSpec) {
+	done := make(chan struct{})
+	stopID := h.stops.add(spec.cancel) // a reload cancels it, like a job
+	h.GoSafe(spec.subject, func() {
+		// closed even when the call panics, so the wait reads the failure instead of its cap
+		defer close(done)
+		defer h.stops.remove(stopID)
+		defer spec.cancel()
+		*spec.res = errPanicked
+		spec.body(spec.ctx)
+	})
+	handle := L.NewTable()
+	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		return waitHandle(L, spec.waitAPI, done, spec.timeout, spec.stop, spec.ret)
+	})))
+	if spec.withCancel {
+		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
+			spec.cancel()
+			return 0
+		}))
+	}
+	lua.GuardFuncs(L, handle, spec.guard, h.guardLua)
+	L.Push(handle)
+}
+
 // callable is fn as a namespace's __call, which passes the table first.
 func callable(L *glua.LState, fn glua.LGFunction) *glua.LFunction {
 	return L.NewFunction(func(L *glua.LState) int {

@@ -677,9 +677,8 @@ type httpReq struct {
 }
 
 type httpHandle struct {
-	done chan struct{}
-	res  map[string]any
-	err  error
+	res map[string]any
+	err error
 }
 
 // httpStart gates the request, runs it off the interpreter and pushes the
@@ -700,31 +699,27 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 			return stub.fields, stub.err
 		}
 	}
-	hnd := &httpHandle{done: make(chan struct{})}
+	hnd := &httpHandle{}
 	at := h.callerOf(L)
 	ctx, cancel := context.WithCancel(context.Background())
-	stopID := h.stops.add(cancel) // a reload cancels it, like a job
-	h.GoSafe(subject, func() {
-		// closed even when the fetch panics, so the wait reads the failure instead of its cap
-		defer close(hnd.done)
-		defer cancel()
-		defer h.stops.remove(stopID)
-		hnd.err = errPanicked
-		res, err := fetch(ctx)
-		hnd.res, hnd.err = res, err
-		if onDone != nil {
-			payload := map[string]any{"url": req.url}
-			if err != nil {
-				payload["error"] = err.Error()
-			} else {
-				maps.Copy(payload, res)
+	h.asyncTask(L, asyncTaskSpec{
+		subject: subject, waitAPI: "http:wait", guard: "http:",
+		ctx: ctx, cancel: cancel, timeout: 120 * time.Second,
+		withCancel: true, res: &hnd.err,
+		body: func(ctx context.Context) {
+			res, err := fetch(ctx)
+			hnd.res, hnd.err = res, err
+			if onDone != nil {
+				payload := map[string]any{"url": req.url}
+				if err != nil {
+					payload["error"] = err.Error()
+				} else {
+					maps.Copy(payload, res)
+				}
+				h.callLuaAsync("zemi.http on_done", at, onDone, payload)
 			}
-			h.callLuaAsync("zemi.http on_done", at, onDone, payload)
-		}
-	})
-	handle := L.NewTable()
-	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
-		return waitHandle(L, "http:wait", hnd.done, 120*time.Second, nil, func(L *glua.LState, err error) []glua.LValue {
+		},
+		ret: func(L *glua.LState, err error) []glua.LValue {
 			if err == nil { // hnd.err is set only once done has closed
 				err = hnd.err
 			}
@@ -732,14 +727,8 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
 			return []glua.LValue{lua.FromGo(L, hnd.res)}
-		})
-	})))
-	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
-		cancel()
-		return 0
-	}))
-	lua.GuardFuncs(L, handle, "http:", h.guardLua)
-	L.Push(handle)
+		},
+	})
 	return 1
 }
 

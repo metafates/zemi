@@ -356,18 +356,19 @@ func (f *flowRun) end(val string, err error) RunStatus {
 	return status
 }
 
+// agentStatus is a's status: a live run's state, else its settled one
+// (f.mu held).
+func (f *flowRun) agentStatus(a *flowAgent) RunStatus {
+	if a.run == nil {
+		return a.status
+	}
+	status, _, _, _ := a.run.state()
+	return status
+}
+
 // failedAgent is whether an agent this run started failed (f.mu held).
 func (f *flowRun) failedAgent() bool {
-	for _, a := range f.agents {
-		status := a.status
-		if a.run != nil {
-			status, _, _, _ = a.run.state()
-		}
-		if status == RunFailed {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(f.agents, func(a *flowAgent) bool { return f.agentStatus(a) == RunFailed })
 }
 
 // finishedAgents counts the agents a rerun would answer at once: the same
@@ -377,11 +378,7 @@ func (f *flowRun) finishedAgents() (done, total int) {
 	defer f.mu.Unlock()
 	total = len(f.agents)
 	for _, a := range f.agents {
-		status := a.status
-		if a.run != nil {
-			status, _, _, _ = a.run.state()
-		}
-		if status == RunDone {
+		if f.agentStatus(a) == RunDone {
 			done++
 		}
 	}

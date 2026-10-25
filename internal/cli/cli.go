@@ -333,14 +333,24 @@ func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 	return out, directive
 }
 
+// marketplaceList is a completer's prologue: the registered marketplaces, ok
+// false when the completion offers nothing.
+func marketplaceList(c *cobra.Command, args []string) ([]plugin.MarketplaceInfo, bool) {
+	dirs, err := completionDirs(c)
+	if err != nil || len(args) > 0 {
+		return nil, false
+	}
+	ms, _ := plugin.Marketplaces(dirs)
+	return ms, true
+}
+
 // completeMarketplaces offers the registered marketplace names, for
 // marketplace remove and update.
 func completeMarketplaces(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	dirs, err := completionDirs(c)
-	if err != nil || len(args) > 0 {
+	ms, ok := marketplaceList(c, args)
+	if !ok {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	ms, _ := plugin.Marketplaces(dirs)
 	var out []cobra.Completion
 	for _, m := range ms {
 		out = append(out, m.Name)
@@ -351,11 +361,10 @@ func completeMarketplaces(c *cobra.Command, args []string, _ string) ([]cobra.Co
 // completeEntries offers a registered marketplace's entries as the
 // name@marketplace install types, for plugin install and add.
 func completeEntries(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	dirs, err := completionDirs(c)
-	if err != nil || len(args) > 0 {
+	ms, ok := marketplaceList(c, args)
+	if !ok {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	ms, _ := plugin.Marketplaces(dirs)
 	var out []cobra.Completion
 	for _, m := range ms {
 		for _, e := range m.Entries {

@@ -872,17 +872,9 @@ func (h *Host) memoryItems() []OverlayItem {
 	return items
 }
 
-// memoryTrail is the ids the ledgers show superseded or budget-cut, plus an
-// add or move-in whose line the file lost unexplained (Lint's divergence),
-// plus the frozen table's superseded rows, none of them live (DESIGN §7);
-// each carries its origin and last-write date.
-func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
-	liveIDs := set.Set[string]{}
-	for _, m := range live {
-		liveIDs.Add(m.ID)
-	}
-	var out []brain.Line
-	seen := set.Set[string]{}
+// eachTrailOp runs fn on every scope's newest ledger ops, skipping a scope
+// with no partition or a ledger that will not open or read.
+func (h *Host) eachTrailOp(fn func(scope store.Scope, latest []*brain.Op)) {
 	for _, scope := range store.Scopes {
 		p := h.partition(scope)
 		if p.Zero() {
@@ -897,6 +889,22 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 		if err != nil {
 			continue
 		}
+		fn(scope, latest)
+	}
+}
+
+// memoryTrail is the ids the ledgers show superseded or budget-cut, plus an
+// add or move-in whose line the file lost unexplained (Lint's divergence),
+// plus the frozen table's superseded rows, none of them live (DESIGN §7);
+// each carries its origin and last-write date.
+func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
+	liveIDs := set.Set[string]{}
+	for _, m := range live {
+		liveIDs.Add(m.ID)
+	}
+	var out []brain.Line
+	seen := set.Set[string]{}
+	h.eachTrailOp(func(_ store.Scope, latest []*brain.Op) {
 		for _, op := range latest {
 			switch op.Op {
 			case brain.OpSupersede, brain.OpArchive, brain.OpAdd, brain.OpMoveIn:
@@ -913,7 +921,7 @@ func (h *Host) memoryTrail(live []*store.Memory) []brain.Line {
 			}
 			out = append(out, brain.Line{ID: op.ID, Origin: op.Origin, Date: brain.Day(time.UnixMilli(op.TS).UTC()), Text: op.Text})
 		}
-	}
+	})
 	frozen, _ := h.memoryList(true)
 	for _, m := range frozen {
 		if m.SupersededBy != "" && !liveIDs.Has(m.ID) && !seen.Has(m.ID) {
@@ -1553,20 +1561,7 @@ func (h *Host) memorySearch(query string) (string, error) {
 			hits = append(hits, hit{brain.Line{ID: m.ID, Origin: m.Origin, Date: time.UnixMilli(m.UpdatedAt).UTC(), Text: m.Text}, m.Scope})
 		}
 	}
-	for _, scope := range store.Scopes {
-		p := h.partition(scope)
-		if p.Zero() {
-			continue
-		}
-		lg, err := p.OpenLedger()
-		if err != nil {
-			continue
-		}
-		latest, err := lg.Latest()
-		_ = lg.Close()
-		if err != nil {
-			continue
-		}
+	h.eachTrailOp(func(scope store.Scope, latest []*brain.Op) {
 		for _, op := range latest {
 			if liveIDs.Has(op.ID) || op.Text == "" ||
 				op.Op != brain.OpArchive && op.Op != brain.OpSupersede && op.Op != brain.OpAdd && op.Op != brain.OpMoveIn {
@@ -1576,7 +1571,7 @@ func (h *Host) memorySearch(query string) (string, error) {
 				hits = append(hits, hit{brain.Line{ID: op.ID, Origin: op.Origin, Date: brain.Day(time.UnixMilli(op.TS).UTC()), Text: op.Text}, scope})
 			}
 		}
-	}
+	})
 	if len(hits) == 0 {
 		return fmt.Sprintf("no memory matches %q", query), nil
 	}

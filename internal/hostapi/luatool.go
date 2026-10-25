@@ -378,61 +378,52 @@ func (h *Host) luaToolCall(L *glua.LState) int {
 	}
 	s.n++
 	id := fmt.Sprintf("%s/%d", s.id, s.n)
-	hnd := &luaToolHandle{done: make(chan struct{})}
+	hnd := &luaToolHandle{}
 	// the call's context ends with the script's run, so a call still queued or
 	// running when the script ends stops with it
 	callCtx, cancel := context.WithCancel(s.ctx)
-	hnd.cancel = cancel
-	stopID := h.stops.add(cancel)
-	h.GoSafe("lua tool call", func() {
-		defer close(hnd.done)
-		defer h.stops.remove(stopID)
-		defer cancel()
-		leave, ok := s.calls.enter(callCtx)
-		if !ok {
-			hnd.err = "the script ended before this call ran"
-			return
-		}
-		defer leave()
-		h.setToolDetail(s.id, clipLine(name+": "+toolSummary(name, body), 120))
-		resp, err := tool.Run(callCtx, fantasy.ToolCall{ID: id, Name: name, Input: body})
-		switch {
-		case err != nil:
-			hnd.err = err.Error()
-		case resp.IsError:
-			// a failed call is nil, err like every other zemi call; the text
-			// zemi's tools fail with carries their output
-			hnd.err = resp.Content
-		default:
-			hnd.out = resp.Content
-		}
-	})
-	handle := L.NewTable()
-	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
-		lua.CheckWait(L, "zemi.tool.call")
-		return waitHandle(L, "tool:wait", hnd.done, luaToolCallWait, hnd.cancel, func(L *glua.LState, err error) []glua.LValue {
+	h.asyncTask(L, asyncTaskSpec{
+		subject: "zemi.tool.call", waitAPI: "zemi.tool.call", guard: "tool:",
+		ctx: callCtx, cancel: cancel, timeout: luaToolCallWait,
+		stop: cancel, res: &hnd.err,
+		body: func(callCtx context.Context) {
+			leave, ok := s.calls.enter(callCtx)
+			if !ok {
+				hnd.err = errors.New("the script ended before this call ran")
+				return
+			}
+			defer leave()
+			h.setToolDetail(s.id, clipLine(name+": "+toolSummary(name, body), 120))
+			resp, err := tool.Run(callCtx, fantasy.ToolCall{ID: id, Name: name, Input: body})
+			switch {
+			case err != nil:
+				hnd.err = err
+			case resp.IsError:
+				// a failed call is nil, err like every other zemi call; the text
+				// zemi's tools fail with carries their output
+				hnd.err = errors.New(resp.Content)
+			default:
+				hnd.out, hnd.err = resp.Content, nil
+			}
+		},
+		ret: func(L *glua.LState, err error) []glua.LValue {
 			if err != nil {
-				hnd.cancel()
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
-			if hnd.err != "" {
-				return []glua.LValue{glua.LNil, glua.LString(hnd.err)}
+			if hnd.err != nil {
+				return []glua.LValue{glua.LNil, glua.LString(hnd.err.Error())}
 			}
 			return []glua.LValue{glua.LString(hnd.out)}
-		})
-	})))
-	lua.GuardFuncs(L, handle, "tool:", h.guardLua)
-	L.Push(handle)
+		},
+	})
 	return 1
 }
 
 // luaToolHandle is one nested call's handle: wait() suspends the script until
-// the call ends, and cancel stops the call when the wait ends first.
+// the call ends, which also stops the call through the spec's stop.
 type luaToolHandle struct {
-	done   chan struct{}
-	out    string
-	err    string
-	cancel context.CancelFunc
+	out string
+	err error
 }
 
 // luaToolDescribe is zemi.tool.describe(name): the declaration of one of the

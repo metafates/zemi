@@ -123,21 +123,28 @@ type Layout struct {
 	Floats []LayoutFloat
 }
 
-// regions are the region names the layout places, hidden nodes included.
-func (l *Layout) regions() set.Set[string] {
-	out := set.Set[string]{}
+// walkNodes visits the layout's tree nodes, parents before children.
+func (l *Layout) walkNodes(visit func(*LayoutNode)) {
 	var walk func(n *LayoutNode)
 	walk = func(n *LayoutNode) {
-		for _, r := range []string{n.Region, n.Left, n.Right, n.Top} {
-			if r != "" {
-				out.Add(r)
-			}
-		}
+		visit(n)
 		for _, c := range n.Children {
 			walk(c)
 		}
 	}
 	walk(l.Root)
+}
+
+// regions are the region names the layout places, hidden nodes included.
+func (l *Layout) regions() set.Set[string] {
+	out := set.Set[string]{}
+	l.walkNodes(func(n *LayoutNode) {
+		for _, r := range []string{n.Region, n.Left, n.Right, n.Top} {
+			if r != "" {
+				out.Add(r)
+			}
+		}
+	})
 	for _, f := range l.Floats {
 		out.Add(f.Region)
 	}
@@ -148,16 +155,11 @@ func (l *Layout) regions() set.Set[string] {
 // order and then float order: the order focus cycles in.
 func (l *Layout) focusables() []string {
 	var out []string
-	var walk func(n *LayoutNode)
-	walk = func(n *LayoutNode) {
+	l.walkNodes(func(n *LayoutNode) {
 		if n.Focusable {
 			out = append(out, n.ID)
 		}
-		for _, c := range n.Children {
-			walk(c)
-		}
-	}
-	walk(l.Root)
+	})
 	for _, f := range l.Floats {
 		if f.Focusable {
 			out = append(out, f.ID)

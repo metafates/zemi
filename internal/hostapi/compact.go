@@ -358,33 +358,36 @@ func (h *Host) handoffGate(runner, prev *agent.Runner, from string, scope *turnS
 	}
 }
 
-// handoffNote is the ask's body: what resending the context costs as is,
-// what the compact route costs, from the model specs' prices.
-func (h *Host) handoffNote(from, to string, in int64) string {
+// handoffCosts renders the three costs the handoff ask quotes: resending the
+// conversation on to as is, the summary's read on from, and the handoff send
+// on to, which carries the kept tail, the summary and the prompt.
+func (h *Host) handoffCosts(from, to string, in int64) (resend, read, send string) {
 	window := h.contextWindow(from)
 	tail := tailKeep(h.compactThreshold(window))
 	h.agents.mu.Lock()
 	prompt := h.agents.promptTokens
 	h.agents.mu.Unlock()
 	handoff := tail + 4_000 + prompt
+	return handoffCost(in, h.modelPrice(to, true)),
+		handoffCost(in, h.modelPrice(from, false)),
+		handoffCost(handoff, h.modelPrice(to, true))
+}
+
+// handoffNote is the ask's body: what resending the context costs as is,
+// what the compact route costs, from the model specs' prices.
+func (h *Host) handoffNote(from, to string, in int64) string {
+	resend, read, send := h.handoffCosts(from, to, in)
 	return fmt.Sprintf("The conversation ran on %s; the next send rebuilds it on **%s**: %s.\n\nCompact on %s first: the summary reads its warm cache (%s) and the handoff send starts at %s.",
-		from, to, handoffCost(in, h.modelPrice(to, true)),
-		from, handoffCost(in, h.modelPrice(from, false)), handoffCost(handoff, h.modelPrice(to, true)))
+		from, to, resend, from, read, send)
 }
 
 // repinNote is handoffNote for a prompt change on the same model: the model's
 // cache of the old prefix is dead either way, and the compact route reads it
 // once more before it goes.
 func (h *Host) repinNote(model string, in int64) string {
-	window := h.contextWindow(model)
-	tail := tailKeep(h.compactThreshold(window))
-	h.agents.mu.Lock()
-	prompt := h.agents.promptTokens
-	h.agents.mu.Unlock()
-	handoff := tail + 4_000 + prompt
+	resend, read, send := h.handoffCosts(model, model, in)
 	return fmt.Sprintf("The prompt changed, so the next send rebuilds the whole conversation on **%s** with no cache to read: %s.\n\nCompact first: the summary reads the warm cache (%s) and the send starts at %s.",
-		model, handoffCost(in, h.modelPrice(model, true)),
-		handoffCost(in, h.modelPrice(model, false)), handoffCost(handoff, h.modelPrice(model, true)))
+		model, resend, read, send)
 }
 
 // handoffCost renders one input pass over tokens on a model's prices: what

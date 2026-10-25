@@ -197,6 +197,34 @@ func componentField(raw jsontext.Value) (paths []string, inline []jsontext.Value
 	return nil, nil, errors.New("not a path, an array or an object")
 }
 
+// forEachClaudeComponent runs add over the plugin's three component sources:
+// the conventional file, the manifest's paths and its inline objects,
+// stopping at the first parse error.
+func forEachClaudeComponent[T any](dir, file string, raw jsontext.Value, parse func(jsontext.Value) (T, error), add func(T)) error {
+	var sources []jsontext.Value
+	if f := readJSONFile(filepath.Join(dir, file)); f != nil {
+		sources = append(sources, f)
+	}
+	paths, inline, err := componentField(raw)
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		if f := readJSONFile(filepath.Join(dir, p)); f != nil {
+			sources = append(sources, f)
+		}
+	}
+	sources = append(sources, inline...)
+	for _, src := range sources {
+		v, err := parse(src)
+		if err != nil {
+			return err
+		}
+		add(v)
+	}
+	return nil
+}
+
 // claudeMCP merges the plugin's MCP servers: the root .mcp.json lowest, the
 // manifest's mcpServers on top, a later source winning a name.
 func claudeMCP(dir, dataDir string, raw jsontext.Value) ([]ClaudeMCPServer, error) {
@@ -208,34 +236,8 @@ func claudeMCP(dir, dataDir string, raw jsontext.Value) ([]ClaudeMCPServer, erro
 			servers = replaceNamed(servers, s)
 		}
 	}
-	if f := readJSONFile(filepath.Join(dir, ClaudeMCPFile)); f != nil {
-		cfgs, err := claudeMCPCfgs(f)
-		if err != nil {
-			return nil, err
-		}
-		add(cfgs)
-	}
-	paths, inline, err := componentField(raw)
-	if err != nil {
+	if err := forEachClaudeComponent(dir, ClaudeMCPFile, raw, claudeMCPCfgs, add); err != nil {
 		return nil, err
-	}
-	for _, p := range paths {
-		f := readJSONFile(filepath.Join(dir, p))
-		if f == nil {
-			continue
-		}
-		cfgs, err := claudeMCPCfgs(f)
-		if err != nil {
-			return nil, err
-		}
-		add(cfgs)
-	}
-	for _, one := range inline {
-		cfgs, err := claudeMCPCfgs(one)
-		if err != nil {
-			return nil, err
-		}
-		add(cfgs)
 	}
 	return servers, nil
 }
@@ -332,34 +334,8 @@ func claudeHooks(dir, dataDir string, raw jsontext.Value) ([]ClaudeHookGroup, er
 			groups = append(groups, g)
 		}
 	}
-	if f := readJSONFile(filepath.Join(dir, ClaudeHooksFile)); f != nil {
-		gs, err := claudeHookGroups(f)
-		if err != nil {
-			return nil, err
-		}
-		add(gs)
-	}
-	paths, inline, err := componentField(raw)
-	if err != nil {
+	if err := forEachClaudeComponent(dir, ClaudeHooksFile, raw, claudeHookGroups, add); err != nil {
 		return nil, err
-	}
-	for _, p := range paths {
-		f := readJSONFile(filepath.Join(dir, p))
-		if f == nil {
-			continue
-		}
-		gs, err := claudeHookGroups(f)
-		if err != nil {
-			return nil, err
-		}
-		add(gs)
-	}
-	for _, one := range inline {
-		gs, err := claudeHookGroups(one)
-		if err != nil {
-			return nil, err
-		}
-		add(gs)
 	}
 	return groups, nil
 }

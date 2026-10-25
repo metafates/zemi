@@ -602,9 +602,10 @@ type Host struct {
 	// cutMu orders a rewind's cut against a reflector run's writes, so a run
 	// never stores what it read from rows a rewind removed.
 	cutMu    sync.Mutex
-	initFail atomic.Pointer[string]                // headline of the user init.lua failure this boot recorded
-	modelFn  func() (fantasy.LanguageModel, error) // stubs every model in tests
-	browser  func(string)                          // stubs the sign-in browser in tests
+	initFail atomic.Pointer[string]                    // headline of the user init.lua failure this boot recorded
+	modelFn  func() (fantasy.LanguageModel, error)     // stubs every model in tests
+	authFn   func(context.Context, func(string)) error // stubs a sign-in flow in tests
+	browser  func(string)                              // stubs the sign-in browser in tests
 
 	busyMu sync.RWMutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first

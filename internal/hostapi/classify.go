@@ -59,42 +59,37 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 		askErr  error
 		stubbed map[string]any
 	)
-	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	stopID := h.stops.add(cancel) // a reload cancels it, like a job
-	h.GoSafe("zemi.classify.ask", func() {
-		// closed even when the ask panics, so the wait reads the failure instead of its cap
-		defer close(done)
-		defer h.stops.remove(stopID)
-		defer cancel()
-		askErr = errPanicked
-		if stub != nil {
-			// a test zemi's stub stands in for the whole call, its error included:
-			// a plugin's test must see the same failure a provider would give
-			stubbed, askErr = stub.fields, stub.err
-		} else {
-			// every attempt the ladder made was billed, so what it used is
-			// reported whether or not one answered
-			res, askErr = classify.Ask(ctx, req)
-			h.bill(sid, id, res.Usage)
-		}
-		if onAnswer != nil {
-			// the same table wait() answers, delivered as a task, so a
-			// handler that cannot suspend still acts on the answer
-			var out, errArg any
-			if askErr != nil {
-				errArg = askErr.Error()
-			} else if stubbed != nil {
-				out = stubbed
+	h.asyncTask(L, asyncTaskSpec{
+		subject: "zemi.classify.ask", waitAPI: "classify:wait", guard: "classify:",
+		ctx: ctx, cancel: cancel, timeout: timeout,
+		stop: cancel, withCancel: true, res: &askErr,
+		body: func(ctx context.Context) {
+			if stub != nil {
+				// a test zemi's stub stands in for the whole call, its error included:
+				// a plugin's test must see the same failure a provider would give
+				stubbed, askErr = stub.fields, stub.err
 			} else {
-				out = classifyResultMap(h, id, res)
+				// every attempt the ladder made was billed, so what it used is
+				// reported whether or not one answered
+				res, askErr = classify.Ask(ctx, req)
+				h.bill(sid, id, res.Usage)
 			}
-			h.callLuaAsync("zemi.classify on_answer", at, onAnswer, out, errArg)
-		}
-	})
-	handle := L.NewTable()
-	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
-		return waitHandle(L, "classify:wait", done, timeout, cancel, func(L *glua.LState, err error) []glua.LValue {
+			if onAnswer != nil {
+				// the same table wait() answers, delivered as a task, so a
+				// handler that cannot suspend still acts on the answer
+				var out, errArg any
+				if askErr != nil {
+					errArg = askErr.Error()
+				} else if stubbed != nil {
+					out = stubbed
+				} else {
+					out = classifyResultMap(h, id, res)
+				}
+				h.callLuaAsync("zemi.classify on_answer", at, onAnswer, out, errArg)
+			}
+		},
+		ret: func(L *glua.LState, err error) []glua.LValue {
 			if err == nil { // askErr is set only once done has closed
 				err = askErr
 			}
@@ -105,14 +100,8 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 				return []glua.LValue{lua.FromGo(L, stubbed)}
 			}
 			return []glua.LValue{lua.FromGo(L, classifyResultMap(h, id, res))}
-		})
-	})))
-	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
-		cancel()
-		return 0
-	}))
-	lua.GuardFuncs(L, handle, "classify:", h.guardLua)
-	L.Push(handle)
+		},
+	})
 	return 1
 }
 
