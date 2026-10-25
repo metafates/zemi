@@ -46,7 +46,8 @@ Environment:
   ZEMI_STATE_HOME   state: sessions, memory, logs (~/.local/state/zemi)
   ZEMI_CACHE_HOME   cache: language server builds (~/.cache/zemi)
                     each defaults to $XDG_<NAME>_HOME/zemi when that is set;
-                    a relative path in either is ignored
+                    a relative XDG_<NAME>_HOME is ignored, a relative
+                    ZEMI_<NAME>_HOME stops zemi
   ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
                     a builtin provider is on while its key is exported
 
@@ -1058,7 +1059,7 @@ func (o *options) readStdin(stdin *os.File) error {
 	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
 		return nil
 	}
-	return errors.New("stdin is not a terminal")
+	return errors.New("stdin is piped; the TUI does not read it - give the prompt as an argument")
 }
 
 // headlessTrust answers the trust prompt when nobody can: not now.

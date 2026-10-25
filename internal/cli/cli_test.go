@@ -180,7 +180,7 @@ func TestReadStdin(t *testing.T) {
 		null        bool // null reads /dev/null, a character device
 		err         string
 	}{
-		{name: "a pipe is refused", stdin: "x", err: "stdin is not a terminal"},
+		{name: "a pipe is refused", stdin: "x", err: "stdin is piped; the TUI does not read it"},
 		{name: "/dev/null is taken", null: true},
 	} {
 		r, w, err := os.Pipe()
