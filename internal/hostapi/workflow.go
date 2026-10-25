@@ -168,6 +168,9 @@ type flowRun struct {
 	restart set.Set[string] // agent run ids flowControl cancelled to run again
 	result  string          // the script's value: strings as is, anything else JSON
 	err     error
+	// fails are the parallel branches that failed on their own, as the report
+	// shows them: the script gets them in errs and may drop them
+	fails []string
 }
 
 // flowAgent is one zemi.workflow.agent call: queued until run is set, or
@@ -264,16 +267,17 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 
 // wfTask is one coroutine: the script body or a parallel() branch.
 type wfTask struct {
-	co      *glua.LState
-	fn      *glua.LFunction // set until the first resume
-	parent  *wfTask
-	slot    int
-	kids    []*glua.LFunction // set by parallel() before it yields
-	waiting int
-	vals    *glua.LTable
-	errs    *glua.LTable
-	req     *wfAgentReq   // set by agent() before it yields
-	args    []glua.LValue // resume values while waiting in ready
+	co       *glua.LState
+	fn       *glua.LFunction // set until the first resume
+	parent   *wfTask
+	slot     int
+	kids     []*glua.LFunction // set by parallel() before it yields
+	waiting  int
+	vals     *glua.LTable
+	errs     *glua.LTable
+	req      *wfAgentReq   // set by agent() before it yields
+	agentErr bool          // resumed with an agent's failure last, which failedAgent warns
+	args     []glua.LValue // resume values while waiting in ready
 }
 
 type wfAgentReq struct {
@@ -320,14 +324,15 @@ func (h *Host) runFlow(ctx context.Context, f *flowRun, spec flowSpec) {
 }
 
 // end records how the run ended and returns its status. A script that went on
-// past a failed agent finished by design (the skill says an angle that fails
-// is a wf.log, not a lost run), so the run warns rather than failing.
+// past a failed agent or a branch that failed on its own finished by design
+// (the skill says an angle that fails is a wf.log, not a lost run), so the run
+// warns rather than failing.
 func (f *flowRun) end(val string, err error) RunStatus {
 	f.cancel()
 	f.mu.Lock()
 	f.result, f.err, f.finished = val, err, time.Now()
 	switch {
-	case err == nil && f.failedAgent():
+	case err == nil && (f.failedAgent() || len(f.fails) > 0):
 		f.status = RunWarn
 	case err == nil:
 		f.status = RunDone
@@ -481,6 +486,7 @@ func (r *wfRun) agentDone(d wfDone) {
 		line.Result = jsonString(d.text)
 	}
 	f.note(line)
+	d.task.agentErr = line.Err != ""
 	if line.Err != "" {
 		r.resume(d.task, glua.LNil, glua.LString(line.Err))
 	} else {
@@ -887,6 +893,14 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 	}
 	if err != nil {
 		p.errs.RawSetInt(t.slot, glua.LString(err.Error()))
+		// an agent's failure warns through failedAgent; one the branch raised
+		// itself lives only in errs, which the script may drop
+		if !t.agentErr {
+			f := r.f
+			f.mu.Lock()
+			f.fails = append(f.fails, fmt.Sprintf("branch %d failed: %s", t.slot, err.Error()))
+			f.mu.Unlock()
+		}
 	} else {
 		p.vals.RawSetInt(t.slot, val)
 	}
@@ -1398,9 +1412,9 @@ return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 const bgWorkflowStarted = "Started workflow "
 
 // warnWorkflowFinished opens the answer of a foreground workflow call whose
-// run finished with a failed agent inside: the model hears the result may be
-// partial, and the call's own row warns rather than reading a check
-// (toolStatus). The run's report follows it.
+// run finished with a failed agent or branch inside: the model hears the
+// result may be partial, and the call's own row warns rather than reading a
+// check (toolStatus). The run's report follows it.
 const warnWorkflowFinished = "Finished workflow "
 
 // bgFlowText is what a call whose run reports as a message answers: a
@@ -1410,7 +1424,7 @@ func bgFlowText(f *flowRun) string {
 	if f.script != "" {
 		where = " (" + f.script + ")"
 	}
-	return bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."
+	return bgWorkflowStarted + f.id + where + ". Wait for it with run=" + f.id + " and action=wait, or read its report when it arrives as a message."
 }
 
 // list names the runs of this session this process holds, newest first: a run
@@ -1662,6 +1676,7 @@ func (f *flowRun) report() (string, bool) {
 	if len(f.log) > 0 {
 		log = "\n\nlog:\n" + strings.Join(f.log, "\n")
 	}
+	fails := f.failLines()
 	where := "workflow " + f.id
 	if f.err != nil {
 		msg := where + " failed: " + f.err.Error()
@@ -1676,12 +1691,22 @@ func (f *flowRun) report() (string, bool) {
 				log += "."
 			}
 		}
-		return msg + log, false
+		return msg + fails + log, false
 	}
 	if f.script != "" {
 		where += " · " + f.script
 	}
-	return "[" + where + "]\n\n" + cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + log, true
+	return "[" + where + "]\n\n" + cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + fails + log, true
+}
+
+// failLines names the branches that failed on their own, the ones the script
+// may have dropped from parallel's errs.
+func (f *flowRun) failLines() string {
+	var b strings.Builder
+	for _, l := range f.fails {
+		b.WriteString("\n\n" + l)
+	}
+	return b.String()
 }
 
 // deliverFlow hands a background run's report to the session that started
@@ -1714,12 +1739,12 @@ func (f *flowRun) reportAs() (attr, status, report string) {
 }
 
 // asCall is a finished run's report as the foreground call answers it: a run
-// that went on past a failed agent says so first.
+// that went on past a failed agent or branch says so first.
 func (f *flowRun) asCall(report string) string {
 	if f.status != RunWarn {
 		return report
 	}
-	return warnWorkflowFinished + f.id + " with an agent that failed inside: the result below may be partial.\n\n" + report
+	return warnWorkflowFinished + f.id + " with an agent or branch that failed inside: the result below may be partial.\n\n" + report
 }
 
 // /workflows and zemi.workflow

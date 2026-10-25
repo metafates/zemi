@@ -1101,7 +1101,8 @@ rerun it. A call without `background` waits for its run, and the user's own
 message hands the run off: the call answers with the background text and the
 result arrives as a message like that one, since a call cannot hold the turn
 past a message the user sent (§4). A handed-off run keeps its row, revised
-when the run ends - a run that finished with a failed agent inside it draws
+when the run ends - a run that finished with a failed agent or a failed
+branch inside it draws
 warn, a stopped one stop, a run that died err, and the notice row its report
 arrives as leads with the same mark - and the outcome is stored with
 the session, so a restart draws the mark it ended with, not done. A run

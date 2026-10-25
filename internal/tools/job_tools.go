@@ -430,7 +430,7 @@ func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolR
 	if running {
 		// the read already held through a quiet stretch: a job this long
 		// wants one wait_ms, not another poll
-		b.WriteString("still running: pass wait_ms to hold the read until it exits\n")
+		b.WriteString("still running: pass wait_ms to hold until it exits (the hold returns early when output pauses 2s)\n")
 	}
 	if errText != "" {
 		fmt.Fprintf(&b, "error: %s\n", errText)

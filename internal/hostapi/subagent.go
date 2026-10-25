@@ -1412,7 +1412,7 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 		}
 		text := bgAgentText(handed[0])
 		if len(handed) > 1 {
-			text = fmt.Sprintf("Started background agents %s. Their reports arrive as messages when they finish; do not wait for them.", strings.Join(handed, ", "))
+			text = fmt.Sprintf("Started background agents %s. Their reports arrive as messages when they finish; wait for them with wait=\"all\".", strings.Join(handed, ", "))
 		}
 		resp := fantasy.NewTextResponse(text)
 		t.h.setToolOutcome(callID, tools.Outcome{Run: handed[0]})
@@ -1438,7 +1438,7 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 // bgAgentText is what a call whose run reports as a message answers: a
 // background start, or a foreground call the user's message handed off.
 func bgAgentText(id string) string {
-	return bgAgentStarted + id + ". Its report will arrive as a message when it finishes; do not wait for it."
+	return bgAgentStarted + id + ". Wait for it with wait=" + id + ", or read its report when it arrives as a message."
 }
 
 // foreground waits for a run and answers with its report, the row's

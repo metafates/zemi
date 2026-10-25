@@ -739,6 +739,54 @@ func TestWorkflowFailedReport(t *testing.T) {
 	}
 }
 
+// TestWorkflowBranchFailWarns: a parallel branch that failed on its own warns
+// the run and is named in its report even when the script drops parallel's
+// errs, where the failure would vanish; one a failed agent sank is the
+// agent's failure alone, not counted twice.
+func TestWorkflowBranchFailWarns(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	echoAgents(h)
+	for _, c := range []struct {
+		name, script, want, notWant string
+	}{
+		{
+			name:   "a branch that raises on its own is named",
+			script: `local out = wf.parallel({function() return wf.agent("ok") end, function() error("branch boom") end}) return out[1]`,
+			want:   "branch 2 failed: ",
+		},
+		{
+			name:    "a branch a failed agent sank is not named twice",
+			script:  `local out = wf.parallel({function() return wf.agent("ok") end, function() return wf.agent("fail") end}) return out[1]`,
+			notWant: "branch 2 failed",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := h.startFlow(t.Context(), flowSpec{src: "local wf = zemi.workflow\n" + c.script})
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-f.done
+			if f.err != nil {
+				t.Fatal(f.err)
+			}
+			if f.status != RunWarn {
+				t.Fatalf("status = %s, want warn", f.status)
+			}
+			report, ok := f.report()
+			if !ok {
+				t.Fatalf("report reads failed: %q", report)
+			}
+			if !strings.Contains(report, c.want) {
+				t.Fatalf("report = %q, want %q", report, c.want)
+			}
+			if c.notWant != "" && strings.Contains(report, c.notWant) {
+				t.Fatalf("report = %q, want no %q", report, c.notWant)
+			}
+		})
+	}
+}
+
 // TestWorkflowSchema: a schema call's report is the JSON object cut out of
 // the reply, checked, asked for again at most twice, and a table in Lua.
 func TestWorkflowSchema(t *testing.T) {
