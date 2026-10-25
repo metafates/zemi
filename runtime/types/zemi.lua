@@ -469,7 +469,7 @@ function zemi.command.del(name) end
 ---@param name string
 ---@param args? string
 ---@return true|nil ok
----@return string|nil err Not a command, bad arguments, or the command's own error.
+---@return string|nil err Not a command, bad arguments, or a Lua command's own error; a Go command's failure is shown by zemi, not returned.
 function zemi.command.run(name, args) end
 
 ---@return zemi.Command[]
@@ -1239,16 +1239,6 @@ function zemi.ui.layout.get() end
 ---@return table<string, zemi.Rect>
 function zemi.ui.layout.rects() end
 
---- Keyboard focus. The composer has the keys unless a focusable node does.
---- While a node has them, every key but ctrl+c goes to the keymaps scoped
---- to it and then the global ones; an unbound key does nothing and an
---- unbound esc gives the keys back to the composer. Prompts and overlays
---- still take keys first. A click on a focusable node focuses it, a click
---- on the composer focuses the composer, and the keys come back. A node the
---- frame does not draw gives its keys to the composer.
----@class zemi.ui.focus
-zemi.ui.focus = {}
-
 --- Set the terminal tab's title (escapes stripped, whitespace collapsed);
 --- nil gives it back to zemi, which names it after the session. A reload
 --- that does not set it again gives it back too.
@@ -1280,6 +1270,16 @@ function zemi.ui.redraw() end
 ---@param action zemi.ScrollAction
 ---@param id? string
 function zemi.ui.scroll(action, id) end
+
+--- Keyboard focus. The composer has the keys unless a focusable node does.
+--- While a node has them, every key but ctrl+c goes to the keymaps scoped
+--- to it and then the global ones; an unbound key does nothing and an
+--- unbound esc gives the keys back to the composer. Prompts and overlays
+--- still take keys first. A click on a focusable node focuses it, a click
+--- on the composer focuses the composer, and the keys come back. A node the
+--- frame does not draw gives its keys to the composer.
+---@class zemi.ui.focus
+zemi.ui.focus = {}
 
 --- Give the keys to a focusable node of the layout, or to the composer with
 --- nil. Raises when the layout has no focusable node with that id.
@@ -2005,6 +2005,7 @@ function zemi.session.rename(title) end
 ---@return zemi.StoredMessage[]
 function zemi.session.messages() end
 
+--- Past sessions. The limit is 20 by default, at most 200.
 ---@param opts? { limit: integer }
 ---@return zemi.SessionInfo[]
 function zemi.session.list(opts) end

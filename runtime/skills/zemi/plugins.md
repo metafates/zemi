@@ -256,9 +256,9 @@ test.render(id, ctx?)           a widget's lines as text, then as segments (widt
 test.click(id, click)           the widget's on_click for a segment's click id
 test.emit(event, ev?)           a host event to the plugin's handlers
                                 -> a vetoable event answers the verdict table,
-                                { decision = "deny" | "ask", reason = "..." }, nil when
-                                none decided (tool.pre's carries the rewritten input);
-                                other events answer nil
+                                { decision = "deny" | "ask" | "rewrite", reason = "..." },
+                                nil when none decided (tool.pre's carries the rewritten
+                                input); other events answer nil
 test.complete(line)             the rows the plugin's completion offers for a draft line
 test.overlay()                  the top overlay { id, title, body, items, input }, or nil
 test.answer(choice, action?)    enter on an item (index or text) or its action; nil is esc
