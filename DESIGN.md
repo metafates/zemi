@@ -1108,8 +1108,10 @@ arrives as leads with the same mark - and the outcome is stored with
 the session, so a restart draws the mark it ended with, not done. A run
 already under way can be waited on instead: the `workflow` tool's `wait`
 action and the `agent` tool's `wait` beside `send_to` block until that run
-ends, esc, or the user types, the row naming the run waited on, and the report
-still arrives as a message rather than in the call's result. `agent`'s `schema`
+ends, esc, or the user types, and a sibling - another run or workflow of the
+session - that ends or sends an update ends the wait early with a line naming
+it and the run that still goes on, the row naming the run waited on, and the
+report still arrives as a message rather than in the call's result. `agent`'s `schema`
 asks in the task for a JSON object and the reply's outermost `{...}` is
 validated, asking again at most twice; the script gets a table. A run
 writes its script and a journal (a header, one line per agent that ended,

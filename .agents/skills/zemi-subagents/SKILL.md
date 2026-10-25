@@ -65,7 +65,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   history: the conversation it opened with is not its report, and `send_to` refuses a fork this
   process forgot, whose rows hold its own work alone. `send_to` with `stop` kills a running run
   (the model's one stop, as `/agents stop` is the user's; a stopped run reports nothing); `wait`
-  stands alone - a run id, or `all` for every run of the session - blocks for its end and wakes
+  stands alone - a run id, or `all` for every agent run and workflow of the session - blocks for its end and wakes
   early when a run sends an update or when a sibling - another run or workflow of the session -
   ends or sends an update, the answer naming that sibling and the run that still goes on
   (`watchSiblings`/`sibMoves`; a workflow's own agents are no sibling), and refuses `stop` and
