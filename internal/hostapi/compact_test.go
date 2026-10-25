@@ -1,7 +1,9 @@
 package hostapi
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -63,21 +65,46 @@ func TestSummaryKeptWhenCutOff(t *testing.T) {
 	}
 }
 
-// TestCompactNowCancels: esc during /compact stops the summary call instead
-// of leaving the agent busy until the model answers.
+// TestCompactNowCancels: esc during an idle compaction stops the summary
+// call instead of leaving the agent busy until the model answers, and leaves
+// the trace any user interrupt leaves: an error row marked cancelled in the
+// transcript, and the cancellation in the log.
 func TestCompactNowCancels(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "") // an empty reply starts no title call
-	m.block.Store(int64(time.Minute))
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	sender(t, h)("hi")
-	if err := h.CompactNow(""); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		name   string
+		reason string
+		run    func(*Host)
+	}{
+		{"manual /compact", "manual", func(h *Host) { h.CompactNow("") }},
+		{"idle auto compact", "auto", func(h *Host) { h.AutoCompact() }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, _ := newTestHostDB(t)
+			m := reflectStub(t, h, "") // an empty reply starts no title call
+			m.block.Store(int64(time.Minute))
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			sender(t, h)("hi")
+			var log bytes.Buffer
+			h.Log = slog.New(slog.NewTextHandler(&log, nil))
+			c.run(h)
+			h.AgentCancel()
+			waitIdle(t, h)
+			row, status := "", CallStatus("")
+			for _, r := range h.Session().Transcript {
+				if r.Kind == RowError {
+					row, status = r.Text, r.Status
+				}
+			}
+			if row != "Interrupted" || status != CallCancelled {
+				t.Fatalf("no interrupted row for the cancelled compact: %q %q", row, status)
+			}
+			if line := log.String(); !strings.Contains(line, "compaction cancelled") || !strings.Contains(line, "reason="+c.reason) {
+				t.Fatalf("the log does not name the cancellation: %s", line)
+			}
+		})
 	}
-	h.AgentCancel()
-	waitIdle(t, h)
 }
 
 // TestAutoCompact: the idle timer's compact runs like /compact when the

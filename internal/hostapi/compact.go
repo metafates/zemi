@@ -249,11 +249,7 @@ func (h *Host) CompactNow(focus string) error {
 	scope := h.claim() // esc stops the summary call
 	ag.mu.Unlock()
 	h.refresh()
-	h.GoSafe("compaction", func() {
-		defer h.endTurnAfterPanic()
-		h.compactReporting(scope.ctx, runner, compactManual, strings.TrimSpace(focus))
-		h.handOff(scope)
-	})
+	h.runCompaction(scope, runner, compactManual, strings.TrimSpace(focus))
 	return nil
 }
 
@@ -272,9 +268,23 @@ func (h *Host) AutoCompact() {
 	scope := h.claim()
 	ag.mu.Unlock()
 	h.refresh()
+	h.runCompaction(scope, runner, compactAuto, "")
+}
+
+// runCompaction runs an idle compaction (/compact, the idle timer) on its
+// own goroutine and hands the claim to what was queued meanwhile. An
+// esc-cancelled one leaves the interrupted row and log line any user
+// interrupt leaves; the mid-turn paths report theirs through TurnDone.
+func (h *Host) runCompaction(scope *turnScope, runner *agent.Runner, reason, focus string) {
 	h.GoSafe("compaction", func() {
 		defer h.endTurnAfterPanic()
-		h.compactReporting(scope.ctx, runner, compactAuto, "")
+		if !h.compactReporting(scope.ctx, runner, reason, focus) && scope.ctx.Err() != nil {
+			h.Log.Info("compaction cancelled", "origin", "agent", "reason", reason)
+			h.AppendStoredChat(ChatMessage{
+				Role: fantasy.MessageRoleAssistant, Kind: RowError, Status: CallCancelled,
+				Text: h.errorRowText(context.Canceled),
+			})
+		}
 		h.handOff(scope)
 	})
 }
