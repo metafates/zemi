@@ -482,6 +482,9 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 // OpenRewind lists the session's prompts, newest first; choosing one
 // rewinds to before it.
 func (h *Host) OpenRewind() error {
+	if h.AgentActive() {
+		return errTurnRunning
+	}
 	ui, err := h.Screen()
 	if err != nil {
 		return err

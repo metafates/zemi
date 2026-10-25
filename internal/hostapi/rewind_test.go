@@ -3,6 +3,7 @@ package hostapi
 import (
 	"database/sql"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,9 +16,111 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/brain"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
+
+// TestRewindRefusesMidTurn: every rewind entry refuses while a turn runs -
+// /rewind's popup, a direct RewindTo (/rewind <id>, the overlay's r key and
+// zemi.session.rewind) and the /messages r key - and none cuts the history
+// the turn is writing; idle, the same entries work.
+func TestRewindRefusesMidTurn(t *testing.T) {
+	// lastNote is the most recent toast, which recordNotify writes before the
+	// UI hook sees it
+	lastNote := func(t *testing.T, h *Host) notifyEntry {
+		t.Helper()
+		waitFor(t, func() error {
+			if len(h.evlog.notes) == 0 {
+				return errors.New("no note recorded")
+			}
+			return nil
+		})
+		return h.evlog.notes[len(h.evlog.notes)-1]
+	}
+	for _, c := range []struct {
+		name    string
+		run     func(h *Host) error
+		refused func(t *testing.T, h *Host, err error, ui *fakeUI)
+		idle    func(t *testing.T, h *Host, err error, ui *fakeUI)
+	}{
+		{
+			name: "the /rewind popup",
+			run:  func(h *Host) error { return h.OpenRewind() },
+			refused: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				if !errors.Is(err, errTurnRunning) {
+					t.Fatalf("= %v, want the turn-running refusal", err)
+				}
+				if len(ui.opened) != 0 {
+					t.Fatal("the popup opened mid-turn")
+				}
+			},
+			idle: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				if err != nil || len(ui.opened) == 0 {
+					t.Fatalf("= %v with %d popups, want the popup open", err, len(ui.opened))
+				}
+			},
+		},
+		{
+			name: "RewindTo",
+			run:  func(h *Host) error { _, err := h.RewindTo("x"); return err },
+			refused: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				if !errors.Is(err, errTurnRunning) {
+					t.Fatalf("= %v, want the turn-running refusal", err)
+				}
+			},
+			idle: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				// past the turn guard, it refuses on the prompt it cannot find
+				if !errors.Is(err, ErrUsage) {
+					t.Fatalf("= %v, want a usage error", err)
+				}
+			},
+		},
+		{
+			name: "the /messages r key",
+			run:  func(h *Host) error { h.rewindTo("x"); return nil },
+			refused: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				n := lastNote(t, h)
+				if !strings.Contains(n.title, "Could not rewind") || !strings.Contains(n.body, "a turn is running") {
+					t.Fatalf("note = %q: %q", n.title, n.body)
+				}
+			},
+			idle: func(t *testing.T, h *Host, err error, ui *fakeUI) {
+				n := lastNote(t, h)
+				// past the turn guard, it refuses on the prompt it cannot find
+				if !strings.Contains(n.body, "no prompt") {
+					t.Fatalf("note = %q: %q", n.title, n.body)
+				}
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			// the /rewind command as the CLI registers it (internal/cli/boot.go):
+			// /rewind <id> and the r key run RewindTo through it
+			if _, err := h.Commands.Add(&Command{
+				Name: "rewind", NArgs: NArgsOptional,
+				Origin: lua.OriginBuiltin, Gen: h.currentGen(),
+				GoFn: func(h *Host, args string, _ bool) error { _, err := h.RewindTo(args); return err },
+			}); err != nil {
+				t.Fatal(err)
+			}
+			ui := &fakeUI{}
+			h.SetUIHooks(ui)
+			// a provider that never answers holds the turn open
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { return nil }}, nil
+			}
+			if err := h.AgentSend("slow"); err != nil {
+				t.Fatal(err)
+			}
+			c.refused(t, h, c.run(h), ui)
+			h.AgentCancel()
+			waitIdle(t, h)
+			c.idle(t, h, c.run(h), ui)
+		})
+	}
+}
 
 // TestRewind runs turns that write files and todo lists, then rewinds them
 // one by one: each rewind restores the files and the todo list as they were
