@@ -25,8 +25,8 @@ const dbCellCap = 60
 func dbCommand(o *options) *cobra.Command {
 	var asJSON, global *bool
 	cmd := &cobra.Command{
-		Use:   "db <sql>",
-		Short: "run one read-only query against zemi's store; --global for the global one",
+		Use:   "db <sql> [args...]",
+		Short: "run one read-only query against zemi's store; the args after it bind to ?1, ?2, ...; --global for the global store",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dirs := o.dirs
@@ -42,7 +42,7 @@ func dbCommand(o *options) *cobra.Command {
 				return err
 			}
 			defer db.Close()
-			return runDBQuery(c.OutOrStdout(), c.ErrOrStderr(), db, strings.Join(args, " "), *asJSON)
+			return runDBQuery(c.OutOrStdout(), c.ErrOrStderr(), db, args[0], args[1:], *asJSON)
 		},
 	}
 	asJSON = jsonFlag(cmd)
@@ -52,9 +52,15 @@ func dbCommand(o *options) *cobra.Command {
 
 // runDBQuery runs one query and prints its rows as an aligned text table or,
 // with --json, one JSON object per row. Text caps at dbRowCap rows; JSON
-// streams every row, since a script asked for them.
-func runDBQuery(out, errw io.Writer, db *store.DB, query string, asJSON bool) error {
-	rows, err := db.Query(query)
+// streams every row, since a script asked for them. The params bind to the
+// query's numbered placeholders as text; column affinity compares them
+// against typed columns.
+func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string, asJSON bool) error {
+	bound := make([]any, len(params))
+	for i, p := range params {
+		bound[i] = p
+	}
+	rows, err := db.Query(query, bound...)
 	if err != nil {
 		return err
 	}

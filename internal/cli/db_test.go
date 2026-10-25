@@ -73,15 +73,18 @@ func TestDB(t *testing.T) {
 		stdout, stderr string
 		notStdout      string
 	}{
-		{"args join into one query", []string{"db", "select", "id,", "title", "from", "sessions"}, 0, sid + "  fix the failing test\n", "", ""},
+		{"the first arg is the whole query", []string{"db", "select id, title from sessions"}, 0, sid + "  fix the failing test\n", "", ""},
+		{"the rest bind to ?1, ?2, ...", []string{"db", "select title from sessions where id = ?1", sid}, 0, "fix the failing test", "", ""},
+		{"numbered args bind by index, not position", []string{"db", "select ?2, ?1", "one", "two"}, 0, "two  one", "", ""},
+		{"a bound limit", []string{"db", "select id from sessions limit ?1", "1"}, 0, sid, "", ""},
 		{"json is one object per row", []string{"db", "--json", "select id, title from sessions"}, 0, `{"id":"` + sid + `","title":"fix the failing test"}` + "\n", "", ""},
 		{"null is empty in text", []string{"db", "select parent_id from sessions"}, 0, "parent_id\n\n", "", ""},
 		{"null is null in json", []string{"db", "--json", "select parent_id from sessions"}, 0, `{"parent_id":null}` + "\n", "", ""},
-		{"a write fails", []string{"db", "insert", "into", "kv", "values", "('x','{}',0)"}, 1, "", "readonly", ""},
+		{"a write fails", []string{"db", "insert into kv values ('x','{}',0)"}, 1, "", "readonly", ""},
 		{"no store names the path", []string{"-C", empty, "db", "select 1"}, 1, "", "no store at " + perm.TildePath(emptyStore), ""},
 		{"an unmigrated store is refused", []string{"-C", stale, "db", "select 1"}, 1, "", "zemi health", ""},
-		{"global reads the global store", []string{"db", "--global", "select", "count(*)", "from", "sessions"}, 0, "count(*)\n0\n", "", ""},
-		{"the text table caps at 500", []string{"db", "with", "recursive", "t(n)", "as", "(select", "1", "union", "all", "select", "n+1", "from", "t", "where", "n", "<", "501)", "select", "n", "from", "t"}, 0, "499\n500\n", "showing the first 500 rows", "501"},
+		{"global reads the global store", []string{"db", "--global", "select count(*) from sessions"}, 0, "count(*)\n0\n", "", ""},
+		{"the text table caps at 500", []string{"db", "with recursive t(n) as (select 1 union all select n+1 from t where n < 501) select n from t"}, 0, "499\n500\n", "showing the first 500 rows", "501"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// a -C case chdirs; every case starts from the project again

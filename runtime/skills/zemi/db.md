@@ -7,11 +7,12 @@ Reach for the store when the CLI does not expose what you need: totals over many
 ```sh
 zemi db "select id, title, updated_at, cost from sessions order by updated_at desc limit 5"
 zemi db "select tool_calls.tool, tool_calls.ok from tool_calls join messages on tool_calls.message_id = messages.id where messages.session_id = '<id>'"
+zemi db "select id, title from sessions where title like ?1 limit ?2" '%test%' 10
 zemi db --global "select key, value_json from kv where key like 'config:%'"
 zemi db --global "select id, text, origin from memory order by updated_at desc limit 20"
 ```
 
-The words of the query join into one, so quoting is optional until the shell itself cares (`*`, `;`). Text output is an aligned table capped at 500 rows, NULL an empty cell; `--json` prints one object per row and caps nothing. `--global` reads the global store; the default is this project's, and `-C <dir>` reads another project's.
+The first argument is the whole query, so quote it; the rest bind to its numbered placeholders - the first is `?1`, the second `?2`, and the number, not the position in the query, picks the argument. Values bind as text; SQLite's column affinity compares them against typed columns, so `'24'` works for an integer column and in `LIMIT`. A placeholder with no argument binds as NULL and an extra argument is ignored, so keep the count right. Text output is an aligned table capped at 500 rows, NULL an empty cell; `--json` prints one object per row and caps nothing. `--global` reads the global store; the default is this project's, and `-C <dir>` reads another project's.
 
 The open is read-only all the way down (`mode=ro` and `query_only`): a write fails, nothing is created or migrated, and a store a running zemi holds is read without waiting on it. One SQLite ceiling survives both: `ATTACH` of a path with no file still makes an empty one. A store this zemi's migrations have not reached is refused: run `zemi health` in its project once to migrate it. A missing store is an error naming its path.
 
