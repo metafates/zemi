@@ -296,6 +296,22 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 	}
 }
 
+// TestVetoCrashFailsClosed: a handler that raises instead of returning is
+// the bad shape's sibling - permission.request denies on it, an event with
+// no closed side keeps its default.
+func TestVetoCrashFailsClosed(t *testing.T) {
+	h, r := newTestHost(t)
+	runUser(t, r, `
+		zemi.event.on("permission.request", function() error("boom") end)
+		zemi.event.on("app.quit", function() error("boom") end)`)
+	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{}); !res.Denied || !strings.Contains(res.Reason, "boom") {
+		t.Errorf("permission.request = %+v, want denied with the crash as reason", res)
+	}
+	if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied {
+		t.Errorf("app.quit = %+v, want proceed", res)
+	}
+}
+
 // TestVetoAskLeg: a permission.request handler may return { decision =
 // "ask" } to run the ask path; a denial from any handler outranks it.
 func TestVetoAskLeg(t *testing.T) {

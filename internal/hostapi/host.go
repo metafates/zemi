@@ -1239,6 +1239,9 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 					outcomes[i].timed = true
 				case err != nil:
 					h.logHandlerError(hd, err)
+					// a crashed handler must not read as consent: fail closed
+					// like the hot runtime below
+					outcomes[i] = outcome{denied: name == EventPermissionRequest, reason: err.Error()}
 				default:
 					tb, decision, bad := vetoDecision(ret, allowed...)
 					switch {
@@ -1359,7 +1362,6 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 type Effect string
 
 const (
-	EffectNone    Effect = ""        // still
 	EffectShimmer Effect = "shimmer" // a bright band sweeps the text, blending its hl toward Normal
 	EffectSpin    Effect = "spin"    // its first glyph steps through Spinner
 )
