@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -879,7 +880,8 @@ func (t table) print(w io.Writer) {
 	if len(t.rows) == 0 {
 		return
 	}
-	headed := (t.p != colorprofile.NoTTY || t.head) && !t.noHead
+	headed := (t.p != colorprofile.NoTTY || t.head) && !t.noHead &&
+		slices.ContainsFunc(t.cols, func(c tableCol) bool { return c.head != "" })
 	width := make([]int, len(t.cols))
 	for i, c := range t.cols {
 		width[i] = c.width

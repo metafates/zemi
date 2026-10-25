@@ -550,6 +550,15 @@ func TestTable(t *testing.T) {
 	if got := build(colorprofile.Ascii, "\x1b[1mon\x1b[m"); got != "\x1b[1mname\x1b[m  \x1b[1mn\x1b[m\n\x1b[1mon\x1b[m    5\n" {
 		t.Errorf("styled table = %q", got)
 	}
+	// columns that name no head print none, even on a terminal: the checks
+	// each say what they are
+	anon := table{p: colorprofile.Ascii, cols: []tableCol{{width: 5}, {}}}
+	anon.row("ok", "store")
+	var b strings.Builder
+	anon.print(&b)
+	if got := b.String(); got != "ok     store\n" {
+		t.Errorf("unnamed heads = %q, want no header row", got)
+	}
 }
 
 // TestSessionsAcrossProjects: -a reaches the other projects' stores, grouped
