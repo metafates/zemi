@@ -581,7 +581,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	rows := dumpItems(h.agentRunItems())
 	// the row is named by the run's label and its desc keeps the definition;
 	// enter opens its preview (the facts and the task), v its transcript
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore · from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
@@ -625,7 +625,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if o.ID != "agent:"+run.id || o.Title != "look around" || o.Mark != MarkSpin {
 		t.Fatalf("overlay %+v", o)
 	}
-	if len(o.Keys) != 1 || o.Keys[0].Key != "v" || o.Keys[0].Run != "agents view "+run.id {
+	if len(o.Keys) != 1 || o.Keys[0].Key != "v" || o.Keys[0].Run != "agents view "+run.id+" show" {
 		t.Fatalf("keys %+v", o.Keys)
 	}
 	if o.Empty != "run the tests" {
@@ -671,6 +671,44 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	}
 	if err := cmd.GoFn(h, "show nope"); err == nil {
 		t.Fatal("an unknown id opened a view")
+	}
+}
+
+// TestAgentViewRestoresItsScreen: a screen's v opens the run's transcript
+// naming the screen it came from, and esc - LeaveAgentView - hands that
+// screen back to reopen over the session. A plain view names nothing.
+func TestAgentViewRestoresItsScreen(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look around", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	h.SetUIHooks(&fakeUI{})
+	cmd := h.agentsCommands()[0]
+	if err := cmd.GoFn(h, "view "+run.id+" show"); err != nil {
+		t.Fatal(err)
+	}
+	if h.viewedRun() != run {
+		t.Fatal("the view did not show the run")
+	}
+	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "agents show "+run.id {
+		t.Fatalf("esc restores menu %q back %q", menu, back)
+	}
+	if err := cmd.GoFn(h, "view "+run.id+" list"); err != nil {
+		t.Fatal(err)
+	}
+	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "agents" {
+		t.Fatalf("the list's esc restores menu %q back %q", menu, back)
+	}
+	if err := cmd.GoFn(h, "view "+run.id); err != nil {
+		t.Fatal(err)
+	}
+	if menu, back := h.ViewedAgentMenu(), h.LeaveAgentView(); menu != "" || back != "" {
+		t.Fatalf("a plain view restores menu %q back %q", menu, back)
+	}
+	if err := cmd.GoFn(h, "view "+run.id+" nope"); err == nil {
+		t.Fatal("an unknown screen opened a view")
 	}
 }
 

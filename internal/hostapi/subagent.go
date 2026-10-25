@@ -1822,11 +1822,25 @@ func (h *Host) agentsCommands() []*Command {
 			case "show":
 				return h.showAgent(id)
 			case "view":
-				return h.ViewAgent(id)
+				// a screen's v names the screen it came from, which esc
+				// reopens over the session: show the run's preview, list the
+				// agents list
+				id, from, _ := strings.Cut(id, " ")
+				switch from {
+				case "":
+					return h.ViewAgent(id)
+				case "show", "list":
+					back := "agents"
+					if from == "show" {
+						back = "agents show " + id
+					}
+					return h.ViewAgentFrom(id, back, "")
+				}
+				return Usagef("/agents view <id> [show|list]")
 			case "stop":
 				return h.stopRun(id)
 			}
-			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id>, stop [id])", sub)
+			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id> [show|list], stop [id])", sub)
 		},
 		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {
@@ -1907,7 +1921,7 @@ func (h *Host) agentShowOverlay(run *agentRun) Overlay {
 	o := Overlay{
 		ID: "agent:" + run.id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
 		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts, Empty: pending,
-		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + run.id}},
+		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + run.id + " show"}},
 	}
 	o.Prev, o.Next = h.railStep(run.id)
 	return o

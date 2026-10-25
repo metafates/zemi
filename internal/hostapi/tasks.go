@@ -1117,7 +1117,8 @@ func (h *Host) ViewAgentFrom(id, back, menu string) error {
 	h.tMu.Lock()
 	h.view, h.viewBack, h.viewMenu = run, back, menu
 	h.tMu.Unlock()
-	h.scroll(ScrollBottom, "")
+	// no scroll either way: a transcript the chat draws opens at its tail and
+	// the session keeps a scroll state per view, so esc lands where it was left
 	h.refresh()
 	return nil
 }
@@ -1219,7 +1220,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) + " · " + desc
 			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", desc, "run", id)
 		}
-		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id}}
+		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id + " list"}}
 		item.Section = "Earlier in this session"
 		if status == RunRunning {
 			item.Keys = append(item.Keys, ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + id, Danger: true})

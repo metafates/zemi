@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // fillChat appends 30 user/reply pairs to the transcript.
@@ -186,6 +188,117 @@ func TestChatScrollShrinks(t *testing.T) {
 func withoutStatus(frame string) string {
 	rows := strings.Split(frame, "\r\n")
 	return strings.Join(rows[:len(rows)-1], "\r\n")
+}
+
+// TestAgentViewKeepsTheSessionPlace: a run's transcript scrolls apart from
+// the session - it opens at its own tail even with an edge parked on the
+// session, esc lands the session on the place it was left at, not the
+// bottom, and a switch to another run parks the session's place, not the
+// first transcript's.
+func TestAgentViewKeepsTheSessionPlace(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	app.Frame()
+	session := app.scrolls[app.scrollDef]
+	if session.follow || session.top == 0 {
+		t.Fatalf("setup: the session did not scroll back (follow %v, top %d)", session.follow, session.top)
+	}
+	top := session.top
+
+	db := testStore(t, host)
+	stored := func(name string) string {
+		id := store.ShortID()
+		if err := db.CreateSession(id, store.ShortID(), name, "explore"); err != nil {
+			t.Fatal(err)
+		}
+		for i := range 40 {
+			addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+				fantasy.TextPart{Text: fmt.Sprintf("%s line %d", name, i)},
+			}})
+		}
+		return id
+	}
+	view := func(id string) {
+		t.Helper()
+		if err := host.ViewAgent(id); err != nil {
+			t.Fatal(err)
+		}
+		app.renderSync(t)
+		app.Frame()
+	}
+	first := stored("run")
+	// a ScrollTop parked while the transcript showed must neither drag esc's
+	// session to its top nor the next transcript: ctrl+home inside the view,
+	// esc, and back in
+	view(first)
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	app.Frame()
+	if st := app.scrolls[app.scrollDef]; st.follow || st.top != 0 {
+		t.Fatalf("setup: ctrl+home did not reach the transcript's top (follow %v, top %d)", st.follow, st.top)
+	}
+	if back := host.LeaveAgentView(); back != "" {
+		t.Fatalf("the leave ran back %q", back)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if st := app.scrolls[app.scrollDef]; st != session || st.follow || st.top != top {
+		t.Fatalf("esc landed on follow %v top %d, want the left place %d", st.follow, st.top, top)
+	}
+	view(first)
+	if st := app.scrolls[app.scrollDef]; !st.follow || st.top == 0 {
+		t.Fatalf("the re-entered transcript opened at top %d follow %v, want its tail", st.top, st.follow)
+	}
+	// one view to another: the session's place stays parked, the first
+	// transcript's does not stand in for it
+	view(stored("other"))
+	if st := app.scrolls[app.scrollDef]; st == session || !st.follow {
+		t.Fatalf("the second transcript draws with a foreign state (follow %v)", st.follow)
+	}
+	if back := host.LeaveAgentView(); back != "" {
+		t.Fatalf("the leave ran back %q", back)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if st := app.scrolls[app.scrollDef]; st != session || st.follow || st.top != top {
+		t.Fatalf("esc from the second run landed on follow %v top %d, want %d", st.follow, st.top, top)
+	}
+}
+
+// TestAgentViewSendSnapsToTail: sending from a run that is over shows the
+// session at its tail, where the message and its reply land, not at the
+// place the session was left at.
+func TestAgentViewSendSnapsToTail(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	app.Frame()
+
+	db := testStore(t, host)
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.TextPart{Text: "it reads fine"},
+	}})
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	app.renderSync(t)
+	app.Frame()
+	app.sendMessage("one more")
+	app.renderSync(t)
+	app.Frame()
+	if st := app.scrolls[app.scrollDef]; !st.follow {
+		t.Fatalf("the send left the session off the tail (top %d)", st.top)
+	}
 }
 
 // TestChatScrollFollows pins the snap-back: sending a message, or a new

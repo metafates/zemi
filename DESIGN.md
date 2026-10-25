@@ -1141,7 +1141,8 @@ detail, enter's view of its row in the run and in `/agents` alike, sets its
 facts (status, time, the agent and model it ran as, its usage and run id, a
 failed run's error), then its task and, once it has ended, what it answered
 (the task as it was written, the reply as the chat draws one); `v` there
-views its transcript, which esc leaves back to the session. The row's keys
+views its transcript, naming the screen it came from, which esc leaves back
+to, over the session where it was left. The row's keys
 restart or stop a running one; its stop has no hotkey, since `x` on the
 run's view stops the run. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
@@ -2111,7 +2112,9 @@ rides the `memories.md` line and its ledger entries.
   a scrolled view stays anchored while new lines fill underneath, and a
   click on a row leaves the tail too: a digest opening over its rail
   redraws the rows under the reader's place, never
-  scrolling them away. Sending a message (or a `!command`) snaps back to the
+  scrolling them away. The chat keeps a scroll state per view: a run's
+  transcript opens at its tail and leaves the session's place parked, so esc
+  lands where the session was left. Sending a message (or a `!command`) snaps back to the
   tail, a slash command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,

@@ -244,6 +244,7 @@ func (a *App) sendMessage(text string) {
 			return
 		}
 		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
+		a.applyScroll(hostapi.ScrollBottom, "")
 	}
 	if err := a.host.AgentSendUser(text); err != nil {
 		a.pushToast(slog.LevelError, "Could not send", err.Error())

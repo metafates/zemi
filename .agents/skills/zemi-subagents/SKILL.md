@@ -57,7 +57,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
   the session's (a run row's `v`; enter opens the row's preview, `agentView`, the same in
-  /agents and a workflow's run), and a submit while it runs goes to it through `MessageAgent`, with up-arrow on
+  /agents and a workflow's run; the v of a preview or a list row names its screen -
+  `agents view <id> show|list` - so esc reopens it over the session, and the chat keeps a
+  scroll state per view, a transcript at its tail and the session where it was left), and a submit while it runs goes to it through `MessageAgent`, with up-arrow on
   an empty composer taking that run's waiting queue back (`AgentTakeQueue`, the session's
   untouched). Its thinking buffers as the session's does and settles as one Thought row where
   the call or the reply that ends it lands (`flush`). A fork is an

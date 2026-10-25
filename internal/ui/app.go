@@ -73,6 +73,10 @@ type App struct {
 	scrolls   map[string]*scrollState
 	scrollDef string
 	scrollIDs []string
+	// The chat scrolls per view: chatScroll parks the session's state while
+	// a run's transcript draws in its place.
+	chatView   string
+	chatScroll *scrollState
 	// pendingScroll is an edge a region goes to at its next paint, when the
 	// rows a scroll was issued for may not have arrived yet: "top" stays
 	// parked there until the region is scrolled again, "bottom" applies once.
@@ -1065,6 +1069,7 @@ func (a *App) compose(w, h int) string {
 	}
 	clear(a.prefixes) // a theme cannot change inside one frame
 
+	a.syncChatScroll()
 	lay := a.layout(w, h)
 	stage := lay.stage
 	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
@@ -1460,12 +1465,53 @@ func (a *App) followStage() {
 	}
 }
 
+// syncChatScroll keeps the chat's scroll state with the view that drew it:
+// the session's place parks while a run's transcript draws in its place, and
+// a transcript starts at its tail. Every way in or out of a run's view ends
+// in a scroll action or a repaint, so those two are the only sync points.
+func (a *App) syncChatScroll() {
+	v := a.host.ViewedAgent()
+	if v == a.chatView {
+		return
+	}
+	fromSession := a.chatView == ""
+	a.chatView = v
+	chat := ""
+	for _, id := range a.scrollIDs { // last paint's order, so the pick is stable
+		if st := a.scrolls[id]; st != nil && st.region == "chat" {
+			chat = id
+			break
+		}
+	}
+	if chat == "" {
+		return
+	}
+	// an edge or a jump parked for the outgoing view must not fire into the
+	// incoming one
+	delete(a.pendingScroll, chat)
+	delete(a.pendingAnchor, chat)
+	if v != "" {
+		if fromSession { // one view to another keeps parking the session's
+			a.chatScroll = a.scrolls[chat]
+		}
+		delete(a.scrolls, chat)
+		return
+	}
+	if a.chatScroll != nil {
+		a.scrolls[chat] = a.chatScroll
+		a.chatScroll = nil
+	} else {
+		delete(a.scrolls, chat) // no place was left: the session follows its tail
+	}
+}
+
 // applyScroll maps the zemi.ui.scroll.* host actions onto a scrolled
 // region, the default one when id is "": up and down move a page with a
 // one-row overlap, top and bottom go to the ends, line_up and line_down a
 // row. An edge also holds as the region's pending target, so it lands on
 // rows that arrive after it or a region not drawn yet.
 func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
+	a.syncChatScroll()
 	id = cmp.Or(id, a.scrollDef)
 	st := a.scrolls[id]
 	if kind == hostapi.ScrollTop || kind == hostapi.ScrollBottom {
