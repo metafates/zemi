@@ -2315,7 +2315,7 @@ rides the `memories.md` line and its ledger entries.
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`,
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
-  (list; `search <words>` finds them in every project, `r` resumes the
+  (list; `r` resumes the
   selected session, `n` renames it, `x` opens its Delete, enter offers both),
   `/rename [title]` (names the session; without a
   title, the same one-line input the picker's `n` opens), `/resume [id]` (latest without an id; history and
@@ -2443,7 +2443,6 @@ rides the `memories.md` line and its ledger entries.
   | command | fields per row |
   |---|---|
   | `zemi sessions` | `id`, `title`, `updated`, `cost_usd`; `-a` adds `project` |
-  | `zemi sessions search` | `id`, `title`, `updated`, `project`, `hits`, `match` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `memories`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |

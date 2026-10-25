@@ -451,7 +451,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.NewSession()
 		}},
-		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "search every project's sessions, resume or delete one", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "list this project's sessions, rename or delete one", GoFn: func(h *hostapi.Host, args string) error {
 			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
 				id, yes := strings.CutSuffix(strings.TrimSpace(id), " --yes")
 				return h.DeleteSession(id, yes)
@@ -468,20 +468,12 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				}
 				return nil
 			}
-			// the search box's own line, and the row action it runs
-			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "search"); ok && (rest == "" || rest[0] == ' ') {
-				return h.OpenFindSessions(rest)
-			}
-			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "open "); ok {
-				id, root, _ := strings.Cut(strings.TrimSpace(rest), " ")
-				return h.OpenFoundSession(strings.TrimSpace(root), id)
-			}
 			err := h.OpenSessions("")
 			if errors.Is(err, hostapi.ErrNeedsTUI) {
 				err = fmt.Errorf("%w; zemi sessions lists them", err)
 			}
 			return err
-		}, GoComplete: hostapi.SubcommandCompleter([]string{"search"}, nil)},
+		}},
 		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))
 		}},

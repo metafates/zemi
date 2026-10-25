@@ -17,8 +17,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | a skill or a prompt command | `skills.md` |
 | a workflow: controlling a run, rerunning, saving or making one | `workflows.md` |
 | memories, the reflector, recipes | `memory.md` |
-| a past session: find, read or resume | `sessions.md` |
-| the store zemi keeps its state in: query it read-only | `db.md` |
+| the store zemi keeps its state in: query it read-only, read a past session | `db.md` |
 | zemi misbehaves: an error, a silent model, config that does not load | `debug.md` |
 | several branches at once in git worktrees | `worktrees.md` |
 

@@ -580,9 +580,6 @@ func sessionsCommand(o *options) *cobra.Command {
 	asJSON = jsonFlag(cmd)
 	all = cmd.Flags().BoolP("all", "a", false, "list the sessions of every project, grouped by project")
 
-	search := searchCommand(o)
-	cmd.AddCommand(search)
-
 	full := false
 	export := &cobra.Command{
 		Use:               "export <id>",
@@ -626,75 +623,6 @@ func printSessions(out io.Writer, p colorprofile.Profile, list []*store.Session,
 		}
 		fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
 	}
-}
-
-// searchCommand is zemi sessions search: every project's sessions matching the
-// words, grouped by project, each row with its newest match under it.
-func searchCommand(o *options) *cobra.Command {
-	var asJSON *bool
-	cmd := &cobra.Command{
-		Use:   "search <words>",
-		Short: "search every project's sessions for words; 1 if nothing matches",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
-			query := strings.Join(args, " ")
-			found := hostapi.FindSessions(o.dirs, query)
-			if n := len(found.Skipped); n > 0 {
-				skipped := make([]string, n)
-				for i, root := range found.Skipped {
-					skipped[i] = perm.TildePath(root)
-				}
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", n, hostapi.Plural(n, "store", "stores"), strings.Join(skipped, ", "))
-			}
-			if len(found.Sessions) == 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: no match for %q in %d %s\n", query, found.Projects, hostapi.Plural(found.Projects, "project", "projects"))
-				return exitError(1)
-			}
-			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
-			var roots []string
-			byRoot := map[string][]hostapi.FoundSession{}
-			for _, s := range found.Sessions {
-				if _, ok := byRoot[s.Root]; !ok {
-					roots = append(roots, s.Root)
-				}
-				byRoot[s.Root] = append(byRoot[s.Root], s)
-			}
-			for _, root := range roots {
-				if !*asJSON {
-					fmt.Fprintln(out, paint(p, "title", perm.TildePath(root)))
-				}
-				for _, s := range byRoot[root] {
-					match := ""
-					if len(s.Hits) > 0 {
-						match = s.Hits[0]
-					}
-					updated := time.UnixMilli(s.UpdatedAt)
-					if *asJSON {
-						writeJSON(out, struct {
-							ID      string    `json:"id"`
-							Title   string    `json:"title"`
-							Updated time.Time `json:"updated"`
-							Project string    `json:"project"`
-							Hits    int       `json:"hits"`
-							Match   string    `json:"match"`
-						}{ID: s.ID, Title: sanitize.Line(s.Title), Updated: updated, Project: root, Hits: s.Count, Match: match})
-						continue
-					}
-					hits := "title" // no message matched, the title did
-					if s.Count > 0 {
-						hits = fmt.Sprintf("%d %s", s.Count, hostapi.Plural(s.Count, "hit", "hits"))
-					}
-					fmt.Fprintf(out, "%s  %s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), hits, ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
-					if match != "" {
-						fmt.Fprintf(out, "      %s\n", match)
-					}
-				}
-			}
-			return nil
-		},
-	}
-	asJSON = jsonFlag(cmd)
-	return cmd
 }
 
 // projectsCommand is zemi projects: one line per project, the path last and

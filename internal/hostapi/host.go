@@ -557,9 +557,6 @@ type Host struct {
 	// reasoning chunk), which re-renders every cached unit: trEpoch would also
 	// drop the rows the reader opened.
 	trEdit atomic.Int64
-	// findSeq tags a session search: a scan whose tag moved on lands nowhere,
-	// so an older answer never replaces a newer box.
-	findSeq atomic.Int64
 
 	watches *watchReg
 	hookReg *hookReg

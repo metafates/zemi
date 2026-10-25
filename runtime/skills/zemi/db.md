@@ -2,7 +2,7 @@
 
 zemi keeps its state in SQLite: a global database at `<state>/zemi.db` (user-scope memory ledger, skill enabled state, `kv`) and one per project at `<state>/projects/<hash of the trust root>/zemi.db` (`ZEMI_STATE_HOME`, default `~/.local/state/zemi`; the `root` file beside it names the project). A repository's subdirectories and worktrees share its project store.
 
-Reach for the store when the CLI does not expose what you need: totals over many sessions, what a tool call returned, a saved config pick. Reading a session is better through the commands (`sessions.md`). Anything else:
+Reach for the store when the CLI does not expose what you need: totals over many sessions, what a tool call returned, a saved config pick. Reading a session is better through the commands (`zemi sessions export <id>`, `zemi sessions -a` for the ids; `-r <id>` resumes one). Anything else:
 
 ```sh
 zemi db "select id, title, updated_at, cost from sessions order by updated_at desc limit 5"
@@ -16,7 +16,7 @@ The first argument is the whole query, so quote it; the rest bind to its numbere
 
 A tool call writes two tool-role rows: a content row with the result (`tool_call_id` at `$.content[0].data.tool_call_id`, output text at `$.content[0].data.output.data.text`, error text at `$.content[0].data.output.data.error`) and a stub row `{"tool": name}` that `tool_calls.message_id` points at. So `tool/ok` joins go through the stub, while the result text needs the content row, matched by `tool_call_id` across tool-role rows - rowid adjacency breaks when calls run in parallel.
 
-Agent and workflow runs are session rows with `parent_id` set: `zemi sessions` and `sessions search` list only top-level sessions, and `zemi sessions export <id> --full` renders a run. In SQL, `where parent_id is null` lists the top-level sessions and the inverse finds the run ids.
+Agent and workflow runs are session rows with `parent_id` set: `zemi sessions` lists only top-level sessions, and `zemi sessions export <id> --full` renders a run. In SQL, `where parent_id is null` lists the top-level sessions and the inverse finds the run ids.
 
 The open is read-only all the way down (`mode=ro` and `query_only`): a write fails, nothing is created or migrated, and a store a running zemi holds is read without waiting on it. One SQLite ceiling survives both: `ATTACH` of a path with no file still makes an empty one. A store this zemi's migrations have not reached is refused: run `zemi health` in its project once to migrate it. A missing store is an error naming its path.
 

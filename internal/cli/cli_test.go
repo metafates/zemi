@@ -545,8 +545,8 @@ func TestPaint(t *testing.T) {
 	}
 }
 
-// TestSessionsAcrossProjects: -a and search reach the other projects' stores,
-// grouped by project, and a search that finds nothing exits 1, as grep does.
+// TestSessionsAcrossProjects: -a reaches the other projects' stores, grouped
+// by project.
 func TestSessionsAcrossProjects(t *testing.T) {
 	home := t.TempDir()
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
@@ -563,9 +563,9 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		t.Fatalf("this project is %q, want %q", dirs.TrustRoot(), base)
 	}
 	ids := map[string]string{}
-	for _, p := range []struct{ root, title, text string }{
-		{dirs.TrustRoot(), "local notes", ""},
-		{other, "deploy the kubelet", "the kubelet gave up on the node"},
+	for _, p := range []struct{ root, title string }{
+		{dirs.TrustRoot(), "local notes"},
+		{other, "deploy the kubelet"},
 	} {
 		global, db, err := store.OpenForDirs(dirs.StateHome, p.root)
 		if err != nil {
@@ -575,12 +575,6 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		sid := store.ShortID()
 		if err := db.CreateSession(sid, "", p.title, ""); err != nil {
 			t.Fatal(err)
-		}
-		if p.text != "" {
-			parts := `{"role":"user","content":[{"type":"text","data":{"text":"` + p.text + `"}}]}`
-			if err := db.AddMessage(&store.Message{SessionID: sid, Role: "user", PartsJSON: parts}); err != nil {
-				t.Fatal(err)
-			}
 		}
 		db.Close()
 		ids[perm.CanonPath(p.root)] = sid
@@ -609,11 +603,6 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "-a names the unreadable store", args: []string{"sessions", "-a"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + "\n"},
 		{name: "-a as JSON carries the project", args: []string{"sessions", "-a", "--json"}, stdout: `"id":"` + theirs + `"`},
 		{name: "-a as JSON names its root", args: []string{"sessions", "-a", "--json"}, stdout: `"project":"` + other + `"`},
-		{name: "search finds a word", args: []string{"sessions", "search", "kubelet"}, stdout: theirs + "  "},
-		{name: "search shows the hit count", args: []string{"sessions", "search", "kubelet"}, stdout: "1 hit  "},
-		{name: "search shows the match", args: []string{"sessions", "search", "kubelet"}, stdout: "\n      the kubelet gave up on the node\n"},
-		{name: "search as JSON", args: []string{"sessions", "search", "--json", "kubelet"}, stdout: `"hits":1,"match":"the kubelet gave up on the node"`},
-		{name: "search with no match is 1", args: []string{"sessions", "search", "zzznothing"}, code: 1, stderr: `zemi: no match for "zzznothing" in 2 projects`},
 		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: could not read 1 project store: " + perm.TildePath(garbage) + ": "},
 		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
 		// -r takes any session id: this project's, or one another project holds
