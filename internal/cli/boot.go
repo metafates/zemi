@@ -71,6 +71,15 @@ func launch(o options) int {
 	app.SetProgram(p)
 	markConfig := setReload(host, steps, app)
 
+	// While the TUI is up only the renderer may write to the terminal: fd 2
+	// goes to the log, so a panic's stack or a chatty library cannot smear
+	// over the screen; restore hands the tty back for the lines below.
+	restoreStderr := func() {}
+	if restore, ok := stderrToLog(host.LogPath()); ok {
+		restoreStderr = restore
+		defer restore()
+	}
+
 	// Boot runs on its own goroutine (it may block on the trust prompt);
 	// the outcome reaches the UI through the hook channel.
 	go func() {
@@ -140,6 +149,10 @@ func launch(o options) int {
 	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
+		// a panic bubbletea caught is in the log, not on the screen
+		if errors.Is(err, tea.ErrProgramPanic) {
+			err = fmt.Errorf("%w (stack in %s)", err, host.Dirs.LogDir())
+		}
 		return fail(err)
 	}
 	if host.DB != nil {
@@ -152,7 +165,8 @@ func launch(o options) int {
 		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())
 	}
 	if dir, resume := app.RelaunchDir(); dir != "" {
-		closeLog() // an exec runs no defers
+		restoreStderr() // the exec inherits the tty, and a failed one prints here
+		closeLog()      // an exec runs no defers
 		return fail(relaunch(dir, resume))
 	}
 	return 0

@@ -64,6 +64,12 @@ func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
 	}
 	// NOTE: not internal/proc: the editor needs the controlling terminal
 	// Setsid would drop, and tea.ExecProcess runs and waits for it itself.
+	// Its stderr is that terminal too: while the TUI is up, fd 2 - which
+	// ExecProcess would default to - is the launch log.
+	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+		defer tty.Close()
+		c.Stderr = tty
+	}
 	errc := make(chan error, 1)
 	a.await(func() tea.Cmd {
 		a.editing = sanitize.String(req.Title)

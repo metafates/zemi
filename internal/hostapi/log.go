@@ -84,6 +84,10 @@ func (h *Host) messages() []msgEntry {
 	return slices.Clone(l.entries)
 }
 
+// LogPath is the launch log's file, empty when this host owns no log; the
+// TUI's stderr redirect writes into it.
+func (h *Host) LogPath() string { return h.logPath }
+
 // OpenLogs runs /logs: the recent print and zemi.log lines, newest first,
 // and the launch log file to tail.
 func (h *Host) OpenLogs() error {

@@ -2978,7 +2978,11 @@ the AfterWrite hook scrubs what the user approves.
   its decision's source: a plugin's declared capability, a hook's veto,
   the user, or a fail-closed default), decisions
   and memory writes are all logged with IDs, so the reflector and the user
-  can audit the loop end to end.
+  can audit the loop end to end. While the TUI is up, stderr belongs to the
+  log: fd 2 is redirected into the launch log at start and given back when
+  the program ends, so a panic's stack or a chatty library cannot write over
+  the altscreen - the renderer alone draws on the terminal, and the exit line
+  names the log where a caught panic's stack went.
 
 ## 12. Repository layout
 
