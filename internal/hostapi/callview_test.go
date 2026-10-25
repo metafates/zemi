@@ -27,6 +27,7 @@ func TestCallView(t *testing.T) {
 		Output: "Where?\tin main\tbecause\nWhat?\tnow\t\n",
 	})
 	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "make slow", Status: CallBG, Job: "job-3", Output: "still running"})
+	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "agent", Run: "r9", Text: "look around", Label: "look around", Status: CallOK, Output: "the report"})
 
 	for _, c := range []struct {
 		row    int
@@ -74,10 +75,11 @@ func TestCallView(t *testing.T) {
 			}
 		}
 	}
-	// the view steps along the turn's rail, and a question is a call view too
+	// the view steps along the turn's rail, a question is a call view too,
+	// and a run row is a step target like any other
 	for row, want := range map[int][2]string{
 		1: {"", "call 2"}, 2: {"call 1", "call 3"}, 4: {"call 3", "call 5"},
-		5: {"call 4", "call 6"}, 6: {"call 5", ""},
+		5: {"call 4", "call 6"}, 6: {"call 5", "call 7"}, 7: {"call 6", ""},
 	} {
 		o := h.callView(row, mustRow(t, h, row), 0)
 		if o.Prev != want[0] || o.Next != want[1] {
@@ -108,7 +110,7 @@ func TestCallView(t *testing.T) {
 	if err := h.openCall(-1); err != nil {
 		t.Fatal(err)
 	}
-	if first := ui.opened[len(ui.opened)-1]; first.Prev != "call 6" || first.Next != "call -2" {
+	if first := ui.opened[len(ui.opened)-1]; first.Prev != "call 7" || first.Next != "call -2" {
 		t.Fatalf("the first live call steps to %q and %q", first.Prev, first.Next)
 	}
 	if err := h.openCall(-2); err != nil {
@@ -171,8 +173,8 @@ func TestCallStepCrossesIntoTheLiveTurn(t *testing.T) {
 	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call 3" || o.Next != "" {
 		t.Fatalf("the first live call steps to %q and %q", o.Prev, o.Next)
 	}
-	// a live call that went on as an agent run is a run row: a step passes
-	// over it, both ways
+	// a live call that went on as an agent run is a run row: a step lands on
+	// it like any other, both ways
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{Name: "agent", Run: "r1", Status: CallRun},
 		{Name: "read", Input: "c.go", Status: CallRun},
@@ -180,7 +182,7 @@ func TestCallStepCrossesIntoTheLiveTurn(t *testing.T) {
 	if err := h.openCall(-2); err != nil {
 		t.Fatal(err)
 	}
-	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call 3" || o.Next != "" {
+	if o := ui.opened[len(ui.opened)-1]; o.Prev != "call -1" || o.Next != "" {
 		t.Fatalf("the call past a run row steps to %q and %q", o.Prev, o.Next)
 	}
 	if err := h.openCall(-1); err != nil {

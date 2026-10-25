@@ -345,8 +345,8 @@ func (h *Host) skillBody(m ChatMessage) string {
 // call rows the chat draws as one unit between two messages, so ctrl+j and
 // ctrl+k walk it. The turn settles its calls into the transcript's tail while
 // it still writes the later ones, so the settled rows and the live calls are
-// one rail and a step crosses between them. A run digest is no call view (it
-// opens its run), so a step passes over one, settled or live.
+// one rail and a step crosses between them. Every rail row steps, a run
+// digest like any other: its view is its call's.
 func (h *Host) callStep(n int) (prev, next string) {
 	tr := h.viewedTranscript()
 	s := h.AgentStream()
@@ -355,8 +355,7 @@ func (h *Host) callStep(n int) (prev, next string) {
 	cross := h.viewedRun() == nil && s.Active
 	rail := func(i int) bool { return tr[i].Kind == RowTool || tr[i].Kind == RowReasoning }
 	step := func(i int) string {
-		switch {
-		case !rail(i), tr[i].Kind == RowTool && tr[i].Run != "":
+		if !rail(i) {
 			return ""
 		}
 		return "call " + strconv.Itoa(i+1)
@@ -371,23 +370,21 @@ func (h *Host) callStep(n int) (prev, next string) {
 	}
 	// live scans the turn's unsettled calls for the first step target from
 	// j, walking the way dir points
-	live := func(j, dir int) string {
-		for ; j >= 0 && j < len(s.Tools); j += dir {
-			if s.Tools[j].Run == "" {
-				return "call " + strconv.Itoa(-j-1)
-			}
+	live := func(j int) string {
+		if j < 0 || j >= len(s.Tools) {
+			return ""
 		}
-		return ""
+		return "call " + strconv.Itoa(-j-1)
 	}
 	// the live turn's calls are named by negative rows, -1 its first: a view
 	// of one steps along the run still being written, not a snapshot of
 	// whatever had settled when it opened
 	if n < 0 {
 		if k := -n; k <= len(s.Tools) {
-			if prev = live(k-2, -1); prev == "" && cross {
+			if prev = live(k - 2); prev == "" && cross {
 				prev = back(len(tr) - 1)
 			}
-			return prev, live(k, 1)
+			return prev, live(k)
 		}
 		// the turn landed since the view opened: it steps along the rows the
 		// calls settled at
@@ -410,7 +407,7 @@ func (h *Host) callStep(n int) (prev, next string) {
 	// the walk ran to the transcript's end: the rail runs on into the calls
 	// the turn is still writing
 	if i == len(tr) && cross {
-		next = live(0, 1)
+		next = live(0)
 	}
 	return prev, next
 }
