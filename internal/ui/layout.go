@@ -763,10 +763,13 @@ func pinOf(row []hostapi.Segment) hostapi.Pin {
 	return row[0].Pin
 }
 
-// rowAnchor is the transcript row a drawn row carries, 0 for none.
+// rowAnchor is the transcript row a drawn row carries, 0 for none. A live
+// rail's rows carry their run's anchor, which is negative when the run holds
+// no settled rows; callers that mean "a place the reader can be at" keep
+// their own > 0 guard.
 func rowAnchor(row []hostapi.Segment) int {
 	for _, s := range row {
-		if s.Anchor > 0 {
+		if s.Anchor != 0 {
 			return s.Anchor
 		}
 	}

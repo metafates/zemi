@@ -1372,3 +1372,45 @@ func TestMessagesThinkingTail(t *testing.T) {
 		t.Fatalf("the pick's span %d..%d, want the one row the call draws", from, to)
 	}
 }
+
+// TestRailBandCoversTheLiveOnlyRun: a text tail leaves the turn's live calls
+// a run of their own, anchored by the first call's -1; walking onto its run
+// row bands the live rail and keeps the view on it - never a jump to the
+// conversation's top, and the pick's rows stay lit under the modal fade.
+func TestRailBandCoversTheLiveOnlyRun(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 150, 30)
+	reloadUI(t, host)
+	host.AppendMessage("user", "filler")
+	appendReply(host, strings.Repeat("filler. ", 80), hostapi.TurnStat{})
+	host.AppendMessage("user", "more filler")
+	appendReply(host, strings.Repeat("padding. ", 80), hostapi.TurnStat{})
+	host.AppendMessage("user", "even more filler")
+	appendReply(host, strings.Repeat("late filler. ", 80), hostapi.TurnStat{})
+	host.AppendMessage("user", "the interleaved turn")
+	appendReply(host, "some text", hostapi.TurnStat{})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{ID: "c1", Name: "shell", Input: "sleep 25", Label: "hold the turn", Status: "run"},
+	}})
+	app.renderSync(t)
+	app.Frame()
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	walkToList(t, app, "step")
+	app.Frame()
+	chat := app.scrolls["chat"]
+	if chat.top == 0 {
+		t.Fatal("the view yanked to the top")
+	}
+	banded := bandedChatText(t, app)
+	if !slices.ContainsFunc(banded, func(r string) bool { return strings.Contains(r, "⠋ hold") }) {
+		t.Fatalf("live-only band:\n%s", strings.Join(banded, "\n"))
+	}
+	from, to := spanOf(chat.lines, -1, false)
+	if from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+		t.Fatalf("the pick is off screen: rows %d..%d of view %d..%d", from, to, chat.top, chat.top+chat.viewH)
+	}
+}
