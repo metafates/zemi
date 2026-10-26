@@ -136,7 +136,8 @@ type App struct {
 	workOnce sync.Once
 	editing  string // the editor handoff in progress, shown in the working row
 
-	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
+	prefixes   map[string]string  // styled segment prefixes, rebuilt each frame
+	fadeKeys   map[float64]string // a fade's key text, rebuilt each frame
 	caches     map[string]*widgetCache
 	pending    map[string]renderKey // widget id -> the render in flight
 	renderSeq  int64                // counts render dispatches, so the latest one wins
@@ -232,6 +233,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		caches:   map[string]*widgetCache{},
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
+		fadeKeys: map[float64]string{},
 		scrolls:  map[string]*scrollState{},
 		lastSel:  map[string]string{},
 		timeStr:  "--:--",
@@ -864,10 +866,15 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		delete(a.pending, msg.id)
 	}
 	// the chat drew the run a closing list had open: the list can go now, and
-	// the frame that shows it gone shows the run folded
-	if id := a.railClose; id != "" && msg.id == a.scrollDef && msg.gen >= a.railGen {
-		a.railClose = ""
-		a.closeOverlays(id)
+	// the frame that shows it gone shows the run folded. The chat is the
+	// widget in the default scroll's region; the node's id is the layout's.
+	if id := a.railClose; id != "" && msg.gen >= a.railGen {
+		if st := a.scrolls[a.scrollDef]; st != nil {
+			if w := a.host.Widgets.Get(msg.id); w != nil && w.Region == st.region {
+				a.railClose = ""
+				a.closeOverlays(id)
+			}
+		}
 	}
 	// renders of one generation at two sizes run concurrently: one dispatched
 	// earlier that finishes last must not replace newer lines
@@ -1068,6 +1075,7 @@ func (a *App) compose(w, h int) string {
 		a.cancelling = false
 	}
 	clear(a.prefixes) // a theme cannot change inside one frame
+	clear(a.fadeKeys)
 
 	a.syncChatScroll()
 	lay := a.layout(w, h)
@@ -1149,7 +1157,7 @@ func (a *App) compose(w, h int) string {
 		if i == len(modals)-1 {
 			// the backdrop joins before it fades, so no faded line joins the top box
 			a.join(rows, w)
-			a.fadeRows(rows)
+			rows = a.fadeRows(rows)
 		}
 		place()
 	}
@@ -1308,20 +1316,27 @@ const modalFade = 0.7
 // map dims the chat around what it is looking at, which is why it can be seen.
 // A rail level's pick is one call and the run's first action carries the run's
 // own anchor, so there the pick matches by call alone; any other pick lights
-// the whole unit its anchor draws.
-func (a *App) fadeRows(rows [][]hostapi.Segment) {
+// the whole unit its anchor draws. It returns the rows: a region's rows share
+// slices with the widget cache, so a faded row is a copy, never written in
+// place.
+func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
+	out := make([][]hostapi.Segment, len(rows))
 	for i, row := range rows {
 		if a.highlight != 0 && (rowCall(row) == a.highlight || (!a.railPick && rowAnchor(row) == a.highlight)) {
+			out[i] = row
 			continue
 		}
+		faded := make([]hostapi.Segment, len(row))
 		for k, s := range row {
-			rows[i][k] = hostapi.Segment{
+			faded[k] = hostapi.Segment{
 				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
 				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
 				Fill: s.Fill, Fade: max(s.Fade, modalFade),
 			}
 		}
+		out[i] = faded
 	}
+	return out
 }
 
 // floatPopup draws the open composer popup, the palette or the completion
@@ -1873,7 +1888,14 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 		key += "\x00" + string(rune('0'+fill))
 	}
 	if fade > 0 {
-		key += "\x00" + strconv.FormatFloat(fade, 'f', 3, 64)
+		fk, ok := a.fadeKeys[fade]
+		if !ok {
+			// the same handful of fades (the modal's, the edge ramps') style
+			// thousands of segments a frame under a box: format each once
+			fk = strconv.FormatFloat(fade, 'f', 3, 64)
+			a.fadeKeys[fade] = fk
+		}
+		key += "\x00" + fk
 		if panel {
 			key += "p"
 		}

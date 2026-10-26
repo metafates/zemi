@@ -1157,7 +1157,7 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 			if sg.Widget == "" && sg.Click != "" { // a Go pill
 				keep = append(keep, kept{x, y, []hostapi.Segment{sg}})
 			}
-			x += hostapi.SegsWidth([]hostapi.Segment{sg})
+			x += ansi.StringWidth(sg.Text)
 		}
 	}
 	for _, pf := range s.floats {
