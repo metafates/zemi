@@ -716,7 +716,8 @@ function zemi.event.emit(name, payload) end
 
 --- Recent events newest first, each the table its handlers saw (a vetoable
 --- event nobody listens to is counted but never logged), the last 500.
---- The streaming deltas are counted in stats only.
+--- The streaming deltas are counted in stats only; a `tool.post` entry's
+--- `output` is cut to 4096 runes.
 ---@param opts? zemi.EventLogOpts
 ---@return zemi.EventLogEntry[]
 function zemi.event.list(opts) end
@@ -1006,6 +1007,7 @@ function zemi.event.stats() end
 --- config.
 ---@class zemi.OverlayItem
 ---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field id? string the row's own data: what a callback matches on, and the row the list reopens at
 ---@field desc? string dim column after the text; the filter finds words in it
 ---@field preview? string shown whole under the list while this row is selected, in a pane as tall as the longest preview (4 rows at most), so moving never shifts a row; the filter matches it too
 ---@field key? string right-aligned tag
@@ -1093,8 +1095,8 @@ zemi.ui = {}
 ---@class zemi.ui.widget
 zemi.ui.widget = {}
 
---- Register a widget in a region. Registering the same id again from the
---- same origin replaces it; a lower-trust origin is refused.
+--- Register a widget in a region. Registering the same id again replaces it;
+--- one plugin can neither replace nor remove another's.
 ---
 --- ```lua
 --- zemi.ui.widget.add({
@@ -1327,9 +1329,9 @@ function zemi.ui.theme.list() end
 zemi.ui.overlay = {}
 
 --- Opening the id of an open overlay replaces it in place, keeping selection
---- and filter, when the caller may close it (see close); otherwise it opens
---- over it. An item or action field of the wrong type raises (a list item's
---- `id` and `hl` are its own data).
+--- and filter, when the caller may close it (see close); otherwise the open
+--- is refused and lands in /errors. An item or action field of the wrong type
+--- raises (a list item's `id` is its own data).
 ---
 --- ```lua
 --- zemi.ui.overlay.open({
@@ -2131,7 +2133,7 @@ function zemi.perm.ask(spec) end
 -- zemi.tool
 
 ---@class zemi.ToolSpec An unknown field raises.
----@field name string
+---@field name string A lowercase identifier (`^[a-z][a-z0-9_]*$`); a builtin's name is refused.
 ---@field description string What the model reads to decide when to call it. Required.
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
 ---@field required? string[] Which of `input`'s parameters the model must send.
@@ -2409,7 +2411,9 @@ zemi.http = {}
 ---@return zemi.HTTPHandle
 function zemi.http.request(spec) end
 
---- A GET, with `on_done` where a handle cannot be waited on (a render, a timer).
+--- A GET, with `on_done` where a handle cannot be waited on (a render, a
+--- timer). Without `on_done` and without a waited handle the response is
+--- dropped.
 ---
 --- ```lua
 --- zemi.http.get("https://wttr.in/Oslo?format=3", {
@@ -2419,7 +2423,7 @@ function zemi.http.request(spec) end
 --- })
 --- ```
 ---@param url string
----@param opts? { on_done: fun(res: zemi.HTTPDone) }
+---@param opts? { on_done?: fun(res: zemi.HTTPDone) }
 ---@return zemi.HTTPHandle
 function zemi.http.get(url, opts) end
 
@@ -2651,7 +2655,8 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- Turn a skill on or off; `+name` attaches a disabled skill either way.
+--- Turn a skill on or off. (`+name` in a message attaches a skill whether it
+--- is on or off.)
 ---@param name string
 ---@param on boolean
 ---@return true|nil ok
@@ -2718,14 +2723,16 @@ function zemi.mcp.del(name) end
 function zemi.mcp.list() end
 
 --- Flip a server's persisted switch, or a whole group's at once. A disabled
---- server keeps its /mcp row and starts when turned back on. Raises for a
---- name that is neither a server nor a group.
+--- server keeps its /mcp row and starts when turned back on. A name that is
+--- neither a server nor a group gives nil and the error.
 ---
 --- ```lua
 --- zemi.mcp.enable("work", false) -- the whole group off
 --- ```
 ---@param name string
 ---@param on boolean
+---@return true|nil ok
+---@return string|nil err
 function zemi.mcp.enable(name, on) end
 
 ---@class zemi.LSPSpec

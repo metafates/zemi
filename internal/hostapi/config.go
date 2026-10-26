@@ -522,10 +522,10 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 
 	// off(id) drops a watch by the id watch returned
 	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
-		id, cerr := strconv.Atoi(L.CheckString(1))
+		sid := L.CheckString(1)
+		id, cerr := strconv.Atoi(sid)
 		if cerr != nil {
-			L.Push(glua.LBool(false))
-			return 1
+			L.RaiseError("zemi.config.off: %q is not a watch id", sid)
 		}
 		removed, err := h.watches.del(id, h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {

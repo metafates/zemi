@@ -55,7 +55,8 @@ func (h *Host) uiAsk(L *glua.LState, api string, o Overlay, cb *glua.LFunction) 
 	})))
 	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
 		if ui := h.hooks(); ui != nil {
-			ui.CloseOverlay(o.ID)
+			// its own ask: the origin that opened it may always close it
+			ui.CloseOverlay(o.ID, o.Origin, o.Path)
 		}
 		return 0
 	}))
@@ -240,7 +241,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	overlay.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
 		if ui := h.hooks(); ui != nil {
-			ui.CloseOverlay(id)
+			ui.CloseOverlay(id, h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		}
 		return 0
 	}))

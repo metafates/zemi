@@ -823,7 +823,7 @@ func (f *fakeUI) overlays() []Overlay {
 	return slices.Clone(f.opened)
 }
 
-func (f *fakeUI) CloseOverlay(id string) {
+func (f *fakeUI) CloseOverlay(id string, by lua.Origin, byPath string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closed = append(f.closed, id)

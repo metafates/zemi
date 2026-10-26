@@ -188,6 +188,10 @@ func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, h
 // Lua for them.
 func (a *App) openOverlay(o hostapi.Overlay) {
 	if i := a.overlayIndex(o.ID); i >= 0 {
+		if err := a.overlays[i].o.RefuseBy(o.Origin, o.Path, a.host.PluginOf); err != nil {
+			a.host.RecordError("zemi.ui.overlay.open", o.ID, err.Error())
+			return
+		}
 		a.replaceOverlay(i, o)
 		a.refreshDetail(i)
 		a.byRow = false

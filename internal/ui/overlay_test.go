@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -851,8 +852,8 @@ func TestOverlayNavigation(t *testing.T) {
 						return fmt.Sprintf("%v: overlays=%d selected=%d", c.items, len(a.overlays), a.overlays[0].selected)
 					}
 				}
-				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []hostapi.OverlayItem{{Text: "e"}}})
-				return fail(len(a.overlays) == 1 && a.overlays[0].labels[0] == "e", "a plugin did not replace the list")
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginUser, Items: []hostapi.OverlayItem{{Text: "e"}}})
+				return fail(len(a.overlays) == 1 && a.overlays[0].labels[0] == "e", "a user open did not replace the list")
 			},
 		},
 		{
@@ -1912,6 +1913,137 @@ func TestOverlayCloseRules(t *testing.T) {
 	}
 }
 
+// TestOverlayOwnership: the isolation rule the types promise - user config,
+// builtin code or the origin that opened an overlay may close or replace it;
+// of the plugins only the one that opened it, and a Go screen's overlay
+// (Gen 0) is out of every plugin's reach. A refusal is named in /errors.
+func TestOverlayOwnership(t *testing.T) {
+	t.Parallel()
+	pluginPath := func(host *hostapi.Host, name string) string {
+		return filepath.Join(host.Dirs.PluginsRoot(), "local", name, ".zemi", "init.lua")
+	}
+	runAs := func(origin lua.Origin, name string) func(t *testing.T, app *App, host *hostapi.Host, src string) {
+		return func(t *testing.T, app *App, host *hostapi.Host, src string) {
+			t.Helper()
+			if err := host.RT.ExecuteChunk(t.Context(), src, pluginPath(host, name), origin); err != nil {
+				t.Fatal(err)
+			}
+			for app.Pump() {
+			}
+		}
+	}
+	alpha := runAs(lua.OriginPlugin, "alpha")
+	beta := runAs(lua.OriginPlugin, "beta")
+	user := runAs(lua.OriginUser, "alpha")
+	openGo := func(t *testing.T, app *App, host *hostapi.Host) {
+		app.openOverlay(hostapi.Overlay{ID: "g", Title: "Go", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "go"}}})
+	}
+	cases := []struct {
+		name    string
+		open    func(t *testing.T, app *App, host *hostapi.Host)
+		act     func(t *testing.T, app *App, host *hostapi.Host)
+		text    string // the first row's text after act; "" once the act closed or replaced it
+		refused bool   // the act must be refused, and named in /errors
+	}{
+		{
+			"a plugin closes its own",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "o", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) { alpha(t, app, host, `zemi.ui.overlay.close("o")`) },
+			"", false,
+		},
+		{
+			"a plugin cannot close another plugin's",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "o", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) { beta(t, app, host, `zemi.ui.overlay.close("o")`) },
+			"a", true,
+		},
+		{
+			"a plugin cannot close a Go screen's",
+			openGo,
+			func(t *testing.T, app *App, host *hostapi.Host) { beta(t, app, host, `zemi.ui.overlay.close("g")`) },
+			"go", true,
+		},
+		{
+			"user config closes a plugin's",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "o", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) { user(t, app, host, `zemi.ui.overlay.close("o")`) },
+			"", false,
+		},
+		{
+			"user config closes a Go screen's",
+			openGo,
+			func(t *testing.T, app *App, host *hostapi.Host) { user(t, app, host, `zemi.ui.overlay.close("g")`) },
+			"", false,
+		},
+		{
+			"a plugin cannot replace another plugin's",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				beta(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "b" } })`)
+			},
+			"a", true,
+		},
+		{
+			"a plugin replaces its own",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "b" } })`)
+			},
+			"b", false,
+		},
+		{
+			"a plugin cannot stand in for a Go screen's id",
+			openGo,
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				beta(t, app, host, `zemi.ui.overlay.open({ id = "g", items = { "p" } })`)
+			},
+			"go", true,
+		},
+		{
+			"user config replaces a plugin's",
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				alpha(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "a" } })`)
+			},
+			func(t *testing.T, app *App, host *hostapi.Host) {
+				user(t, app, host, `zemi.ui.overlay.open({ id = "r", items = { "u" } })`)
+			},
+			"u", false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 80, 24)
+			c.open(t, app, host)
+			if len(app.overlays) != 1 {
+				t.Fatalf("open: %+v", app.overlays)
+			}
+			c.act(t, app, host)
+			if c.text == "" {
+				if len(app.overlays) != 0 {
+					t.Fatalf("act did nothing: %+v", app.overlays)
+				}
+				return
+			}
+			if len(app.overlays) != 1 || app.overlays[0].o.Items[0].Text != c.text {
+				t.Fatalf("act: %+v", app.overlays)
+			}
+			if c.refused && !host.HasUnseenErrors() {
+				t.Fatal("a refusal left nothing in /errors")
+			}
+		})
+	}
+}
+
 // TestOverlayReopensOnItsRow: a menu left for a screen that closes it (a
 // run's transcript under a row's run, the palette) reopens with the cursor
 // on the row it was left on, falling back to the first when the list
@@ -1927,7 +2059,7 @@ func TestOverlayReopensOnItsRow(t *testing.T) {
 		Name: "open", NArgs: hostapi.NArgsAny, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
 		GoFn: func(h *hostapi.Host, args string, confirm bool) error { // the screen the row opens closes the menu, as /agents view does
 			if ui, err := h.Screen(); err == nil {
-				ui.CloseOverlay("menu")
+				ui.CloseOverlay("menu", lua.OriginBuiltin, "")
 				ui.OpenOverlay(hostapi.Overlay{ID: "view:" + args, Title: "View", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "x"}, {Text: "y"}}})
 			}
 			return nil

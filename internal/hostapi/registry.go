@@ -66,6 +66,28 @@ func mayReplace(owner func(string) string, what string, old lua.Origin, oldPath 
 	return nil
 }
 
+// RefuseBy is the overlay isolation rule the types promise (zemi.ui.overlay):
+// user config, builtin code or the origin that opened an overlay may close or
+// replace it, and of the plugins only the one that opened it (mayReplace). A
+// Go screen's overlay (Gen 0) is out of every plugin's reach either way, so no
+// stand-in takes its id. by of "" is a Go caller that set no origin.
+func (o Overlay) RefuseBy(by lua.Origin, byPath string, owner func(string) string) error {
+	if by == lua.OriginUser || by == lua.OriginBuiltin || by == "" {
+		return nil
+	}
+	if by == o.Origin && (o.Origin != lua.OriginPlugin || owner(o.Path) == owner(byPath)) {
+		return nil
+	}
+	what := fmt.Sprintf("overlay %q", o.ID)
+	if o.Gen == 0 {
+		return fmt.Errorf("%s is opened by zemi itself", what)
+	}
+	if o.Origin == lua.OriginPlugin {
+		return fmt.Errorf("%s is opened by plugin %s, not %s", what, owner(o.Path), owner(byPath))
+	}
+	return fmt.Errorf("%s is opened by %s code", what, o.Origin)
+}
+
 // KeymapRegistry stores one binding per key and focus; the last registration
 // wins (DESIGN §6.2).
 type KeymapRegistry struct {

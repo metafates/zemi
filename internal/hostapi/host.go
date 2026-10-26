@@ -40,8 +40,9 @@ type UIHooks interface {
 	// RefreshOverlay replaces the open overlay id with what build returns,
 	// calling build only while it is open: for a screen a clock refreshes.
 	RefreshOverlay(id string, build func() Overlay)
-	// CloseOverlay closes an overlay and runs its on_close.
-	CloseOverlay(id string)
+	// CloseOverlay closes an overlay and runs its on_close. by is who asks:
+	// builtin for Go code, the running origin for zemi.ui.overlay.close.
+	CloseOverlay(id string, by lua.Origin, byPath string)
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
 	Refresh()
@@ -2322,7 +2323,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.140.0"))
+	api.RawSetString("version", glua.LString("0.141.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

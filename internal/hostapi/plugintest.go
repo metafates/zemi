@@ -1028,7 +1028,7 @@ func (u *testUI) RefreshOverlay(id string, build func() Overlay) {
 
 // CloseOverlay runs the overlay's on_close off the interpreter, as the UI's
 // worker does.
-func (u *testUI) CloseOverlay(id string) {
+func (u *testUI) CloseOverlay(id string, by lua.Origin, byPath string) {
 	u.mu.Lock()
 	i := slices.IndexFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
 	if i < 0 {

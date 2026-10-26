@@ -161,7 +161,7 @@ func (h *Host) refreshMessagesFrom(p pickTr) {
 	for _, id := range levels {
 		o, ok := h.messagesLevel(id, p)
 		if !ok {
-			ui.CloseOverlay(id)
+			ui.CloseOverlay(id, lua.OriginBuiltin, "")
 			continue
 		}
 		open = append(open, id)

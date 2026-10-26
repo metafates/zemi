@@ -930,14 +930,11 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	// enable(name, on): flip a server's persisted switch, or a whole group's;
-	// raises for a name that is neither. A call from init.lua pins the switch
-	// against every reload, like any config write.
+	// a name that is neither gives nil and the error, like zemi.skills.enable.
+	// A call from init.lua pins the switch against every reload, like any
+	// config write.
 	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int {
-		name := L.CheckString(1)
-		if err := h.setMCPName(name, L.CheckBool(2)); err != nil {
-			L.RaiseError("zemi.mcp.enable: %v", err)
-		}
-		return 0
+		return luaResult(L, h.setMCPName(L.CheckString(1), L.CheckBool(2)))
 	}))
 	return tb
 }

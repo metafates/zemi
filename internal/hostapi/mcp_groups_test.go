@@ -367,9 +367,9 @@ func TestMCPToggleLua(t *testing.T) {
 		t.Fatalf("solo = %v, want ungrouped, enabled", g)
 	}
 
-	_, err := runChunk(t, r, `zemi.mcp.enable("nope", true)`)
-	if err == nil || !strings.Contains(err.Error(), "no MCP server or group") {
-		t.Fatalf("err = %v, want the both-worded miss", err)
+	vals, err := runChunk(t, r, `return zemi.mcp.enable("nope", true)`)
+	if err != nil || len(vals) != 2 || vals[0] != nil || vals[1] != `no MCP server or group "nope"` {
+		t.Fatalf("vals = %v, err = %v, want nil and the both-worded miss", vals, err)
 	}
 }
 

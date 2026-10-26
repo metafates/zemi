@@ -1851,7 +1851,7 @@ func (h *Host) workflowCommands() []*Command {
 					// close, and esc restores them - the menu under the run
 					// view the back command reopens
 					for _, o := range []string{"workflow:" + id, "workflows"} {
-						h.hooks().CloseOverlay(o)
+						h.hooks().CloseOverlay(o, lua.OriginBuiltin, "")
 					}
 					return nil
 				}
@@ -1883,7 +1883,7 @@ func (h *Host) workflowCommands() []*Command {
 					next, err := rerun()
 					if err == nil {
 						// the new run's view in the old one's place, where its keys act on it
-						h.hooks().CloseOverlay("workflow:" + id)
+						h.hooks().CloseOverlay("workflow:"+id, lua.OriginBuiltin, "")
 						err = h.openFlow(next)
 					}
 					if err != nil {
