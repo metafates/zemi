@@ -216,9 +216,9 @@ func (h *Host) sessionItems() ([]OverlayItem, error) {
 }
 
 // DeleteSession removes a stored session other than the live one, with its
-// subagent runs and scratchpad, once yes confirms it (AskFirst). The rewrite
-// that clears the text from disk takes a while on a large store, so it runs
-// off the caller's goroutine.
+// subagent runs and scratchpad, once yes confirms it (AskFirst). It runs
+// whole: the sessions picker's rebuild queues behind this command on the
+// same worker, so a detached delete would still be listed when it reads.
 func (h *Host) DeleteSession(id string, yes bool) error {
 	if h.DB == nil {
 		return errNoStore
@@ -238,20 +238,12 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 	if !yes {
 		return AskFirst("sessions delete "+id+" --yes", "", h.OpenSessions)
 	}
-	del := func() error {
-		if err := h.DB.DeleteSession(id); err != nil {
-			return err
-		}
-		h.recentStale.Store(true)
-		h.removeSessionFiles(id)
-		h.Notify(slog.LevelInfo, "Session deleted", s.Title)
-		return nil
+	if err := h.DB.DeleteSession(id); err != nil {
+		return err
 	}
-	h.GoSafe("delete session", func() {
-		if err := del(); err != nil {
-			h.Notify(slog.LevelError, "Could not delete the session", err.Error())
-		}
-	})
+	h.recentStale.Store(true)
+	h.removeSessionFiles(id)
+	h.Notify(slog.LevelInfo, "Session deleted", s.Title)
 	return nil
 }
 

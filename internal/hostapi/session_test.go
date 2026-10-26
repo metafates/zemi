@@ -418,6 +418,42 @@ func TestSessionLifecycle(t *testing.T) {
 	})
 }
 
+// TestDeleteSettlesForThePicker: the sessions picker's rebuild queues
+// behind the delete command on one worker, so when DeleteSession returns
+// the row must be out of both the store and what the rebuild reads.
+func TestDeleteSettlesForThePicker(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	h.reflectMu.Lock()
+	defer h.reflectMu.Unlock()
+	if err := h.AgentSend("one"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	first := h.AgentSessionID()
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DeleteSession(first, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.GetSession(first); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the delete returned before its store write: %v", err)
+	}
+	items, err := h.sessionItems()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		for _, k := range it.Keys {
+			if k.Run == "sessions delete "+first {
+				t.Fatalf("the rebuilt picker still lists the deleted session: %+v", it)
+			}
+		}
+	}
+}
+
 // TestSessionDeletedUnderHost: another window's delete removes the session
 // row this one writes to. The next turn names the deletion with the /new
 // remedy instead of a raw FK error, /errors carries the notice once, and the
