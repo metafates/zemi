@@ -154,6 +154,14 @@ type agentHost struct {
 	// handoffAsked is the key it already asked about.
 	lastSent     string
 	handoffAsked string
+	// lastCore is the pin core the last step was sent with: an MCP-only move
+	// of the key between the steps is not a switch.
+	lastCore string
+	// lastCache is the cache usage the last completed step reported: evidence
+	// the provider caches the prefix at all. A model that reports neither a
+	// cache read nor a write has no warm prefix to ride, so handoffGate stays
+	// silent.
+	lastCache int64
 	// ctx is the context message the live session last stored: a resume
 	// loads it, a drop point clears it
 	ctx contextRow
@@ -371,10 +379,10 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 // sections and each tool's Info, and the instruction file versions messages
 // carried since (instructionEdits).
 type promptPin struct {
-	key, text, context string
-	parts              promptParts
-	infos              map[string]fantasy.ToolInfo
-	sent               map[string]time.Time
+	key, core, text, context string
+	parts                    promptParts
+	infos                    map[string]fantasy.ToolInfo
+	sent                     map[string]time.Time
 }
 
 // dropPin makes the next send build the prompt again. The text stays for
@@ -433,13 +441,20 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.roleModel(defaultRole)
-	key := []string{id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
+	trusted, images := strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))
+	key, core := []string{id, trusted, images}, []string{id, trusted, images}
 	infos := make([]fantasy.ToolInfo, len(toolset))
 	for i, t := range toolset {
 		infos[i] = t.Info()
 		// Parallel is in the key: fantasy reads it per step, not the provider
 		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required, infos[i].Parallel}, json.Deterministic(true))
-		key = append(key, infos[i].Name, string(schema))
+		pair := []string{infos[i].Name, string(schema)}
+		key = append(key, pair...)
+		// the MCP tools move on their own (a server connecting, a tools/list
+		// refresh), which is not a switch: core is key without them
+		if !strings.HasPrefix(infos[i].Name, mcpToolPrefix) && infos[i].Name != string(tools.ToolSearch) {
+			core = append(core, pair...)
+		}
 	}
 	k := strings.Join(key, "\x00")
 	ag := h.agents
@@ -449,7 +464,7 @@ func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, 
 	pin, drops, brainText, hookText := ag.pin, ag.pinDrops, ag.brain, ag.hookCtx
 	ag.mu.Unlock()
 	if pin.key != k {
-		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
+		pin = promptPin{key: k, core: strings.Join(core, "\x00"), infos: map[string]fantasy.ToolInfo{}}
 		pin.text, pin.context, pin.parts = h.buildSystemParts(toolset)
 		for _, info := range infos {
 			pin.infos[info.Name] = info

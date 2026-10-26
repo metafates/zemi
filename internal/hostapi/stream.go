@@ -210,7 +210,8 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	sid, model, touched := ag.sessionID, h.turnModelID(), ag.todoTouched
 	ag.todoTouched = false
 	// the step's prefix is in the provider's cache now
-	ag.lastSent, ag.handoffAsked = ag.pin.key, ""
+	ag.lastSent, ag.lastCore, ag.handoffAsked = ag.pin.key, ag.pin.core, ""
+	ag.lastCache = st.Usage.CacheReadTokens + st.Usage.CacheCreationTokens
 	ag.mu.Unlock()
 	h.emitStep(sid, model, st)
 	if !touched {

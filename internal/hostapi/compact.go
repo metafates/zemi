@@ -297,7 +297,9 @@ const handoffMinTokens = 50_000
 // whose prefix the provider cannot read from cache - the model or the
 // pinned prompt changed since the last step, so the whole conversation
 // would resend. Switching back never asks: the key matches the last sent
-// one again. The summary is asked on prev, the runner the last step sent
+// one again. It stays silent when the provider reports no cache at all and
+// when only the MCP tools moved: neither leaves a warm prefix worth riding.
+// The summary is asked on prev, the runner the last step sent
 // on, so it rides that model's warm prefix, and the send's runner opens on
 // the summary and the tail. It runs on the turn goroutine: the ask blocks
 // on the UI and the summary is a model call, and a composer submit reaches
@@ -307,9 +309,15 @@ func (h *Host) handoffGate(runner, prev *agent.Runner, from string, scope *turnS
 	ag := h.agents
 	ag.mu.Lock()
 	newModel, key, last := ag.turnModel, ag.pin.key, ag.lastSent
-	asked, in := ag.handoffAsked == key, ag.lastIn
+	core, lastCore := ag.pin.core, ag.lastCore
+	asked, in, cache := ag.handoffAsked == key, ag.lastIn, ag.lastCache
 	ag.mu.Unlock()
-	if from == "" || last == "" || last == key || asked || in < handoffMinTokens {
+	// cache == 0: the last step reported no cache read or write, so the
+	// provider holds no warm prefix and the ask has nothing to offer
+	if from == "" || last == "" || last == key || asked || in < handoffMinTokens || cache == 0 {
+		return
+	}
+	if core == lastCore { // the MCP tools moved alone: a server settled or refreshed mid-session
 		return
 	}
 	// the summary bills to the model that runs it, the old one, whose warm

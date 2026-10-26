@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log/slog"
 	"slices"
@@ -242,7 +243,7 @@ func TestHandoffGate(t *testing.T) {
 	h.SetUIHooks(ui)
 	send(strings.Repeat("x", 80_000))
 	h.agents.mu.Lock()
-	h.agents.lastIn = 90_000 // the gate's floor is 50k
+	h.agents.lastIn, h.agents.lastCache = 90_000, 1 // the gate's floor is 50k
 	ag := h.agents
 	ag.mu.Unlock()
 
@@ -264,9 +265,39 @@ func TestHandoffGate(t *testing.T) {
 		t.Fatalf("a small context asked")
 	}
 
-	// the change asks once, and sending as is keeps the whole history
+	// a model that reports no cache never asks: the summary would ride no
+	// warm prefix, so the ask has nothing to offer
+	h.Settings.SetQuiet("models.default", "stub/m6")
 	ag.mu.Lock()
 	ag.lastIn = 90_000
+	ag.mu.Unlock()
+	send("no cache")
+	if len(ui.qAsked) != 0 {
+		t.Fatalf("a model with no cache asked: %v", ui.qAsked[0].Question)
+	}
+	ag.mu.Lock()
+	ag.lastCache = 1
+	ag.mu.Unlock()
+
+	// an MCP-only move of the key (a server settling or refreshing
+	// mid-session) never asks: the send just catches up
+	base := h.mainTools()
+	h.pinPrompt(base)
+	ag.mu.Lock()
+	ag.lastSent, ag.lastCore, ag.lastIn, ag.lastCache = ag.pin.key, ag.pin.core, 90_000, 1
+	ag.mu.Unlock()
+	mcpTool := fantasy.NewAgentTool("mcp_fake_t", "stub", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	h.pinPrompt(append(base, mcpTool))
+	h.handoffGate(nil, nil, "stub/m6", &turnScope{ctx: context.Background()})
+	if len(ui.qAsked) != 0 {
+		t.Fatalf("an MCP-only prompt move asked: %v", ui.qAsked[0].Question)
+	}
+
+	// the change asks once, and sending as is keeps the whole history
+	ag.mu.Lock()
+	ag.lastIn, ag.lastCache = 90_000, 1
 	ag.mu.Unlock()
 	h.Settings.SetQuiet("models.default", "stub/m3")
 	send("ask me")
@@ -283,7 +314,7 @@ func TestHandoffGate(t *testing.T) {
 
 	// compacting on the old model hands the summary to the new one
 	ag.mu.Lock()
-	ag.lastIn = 90_000
+	ag.lastIn, ag.lastCache = 90_000, 1
 	ag.mu.Unlock()
 	h.Settings.SetQuiet("models.default", "stub/m4")
 	ui.qAnswer = "Compact, then send"
@@ -312,7 +343,7 @@ func TestHandoffGate(t *testing.T) {
 	send(strings.Repeat("y", 80_000))
 	h.Settings.SetQuiet("models.default", "stub/m5")
 	ag.mu.Lock()
-	ag.lastIn = 90_000
+	ag.lastIn, ag.lastCache = 90_000, 1
 	ag.mu.Unlock()
 	send("handoff again")
 	got = m.prompts[len(m.prompts)-1]
@@ -358,7 +389,7 @@ func TestHandoffGateOffTheSendPath(t *testing.T) {
 	send := sender(t, h)
 	send(strings.Repeat("x", 80_000))
 	h.agents.mu.Lock()
-	h.agents.lastIn = 90_000 // the gate's floor is 50k
+	h.agents.lastIn, h.agents.lastCache = 90_000, 1 // the gate's floor is 50k
 	h.agents.mu.Unlock()
 	h.Settings.SetQuiet("models.default", "stub/m2")
 
@@ -405,7 +436,7 @@ func TestHandoffModes(t *testing.T) {
 			h.SetUIHooks(ui)
 			send(strings.Repeat("x", 80_000))
 			h.agents.mu.Lock()
-			h.agents.lastIn = 90_000
+			h.agents.lastIn, h.agents.lastCache = 90_000, 1
 			h.agents.mu.Unlock()
 			h.Settings.SetQuiet("models.default", "stub/m2")
 			h.Settings.SetQuiet(config.KeyAgentHandoff, c.mode)
