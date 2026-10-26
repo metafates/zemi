@@ -102,6 +102,14 @@ type App struct {
 	// rendered that run folded, whose generation is railGen
 	railClose string
 	railGen   int64
+	// stepFrom is the view a step (ctrl+j/k) held open; the walk's run posts
+	// its landing (stepOpening marks the run on the worker) and the settle
+	// swaps the two in one mutation. stepSettledSeq is the last served run.
+	stepFrom       string
+	stepOpening    atomic.Int64
+	stepSeq        int64
+	stepSettledSeq int64
+	stepLanded     []hostapi.Overlay
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 

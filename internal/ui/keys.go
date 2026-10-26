@@ -583,7 +583,7 @@ func (a *App) background(fn func()) {
 // never blocks a key. confirm says an armed danger key ran it.
 func (a *App) runCommand(name, args string, confirm bool) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn != nil {
-		a.background(func() { a.runGo(name, args, confirm) })
+		a.background(func() { _ = a.runGo(name, args, confirm) })
 		return
 	}
 	if err := a.runCommandErr(name, args, confirm); err != nil {
@@ -597,17 +597,20 @@ func (a *App) runCommand(name, args string, confirm bool) {
 // through CommandFailed as always.
 func (a *App) runCommandErr(name, args string, confirm bool) error {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
-		a.background(func() { a.runGo(name, args, confirm) })
+		a.background(func() { _ = a.runGo(name, args, confirm) })
 		return nil
 	}
 	return a.host.RunCommand(context.Background(), name, args, confirm)
 }
 
-// runGo runs a Go command, reporting a failure the way any command's is.
-func (a *App) runGo(name, args string, confirm bool) {
-	if err := a.host.RunCommand(context.Background(), name, args, confirm); err != nil {
+// runGo runs a Go command, reporting a failure the way any command's is. It
+// returns the failure for a caller that acts on it.
+func (a *App) runGo(name, args string, confirm bool) error {
+	err := a.host.RunCommand(context.Background(), name, args, confirm)
+	if err != nil {
 		a.host.CommandFailed(name, err)
 	}
+	return err
 }
 
 // keyText extracts the literal text a keypress should insert (printable

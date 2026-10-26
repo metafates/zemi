@@ -730,13 +730,11 @@ func (a *App) closeOverlays(id string) {
 		dropped = dropped || st.o.Follow
 		return true
 	})
-	// a pending jump of a following level that died without a cancel (a rewind
-	// closed the picker) must not fire on whatever later draws that row
-	if dropped {
+	if dropped { // a pending jump of a level that died without a cancel must not fire
 		delete(a.pendingAnchor, a.scrollDef)
 	}
-	if n := len(a.overlays); top && n > 0 && a.overlays[n-1].o.Reload != nil {
-		a.reloadOverlay(a.overlays[n-1].o, nil)
+	if top && len(a.overlays) > 0 && a.overlays[len(a.overlays)-1].o.Reload != nil {
+		a.reloadOverlay(a.overlays[len(a.overlays)-1].o, nil)
 	}
 	a.syncRail()
 }
@@ -783,8 +781,8 @@ func (a *App) closeMenu(st *overlayState) {
 // level was opened on.
 func (a *App) stepUnder(run string) {
 	row, rowErr := strconv.Atoi(strings.TrimPrefix(run, "call "))
-	// the step closes this view and opens the next one on a worker, so the
-	// level to move is the one a following list is: the nearest below
+	// the step holds this view open and lands the next one on a worker, so
+	// the level to move is the one a following list is: the nearest below
 	i := len(a.overlays) - 1
 	for i >= 0 && !a.overlays[i].o.Follow {
 		i--
@@ -842,8 +840,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	// a view opened from a rail steps along it in place, and the level under
 	// it steps with it: the view and the list name one row
 	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
-		a.closeOverlayByID(o.ID)
-		a.runOverlayRow(hostapi.OverlayItem{Run: run})
+		a.stepTo(o, run)
 		a.stepUnder(run)
 		return nil
 	}
@@ -1150,6 +1147,50 @@ func (a *App) cancelMenu() {
 		i--
 	}
 	a.cancelOverlay(a.overlays[i].o)
+}
+
+// stepSettled ends the walk's run: the view it posted swaps for the held one
+// in one mutation, the hold passing to the landing for the walk's next step.
+// A failed run, or one posting several views, stacks them and ends the walk
+// with the held view staying; a stranger's open alone in the window of a run
+// that posted nothing still takes the held view's place - full closure needs
+// caller identity.
+func (a *App) stepSettled(seq int64, failed bool) {
+	a.stepSettledSeq = seq
+	cands := a.stepLanded
+	a.stepLanded = nil
+	if !failed && len(cands) == 1 {
+		held := a.stepFrom
+		a.stepFrom = cands[0].ID
+		a.closeOverlays(held)
+		a.openOverlay(cands[0])
+		return
+	}
+	if a.stepSeq == seq { // a newer step owns the hold; its settle decides
+		a.stepFrom = ""
+	}
+	for _, o := range cands {
+		a.openOverlay(o)
+	}
+}
+
+// stepTo walks to the view run names, holding the open one until the new one
+// lands in its place.
+func (a *App) stepTo(o hostapi.Overlay, run string) {
+	a.stepFrom = o.ID
+	a.stepSeq++
+	seq := a.stepSeq
+	name, args := hostapi.SplitCommand(run)
+	a.byRow = true // the view the run opens is a level of the list it came from
+	a.background(func() {
+		a.stepOpening.Store(seq) // the opens this run posts are its landings
+		failed := true           // a run that panicked never got to say
+		defer func() {
+			a.stepOpening.Store(0)
+			a.await(func() tea.Cmd { a.stepSettled(seq, failed); return nil })
+		}()
+		failed = a.runGo(name, args, false) != nil
+	})
 }
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the

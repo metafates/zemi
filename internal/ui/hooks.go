@@ -158,7 +158,14 @@ func (a *App) Notify(level slog.Level, title, body string) {
 }
 
 func (a *App) OpenOverlay(o hostapi.Overlay) {
-	a.do(func() { a.openOverlay(o) })
+	seq := a.stepOpening.Load() // nonzero: a walk's run is posting its landing
+	a.do(func() {
+		if seq != 0 && seq > a.stepSettledSeq && !o.Refresh {
+			a.stepLanded = append(a.stepLanded, o) // the settle swaps it for the held view
+			return
+		}
+		a.openOverlay(o)
+	})
 }
 
 // RefreshOverlay rebuilds the open overlay id with build on the worker and

@@ -2240,6 +2240,117 @@ func TestOverlayStepsAlongRail(t *testing.T) {
 	}
 }
 
+// TestStepHoldsTheView: a step keeps the open view on screen while its run
+// opens the next one and the two swap in one mutation, so the walk never
+// paints the stack between two views.
+func TestStepHoldsTheView(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 24)
+	_, err := host.Commands.Add(&hostapi.Command{
+		Name: "hop", NArgs: hostapi.NArgsAny, Hidden: true, Origin: lua.OriginBuiltin,
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+			if args == "none" {
+				return errors.New("no view to open")
+			}
+			if args == "two" && (len(app.overlays) != 1 || app.overlays[0].o.ID != "one") {
+				t.Error("the step dropped the view before its own opened")
+			}
+			app.OpenOverlay(hostapi.Overlay{
+				ID: args, Title: args, Origin: lua.OriginBuiltin,
+				Prev: "hop one", Next: "hop two",
+				Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b", Run: "x"}, {Text: "c"}},
+			})
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "hop two"})
+	pressKeys(app, "ctrl+j")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
+	if len(app.overlays) != 1 || app.overlays[0].o.ID != "two" {
+		t.Fatalf("the step left %d overlays", len(app.overlays))
+	}
+
+	// two presses before either lands walk both: the first landing becomes
+	// the hold the second one closes, so none is left buried under the last
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "hop two", Prev: "hop three"})
+	pressKeys(app, "ctrl+j", "ctrl+k")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "three" })
+	if n := len(app.overlays); n != 1 || app.overlays[0].o.ID != "three" {
+		t.Fatalf("two steps left %d overlays", n)
+	}
+
+	// a walk whose view the reader dismissed still lands: the landing finds
+	// nothing to close and the ended run leaves the hold inert, so what the
+	// reader opens after the landing is never closed by it
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "hop two"})
+	pressKeys(app, "ctrl+j", "esc")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
+	app.openOverlay(hostapi.Overlay{ID: "three", Title: "three", Origin: lua.OriginBuiltin})
+	if n := len(app.overlays); n != 2 || app.overlays[0].o.ID != "two" || app.overlays[1].o.ID != "three" {
+		t.Fatalf("the stale landing closed the view the reader opened: %d overlays", n)
+	}
+
+	// a landing on a view already open lower replaces it in place, and the
+	// held view leaves with it: none is left buried under the landing
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin})
+	app.openOverlay(hostapi.Overlay{ID: "two", Title: "two", Origin: lua.OriginBuiltin, Prev: "hop one"})
+	pressKeys(app, "ctrl+k")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "one" })
+	if len(app.overlays) != 1 || app.overlays[0].o.ID != "one" {
+		t.Fatalf("the step onto an open view left %d overlays", len(app.overlays))
+	}
+
+	// a run that opens nothing drops the hold: the view stays, a newer step's
+	// claim survives the failed settle, and its own landing swaps properly
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Prev: "hop none", Next: "hop two"})
+	pressKeys(app, "ctrl+k")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "one" })
+	pressKeys(app, "ctrl+j")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
+	if n := len(app.overlays); n != 1 || app.overlays[0].o.ID != "two" {
+		t.Fatalf("the step after a failed one left %d overlays", n)
+	}
+	// the held view's row survives the walk out and back: a view with rows
+	// reopens on the row it held, not the first one
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{
+		ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "hop two",
+		Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b", Run: "x"}, {Text: "c"}}, Selected: 1,
+	})
+	pressKeys(app, "ctrl+j")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
+	pressKeys(app, "ctrl+k")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "one" })
+	if app.overlays[0].selected != 1 || app.overlays[0].o.Items[app.overlays[0].visible[app.overlays[0].selected]].Text != "b" {
+		t.Fatalf("the walk back lost the row: selected %d", app.overlays[0].selected)
+	}
+
+	// a run that posted more than one view raced an open: the fail-safe
+	// stacks them and closes nothing, so no view the reader holds is lost
+	app.overlays = nil
+	_, err = host.Commands.Add(&hostapi.Command{
+		Name: "both", NArgs: hostapi.NArgsNone, Hidden: true, Origin: lua.OriginBuiltin,
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+			app.OpenOverlay(hostapi.Overlay{ID: "x", Title: "x", Origin: lua.OriginBuiltin})
+			app.OpenOverlay(hostapi.Overlay{ID: "y", Title: "y", Origin: lua.OriginBuiltin})
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "both"})
+	pressKeys(app, "ctrl+j")
+	waitPrompt(t, app, func() bool { return len(app.overlays) == 3 })
+}
+
 // TestBodyPartsWell: a part naming a surface carries its own padding row
 // above and below, on that surface, so a command and what it answered join as
 // two blocks of one, nothing between them but their own padding; a part
