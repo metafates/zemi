@@ -911,7 +911,7 @@ func (h *Host) settleTodos() {
 		return
 	}
 	if err := h.DB.SetTodos(sid, todos); err != nil {
-		h.Log.Warn("todo list not settled", "origin", "agent", "error", err)
+		h.notKept("todo list not settled", err)
 		return
 	}
 	h.todosStale.Store(true)

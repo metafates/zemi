@@ -2208,8 +2208,9 @@ rides the `memories.md` line and its ledger entries.
   view came from steps with it, so going back lands on the call that was
   read; the view is rebuilt as the transcript grows, so a row that settles
   is a step target at once. The reply that ends an
-  exchange carries its readout: how long its turn ran, its tokens out and the
-  clock; a sentence the model says between runs carries none of it, and each
+  exchange carries its readout: the model that wrote it, how long its turn
+  ran, its tokens out and the clock; a narrow row drops the model first, and
+  a sentence the model says between runs carries none of it, and each
   call counts its own change on its row (`+4 -1`).
   Under the transcript the chat draws what is still pending as one row whose
   labels breathe, with no spinner and no clock of its own, so what a job is

@@ -202,7 +202,7 @@ func manifestOf(dir string) (m manifest, err error) {
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // nameWhy is why a plugins-dir entry is not a plugin name.
-const nameWhy = "lowercase letters, digits, - and _ only"
+const nameWhy = "lowercase letters, digits, '_' and '-' only"
 
 // netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
 const netTimeout = 2 * time.Minute
@@ -1644,7 +1644,7 @@ func highest(tags, major string) string {
 // free refuses a bad name and one a local or installed plugin already has.
 func free(d config.Dirs, name string) error {
 	if !nameRe.MatchString(name) {
-		return fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '_' and '-'", name)
+		return fmt.Errorf("%q is not a plugin name: %s", name, nameWhy)
 	}
 	for _, kind := range []string{"local", "installed"} {
 		if dir := filepath.Join(d.PluginsRoot(), kind, name); exists(dir) {

@@ -40,17 +40,21 @@ func openTest(t *testing.T) *DB {
 }
 
 // TestWriteSessionGone: a write whose session row another window deleted is
-// ErrSessionGone in the add-message wording; any other failure stays itself.
+// ErrSessionGone in its own wording; any other failure stays itself.
 func TestWriteSessionGone(t *testing.T) {
 	writes := []struct {
 		name  string
+		want  string
 		write func(db *DB, sid string) error
 	}{
-		{"message", func(db *DB, sid string) error {
+		{"message", "store: add message", func(db *DB, sid string) error {
 			return db.AddMessage(&Message{SessionID: sid, Role: "user", PartsJSON: `"hi"`})
 		}},
-		{"tool call", func(db *DB, sid string) error {
+		{"tool call", "store: add message", func(db *DB, sid string) error {
 			return db.AddToolCall(&Message{SessionID: sid, Role: "tool", PartsJSON: `{}`}, &ToolCall{Tool: "read"})
+		}},
+		{"todos", "store: set todos", func(db *DB, sid string) error {
+			return db.SetTodos(sid, []Todo{{Content: "a"}})
 		}},
 	}
 	for _, w := range writes {
@@ -64,8 +68,8 @@ func TestWriteSessionGone(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := w.write(db, sid)
-			if !errors.Is(err, ErrSessionGone) || !strings.Contains(err.Error(), "store: add message") {
-				t.Fatalf("err = %v, want ErrSessionGone wrapped as add message", err)
+			if !errors.Is(err, ErrSessionGone) || !strings.Contains(err.Error(), w.want) {
+				t.Fatalf("err = %v, want ErrSessionGone wrapped as %q", err, w.want)
 			}
 		})
 	}

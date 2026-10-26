@@ -961,6 +961,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		switch r := st.items[idx].row; {
 		case hasView(r):
 			a.openDetail(st, idx)
+		case r.Danger && !confirmed:
+			// a danger row's run confirms like enter does: the first press arms
+			st.armed = true
 		case r.Run != "" && o.OnSelect == nil:
 			a.runOverlayRow(r)
 		}

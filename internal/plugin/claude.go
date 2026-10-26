@@ -613,7 +613,7 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 		}
 		if kind == KindZemi {
 			if !nameRe.MatchString(e.Name) {
-				return Marketplace{}, fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '_' and '-'", e.Name)
+				return Marketplace{}, fmt.Errorf("%q is not a plugin name: %s", e.Name, nameWhy)
 			}
 			if err := CheckUses(e.Uses); err != nil {
 				return Marketplace{}, err

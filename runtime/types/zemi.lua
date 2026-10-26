@@ -852,6 +852,7 @@ function zemi.event.stats() end
 
 ---@alias zemi.RunStatus
 ---| "running"
+---| "queued"
 ---| "done"
 ---| "warn"
 ---| "failed"
@@ -887,7 +888,7 @@ function zemi.event.stats() end
 ---@field trustable boolean Whether /trust can trust this project: false at $HOME, / and outside any.
 ---@field init_error string First line of the failure the user init.lua raised this boot, "" when it loaded.
 ---@field init_path string The user init.lua, ~-shortened.
----@field model_hint string How to get a model when `model` is "", short enough for one row: a key to export (one the shell has, when any), or init.lua.
+---@field model_hint string How to get a model when `model` is "", short enough for one row: a key to export (the first still missing), or init.lua.
 ---@field model string
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
@@ -932,7 +933,7 @@ function zemi.event.stats() end
 --- next frame: return what is ready and do the rest then. Never change a line table after
 --- returning it, one seen in the last render is converted only once: build a
 --- new table for a line that changed.
----@class zemi.WidgetSpec
+---@class zemi.WidgetSpec An unknown field raises.
 ---@field id string
 ---@field region zemi.Region
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?
@@ -1061,7 +1062,7 @@ function zemi.event.stats() end
 ---| "bottom-right"
 
 ---@class zemi.OverlaySpec
----@field id string
+---@field id string An unknown field raises.
 ---@field title? string
 ---@field body? string|zemi.Line[] text above the items, or styled lines (text and hl only); with no items a read-only view
 ---@field markdown? boolean render a string `body` and every item's `detail` as markdown
@@ -2129,7 +2130,7 @@ function zemi.perm.ask(spec) end
 
 -- zemi.tool
 
----@class zemi.ToolSpec
+---@class zemi.ToolSpec An unknown field raises.
 ---@field name string
 ---@field description string What the model reads to decide when to call it. Required.
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.

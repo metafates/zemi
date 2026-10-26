@@ -343,7 +343,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	case style == config.NotifyOff:
 		add(HealthOK, "notify", "off")
 	case missing:
-		add(HealthWarn, "notify", "native: "+style+", "+why)
+		add(HealthWarn, "notify", "native wanted, bell used: "+why)
 	default:
 		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
 	}

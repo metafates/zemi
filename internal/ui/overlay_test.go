@@ -1826,6 +1826,21 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 	if ran != "del w" {
 		t.Fatalf("a danger row's second enter: ran %q", ran)
 	}
+
+	// l arms a danger row like enter's first press does: the run stays
+	// enter's to confirm, and l again leaves the arm alone
+	ran = ""
+	app.openOverlay(hostapi.Overlay{ID: "d", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "current"}, {Text: "wipe", Danger: true, Run: "del w"}}})
+	pressKeys(app, "j", "l")
+	if top := &app.overlays[len(app.overlays)-1]; !top.armed || ran != "" {
+		t.Fatalf("l on a danger row: armed %v, ran %q", top.armed, ran)
+	}
+	pressKeys(app, "l", "enter")
+	for app.Pump() {
+	}
+	if ran != "del w" {
+		t.Fatalf("enter after l armed: ran %q", ran)
+	}
 }
 
 // TestLuaOverlayReload: a Lua overlay with reload stays open on space and
