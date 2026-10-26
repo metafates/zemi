@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -758,6 +759,7 @@ func TestWorkflowBranchFailWarns(t *testing.T) {
 		{
 			name:    "a branch a failed agent sank is not named twice",
 			script:  `local out = wf.parallel({function() return wf.agent("ok") end, function() return wf.agent("fail") end}) return out[1]`,
+			want:    `agent "fail" failed:`,
 			notWant: "branch 2 failed",
 		},
 	} {
@@ -782,6 +784,88 @@ func TestWorkflowBranchFailWarns(t *testing.T) {
 			}
 			if c.notWant != "" && strings.Contains(report, c.notWant) {
 				t.Fatalf("report = %q, want no %q", report, c.notWant)
+			}
+		})
+	}
+}
+
+// TestWorkflowListGate: list answers with nothing but the schema's label
+// fields set, and still refuses a call that names a source.
+func TestWorkflowListGate(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	tool := h.workflowTool(h.PipelineFor())
+	for _, c := range []struct {
+		name, input, want string
+	}{
+		{"a habitual description does not kill the list", `{"action":"list","description":"List workflow runs"}`, "no workflow run"},
+		{"a source still gets no action", `{"action":"list","script":"return 1"}`, "action acts on a run"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			resp, _ := tool.Run(t.Context(), fantasy.ToolCall{ID: "c", Name: string(tools.ToolWorkflow), Input: c.input})
+			if !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("list = %q, want %q", resp.Content, c.want)
+			}
+		})
+	}
+}
+
+// TestWorkflowRunEmptyResult: a script that returns nothing delivers nil to
+// on_done and wait, not "" - zemi.lua promises string|nil.
+func TestWorkflowRunEmptyResult(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostDB(t)
+	runUser(t, r, `
+		local h1 = zemi.workflow.run({ script = "return nil" }, function(res)
+			zemi.state.set("res", res == nil and "nil" or tostring(res))
+		end)
+		assert(h1:wait() == nil, "wait = " .. tostring(h1:wait()))
+		local h2 = zemi.workflow.run({ script = "return 'x'" }, function() end)
+		assert(h2:wait() == "x", "wait = " .. tostring(h2:wait()))
+	`)
+	waitFor(t, func() error {
+		if v, _ := h.GlobalDB.GetKV("res"); v != `"nil"` {
+			return fmt.Errorf("on_done result = %v, want nil", v)
+		}
+		return nil
+	})
+}
+
+// TestStaleWorkflowWait: a wait on a run this process no longer holds reads
+// the journal's end line - one without it died with the previous process,
+// whose report was never delivered, and claiming it is in the conversation
+// sends the model waiting for a message that will not come.
+func TestStaleWorkflowWait(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	tool := h.workflowTool(h.PipelineFor())
+	pad := h.scratchFor(h.AgentSessionID())
+	for _, c := range []struct {
+		name, end, want string
+	}{
+		{"an ended run's report is where it was delivered", string(RunDone), "already ended (done)"},
+		{"a run that died with the process lost its report", "", "report was lost"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			id := store.ShortID()
+			j, err := openJournal(pad, id, "return 1", journalLine{Workflow: id, Started: time.Now().UnixMilli()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.end != "" {
+				b, _ := json.Marshal(journalLine{Status: RunStatus(c.end), MS: 5})
+				if _, err := j.Write(append(b, '\n')); err != nil {
+					t.Fatal(err)
+				}
+			}
+			j.Close()
+			resp, _ := tool.Run(t.Context(), fantasy.ToolCall{
+				ID: "c", Name: string(tools.ToolWorkflow),
+				Input: `{"run":"` + id + `","action":"wait"}`,
+			})
+			if !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("wait = %q, want %q", resp.Content, c.want)
 			}
 		})
 	}
@@ -1753,6 +1837,7 @@ func TestSavedWorkflows(t *testing.T) {
 		{0, strings.Repeat("a", 64), ""}, // the loader's name cap
 		{0, strings.Repeat("a", 65), "up to 63"},
 		{1, "", "a workflow review exists"},
+		{1, "review", "a workflow review exists"}, // an explicit name too: it would shadow the builtin
 	} {
 		path, err := h.saveFlow(runs[c.run].id, c.name)
 		if c.want != "" {

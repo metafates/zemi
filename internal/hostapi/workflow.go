@@ -1356,13 +1356,14 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	if name == "" {
 		// a default name never shadows a builtin or plugin workflow unseen
 		name = slug(f.description)
-		if slices.ContainsFunc(h.workflows(), func(w Workflow) bool { return w.Name == name }) {
-			return "", Usagef("a workflow %s exists: /workflows save %s <name> saves it under another", name, id)
-		}
 	}
 	// the loader's own rule, so a saved name is one workflows() takes back
 	if !skill.ValidName(name) {
 		return "", Usagef("a workflow name is %s, not %q", skill.NameRule, name)
+	}
+	// an explicit name too: a saved one shadows a builtin in every project
+	if slices.ContainsFunc(h.workflows(), func(w Workflow) bool { return w.Name == name }) {
+		return "", Usagef("a workflow %s exists: /workflows save %s <name> saves it under another", name, id)
 	}
 	src := []byte(f.src)
 	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {
@@ -1643,12 +1644,17 @@ func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.Tool
 	h := t.h
 	f := h.tasks.flow(id)
 	if f == nil {
-		// a run this process no longer holds: its journal has how it ended
-		old, err := h.loadFlow(h.AgentSessionID(), id)
+		// a run this process no longer holds: its journal has how it ended,
+		// and a run with no end line died with the previous process, whose
+		// report was never delivered
+		j, err := readJournal(h.scratchFor(h.AgentSessionID()), id)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error())
 		}
-		return fantasy.NewTextResponse("workflow " + id + " already ended (" + string(old.status) + "); its report is in the conversation.")
+		if j.end.Status == "" {
+			return fantasy.NewTextResponse("workflow " + id + " died with the previous zemi process; its report was lost. Rerun it (workflow run=" + id + " with action rerun) if you still need it.")
+		}
+		return fantasy.NewTextResponse("workflow " + id + " already ended (" + string(j.end.Status) + "); its report is in the conversation.")
 	}
 	if f.parent != h.AgentSessionID() {
 		// deliverReport would refuse this session and toast the report there
@@ -1738,11 +1744,17 @@ func (f *flowRun) report() (string, bool) {
 }
 
 // failLines names the branches that failed on their own, the ones the script
-// may have dropped from parallel's errs.
+// may have dropped from parallel's errs, and the agents that failed.
 func (f *flowRun) failLines() string {
 	var b strings.Builder
 	for _, l := range f.fails {
 		b.WriteString("\n\n" + l)
+	}
+	for _, a := range f.agents {
+		if a.run == nil || f.agentStatus(a) != RunFailed {
+			continue
+		}
+		fmt.Fprintf(&b, "\n\nagent %q failed: %s", a.description, a.run.errText())
 	}
 	return b.String()
 }
@@ -2130,7 +2142,11 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			case f.err != nil:
 				h.callLuaAsync("zemi.workflow.run on_done", at, onDone, nil, f.err.Error(), f.log)
 			default:
-				h.callLuaAsync("zemi.workflow.run on_done", at, onDone, f.result, nil, f.log)
+				var res any = f.result
+				if f.result == "" {
+					res = nil // the script returned nothing, not ""
+				}
+				h.callLuaAsync("zemi.workflow.run on_done", at, onDone, res, nil, f.log)
 			}
 		}})
 		if err != nil {
@@ -2146,6 +2162,9 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 				}
 				if f.err != nil {
 					return []glua.LValue{glua.LNil, glua.LString(f.err.Error())}
+				}
+				if f.result == "" {
+					return []glua.LValue{glua.LNil}
 				}
 				return []glua.LValue{glua.LString(f.result)}
 			})
