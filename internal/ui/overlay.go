@@ -925,8 +925,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case r.Danger && !confirmed:
 			st.armed = true
 		case verb == hostapi.VerbCopy && r.Copy != "":
-			// a copy row's value goes to the clipboard and the list stays open
-			return a.copied(st.value(idx))
+			// a copy row's value goes to the clipboard and the list stays
+			// open, unless the overlay closes on a copy (a value picker)
+			cmd := a.copied(st.value(idx))
+			if o.CloseOnCopy {
+				a.closeOverlayByID(o.ID)
+			}
+			return cmd
 		case o.Reload != nil && r.Fill == "":
 			a.runOverlayRow(r)
 			a.reloadOverlay(o, sel)
@@ -1045,6 +1050,9 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	}
 	if len(lines) == 0 {
 		return nil
+	}
+	if st.o.CloseOnCopy {
+		a.closeOverlayByID(st.o.ID)
 	}
 	return a.copied(strings.Join(lines, "\n"))
 }

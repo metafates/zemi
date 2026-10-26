@@ -110,7 +110,7 @@ func TestCopyReply(t *testing.T) {
 		}
 	}
 	ui.opened = nil
-	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "copy" {
+	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "copy" || !ui.opened[0].CloseOnCopy {
 		t.Fatalf("/copy: %v, %v", err, ui.opened)
 	}
 	type copyRow struct{ text, desc, copy string }

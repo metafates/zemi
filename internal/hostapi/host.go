@@ -155,6 +155,10 @@ type Overlay struct {
 	// whole while this list is up, 0 for none: a rail's own list walks its
 	// calls, and the run under them has to be open to show them
 	Rail int
+	// CloseOnCopy makes a copy act (enter on a copy row, y) close the
+	// overlay after it copies: a picker whose rows are only values, where
+	// copying is the pick (/copy). Other lists stay open to copy again.
+	CloseOnCopy bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text. A Go screen's prompt

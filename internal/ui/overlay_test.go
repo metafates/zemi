@@ -549,6 +549,29 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a value picker's enter copies and closes",
+			hostapi.Overlay{CloseOnCopy: true, Items: []hostapi.OverlayItem{{Text: "1  go", Copy: "x := 1"}}},
+			[]string{"enter"},
+			func(a *App) string {
+				if len(a.overlays) != 0 || len(a.toasts) != 1 || a.toasts[0].title != "Copied" {
+					return fmt.Sprintf("overlays=%d toasts=%+v", len(a.overlays), a.toasts)
+				}
+				return ""
+			},
+		},
+		{
+			"a value picker's y closes it too",
+			hostapi.Overlay{CloseOnCopy: true, Items: []hostapi.OverlayItem{{Text: "1  go", Copy: "x := 1"}}},
+			nil,
+			func(a *App) string {
+				a.overlayKey("y", "")
+				if len(a.overlays) != 0 || len(a.toasts) != 1 || a.toasts[0].title != "Copied" {
+					return fmt.Sprintf("overlays=%d toasts=%+v", len(a.overlays), a.toasts)
+				}
+				return ""
+			},
+		},
+		{
 			"y copies a row's value in place of its text, and enter still runs the row",
 			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "gpt-5", Desc: "400k", Run: "nope", Copy: "openai/gpt-5\x1b[2J"}}},
 			nil,

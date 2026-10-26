@@ -78,7 +78,7 @@ func (h *Host) CopyReply(args string) error {
 // each block numbered, then the direct forms as rows. A pick copies itself
 // and the picker stays open, so the next block is one move away.
 func copyPicker(text string, blocks []codeBlock) Overlay {
-	o := Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight}
+	o := Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, CloseOnCopy: true}
 	for i, b := range blocks {
 		head := ""
 		for l := range strings.Lines(b.text) {
