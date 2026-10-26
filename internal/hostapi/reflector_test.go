@@ -104,10 +104,10 @@ func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fanta
 	return slices.Values(textParts(m.resp)), nil
 }
 
-// sideCall reports a title, summary, reflector or recap call, which a turn's
-// script does not answer.
+// sideCall reports a title, summary, reflector, recap or builder call, which
+// a turn's script does not answer.
 func sideCall(call fantasy.Call) bool {
-	return len(call.Prompt) > 0 && (slices.Contains([]string{titleSystem, compactSystem, reflectorSystem}, concatText(call.Prompt[0].Content)) ||
+	return len(call.Prompt) > 0 && (slices.Contains([]string{titleSystem, compactSystem, reflectorSystem, chatSystem}, concatText(call.Prompt[0].Content)) ||
 		concatText(call.Prompt[len(call.Prompt)-1].Content) == recapPrompt)
 }
 

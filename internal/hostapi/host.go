@@ -492,6 +492,10 @@ type Host struct {
 	// initErr surfaces store-open failures at the namespaces boot step.
 	initErr error
 
+	// chat is the eternal log the main conversation writes and reads: the
+	// appends and the builder worker over the project store, ended by Close.
+	chat *chatLog
+
 	uiMu sync.RWMutex
 	ui   UIHooks
 
@@ -861,6 +865,9 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
+	}
+	if h.DB != nil {
+		h.chat = newChatLog(context.Background(), h)
 	}
 	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
 	if h.GlobalDB != nil {
@@ -2579,6 +2586,9 @@ func (h *Host) Close() {
 	h.PurgeGeneration()
 	h.mcp.stopParked()
 	h.lsp.stopAll()
+	if h.chat != nil {
+		h.chat.Close()
+	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db != nil {
 			db.Close()

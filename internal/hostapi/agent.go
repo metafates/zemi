@@ -287,7 +287,7 @@ func (h *Host) sessionModelID() string {
 }
 
 func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
-	return append(tools.All(pipe), h.agentTool(pipe), h.workflowTool(pipe), h.luaEvalTool(pipe))
+	return append(tools.All(pipe), h.agentTool(pipe), h.workflowTool(pipe), h.luaEvalTool(pipe), h.zoomTool(), h.dateTool())
 }
 
 // allTools is every tool a run could get, in one order: the builtins, the
@@ -748,13 +748,6 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		return fail(err)
 	}
 	ag.mu.Lock()
-	from, prev := ag.turnModel, ag.runner
-	// The runner is rebuilt per send (model and tools may have changed, the
-	// prompt only with pinPrompt's key); the conversation carries over from
-	// the idle previous one.
-	if prev != nil {
-		runner.Continue(prev)
-	}
 	ag.runner = runner
 	ag.modelSeed = ""
 	ag.turnModel = id
@@ -770,7 +763,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		"text", clipLine(sanitize.String(text), 120))
 
 	h.GoSafe("agent turn", func() {
-		h.runTurns(runner, prev, from, scope, text)
+		h.runTurns(runner, scope, text)
 	})
 	return nil
 }
@@ -970,18 +963,16 @@ func (h *Host) handOff(scope *turnScope) {
 	})
 }
 
-// runTurns sends text and every follow-up the queue produces on one
-// runner, compacting first whenever the last prompt filled the context.
-// prev and from are the runner and model the conversation came from, which
-// the handoff gate may summarize before the first send.
-func (h *Host) runTurns(runner, prev *agent.Runner, from string, scope *turnScope, text string) {
+// runTurns sends text and every follow-up the queue produces, each turn a
+// fresh call that opens on the view: nothing carries between turns, so the
+// old pre-turn compaction and handoff gate have nothing to work on.
+func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 	defer h.endTurnAfterPanic()
-	h.handoffGate(runner, prev, from, scope)
 	for scope != nil {
-		// one context per turn covers compaction too, which runs before the
-		// runner holds a cancel of its own
-		if h.compactDue() {
-			h.compactReporting(scope.ctx, runner, compactAuto, "")
+		if msg, ok := h.viewMessage(); ok {
+			runner.SetHistory([]fantasy.Message{msg})
+		} else {
+			runner.SetHistory(nil)
 		}
 		err := h.sendCompacting(scope.ctx, runner, text)
 		h.loopTurnEnded(runner, text, err, scope.ctx.Err() != nil)
@@ -1010,6 +1001,15 @@ func (h *Host) appendUserRows(text string, held *heldPrompt) {
 	for _, n := range heads {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
+}
+
+// viewMessage is the fresh turn's opening message: the persisted view as
+// one user message of 4-line parts, ok false while the log is empty.
+func (h *Host) viewMessage() (fantasy.Message, bool) {
+	if h.chat == nil {
+		return fantasy.Message{}, false
+	}
+	return h.chat.viewMessage()
 }
 
 // nextTurn runs after each turn: messages queued after the last step
@@ -1651,6 +1651,9 @@ func (h *Host) stepThinking() time.Duration {
 }
 
 func (h *Host) persistMessage(msg fantasy.Message) error {
+	if h.chat != nil {
+		h.logChatMessage(msg)
+	}
 	sid := h.AgentSessionID()
 	if h.DB == nil || sid == "" {
 		return nil
@@ -1681,6 +1684,104 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 		h.setGoalFrom(sid, msg)
 	}
 	return nil
+}
+
+// logChatMessage dual-writes one main-chat message into the eternal log as
+// it happens: the user's words, replies, tool calls and results. Reasoning
+// is never logged, and a failure here costs the log a line, never the turn.
+func (h *Host) logChatMessage(msg fantasy.Message) {
+	var err error
+	switch msg.Role {
+	case fantasy.MessageRoleUser:
+		typed, _ := agent.CutAttached(concatText(msg.Content))
+		if strings.TrimSpace(typed) != "" {
+			err = h.chat.User(typed, logImages(msg))
+		}
+	case fantasy.MessageRoleAssistant:
+		err = h.logAssistant(msg)
+	case fantasy.MessageRoleTool:
+		err = h.logResults(msg)
+	case fantasy.MessageRoleSystem:
+	}
+	if err != nil {
+		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+	}
+}
+
+// logAssistant logs a step's reply, its tool calls apart: the text as one
+// agent row per stretch, each call its own tool row.
+func (h *Host) logAssistant(msg fantasy.Message) error {
+	var text strings.Builder
+	flush := func() error {
+		defer text.Reset()
+		if strings.TrimSpace(text.String()) == "" {
+			return nil
+		}
+		return h.chat.Agent(text.String())
+	}
+	for _, p := range msg.Content {
+		switch p := p.(type) {
+		case fantasy.ReasoningPart: // never logged
+		case fantasy.TextPart:
+			text.WriteString(p.Text)
+		case fantasy.ToolCallPart:
+			if err := flush(); err != nil {
+				return err
+			}
+			if err := h.chat.Tool(p.ToolName, p.Input); err != nil {
+				return err
+			}
+		}
+	}
+	return flush()
+}
+
+// logResults logs a step's tool results as echo rows, each named by the call
+// it answers.
+func (h *Host) logResults(msg fantasy.Message) error {
+	for _, p := range msg.Content {
+		res, ok := p.(fantasy.ToolResultPart)
+		if !ok {
+			continue
+		}
+		if err := h.chat.Echo(h.callName(res.ToolCallID), !agent.ErrResult(res.Output), agent.ToolOutput(res.Output)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// logImages marshals a user message's images for the log, so zoom replays
+// them; "" when the message carries none.
+func logImages(msg fantasy.Message) string {
+	var imgs []fantasy.FilePart
+	for _, p := range msg.Content {
+		if f, ok := p.(fantasy.FilePart); ok {
+			imgs = append(imgs, f)
+		}
+	}
+	if imgs == nil {
+		return ""
+	}
+	b, err := json.Marshal(imgs, json.Deterministic(true))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// callName is the tool a running turn's call id belongs to, "" once its row
+// is gone.
+func (h *Host) callName(id string) string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	for _, t := range ag.tools {
+		if t.ID == id {
+			return t.Name
+		}
+	}
+	return ""
 }
 
 // recordToolCall stores one tool telemetry row in session sid (each tool

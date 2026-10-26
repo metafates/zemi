@@ -30,14 +30,17 @@ const contextBudget = 32 << 10
 
 // defaultSystemPrompt is the shipped prompt.
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
-	read, code := "", ""
+	read, code, chat := "", "", ""
 	if hasTool(toolset, tools.ToolRead) {
 		read = readPrompt
 	}
 	if hasTool(toolset, tools.ToolLua) {
 		code = codemodePrompt
 	}
-	sys := strings.NewReplacer("{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
+	if hasTool(toolset, tools.ToolZoom) {
+		chat = "\n" + viewPrompt + "\n"
+	}
+	sys := strings.NewReplacer("{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Chat}", chat, "{Rules}", toolRules).Replace(basePrompt)
 	if !hasTool(toolset, tools.ToolQuestion) {
 		// the phrase occurs once, in the asking paragraph
 		sys = strings.Replace(sys, " with the question tool", "", 1)
@@ -82,7 +85,7 @@ Editing files and running tests need no confirmation. Ask before what is hard to
 # Using tools
 {Batch}{Read}{Code}
 {Rules}
-
+{Chat}
 # Git
 Do not commit, amend, push, force push, or create branches or pull requests unless asked. To commit: run git status, git diff and git log -5 together, stage the intended files by name and match the repository's message style; if a hook fails, fix the cause and commit again rather than amending. Never change git config, skip hooks, or use interactive (-i) flags.
 
@@ -612,15 +615,11 @@ func (h *Host) OpenPrompt() error {
 	return nil
 }
 
-// chatSystem is the one system prompt for turns and compactions on the
-// eternal chat: the view is the only continuity, and zoom is the only way
-// into it. The builder's calls share it with the turns', so both read one
-// cache entry.
-const chatSystem = `You are zemi, an AI agent that works for one user in a single chat that never
-ends. Each call to you is a turn or a compaction: the view below is followed by
-the user's new message, or by a task starting "Compaction:".
-
-# The view
+// viewPrompt is the # The chat section the main conversation's prompt
+// carries: the view's shape, its kinds and tree, zoom as the only way into
+// it, and what a reply owes the next turn. The builder's compaction calls
+// share it, so both prompts say the view's words the same way.
+const viewPrompt = `# The chat
 
 zemi's memory: the whole chat between zemi and the user, oldest first, inside
 <chat> tags, as one-line summaries:
@@ -644,15 +643,7 @@ too long for one message is split over several in a row.
 Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;
 - zoom(id, 1) gives message id whole, with its images
-- zoom("Name") gives an agent's whole chat
 - date(id) gives the date and time of message id
-
-# Turns
-
-Do the user's tasks yourself, with your tools, following the user's
-instructions at the end of this prompt: who they are, how their files are
-organized and how they want work done. Use subagents only when the user asks
-for them.
 
 The view is your memory, and its latest word on a thing is the truth. Whenever
 you need any information, first find its latest mention in the view and zoom
@@ -664,9 +655,27 @@ your reply what you learned that will matter later.
 Messages the user sends while you work reach you between tool calls. Subagents
 run in the background; each one's report reaches you as a message starting
 "[Name]", between your tool calls or as a new turn. Never wait for one (no
-sleep, no polling): go on, or end your turn and tell the user what is running.
+sleep, no polling): go on, or end your turn and tell the user what is running.`
 
-# Compactions
+// chatOpener opens the compaction calls' prompt, whose tasks start
+// "Compaction"; the turns run on basePrompt with viewPrompt's section.
+const chatOpener = `You are zemi, an AI agent that works for one user in a single chat that never
+ends. Each call to you is a turn or a compaction: the view below is followed by
+the user's new message, or by a task starting "Compaction".`
+
+// chatTurns is chatSystem's turns paragraph, kept so the compaction calls
+// read the turns' own words; the compaction section binds what such a call
+// outputs.
+const chatTurns = `# Turns
+
+Do the user's tasks yourself, with your tools, following the user's
+instructions at the end of this prompt: who they are, how their files are
+organized and how they want work done. Use subagents only when the user asks
+for them.`
+
+// compactionPrompt closes the compaction calls' prompt: what one line of
+// the tree owes.
+const compactionPrompt = `# Compactions
 
 You write zemi's memory: one step of the tree, compressing one message into a
 line or merging two adjacent lines into one. Your line stands in for its
@@ -701,3 +710,8 @@ exactly. Tag each item with its kind ("user: ...; echo: ..."), and credit
 quoted text to its real author. Never make anything look further along than it
 was. If told the line is too long, shorten it. Non-ASCII characters cost 2-4
 bytes.`
+
+// chatSystem is the one system prompt for the compaction calls that build
+// the tree over the eternal chat: the view is the only continuity, and zoom
+// the only way into it.
+const chatSystem = chatOpener + "\n\n" + viewPrompt + "\n\n" + chatTurns + "\n\n" + compactionPrompt

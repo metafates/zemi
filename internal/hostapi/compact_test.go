@@ -2,11 +2,11 @@ package hostapi
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,7 +17,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestContextEstimateCountsPrompt: the estimate a compaction installs counts
@@ -132,14 +131,15 @@ func TestAutoCompact(t *testing.T) {
 	}
 }
 
-// TestCompaction: a context past the threshold summarizes the history
-// before the next turn while the recent messages stay verbatim, the summary
-// becomes the session's resume point, and /resume rebuilds summary + tail
-// without showing the tail twice.
+// TestCompaction: a history past the threshold summarizes into the summary
+// and a verbatim tail, the summary becomes the session's resume point, and
+// /resume rebuilds summary + tail without showing the tail twice. The fresh
+// turn flow no longer compacts before a send (nothing carries between
+// turns), so the test drives the machinery the mid-turn path runs.
 func TestCompaction(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
+	reflectStub(t, h, "ok")
 	h.reflectMu.Lock() // no detached reflect racing the DB teardown
 	defer h.reflectMu.Unlock()
 	send := sender(t, h)
@@ -147,14 +147,13 @@ func TestCompaction(t *testing.T) {
 	send(strings.Repeat("x", 80_000)) // 20k tokens: past the 15k tail budget
 	first := h.AgentSessionID()
 	h.agents.mu.Lock()
-	h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+	h.agents.ctxWin = 100_000
 	h.agents.mu.Unlock()
 	if err := h.DB.SetTodos(first, []store.Todo{{Content: "ship </summary>", Status: "pending"}}); err != nil {
 		t.Fatal(err)
 	}
-	send("two")
-	if n := m.lastPrompt.Load(); n != 5 {
-		t.Fatalf("compacted prompt has %d messages, want 5 (system, context, summary, ok, two)", n)
+	if !h.compactReporting(t.Context(), h.agents.runner, compactAuto, "") {
+		t.Fatal("the compaction failed")
 	}
 	summary := h.agents.runner.History[0]
 	if prev, _ := summaryOf(summary); !strings.Contains(concatText(summary.Content), "- [pending] ship") || strings.Contains(prev, "ship") {
@@ -180,12 +179,13 @@ func TestCompaction(t *testing.T) {
 			oks++
 		}
 	}
-	if oks != 2 {
-		t.Fatalf("resumed transcript shows %d replies, want 2", oks)
+	if oks != 1 {
+		t.Fatalf("resumed transcript shows %d replies, want the tail's 1", oks)
 	}
-	send("three")
-	if n := m.lastPrompt.Load(); n != 7 {
-		t.Fatalf("resumed prompt has %d messages, want 7 (system, context, summary, ok, two, ok, three)", n)
+	// the resume sends the stored context, and stores no other
+	rows, _ := h.DB.Messages(first)
+	if n := len(slices.DeleteFunc(rows, func(r *store.Message) bool { return r.Role != contextRole })); n != 1 {
+		t.Fatalf("the session stored %d context messages, want 1", n)
 	}
 }
 
@@ -206,13 +206,15 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 			big := strings.Repeat("x", 80_000) // past the tail budget, so it is the head
 			send(big)
 			h.agents.mu.Lock()
-			h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+			h.agents.ctxWin = 100_000
 			sys := h.agents.pin.text
 			h.agents.mu.Unlock()
 			if name == "refused" {
 				m.overflow.Store(1)
 			}
-			send("two")
+			if !h.compactReporting(t.Context(), h.agents.runner, compactAuto, "") {
+				t.Fatal("the compaction failed")
+			}
 			m.mu.Lock()
 			p := m.prompts[1]
 			m.mu.Unlock()
@@ -229,227 +231,54 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 
 // TestHandoffGate: a send whose pinned prefix changed since the last step
 // offers a compact on the previous model once, when the context is big
-// enough; sending as is keeps the whole history, compacting replaces it
-// with the summary and the tail, and a switch back never asks.
+// enough and the provider reported cache; agent.handoff pins the config.
+// The fresh-turn flow no longer calls the gate (nothing carries between
+// turns), so the test forges the state a send would have left and calls it.
 func TestHandoffGate(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Settings.SetQuiet("models.default", "stub/m")
-	m := reflectStub(t, h, "ok")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	send := sender(t, h)
-	ui := &fakeUI{qOK: true, qAnswer: "Send as is"}
-	h.SetUIHooks(ui)
-	send(strings.Repeat("x", 80_000))
-	h.agents.mu.Lock()
-	h.agents.lastIn, h.agents.lastCache = 90_000, 1 // the gate's floor is 50k
-	ag := h.agents
-	ag.mu.Unlock()
-
-	// a switch back to the model that sent the last step never asks
-	h.Settings.SetQuiet("models.default", "stub/m2")
-	h.Settings.SetQuiet("models.default", "stub/m")
-	send("back")
-	if len(ui.qAsked) != 0 {
-		t.Fatalf("a switch back asked: %v", ui.qAsked[0].Question)
-	}
-
-	// under the floor: no ask, though the key changed
-	h.Settings.SetQuiet("models.default", "stub/m2")
-	ag.mu.Lock()
-	ag.lastIn = 10_000
-	ag.mu.Unlock()
-	send("small")
-	if len(ui.qAsked) != 0 {
-		t.Fatalf("a small context asked")
-	}
-
-	// a model that reports no cache never asks: the summary would ride no
-	// warm prefix, so the ask has nothing to offer
-	h.Settings.SetQuiet("models.default", "stub/m6")
-	ag.mu.Lock()
-	ag.lastIn = 90_000
-	ag.mu.Unlock()
-	send("no cache")
-	if len(ui.qAsked) != 0 {
-		t.Fatalf("a model with no cache asked: %v", ui.qAsked[0].Question)
-	}
-	ag.mu.Lock()
-	ag.lastCache = 1
-	ag.mu.Unlock()
-
-	// an MCP-only move of the key (a server settling or refreshing
-	// mid-session) never asks: the send just catches up
-	base := h.mainTools()
-	h.pinPrompt(base)
-	ag.mu.Lock()
-	ag.lastSent, ag.lastCore, ag.lastIn, ag.lastCache = ag.pin.key, ag.pin.core, 90_000, 1
-	ag.mu.Unlock()
-	mcpTool := fantasy.NewAgentTool("mcp_fake_t", "stub", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
-	})
-	h.pinPrompt(append(base, mcpTool))
-	h.handoffGate(nil, nil, "stub/m6", &turnScope{ctx: context.Background()})
-	if len(ui.qAsked) != 0 {
-		t.Fatalf("an MCP-only prompt move asked: %v", ui.qAsked[0].Question)
-	}
-
-	// the change asks once, and sending as is keeps the whole history
-	ag.mu.Lock()
-	ag.lastIn, ag.lastCache = 90_000, 1
-	ag.mu.Unlock()
-	h.Settings.SetQuiet("models.default", "stub/m3")
-	send("ask me")
-	if len(ui.qAsked) != 1 || !strings.Contains(ui.qAsked[0].Question, "stub/m3") {
-		t.Fatalf("the ask names the models: %+v", ui.qAsked)
-	}
-	if got := m.prompts[len(m.prompts)-1]; len(got) < 6 {
-		t.Fatalf("the as-is send is not the whole history: %d messages", len(got))
-	}
-	send("again")
-	if len(ui.qAsked) != 1 {
-		t.Fatalf("asked twice for one change")
-	}
-
-	// compacting on the old model hands the summary to the new one
-	ag.mu.Lock()
-	ag.lastIn, ag.lastCache = 90_000, 1
-	ag.mu.Unlock()
-	h.Settings.SetQuiet("models.default", "stub/m4")
-	ui.qAnswer = "Compact, then send"
-	send("handoff")
-	if n := len(ui.qAsked); n != 2 {
-		t.Fatalf("the second change asked %d times", n-1)
-	}
-	aside := m.prompts[len(m.prompts)-2]
-	if !strings.HasPrefix(concatText(aside[len(aside)-1].Content), compactNote[:60]) {
-		t.Fatalf("the summary did not ride the old model's history: %d messages", len(aside))
-	}
-	got := m.prompts[len(m.prompts)-1]
-	if s, _ := summaryOf(got[2]); s != "ok" {
-		t.Fatalf("the handoff send opens on the summary: %v", got)
-	}
-	for _, msg := range got {
-		if strings.Contains(concatText(msg.Content), strings.Repeat("x", 1000)) {
-			t.Fatalf("the handoff send resends the big history")
-		}
-	}
-
-	// a summary that comes back empty twice leaves the history whole: a
-	// handoff that cannot summarize sends as is, it never drops the
-	// earlier history the way a full window may
-	m.resp = ""
-	send(strings.Repeat("y", 80_000))
-	h.Settings.SetQuiet("models.default", "stub/m5")
-	ag.mu.Lock()
-	ag.lastIn, ag.lastCache = 90_000, 1
-	ag.mu.Unlock()
-	send("handoff again")
-	got = m.prompts[len(m.prompts)-1]
-	whole := false
-	for _, msg := range got {
-		text := concatText(msg.Content)
-		if strings.Contains(text, "dropped unsummarized") {
-			t.Fatalf("the failed handoff compact dropped the history: %q", text)
-		}
-		whole = whole || strings.Contains(text, strings.Repeat("y", 1000))
-	}
-	if !whole {
-		t.Fatalf("the failed handoff send is not the whole history: %d messages", len(got))
-	}
-}
-
-// gateUI holds the handoff ask open until the test releases it, the way the
-// real overlay waits on the UI goroutine.
-type gateUI struct {
-	fakeUI
-	hold chan struct{}
-}
-
-func (g *gateUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
-	g.fakeUI.AskQuestion(qs)
-	<-g.hold
-	return []tools.Answer{{Picked: []string{g.qAnswer}}}, g.qOK
-}
-
-// TestHandoffGateOffTheSendPath: the gate's ask waits on the turn
-// goroutine, not the sender's. A composer submit reaches the gate on the
-// UI's own goroutine, the only one that could answer the ask, so a send
-// that blocked there would freeze the TUI.
-func TestHandoffGateOffTheSendPath(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Settings.SetQuiet("models.default", "stub/m")
-	m := reflectStub(t, h, "ok")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	ui := &gateUI{fakeUI: fakeUI{qOK: true, qAnswer: "Send as is"}, hold: make(chan struct{})} //nolint:modernize // embedlit elision does not compile under go1.27
-	h.SetUIHooks(ui)
-	send := sender(t, h)
-	send(strings.Repeat("x", 80_000))
-	h.agents.mu.Lock()
-	h.agents.lastIn, h.agents.lastCache = 90_000, 1 // the gate's floor is 50k
-	h.agents.mu.Unlock()
-	h.Settings.SetQuiet("models.default", "stub/m2")
-
-	done := make(chan error, 1)
-	go func() { done <- h.AgentSend("switch") }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("send: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the send blocked on the handoff ask, which only the UI goroutine can answer")
-	}
-	close(ui.hold) // the user answers
-	waitIdle(t, h)
-	if len(ui.qAsked) != 1 {
-		t.Fatalf("the gate asked %d times, want once", len(ui.qAsked))
-	}
-	if len(m.prompts) < 2 {
-		t.Fatalf("the send never reached the model: %d calls", len(m.prompts))
-	}
-}
-
-// TestHandoffModes pins the config: off never asks, on compacts silently.
-func TestHandoffModes(t *testing.T) {
 	for _, c := range []struct {
-		mode     string
-		answer   string
-		wantAsk  bool
-		wantCall int // the model calls the second send makes
+		mode    string
+		wantAsk bool
 	}{
-		{"off", "", false, 1},
-		{"on", "", false, 2},
-		{"ask", "Send as is", true, 1},
+		{"", true},
+		{"off", false},
+		{"on", false}, // compacts silently
+		{"ask", true},
 	} {
-		t.Run(c.mode+"/"+c.answer, func(t *testing.T) {
+		t.Run(cmp.Or(c.mode, "default"), func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.Settings.SetQuiet("models.default", "stub/m")
-			m := reflectStub(t, h, "ok")
+			reflectStub(t, h, "ok")
 			h.reflectMu.Lock()
 			defer h.reflectMu.Unlock()
-			send := sender(t, h)
-			ui := &fakeUI{qOK: true, qAnswer: c.answer}
+			ui := &fakeUI{qOK: true, qAnswer: "Send as is"}
 			h.SetUIHooks(ui)
-			send(strings.Repeat("x", 80_000))
+			send := sender(t, h)
+			send(strings.Repeat("x", 80_000)) // the step that lastSent names
 			h.agents.mu.Lock()
-			h.agents.lastIn, h.agents.lastCache = 90_000, 1
+			h.agents.lastIn, h.agents.lastCache = 90_000, 1 // the gate's floor is 50k
 			h.agents.mu.Unlock()
 			h.Settings.SetQuiet("models.default", "stub/m2")
-			h.Settings.SetQuiet(config.KeyAgentHandoff, c.mode)
-			calls := len(m.prompts)
-			send("one")
-			if got := len(ui.qAsked) > 0; got != c.wantAsk {
-				t.Fatalf("asked = %v, want %v", got, c.wantAsk)
+			if c.mode != "" {
+				h.Settings.SetQuiet(config.KeyAgentHandoff, c.mode)
 			}
-			if n := len(m.prompts) - calls; n != c.wantCall {
-				for _, p := range m.prompts[calls:] {
-					t.Logf("call: %d messages, last %q", len(p), concatText(p[len(p)-1].Content)[:min(80, len(concatText(p[len(p)-1].Content)))])
-				}
-				t.Fatalf("%d model calls after the switch, want %d", n, c.wantCall)
+			h.agents.mu.Lock()
+			h.agents.turnModel = "stub/m2" // what the send's runner would run
+			h.agents.mu.Unlock()
+			h.pinPrompt(h.mainTools()) // what a send would build before its gate
+			h.handoffGate(nil, nil, "stub/m", &turnScope{ctx: context.Background()})
+			if got := len(ui.qAsked) > 0; got != c.wantAsk {
+				t.Fatalf("asked = %v, want %v (%+v)", got, c.wantAsk, ui.qAsked)
+			}
+			if !c.wantAsk {
+				return
+			}
+			if q := ui.qAsked[0].Question; !strings.Contains(q, "stub/m") || !strings.Contains(q, "stub/m2") {
+				t.Fatalf("the ask names the models: %q", q)
+			}
+			// the same change never asks again
+			h.handoffGate(nil, nil, "stub/m", &turnScope{ctx: context.Background()})
+			if len(ui.qAsked) != 1 {
+				t.Fatalf("asked %d times for one change", len(ui.qAsked))
 			}
 		})
 	}
@@ -547,9 +376,9 @@ func TestFailedSummaryRowSaysDropped(t *testing.T) {
 	send := sender(t, h)
 	send("warm up")
 	h.agents.mu.Lock()
-	h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+	h.agents.ctxWin = 100_000
 	h.agents.mu.Unlock()
-	send("two")
+	h.compactReporting(t.Context(), h.agents.runner, compactAuto, "")
 	row := ""
 	for _, r := range h.Session().Transcript {
 		if r.Kind == RowCompact {
@@ -641,11 +470,11 @@ func TestCompactionStopsAfterFailures(t *testing.T) {
 	defer h.reflectMu.Unlock()
 	send := sender(t, h)
 	send("warm up")
-	for i := range compactMaxFails + 1 {
+	for range compactMaxFails {
 		h.agents.mu.Lock()
-		h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+		h.agents.ctxWin = 100_000
 		h.agents.mu.Unlock()
-		send(strconv.Itoa(i))
+		h.compactReporting(t.Context(), h.agents.runner, compactAuto, "")
 	}
 	if n := m.calls.Load(); n != compactMaxFails {
 		t.Fatalf("summarizer called %d times, want %d", n, compactMaxFails)

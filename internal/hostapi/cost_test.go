@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
@@ -61,9 +63,9 @@ func TestAgentFinishUsage(t *testing.T) {
 	})
 }
 
-// TestUsageCountsCache: main and subagent steps add cache reads and writes to
-// the input tally, live and stored alike, so a resumed session shows the
-// same total.
+// TestUsageCountsCache: the conversation's steps bill the "main" anchor row
+// and a subagent's its parent session, cache reads and writes included in
+// both the live tally and the stored rows.
 func TestUsageCountsCache(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -75,8 +77,11 @@ func TestUsageCountsCache(t *testing.T) {
 	if got := h.AgentStream().SessionIn; got != 222 {
 		t.Errorf("live input tally = %d, want 222", got)
 	}
-	if sess, err := h.DB.GetSession(sid); err != nil || sess.PromptTokens != 222 {
-		t.Errorf("stored input tokens = %+v, %v; want 222", sess, err)
+	if sess, err := h.DB.GetSession(store.MainSessionID); err != nil || sess.PromptTokens != 111 {
+		t.Errorf("anchor row usage = %+v, %v; want 111", sess, err)
+	}
+	if sess, err := h.DB.GetSession(sid); err != nil || sess.PromptTokens != 111 {
+		t.Errorf("session row usage = %+v, %v; want 111", sess, err)
 	}
 	if err := h.NewSession(); err != nil {
 		t.Fatal(err)
@@ -88,14 +93,15 @@ func TestUsageCountsCache(t *testing.T) {
 	if err := h.ResumeSession(sid); err != nil {
 		t.Fatal(err)
 	}
-	if s := h.AgentStream(); s.SessionIn != 222 || s.CacheRead != 20 || s.CacheBilled != 222 {
-		t.Errorf("resumed tally = in %d, cache %d/%d; want 222 and 20/222", s.SessionIn, s.CacheRead, s.CacheBilled)
+	if s := h.AgentStream(); s.SessionIn != 111 || s.CacheRead != 10 || s.CacheBilled != 111 {
+		t.Errorf("resumed tally = in %d, cache %d/%d; want 111 and 10/111", s.SessionIn, s.CacheRead, s.CacheBilled)
 	}
 }
 
 // TestStreamBillsLiveTally: a model call's usage lands in the session tally
 // and on a subagent run's row as its stream finishes, before its tools run,
-// so a count moves during the turn instead of only when it ends.
+// so a count moves during the turn instead of only when it ends. The
+// conversation's own call bills to the "main" anchor row.
 func TestStreamBillsLiveTally(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -113,8 +119,11 @@ func TestStreamBillsLiveTally(t *testing.T) {
 	if got := h.AgentStream().SessionOut; got != 5 {
 		t.Fatalf("live output tally after one step = %d, want 5", got)
 	}
-	if sess, err := h.DB.GetSession(h.AgentSessionID()); err != nil || sess.PromptTokens != 13 {
-		t.Fatalf("stored input tokens = %+v, %v; want 13", sess, err)
+	if sess, err := h.DB.GetSession(store.MainSessionID); err != nil || sess.PromptTokens != 13 {
+		t.Fatalf("anchor row usage = %+v, %v; want 13", sess, err)
+	}
+	if sess, err := h.DB.GetSession(h.AgentSessionID()); err != nil || sess.PromptTokens != 0 {
+		t.Fatalf("the live session row took the conversation's usage: %+v, %v", sess, err)
 	}
 }
 

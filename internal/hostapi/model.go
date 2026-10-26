@@ -25,6 +25,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // resolveModel builds the model for a resolved id (tests stub modelFn).
@@ -334,14 +335,15 @@ func (h *Host) modelAsk(L *glua.LState) int {
 
 // bill adds a model call's usage to session sid, and to the live tally when
 // sid is still the open session: a background run or the reflector may
-// outlive it.
+// outlive it. A call on the "main" anchor is the conversation's own, builder
+// bursts included, so it moves the tally too.
 func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	cost := h.turnCost(modelID, u)
 	h.Log.Debug("model call", "origin", "model", "model", modelID, "session", sid,
 		"in", billedInput(u), "out", u.OutputTokens, "cache_read", u.CacheReadTokens, "cost", cost)
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.sessionID == sid {
+	if ag.sessionID == sid || sid == store.MainSessionID {
 		ag.sessCost += cost
 		ag.sessIn += billedInput(u)
 		ag.sessOut += u.OutputTokens

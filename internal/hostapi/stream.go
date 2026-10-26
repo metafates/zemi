@@ -12,6 +12,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -193,13 +194,14 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 }
 
 // StreamDone bills a model call as its stream finishes, so the token count
-// moves during the turn instead of only at TurnDone.
+// moves during the turn instead of only at TurnDone. The conversation bills
+// to the "main" anchor row; a subagent run keeps its own rows.
 func (s *streamAdapter) StreamDone(u fantasy.Usage) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	sid, model := ag.sessionID, s.h.turnModelID()
+	model := s.h.turnModelID()
 	ag.mu.Unlock()
-	s.h.bill(sid, model, u)
+	s.h.bill(store.MainSessionID, model, u)
 }
 
 // StepDone counts the step for the todo nag unless a todos call ran in it.

@@ -52,9 +52,10 @@ type AgentDef struct {
 }
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
-// todo list, the user's attention (questions, plan approval) and the main
-// agent's lua tool. Listing one in an agent file drops it.
-var subagentExcluded = set.Of(tools.ToolAgent, tools.ToolWorkflow, tools.ToolTodos, tools.ToolQuestion, tools.ToolPlan, tools.ToolLua)
+// todo list, the user's attention (questions, plan approval), the main
+// agent's lua tool and the main chat's memory tools (a run has no view).
+// Listing one in an agent file drops it.
+var subagentExcluded = set.Of(tools.ToolAgent, tools.ToolWorkflow, tools.ToolTodos, tools.ToolQuestion, tools.ToolPlan, tools.ToolLua, tools.ToolZoom, tools.ToolDate)
 
 // forkAgent is the run that continues the caller's conversation instead of
 // starting fresh: not a definition but the same agent carried on, so only its

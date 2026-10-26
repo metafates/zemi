@@ -9,10 +9,21 @@ package hostapi
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"maps"
+	"math/bits"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // Tool and echo leaves are template-built in the append transaction.
@@ -50,14 +61,15 @@ func newChatLog(ctx context.Context, h *Host) *chatLog {
 // and Close returns once every builder goroutine exited.
 func (c *chatLog) Close() { c.tree.Close() }
 
-// User logs the user's words.
-func (c *chatLog) User(text string) error { return c.append(kindUser, text, "") }
+// User logs the user's words; parts carries the message's images, which
+// zoom replays.
+func (c *chatLog) User(text, parts string) error { return c.append(kindUser, text, "", parts) }
 
 // Agent logs one of zemi's replies.
-func (c *chatLog) Agent(text string) error { return c.append(kindAgent, text, "") }
+func (c *chatLog) Agent(text string) error { return c.append(kindAgent, text, "", "") }
 
 // Note logs a memory from before the chat: a chapter mark.
-func (c *chatLog) Note(text string) error { return c.append(kindNote, text, "") }
+func (c *chatLog) Note(text string) error { return c.append(kindNote, text, "", "") }
 
 // Work logs a subagent's report: the run it reports for and the "[Name]" head
 // it opens with.
@@ -69,7 +81,7 @@ func (c *chatLog) Work(run, name, text string) error {
 	if err != nil {
 		return err
 	}
-	return c.append(kindWork, text, string(meta))
+	return c.append(kindWork, text, string(meta), "")
 }
 
 // Tool logs one tool call: its name, and the input as sent.
@@ -109,9 +121,9 @@ func (c *chatLog) Echo(name string, ok bool, output string) error {
 }
 
 // append logs the rows a text splits into, each with its view line.
-func (c *chatLog) append(kind, text, meta string) error {
+func (c *chatLog) append(kind, text, meta, parts string) error {
 	for _, row := range splitText(text, chatSplitChars) {
-		if _, err := c.h.DB.AppendLog(kind, row, meta, "", ""); err != nil {
+		if _, err := c.h.DB.AppendLog(kind, row, meta, parts, ""); err != nil {
 			return err
 		}
 	}
@@ -220,4 +232,246 @@ func clipBytes(s string, bytes int) string {
 		cut--
 	}
 	return s[:cut] + "..."
+}
+
+// viewLines are the text parts one view message carries: one part per this
+// many view lines, so a turn's parts extend the last turn's whole.
+const viewLinesPerPart = 4
+
+// viewMessage is the fresh turn's opening message: the persisted view, one
+// text part per viewLinesPerPart lines, oldest first. The mark sits on the
+// newest complete block that has a part after it - a complete last block
+// still carries the closing tag, which the next line moves - so every marked
+// part keeps its bytes while the view only grows at its end. ok is false
+// while the log is empty.
+func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
+	lines, err := c.h.DB.LoadView()
+	if err != nil || len(lines) == 0 {
+		return fantasy.Message{}, false
+	}
+	texts := make([]string, 0, (len(lines)+viewLinesPerPart-1)/viewLinesPerPart)
+	for start := 0; start < len(lines); start += viewLinesPerPart {
+		var b strings.Builder
+		for _, ln := range lines[start:min(start+viewLinesPerPart, len(lines))] {
+			text := placeholder
+			if n, err := c.h.DB.NodeAt(ln.L, ln.I); err == nil {
+				text = n.Text
+			}
+			id := nodeID{ln.L, ln.I}
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(id.id() + "|" + strings.ReplaceAll(text, "\n", " "))
+		}
+		texts = append(texts, b.String())
+	}
+	texts[0] = "<chat>\n" + texts[0]
+	texts[len(texts)-1] += "\n</chat>"
+	for i, text := range texts {
+		part := fantasy.TextPart{Text: text}
+		if len(texts) >= 2 && i == len(texts)-2 {
+			part.ProviderOptions = agent.WithCacheControl(part.ProviderOptions)
+		}
+		msg.Content = append(msg.Content, part)
+	}
+	msg.Role = fantasy.MessageRoleUser
+	return msg, true
+}
+
+// zoomArgs is the zoom tool's input and its schema source.
+type zoomArgs struct {
+	ID   int64 `json:"id" desc:"the line's first message id, the number before the + in id+n"`
+	N    int64 `json:"n,omitempty" desc:"how many messages the line covers, a power of 2; 1 gives the message whole"`
+	Page int   `json:"page,omitempty" desc:"with n = 1: the 0-based page of a message too long for one result"`
+}
+
+// zoomPageChars bounds one zoom(id, 1) page.
+const zoomPageChars = 8_000
+
+// zoomTool opens the view's lines: node(id, n) into its two children, and a
+// message whole.
+type zoomTool struct {
+	tools.NoProviderOptions
+	h *Host
+}
+
+func (h *Host) zoomTool() fantasy.AgentTool { return &zoomTool{h: h} }
+
+func (t *zoomTool) Info() fantasy.ToolInfo {
+	props, req := tools.ArgsOf(zoomArgs{})
+	return fantasy.ToolInfo{
+		Name:        string(tools.ToolZoom),
+		Description: "Open a line of the chat view. zoom(id, n) with n a power of 2 gives the two lines id+n was merged from; zoom(id, 1) gives message id whole, images included, paged when it is long: pass page for the next one. This is the only way to read past a summary.",
+		Parameters:  props,
+		Required:    req,
+		Parallel:    true,
+	}
+}
+
+func (t *zoomTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
+	var in zoomArgs
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if resp, stop := t.h.preCheck(string(tools.ToolZoom), call.Input); stop {
+		return resp, nil
+	}
+	defer t.h.postNotify(ctx, t.h.ScratchDir(), string(tools.ToolZoom), call.Input, &reply, time.Now())
+	reply, err = t.h.zoom(in)
+	return reply, err
+}
+
+// zoom answers one zoom call; every refusal is a tool error, never a panic.
+func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
+	if h.DB == nil {
+		return fantasy.NewTextErrorResponse("no chat log in this boot"), nil
+	}
+	if in.N == 0 {
+		in.N = 1
+	}
+	if in.N < 0 || in.N&(in.N-1) != 0 {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("n is %d: it must be a power of 2", in.N)), nil
+	}
+	count, err := h.DB.LogCount()
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	if in.ID < 0 || in.ID+in.N > count {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("no line %d+%d in a chat of %d messages", in.ID, in.N, count)), nil
+	}
+	if in.N > 1 {
+		shift := uint(bits.Len64(uint64(in.N)) - 1)
+		l, i := int64(shift), in.ID>>shift
+		return fantasy.NewTextResponse(strings.Join([]string{
+			zoomChild(h.DB, l-1, i*2),
+			zoomChild(h.DB, l-1, i*2+1),
+		}, "\n")), nil
+	}
+	row, err := h.DB.LogAt(in.ID)
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	if row.PartsJSON != "" {
+		return zoomImages(row), nil
+	}
+	head := row.Kind
+	if name := rowTool(row); name != "" {
+		head += " " + name
+	}
+	text := row.Text
+	if page := in.Page; page > 0 {
+		r := []rune(text)
+		at := page * zoomPageChars
+		if at >= len(r) {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("message %d has %d pages", in.ID, (len(r)+zoomPageChars-1)/zoomPageChars)), nil
+		}
+		text = string(r[at:min(at+zoomPageChars, len(r))])
+	} else {
+		r := []rune(text)
+		if len(r) > zoomPageChars {
+			text = string(r[:zoomPageChars]) + fmt.Sprintf("\n(page 1 of %d; zoom(%d, 1, page: 1) for the next)", (len(r)+zoomPageChars-1)/zoomPageChars, in.ID)
+		}
+	}
+	return fantasy.NewTextResponse(head + ": " + text), nil
+}
+
+// rowTool is the tool a tool or echo row names, from its meta; "" for the
+// other kinds.
+func rowTool(row store.LogEntry) string {
+	if row.Kind != kindTool && row.Kind != kindEcho {
+		return ""
+	}
+	var meta struct {
+		Tool string `json:"tool"`
+	}
+	if json.Unmarshal([]byte(row.MetaJSON), &meta) != nil {
+		return ""
+	}
+	return meta.Tool
+}
+
+// zoomChild renders one child line of node(l,i), a placeholder when unbuilt.
+func zoomChild(db *store.DB, l, i int64) string {
+	id := nodeID{l, i}
+	text := placeholder
+	if n, err := db.NodeAt(l, i); err == nil {
+		text = n.Text
+	}
+	return id.id() + "|" + strings.ReplaceAll(text, "\n", " ")
+}
+
+// zoomImages replays a message's stored images. NOTE: one image per zoom
+// result is what a tool response carries; a multi-image message replays its
+// first, and the rest wait for wave B's viewer.
+func zoomImages(row store.LogEntry) fantasy.ToolResponse {
+	var imgs []fantasy.FilePart
+	if err := json.Unmarshal([]byte(row.PartsJSON), &imgs); err != nil {
+		return fantasy.NewTextErrorResponse("message " + strconv.FormatInt(row.Seq, 10) + "'s parts do not decode")
+	}
+	for _, f := range imgs {
+		if f.MediaType != "" {
+			return fantasy.NewImageResponse(f.Data, f.MediaType)
+		}
+	}
+	return fantasy.NewTextResponse(row.Kind + ": " + row.Text)
+}
+
+// dateArgs is the date tool's input and its schema source.
+type dateArgs struct {
+	ID int64 `json:"id" desc:"the message id, the number before the + in id+n"`
+}
+
+// dateTool gives a log message's time.
+type dateTool struct {
+	tools.NoProviderOptions
+	h *Host
+}
+
+func (h *Host) dateTool() fantasy.AgentTool { return &dateTool{h: h} }
+
+func (t *dateTool) Info() fantasy.ToolInfo {
+	props, req := tools.ArgsOf(dateArgs{})
+	return fantasy.ToolInfo{
+		Name:        string(tools.ToolDate),
+		Description: "The date and time a chat message was written.",
+		Parameters:  props,
+		Required:    req,
+		Parallel:    true,
+	}
+}
+
+func (t *dateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
+	var in dateArgs
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if resp, stop := t.h.preCheck(string(tools.ToolDate), call.Input); stop {
+		return resp, nil
+	}
+	defer t.h.postNotify(ctx, t.h.ScratchDir(), string(tools.ToolDate), call.Input, &reply, time.Now())
+	if t.h.DB == nil {
+		return fantasy.NewTextErrorResponse("no chat log in this boot"), nil
+	}
+	row, err := t.h.DB.LogAt(in.ID)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("no message %d", in.ID)), nil
+	}
+	return fantasy.NewTextResponse(row.CreatedAt), nil
+}
+
+// chatCommands is /note: one line into the eternal chat, a chapter mark.
+func (h *Host) chatCommands() []*Command {
+	return []*Command{{
+		Name: "note", NArgs: NArgsSome, Desc: "add a note to the chat's memory",
+		GoFn: func(h *Host, args string, confirm bool) error { return h.Note(args) },
+	}}
+}
+
+// Note appends one note-kind log row. It is an append, so it works while a
+// turn runs as well as while the agent is idle.
+func (h *Host) Note(text string) error {
+	if h.chat == nil {
+		return errors.New("no chat log in this boot")
+	}
+	return h.chat.Note(strings.TrimSpace(text))
 }

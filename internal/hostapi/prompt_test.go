@@ -450,8 +450,9 @@ func TestPromptBudget(t *testing.T) {
 	n += len(strings.NewReplacer(perm.RealPath(root), "/tmp/t", root, "/tmp/t", exe, "/usr/local/bin/zemi").Replace(text)) - len(text)
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
-	// so any real growth is a decision; raise it only with a reason.
-	const ceiling = 26200
+	// so any real growth is a decision; raise it only with a reason. The
+	// last raise added the chat view section (the log is the memory).
+	const ceiling = 27500
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

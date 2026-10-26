@@ -897,7 +897,9 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 		h.notifyReport(r)
 		return
 	}
-	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), r) + attached); err != nil {
+	pad := h.scratchFor(parent)
+	h.logWork(r.id, r.agent, h.truncOutput(pad, "agent", r.body))
+	if err := h.AgentSend(h.reportMessage(pad, r) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
 	}
 }
@@ -916,12 +918,24 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil
 	}
+	h.logWork(run.id, run.agent, text)
 	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
 	run.wakeUpdates()
 	return nil
+}
+
+// logWork writes one work row into the eternal log: a run's report or
+// update, "[Name]" headed, named by the run it came from.
+func (h *Host) logWork(run, name, text string) {
+	if h.chat == nil {
+		return
+	}
+	if err := h.chat.Work(run, name, "["+name+"] "+text); err != nil {
+		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+	}
 }
 
 // updateMessage is the user message an update reaches the model as, live and

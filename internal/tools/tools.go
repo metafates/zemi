@@ -55,6 +55,8 @@ const (
 	ToolAgent    ToolName = "agent"
 	ToolWorkflow ToolName = "workflow"
 	ToolLua      ToolName = "lua"
+	ToolZoom     ToolName = "zoom"
+	ToolDate     ToolName = "date"
 	ToolUpdate   ToolName = "update"
 	ToolSearch   ToolName = "tool_search"
 )

@@ -71,15 +71,14 @@ func (m *treeModel) callCount() int {
 	return m.calls
 }
 
-// newTree boots a chat log whose builder runs on a stub model.
+// newTree boots a chat log whose builder runs on a stub model: the host's
+// own, started at NewHost, on modelFn's stub.
 func newTree(t *testing.T, replies ...string) (*Host, *chatLog, *treeModel) {
 	t.Helper()
 	h, _ := newTestHostDB(t)
 	m := &treeModel{replies: replies}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	cl := newChatLog(context.Background(), h)
-	t.Cleanup(cl.Close)
-	return h, cl, m
+	return h, h.chat, m
 }
 
 // viewBytesOf sizes the view from the store alone, the way the builder's
@@ -201,10 +200,10 @@ func TestTemplateAndShortLeavesNeedNoModelCall(t *testing.T) {
 	if err := cl.Echo("read", true, "package a\nline two\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.User("short"); err != nil {
+	if err := cl.User("short", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.User("also short"); err != nil {
+	if err := cl.User("also short", ""); err != nil {
 		t.Fatal(err)
 	}
 	// the template leaves landed in their append transactions
@@ -271,7 +270,7 @@ func TestRulerKeepsShortestLine(t *testing.T) {
 	h, cl, m := newTree(t,
 		strings.Repeat("a", 600), strings.Repeat("b", 580), strings.Repeat("c", 560),
 		strings.Repeat("d", 540), shortest)
-	if err := cl.User(strings.Repeat("z", 600)); err != nil {
+	if err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
@@ -295,7 +294,7 @@ func TestViewSawtoothBounds(t *testing.T) {
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	line := strings.Repeat("w", 450) // its own node verbatim, no call
 	for range 320 {
-		if err := cl.User(line); err != nil {
+		if err := cl.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -310,7 +309,7 @@ func TestViewSawtoothBounds(t *testing.T) {
 	}
 	coverage(t, h.DB, 320)
 	for range 12 {
-		if err := cl.User(line); err != nil {
+		if err := cl.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -396,8 +395,8 @@ func TestBuilderCloseQuiet(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := &treeModel{gate: make(chan struct{})} // calls hang until released
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	cl := newChatLog(context.Background(), h)
-	if err := cl.User(strings.Repeat("z", 600)); err != nil {
+	b := newMemTree(context.Background(), h)
+	if err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
@@ -408,7 +407,7 @@ func TestBuilderCloseQuiet(t *testing.T) {
 	})
 	done := make(chan struct{})
 	go func() {
-		cl.Close()
+		b.Close()
 		close(done)
 	}()
 	select {
@@ -416,8 +415,8 @@ func TestBuilderCloseQuiet(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Close did not return: the builder is not quiet")
 	}
-	cl.tree.Wake()
-	cl.tree.RebuildQueues()
+	b.Wake()
+	b.RebuildQueues()
 }
 
 // TestSplitText: a long text becomes sibling rows of about the cap, cut at a
@@ -457,7 +456,7 @@ func TestSplitText(t *testing.T) {
 func TestChatLogKinds(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, "x")
-	if err := cl.User("hello"); err != nil {
+	if err := cl.User("hello", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := cl.Agent("hi back"); err != nil {
@@ -535,7 +534,7 @@ func TestChatLogLongTextSplits(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, "x")
 	long := strings.Repeat("a", chatSplitChars-100) + "\n" + strings.Repeat("b", 500)
-	if err := cl.User(long); err != nil {
+	if err := cl.User(long, ""); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(3)
@@ -637,7 +636,7 @@ func TestRewindCutRebuild(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	for range 6 {
-		if err := cl.User(strings.Repeat("w", 600)); err != nil {
+		if err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -660,7 +659,7 @@ func TestRewindCutRebuild(t *testing.T) {
 	})
 	// new appends land dense and build over the cut
 	for range 2 {
-		if err := cl.User(strings.Repeat("w", 600)); err != nil {
+		if err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 			t.Fatal(err)
 		}
 	}

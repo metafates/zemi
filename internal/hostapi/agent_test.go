@@ -689,21 +689,49 @@ func TestHeldCommandPrompt(t *testing.T) {
 	}
 }
 
-// TestHistoryCarriesAcrossTurns: the runner is rebuilt on every send, and the
-// second turn's prompt still carries the first exchange (system, context,
-// user, assistant, user), and both turns land in the transcript.
-func TestHistoryCarriesAcrossTurns(t *testing.T) {
+// TestFreshTurnPerTurn: every turn is a fresh call that opens on the view -
+// an empty log sends none - and no exchange carries between turns. Both
+// turns still land in the transcript.
+func TestFreshTurnPerTurn(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
-	for _, text := range []string{"one", "two"} {
-		if err := h.AgentSend(text); err != nil {
-			t.Fatalf("send %q: %v", text, err)
-		}
-		waitIdle(t, h)
+	h.SetUIHooks(&fakeUI{})
+	if err := h.AgentSend("one"); err != nil {
+		t.Fatal(err)
 	}
-	if n := m.lastPrompt.Load(); n != 5 {
-		t.Fatalf("second turn prompt has %d messages, want 5", n)
+	waitIdle(t, h)
+	// the first turn's rows are in the log; the builder joins them before
+	// the second turn reads its view
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(1, 0); err != nil {
+			return errors.New("the first exchange is not summarized yet")
+		}
+		return nil
+	})
+	if err := h.AgentSend("two"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	m.mu.Lock()
+	prompts := slices.Clone(m.prompts)
+	m.mu.Unlock()
+	if len(prompts) != 2 {
+		t.Fatalf("%d turns recorded, want 2 (a short log earns no compaction calls)", len(prompts))
+	}
+	for i, want := range []int{3, 4} { // turn 1: system, context, user; turn 2 adds the view
+		if n := len(prompts[i]); n != want {
+			t.Fatalf("turn %d prompt has %d messages, want %d", i+1, n, want)
+		}
+		if got := concatText(prompts[i][len(prompts[i])-1].Content); got != []string{"one", "two"}[i] {
+			t.Fatalf("turn %d message = %q", i+1, got)
+		}
+	}
+	// no residue: after the context comes the view (one leaf line per
+	// message until a batch merges) and the message, and no message of the
+	// first turn's own
+	if got := concatText(prompts[1][2].Content); !strings.Contains(got, "0+1|one") || !strings.Contains(got, "1+1|ok") {
+		t.Fatalf("second turn view = %q", got)
 	}
 	if tr := h.Session().Transcript; len(tr) != 4 {
 		t.Fatalf("transcript = %+v", tr)

@@ -231,7 +231,7 @@ func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system st
 	if len(tools) > 0 {
 		r.tools = make([]fantasy.AgentTool, len(tools))
 		for i, t := range tools {
-			r.tools[i] = runningTool{t, r, i == len(tools)-1}
+			r.tools[i] = runningTool{t, r}
 		}
 		opts = append(opts, fantasy.WithTools(r.tools...))
 	}
@@ -243,18 +243,7 @@ func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system st
 // arguments end when a serial call ahead of it still runs.
 type runningTool struct {
 	fantasy.AgentTool
-	r    *Runner
-	last bool
-}
-
-// ProviderOptions puts the fourth cache breakpoint on the last tool, so a
-// new system prompt over the same tools still reads their schemas from the
-// cache. NOTE: a step whose ActiveTools leave the last tool out has none.
-func (t runningTool) ProviderOptions() fantasy.ProviderOptions {
-	if t.last {
-		return withCacheControl(t.AgentTool.ProviderOptions())
-	}
-	return t.AgentTool.ProviderOptions()
+	r *Runner
 }
 
 func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -741,10 +730,10 @@ func ContextUsed(u fantasy.Usage) int64 {
 	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens + u.OutputTokens
 }
 
-// withCacheControl is a copy of o that also marks an Anthropic prompt cache
+// WithCacheControl is a copy of o that also marks an Anthropic prompt cache
 // breakpoint; the openrouter and vercel providers read it too, the rest
 // ignore options keyed by another provider's name.
-func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
+func WithCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
 	return mergeOptions(o, fantasy.ProviderOptions{
 		anthropic.Name: &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}},
 	})
@@ -849,15 +838,27 @@ func noReasoning(m fantasy.Message) fantasy.Message {
 // withCacheBreakpoints returns a copy of msgs with breakpoints on the system
 // prompt (it follows the tools, so both are cached) and on the last two
 // messages, so each step reads the previous step's prefix from the cache.
-// With runningTool's that is all 4 breakpoints Anthropic allows.
+// A message whose own parts carry a mark (the view) gains none: a
+// message-level mark would spend a second breakpoint on the same bytes.
 func withCacheBreakpoints(msgs []fantasy.Message) []fantasy.Message {
 	out := slices.Clone(msgs)
 	for i := range out {
+		if partMarked(out[i]) {
+			continue
+		}
 		if (i == 0 && out[i].Role == fantasy.MessageRoleSystem) || i >= len(out)-2 {
-			out[i].ProviderOptions = withCacheControl(out[i].ProviderOptions)
+			out[i].ProviderOptions = WithCacheControl(out[i].ProviderOptions)
 		}
 	}
 	return out
+}
+
+// partMarked reports a message whose parts carry a cache mark of their own.
+func partMarked(m fantasy.Message) bool {
+	return slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool {
+		_, ok := p.Options()[anthropic.Name]
+		return ok
+	})
 }
 
 type steeredMsg struct {

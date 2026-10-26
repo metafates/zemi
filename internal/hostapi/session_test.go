@@ -204,19 +204,33 @@ func TestResumeParity(t *testing.T) {
 		}
 	}
 	after := h.AgentStream()
+	// The conversation's own usage bills to the "main" anchor row now; a
+	// session row carries only what its subagents spent, and this one had
+	// none. The context estimate and window survive the resume.
 	for _, f := range []struct {
 		name     string
 		live, re int64
 	}{
 		{"last in", before.LastIn, after.LastIn},
-		{"session in", before.SessionIn, after.SessionIn},
-		{"session out", before.SessionOut, after.SessionOut},
-		{"cache read", before.CacheRead, after.CacheRead},
-		{"cache billed", before.CacheBilled, after.CacheBilled},
 		{"context window", before.CtxWindow, after.CtxWindow},
+		{"anchor in", before.SessionIn, func() int64 { n, _ := h.DB.GetSession(store.MainSessionID); return n.PromptTokens }()},
+		{"anchor out", before.SessionOut, func() int64 { n, _ := h.DB.GetSession(store.MainSessionID); return n.CompletionTokens }()},
 	} {
 		if f.live != f.re {
 			t.Errorf("%s: live %d, resumed %d", f.name, f.live, f.re)
+		}
+	}
+	for _, f := range []struct {
+		name string
+		re   int64
+	}{
+		{"session in", after.SessionIn},
+		{"session out", after.SessionOut},
+		{"cache read", after.CacheRead},
+		{"cache billed", after.CacheBilled},
+	} {
+		if f.re != 0 {
+			t.Errorf("%s: resumed %d, want 0 (the session row holds only its subagents' spend)", f.name, f.re)
 		}
 	}
 	if before.SessionCost != after.SessionCost {
@@ -305,8 +319,10 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	send("two")
 	second := h.AgentSessionID()
-	if n := m.lastPrompt.Load(); n != 3 {
-		t.Fatalf("fresh session prompt has %d messages, want 3 (system, context, user)", n)
+	// the session is fresh; the chat is not: its prompt opens on the view
+	// the first session's exchange left
+	if n := m.lastPrompt.Load(); n != 4 {
+		t.Fatalf("fresh session prompt has %d messages, want 4 (system, context, view, user)", n)
 	}
 
 	// a list the session was left with in progress settles on resume: nothing
@@ -330,8 +346,10 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatal("resume left the context estimate at 0")
 	}
 	send("three")
-	if n := m.lastPrompt.Load(); n != 5 {
-		t.Fatalf("resumed prompt has %d messages, want 5", n)
+	// the resumed turn opens on the view like any other: system, context,
+	// view, the message
+	if n := m.lastPrompt.Load(); n != 4 {
+		t.Fatalf("resumed prompt has %d messages, want 4", n)
 	}
 	// the resumed session sends the context message it stored, and stores no other
 	rows, _ := h.DB.Messages(first)

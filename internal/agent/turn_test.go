@@ -884,10 +884,11 @@ func TestCacheBreakpointKeepsOptions(t *testing.T) {
 	}
 }
 
-// TestCacheBreakpoints: an anthropic request marks the system block, the
-// last two messages and the last tool; an openrouter one goes to its fixed
-// URL with the same messages marked (fantasy drops a tool's mark there).
-// Both carry the session's affinity header.
+// TestCacheBreakpoints: an anthropic request marks the system block and the
+// last two messages (the view's own part mark and these are all 4
+// breakpoints Anthropic allows, so the tools carry none); an openrouter one
+// goes to its fixed URL with the same messages marked (fantasy drops a
+// tool's mark there). Both carry the session's affinity header.
 func TestCacheBreakpoints(t *testing.T) {
 	var mu sync.Mutex
 	var sent, body, affinity string
@@ -930,7 +931,7 @@ func TestCacheBreakpoints(t *testing.T) {
 		return out
 	}
 	for _, c := range []struct{ model, url, system, messages, tools string }{
-		{"a/claude-sonnet-4", "https://api.anthropic.com/v1/messages", "+", "-++", "-+"},
+		{"a/claude-sonnet-4", "https://api.anthropic.com/v1/messages", "+", "-++", "--"},
 		{"or/anthropic/claude-sonnet-4", "https://openrouter.ai/api/v1/chat/completions", "", "+-++", "--"},
 	} {
 		m, err := reg.Resolve(ModelID(c.model))
@@ -957,6 +958,37 @@ func TestCacheBreakpoints(t *testing.T) {
 		if want := [5]string{c.url, "s1", c.system, c.messages, c.tools}; got != want {
 			t.Fatalf("%s: url, affinity, system, messages, tools marks = %q, want %q", c.model, got, want)
 		}
+	}
+}
+
+// TestCacheMarksExactlyFour: an in-turn request carries exactly the 4
+// breakpoints Anthropic allows - the system block, the view's own marked
+// part and the last two messages. The deleted last-tool mark would make it
+// five, which the provider hard-errors on.
+func TestCacheMarksExactlyFour(t *testing.T) {
+	view := UserMessage("0+1|hello\n2+2|more")
+	part := view.Content[0].(fantasy.TextPart)
+	part.ProviderOptions = WithCacheControl(part.ProviderOptions)
+	view.Content[0] = part
+	m := &mockModel{steps: [][]fantasy.StreamPart{callStep("{}"), textParts("done")}}
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "sys")
+	r.History = []fantasy.Message{view, UserMessage("go")}
+	if err := r.Send(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	marked := 0
+	for _, msg := range m.lastCall.Prompt {
+		if _, ok := msg.ProviderOptions[anthropic.Name]; ok {
+			marked++
+		}
+		for _, p := range msg.Content {
+			if _, ok := p.Options()[anthropic.Name]; ok {
+				marked++
+			}
+		}
+	}
+	if marked != 4 {
+		t.Fatalf("%d marks on the in-turn request, want exactly 4", marked)
 	}
 }
 
