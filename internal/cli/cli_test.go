@@ -119,6 +119,7 @@ func TestCLI(t *testing.T) {
 		{name: "plugins arity", args: []string{"plugin", "enable"}, code: 2, stderr: "zemi: plugin enable takes <name>\n"},
 		{name: "a range of args", args: []string{"plugin", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugin install takes <name>[@<marketplace>]\n"},
 		{name: "marketplace add takes a url", args: []string{"plugin", "marketplace", "add"}, code: 2, stderr: "zemi: plugin marketplace add takes <source>\n"},
+		{name: "db takes sql", args: []string{"db"}, code: 2, stderr: "zemi: db takes <sql> [args...]\n"},
 		{name: "marketplace list shows marketplaces, not entries", args: []string{"plugin", "marketplace", "list"}, stdout: "demo  owner/repo  2  ", notStdout: "the one"},
 		{name: "marketplace list as JSON carries the entries", args: []string{"plugin", "marketplace", "list", "--json"}, stdout: `"entries":[{"name":"one","description":"the one"},{"name":"two","version":"0.1.0"}]`},
 		{name: "completion help in zemi's words", args: []string{"completion", "--help"}, stdout: "print the bash completion script", notStdout: "Generate"},
@@ -177,10 +178,13 @@ func TestCLI(t *testing.T) {
 func TestReadStdin(t *testing.T) {
 	for _, c := range []struct {
 		name, stdin string
+		prompt      string
 		null        bool // null reads /dev/null, a character device
 		err         string
+		notErr      string
 	}{
-		{name: "a pipe is refused", stdin: "x", err: "stdin is piped; the TUI does not read it"},
+		{name: "a pipe is refused", stdin: "x", err: "stdin is piped; the TUI does not read it - give the prompt as an argument"},
+		{name: "a pipe with the prompt given names no move", stdin: "x", prompt: "say hi", err: "stdin is piped; the TUI does not read it", notErr: "give the prompt"},
 		{name: "/dev/null is taken", null: true},
 	} {
 		r, w, err := os.Pipe()
@@ -197,10 +201,11 @@ func TestReadStdin(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		o := options{}
+		o := options{prompt: c.prompt}
 		err = o.readStdin(r)
 		r.Close()
-		if !strings.Contains(fmt.Sprint(err), c.err) || o.prompt != "" {
+		errText := fmt.Sprint(err)
+		if !strings.Contains(errText, c.err) || c.notErr != "" && strings.Contains(errText, c.notErr) || o.prompt != c.prompt {
 			t.Errorf("%s: prompt %q, err %v", c.name, o.prompt, err)
 		}
 	}

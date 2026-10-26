@@ -2268,7 +2268,7 @@ func (h *Host) NamespacesStep() lua.BootStep {
 
 func (h *Host) installNamespaces(g *lua.Generation) error {
 	if h.initErr != nil {
-		return fmt.Errorf("stores: %w", h.initErr)
+		return h.initErr
 	}
 	L := g.L
 	h.gen.Store(g.ID)

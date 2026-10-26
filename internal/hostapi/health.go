@@ -337,7 +337,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthOK, "git", "found")
 	}
 
-	add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
+	add(HealthOK, "shell", proc.Shell())
 
 	switch style, why, missing := h.NotifyStyle(); {
 	case style == config.NotifyOff:
@@ -465,7 +465,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	if h.ProjectTrusted() {
 		add(HealthOK, "trust", "trusted: "+perm.TildePath(h.Dirs.TrustRoot()), "trust")
 	} else {
-		add(HealthWarn, "trust", "untrusted: the project's config, instructions and language servers are off; /trust", "trust")
+		add(HealthWarn, "trust", "untrusted: the project's config, instructions and language servers are off; /trust (or zemi --trust for one run)", "trust")
 	}
 
 	counts, servers := map[ServiceStatus]int{}, h.mcp.list()

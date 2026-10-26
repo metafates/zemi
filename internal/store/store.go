@@ -26,6 +26,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/metafates/zemi/internal/filelock"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // DB is one SQLite database handle. All methods are safe for concurrent
@@ -78,7 +79,7 @@ func isBusy(err error) bool {
 // OpenRead opens an existing store read-only: no migration, no sweep and
 // no checkpoint on close, so a look waits on no lock a running zemi holds.
 // A missing file is fs.ErrNotExist; one this binary's migrations have not
-// reached is ErrUnmigrated.
+// reached is ErrUnmigrated; one SQLite cannot read names that failure.
 func OpenRead(path string) (*DB, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
@@ -91,9 +92,9 @@ func OpenRead(path string) (*DB, error) {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	s := &DB{db: d, path: path}
-	if s.unmigrated() {
+	if err := s.unmigrated(); err != nil {
 		d.Close()
-		return nil, fmt.Errorf("%s: %w", path, ErrUnmigrated)
+		return nil, fmt.Errorf("%s: %w", perm.TildePath(path), err)
 	}
 	return s, nil
 }
@@ -104,11 +105,30 @@ func OpenRead(path string) (*DB, error) {
 var ErrUnmigrated = errors.New("store predates this zemi; run zemi health in its project once to migrate it")
 
 // unmigrated reports a store the embedded migrations have not reached: their
-// version table is missing (a 0-byte or pre-goose file) or behind their count.
-func (s *DB) unmigrated() bool {
+// version table is missing (a 0-byte or pre-goose file) or behind their
+// count. A file that is not a database at all is its own error: no open
+// migrates it, so the unmigrated remedy would never work.
+func (s *DB) unmigrated() error {
 	var v sql.NullInt64
 	err := s.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&v)
-	return err != nil || v.Int64 < int64(migrationCount())
+	if err == nil {
+		if v.Int64 < int64(migrationCount()) {
+			return ErrUnmigrated
+		}
+		return nil
+	}
+	if isNotADB(err) {
+		return fmt.Errorf("not a readable zemi store: %w", err)
+	}
+	return ErrUnmigrated
+}
+
+// isNotADB reports SQLITE_NOTADB: the file is no sqlite database at all, so
+// no open recovers it. Other read failures - a hot WAL, a lock - keep the
+// unmigrated remedy, which a real open performs.
+func isNotADB(err error) bool {
+	e, ok := errors.AsType[*sqlite.Error](err)
+	return ok && e.Code()&0xff == sqlite3.SQLITE_NOTADB
 }
 
 // migrationCount is the newest version the embedded migrations reach; the

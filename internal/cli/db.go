@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -30,7 +31,7 @@ func dbCommand(o *options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "db <sql> [args...]",
 		Short: "run one read-only query against zemi's store; the args after it bind to ?1, ?2, ...; --global for the global store",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  minArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dirs := o.dirs
 			path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
@@ -117,12 +118,15 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string
 }
 
 // dbCell renders one value for the text table: NULL an empty cell, a blob as
-// its bytes, a one-line string capped at dbCellCap, the tail naming the cut.
+// its sanitized bytes, a one-line string capped at dbCellCap, the tail naming
+// the cut.
 func dbCell(v any) string {
 	switch x := v.(type) {
 	case nil:
 		return ""
 	case string:
+		// stored strings are model-influenced: strip them at this boundary
+		x = sanitize.String(x)
 		x = strings.ReplaceAll(x, "\n", "\\n")
 		x = strings.ReplaceAll(x, "\t", "\\t")
 		if ansi.StringWidth(x) <= dbCellCap {

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestShortID: a pad file name is trusted as an id only through IDShape, so
@@ -152,15 +154,27 @@ func TestMigrationKeepsData(t *testing.T) {
 
 // TestOpenReadUnmigrated: a read-only open refuses a store this binary's
 // migrations have not reached, naming the store and the remedy, and migrates
-// nothing; a store at the current schema reads.
+// nothing; a corrupt file is refused as unreadable, not unmigrated; a store
+// at the current schema reads.
 func TestOpenReadUnmigrated(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := OpenRead(path)
-	if !errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "zemi health") {
+	if !errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), perm.TildePath(path)) || !strings.Contains(err.Error(), "zemi health") {
 		t.Fatalf("a 0-byte store: %v, want ErrUnmigrated naming the store and the remedy", err)
+	}
+
+	// a file SQLite cannot read at all: no open migrates it, so the
+	// unmigrated remedy would never work
+	corrupt := filepath.Join(t.TempDir(), "zemi.db")
+	if err := os.WriteFile(corrupt, []byte("not a database at all"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = OpenRead(corrupt)
+	if err == nil || errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), "not a readable zemi store") {
+		t.Fatalf("a corrupt store: %v, want a not-readable error, not ErrUnmigrated", err)
 	}
 
 	db, err := Open(path)

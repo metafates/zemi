@@ -418,12 +418,27 @@ func polish(c *cobra.Command) {
 	}
 }
 
+// takesErr names a command's positional grammar: "db takes <sql> [args...]".
+func takesErr(c *cobra.Command) error {
+	return fmt.Errorf("%s takes %s", strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" "), strings.TrimPrefix(c.Use, c.Name()+" "))
+}
+
 // nargs checks that a command has one to maxN positional arguments, naming
 // what its Use line takes.
 func nargs(maxN int) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
 		if len(args) < 1 || len(args) > maxN {
-			return fmt.Errorf("%s takes %s", strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" "), strings.TrimPrefix(c.Use, c.Name()+" "))
+			return takesErr(c)
+		}
+		return nil
+	}
+}
+
+// minArgs checks that a command has at least n positional arguments.
+func minArgs(n int) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if len(args) < n {
+			return takesErr(c)
 		}
 		return nil
 	}
@@ -1076,7 +1091,11 @@ func (o *options) readStdin(stdin *os.File) error {
 	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
 		return nil
 	}
-	return errors.New("stdin is piped; the TUI does not read it - give the prompt as an argument")
+	msg := "stdin is piped; the TUI does not read it"
+	if o.prompt == "" {
+		msg += " - give the prompt as an argument"
+	}
+	return errors.New(msg)
 }
 
 // headlessTrust answers the trust prompt when nobody can: not now.

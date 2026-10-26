@@ -33,6 +33,10 @@ func TestDB(t *testing.T) {
 	if err := db.CreateSession(sid, "", "fix the failing test", "default"); err != nil {
 		t.Fatal(err)
 	}
+	// a stored string carrying terminal escapes, as model output can
+	if err := db.AddMessage(&store.Message{SessionID: sid, Role: "assistant", PartsJSON: "{\"text\":\"plain \x1b[31mRED\x1b[0m end\"}"}); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 	global, err := store.Open(filepath.Join(dirs.StateHome, "zemi.db"))
 	if err != nil {
@@ -78,6 +82,7 @@ func TestDB(t *testing.T) {
 		{"numbered args bind by index, not position", []string{"db", "select ?2, ?1", "one", "two"}, 0, "two  one", "", ""},
 		{"a bound limit", []string{"db", "select id from sessions limit ?1", "1"}, 0, sid, "", ""},
 		{"json is one object per row", []string{"db", "--json", "select id, title from sessions"}, 0, `{"id":"` + sid + `","title":"fix the failing test"}` + "\n", "", ""},
+		{"stored escapes are stripped in text", []string{"db", "select parts_json from messages"}, 0, "plain RED end", "", "\x1b"},
 		{"null is empty in text", []string{"db", "select parent_id from sessions"}, 0, "parent_id\n\n", "", ""},
 		{"null is null in json", []string{"db", "--json", "select parent_id from sessions"}, 0, `{"parent_id":null}` + "\n", "", ""},
 		{"a write fails", []string{"db", "insert into kv values ('x','{}',0)"}, 1, "", "readonly", ""},
