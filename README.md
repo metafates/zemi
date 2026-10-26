@@ -23,7 +23,11 @@ Zemi is a (coding) agent harness \[insert buzzword\] that...
 
 ```sh
 go install github.com/metafates/zemi@latest
+```
 
+Then just
+
+```bash
 # or ANTHROPIC_API_KEY, OPENAI_API_KEY, or any other provider zemi supports.
 # zemi will guide you if not set
 export DEEPSEEK_API_KEY=...
@@ -42,7 +46,42 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 - Keeps prompts small, cache hit rates high
 - Knows when to shut up
 - Does more with less steps
-- Tools to make cheap models suck less, smart ones do more: subagents, workflows, forks, parallel tool calls... _yada yada_
+- Subagents, workflows, background jobs, lsp, mcp, and more.
 - Fully scriptable with Lua and knows how to modify itself
 - Learns from previous sessions
 - Compatible with Claude Code plugins
+
+## API Keys
+
+You can use zemi with any provider, including local models or custom providers.
+
+| Environment Variable        | Provider                                           |
+| --------------------------- | -------------------------------------------------- |
+| `ANTHROPIC_API_KEY`         | Anthropic                                          |
+| `OPENAI_API_KEY`            | OpenAI                                             |
+| `VERCEL_API_KEY`            | Vercel AI Gateway                                  |
+| `GEMINI_API_KEY`            | Google Gemini                                      |
+| `ZAI_API_KEY`               | Z.ai                                               |
+| `MINIMAX_API_KEY`           | MiniMax                                            |
+| `SYNTHETIC_API_KEY`         | Synthetic                                          |
+| `HF_TOKEN`                  | Hugging Face Inference                             |
+| `CEREBRAS_API_KEY`          | Cerebras                                           |
+| `OPENROUTER_API_KEY`        | OpenRouter                                         |
+| `IONET_API_KEY`             | io.net                                             |
+| `ALIBABA_SINGAPORE_API_KEY` | Alibaba (Singapore)                                |
+| `ALIBABA_US_API_KEY`        | Alibaba (United States)                            |
+| `GROQ_API_KEY`              | Groq                                               |
+| `AVIAN_API_KEY`             | Avian                                              |
+| `OPENCODE_API_KEY`          | OpenCode Zen & Go                                  |
+| `VERTEXAI_PROJECT`          | Google Cloud VertexAI (Gemini)                     |
+| `VERTEXAI_LOCATION`         | Google Cloud VertexAI (Gemini)                     |
+| `AWS_ACCESS_KEY_ID`         | Amazon Bedrock (Claude)                            |
+| `AWS_SECRET_ACCESS_KEY`     | Amazon Bedrock (Claude)                            |
+| `AWS_REGION`                | Amazon Bedrock (Claude)                            |
+| `AWS_PROFILE`               | Amazon Bedrock (Custom Profile)                    |
+| `AWS_BEARER_TOKEN_BEDROCK`  | Amazon Bedrock                                     |
+| `AZURE_OPENAI_API_ENDPOINT` | Azure OpenAI models                                |
+| `AZURE_OPENAI_API_KEY`      | Azure OpenAI models (optional when using Entra ID) |
+| `AZURE_OPENAI_API_VERSION`  | Azure OpenAI models                                |
+| `MOONSHOT_API_KEY`          | Moonshot                                           |
+| `XAI_API_KEY`               | xAI                                                |
