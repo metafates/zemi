@@ -517,7 +517,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
-		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply, a code block, or an earlier message", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or one of its code blocks", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.CopyReply(args)
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},
 		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {

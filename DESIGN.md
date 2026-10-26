@@ -2335,7 +2335,7 @@ rides the `memories.md` line and its ledger entries.
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
   answered in an overlay, from the conversation so far,
   never stored), `/copy [reply|code [n]]` (the last reply or its code blocks as
-  written), `/messages` (the map of the conversation, `alt+m`), `/logs` (recent
+  written; bare over a reply with code blocks opens their picker), `/messages` (the map of the conversation, `alt+m`), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   project trust, skills, plugins, MCP servers, language servers, reflector,

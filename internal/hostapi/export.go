@@ -30,8 +30,8 @@ import (
 
 // CopyReply copies the viewed run's, else the live session's, last reply as
 // the model wrote it (a drag copies rendered, wrapped screen rows). args is
-// "" (the whole reply at once, or the messages picker when it has code
-// blocks, so one can be picked), "reply", "code" (every block) or
+// "" (the whole reply at once, or the picker over its code blocks when it
+// has any, so one can be picked), "reply", "code" (every block) or
 // "code <n>".
 func (h *Host) CopyReply(args string) error {
 	ui, err := h.Screen()
@@ -53,7 +53,7 @@ func (h *Host) CopyReply(args string) error {
 	case len(f) == 0 && len(blocks) == 0, len(f) == 1 && f[0] == "reply":
 		ui.Copy(text)
 	case len(f) == 0:
-		return h.OpenMessages()
+		ui.OpenOverlay(copyPicker(text, blocks))
 	case f[0] != "code" || len(f) > 2:
 		return Usagef("usage: /copy [reply | code [n]]")
 	case len(blocks) == 0:
@@ -72,6 +72,39 @@ func (h *Host) CopyReply(args string) error {
 		ui.Copy(blocks[n-1].text)
 	}
 	return nil
+}
+
+// copyPicker is the picker bare /copy opens over a reply with code blocks:
+// each block numbered, then the direct forms as rows. A pick copies itself
+// and the picker stays open, so the next block is one move away.
+func copyPicker(text string, blocks []codeBlock) Overlay {
+	o := Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight}
+	for i, b := range blocks {
+		head := ""
+		for l := range strings.Lines(b.text) {
+			if first := strings.TrimSpace(l); first != "" {
+				head = clipLine(first, 60)
+				break
+			}
+		}
+		desc := pluralCount(lineCount(strings.TrimRight(b.text, "\n")), "line", "lines")
+		if head != "" {
+			desc += " · " + head
+		}
+		o.Items = append(o.Items, OverlayItem{
+			Text: fmt.Sprintf("%d  %s", i+1, cmp.Or(b.lang, "text")),
+			Desc: desc, Copy: b.text,
+		})
+	}
+	parts := make([]string, len(blocks))
+	for i, b := range blocks {
+		parts[i] = strings.TrimSuffix(b.text, "\n")
+	}
+	o.Items = append(o.Items,
+		OverlayItem{Text: "every block", Desc: pluralCount(len(blocks), "code block", "code blocks"), Copy: strings.Join(parts, "\n\n") + "\n"},
+		OverlayItem{Text: "the whole reply", Desc: pluralCount(lineCount(text), "line", "lines"), Copy: text},
+	)
+	return o
 }
 
 // lastReply is the reply /copy and its direct forms take: the viewed run's

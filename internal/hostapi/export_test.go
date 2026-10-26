@@ -84,8 +84,8 @@ func TestExportAndFork(t *testing.T) {
 }
 
 // TestCopyReply: the direct forms copy a block, every block or the reply,
-// bad ones fail, and a bare /copy over a reply with code blocks opens the
-// messages picker, where one block can be picked.
+// bad ones fail, and a bare /copy over a reply with code blocks opens their
+// picker, where one block can be picked.
 func TestCopyReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -110,8 +110,22 @@ func TestCopyReply(t *testing.T) {
 		}
 	}
 	ui.opened = nil
-	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "messages" {
+	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "copy" {
 		t.Fatalf("/copy: %v, %v", err, ui.opened)
+	}
+	type copyRow struct{ text, desc, copy string }
+	var rows []copyRow
+	for _, it := range ui.opened[0].Items {
+		rows = append(rows, copyRow{it.Text, it.Desc, it.Copy})
+	}
+	wantRows := []copyRow{
+		{"1  go", "1 line · x := 1", "x := 1\n"},
+		{"2  text", "1 line · y", "y\n"},
+		{"every block", "2 code blocks", "x := 1\n\ny\n"},
+		{"the whole reply", "9 lines", reply},
+	}
+	if !slices.Equal(rows, wantRows) {
+		t.Fatalf("copy picker rows = %+v, want %+v", rows, wantRows)
 	}
 }
 
