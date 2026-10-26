@@ -907,7 +907,7 @@ function zemi.event.stats() end
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /. Cached: read again after a boot or reload, a trust change and a new session.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
----@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view): the chat draws that run whole while it is up.
+---@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view), or negative when that run holds no settled rows (the live-only run a text tail leaves); the chat draws that run whole while it is up.
 ---@field emoji string The session's marker emoji, derived from its id; "" before the first send.
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence.

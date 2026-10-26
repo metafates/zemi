@@ -2,6 +2,8 @@ package hostapi
 
 import (
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,9 +196,12 @@ func TestMessagesRun(t *testing.T) {
 // a reply that started folds the run the way the chat does.
 func TestMessagesLiveCalls(t *testing.T) {
 	t.Parallel()
-	h, _ := newTestHost(t)
+	h := newTestHostUI(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
+	runUser(t, h.RT, `zemi.ui.widget.add({ id = "railprobe", region = "header", render = function(ctx)
+		return { { { text = tostring(ctx.rail) } } }
+	end })`)
 	h.AppendMessage("user", "watch the dev server")
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "npm run dev", Label: "start the dev server", Status: CallBG, Job: "job-1", Output: "started job-1"})
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "job_read", Text: "job-1", Status: CallOK, Output: "job-1: running"})
@@ -267,6 +272,42 @@ func TestMessagesLiveCalls(t *testing.T) {
 	ro, ok = h.messagesRailOverlay(h.pickerTranscript(), -1, 0)
 	if !ok || len(ro.Items) != 2 || ro.Items[0].Anchor != -1 || ro.Items[1].Anchor != -2 {
 		t.Fatalf("live-only rail = %+v ok=%v", ro.Items, ok)
+	}
+
+	// the chat draws the run the picker's rail opens whole: the negative
+	// anchor reaches the ctx, and with more live calls than a rail keeps
+	// none stands behind an earlier row - the walk bands a row per call
+	calls := []StreamTool{
+		{ID: "c3", Name: "job_read", Input: "job-1", Label: "step 3", Status: CallRun},
+		{ID: "c4", Name: "edit", Input: "f1.go", Label: "step 4", Status: CallOK},
+		{ID: "c5", Name: "read", Input: "a.go", Label: "step 5", Status: CallOK},
+		{ID: "c6", Name: "read", Input: "b.go", Label: "step 6", Status: CallOK},
+		{ID: "c7", Name: "read", Input: "c.go", Label: "step 7", Status: CallOK},
+		{ID: "c8", Name: "read", Input: "d.go", Label: "step 8", Status: CallOK},
+		{ID: "c9", Name: "read", Input: "e.go", Label: "step 9", Status: CallOK},
+		{ID: "c10", Name: "read", Input: "f.go", Label: "step 10", Status: CallOK},
+	}
+	seed(calls...)
+	ro, ok = h.messagesRailOverlay(h.pickerTranscript(), -1, 0)
+	if !ok || ro.Rail != -1 {
+		t.Fatalf("live-only rail = %+v ok=%v", ro, ok)
+	}
+	if lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("railprobe"), 20, 1, UIState{Rail: ro.Rail}); err != nil {
+		t.Fatal(err)
+	} else if got := SegsText(lines[0]); got != "-1" {
+		t.Fatalf("the picker's rail reads %q in the ctx, want -1", got)
+	}
+	full := widgetText(t, h, "chat", 98, UIState{Rail: ro.Rail})
+	if strings.Contains(full, "earlier") {
+		t.Error("the live-only run drew folded behind an earlier row")
+	}
+	for i := 3; i <= 10; i++ {
+		if !strings.Contains(full, "step "+strconv.Itoa(i)) {
+			t.Errorf("step %d drew no row", i)
+		}
+	}
+	if open := widgetText(t, h, "chat", 98, UIState{}); !strings.Contains(open, "earlier") {
+		t.Error("the live rail kept every call with no rail open")
 	}
 
 	// the turn idle, the calls settle into the transcript and turn 2 folds

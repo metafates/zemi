@@ -1769,7 +1769,7 @@ type UIState struct {
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
 	Focus          string  // the drawn layout node taking keys, "" for the composer
-	Rail           int     // the activity run the chat draws whole, 0 for none
+	Rail           int     // the activity run the chat draws whole, negative when it holds no settled rows, 0 for none
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
 	Regions *set.Set[string]
@@ -1829,7 +1829,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("model", glua.LString(stream.Model))
 	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	if state.Rail > 0 {
+	if state.Rail != 0 {
 		tb.RawSetString("rail", glua.LNumber(state.Rail))
 	}
 	tb.RawSetString("emoji", glua.LString(SessionMark(h.AgentSessionID())))
