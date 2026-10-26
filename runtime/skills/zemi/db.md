@@ -1,6 +1,6 @@
 # The store
 
-zemi keeps its state in SQLite: a global database at `<state>/zemi.db` (user-scope memory ledger, skill enabled state, `kv`) and one per project at `<state>/projects/<hash of the trust root>/zemi.db` (`ZEMI_STATE_HOME`, default `~/.local/state/zemi`; the `root` file beside it names the project). A repository's subdirectories and worktrees share its project store.
+zemi keeps its state in SQLite: a global database at `<state>/zemi.db` (user-scope memory ledger and proposals, skill enabled state, `kv`) and one per project at `<state>/projects/<hash of the trust root>/zemi.db` (`ZEMI_STATE_HOME`, default `~/.local/state/zemi`; the `root` file beside it names the project). A repository's subdirectories and worktrees share its project store.
 
 Reach for the store when the CLI does not expose what you need: totals over many sessions, what a tool call returned, a saved config pick. Reading a session is better through the commands (`zemi sessions export <id>`, `zemi sessions -a` for the ids; `-r <id>` resumes one). Anything else:
 

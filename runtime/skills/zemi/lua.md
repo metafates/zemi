@@ -26,7 +26,7 @@ A gated host-API call (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify
 
 ## Waiting
 
-A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `zemi.job.wait` suspend the task that calls them: the interpreter serves keys, renders and other callbacks until the result is there, and the task goes on after the call. A task is a Lua tool's `execute`, a Lua command, a keymap function, an overlay callback (`on_select`, `on_action`, `on_close`, `keys`, `reload`), an `on_done` or `on_exit` callback, a `tool.post` handler, and a lua tool script. Anywhere else `wait` raises: in a widget render, any other event handler, a timer callback, `on_stdout`, a completion source or a health check use the callback form (`on_done`, `on_exit`) instead. It also raises under `pcall` and inside a library callback such as a `table.sort` comparator or a `gsub` function, and in a coroutine you made: call it outside them and check its `nil, err`. `return job:wait()` is fine. A keymap or command that waits lets the next key run, so two presses can interleave, and a reload ends every waiting task at once.
+A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `zemi.job.wait` suspend the task that calls them: the interpreter serves keys, renders and other callbacks until the result is there, and the task goes on after the call. A task is a Lua tool's `execute`, a Lua command, a keymap function, an overlay callback (`on_select`, `on_action`, `on_close`, `keys`, `reload`), an `on_done` or `on_exit` callback, a `tool.post` handler, a lua tool script, and the config load itself (an init.lua, a plugin's, a `zemi-skill.lua`, a module its load requires). Anywhere else `wait` raises: in a widget render, any other event handler, a timer callback, `on_stdout`, a completion source or a health check use the callback form (`on_done`, `on_exit`) instead. It also raises under `pcall` and inside a library callback such as a `table.sort` comparator or a `gsub` function, and in a coroutine you made: call it outside them and check its `nil, err`. `return job:wait()` is fine. A keymap or command that waits lets the next key run, so two presses can interleave, and a reload ends every waiting task at once.
 
 ## The lua tool
 
@@ -46,7 +46,7 @@ The verbs are regular: `add` registers, `set` writes a value, `get` and `list` r
 
 The types file is LuaLS annotations, and zemi writes a `.luarc.json` (and EmmyLua's `.emmyrc.json`,
 which drops a config it cannot parse whole, zemi's library included) pointing at it in the user
-config dir and in each local plugin, so an editor checks config as it is written. Each event's payload is a `zemi.ev.*` class that `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`, `dofile`, ...) are marked deprecated. Do not edit it: the next start overwrites it. `types/zemi/util.lua` beside it is the `zemi.util` source.
+config dir and in each local plugin, so an editor checks config as it is written. Each event's payload is a `zemi.ev.*` class that `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`, `dofile`, ...) are marked deprecated. Do not edit it: the next start overwrites it. The `zemi.util` source lives at `lua/zemi/util.lua` in the runtime tree, not beside the types file.
 
 ## Examples
 
