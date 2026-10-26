@@ -588,7 +588,7 @@ func TestPaletteComplete(t *testing.T) {
 	if app.palette.open {
 		t.Fatalf("palette open for a command without completions: args=%v", app.palette.args)
 	}
-	// Esc clears the composer line and closes the palette.
+	// Esc closes the palette and keeps the typed line.
 	send(k{"backspace", ""}, k{"backspace", ""})
 	app.composerKey("esc", tea.KeyPressMsg{})
 	if app.palette.open || app.composer.text != "/q" {
@@ -598,6 +598,17 @@ func TestPaletteComplete(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
 	if !app.palette.open || len(app.palette.matches) != 2 || app.composer.text != "/q" {
 		t.Fatalf("ctrl+space: open=%v matches=%d text=%q", app.palette.open, len(app.palette.matches), app.composer.text)
+	}
+
+	// The bare "/" that opened the palette is not a draft: esc takes it back.
+	app.composer.text, app.composer.cursor = "/", 1
+	app.updatePalette()
+	if !app.palette.open {
+		t.Fatal("palette not open on /")
+	}
+	app.composerKey("esc", tea.KeyPressMsg{})
+	if app.palette.open || app.composer.text != "" {
+		t.Fatalf("esc on /: open=%v text=%q", app.palette.open, app.composer.text)
 	}
 
 	// Submitting a unique command runs it with the argument string.

@@ -247,7 +247,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		case "tab":
 			return a.acceptPalette()
 		case "esc":
-			a.palette.close()
+			a.dismissPalette()
 			return nil
 		case "enter":
 			// the highlighted argument replaces a typed or picked one, so a

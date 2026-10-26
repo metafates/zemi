@@ -814,6 +814,17 @@ func (ag *agentHost) spokeClose() {
 	}
 }
 
+// notKept reports a store write a turn made that failed. A session deleted
+// under this window repeats on every send, so it is named with its remedy and
+// recorded once; anything else keeps its raw error.
+func (h *Host) notKept(what string, err error) {
+	if errors.Is(err, store.ErrSessionGone) {
+		h.RecordErrorOnce("agent", "", what+": "+h.friendlyError(err))
+		return
+	}
+	h.Log.Warn(what, "origin", "agent", "error", err)
+}
+
 // persistTurnStat keeps a turn's readout for a resume. The stored messages
 // hold no usage (fantasy.Message has none) and the reply's row only its time,
 // so the stat rides a telemetry row after them, which historyFrom attaches to
@@ -829,7 +840,7 @@ func (h *Host) persistTurnStat(sid string, stat TurnStat) {
 		return
 	}
 	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
-		h.Log.Warn("turn stat not kept", "origin", "agent", "error", err)
+		h.notKept("turn stat not kept", err)
 	}
 }
 
@@ -855,7 +866,7 @@ func (h *Host) storeChatRow(sid string, m ChatMessage) {
 		return
 	}
 	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: chatRole, PartsJSON: string(parts)}); err != nil {
-		h.Log.Warn("chat row not kept", "origin", "agent", "error", err)
+		h.notKept("chat row not kept", err)
 	}
 }
 
@@ -1674,7 +1685,7 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	parts, _ := json.Marshal(row, json.Deterministic(true))
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: t.Name, OK: ok}); err != nil {
-		h.Log.Warn("tool call not kept", "origin", "agent", "error", err)
+		h.notKept("tool call not kept", err)
 	}
 }
 
@@ -1987,7 +1998,7 @@ func (h *Host) followRow(name, run string) OverlayItem {
 func (h *Host) modelPicker(name string) Overlay {
 	// a model id is the row's identity and the descs run long, so the box
 	// measures the lists' own width and nothing trims to a menu's width
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No model yet: " + h.addProvider() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
 	run, cur := "model ", h.roleModel(defaultRole)
@@ -2076,7 +2087,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	if !usable && len(o.Items) > 0 {
 		// the init.lua path is split at its slashes, so a narrow box wraps it
 		// whole-component instead of mid-word; Body stays the line y copies
-		segs := []Segment{{Text: "No models yet. Export one of these keys in your shell and start zemi again, or add a provider to "}}
+		segs := []Segment{{Text: "No model yet: export one of these keys in your shell and start zemi again, or add a provider to "}}
 		for part := range strings.SplitAfterSeq(h.initPath(), "/") {
 			segs = append(segs, Segment{Text: part})
 		}

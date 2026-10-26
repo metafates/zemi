@@ -13,6 +13,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/store"
 )
 
 func TestFriendlyError(t *testing.T) {
@@ -44,6 +45,7 @@ func TestFriendlyError(t *testing.T) {
 		{"refused", &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}}, "refused by 127.0.0.1:1"},
 		{"timeout", context.DeadlineExceeded, "timed out"},
 		{"garbled stream", fantasy.WrapTransportError(garbled), "the provider sent a reply zemi could not read: send again"},
+		{"session deleted under the window", store.ErrSessionGone, "deleted under this window: /new starts a fresh one"},
 		{"unknown stays raw", errors.New("agent: no models registered"), "agent: no models registered"},
 	} {
 		if got := h.friendlyError(c.err); !strings.Contains(got, c.want) {

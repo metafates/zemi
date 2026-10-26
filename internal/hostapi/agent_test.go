@@ -1488,7 +1488,7 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
-		if len(o.Items) != 1 || o.Items[0].Text != "deepseek" || o.Items[0].Copy != "export DEEPSEEK_API_KEY=" || !strings.HasPrefix(o.Body, "No models yet. Export") {
+		if len(o.Items) != 1 || o.Items[0].Text != "deepseek" || o.Items[0].Copy != "export DEEPSEEK_API_KEY=" || !strings.HasPrefix(o.Body, "No model yet: export") {
 			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
 		}
 	}

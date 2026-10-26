@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // explain turns a turn failure into what happened and what to do about it;
@@ -40,6 +41,8 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return "", ""
 	case errors.Is(err, context.Canceled):
 		return "interrupted", ""
+	case errors.Is(err, store.ErrSessionGone):
+		return "the session was deleted under this window", "/new starts a fresh one"
 	case pe != nil && pe.IsContextTooLarge():
 		return "the conversation no longer fits the model's context", "/compact or /new"
 	case pe != nil && (pe.AuthError || pe.StatusCode == http.StatusUnauthorized || pe.StatusCode == http.StatusForbidden):

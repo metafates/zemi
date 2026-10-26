@@ -12,6 +12,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -423,5 +424,32 @@ func TestModelFavorites(t *testing.T) {
 	}
 	if !slices.Equal(sections, []string{"Favorites", "a · no API key"}) {
 		t.Errorf("the favorite reads %v, want the head copy and the provider row", sections)
+	}
+}
+
+// TestNoModelHint: the no-model sentence names the first missing key; with
+// nothing left to name it points at init.lua.
+func TestNoModelHint(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name    string
+		catalog agent.Catalog
+		want    string
+	}{
+		{
+			"no key exported",
+			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}},
+			"export ANTHROPIC_API_KEY and start zemi again, or add a provider to init.lua",
+		},
+	} {
+		h, _ := newTestHost(t)
+		h.Providers.Reset(c.catalog)
+		if got := h.NoModelHint(); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+	h, _ := newTestHost(t)
+	if got, want := h.NoModelHint(), "add a provider to "+h.initPath(); got != want {
+		t.Errorf("nothing registered: %q, want %q", got, want)
 	}
 }

@@ -418,6 +418,74 @@ func TestSessionLifecycle(t *testing.T) {
 	})
 }
 
+// TestSessionDeletedUnderHost: another window's delete removes the session
+// row this one writes to. The next turn names the deletion with the /new
+// remedy instead of a raw FK error, /errors carries the notice once, and the
+// typed error reaches the persist boundary the turn fails on.
+func TestSessionDeletedUnderHost(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "ok")
+	if err := h.AgentSend("hello"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if err := h.DB.DeleteSession(h.AgentSessionID()); err != nil { // store-level, as the other window's delete does
+		t.Fatal(err)
+	}
+
+	err := h.persistMessage(fantasy.Message{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "again"}}})
+	if !errors.Is(err, store.ErrSessionGone) {
+		t.Fatalf("persistMessage: %v, want ErrSessionGone", err)
+	}
+
+	count := func() int {
+		n := 0
+		for _, e := range h.errs.entries {
+			if strings.Contains(e.msg, "the session was deleted under this window") {
+				n++
+			}
+		}
+		return n
+	}
+	if err := h.AgentSend("again"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if n := count(); n == 0 {
+		t.Fatal("no /errors entry names the deletion")
+	} else {
+		for _, e := range h.errs.entries {
+			if strings.Contains(e.msg, "the session was deleted under this window") && !strings.Contains(e.msg, "/new starts a fresh one") {
+				t.Fatalf("notice %q names no remedy", e.msg)
+			}
+		}
+		if err := h.AgentSend("once more"); err != nil {
+			t.Fatal(err)
+		}
+		waitIdle(t, h)
+		if count() != n {
+			t.Fatalf("another send grew the deletion notices to %d, want the one %d", count(), n)
+		}
+	}
+	tr := h.Session().Transcript
+	row, found := ChatMessage{}, false
+	for _, m := range slices.Backward(tr) {
+		if m.Kind == RowError {
+			row, found = m, true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no error row in the transcript")
+	}
+	for _, want := range []string{"deleted under this window", "/new starts a fresh one"} {
+		if !strings.Contains(row.Text, want) {
+			t.Fatalf("error row = %q, want %q", row.Text, want)
+		}
+	}
+}
+
 // TestTurnRunningRefusals: what cannot run mid-turn is refused as a usage
 // error, which warns, never as a failure /errors records.
 func TestTurnRunningRefusals(t *testing.T) {

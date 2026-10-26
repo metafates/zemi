@@ -39,6 +39,52 @@ func openTest(t *testing.T) *DB {
 	return db
 }
 
+// TestWriteSessionGone: a write whose session row another window deleted is
+// ErrSessionGone in the add-message wording; any other failure stays itself.
+func TestWriteSessionGone(t *testing.T) {
+	writes := []struct {
+		name  string
+		write func(db *DB, sid string) error
+	}{
+		{"message", func(db *DB, sid string) error {
+			return db.AddMessage(&Message{SessionID: sid, Role: "user", PartsJSON: `"hi"`})
+		}},
+		{"tool call", func(db *DB, sid string) error {
+			return db.AddToolCall(&Message{SessionID: sid, Role: "tool", PartsJSON: `{}`}, &ToolCall{Tool: "read"})
+		}},
+	}
+	for _, w := range writes {
+		t.Run("session gone: "+w.name, func(t *testing.T) {
+			db := openTest(t)
+			sid := ShortID()
+			if err := db.CreateSession(sid, "", "s", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.DeleteSession(sid); err != nil {
+				t.Fatal(err)
+			}
+			err := w.write(db, sid)
+			if !errors.Is(err, ErrSessionGone) || !strings.Contains(err.Error(), "store: add message") {
+				t.Fatalf("err = %v, want ErrSessionGone wrapped as add message", err)
+			}
+		})
+	}
+	t.Run("another failure stays raw", func(t *testing.T) {
+		db := openTest(t)
+		sid := ShortID()
+		if err := db.CreateSession(sid, "", "s", ""); err != nil {
+			t.Fatal(err)
+		}
+		m := &Message{ID: "dup", SessionID: sid, Role: "user", PartsJSON: `{}`}
+		if err := db.AddMessage(m); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddMessage(m); err == nil || errors.Is(err, ErrSessionGone) {
+			t.Fatalf("err = %v, want some other failure", err)
+		}
+	})
+}
+
 // TestMigrationKeepsData: a store an older zemi stamped with user_version and
 // no goose table opens, keeps its rows and gets the baseline migration, which
 // a second open does not run again.

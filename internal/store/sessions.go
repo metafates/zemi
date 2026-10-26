@@ -5,10 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // ErrNotFound is returned by single getters when the row is missing.
 var ErrNotFound = errors.New("store: not found")
+
+// ErrSessionGone is returned by the writes that foreign-key to sessions when
+// the session row is missing: another window deleted the session under this
+// one, and only /new moves this window onto a session that exists.
+var ErrSessionGone = errors.New("session was deleted")
 
 // Session is one persisted conversation.
 type Session struct {
@@ -140,6 +148,14 @@ type execer interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
+// sessionGone reports an insert that failed its session foreign key: the
+// tables keyed to sessions reference that one column, so the code is the
+// proof the parent row is gone.
+func sessionGone(err error) bool {
+	e, ok := errors.AsType[*sqlite.Error](err)
+	return ok && e.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
+}
+
 func insertMessage(ex execer, m *Message) error {
 	if m.ID == "" {
 		m.ID = newID()
@@ -156,6 +172,9 @@ func insertMessage(ex execer, m *Message) error {
 		_, err = ex.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now(), m.SessionID)
 	}
 	if err != nil {
+		if sessionGone(err) {
+			return fmt.Errorf("store: add message: %w", ErrSessionGone)
+		}
 		return fmt.Errorf("store: add message: %w", err)
 	}
 	return nil
@@ -363,6 +382,9 @@ func setTodos(tx *sql.Tx, sessionID string, todos []Todo) error {
 			(session_id, content, status, active_form, ord, created_at)
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			sessionID, td.Content, td.Status, td.ActiveForm, i, t); err != nil {
+			if sessionGone(err) {
+				return fmt.Errorf("store: set todos: %w", ErrSessionGone)
+			}
 			return err
 		}
 	}

@@ -167,6 +167,17 @@ func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 	return listRowsW(items, items, p.selected, &p.view, min(8, room), minW, maxW)
 }
 
+// dismissPalette closes the palette without running its line. The lone "/"
+// that opened it is not a draft: it goes too, so the next typed command does
+// not glue onto it; a line the user typed ("/mo") stays for fixing.
+func (a *App) dismissPalette() {
+	if a.composer.text == "/" {
+		a.clearComposer()
+		return
+	}
+	a.palette.close()
+}
+
 // clearComposer empties the draft and closes both popups. The paste map
 // stays: the undo stack still holds the tokens of the draft being cleared,
 // and without their text a ctrl+z sends the placeholder to the model.

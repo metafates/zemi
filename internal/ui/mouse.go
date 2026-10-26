@@ -238,7 +238,7 @@ func (a *App) dismissOutside(x, y int) bool {
 	case a.topChrome() != noModal:
 		return false
 	case a.palette.open && out(a.popRect):
-		a.palette.close()
+		a.dismissPalette()
 	case a.completion.shown() && out(a.popRect):
 		a.completion.close()
 	default:
