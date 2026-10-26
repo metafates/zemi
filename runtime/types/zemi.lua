@@ -887,7 +887,7 @@ function zemi.event.stats() end
 ---@field trustable boolean Whether /trust can trust this project: false at $HOME, / and outside any.
 ---@field init_error string First line of the failure the user init.lua raised this boot, "" when it loaded.
 ---@field init_path string The user init.lua, ~-shortened.
----@field model_hint string How to get a model when `model` is "", short enough for one row: the first key to export, or init.lua.
+---@field model_hint string How to get a model when `model` is "", short enough for one row: a key to export (one the shell has, when any), or init.lua.
 ---@field model string
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.

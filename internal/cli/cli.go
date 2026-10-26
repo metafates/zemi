@@ -720,7 +720,7 @@ func modelsCommand(o *options) *cobra.Command {
 			defer done()
 			ids := h.ModelIDs()
 			if len(ids) == 0 {
-				fmt.Fprintln(c.ErrOrStderr(), "zemi: no models yet;", h.NoModelHint())
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no model yet;", h.NoModelHint())
 				return exitError(1)
 			}
 			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
