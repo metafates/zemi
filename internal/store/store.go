@@ -187,7 +187,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 // figure comes from the brain's partition, not this frozen table.
 func (s *DB) SessionCount() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE COALESCE(parent_id, '') = ''`).Scan(&n)
+	err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n)
 	return n, err
 }
 

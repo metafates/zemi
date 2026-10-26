@@ -83,10 +83,15 @@ func (s *DB) GetSession(id string) (*Session, error) {
 	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
 
+// topLevelSessions is the WHERE the old world's session lists read through:
+// the anchor row the log migration plants is not a conversation, and until
+// the session concept dies nothing may show it as one.
+const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
+
 // ListSessions returns top-level sessions (subagent runs excluded) ordered
 // by most recent activity.
 func (s *DB) ListSessions(limit int) ([]*Session, error) {
-	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE COALESCE(parent_id, '') = '' ORDER BY updated_at DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE `+topLevelSessions+` ORDER BY updated_at DESC LIMIT ?`, limit)
 	return collect(rows, err, scanSession)
 }
 
@@ -505,6 +510,6 @@ type Usage struct {
 func (s *DB) UsageSince(ms int64) (Usage, error) {
 	var u Usage
 	err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
-		FROM sessions WHERE COALESCE(parent_id, '') = '' AND updated_at >= ?`, ms).Scan(&u.Sessions, &u.Prompt, &u.Completion, &u.Cost)
+		FROM sessions WHERE `+topLevelSessions+` AND updated_at >= ?`, ms).Scan(&u.Sessions, &u.Prompt, &u.Completion, &u.Cost)
 	return u, err
 }

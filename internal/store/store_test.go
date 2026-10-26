@@ -593,7 +593,7 @@ func TestDeleteSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := db.db.QueryRow(`SELECT (SELECT COUNT(*) FROM sessions WHERE id != 'keep') + (SELECT COUNT(*) FROM messages) +
+	if err := db.db.QueryRow(`SELECT (SELECT COUNT(*) FROM sessions WHERE id NOT IN ('keep', 'main')) + (SELECT COUNT(*) FROM messages) +
 		(SELECT COUNT(*) FROM tool_calls) + (SELECT COUNT(*) FROM checkpoints) + (SELECT COUNT(*) FROM todos)`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("%d rows left, %v", n, err)
 	}
@@ -749,7 +749,7 @@ func TestClaimForDelete(t *testing.T) {
 		want    []string
 		err     error
 	}{
-		{name: "a free store", want: []string{"a", "b", "child"}},
+		{name: "a free store", want: []string{"a", "b", "child", MainSessionID}},
 		{name: "a store open elsewhere", held: true, err: ErrInUse},
 		{name: "a missing store", missing: true},
 		{name: "a store that is not a database", garbage: true},
