@@ -125,6 +125,10 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if err := host.ViewAgent(id); err != nil {
 		t.Fatal(err)
 	}
+	// the view's own bumps settle before the frame is measured: a gen they
+	// land after the snapshot is the load race, not a tick
+	for app.Pump() {
+	}
 	gen = app.frameGen
 	app.Update(frameTickMsg{})
 	if app.frameGen != gen {
