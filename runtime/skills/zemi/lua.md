@@ -12,7 +12,7 @@ A gated host-API call (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify
 
 ## Modules
 
-`require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir, from `.agents/lua/`, or from the plugin named `a` (`a/.zemi/lua/a/`). Any code may require from any of those trees. `require("./x")` and `require("../x")` resolve next to the calling file and must stay in its tree, and plugin code in its own plugin. Each file loads once per session (both names share an instance) and every requirer gets that one table, so keep a secret in a local. `/reload` loads fresh. `require("zemi.util")` adds `split`, `trim`, `keys`, `get`, `validate` and `inspect`.
+`require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or from the plugin named `a` (`a/.zemi/lua/a/`). Any code may require from either tree. `require("./x")` and `require("../x")` resolve next to the calling file and must stay in its tree, and plugin code in its own plugin. Each file loads once per session (both names share an instance) and every requirer gets that one table, so keep a secret in a local. `/reload` loads fresh. `require("zemi.util")` adds `split`, `trim`, `keys`, `get`, `validate` and `inspect`.
 
 ## Rules that keep zemi responsive
 

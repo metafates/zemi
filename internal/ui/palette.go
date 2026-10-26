@@ -221,7 +221,7 @@ func (a *App) runSlashCommand(text string) {
 	raw := strings.TrimPrefix(text, "/")
 	if raw == "reload" {
 		a.clearComposer()
-		// off the UI goroutine: replaying project config may ask for trust
+		// off the UI goroutine: replaying the boot may ask for trust
 		a.host.GoSafe("reload", a.host.Reload)
 		return
 	}

@@ -688,10 +688,10 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 }
 
 // runtimepath lists the code directories a dotted require of rel searches, in
-// order: the project's .agents, the config home, then the enabled plugin named
-// like rel's first segment, first for that plugin's own code. Any requirer
-// searches every tree. A plugin keeps its modules with the rest of its Lua
-// under CodeDir. The embedded runtime is consulted separately (DESIGN §5).
+// order: the config home, then the enabled plugin named like rel's first
+// segment, first for that plugin's own code. Any requirer searches every
+// tree. A plugin keeps its modules with the rest of its Lua under CodeDir.
+// The embedded runtime is consulted separately (DESIGN §5).
 func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []cand {
 	head, _, _ := strings.Cut(rel, string(filepath.Separator))
 	var out []cand
@@ -704,11 +704,9 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []can
 	if own != "" && own == r.requirerRoot(gen, L) {
 		out, own = append(out, cand{pluginCode(own), own}), ""
 	}
-	for _, want := range []Origin{OriginProject, OriginUser} {
-		for _, c := range r.paths {
-			if c.Origin == want && c.Prefix != "" {
-				out = append(out, cand{filepath.Join(c.Prefix, "lua"), ""})
-			}
+	for _, c := range r.paths {
+		if c.Origin == OriginUser && c.Prefix != "" {
+			out = append(out, cand{filepath.Join(c.Prefix, "lua"), ""})
 		}
 	}
 	if own != "" {

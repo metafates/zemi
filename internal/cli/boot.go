@@ -241,7 +241,6 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 		[]lua.BootStep{
 			soft(lua.LoadFileStep(initStep, filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 			soft(h.SkillsUserHooksStep()),
-			soft(projectInitStep(h)),
 		},
 		app != nil)
 }
@@ -574,8 +573,8 @@ func stopCompleter(set func(*hostapi.Host) bool) func(h *hostapi.Host, lead, lin
 // config on (Host.SetInitError).
 const initStep = "init"
 
-// softStep keeps a failing config step (a typo in init.lua, a broken plugin
-// or project config) from stopping boot: the error goes to the log and
+// softStep keeps a failing config step (a typo in init.lua, a broken plugin)
+// from stopping boot: the error goes to the log and
 // /errors, and the remaining steps and the runtime still start, like
 // neovim reporting an init.lua error and opening anyway. Headless there is
 // no /errors to open, so the error goes to stderr as well: otherwise a
@@ -632,22 +631,6 @@ func (tg *trustGate) step() lua.BootStep {
 				}
 			}
 			return err
-		},
-	}
-}
-
-// projectInitStep loads <repo>/.agents/init.lua in a trusted project.
-// Agents, commands and workflows read the decision when they are used.
-func projectInitStep(h *hostapi.Host) lua.BootStep {
-	return lua.BootStep{
-		Name: "project config",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			init := filepath.Join(h.Dirs.ProjectConfigDir(), "init.lua")
-			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
-				return nil
-			}
-			h.Log.Info("loading project config", "origin", "boot", "path", init)
-			return lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g)
 		},
 	}
 }

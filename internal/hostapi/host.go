@@ -713,10 +713,10 @@ type Host struct {
 	reloadCheck sync.Mutex
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
-	// config, instructions and language servers load only when it is set,
+	// instructions and language servers load only when it is set,
 	// and reads reach less without it.
 	projectTrusted atomic.Bool
-	trustDropped   atomic.Bool // trust went off: the next reload must run to drop project config
+	trustDropped   atomic.Bool // trust went off: the next reload must run to drop the project's files
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store and the scratchpad,
 	// and finding it walks the disk. project is the same
@@ -2446,7 +2446,7 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 
 	h.reloadRun.Lock()
 	defer h.reloadRun.Unlock()
-	// a reload after trust went off still runs, so the project config goes
+	// a reload after trust went off still runs, so the project's files go
 	if !h.trustDropped.Swap(false) {
 		if err := h.checkInits(); err != nil {
 			return err
@@ -2466,26 +2466,21 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	return err
 }
 
-// checkInits parses the init files a reload runs, so a half-saved one
+// checkInits parses the init file a reload runs, so a half-saved one
 // fails the reload before it retires the working generation.
 func (h *Host) checkInits() error {
-	dirs := []string{h.Dirs.ConfigHome}
-	if h.ProjectTrusted() {
-		dirs = append(dirs, h.Dirs.ProjectConfigDir())
+	dir := h.Dirs.ConfigHome
+	if dir == "" {
+		return nil
 	}
-	for _, dir := range dirs {
-		if dir == "" {
-			continue
-		}
-		p := filepath.Join(dir, "init.lua")
-		src, err := os.ReadFile(p)
-		if err != nil {
-			continue // the boot step skips or reports it
-		}
-		_, err = parse.Parse(bytes.NewReader(src), p)
-		if pe, ok := errors.AsType[*parse.Error](err); ok {
-			return lua.SyntaxErr(perm.TildePath(p), string(src), pe)
-		}
+	p := filepath.Join(dir, "init.lua")
+	src, err := os.ReadFile(p)
+	if err != nil {
+		return nil // the boot step skips or reports it
+	}
+	_, err = parse.Parse(bytes.NewReader(src), p)
+	if pe, ok := errors.AsType[*parse.Error](err); ok {
+		return lua.SyntaxErr(perm.TildePath(p), string(src), pe)
 	}
 	return nil
 }

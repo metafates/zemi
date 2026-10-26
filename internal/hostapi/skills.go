@@ -435,7 +435,7 @@ func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skill.Skill) 
 }
 
 // SkillsUserHooksStep runs the hooks of enabled skills in <config>/skills, after
-// user init.lua and before the project config (DESIGN §5 load order); a
+// user init.lua (DESIGN §5 load order); a
 // failing hook is logged, never fatal.
 func (h *Host) SkillsUserHooksStep() lua.BootStep {
 	return lua.BootStep{

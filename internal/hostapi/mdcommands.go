@@ -50,7 +50,7 @@ func (h *hint) UnmarshalYAML(unmarshal func(any) error) error {
 }
 
 // MarkdownCommandsStep registers the markdown commands. It runs after the
-// project config step, which decides whether project files are trusted.
+// trust step, which decides whether project files are trusted.
 func (h *Host) MarkdownCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "markdown commands",

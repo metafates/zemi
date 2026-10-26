@@ -69,8 +69,7 @@ type Workflow struct {
 }
 
 // workflows lists saved workflows: user files win over builtin ones, then
-// plugin ones, then project files; project files load only once the project
-// tree is trusted.
+// plugin ones. A project's .agents/workflows is dead: project Lua never runs.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
 	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
@@ -129,11 +128,6 @@ func (h *Host) workflowSource(name string) (string, error) {
 			return readRegularFile(w.Path)
 		}
 		names = append(names, w.Name)
-	}
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
-		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", Usagef("%s (or it can be saved under %s)", h.untrustedNote("workflow", name, pdir), filepath.Join(h.Dirs.ConfigHome, "workflows"))
-		}
 	}
 	if len(names) == 0 {
 		return "", unknownFlowError{Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)}

@@ -460,8 +460,7 @@ func (c *waitedCtx) Done() <-chan struct{} {
 }
 
 // TestRenderGuardOnlyWhileRendering: a render queued behind other Lua does
-// not make that Lua look like render code (project config registering a
-// widget during the trust prompt was refused).
+// not make that Lua look like render code.
 func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)

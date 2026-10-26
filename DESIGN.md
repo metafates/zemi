@@ -337,8 +337,7 @@ Directories (XDG; Windows keeps the same roots under the user's home,
   logs/
 ~/.agents/skills/<name>/  user skills other agents read too, body only (§10.5)
 <repo>/
-  .agents/init.lua        project-local config, loaded after user config
-  .agents/lua|skills|agents|commands|workflows/  the same shapes
+  .agents/skills|agents|commands/  the same shapes
   .agents/worktrees/      agent worktrees, ignored by its own .gitignore (§9)
   AGENTS.md, else CLAUDE.md   context files, per directory
 ```
@@ -376,7 +375,7 @@ it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
 even if that reload stops at an earlier failing step.
 
-Trusted, zemi loads the project's `.agents` config and instruction files
+Trusted, zemi reads the project's `.agents` instruction files
 and starts language servers (builtin and
 user-added; the Lua of zemi's own trees gets its server either way).
 Untrusted, none of that: only the user's `<config>/AGENTS.md`
@@ -396,19 +395,19 @@ mcp, lsp, plugins, config, projects, rename) -> the
 shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
-user `init.lua` -> user skills' enable hooks -> a trusted project's
-`.agents/init.lua` -> markdown commands (user, then each plugin's, then a
+user `init.lua` -> user skills' enable hooks -> markdown commands (user, then each plugin's, then a
 trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
 trust prompt without holding the UI. The host's own steps (namespaces, builtin
 commands, the shipped UI, markdown commands, `app.ready`) are hard: the first
 failure stops the boot, the runtime goes hot and the screen is the Go-drawn
 boot box (§8). Everything a user owns (trust, plugins,
-`init.lua`, skill hooks, project `init.lua`) is a soft step: its error is
-recorded for `/errors` and the boot goes on. Agents and workflows are read when
+`init.lua`, skill hooks) is a soft step: its error is
+recorded for `/errors` and the boot goes on. Agents are read when
 used: the user's, then the builtin ones, then each plugin's, then the
-project's under the current decision; the first of a name wins. Project config loads late with
-its registrations tagged `origin = "project"` (shown in the UI and logs).
+project's under the current decision; the first of a name wins. Workflows
+come from the user, the builtins and the plugins; a project keeps no code -
+its `.agents/lua` and `.agents/workflows` are never read.
 Origin is a label, never a privilege: any origin calls the same host API with
 the same rights, and a collision goes to the last registration (one plugin
 still cannot replace another's, §11). What stays is the trust mechanism and
@@ -419,10 +418,10 @@ files load only when it is trusted, and a builtin tool name stays reserved
 runs as the loading origin (its chunk name is re-tagged, so a forged name
 does not stick).
 
-Runtimepath, in order: a trusted project's `.agents`, `~/.config/zemi`, then
+Runtimepath, in order: `~/.config/zemi`, then
 the one enabled plugin named like the module's first segment: `require("x.y")`
 searches plugin `x`'s `.zemi/lua/` after the config dir, so a plugin shadows
-no another's modules. Any origin may require from any of these trees. The
+no another's modules. Any origin may require from either tree. The
 plugin roots are the ones the plugins step loaded, fixed for the generation,
 so a disabled plugin's files never resolve.
 
@@ -590,7 +589,7 @@ whose "file: name" holds the pattern runs in a zemi of
 its own, booted in the process from temp dirs holding a filtered copy of
 the plugin (its code and its manifest, `.zemi` whole, nothing of the root
 but the layer dirs, no `node_modules`
-or link leading out) and nothing else: no user or project config, no trust
+or link leading out) and nothing else: no user config, no trust
 step, no other plugin, no `~/.agents`. The file's top level runs where
 `init.lua` would, so it is
 the case's setup, and a first boot collects the case names. `zemi.test`,
@@ -1430,7 +1429,7 @@ zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 `zemi.state` keys from plugin code are stored under a
 `plugin:<name>:` prefix the chunk never sees, so each plugin has its own
 space and cannot read or overwrite another plugin's; every other origin
-shares one store, so the user's config, the project's and the model's Lua
+shares one store, so the user's config and the model's Lua
 read and write the same keys. A plugin's keys go when its directory does
 (§5).
 
@@ -2868,8 +2867,7 @@ The system prompt is the same for every session of a user in projects
 of the same trust, so a provider that caches a shared prefix keeps it and
 the tool definitions after it across sessions: the base prompt + **skills
 index** (name + description only; the user's, builtin and plugin skills) +
-the user's `<config>/AGENTS.md` + Lua sections (§6.3; a trusted project's
-own Lua can add one). What varies by project or session follows it as the
+the user's `<config>/AGENTS.md` + Lua sections (§6.3). What varies by project or session follows it as the
 context message, a user-role message before the conversation that the
 session stores and a resume sends again byte for byte while the brain is
 unchanged: the repository's context files (AGENTS.md, else CLAUDE.md,

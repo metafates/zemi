@@ -458,8 +458,8 @@ func (h *Host) PluginOf(path string) string {
 	return ""
 }
 
-// OriginBadge marks what plugins and project config draw or run
-// ("plugin:jira", "project:init.lua"), "" for the user's and zemi's own: a
+// OriginBadge marks what a plugin or the project's files draw or run
+// ("plugin:jira", "project:fix-lint.md"), "" for the user's and zemi's own: a
 // plugin's name, else the file's, since a path leaves no room for a title.
 func (h *Host) OriginBadge(o lua.Origin, path string) string {
 	switch {
@@ -498,12 +498,12 @@ func pluginLayerDir(root, sub string) string {
 	return filepath.Join(root, sub)
 }
 
-// layerFiles hands load the <name><ext> files in sub of the user config,
-// each enabled plugin, then a trusted project's .agents. The first file of a
-// name load accepts wins, so a broken one hides nothing, and a Claude
-// plugin's bare name taken by an earlier file retries the plugin-prefixed
-// one; /errors records a name no skill.ValidName and one two plugins still
-// clash on.
+// layerFiles hands load the <name><ext> files in sub of the user config, each
+// enabled plugin, then a trusted project's .agents - workflows never read the
+// project layer, project Lua being dead. The first file of a name load
+// accepts wins, so a broken one hides nothing, and a Claude plugin's bare
+// name taken by an earlier file retries the plugin-prefixed one; /errors
+// records a name no skill.ValidName and one two plugins still clash on.
 func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 	var dirs []layerFile
 	if h.Dirs.ConfigHome != "" {
@@ -512,7 +512,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 	for _, p := range h.pluginDirs() {
 		dirs = append(dirs, layerFile{path: pluginLayerDir(p, sub), origin: lua.OriginPlugin, prefix: h.layerPrefix(p, sub)})
 	}
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
+	if pdir := h.Dirs.ProjectConfigDir(); sub != "workflows" && pdir != "" && h.ProjectTrusted() {
 		dirs = append(dirs, layerFile{path: filepath.Join(pdir, sub), origin: lua.OriginProject})
 	}
 	seen := map[string]string{} // name -> the kept file

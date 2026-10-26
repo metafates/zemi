@@ -12,7 +12,7 @@ Run a workflow inline: pass the script to the `workflow` tool, whose description
 
 ## Saved workflows (`workflows/<name>.lua`)
 
-Save one only when the user wants it by name: copy the run's script with the write tool to `workflows/<name>.lua` in the user config directory or the repository's `.agents/`. The file's leading `--` lines are its description, and the tool's `name` runs it with `args`.
+Save one only when the user wants it by name: copy the run's script with the write tool to `workflows/<name>.lua` in the user config directory. The file's leading `--` lines are its description, and the tool's `name` runs it with `args`.
 
 ```lua
 -- Summarize this branch for a PR description.
@@ -30,7 +30,7 @@ return wf.agent("Write a PR description (motivation, changes, how to test) from:
 
 New workflow (`/workflows new` sends you here, or the user asked for one):
 
-1. Unless the request already says, ask in one `question` call: what the workflow should do, what it needs from the user as `args` and what to do when it is missing, and where it lives: `.agents/workflows/` in this repository or `workflows/` in the user config (`SKILL.md` has the placement rule).
+1. Unless the request already says, ask in one `question` call: what the workflow should do, what it needs from the user as `args` and what to do when it is missing. It lives in `workflows/` in the user config (`SKILL.md` has the placement rule).
 2. The `workflow` tool's description lists every saved workflow, `review`, `research` and `hunt` among them. If one already does the job, say which and offer to run or change it instead. Pick a name nothing there uses.
 3. Write it in one write: the leading `--` lines are the description (what it does, and what `args` is), a `wf.phase` per stage, agents that do not depend on each other in one `wf.parallel` (one table of functions), one agent gathering what the others judge, and a `return` naming what went wrong when a step it needs fails. An angle that fails is a `wf.log`, not a lost run: the run ends warn (an amber `!`), not done.
 4. Check it loaded with one Lua tool script: `zemi.workflow.list()` lists it with its description, and `zemi.errors.list()` has no `workflows` entry for it.

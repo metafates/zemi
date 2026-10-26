@@ -103,7 +103,7 @@ const maxAgentFileBytes = 1 << 20
 
 // agentDefs lists the available definitions. On a name clash the higher
 // trust source wins: user over builtin over plugin over project. Project
-// agents load only once the project config tree is trusted.
+// agents load only once the project tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
 	defs := slices.Clone(builtinAgents)
 	h.layerFiles("agents", ".md", func(f layerFile) bool {

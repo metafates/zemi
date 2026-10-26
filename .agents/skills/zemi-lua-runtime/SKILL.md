@@ -55,7 +55,7 @@ badge, a plugin's state keys and its permission principal, and every origin call
 API with the same rights. Modules are cached per generation by resolved file alone: one instance
 per file whatever requires it, so every requirer shares that table. Dotted names search each
 candidate root's code dir (`<root>/lua`, `<plugin>/.zemi/lua`) over the runtimepath:
-the project's `.agents`, then the user's `~/.config/zemi`, then the one plugin the plugins step
+the user's `~/.config/zemi`, then the one plugin the plugins step
 loaded (`lua.Generation.Plugins`, resolved, fixed per generation) named like the first segment,
 which that plugin's own code searches first. Any requirer may use any tree. `./x` and `../x`
 resolve against the calling function's chunk name, which is why file chunks are compiled with

@@ -141,7 +141,7 @@ init.lua. A `/config` verb that opens a screen refuses without one; only `config
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
-`init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
+`init.lua` -> user skill hooks -> markdown commands
 (`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
@@ -162,8 +162,8 @@ zemi has the store open). `/trust` reopens the prompt off the UI goroutine, save
 the decision and reloads when it changed (a reload that fails before the trust step must not
 leave the old decision in force) under the watcher's lock, so the watcher does not reload first
 for the tree the change moved. `Host.ProjectTrusted()` gates project
-`.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
-commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory),
+`.agents` (`Dirs.ProjectConfigDir`, at the repo root only: skills, agents,
+commands), instruction files (AGENTS.md, else CLAUDE.md, per directory),
 project skills, every project language server, the Lua tool's ask, and the private brain
 partition. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,

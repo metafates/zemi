@@ -124,7 +124,8 @@ func TestRequireRelative(t *testing.T) {
 	}
 }
 
-// TestRequireProjectModules: .agents/lua is on the path for every requirer.
+// TestRequireProjectModules: .agents/lua is off the path for every requirer;
+// a project's Lua dir is dead, the project keeps only markdown resources.
 func TestRequireProjectModules(t *testing.T) {
 	proj, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -135,11 +136,16 @@ func TestRequireProjectModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(proj, "lua", "pmod.lua"), `return { v = 3 }`)
-	if err := r.ExecuteChunk(t.Context(), `assert(require("pmod").v == 3)`, filepath.Join(proj, "init.lua"), OriginProject); err != nil {
-		t.Fatalf("project require: %v", err)
-	}
-	if err := r.ExecuteChunk(t.Context(), `assert(require("pmod").v == 3)`, "init.lua", OriginUser); err != nil {
-		t.Fatalf("user require: %v", err)
+	for _, c := range []struct {
+		chunk  string
+		origin Origin
+	}{
+		{filepath.Join(proj, "init.lua"), OriginProject},
+		{"init.lua", OriginUser},
+	} {
+		if err := r.ExecuteChunk(t.Context(), `assert(pcall(require, "pmod") == false)`, c.chunk, c.origin); err != nil {
+			t.Errorf("requirer %s loaded a project module: %v", c.origin, err)
+		}
 	}
 }
 
