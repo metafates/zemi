@@ -1766,7 +1766,7 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	}
 	switch {
 	case m.Origin == store.OriginUser:
-		req := tools.Request{Tool: string(tools.ToolMemory), Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text}
+		req := tools.Request{Tool: string(tools.ToolMemory), Subject: perm.SubjectMemory, Arg: m.ID, Reason: "the user saved it", Preview: m.Text}
 		if v := p.CheckDenied(req); !v.Allowed {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, m.ID)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,20 @@ import (
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
+
+// onlyTableKeys is onlyKeys for a spec that is still on the stack: specs
+// carry callbacks, which ToGo refuses, so the keys are read off the table.
+func onlyTableKeys(L *glua.LState, tb *glua.LTable, api string, keys ...string) {
+	bad := ""
+	tb.ForEach(func(k, _ glua.LValue) {
+		if name := k.String(); bad == "" && !slices.Contains(keys, name) {
+			bad = name
+		}
+	})
+	if bad != "" {
+		L.RaiseError("%s: spec: unknown field %q", api, bad)
+	}
+}
 
 // waitHandle is a handle's wait(): it suspends the task until done closes,
 // the timeout passes (none when timeout <= 0) or the task ends, and resumes

@@ -512,13 +512,13 @@ func cutLine(s string) string {
 // pluginGloss is what each declared name grants, for the detail pane: the same
 // words as the skill's table, short enough to sit in one line of prose.
 var pluginGloss = map[string]string{
-	"model":    "a model or classify call",
-	"agent":    "a message to the agent",
-	"http":     "a fetch",
-	"job":      "a command it starts",
-	"fs.write": "a file write",
-	"tool":     "a tool it registers being called",
-	"perm":     "steering the permission gate",
+	"model":        "a model or classify call",
+	"agent":        "a message to the agent",
+	"http":         "a fetch",
+	"job":          "a command it starts",
+	"fs.write":     "a file write",
+	"tool":         "a tool it registers being called",
+	plugin.CapPerm: "steering the permission gate",
 }
 
 // pluginDetail is the detail pane's prose: what the plugin ships, the set its

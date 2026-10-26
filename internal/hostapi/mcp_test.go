@@ -150,7 +150,7 @@ func TestMCPBridge(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	row := func() OverlayItem { return ui.overlays()[0].Items[0] }
-	if err := h.openMCP(""); err != nil || row().Desc != "ready · 2 of 3 tools" || row().Mark != MarkOK || ui.overlays()[0].Reload == nil {
+	if err := h.openMCP(""); err != nil || row().Desc != "ready · 2 of 3 tools" || row().Mark != tools.MarkOK || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	// under the ask-everything policy the user's no refuses the call; with
@@ -262,7 +262,7 @@ func TestMCPBridge(t *testing.T) {
 	out.mu.Lock()
 	out.signIn = "https://auth.example.com/authorize?client_id=fake"
 	out.mu.Unlock()
-	if row := h.mcpItems()[0]; row.Desc != "waiting in the browser" || row.Mark != MarkWait ||
+	if row := h.mcpItems()[0]; row.Desc != "waiting in the browser" || row.Mark != tools.MarkWait ||
 		row.Copy != "https://auth.example.com/authorize?client_id=fake" {
 		t.Errorf("a waiting row = %+v", row)
 	}

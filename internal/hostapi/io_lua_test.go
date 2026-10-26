@@ -89,6 +89,21 @@ func TestUiEditNoRoots(t *testing.T) {
 	}
 }
 
+// TestFsHomePath: a path under ~ spells the user's home out, not the project
+// dir, so read, write and the rest of zemi.fs take home paths.
+func TestFsHomePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home) // os.UserHomeDir reads it; no t.Parallel beside it
+	_, r := newTestHost(t)
+	runUser(t, r, `
+		assert(zemi.fs.write("~/zemi-fs-home.txt", "x"), "write")
+		assert(zemi.fs.read("~/zemi-fs-home.txt") == "x", "read")
+		assert(zemi.fs.exists("~/zemi-fs-home.txt"), "exists")`)
+	if b, err := os.ReadFile(filepath.Join(home, "zemi-fs-home.txt")); err != nil || string(b) != "x" {
+		t.Fatalf("read back = %q, %v", b, err)
+	}
+}
+
 // TestLuaFsOutsideTheProject: a path outside the project and the config home
 // is no longer refused at resolution, and the lua.fs.write gate still runs.
 func TestLuaFsOutsideTheProject(t *testing.T) {

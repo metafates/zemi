@@ -25,8 +25,7 @@ for _, p in ipairs(zemi.learn.list()) do
 end
 zemi.learn.decide(id, "accept") -- or "reject"
 zemi.skills.list()
-zemi.skills.enable(name)
-zemi.skills.disable(name)
+zemi.skills.enable(name, on)
 ```
 
 A runtime failure returns `nil, err`; misuse raises. Events: `memory.written`, `reflector.start`, `reflector.done`.

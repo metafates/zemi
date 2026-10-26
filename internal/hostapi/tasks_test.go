@@ -622,7 +622,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 		t.Fatalf("opened %d overlays", len(opened))
 	}
 	o := opened[0]
-	if o.ID != "agent:"+run.id || o.Title != "look around" || o.Mark != MarkSpin {
+	if o.ID != "agent:"+run.id || o.Title != "look around" || o.Mark != tools.MarkSpin {
 		t.Fatalf("overlay %+v", o)
 	}
 	if len(o.Keys) != 1 || o.Keys[0].Key != "v" || o.Keys[0].Run != "agents view "+run.id+" show" {
@@ -666,7 +666,7 @@ func TestAgentShowOpensPreview(t *testing.T) {
 			next = o
 		}
 	}
-	if next.Mark != MarkOK || next.Empty != "" || len(next.Parts) != 2 || next.Parts[1].Text != "two files changed" {
+	if next.Mark != tools.MarkOK || next.Empty != "" || len(next.Parts) != 2 || next.Parts[1].Text != "two files changed" {
 		t.Fatalf("the rebuilt view is %+v", next)
 	}
 	if err := cmd.GoFn(h, "show nope", false); err == nil {

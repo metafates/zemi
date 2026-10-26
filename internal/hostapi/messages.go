@@ -542,10 +542,10 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 // list as it does in the chat.
 func markFor(m ChatMessage) MarkKind {
 	if m.Kind == RowError {
-		return MarkErr
+		return tools.MarkErr
 	}
 	if m.Kind == RowNotice || m.Kind == RowCompact || m.Kind == RowShell {
-		return MarkNote
+		return tools.MarkNote
 	}
 	if k, ok := callMarks[m.Status]; ok {
 		return k

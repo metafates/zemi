@@ -315,7 +315,7 @@ function zemi.config.watch(path, fn) end
 --- Drop a watch by the id `zemi.config.watch` returned.
 ---@param id string
 ---@return boolean removed
-function zemi.config.unwatch(id) end
+function zemi.config.off(id) end
 
 --- Every known setting with its default.
 ---@return zemi.SettingSchema[]
@@ -2343,19 +2343,21 @@ function zemi.fs.remove(path) end
 --- Match the project's files, as the glob tool lists them (no .gitignored
 --- files, no symbolic links), in path order. `*` and `?` stay inside one segment,
 --- `**` spans directories ("**/*.go"), `{a,b}` alternates, `[...]` is a class.
---- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
+--- A bad pattern raises; a failed walk is nil, err, like the other zemi.fs calls.
 ---@param pattern string
----@return string[] paths
+---@return string[]|nil paths
+---@return string|nil err
 function zemi.fs.glob(pattern) end
 
 --- Search the project's files for a Go regular expression, in path order,
 --- skipping binary and over 4 MB files. `opts.path` searches under one
 --- directory or file, and `opts.include` is a glob limiting which files are
---- searched, like the grep tool's; any other key raises.
---- Raises on a bad pattern or a failed walk, unlike the other zemi.fs calls.
+--- searched, like the grep tool's; any other key raises. A bad pattern
+--- raises; a failed walk is nil, err, like the other zemi.fs calls.
 ---@param pattern string
 ---@param opts? { path?: string, include?: string }
----@return zemi.GrepHit[]
+---@return zemi.GrepHit[]|nil hits
+---@return string|nil err
 function zemi.fs.grep(pattern, opts) end
 
 -- zemi.http
@@ -2427,7 +2429,7 @@ function zemi.http.get(url, opts) end
 ---@field env? table<string, string>
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads. A missing dir is the returned error.
 ---@field stdin? boolean Needed before `write`.
----@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
+---@field timeout_ms? integer `zemi.job.wait` only, 60000 by default; `zemi.job.start` raises when it is set.
 ---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.
 ---@field on_stderr? fun(lines: string[])
 ---@field on_exit? fun(res: zemi.JobResult) Runs after the last output callback, also for a job `kill` ended (code -1).
@@ -2520,9 +2522,9 @@ function zemi.state.get(key) end
 ---@return string|nil err
 function zemi.state.set(key, value) end
 
---- Drop a key.
+--- Drop a key; true whether or not there was one.
 ---@param key string
----@return boolean|nil removed
+---@return true|nil ok
 ---@return string|nil err
 function zemi.state.del(key) end
 
@@ -2647,16 +2649,12 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- Enable a disabled skill.
+--- Turn a skill on or off; `+name` attaches a disabled skill either way.
 ---@param name string
+---@param on boolean
 ---@return true|nil ok
 ---@return string|nil err
-function zemi.skills.enable(name) end
-
----@param name string
----@return true|nil ok
----@return string|nil err
-function zemi.skills.disable(name) end
+function zemi.skills.enable(name, on) end
 
 -- zemi.mcp and zemi.lsp
 

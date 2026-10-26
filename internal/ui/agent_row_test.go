@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestAgentRowsKeepTheirNames: a run row's name is the row's identity, so a
@@ -14,7 +15,7 @@ func TestAgentRowsKeepTheirNames(t *testing.T) {
 	items := []listItem{
 		{label: "New agent", row: hostapi.OverlayItem{Text: "New agent"}},
 		{
-			label: "Survey zemi run, how the mode behaves", mark: markSeg(hostapi.MarkSpin),
+			label: "Survey zemi run, how the mode behaves", mark: markSeg(tools.MarkSpin),
 			desc: "running   · 2m 39s · 74 tool calls · explore",
 			row:  hostapi.OverlayItem{Desc: "running   · 2m 39s · 74 tool calls · explore"},
 		},

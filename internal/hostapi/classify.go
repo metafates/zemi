@@ -31,9 +31,9 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	state := classifyState(L, spec)
 	questions := classifyQuestions(L, spec)
-	ref := cmp.Or(rawString(L, spec, "model"), "default")
+	ref := cmp.Or(rawString(L, spec, "model"), defaultRole)
 	id := h.modelRef(ref)
-	stub := h.gateAsk(L, "lua.classify.ask", id, func() map[string]any {
+	stub := h.gateAsk(L, luaClassifyAsk, id, func() map[string]any {
 		return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
 	})
 	timeout := classifyTimeout

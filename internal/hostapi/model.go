@@ -81,7 +81,7 @@ func (h *Host) modelRunErr(id string) error {
 		}
 		return fmt.Errorf("%w: %s", ErrNoModel, hint)
 	}
-	prov, _, _ := strings.Cut(id, "/")
+	prov := agent.ModelID(id).Provider()
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
 		// the id may come from a role, -m or a slot, so none is named
@@ -222,7 +222,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	if prompt == "" {
 		L.RaiseError("zemi.model.ask: prompt is required")
 	}
-	ref := cmp.Or(rawString(L, spec, "model"), "default")
+	ref := cmp.Or(rawString(L, spec, "model"), defaultRole)
 	id := h.modelRef(ref)
 	system := rawString(L, spec, "system")
 	var schema *fantasy.Schema
@@ -230,7 +230,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		s := checkSchema(L, tb)
 		schema = &s
 	}
-	stub := h.gateAsk(L, "lua.model.ask", id, func() map[string]any {
+	stub := h.gateAsk(L, luaModelAsk, id, func() map[string]any {
 		return map[string]any{"model": ref, "prompt": prompt, "system": system}
 	})
 	maxOut := int64(1024)
@@ -332,12 +332,16 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 // models.<name>, in the order /model roles lists them. default is the root:
 // the conversation and every role left unset run on it.
 var roles = []modelRole{
-	{"default", "the conversation, and every role left unset"},
+	{defaultRole, "the conversation, and every role left unset"},
 	{"agents", "subagents"},
 	{"titles", "session titles"},
 	{"compact", "summaries"},
 	{"memory", "memory review"},
 }
+
+// defaultRole is the conversation's own slot, the root every role left unset
+// follows.
+const defaultRole = "default"
 
 type modelRole struct{ Name, Desc string }
 
@@ -400,7 +404,7 @@ func (h *Host) registeredTargets() []*modelTarget {
 	names := slices.Sorted(maps.Keys(h.agents.targets))
 	out := make([]*modelTarget, 0, len(names))
 	for _, n := range names {
-		if n == "default" {
+		if n == defaultRole {
 			continue
 		}
 		out = append(out, h.agents.targets[n])
@@ -438,7 +442,7 @@ func (h *Host) isTarget(name string) bool {
 // default is the root: its key, then the provider default. "" when nothing
 // can run.
 func (h *Host) roleModel(name string) string {
-	if name == "default" {
+	if name == defaultRole {
 		return cmp.Or(h.Settings.Str(config.KeyModelsDefault), h.Providers.Default())
 	}
 	if v := h.Settings.Str(config.ModelKey(name)); v != "" {
@@ -569,7 +573,7 @@ func imageTooLarge(err error) bool {
 
 // modelSpec finds the catalog entry for a "provider/model" id.
 func (h *Host) modelSpec(id string) (agent.Model, bool) {
-	prov, model, ok := strings.Cut(id, "/")
+	prov, model, ok := agent.ModelID(id).Split()
 	if !ok {
 		return agent.Model{}, false
 	}
@@ -630,7 +634,7 @@ func (h *Host) maxOutput(modelID string) int64 {
 	if _, refused := capRejected.Load(modelID); refused {
 		return 0
 	}
-	prov, _, _ := strings.Cut(modelID, "/")
+	prov := agent.ModelID(modelID).Provider()
 	if spec, ok := h.Providers.Lookup(prov); ok && spec.Kind == agent.KindAnthropic {
 		return 32_000
 	}
@@ -819,7 +823,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if err := h.modelSetErr("default", id); err != nil {
+		if err := h.modelSetErr(defaultRole, id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 		}
 		// the default slot: what the conversation and every unset role run on

@@ -148,6 +148,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.tool.add: spec must be a table")
 		}
+		onlyTableKeys(L, spec, "zemi.tool.add", "name", "description", "execute", "input", "required", "prompt", "parallel", "final", "timeout_ms")
 		fn, ok := opt[*glua.LFunction](L, spec, "execute")
 		if !ok {
 			L.RaiseError("zemi.tool.add: execute callback is required")

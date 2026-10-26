@@ -154,12 +154,16 @@ func (h *Host) checkMCPGroupName(name, group string) error {
 	return nil
 }
 
+// kvMCPPrefix is the kv namespace an MCP server's persisted switch lives
+// under.
+const kvMCPPrefix = "mcp:"
+
 // mcpEnabled reads a server's persisted switch; no row, or no store, is on.
 func (h *Host) mcpEnabled(name string) bool {
 	if h.GlobalDB == nil {
 		return true
 	}
-	v, err := h.GlobalDB.GetKV("mcp:" + name)
+	v, err := h.GlobalDB.GetKV(kvMCPPrefix + name)
 	if err != nil {
 		return true
 	}
@@ -172,10 +176,10 @@ func (h *Host) setMCPEnabled(name string, on bool) error {
 		return errors.New("MCP state store unavailable")
 	}
 	if on {
-		_, err := h.GlobalDB.DelKV("mcp:" + name)
+		_, err := h.GlobalDB.DelKV(kvMCPPrefix + name)
 		return err
 	}
-	return h.GlobalDB.SetKV("mcp:"+name, "false")
+	return h.GlobalDB.SetKV(kvMCPPrefix+name, "false")
 }
 
 // kvFalse reports a kv value that is the JSON false, never a string
@@ -1051,8 +1055,8 @@ func (h *Host) mcpWaitingNames() []string {
 // mcpMarks are the list rows' status marks, the chat's: starting spins and
 // a server waiting for a sign-in waits.
 var mcpMarks = map[ServiceStatus]MarkKind{
-	StatusStarting: MarkSpin, StatusReady: MarkOK, StatusFailed: MarkErr,
-	StatusSignIn: MarkWait, StatusStopped: MarkStop, StatusOff: MarkStop,
+	StatusStarting: tools.MarkSpin, StatusReady: tools.MarkOK, StatusFailed: tools.MarkErr,
+	StatusSignIn: tools.MarkWait, StatusStopped: tools.MarkStop, StatusOff: tools.MarkStop,
 }
 
 // mcpItems lists the servers as a tree: a group's switch reads on only when

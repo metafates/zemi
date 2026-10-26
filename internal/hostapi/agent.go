@@ -268,7 +268,7 @@ func (h *Host) liveModelID() string {
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	return h.roleModel("default")
+	return h.roleModel(defaultRole)
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -305,7 +305,7 @@ func (h *Host) toolBuilder(skip set.Set[tools.ToolName]) func(*tools.Pipeline) (
 // mainTools selects the conversation's tool set over a pipeline of its own.
 func (h *Host) mainTools() []fantasy.AgentTool {
 	pipe := h.PipelineFor()
-	pipe.Images = func() bool { return h.takesImages(h.roleModel("default")) }
+	pipe.Images = func() bool { return h.takesImages(h.roleModel(defaultRole)) }
 	return h.toolsFor(pipe)
 }
 
@@ -333,7 +333,7 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 }
 
 func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) {
-	id := h.roleModel("default")
+	id := h.roleModel(defaultRole)
 	model, err := h.resolveModel(id)
 	if err != nil {
 		return nil, err
@@ -432,7 +432,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // deleteRecipe). A reload drops nothing: the config watcher reloads on any
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
-	id := h.roleModel("default")
+	id := h.roleModel(defaultRole)
 	key := []string{id, strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))}
 	infos := make([]fantasy.ToolInfo, len(toolset))
 	for i, t := range toolset {
@@ -720,7 +720,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		return err
 	}
 	// before the session row, so a send that cannot run leaves no empty session
-	id := h.roleModel("default")
+	id := h.roleModel(defaultRole)
 	if _, err := h.resolveModel(id); err != nil {
 		return fail(err)
 	}
@@ -1333,7 +1333,7 @@ func (h *Host) turnModelID() string {
 	if m := h.agents.turnModel; m != "" {
 		return m
 	}
-	return h.roleModel("default")
+	return h.roleModel(defaultRole)
 }
 
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
@@ -1845,7 +1845,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.bill(sid, h.roleModel("default"), res.TotalUsage)
+	h.bill(sid, h.roleModel(defaultRole), res.TotalUsage)
 	return strings.TrimSpace(concatText(res.Response.Content)), nil
 }
 
@@ -1974,10 +1974,10 @@ func (h *Host) OpenModelPicker(name string) error {
 
 // followRow is a target's list head: what it runs on with no pick of its own.
 func (h *Host) followRow(name, run string) OverlayItem {
-	if name == "default" { // the root: nothing to follow but the provider
-		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + "default"}
+	if name == defaultRole { // the root: nothing to follow but the provider
+		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + defaultRole}
 	}
-	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel("default"), Run: run + "default"}
+	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel(defaultRole), Run: run + defaultRole}
 	if t, _ := h.target(name); t != nil && t.def() != "" {
 		head.Text, head.Desc = "Follow the registered model", h.modelRef(t.def())
 	}
@@ -1990,7 +1990,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
-	run, cur := "model ", h.roleModel("default")
+	run, cur := "model ", h.roleModel(defaultRole)
 	switch name {
 	case "":
 		o.Items = []OverlayItem{
@@ -2052,7 +2052,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	if o.Selected >= 0 {
 		o.Selected += heads
 	}
-	prov, _, _ := strings.Cut(cur, "/")
+	prov := agent.ModelID(cur).Provider()
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
@@ -2084,7 +2084,7 @@ func (h *Host) modelPicker(name string) Overlay {
 		// no key export fixes a default whose provider nobody registered:
 		// name it, so the user knows what to change
 		if id := h.Settings.Str(config.KeyModelsDefault); id != "" {
-			p, _, _ := strings.Cut(id, "/")
+			p := agent.ModelID(id).Provider()
 			_, registered := h.Providers.Lookup(p)
 			awaiting := slices.ContainsFunc(h.Providers.Missing(), func(m agent.MissingKey) bool { return m.ID == p })
 			if !registered && !awaiting {
@@ -2125,7 +2125,7 @@ func (h *Host) toggleModelFavorite(id, name string) {
 func (h *Host) ownRoles() []string {
 	var own []string
 	for _, n := range h.targetNames() {
-		if n != "default" && h.Settings.Str(config.ModelKey(n)) != "" {
+		if n != defaultRole && h.Settings.Str(config.ModelKey(n)) != "" {
 			own = append(own, n)
 		}
 	}
@@ -2163,8 +2163,8 @@ func (h *Host) OpenModelRoles() error {
 // the other roles, then the slots config registered.
 func (h *Host) modelRoleItems() []OverlayItem {
 	items := []OverlayItem{{
-		Text: "default", Desc: h.slotLine("default", roles[0].Desc),
-		Verb: VerbOpen, Run: "model default",
+		Text: defaultRole, Desc: h.slotLine(defaultRole, roles[0].Desc),
+		Verb: VerbOpen, Run: "model " + defaultRole,
 	}}
 	for _, r := range roles[1:] {
 		items = append(items, h.modelSlotRow(r.Name, r.Desc))
@@ -2191,7 +2191,7 @@ func (h *Host) modelSlotRow(name, desc string) OverlayItem {
 // slotTag is what a row shows past the model id: the default a slot with no
 // pick of its own falls back to.
 func (h *Host) slotTag(name string) string {
-	if name == "default" { // the root: what runs when nothing is set anywhere
+	if name == defaultRole { // the root: what runs when nothing is set anywhere
 		return h.Providers.Default()
 	}
 	if h.Settings.Str(config.ModelKey(name)) != "" {
@@ -2246,7 +2246,7 @@ func (h *Host) SetModel(args string) error {
 	case len(f) == 1 && h.isTarget(f[0]):
 		return picker(f[0])
 	case len(f) == 1: // a bare id sets the conversation's slot
-		f = []string{"default", f[0]}
+		f = []string{defaultRole, f[0]}
 	case len(f) > 2 || !h.isTarget(f[0]):
 		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
@@ -2257,7 +2257,7 @@ func (h *Host) SetModel(args string) error {
 // It validates, writes through the watched setting and shows the pick; Go
 // callers with a role and id in hand call it directly.
 func (h *Host) SetTargetModel(role, id string) error {
-	if id == "default" { // a target following its own model, else the default
+	if id == defaultRole { // a target following its own model, else the default
 		id = ""
 	}
 	if err := h.modelSetErr(role, id); err != nil {
@@ -2321,10 +2321,10 @@ func (h *Host) CompleteModel(lead, line string) []string {
 	first = append(first, h.targetNames()...)
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
-		case sub == "default":
+		case sub == defaultRole:
 			return ids
 		case h.isTarget(sub):
-			return append([]string{"default"}, ids...)
+			return append([]string{defaultRole}, ids...)
 		}
 		return nil
 	})(h, lead, line)
@@ -2345,7 +2345,7 @@ func (h *Host) warnUnlisted(id string) {
 // provider decides. A decisions model is refused for every slot but a
 // classifier one: it is no chat model, and that slot is what it is for.
 func (h *Host) modelSetErr(slot, id string) error {
-	prov, _, _ := strings.Cut(id, "/")
+	prov := agent.ModelID(id).Provider()
 	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
 		return usageError{h.modelErr(id)}
 	}
@@ -2499,13 +2499,13 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			if h.hooks() == nil { // zemi health boots plugins with no UI: a turn nobody sees has nothing to bound it
 				L.RaiseError("zemi.agent.send: no UI is running to send from")
 			}
-			if stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
+			if stub := h.luaGate(L, luaAgentSend, "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}
 			text = agent.Attached(h.principal(L), text)
 		}
-		if _, err := h.resolveModel(h.roleModel("default")); err != nil {
+		if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {

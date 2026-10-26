@@ -25,12 +25,13 @@ const (
 	SubjectWorkflow = "tool.workflow"
 	SubjectRead     = "fs.read"
 	SubjectWrite    = "fs.write"
+	SubjectMemory   = "memory.write"
 )
 
-const pluginPrefix = "plugin:"
+const PluginPrefix = "plugin:"
 
 // PluginPrincipal is the principal a plugin's calls and state keys run as.
-func PluginPrincipal(name string) string { return pluginPrefix + name }
+func PluginPrincipal(name string) string { return PluginPrefix + name }
 
 // CanonPath is the form file tools key by: absolute, symlinks and ..
 // resolved as the kernel resolves them, and case folded where the

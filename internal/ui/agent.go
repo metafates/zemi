@@ -502,7 +502,7 @@ func markSeg(kind hostapi.MarkKind) hostapi.Segment {
 	if !ok {
 		return hostapi.Segment{}
 	}
-	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]hostapi.Effect{true: hostapi.EffectSpin}[kind == hostapi.MarkSpin]}
+	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]hostapi.Effect{true: hostapi.EffectSpin}[kind == tools.MarkSpin]}
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.
@@ -980,7 +980,7 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Run this workflow?"
 	case req.Subject == "tool."+req.Tool:
 		return "Use the " + req.Tool + " tool?"
-	case req.Subject == "memory.write":
+	case req.Subject == perm.SubjectMemory:
 		return "Forget this memory?"
 	}
 	return "Allow " + req.Subject + "?"
@@ -1037,7 +1037,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return "file", parts(arg)
 	case req.Subject == perm.SubjectWorkflow && arg != "script":
 		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
-	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == "memory.write", arg == "script":
+	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == perm.SubjectMemory, arg == "script":
 		return "", nil
 	}
 	return "arg", parts(req.Arg)

@@ -75,7 +75,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
 	// through its callback would keep the rest.
-	if h.Inert && subject != "lua.fs.read" {
+	if h.Inert && subject != luaFSRead {
 		L.RaiseError("%s %s: permission denied (inert)", subject, arg)
 	}
 	// a plugin calls nothing its manifest does not declare: the manifest is
@@ -120,23 +120,35 @@ func (h *Host) gateAsk(L *glua.LState, subject, id string, payload func() map[st
 	return nil
 }
 
+// The lua.* subjects the gate names a call by: what a plugin's uses maps
+// onto, what test.stub answers and what the ask overlay shows.
+const (
+	luaFSRead      = "lua.fs.read"
+	luaFSWrite     = "lua.fs.write"
+	luaModelAsk    = "lua.model.ask"
+	luaClassifyAsk = "lua.classify.ask"
+	luaAgentSend   = "lua.agent.send"
+	luaJobStart    = "lua.job.start"
+	luaHTTP        = "lua.http." // a prefix: one subject per method
+)
+
 // pluginCaps is the capability each gated subject needs declared, keyed by
 // subject prefix: every lua.http.<method> and every tool.<name> share one row.
 var pluginCaps = []struct{ prefix, cap string }{
-	{"lua.model.ask", "model"},
-	{"lua.classify.ask", "model"},
-	{"lua.agent.send", "agent"},
-	{"lua.fs.write", "fs.write"},
-	{"lua.http.", "http"},
-	{"tool.", "tool"},
+	{luaModelAsk, plugin.CapModel},
+	{luaClassifyAsk, plugin.CapModel},
+	{luaAgentSend, plugin.CapAgent},
+	{luaFSWrite, plugin.CapFSWrite},
+	{luaHTTP, plugin.CapHTTP},
+	{"tool.", plugin.CapTool},
 }
 
 // pluginCap is the capability a plugin must declare for a gated subject, ""
 // when no capability covers it (lua.fs.read, zemi.state.*, zemi.env.get): a
 // subject nothing declares keeps its own gate.
 func pluginCap(subject string) string {
-	if subject == "lua.job.start" {
-		return "job"
+	if subject == luaJobStart {
+		return plugin.CapJob
 	}
 	for _, c := range pluginCaps {
 		if strings.HasPrefix(subject, c.prefix) {
@@ -231,18 +243,17 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		}
 		return luaResult(L, h.GlobalDB.SetKV(key, string(b)))
 	}))
-	// del(key) -> whether there was one; a config that writes state can
-	// clear it again
+	// del(key) -> true, nil, err when the store fails; a config that writes
+	// state can clear it again
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		key := h.stateScope(L) + L.CheckString(1)
 		if h.GlobalDB == nil {
 			return luaResult(L, errNoStateStore)
 		}
-		removed, err := h.GlobalDB.DelKV(key)
-		if err != nil {
+		if _, err := h.GlobalDB.DelKV(key); err != nil {
 			return luaResult(L, err)
 		}
-		L.Push(glua.LBool(removed))
+		L.Push(glua.LTrue)
 		return 1
 	}))
 	// keys(prefix?) -> the keys set, sorted
@@ -393,16 +404,18 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// link: the call means a symlink itself, not what it points at
 	resolve := func(L *glua.LState, api string, write, link bool) perm.Path {
-		subject := "lua.fs.read"
+		subject := luaFSRead
 		if write {
-			subject = "lua.fs.write"
+			subject = luaFSWrite
 		}
 		path := L.CheckString(1)
 		resolved, err := h.projectResolve(path, link)
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		h.luaGate(L, subject, h.projectAbs(path), func() map[string]any { return map[string]any{"path": path} })
+		// the gate sees where the open lands: under ~, the home, not a
+		// project dir literally named "~"
+		h.luaGate(L, subject, h.projectAbs(perm.ExpandHome(path)), func() map[string]any { return map[string]any{"path": path} })
 		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
@@ -510,12 +523,18 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir, nil)
-		matches, err := h.projectGlob(cmp.Or(L.Context(), context.Background()), pattern)
+		h.luaGate(L, luaFSRead, h.Dirs.ProjectDir, nil)
+		// the pattern is misuse; the walk, a runtime failure. The leading
+		// slash anchors "*.go" at the root.
+		match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
 		}
-		L.Push(lua.FromGo(L, matches))
+		files, _, err := tools.ListFiles(cmp.Or(L.Context(), context.Background()), h.Dirs.ProjectDir, tools.ListLimit)
+		if err != nil {
+			return luaResult(L, err)
+		}
+		L.Push(lua.FromGo(L, slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) })))
 		return 1
 	}))
 
@@ -549,14 +568,21 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			// the dir as given, which under a symlinked TMPDIR differ.
 			rel, _ = filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), root)
 		}
-		h.luaGate(L, "lua.fs.read", root, nil)
+		h.luaGate(L, luaFSRead, root, nil)
+		// the patterns are misuse; the walk, a runtime failure
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
-		hits, err := h.projectGrep(cmp.Or(L.Context(), context.Background()), re, rel, include)
+		match := func(string) bool { return true }
+		if include != "" {
+			if match, err = glob.Match(include); err != nil {
+				L.RaiseError("zemi.fs.grep: %v", err)
+			}
+		}
+		hits, err := h.projectGrep(cmp.Or(L.Context(), context.Background()), re, rel, match)
 		if err != nil {
-			L.RaiseError("zemi.fs.grep: %v", err)
+			return luaResult(L, err)
 		}
 		rows := []any{}
 		for _, hit := range hits {
@@ -570,7 +596,8 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 }
 
 // projectResolve resolves path against the project dir. With link the last
-// component stays as named (perm.Lresolve).
+// component stays as named (perm.Lresolve). A path under ~ spells the user's
+// home out, the way /projects takes one.
 func (h *Host) projectResolve(path string, link bool) (perm.Path, error) {
 	if path == "" {
 		return perm.Path{}, errors.New("empty path")
@@ -579,7 +606,7 @@ func (h *Host) projectResolve(path string, link bool) (perm.Path, error) {
 	if link {
 		resolve = perm.Lresolve
 	}
-	return resolve(h.projectAbs(path))
+	return resolve(h.projectAbs(perm.ExpandHome(path)))
 }
 
 // projectAbs is path made absolute against the project dir; not Join,
@@ -591,28 +618,12 @@ func (h *Host) projectAbs(path string) string {
 	return h.Dirs.ProjectDir + string(filepath.Separator) + path
 }
 
-// projectGlob matches project-relative paths in the glob tool's dialect,
-// anchored at the root so "*.go" stays in the top directory.
-func (h *Host) projectGlob(ctx context.Context, pattern string) ([]string, error) {
-	match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
-	if err != nil {
-		return nil, err
-	}
-	files, _, err := tools.ListFiles(ctx, h.Dirs.ProjectDir, tools.ListLimit)
-	return slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) }), err
-}
-
 // projectGrep searches the project's files, under dir and in the files the
-// include glob names (both optional), and answers paths project-relative.
-func (h *Host) projectGrep(ctx context.Context, re *regexp.Regexp, dir, include string) ([]tools.Hit, error) {
+// caller's compiled include match allows, and answers paths project-relative.
+// The patterns are compiled by the caller; a failed walk is the returned
+// error.
+func (h *Host) projectGrep(ctx context.Context, re *regexp.Regexp, dir string, match func(string) bool) ([]tools.Hit, error) {
 	root := h.Dirs.ProjectDir
-	match := func(string) bool { return true }
-	var err error
-	if include != "" {
-		if match, err = glob.Match(include); err != nil {
-			return nil, err
-		}
-	}
 	dir = strings.Trim(filepath.ToSlash(dir), "/")
 	if dir == "." {
 		dir = ""
@@ -684,7 +695,7 @@ type httpHandle struct {
 // httpStart gates the request, runs it off the interpreter and pushes the
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
-	subject := "lua.http." + strings.ToLower(req.method)
+	subject := luaHTTP + strings.ToLower(req.method)
 	stub := h.luaGate(L, subject, req.url, func() map[string]any {
 		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
 	})
@@ -1010,8 +1021,13 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(L, spec, "args")
-		stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
-			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(L, spec, "cwd")}
+		stub := h.luaGate(L, luaJobStart, argvLine(cmdName, args), func() map[string]any {
+			cwd := rawString(L, spec, "cwd")
+			if cwd != "" {
+				// the ask names where the job really runs, the way the fs gate does
+				cwd = h.projectAbs(perm.ExpandHome(cwd))
+			}
+			return map[string]any{"cmd": cmdName, "args": args, "cwd": cwd}
 		})
 		extras := map[string]any{}
 		if envT, ok := opt[*glua.LTable](L, spec, "env"); ok {
@@ -1141,6 +1157,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
+		// start never times a job out; the option here would silently do nothing
+		if spec, ok := L.Get(1).(*glua.LTable); ok && spec.RawGetString("timeout_ms") != glua.LNil {
+			L.RaiseError("zemi.job.start: timeout_ms is not taken; zemi.job.wait takes it")
+		}
 		jh, err := start(L)
 		if err != nil {
 			return luaResult(L, err)

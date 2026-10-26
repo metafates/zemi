@@ -29,6 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // NOTE: finished runs past maxKeptRuns are forgotten oldest first; /agents
@@ -40,6 +41,7 @@ type RunStatus string
 
 const (
 	RunRunning   RunStatus = "running"
+	RunQueued    RunStatus = "queued"
 	RunDone      RunStatus = "done"
 	RunWarn      RunStatus = "warn"
 	RunFailed    RunStatus = "failed"
@@ -51,8 +53,8 @@ var runStatuses = []RunStatus{RunRunning, RunDone, RunWarn, RunFailed, RunCancel
 // RunMarks are the Marks a run's or an agent's status word draws, as the
 // chat marks a call: queued and paused wait, running spins.
 var RunMarks = map[string]MarkKind{
-	"queued": MarkWait, "paused": MarkWait, string(RunRunning): MarkSpin, string(RunDone): MarkOK,
-	string(RunWarn): MarkWarn, string(RunFailed): MarkErr, string(RunCancelled): MarkStop,
+	string(RunQueued): tools.MarkWait, "paused": tools.MarkWait, string(RunRunning): tools.MarkSpin, string(RunDone): tools.MarkOK,
+	string(RunWarn): tools.MarkWarn, string(RunFailed): tools.MarkErr, string(RunCancelled): tools.MarkStop,
 }
 
 // runState is the lifecycle agentRun and flowRun share: both are registered,
@@ -850,18 +852,37 @@ func (h *Host) deliverAgent(run *agentRun, text string, err error) {
 	if err != nil {
 		body = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
 	}
+	status := reportFailure
+	if err == nil {
+		status = reportFinished
+	}
 	h.deliverReport(run.parent, report{
 		id: run.id, agent: run.agent,
-		status:      map[bool]string{true: "finished", false: "failed"}[err == nil],
+		status:      status,
 		description: run.description,
 		body:        body,
 	}, "")
 }
 
+// reportStatus is the status word an agent-report element carries: what
+// reportMark marks the user's row and what the model reads back.
+type reportStatus string
+
+const (
+	reportFinished reportStatus = "finished"
+	reportFailure  reportStatus = "failed"
+	// reportWarn is RunWarn as a report carries it: a workflow that ended
+	// with a failed agent or branch inside
+	reportWarn reportStatus = reportStatus(RunWarn)
+)
+
 // report is a run's report identity and text: the tag a report message names
 // them by, and what reportAttrs and reportBody read back.
 type report struct {
-	id, agent, status, description, body string
+	id, agent   string
+	status      reportStatus
+	description string
+	body        string
 }
 
 // deliverReport hands a detached run's report to the session that started
@@ -883,7 +904,7 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 
 // updateStatus is the status an update reaches the user under: it names the
 // run's line and keeps its toast off the warning level.
-const updateStatus = "update"
+const updateStatus = reportStatus("update")
 
 // deliverUpdate hands a running agent's own line to the session that started
 // it, as deliverReport hands a finished run's report: onto the turn in
@@ -916,9 +937,9 @@ func (h *Host) updateMessage(pad, id, agentName, text string) string {
 // runs of one script differ by no name.
 func reportHead(r report) string {
 	if workflowAgent(r.agent) {
-		return fmt.Sprintf("Workflow %s (%s) %s", r.id, clipLine(r.description, 60), r.status)
+		return fmt.Sprintf("Workflow %s (%s) %s", r.id, clipLine(r.description, 60), string(r.status))
 	}
-	return fmt.Sprintf("Background agent %s (%s) %s", r.id, clipLine(cmp.Or(r.description, r.agent), 60), r.status)
+	return fmt.Sprintf("Background agent %s (%s) %s", r.id, clipLine(cmp.Or(r.description, r.agent), 60), string(r.status))
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,
@@ -933,7 +954,7 @@ func workflowAgent(agent string) bool {
 // model reads it (appendUserRows), so it never lands above the rows of the
 // turn it arrives in.
 func (h *Host) reportMessage(pad string, r report) string {
-	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", r.id, r.agent, r.status, r.description), h.truncOutput(pad, "agent", r.body))
+	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", r.id, r.agent, string(r.status), r.description), h.truncOutput(pad, "agent", r.body))
 }
 
 // reportFailed heads a failed run's report for the model; the toast of one
@@ -965,7 +986,7 @@ func (h *Host) notifyReport(r report) {
 		}
 	}
 	level := slog.LevelWarn
-	if r.status != "failed" {
+	if r.status != reportFailure {
 		level = slog.LevelInfo
 	}
 	h.Notify(level, reportHead(r), r.description+"\n"+clipRunes(strings.TrimPrefix(r.body, reportFailed), 300))
@@ -996,7 +1017,7 @@ func (h *Host) notifyReports(queued []string) {
 	for _, m := range queued {
 		for _, g := range reportBody.FindAllStringSubmatch(m, -1) {
 			desc, _ := strconv.Unquote(g[4])
-			h.notifyReport(report{id: g[1], agent: g[2], status: g[3], description: desc, body: g[5]})
+			h.notifyReport(report{id: g[1], agent: g[2], status: reportStatus(g[3]), description: desc, body: g[5]})
 		}
 	}
 }
@@ -1012,17 +1033,18 @@ type notice struct {
 	Run    string
 }
 
-// reportStatus is a report's status word as its row's mark: a failed run
+// reportMark is a report's status word as its row's mark: a failed run
 // failed, a run that finished with a failed agent inside warns, and
 // anything else finished.
-func reportStatus(word string) CallStatus {
-	switch word {
-	case "failed":
+func reportMark(word string) CallStatus {
+	switch reportStatus(word) {
+	case reportFailure:
 		return CallErr
-	case string(RunWarn):
+	case reportWarn:
 		return CallWarn
+	default:
+		return CallOK
 	}
-	return CallOK
 }
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
@@ -1037,8 +1059,8 @@ func reportHeads(tail string) []notice {
 		if !workflowAgent(m[2]) {
 			run = m[1]
 		}
-		r := report{id: m[1], agent: m[2], status: m[3], description: desc}
-		heads = append(heads, notice{Text: reportHead(r), Status: reportStatus(m[3]), Run: run})
+		r := report{id: m[1], agent: m[2], status: reportStatus(m[3]), description: desc}
+		heads = append(heads, notice{Text: reportHead(r), Status: reportMark(m[3]), Run: run})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		if line := skill.FirstBodyLine(m[2]); line != "" {
@@ -1196,6 +1218,10 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	return run, nil
 }
 
+// sectionRunning is the section a list puts its live rows in, and how the
+// /agents screen knows its first row is one.
+const sectionRunning = "Running"
+
 // agentRunItems are the /agents rows for the live session's runs, the
 // stored ones this process does not hold included; enter opens the run's
 // preview, the same view a workflow's agent gets, and v its transcript.
@@ -1224,7 +1250,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		item.Section = "Earlier in this session"
 		if status == RunRunning {
 			item.Keys = append(item.Keys, ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + id, Danger: true})
-			item.Section = "Running"
+			item.Section = sectionRunning
 			running = append(running, item)
 			return
 		}

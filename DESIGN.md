@@ -1698,7 +1698,7 @@ zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
 zemi.memory.list(); zemi.memory.del(id)
 zemi.learn.list()                      -- pending proposal cards
 zemi.learn.decide(id, "accept")        -- accept or reject a proposal
-zemi.skills.list(); zemi.skills.enable("local-integration")
+zemi.skills.list(); zemi.skills.enable("local-integration", true)
 ```
 
 The rest of the installed surface (`internal/hostapi/host.go` holds the

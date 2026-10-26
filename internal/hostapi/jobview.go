@@ -105,8 +105,8 @@ func (h *Host) jobsOverlay() Overlay {
 			ID:      j.ID,
 			Text:    j.Name,
 			Desc:    statusCol(j.Status()) + " · " + fmtDuration(j.Elapsed()) + " · " + j.ID,
-			Mark:    MarkKind(j.Mark()),
-			Section: map[bool]string{true: "Running", false: "Ended"}[j.Running()],
+			Mark:    j.Mark(),
+			Section: map[bool]string{true: sectionRunning, false: "Ended"}[j.Running()],
 			Run:     "jobs view " + j.ID, Verb: VerbOpen,
 		}
 		if j.Running() {
@@ -135,7 +135,7 @@ func (h *Host) jobOverlay(j *tools.Job) Overlay {
 	out := jobTail(j.Output())
 	o := Overlay{
 		ID: "job:" + j.ID, Title: "Jobs / " + clipLine(j.Name, 50), Origin: lua.OriginBuiltin,
-		Live: true, Body: out, Mark: MarkKind(j.Mark()),
+		Live: true, Body: out, Mark: j.Mark(),
 		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}},
 		Parts:  []BodyPart{{Text: j.Name, Lang: "bash", Fill: FillCanvas}, {Text: out, Fill: FillWell}},
 	}

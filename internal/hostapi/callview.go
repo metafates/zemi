@@ -218,8 +218,8 @@ var callWords = map[CallStatus]string{
 
 // callMarks are the chat's own marks for a call's state.
 var callMarks = map[CallStatus]MarkKind{
-	CallWait: MarkWait, CallRun: MarkSpin, CallOK: MarkOK, CallWarn: MarkWarn,
-	CallErr: MarkErr, CallStopped: MarkStop, CallBG: MarkBG, CallCancelled: MarkStop,
+	CallWait: tools.MarkWait, CallRun: tools.MarkSpin, CallOK: tools.MarkOK, CallWarn: tools.MarkWarn,
+	CallErr: tools.MarkErr, CallStopped: tools.MarkStop, CallBG: tools.MarkBG, CallCancelled: tools.MarkStop,
 }
 
 // callArg names what a call was given, so the facts table says what it acted
@@ -454,7 +454,7 @@ func callTitle(m ChatMessage) string {
 	if t, ok := callTitles[m.Tool]; ok {
 		return t
 	}
-	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(string(m.Tool), "mcp_"), "_", " "))
+	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(string(m.Tool), mcpToolPrefix), "_", " "))
 }
 
 // callOutput is what the call answered, as its view shows it: a question's

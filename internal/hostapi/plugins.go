@@ -361,7 +361,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	ids, fresh, adopt := map[string]string{}, set.Set[string]{}, set.Set[string]{}
 	for _, p := range ps {
 		q := strconv.Quote(installID(h.Dirs, p.Name, p.Dir))
-		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
+		was, err := h.GlobalDB.GetKV(perm.PluginPrefix + p.Name)
 		switch {
 		case errors.Is(err, store.ErrNotFound) && q != `""`:
 			// a copy's id lives in its row alone: adopt it on first sight, or
@@ -378,19 +378,19 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 			fresh.Add(p.Name)
 		}
 	}
-	keys, _ := h.GlobalDB.KeysKV("plugin:")
+	keys, _ := h.GlobalDB.KeysKV(perm.PluginPrefix)
 	picks, _ := h.GlobalDB.KeysKV("config:plugins.")
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	for _, k := range append(keys, picks...) {
 		// a name holds no "." or ":"; its state keys are plugin:<name>:<key>,
 		// its kept settings config:plugins.<name>.<key>
-		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, "plugin:"), "config:plugins."), ":")
+		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, perm.PluginPrefix), "config:plugins."), ":")
 		name, _, _ = strings.Cut(name, ".")
 		if _, ok := ids[name]; ok && !fresh.Has(name) {
 			continue
 		}
-		if path, ok := strings.CutPrefix(k, "config:"); ok {
+		if path, ok := strings.CutPrefix(k, kvConfigPrefix); ok {
 			h.forgetPick(config.Key(path))
 		} else {
 			_, _ = h.GlobalDB.DelKV(k)
@@ -398,7 +398,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	}
 	for name, id := range ids {
 		if fresh.Has(name) && id != `""` || adopt.Has(name) {
-			_ = h.GlobalDB.SetKV("plugin:"+name, id)
+			_ = h.GlobalDB.SetKV(perm.PluginPrefix+name, id)
 		}
 	}
 }

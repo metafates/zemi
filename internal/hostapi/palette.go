@@ -31,39 +31,46 @@ type Palette struct {
 	Bg, Fg, Accent, Literal, Ok, Warn, Danger, Dim, Rule, Panel, Band, AddBg, DelBg, Well color.Color
 }
 
+// paletteRole pairs a role's name with its field: the one source both the
+// Roles list and role() read.
+type paletteRole struct {
+	name  string
+	field func(*Palette) *color.Color
+}
+
+var paletteRoles = []paletteRole{
+	{"bg", func(p *Palette) *color.Color { return &p.Bg }},
+	{"fg", func(p *Palette) *color.Color { return &p.Fg }},
+	{"accent", func(p *Palette) *color.Color { return &p.Accent }},
+	{"literal", func(p *Palette) *color.Color { return &p.Literal }},
+	{"ok", func(p *Palette) *color.Color { return &p.Ok }},
+	{"warn", func(p *Palette) *color.Color { return &p.Warn }},
+	{"danger", func(p *Palette) *color.Color { return &p.Danger }},
+	{"dim", func(p *Palette) *color.Color { return &p.Dim }},
+	{"rule", func(p *Palette) *color.Color { return &p.Rule }},
+	{"panel", func(p *Palette) *color.Color { return &p.Panel }},
+	{"band", func(p *Palette) *color.Color { return &p.Band }},
+	{"addbg", func(p *Palette) *color.Color { return &p.AddBg }},
+	{"delbg", func(p *Palette) *color.Color { return &p.DelBg }},
+	{"well", func(p *Palette) *color.Color { return &p.Well }},
+}
+
 // Roles are the names a theme spec and a group's colors give Palette's fields.
-var Roles = []string{"bg", "fg", "accent", "literal", "ok", "warn", "danger", "dim", "rule", "panel", "band", "addbg", "delbg", "well"}
+var Roles = paletteRoleNames()
+
+func paletteRoleNames() []string {
+	names := make([]string, len(paletteRoles))
+	for i, r := range paletteRoles {
+		names[i] = r.name
+	}
+	return names
+}
 
 func (p *Palette) role(name string) *color.Color {
-	switch name {
-	case "bg":
-		return &p.Bg
-	case "fg":
-		return &p.Fg
-	case "accent":
-		return &p.Accent
-	case "literal":
-		return &p.Literal
-	case "ok":
-		return &p.Ok
-	case "warn":
-		return &p.Warn
-	case "danger":
-		return &p.Danger
-	case "dim":
-		return &p.Dim
-	case "rule":
-		return &p.Rule
-	case "panel":
-		return &p.Panel
-	case "band":
-		return &p.Band
-	case "addbg":
-		return &p.AddBg
-	case "delbg":
-		return &p.DelBg
-	case "well":
-		return &p.Well
+	for _, r := range paletteRoles {
+		if r.name == name {
+			return r.field(p)
+		}
 	}
 	return nil
 }

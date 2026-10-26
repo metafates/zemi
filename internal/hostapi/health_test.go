@@ -265,17 +265,18 @@ func TestWaitMCP(t *testing.T) {
 func TestNotifyStyle(t *testing.T) {
 	for _, c := range []struct {
 		name, setting, goos, env, tools, want string
+		missing                               bool
 	}{
-		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "native"},
-		{"ghostty without a notifier", "auto", "darwin", "TERM_PROGRAM=ghostty", "", "osc"},
-		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc"},
-		{"kitty on linux", "auto", "linux", "TERM=xterm-kitty", "notify-send", "osc"},
-		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native"},
-		{"screen on a mac", "auto", "darwin", "TERM_PROGRAM=ghostty TERM=screen STY=1.pts-0", "osascript", "native"},
-		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell"},
-		{"linux over ssh", "auto", "linux", "TERM=xterm-256color SSH_CONNECTION=x", "notify-send", "bell"},
-		{"native with no tool", "native", "linux", "", "", "bell"},
-		{"off", "off", "darwin", "TERM_PROGRAM=ghostty", "osascript", "off"},
+		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "native", false},
+		{"ghostty without a notifier", "auto", "darwin", "TERM_PROGRAM=ghostty", "", "osc", false},
+		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc", false},
+		{"kitty on linux", "auto", "linux", "TERM=xterm-kitty", "notify-send", "osc", false},
+		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native", false},
+		{"screen on a mac", "auto", "darwin", "TERM_PROGRAM=ghostty TERM=screen STY=1.pts-0", "osascript", "native", false},
+		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell", false},
+		{"linux over ssh", "auto", "linux", "TERM=xterm-256color SSH_CONNECTION=x", "notify-send", "bell", false},
+		{"native with no tool", "native", "linux", "", "", "bell", true},
+		{"off", "off", "darwin", "TERM_PROGRAM=ghostty", "osascript", "off", false},
 	} {
 		env := map[string]string{}
 		for kv := range strings.FieldsSeq(c.env) {
@@ -283,8 +284,9 @@ func TestNotifyStyle(t *testing.T) {
 			env[k] = v
 		}
 		has := func(name string) bool { return name == c.tools }
-		if got, why := notifyStyle(c.setting, func(k string) string { return env[k] }, c.goos, has); got != c.want {
-			t.Errorf("%s: %s (%s), want %s", c.name, got, why, c.want)
+		got, why, missing := notifyStyle(c.setting, func(k string) string { return env[k] }, c.goos, has)
+		if got != c.want || missing != c.missing {
+			t.Errorf("%s: %s missing=%v (%s), want %s missing=%v", c.name, got, missing, why, c.want, c.missing)
 		}
 	}
 }

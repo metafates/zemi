@@ -941,7 +941,7 @@ func (f *flowRun) rows() []agentRow {
 			tokens, cost := a.run.usage()
 			r.tokens, r.cost = r.tokens+tokens, r.cost+cost // a restart's first attempts are in the row
 		case r.status == "" && f.status == RunRunning:
-			r.status = "queued"
+			r.status = RunQueued
 		case r.status == "": // the run ended before it started, so it never will
 			r.status = RunCancelled
 		}
@@ -998,7 +998,7 @@ func (f *flowRun) state() RunStatus {
 func ended(rows []agentRow) int {
 	n := 0
 	for _, a := range rows {
-		if a.status != RunRunning && a.status != "queued" {
+		if a.status != RunRunning && a.status != RunQueued {
 			n++
 		}
 	}
@@ -1056,7 +1056,7 @@ func (f *flowRun) statusText() string {
 		fmt.Fprintf(&b, "\n%s %d/%d", p, ended(by[p]), len(by[p]))
 		for _, a := range by[p] {
 			fmt.Fprintf(&b, "\n  %s %s %s: %s", cmp.Or(a.id, "-"), a.def, a.description, a.status)
-			if a.status != "queued" {
+			if a.status != RunQueued {
 				fmt.Fprintf(&b, ", %d %s, %s", a.calls, Plural(a.calls, "call", "calls"), fmtDuration(a.took))
 			}
 		}
@@ -1762,16 +1762,16 @@ func (h *Host) deliverFlow(attached string) func(*flowRun) {
 
 // reportAs is an ended run's report with the agent attribute and status it
 // goes to the model under.
-func (f *flowRun) reportAs() (attr, status, report string) {
-	attr, status = "workflow", "finished"
+func (f *flowRun) reportAs() (attr string, status reportStatus, report string) {
+	attr, status = "workflow", reportFinished
 	if f.name != "" {
 		attr += ":" + f.name
 	}
 	report, ok := f.report()
 	if !ok {
-		status = "failed"
+		status = reportFailure
 	} else if f.status == RunWarn {
-		status = string(RunWarn)
+		status = reportWarn
 	}
 	return attr, status, report
 }
@@ -1936,7 +1936,7 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
 	// the refusals before the session row, so a start that cannot run leaves
 	// no empty session
-	if _, err := h.resolveModel(h.roleModel("default")); err != nil {
+	if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
 		return "", err
 	}
 	// the user has no foreground version of this run to fall back on,

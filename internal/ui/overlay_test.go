@@ -20,6 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // fail is "" when ok, and what the check saw otherwise: a check states its own
@@ -2031,11 +2032,11 @@ func TestPhaseMark(t *testing.T) {
 		marks []hostapi.MarkKind
 		want  hostapi.MarkKind
 	}{
-		{"a failure outranks a running row", []hostapi.MarkKind{hostapi.MarkOK, hostapi.MarkSpin, hostapi.MarkErr}, hostapi.MarkErr},
-		{"a running row outranks a queued one", []hostapi.MarkKind{hostapi.MarkWait, hostapi.MarkSpin, hostapi.MarkOK}, hostapi.MarkSpin},
-		{"a paused phase waits", []hostapi.MarkKind{hostapi.MarkOK, hostapi.MarkWait}, hostapi.MarkWait},
-		{"a stopped row marks the phase stopped", []hostapi.MarkKind{hostapi.MarkOK, hostapi.MarkStop}, hostapi.MarkStop},
-		{"done when every row is", []hostapi.MarkKind{hostapi.MarkOK, hostapi.MarkOK}, hostapi.MarkOK},
+		{"a failure outranks a running row", []hostapi.MarkKind{tools.MarkOK, tools.MarkSpin, tools.MarkErr}, tools.MarkErr},
+		{"a running row outranks a queued one", []hostapi.MarkKind{tools.MarkWait, tools.MarkSpin, tools.MarkOK}, tools.MarkSpin},
+		{"a paused phase waits", []hostapi.MarkKind{tools.MarkOK, tools.MarkWait}, tools.MarkWait},
+		{"a stopped row marks the phase stopped", []hostapi.MarkKind{tools.MarkOK, tools.MarkStop}, tools.MarkStop},
+		{"done when every row is", []hostapi.MarkKind{tools.MarkOK, tools.MarkOK}, tools.MarkOK},
 	} {
 		if got := phaseMark(c.marks); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)

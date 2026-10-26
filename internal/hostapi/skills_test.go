@@ -164,28 +164,29 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 	}
 }
 
-// TestSkillsEnableGate covers the origin gate: user origin flips the
-// state, a project-origin chunk is refused, unknown names are refused.
+// TestSkillsEnableGate covers zemi.skills.enable: any origin flips the
+// state, the on argument is required, unknown names are refused.
 func TestSkillsEnableGate(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 
-	runUser(t, r, `zemi.skills.disable("local-run")`)
+	runUser(t, r, `zemi.skills.enable("local-run", false)`)
 	runUser(t, r, `
 		for _, s in ipairs(zemi.skills.list()) do
 			if s.name == "local-run" then
-				assert(s.enabled == false, "disable did not stick")
+				assert(s.enabled == false, "enable(name, false) did not stick")
 			end
 		end
+		assert(not pcall(zemi.skills.enable, "local-run"), "on is required")
 	`)
 
-	if err := r.ExecuteChunk(t.Context(), `zemi.skills.enable("local-run")`, "project.lua", lua.OriginProject); err != nil {
+	if err := r.ExecuteChunk(t.Context(), `zemi.skills.enable("local-run", true)`, "project.lua", lua.OriginProject); err != nil {
 		t.Fatalf("project-origin enable: %v", err)
 	}
 	runUser(t, r, `
-		local ok, err = zemi.skills.disable("missing-skill")
+		local ok, err = zemi.skills.enable("missing-skill", false)
 		assert(ok == nil and err:find("no such skill"), tostring(err))
 	`)
 }

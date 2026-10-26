@@ -9,6 +9,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -714,7 +715,9 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 }
 
 // schemaReport cuts the outermost {...} out of a reply, which models wrap
-// in prose and fences, and checks it against schema.
+// in prose and fences, and checks it against schema. What comes back is the
+// checked object re-marshalled: the report the caller journals and answers
+// with is what the gate validated, quotes and key order included.
 func schemaReport(schema map[string]any, reply string) (string, error) {
 	i, j := strings.Index(reply, "{"), strings.LastIndex(reply, "}")
 	if i < 0 || j < i {
@@ -731,7 +734,20 @@ func schemaReport(schema map[string]any, reply string) (string, error) {
 		req = append(req, name)
 	}
 	info := fantasy.ToolInfo{Parameters: tools.SchemaProperties(schema), Required: req}
-	return reply[i : j+1], tools.Validate(info, m, tools.SchemaOpen(schema))
+	if err := tools.Validate(info, m, tools.SchemaOpen(schema)); err != nil {
+		return "", err
+	}
+	// re-decode the raw bytes: values keep the model's own spelling, so no
+	// number round-trips through float64 on its way to the journal
+	var raw map[string]jsontext.Value
+	if err := json.Unmarshal([]byte(reply[i:j+1]), &raw); err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(raw, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 func lastAssistantText(history []fantasy.Message) string {
@@ -1932,7 +1948,7 @@ func (h *Host) agentsOverlay() Overlay {
 	defs := h.agentDefs()
 	runs := h.agentRunItems()
 	sel := 0
-	if len(runs) > 0 && runs[0].Section == "Running" { // runs list running first
+	if len(runs) > 0 && runs[0].Section == sectionRunning { // runs list running first
 		sel = 1
 	}
 	items := append([]OverlayItem{{Text: "New agent", Verb: VerbFill, Fill: "/agents new "}}, runs...)

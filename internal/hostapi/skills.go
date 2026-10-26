@@ -1,8 +1,8 @@
 // skills.go is the skills host API (DESIGN §6.7, §10.5): discovery
-// synced against the skills table, the zemi.skills namespace, the enable
+// synced against the skills table, the zemi.skills namespace (enable is
+// open to any origin: the enabled set is the user's to change), the enable
 // hooks (user skills run in the boot window after user init), and the
-// /skills command. Enable/disable require a user or builtin origin: a
-// plugin-registered keymap cannot flip a skill.
+// /skills command.
 
 package hostapi
 
@@ -395,9 +395,7 @@ func (h *Host) skillsIndexPrompt() (mine, project string) {
 }
 
 // setSkillEnabled flips the stored enabled state; a hook already ran in
-// the boot window, so it is not re-run here. The origin gate lives in the
-// Lua namespace: Go callers run off the interpreter, where the frame origin
-// is meaningless.
+// the boot window, so it is not re-run here.
 func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	if h.GlobalDB == nil {
 		return errors.New("skills store unavailable")
@@ -582,7 +580,7 @@ func (h *Host) openSkills(confirm string) error {
 // sourceOf names where a resource comes from, and which plugin ships it.
 func (h *Host) sourceOf[S ~string](source S, path string) string {
 	if n := h.PluginOf(path); n != "" {
-		return "plugin:" + n
+		return perm.PluginPrefix + n
 	}
 	return string(source)
 }
@@ -731,11 +729,10 @@ func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	enable := func(L *glua.LState, on bool) int {
-		return luaResult(L, h.setSkillEnabled(L.CheckString(1), on))
-	}
-	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int { return enable(L, true) }))
-	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int { return enable(L, false) }))
+	// enable(name, on), like zemi.mcp.enable
+	tb.RawSetString("enable", L.NewFunction(func(L *glua.LState) int {
+		return luaResult(L, h.setSkillEnabled(L.CheckString(1), L.CheckBool(2)))
+	}))
 
 	return tb
 }

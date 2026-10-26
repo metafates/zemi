@@ -194,7 +194,7 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem
 	if a.reused {
 		desc = word + " · reused"
 	}
-	if a.status != "queued" {
+	if a.status != RunQueued {
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	run := h.tasks.find(a.id)

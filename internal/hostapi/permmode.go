@@ -27,7 +27,7 @@ func (h *Host) CheckToolNames() {
 		names = append(names, t.Name)
 	}
 	for _, name := range h.luaTools.overridden() {
-		if !slices.Contains(names, name) && !strings.HasPrefix(name, "mcp_") {
+		if !slices.Contains(names, name) && !strings.HasPrefix(name, mcpToolPrefix) {
 			h.RecordErrorOnce("tools", "", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, ", ")))
 		}
 	}
@@ -131,8 +131,8 @@ func (h *Host) requirePermUse(L *glua.LState, api string) {
 		return
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
-	if h.pluginDeclares(name, "perm") {
+	if h.pluginDeclares(name, plugin.CapPerm) {
 		return
 	}
-	L.RaiseError("%s: plugin %s declares no %q; add %q to uses in %s", api, name, "perm", "perm", plugin.ManifestFile)
+	L.RaiseError("%s: plugin %s declares no %q; add %q to uses in %s", api, name, plugin.CapPerm, plugin.CapPerm, plugin.ManifestFile)
 }

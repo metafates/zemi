@@ -120,11 +120,24 @@ func authorName(raw jsontext.Value) string {
 	return s
 }
 
+// The capability words, named for the gates that check them: a manifest
+// declares them in "uses", and hostapi's subject table maps its gated calls
+// onto them.
+const (
+	CapAgent   = "agent"
+	CapFSWrite = "fs.write"
+	CapHTTP    = "http"
+	CapJob     = "job"
+	CapModel   = "model"
+	CapPerm    = "perm"
+	CapTool    = "tool"
+)
+
 // Uses is the vocabulary a manifest's "uses" draws from, one word per host
-// capability a plugin may call: what switching the plugin on grants. "perm"
+// capability a plugin may call: what switching the plugin on grants. CapPerm
 // is the consent to steer the permission gate (a permission.request handler,
 // zemi.perm.ask).
-var Uses = []string{"agent", "fs.write", "http", "job", "model", "perm", "tool"}
+var Uses = []string{CapAgent, CapFSWrite, CapHTTP, CapJob, CapModel, CapPerm, CapTool}
 
 // CheckUses refuses a uses list naming something outside the vocabulary: the
 // plugin does not load, and the error carries the names that would.

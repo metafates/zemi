@@ -810,15 +810,15 @@ func stubKind(subject string) string {
 	switch {
 	case httpSubject.MatchString(subject):
 		return "http"
-	case subject == "lua.job.start":
+	case subject == luaJobStart:
 		return "job"
-	case subject == "lua.model.ask":
+	case subject == luaModelAsk:
 		return "model"
-	case subject == "lua.classify.ask":
+	case subject == luaClassifyAsk:
 		return "classify"
-	case subject == "lua.agent.send":
+	case subject == luaAgentSend:
 		return "send"
-	case subject == "lua.fs.write":
+	case subject == luaFSWrite:
 		return "write"
 	}
 	return ""
@@ -971,11 +971,11 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 		if args, _ := req["args"].([]string); len(args) > 0 {
 			pattern += " *"
 		}
-		return `test.stub("lua.job.start", ` + luaLiteral(pattern) + `, { stdout = "..." })`
+		return `test.stub("` + luaJobStart + `", ` + luaLiteral(pattern) + `, { stdout = "..." })`
 	case "model":
-		return `test.stub("lua.model.ask", "*", "...")`
+		return `test.stub("` + luaModelAsk + `", "*", "...")`
 	case "classify":
-		return `test.stub("lua.classify.ask", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
+		return `test.stub("` + luaClassifyAsk + `", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
 	}
 	return "test.stub(" + luaLiteral(subject) + ")"
 }

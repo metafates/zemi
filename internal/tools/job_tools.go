@@ -137,18 +137,34 @@ func (j *Job) Status() string {
 	return state
 }
 
-// Mark is Status as a hostapi.Marks key: spin while it runs, stop once
+// MarkKind is the state word a row asks its mark by: what Job.Mark answers
+// and the key hostapi's Marks draws a glyph from.
+type MarkKind string
+
+const (
+	MarkSpin    MarkKind = "spin" // drawn with the "spin" effect, which steps its glyph through Spinner
+	MarkOK      MarkKind = "ok"
+	MarkWarn    MarkKind = "warn"
+	MarkErr     MarkKind = "err"
+	MarkStop    MarkKind = "stop"
+	MarkBG      MarkKind = "bg"
+	MarkWait    MarkKind = "wait"
+	MarkThought MarkKind = "thought"
+	MarkNote    MarkKind = "note"
+)
+
+// Mark is Status as a Marks key: spin while it runs, stop once
 // killed, ok after a clean exit 0, else err.
-func (j *Job) Mark() string {
+func (j *Job) Mark() MarkKind {
 	switch {
 	case j.Running():
-		return "spin"
+		return MarkSpin
 	case j.code < 0:
-		return "stop"
+		return MarkStop
 	case j.code == 0 && j.err == "":
-		return "ok"
+		return MarkOK
 	}
-	return "err"
+	return MarkErr
 }
 
 // Output is what the job's buffers still hold, stdout then stderr.
@@ -457,7 +473,7 @@ func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolR
 	}
 	// a job that exited badly: the result is an error, so the model does not
 	// read its exit as done and its row is no green check (Job.Mark says err)
-	if j.Mark() == "err" {
+	if j.Mark() == MarkErr {
 		return fantasy.NewTextErrorResponse(b.String()), nil
 	}
 	return fantasy.NewTextResponse(b.String()), nil

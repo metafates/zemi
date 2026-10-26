@@ -16,6 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // overlayState is one entry of the overlay stack (DESIGN §8): a Lua (or
@@ -465,7 +466,7 @@ func sameDanger(o, n hostapi.OverlayItem) bool {
 // what it said before.
 func (a *App) refreshDetail(i int) {
 	j := i + 1
-	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+"#detail" {
+	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+detailSuffix {
 		return
 	}
 	d := a.overlays[j]
@@ -619,6 +620,10 @@ func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 // screen its run names.
 func hasView(r hostapi.OverlayItem) bool { return r.Detail != "" || r.Fields != nil }
 
+// detailSuffix is the id of the detail view an overlay list's row opens: the
+// list's id plus this, so closing by the list's id folds the view with it.
+const detailSuffix = "#detail"
+
 // openDetail pushes the view of item idx: its facts and text, under the
 // parent's origin so the badge and the run gate stay the parent's. What acts
 // on the row is a key of the row, so the view lists nothing.
@@ -629,7 +634,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Empty: r.Empty, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + detailSuffix, Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Empty: r.Empty, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
@@ -653,7 +658,7 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 		}
 		if k.Fill == "" && k.Verb == hostapi.VerbGo {
 			// the run took the chat the list browses: the list goes with it
-			a.closeOverlayByID(strings.TrimSuffix(o.ID, "#detail"))
+			a.closeOverlayByID(strings.TrimSuffix(o.ID, detailSuffix))
 			return
 		}
 	default:
@@ -665,7 +670,7 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 	}
 	// a view's keys act on the row from its list, so they close the list the
 	// same way the key does from it; the view's id is the list's plus #detail
-	a.closeOverlayByID(strings.TrimSuffix(o.ID, "#detail"))
+	a.closeOverlayByID(strings.TrimSuffix(o.ID, detailSuffix))
 }
 
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
@@ -693,7 +698,7 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 // rendered it folded, so the run is never seen open beside a closed list.
 func (a *App) closeOverlayByID(id string) {
 	closes := func(st overlayState) bool {
-		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+"#detail")
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+detailSuffix)
 	}
 	if a.rail != 0 && a.railClose == "" && slices.ContainsFunc(a.overlays, func(st overlayState) bool { return st.o.Rail != 0 && closes(st) }) {
 		a.railClose, a.railGen = id, a.frameGen
@@ -708,7 +713,7 @@ func (a *App) closeOverlayByID(id string) {
 // then shows what the closed overlay changed.
 func (a *App) closeOverlays(id string) {
 	closes := func(st overlayState) bool {
-		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+"#detail")
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+detailSuffix)
 	}
 	for _, st := range a.overlays { // where each closed list sat, so coming back reopens on its row
 		if closes(st) && !st.back && st.selected < len(st.visible) {
@@ -1510,12 +1515,12 @@ func armedHint(w int, key, label string) []hostapi.Segment {
 // failed, else running while one runs, waiting while one waits, stopped
 // when one stopped, done when every row is.
 func phaseMark(marks []hostapi.MarkKind) hostapi.MarkKind {
-	for _, m := range []hostapi.MarkKind{hostapi.MarkErr, hostapi.MarkSpin, hostapi.MarkWait, hostapi.MarkStop} {
+	for _, m := range []hostapi.MarkKind{tools.MarkErr, tools.MarkSpin, tools.MarkWait, tools.MarkStop} {
 		if slices.Contains(marks, m) {
 			return m
 		}
 	}
-	return hostapi.MarkOK
+	return tools.MarkOK
 }
 
 // statusHL colors the status words every screen shares.

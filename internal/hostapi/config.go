@@ -214,6 +214,10 @@ func (h *Host) UseLogFile(level *slog.LevelVar, path string) {
 	h.applyLogLevel()
 }
 
+// kvConfigPrefix is the kv namespace a kept setting pick lives under, read
+// back at the next boot by loadPicks.
+const kvConfigPrefix = "config:"
+
 // keepPick keeps path's live value in the global store for the next start,
 // or forgets it when it is the key's cfgBase. A write during boot is
 // init.lua's, and one before KeepPicks is a flag's.
@@ -231,7 +235,7 @@ func (h *Host) keepPick(path config.Key) {
 	}
 	b, err := json.Marshal(live, json.Deterministic(true))
 	if err == nil {
-		err = h.GlobalDB.SetKV("config:"+string(path), string(b))
+		err = h.GlobalDB.SetKV(kvConfigPrefix+string(path), string(b))
 	}
 	if err != nil {
 		h.Log.Warn("could not keep a pick", "origin", "config", "path", path, "error", err)
@@ -247,7 +251,7 @@ func (h *Host) forgetPick(path config.Key) {
 	if h.GlobalDB == nil {
 		return
 	}
-	if _, err := h.GlobalDB.DelKV("config:" + string(path)); err != nil {
+	if _, err := h.GlobalDB.DelKV(kvConfigPrefix + string(path)); err != nil {
 		h.Log.Warn("could not forget a kept pick", "origin", "config", "path", path, "error", err)
 	}
 }
@@ -258,21 +262,22 @@ func (h *Host) forgetPick(path config.Key) {
 // so the row goes instead of warning at every boot; a bad value on a known
 // key stays, a transient one fixes itself.
 func (h *Host) loadPicks() {
-	keys, err := h.GlobalDB.KeysKV("config:")
+	keys, err := h.GlobalDB.KeysKV(kvConfigPrefix)
 	if err != nil {
 		h.Log.Warn("could not read the kept picks", "origin", "config", "error", err)
 	}
 	for _, k := range keys {
-		path := config.Key(strings.TrimPrefix(k, "config:"))
+		path := config.Key(strings.TrimPrefix(k, kvConfigPrefix))
 		raw, err := h.GlobalDB.GetKV(k)
 		var v any
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &v)
 		}
+		_, isModel := config.ModelRole(path)
 		_, known := h.Settings.Get(path)
 		// a key the schema does not hold yet may still be registered later in
 		// this boot, by a plugin or by a model target, which applies its pick
-		if err == nil && !known && (settingPlugin(path) != "" || strings.HasPrefix(string(path), "models.")) {
+		if err == nil && !known && (settingPlugin(path) != "" || isModel) {
 			h.picked[path] = v
 			continue
 		}
@@ -283,8 +288,8 @@ func (h *Host) loadPicks() {
 			_, err = h.Settings.SetQuiet(path, v)
 		}
 		if err != nil {
-			var bad *config.BadValueError
-			if !known && !errors.As(err, &bad) && settingPlugin(path) == "" && !strings.HasPrefix(string(path), "models.") {
+			_, bad := errors.AsType[*config.BadValueError](err)
+			if !known && !bad && settingPlugin(path) == "" && !isModel {
 				if _, derr := h.GlobalDB.DelKV(k); derr != nil {
 					h.Log.Warn("could not drop a dead pick", "origin", "config", "path", path, "error", derr)
 				} else {
@@ -514,8 +519,8 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// unwatch(id) drops a watch by the id watch returned
-	tb.RawSetString("unwatch", L.NewFunction(func(L *glua.LState) int {
+	// off(id) drops a watch by the id watch returned
+	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
 		id, cerr := strconv.Atoi(L.CheckString(1))
 		if cerr != nil {
 			L.Push(glua.LBool(false))
@@ -523,7 +528,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		removed, err := h.watches.del(id, h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {
-			L.RaiseError("zemi.config.unwatch: %v", err)
+			L.RaiseError("zemi.config.off: %v", err)
 		}
 		if removed {
 			h.Settings.RemoveWatch(id)

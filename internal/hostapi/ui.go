@@ -18,6 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -71,6 +72,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.ui.widget.add: expected a spec table")
 		}
+		onlyTableKeys(L, tb, "zemi.ui.widget.add", "id", "region", "priority", "wrap", "render", "on_click")
 		w := &Widget{
 			ID:     rawString(L, tb, "id"),
 			Region: rawString(L, tb, "region"),
@@ -149,6 +151,8 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
 		}
+		onlyTableKeys(L, tb, "zemi.ui.overlay.open", "id", "title", "body", "markdown", "empty", "anchor", "follow",
+			"selected", "items", "render_item", "reload", "on_select", "on_action", "on_close", "keys")
 		o := Overlay{
 			ID:     rawString(L, tb, "id"),
 			Title:  rawString(L, tb, "title"),
@@ -314,7 +318,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		}
 		resolved := p.String()
 		// gated by the written name like zemi.fs, so a secret-named link asks
-		h.luaGate(L, "lua.fs.read", h.projectAbs(path), nil)
+		h.luaGate(L, luaFSRead, h.projectAbs(perm.ExpandHome(path)), nil)
 		line := 0
 		if n, ok := opt[glua.LNumber](L, opts, "line"); ok {
 			line = int(n)

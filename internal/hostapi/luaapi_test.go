@@ -161,7 +161,7 @@ func TestLuaAPIIO(t *testing.T) {
 		zemi.state.set("ui.a", 1)
 		zemi.state.set("ui.b", 2)
 		assert(zemi.json.encode(zemi.state.keys("ui.")) == '["ui.a","ui.b"]', zemi.json.encode(zemi.state.keys("ui.")))
-		assert(zemi.state.del("ui.a") == true and zemi.state.del("ui.a") == false, "del reports whether there was one")
+		assert(zemi.state.del("ui.a") == true and zemi.state.del("ui.a") == true, "del is idempotent")
 
 		local v, err = zemi.state.get("never-set")
 		assert(v == nil and err == nil, "a key nobody set is nil with no error")
@@ -169,7 +169,7 @@ func TestLuaAPIIO(t *testing.T) {
 
 		local wid = zemi.config.watch("models.titles", function() end)
 		assert(type(wid) == "string", "watch id type " .. type(wid))
-		assert(zemi.config.unwatch(wid) == true and zemi.config.unwatch(wid) == false, "unwatch is idempotent")
+		assert(zemi.config.off(wid) == true and zemi.config.off(wid) == false, "off is idempotent")
 
 		zemi.command.add("twice", function(a) zemi.state.set("twice", a.args .. a.args) end, { nargs = "*" })
 		assert(zemi.command.run("twice", "ab") == true, "run")
@@ -194,6 +194,8 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(#zemi.fs.grep("Q =", {path = "d"}) == 1 and #zemi.fs.grep("Q =", {path = "nope"}) == 0, "path scope")
 		local ok, why = pcall(zemi.fs.grep, "Q =", { glob = "*.go" })
 		assert(not ok and why:match("unknown option"), tostring(why))
+		local tok, terr = pcall(zemi.job.start, { cmd = "true", timeout_ms = 100 })
+		assert(not tok and terr:find("zemi.job.wait", 1, true), tostring(terr))
 		zemi.fs.remove("d/e/g.go")
 		zemi.fs.write(".env", "TOKEN=hunter2")
 		assert(zemi.fs.remove("d/e/f.txt") == true and not zemi.fs.exists("d/e/f.txt"), "remove")
@@ -216,6 +218,20 @@ func TestLuaAPIIO(t *testing.T) {
 		}
 		return nil
 	})
+
+	// a bad pattern is the raise; a failed walk is nil, err, like the
+	// other zemi.fs calls
+	runUser(t, r, `
+		assert(not pcall(zemi.fs.glob, "["), "bad glob pattern raises")
+		assert(not pcall(zemi.fs.grep, "Q", { include = "[" }), "bad include raises")
+	`)
+	os.RemoveAll(h.Dirs.ProjectDir)
+	runUser(t, r, `
+		local m, err = zemi.fs.glob("**/*")
+		assert(m == nil and err ~= nil, "a failed glob walk is nil, err: " .. tostring(err))
+		local hits, gerr = zemi.fs.grep("Q")
+		assert(hits == nil and gerr ~= nil, "a failed grep walk is nil, err: " .. tostring(gerr))
+	`)
 }
 
 // TestKeySequences: <leader> expands to keymap.leader, sequences register

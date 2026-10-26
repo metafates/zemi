@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // HealthLevel is how a /health row reads.
@@ -200,17 +201,19 @@ var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 
 // notifyStyle resolves the ui.notify setting to the style notifyIfAway
 // uses, and why. has runs only when the answer needs it: it walks PATH.
-func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string) {
+// missing is the machine-read why: the native notifier the setting names is
+// not there, which /health warns about.
+func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string, missing bool) {
 	tool := notifiers[goos]
 	switch setting {
 	case config.NotifyNative:
 		if tool != "" && has(tool) {
-			return config.NotifyNative, "via " + tool
+			return config.NotifyNative, "via " + tool, false
 		}
-		return config.NotifyBell, "native: " + cmp.Or(tool, "a notifier") + " not found"
+		return config.NotifyBell, cmp.Or(tool, "a notifier") + " not found", true
 	case config.NotifyAuto:
 	default:
-		return setting, "set in config"
+		return setting, "set in config", false
 	}
 	// macOS has a notifier that shows whether or not the terminal draws OSC 9,
 	// while a terminal's own banner is dropped when the window was focused as
@@ -219,24 +222,24 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	// may not be installed at all.
 	native := tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool)
 	if native && goos == "darwin" {
-		return config.NotifyNative, "auto: via " + tool
+		return config.NotifyNative, "auto: via " + tool, false
 	}
 	// tmux, GNU screen and zellij drop OSC 9 unless it is passed through
 	if env("TMUX") == "" && env("STY") == "" && env("ZELLIJ") == "" {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
 			if v := env(k); slices.Contains(oscTerms, v) {
-				return config.NotifyOSC, "auto: " + k + "=" + v
+				return config.NotifyOSC, "auto: " + k + "=" + v, false
 			}
 		}
 	}
 	if native {
-		return config.NotifyNative, "auto: via " + tool
+		return config.NotifyNative, "auto: via " + tool, false
 	}
-	return config.NotifyBell, "auto: no OSC 9 terminal or local notifier found"
+	return config.NotifyBell, "auto: no OSC 9 terminal or local notifier found", false
 }
 
 // NotifyStyle is notifyStyle for this process.
-func (h *Host) NotifyStyle() (style, why string) {
+func (h *Host) NotifyStyle() (style, why string, missing bool) {
 	return notifyStyle(h.Settings.Str(config.KeyUINotify), os.Getenv, runtime.GOOS, func(name string) bool {
 		_, err := exec.LookPath(name)
 		return err == nil
@@ -336,11 +339,11 @@ func (h *Host) goHealthRows() []HealthRow {
 
 	add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
 
-	switch style, why := h.NotifyStyle(); {
+	switch style, why, missing := h.NotifyStyle(); {
 	case style == config.NotifyOff:
 		add(HealthOK, "notify", "off")
-	case strings.HasPrefix(why, "native: "):
-		add(HealthWarn, "notify", style+", "+why)
+	case missing:
+		add(HealthWarn, "notify", "native: "+style+", "+why)
 	default:
 		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
 	}
@@ -595,7 +598,7 @@ func (h *Host) OpenHealth() error {
 
 // healthMarks is a check's level as the mark the transcript uses for the same
 // state, so /health reads in the one state vocabulary the product has.
-var healthMarks = map[HealthLevel]MarkKind{HealthOK: MarkOK, HealthWarn: MarkWarn, HealthError: MarkErr}
+var healthMarks = map[HealthLevel]MarkKind{HealthOK: tools.MarkOK, HealthWarn: tools.MarkWarn, HealthError: tools.MarkErr}
 
 // healthItems are the /health rows, problems first.
 func (h *Host) healthItems() []OverlayItem {

@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // mcpFakeServer is an HTTP fake MCP server listing the mcptest tools.
@@ -413,7 +414,7 @@ func TestMCPGroupItems(t *testing.T) {
 	if jira.ID != "mcp jira" || jira.Text != "jira" || jira.Run != "mcp toggle jira" {
 		t.Fatalf("member row = %+v", jira)
 	}
-	if jira.On == nil || !*jira.On || jira.Mark != MarkOK {
+	if jira.On == nil || !*jira.On || jira.Mark != tools.MarkOK {
 		t.Fatalf("member row switch %v mark %v, want on, ok", jira.On, jira.Mark)
 	}
 	if len(jira.Row) != 2 || jira.Row[0].Text != "│ " || jira.Row[0].HL != "Dim" || jira.Row[1].Text != "jira" {
@@ -424,7 +425,7 @@ func TestMCPGroupItems(t *testing.T) {
 	}
 
 	off := items[2]
-	if off.On == nil || *off.On || off.Desc != string(StatusOff) || off.Mark != MarkStop {
+	if off.On == nil || *off.On || off.Desc != string(StatusOff) || off.Mark != tools.MarkStop {
 		t.Fatalf("disabled member = %+v, want off switch, off desc, stop mark", off)
 	}
 	for _, k := range off.Keys {

@@ -175,7 +175,7 @@ func (h *Host) OpenErrors(args string) error {
 		sel = len(entries) - 1 - i
 	}
 	items := make([]OverlayItem, 0, len(entries))
-	noModel := h.modelErr(h.roleModel("default"))
+	noModel := h.modelErr(h.roleModel(defaultRole))
 	for i, e := range slices.Backward(entries) {
 		at := e.at.Format(time.TimeOnly)
 		var keys []ItemKey

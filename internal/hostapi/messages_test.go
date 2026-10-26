@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestMessagesList: /messages lists every turn's rows in order, each turn a
@@ -238,7 +240,7 @@ func TestMessagesLiveCalls(t *testing.T) {
 	// the live edit is a row the reader can pick: its mark says it is done,
 	// and y copies the input the call acted on
 	edit := ro.Items[3]
-	if edit.Mark != MarkOK || edit.Copy != "f1.go" {
+	if edit.Mark != tools.MarkOK || edit.Copy != "f1.go" {
 		t.Errorf("live edit = %+v", edit)
 	}
 	if call := messageCallRow(-2, pickTr{live: []ChatMessage{{Kind: RowTool, Tool: "read", Text: "a.go"}}}.at(-2)); call.Run != "" || call.Verb != "" {

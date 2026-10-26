@@ -270,28 +270,17 @@ var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallWarn, CallErr, Ca
 type Mark struct{ Glyph, HL string }
 
 // MarkKind names a state mark: a key of Marks, and the word a row or Lua
-// passes to ask for one.
-type MarkKind string
-
-const (
-	MarkSpin    MarkKind = "spin" // drawn with the "spin" effect, which steps its glyph through Spinner
-	MarkOK      MarkKind = "ok"
-	MarkWarn    MarkKind = "warn"
-	MarkErr     MarkKind = "err"
-	MarkStop    MarkKind = "stop"
-	MarkBG      MarkKind = "bg"
-	MarkWait    MarkKind = "wait"
-	MarkThought MarkKind = "thought"
-	MarkNote    MarkKind = "note"
-)
+// passes to ask for one. Job.Mark speaks it too, so the words live where its
+// jobs are made (internal/tools).
+type MarkKind = tools.MarkKind
 
 // Marks are the state marks every row shares, the chat's calls and the
 // lists' runs alike (zemi.ui.marks), one glyph and one meaning each:
 // running, finished, finished with a failure inside, failed, stopped by the
 // user, going on in the background, waiting, reasoning and a notice.
 var Marks = map[MarkKind]Mark{
-	MarkSpin: {Spinner[0], "Dim"}, MarkOK: {"✓", "Ok"}, MarkWarn: {"!", "Warn"}, MarkErr: {"✗", "Danger"}, MarkStop: {"■", "Dim"},
-	MarkBG: {"⧗", "Dim"}, MarkWait: {"·", "Dim"}, MarkThought: {"✻", "ThinkingMark"}, MarkNote: {"◦", "Dim"},
+	tools.MarkSpin: {Spinner[0], "Dim"}, tools.MarkOK: {"✓", "Ok"}, tools.MarkWarn: {"!", "Warn"}, tools.MarkErr: {"✗", "Danger"}, tools.MarkStop: {"■", "Dim"},
+	tools.MarkBG: {"⧗", "Dim"}, tools.MarkWait: {"·", "Dim"}, tools.MarkThought: {"✻", "ThinkingMark"}, tools.MarkNote: {"◦", "Dim"},
 }
 
 // Spinner is the running mark's frames, one per frame tick.
@@ -866,7 +855,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":       func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker("default") },
+		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
 		"zemi.ui.focus.set":  func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next": func(h *Host, _ string) error { return h.cycleFocus(1) },
 		"zemi.ui.focus.prev": func(h *Host, _ string) error { return h.cycleFocus(-1) },
@@ -2331,7 +2320,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.138.0"))
+	api.RawSetString("version", glua.LString("0.139.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

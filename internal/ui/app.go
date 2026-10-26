@@ -592,7 +592,7 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 		return nil
 	}
 	text = sanitize.String(text)
-	switch style, _ := a.host.NotifyStyle(); style {
+	switch style, _, _ := a.host.NotifyStyle(); style {
 	case config.NotifyOSC:
 		return tea.Raw(ansi.Notify(text))
 	case config.NotifyBell:
