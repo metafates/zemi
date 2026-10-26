@@ -100,7 +100,8 @@ func copyPicker(text string, blocks []codeBlock) Overlay {
 	for i, b := range blocks {
 		parts[i] = strings.TrimSuffix(b.text, "\n")
 	}
-	o.Items = append(o.Items,
+	o.Items = append(
+		o.Items,
 		OverlayItem{Text: "every block", Desc: pluralCount(len(blocks), "code block", "code blocks"), Copy: strings.Join(parts, "\n\n") + "\n"},
 		OverlayItem{Text: "the whole reply", Desc: pluralCount(lineCount(text), "line", "lines"), Copy: text},
 	)
@@ -540,7 +541,7 @@ func (h *Host) OpenUsage() error {
 		rows = append(rows, row)
 	}
 	if id != "" && !priced {
-		rows = append(rows, []Segment{}, []Segment{text(ChromeHint, "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
+		rows = append(rows, []Segment{}, []Segment{text(ChromeHint, "No cost: "+id+" has no prices set.")})
 	}
 	var plain strings.Builder
 	for _, r := range rows {
