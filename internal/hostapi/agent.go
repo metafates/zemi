@@ -823,7 +823,7 @@ func (h *Host) persistTurnStat(sid string, stat TurnStat) {
 		return
 	}
 	parts, err := json.Marshal(map[string]any{
-		"turn_ms": stat.ElapsedMS, "in": stat.In, "out": stat.Out, "ended": stat.Ended,
+		"turn_ms": stat.ElapsedMS, "in": stat.In, "out": stat.Out, "ended": stat.Ended, "model": stat.Model,
 	}, json.Deterministic(true))
 	if err != nil {
 		return

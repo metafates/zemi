@@ -310,11 +310,12 @@ type stopReg struct {
 	m    map[int]func()
 }
 
-func newStopReg() *stopReg { return &stopReg{m: map[int]func(){}} }
-
 func (r *stopReg) add(stop func()) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.m == nil {
+		r.m = map[int]func(){}
+	}
 	r.next++
 	r.m[r.next] = stop
 	return r.next

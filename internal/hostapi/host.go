@@ -444,7 +444,8 @@ type TurnStat struct {
 	Out       int64
 	ThoughtMS int64
 	ElapsedMS int64
-	Ended     int64 // unix seconds the turn ended, 0 when unknown
+	Ended     int64  // unix seconds the turn ended, 0 when unknown
+	Model     string // the model id that wrote the reply, "" elsewhere
 }
 
 // Host bundles the core services the zemi.* namespaces adapt.
@@ -803,23 +804,23 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		Settings:  settings,
 		Dirs:      dirs,
 		Stderr:    os.Stderr,
-		Keymaps:   NewKeymapRegistry(),
-		Commands:  NewCommandRegistry(),
-		Widgets:   NewWidgetRegistry(),
-		Events:    NewEventRegistry(),
-		Themes:    NewThemeRegistry(),
+		Keymaps:   &KeymapRegistry{},
+		Commands:  &CommandRegistry{},
+		Widgets:   &WidgetRegistry{},
+		Events:    &EventRegistry{},
+		Themes:    &ThemeRegistry{},
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
-		watches:   newWatchReg(),
-		hookReg:   newHookReg(),
-		Providers: agent.NewRegistry(),
+		watches:   &watchReg{},
+		hookReg:   &hookReg{},
+		Providers: &agent.Registry{},
 		agents:    newAgentHost(rt.Clock()),
-		luaTools:  newToolReg(),
-		stops:     newStopReg(),
-		jobs:      tools.NewJobs(),
+		luaTools:  &toolReg{},
+		stops:     &stopReg{},
+		jobs:      &tools.Jobs{},
 		skillsReg: &skillReg{},
-		mcp:       newMCPReg(),
+		mcp:       &mcpReg{},
 		tasks:     newTaskReg(settings),
-		lsp:       newLSPReg(),
+		lsp:       &lspReg{},
 	}
 	h.Builtin.Store(&agent.Catalog{})
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
@@ -2082,7 +2083,7 @@ func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) 
 
 // chatRow is one transcript row as ctx.transcript carries it.
 func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
-	row := L.CreateTable(0, 16)
+	row := L.CreateTable(0, 17)
 	row.RawSetString("role", glua.LString(m.Role))
 	row.RawSetString("kind", glua.LString(m.Kind))
 	row.RawSetString("text", glua.LString(m.Text))
@@ -2100,6 +2101,7 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 		row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
 		row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
 		row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
+		row.RawSetString("model", glua.LString(m.Stat.Model))
 	}
 	return row
 }
@@ -2320,7 +2322,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.139.0"))
+	api.RawSetString("version", glua.LString("0.140.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

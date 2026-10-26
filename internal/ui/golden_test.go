@@ -240,7 +240,7 @@ func TestGoldenMessages(t *testing.T) {
 	appendReasoning(host, "the token expires too early", hostapi.TurnStat{ThoughtMS: 2100})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "internal/auth/token.go", Status: "ok"})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/auth/token.go", Status: "ok", Diff: "- ttl\n+ ttl * 2\n"})
-	appendReply(host, "The token's lifetime doubled:\n\n```go\nconst ttl = 2 * time.Hour\n```\n\nThe test should pass now.", hostapi.TurnStat{Out: 120, Ended: 1_700_000_000})
+	appendReply(host, "The token's lifetime doubled:\n\n```go\nconst ttl = 2 * time.Hour\n```\n\nThe test should pass now.", hostapi.TurnStat{Out: 120, Ended: 1_700_000_000, Model: "anthropic/claude-sonnet-4-5"})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "auth test passed", Status: "ok"})
 	host.AppendChat(hostapi.ChatMessage{Role: "user", Text: "now add a logout test"})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "agent", Label: "look at the session store", Run: "a1b2c3d4", Status: "ok"})

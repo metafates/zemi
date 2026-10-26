@@ -239,7 +239,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	now := h.now()
 	model := h.turnModelID()
 	text, tools := ag.textBuf, ag.tools
-	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix()}
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model}
 	if !ag.turnStart.IsZero() {
 		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}

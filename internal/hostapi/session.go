@@ -415,6 +415,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		In        int64  `json:"in"`
 		Out       int64  `json:"out"`
 		Ended     int64  `json:"ended"`
+		Model     string `json:"model"`
 	}
 	// A call's telemetry is stored as its tool ends, before the step's
 	// messages, so a call takes the nearest one before it: a provider may
@@ -457,7 +458,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 			// a turn's readout, kept whole: the message rows carry no usage
 			if tc.Ended > 0 && reply >= 0 {
-				tr[reply].Stat = &TurnStat{In: tc.In, Out: tc.Out, ElapsedMS: tc.TurnMS, Ended: tc.Ended}
+				tr[reply].Stat = &TurnStat{In: tc.In, Out: tc.Out, ElapsedMS: tc.TurnMS, Ended: tc.Ended, Model: tc.Model}
 				continue
 			}
 		}

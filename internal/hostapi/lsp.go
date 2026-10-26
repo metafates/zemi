@@ -118,10 +118,6 @@ type lspReg struct {
 	attempts map[string]int
 }
 
-func newLSPReg() *lspReg {
-	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}, disabled: set.Set[string]{}}
-}
-
 // forget drops what config defined, for a reload to replay; the running
 // servers stay until lspStopChanged compares them with the replay.
 func (r *lspReg) forget() {
@@ -543,6 +539,9 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 	h.lsp.mu.Lock()
 	p, ok := h.lsp.running[def.Name]
 	if !ok {
+		if h.lsp.running == nil {
+			h.lsp.running, h.lsp.attempts = map[string]*lspProc{}, map[string]int{}
+		}
 		if h.lsp.attempts[def.Name] >= lspMaxStarts {
 			h.lsp.mu.Unlock()
 			return nil, fmt.Errorf("%s failed %d times; /lsp restart %s to try again", def.Name, lspMaxStarts, def.Name)
@@ -796,6 +795,9 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		had := h.lsp.disabled.Has(name) ||
 			slices.ContainsFunc(h.lsp.user, func(d lspDef) bool { return d.Name == name }) ||
 			slices.ContainsFunc(builtinLSP, func(d lspDef) bool { return d.Name == name })
+		if h.lsp.disabled == nil {
+			h.lsp.disabled = set.Set[string]{}
+		}
 		h.lsp.disabled.Add(name)
 		h.lsp.mu.Unlock()
 		L.Push(glua.LBool(had))

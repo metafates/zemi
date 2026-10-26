@@ -59,13 +59,12 @@ type toolReg struct {
 	owner     func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func newToolReg() *toolReg {
-	return &toolReg{byName: map[string]*luaTool{}, overrides: map[string][]*overrideRec{}}
-}
-
 func (r *toolReg) add(t *luaTool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.byName == nil {
+		r.byName = map[string]*luaTool{}
+	}
 	if old, ok := r.byName[t.Name]; ok {
 		if err := mayReplace(r.owner, fmt.Sprintf("tool %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
 			return err
@@ -104,6 +103,9 @@ func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 func (r *toolReg) addOverride(o *overrideRec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.overrides == nil {
+		r.overrides = map[string][]*overrideRec{}
+	}
 	r.overrides[o.Tool] = append(r.overrides[o.Tool], o)
 }
 

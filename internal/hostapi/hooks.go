@@ -72,8 +72,6 @@ type hookReg struct {
 	events map[string][]hookEntry
 }
 
-func newHookReg() *hookReg { return &hookReg{} }
-
 func (r *hookReg) set(gen Gen, events map[string][]hookEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

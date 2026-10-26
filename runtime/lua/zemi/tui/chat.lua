@@ -879,9 +879,16 @@ zemi.ui.widget.add({
 						stats[#stats + 1] = { text = text, hl = "Dim" }
 					end
 					local tout = fmt.tokens(m.out)
+					if (m.model or "") ~= "" then stat(m.model) end
 					if (m.elapsed or 0) > 0 then stat(fmt.duration(m.elapsed)) end
 					if tout then stat(tout .. " out") end
 					if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
+					-- the model leads and sheds first: a narrow row keeps what the
+					-- turn cost over the name that wrote it
+					if #stats > 1 and (m.model or "") ~= "" and 2 + fmt.cells(stats) > width then
+						table.remove(stats, 2)
+						table.remove(stats, 1)
+					end
 				end
 				content = #B.lines
 				if #stats > 0 then

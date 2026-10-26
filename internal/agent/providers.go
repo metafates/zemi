@@ -398,13 +398,6 @@ type Registry struct {
 	missing []MissingKey
 }
 
-// NewRegistry returns an empty registry; Reset seeds it and user config
-// (zemi.provider.add) adds to it. With nothing usable the agent fails
-// closed with "no models registered".
-func NewRegistry() *Registry {
-	return &Registry{keys: map[string]string{}}
-}
-
 // Reset replaces every spec and key with the catalog, so a provider config
 // stopped adding disappears on reload like any other registration. NOTE: a
 // turn running through a reload sees only the builtins until init.lua
@@ -414,9 +407,7 @@ func (r *Registry) Reset(c Catalog) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.specs = slices.Clone(c.Specs)
-	// Collect, not Clone: a nil catalog's keys must become an empty map,
-	// which SetKey writes into
-	r.keys = maps.Collect(maps.All(c.Keys))
+	r.keys = maps.Clone(c.Keys)
 	r.missing = slices.Clone(c.Missing)
 }
 
@@ -510,6 +501,9 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.keys == nil {
+		r.keys = map[string]string{}
+	}
 	replaced := false
 	for i, s := range r.specs {
 		if s.ID == spec.ID {

@@ -2000,6 +2000,31 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 	}
 }
 
+// TestTurnStatResume: the persisted readout comes back with the model that
+// wrote the reply, so a resumed session's stats row still names it.
+func TestTurnStatResume(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	m := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "done"}}}
+	raw, err := json.Marshal(m, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(fantasy.MessageRoleAssistant), PartsJSON: string(raw)}); err != nil {
+		t.Fatal(err)
+	}
+	h.persistTurnStat(sid, TurnStat{Out: 120, ElapsedMS: 1500, Ended: 1234, Model: "anthropic/claude-sonnet-4-5"})
+	rows, err := h.DB.Messages(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tr := historyFrom(rows)
+	if len(tr) != 1 || tr[0].Stat == nil || tr[0].Stat.Model != "anthropic/claude-sonnet-4-5" || tr[0].Stat.Out != 120 {
+		t.Fatalf("resumed rows = %+v, want the stat with its model", tr)
+	}
+}
+
 // TestTypedSendMarksOnlyAQueuedMessage: the handoff signal belongs to a
 // message that joined a running turn (Host.AgentSendUser). One that starts a
 // turn marks nothing, so a foreground call in that turn waits as usual - which

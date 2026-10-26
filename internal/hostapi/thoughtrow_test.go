@@ -45,7 +45,7 @@ func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
 	}
 	// the second thought ended with the call that follows it, and the step's own
 	// thought has not begun: both belong on the rail now
-	got := widgetText(t, h, "chat", UIState{})
+	got := widgetText(t, h, "chat", 80, UIState{})
 	if n := strings.Count(got, "✻ thought"); n != 2 {
 		t.Fatalf("thought rows mid-turn = %d, want 2:\n%s", n, got)
 	}
@@ -92,7 +92,7 @@ func TestThoughtRowHoldsWhileReplying(t *testing.T) {
 			h.agents.active = true // a turn runs: the run-above guard reads the live tail
 			h.agents.mu.Unlock()
 			c.drive(h.streamHooks(), clock)
-			before := widgetText(t, h, "chat", UIState{})
+			before := widgetText(t, h, "chat", 80, UIState{})
 			if c.row == "" && strings.Contains(before, "\n· thought") {
 				t.Fatalf("a digest row drew where the settle places none:\n%s", before)
 			}
@@ -102,7 +102,7 @@ func TestThoughtRowHoldsWhileReplying(t *testing.T) {
 			h.agents.mu.Lock()
 			h.flushOutput(TurnStat{})
 			h.agents.mu.Unlock()
-			after := widgetText(t, h, "chat", UIState{})
+			after := widgetText(t, h, "chat", 80, UIState{})
 			if a, b := strings.Count(after, "\n"), strings.Count(before, "\n"); a != b {
 				t.Fatalf("the settle moved rows (%d -> %d):\nbefore:\n%s\nafter:\n%s", b, a, before, after)
 			}
@@ -114,9 +114,9 @@ func TestThoughtRowHoldsWhileReplying(t *testing.T) {
 }
 
 // widgetText draws widget id and returns the text of its rows.
-func widgetText(t *testing.T, h *Host, id string, state UIState) string {
+func widgetText(t *testing.T, h *Host, id string, width int, state UIState) string {
 	t.Helper()
-	lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get(id), 80, 24, state)
+	lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get(id), width, 24, state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestThoughtRowGrowsInPlace(t *testing.T) {
 			hk.ReasoningDelta("ponder")
 			hk.ToolCallPending("t1", "grep")
 			// the first render settles the widget's cache
-			if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "thought") {
+			if got := widgetText(t, h, "chat", 80, UIState{}); !strings.Contains(got, "thought") {
 				t.Fatalf("the thought's row is not drawn:\n%s", got)
 			}
 			epoch, edit := h.trEpoch.Load(), h.trEdit.Load()
@@ -197,7 +197,7 @@ func TestViewedRunDrawsNoPendingRow(t *testing.T) {
 	run.mu.Lock()
 	run.started = time.Now().Add(-2 * time.Second)
 	run.mu.Unlock()
-	if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "read a.go") || strings.Contains(got, "thinking") {
+	if got := widgetText(t, h, "chat", 80, UIState{}); !strings.Contains(got, "read a.go") || strings.Contains(got, "thinking") {
 		t.Fatalf("the run's view draws a pending row over its own rows:\n%s", got)
 	}
 }
@@ -220,7 +220,7 @@ func TestViewedRunThinksLive(t *testing.T) {
 	hk := &subagentHooks{h: h, def: def, run: run}
 	hk.ReasoningDelta("pondering the")
 	hk.ReasoningDelta(" cause")
-	got := widgetText(t, h, "chat", UIState{})
+	got := widgetText(t, h, "chat", 80, UIState{})
 	if !strings.Contains(got, "⠋ thinking") || !strings.Contains(got, "pondering the cause") {
 		t.Fatalf("the run's live thinking tail is not drawn:\n%s", got)
 	}
@@ -245,7 +245,26 @@ func TestViewedRunThinksLive(t *testing.T) {
 	}
 	// settled, the run folds into its digest: its one Thought row is behind it
 	// rather than a live tail
-	if got := widgetText(t, h, "chat", UIState{}); !strings.Contains(got, "· 1 file") || strings.Contains(got, "thinking") {
+	if got := widgetText(t, h, "chat", 80, UIState{}); !strings.Contains(got, "· 1 file") || strings.Contains(got, "thinking") {
 		t.Fatalf("the settled run does not fold into its digest:\n%s", got)
+	}
+}
+
+// TestReplyStatsShed: a settled reply's stats row leads with the model that
+// wrote it and sheds it first, so a narrow chat keeps what the turn cost.
+func TestReplyStatsShed(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	h.AppendChat(ChatMessage{
+		Role: fantasy.MessageRoleAssistant, Text: "done",
+		Stat: &TurnStat{Out: 100, ElapsedMS: 1500, Model: "anthropic/claude-sonnet-4-5"},
+	})
+	wide := widgetText(t, h, "chat", 80, UIState{})
+	if !strings.Contains(wide, "anthropic/claude-sonnet-4-5 · 1.5s · 100 out") {
+		t.Fatalf("the wide stats row does not lead with the model:\n%s", wide)
+	}
+	narrow := widgetText(t, h, "chat", 40, UIState{})
+	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s · 100 out") {
+		t.Fatalf("the narrow stats row kept the model or lost the turn:\n%s", narrow)
 	}
 }

@@ -22,7 +22,7 @@ import (
 func fillChat(host *hostapi.Host) {
 	for i := 1; i <= 30; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
-		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500, Model: "anthropic/claude-sonnet-4-5"})
 	}
 }
 

@@ -35,11 +35,12 @@ type watchReg struct {
 	owner func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func newWatchReg() *watchReg { return &watchReg{byID: map[int]watchRec{}} }
-
 func (w *watchReg) add(id int, rec watchRec) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.byID == nil {
+		w.byID = map[int]watchRec{}
+	}
 	w.byID[id] = rec
 }
 

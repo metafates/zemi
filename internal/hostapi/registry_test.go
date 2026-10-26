@@ -21,7 +21,7 @@ func bind(key, focus string, origin lua.Origin) *KeyBinding {
 // focused binding sits beside the global one, lookup prefers the focused one,
 // and list keeps registration order.
 func TestKeymapRegistry(t *testing.T) {
-	r := NewKeymapRegistry()
+	r := &KeymapRegistry{}
 	for _, s := range []struct {
 		name, key, focus string
 		origin           lua.Origin
@@ -105,7 +105,7 @@ func TestKeymapRegistry(t *testing.T) {
 }
 
 func TestCommandCaseCollision(t *testing.T) {
-	r := NewCommandRegistry()
+	r := &CommandRegistry{}
 
 	add := func(name string, origin lua.Origin) (*Command, error) {
 		return r.Add(&Command{Name: name, Fn: noopFn, Origin: origin})
@@ -153,7 +153,7 @@ func TestCommandCaseCollision(t *testing.T) {
 }
 
 func TestWidgetRegistry(t *testing.T) {
-	r := NewWidgetRegistry()
+	r := &WidgetRegistry{}
 	for _, w := range []*Widget{{ID: "x", Region: "r"}, {ID: "x", Render: noopFn}} {
 		if _, err := r.Add(w); err == nil {
 			t.Fatalf("%+v: a widget needs a region and a render", w)
@@ -176,7 +176,7 @@ func TestWidgetRegistry(t *testing.T) {
 }
 
 func TestEventRegistry(t *testing.T) {
-	r := NewEventRegistry()
+	r := &EventRegistry{}
 	mk := func(event, id string, origin lua.Origin) *EventHandler {
 		return &EventHandler{Event: event, ID: id, Fn: noopFn, Origin: origin}
 	}
@@ -229,7 +229,7 @@ func TestPluginOwnership(t *testing.T) {
 		reg  func() ops
 	}{
 		{"keymap", func() ops {
-			r := NewKeymapRegistry()
+			r := &KeymapRegistry{}
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error { return r.Set(&KeyBinding{Key: "x", Origin: o, Path: p}) },
@@ -237,7 +237,7 @@ func TestPluginOwnership(t *testing.T) {
 			}
 		}},
 		{"command", func() ops {
-			r := NewCommandRegistry()
+			r := &CommandRegistry{}
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
@@ -248,7 +248,7 @@ func TestPluginOwnership(t *testing.T) {
 			}
 		}},
 		{"widget", func() ops {
-			r := NewWidgetRegistry()
+			r := &WidgetRegistry{}
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
@@ -259,7 +259,7 @@ func TestPluginOwnership(t *testing.T) {
 			}
 		}},
 		{"event handler", func() ops {
-			r := NewEventRegistry()
+			r := &EventRegistry{}
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
@@ -270,17 +270,17 @@ func TestPluginOwnership(t *testing.T) {
 			}
 		}},
 		{"theme", func() ops {
-			r := NewThemeRegistry()
+			r := &ThemeRegistry{}
 			r.owner = owner
 			return ops{add: func(o lua.Origin, p string) error { _, err := r.Add(&Theme{Name: "x", Origin: o, Path: p}); return err }}
 		}},
 		{"tool", func() ops {
-			r := newToolReg()
+			r := &toolReg{}
 			r.owner = owner
 			return ops{add: func(o lua.Origin, p string) error { return r.add(&luaTool{Name: "x", Origin: o, Path: p}) }}
 		}},
 		{"config watch", func() ops {
-			r := newWatchReg()
+			r := &watchReg{}
 			r.owner = owner
 			r.add(1, watchRec{origin: pl, src: "a/init.lua"})
 			return ops{del: func(o lua.Origin, p string) (bool, error) { return r.del(1, o, p) }}

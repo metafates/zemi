@@ -75,10 +75,6 @@ type KeymapRegistry struct {
 	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func NewKeymapRegistry() *KeymapRegistry {
-	return &KeymapRegistry{bindings: map[bindKey]*KeyBinding{}}
-}
-
 // Set binds or rebinds a key; the last registration wins. A focused binding
 // sits over the global ones, and a key fires before the longer sequences it
 // starts, so overlapping one shadows it (or is dead).
@@ -88,6 +84,9 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.bindings == nil {
+		r.bindings = map[bindKey]*KeyBinding{}
+	}
 	if old := r.bindings[b.slot()]; old != nil {
 		if err := mayReplace(r.owner, "keymap "+b.Key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
 			return err
@@ -206,10 +205,6 @@ type CommandRegistry struct {
 	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func NewCommandRegistry() *CommandRegistry {
-	return &CommandRegistry{commands: map[string]*Command{}}
-}
-
 func canonical(name string) string { return strings.ToLower(name) }
 
 func (r *CommandRegistry) Add(c *Command) (*Command, error) {
@@ -218,6 +213,9 @@ func (r *CommandRegistry) Add(c *Command) (*Command, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.commands == nil {
+		r.commands = map[string]*Command{}
+	}
 	key := canonical(c.Name)
 	if old, exists := r.commands[key]; exists {
 		if err := mayReplace(r.owner, "command /"+old.Name, old.Origin, old.Path, c.Origin, c.Path); err != nil {
@@ -291,16 +289,15 @@ type WidgetRegistry struct {
 	owner   func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func NewWidgetRegistry() *WidgetRegistry {
-	return &WidgetRegistry{widgets: map[string]*Widget{}}
-}
-
 func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	if w.ID == "" || w.Region == "" || w.Render == nil {
 		return nil, errors.New("widget: id, region and render are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.widgets == nil {
+		r.widgets = map[string]*Widget{}
+	}
 	if old, exists := r.widgets[w.ID]; exists {
 		if err := mayReplace(r.owner, fmt.Sprintf("widget %q", w.ID), old.Origin, old.Path, w.Origin, w.Path); err != nil {
 			return old, err
@@ -382,16 +379,15 @@ type EventRegistry struct {
 	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
-func NewEventRegistry() *EventRegistry {
-	return &EventRegistry{handlers: map[string][]*EventHandler{}}
-}
-
 func (r *EventRegistry) Add(h *EventHandler) (*EventHandler, error) {
 	if h.Event == "" || h.Fn == nil {
 		return nil, errors.New("event: event and handler are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.handlers == nil {
+		r.handlers = map[string][]*EventHandler{}
+	}
 	if h.ID != "" {
 		list := r.handlers[h.Event]
 		if i := slices.IndexFunc(list, func(o *EventHandler) bool { return o.ID == h.ID }); i >= 0 {
@@ -530,16 +526,15 @@ func (r *ThemeRegistry) Group(group string) (HLSpec, bool) {
 	return HLSpec{}, false
 }
 
-func NewThemeRegistry() *ThemeRegistry {
-	return &ThemeRegistry{themes: map[string]*Theme{}}
-}
-
 func (r *ThemeRegistry) Add(t *Theme) (*Theme, error) {
 	if t.Name == "" {
 		return nil, errors.New("theme: name is required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.themes == nil {
+		r.themes = map[string]*Theme{}
+	}
 	if old, exists := r.themes[t.Name]; exists {
 		if err := mayReplace(r.owner, fmt.Sprintf("theme %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
 			return old, err

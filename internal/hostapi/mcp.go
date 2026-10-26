@@ -72,10 +72,6 @@ type mcpReg struct {
 	parked  map[string]*mcpServer // the replaced generation's, until its replay is done
 }
 
-func newMCPReg() *mcpReg {
-	return &mcpReg{servers: map[string]*mcpServer{}, parked: map[string]*mcpServer{}}
-}
-
 // no "_" in server names: mcp_<server>_<tool> must split one way
 var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
@@ -96,6 +92,9 @@ func (h *Host) addMCP(name string, spec mcpSpec) error {
 		s.status = StatusOff
 	}
 	h.mcp.mu.Lock()
+	if h.mcp.servers == nil {
+		h.mcp.servers = map[string]*mcpServer{}
+	}
 	old, parked := h.mcp.servers[name], h.mcp.parked[name]
 	delete(h.mcp.parked, name)
 	// a reload that adds a live server again keeps it: a restart would lose
@@ -491,6 +490,9 @@ func (s *mcpServer) stop() {
 // replay adds with the same spec, and stopParked stops the rest.
 func (r *mcpReg) park() {
 	r.mu.Lock()
+	if r.parked == nil {
+		r.parked = map[string]*mcpServer{}
+	}
 	maps.Copy(r.parked, r.servers)
 	r.servers = map[string]*mcpServer{}
 	r.mu.Unlock()

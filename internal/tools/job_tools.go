@@ -217,10 +217,6 @@ type Jobs struct {
 	OnChange func()
 }
 
-func NewJobs() *Jobs {
-	return &Jobs{jobs: map[string]*Job{}}
-}
-
 // Start runs a shell line with proc.Shell in dir with env and returns the
 // job id. Output is captured as it arrives, so job_read shows a server's
 // lines while it runs.
@@ -257,6 +253,9 @@ func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, s
 // add registers j under the next id and records its exit once wait delivers.
 func (m *Jobs) add(j *Job, wait <-chan error) string {
 	m.mu.Lock()
+	if m.jobs == nil {
+		m.jobs = map[string]*Job{}
+	}
 	m.seq++
 	j.ID = fmt.Sprintf("job-%d", m.seq)
 	m.jobs[j.ID] = j
