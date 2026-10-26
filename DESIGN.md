@@ -1912,7 +1912,9 @@ rides the `memories.md` line and its ledger entries.
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping the filter and the
-  selection on its row wherever the rebuild moved it, whoever opens it. Go parses each
+  selection on its row wherever the rebuild moved it, when the caller may
+  close it (the isolation rule above); otherwise the open is refused and
+  lands in /errors. Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
   (a list item's `id` is its own data). A row has one view: its fields and

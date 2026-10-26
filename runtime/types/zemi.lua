@@ -312,7 +312,7 @@ function zemi.config.add(key, spec) end
 ---@return string? watch_id
 function zemi.config.watch(path, fn) end
 
---- Drop a watch by the id `zemi.config.watch` returned.
+--- Drop a watch by the id `zemi.config.watch` returned; a malformed id raises.
 ---@param id string
 ---@return boolean removed
 function zemi.config.off(id) end
@@ -1063,8 +1063,8 @@ function zemi.event.stats() end
 ---| "bottom-left"
 ---| "bottom-right"
 
----@class zemi.OverlaySpec
----@field id string An unknown field raises.
+---@class zemi.OverlaySpec An unknown field raises.
+---@field id string
 ---@field title? string
 ---@field body? string|zemi.Line[] text above the items, or styled lines (text and hl only); with no items a read-only view
 ---@field markdown? boolean render a string `body` and every item's `detail` as markdown

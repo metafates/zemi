@@ -1026,8 +1026,8 @@ func (u *testUI) RefreshOverlay(id string, build func() Overlay) {
 	}
 }
 
-// CloseOverlay runs the overlay's on_close off the interpreter, as the UI's
-// worker does.
+// CloseOverlay runs the overlay's on_close off the interpreter, under the
+// same ownership rule the UI's worker applies.
 func (u *testUI) CloseOverlay(id string, by lua.Origin, byPath string) {
 	u.mu.Lock()
 	i := slices.IndexFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
@@ -1036,6 +1036,11 @@ func (u *testUI) CloseOverlay(id string, by lua.Origin, byPath string) {
 		return
 	}
 	o := u.overlays[i]
+	if err := o.RefuseBy(by, byPath, u.h.PluginOf); err != nil {
+		u.mu.Unlock()
+		u.h.RecordError("zemi.ui.overlay.close", id, err.Error())
+		return
+	}
 	u.overlays = slices.Delete(u.overlays, i, i+1)
 	u.mu.Unlock()
 	u.h.GoSafe("overlay close", func() { u.h.CancelOverlay(context.Background(), o) })
