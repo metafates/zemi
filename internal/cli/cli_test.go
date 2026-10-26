@@ -619,7 +619,7 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		{name: "-a names the unreadable store", args: []string{"sessions", "-a"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + "\n"},
 		{name: "-a as JSON carries the project", args: []string{"sessions", "-a", "--json"}, stdout: `"id":"` + theirs + `"`},
 		{name: "-a as JSON names its root", args: []string{"sessions", "-a", "--json"}, stdout: `"project":"` + other + `"`},
-		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: could not read 1 project store: " + perm.TildePath(garbage) + ": "},
+		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + ": "},
 		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
 		// -r takes any session id: this project's, or one another project holds
 		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},

@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // CompletionItem is one row a Lua completion source offers.
@@ -337,6 +338,18 @@ func completionItems(v any) []CompletionItem {
 		}
 	}
 	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" })
+}
+
+// DidYouMean returns the name nearest got among names, "" when none is
+// within an edit distance of 2 (the CLI root's near-miss distance).
+func DidYouMean(got string, names []string) string {
+	got, best, dist := strings.ToLower(got), "", 3
+	for _, n := range names {
+		if d := tools.EditDistance(got, strings.ToLower(n)); d < dist {
+			best, dist = n, d
+		}
+	}
+	return best
 }
 
 // addCompletion is zemi.composer.add(spec).

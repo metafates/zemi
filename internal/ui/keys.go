@@ -18,7 +18,7 @@ import (
 // goKeys are the bindings this router owns: they are not Lua keymaps, so
 // /help would list none of them.
 var goKeys = [][2]string{
-	{"enter", "send the message"},
+	{"enter", "send; steers a running turn"},
 	{"shift+enter, alt+enter, ctrl+enter", "newline"},
 	{"esc", "back; twice to interrupt or rewind"},
 	{"ctrl+c", "interrupt, clear the draft, quit"},
@@ -27,9 +27,9 @@ var goKeys = [][2]string{
 	{"up, ctrl+p", "earlier prompts or queued ones"},
 	{"down, ctrl+n", "later prompts"},
 	{"ctrl+z", "undo in the composer"},
-	{"ctrl+a, ctrl+e", "line start, line end"},
+	{"ctrl+a/e", "line start, line end"},
 	{"alt+left, alt+right", "move by word"},
-	{"ctrl+d, ctrl+u", "scroll the chat half a view"},
+	{"ctrl+d/u", "scroll the chat half a view"},
 	{"ctrl+w", "delete the word before the cursor"},
 	{"delete", "forward delete"},
 	{"/", "command palette"},

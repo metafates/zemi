@@ -855,7 +855,7 @@ func (h *Host) storeChatRow(sid string, m ChatMessage) {
 		return
 	}
 	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: chatRole, PartsJSON: string(parts)}); err != nil {
-		h.Log.Warn("row not kept", "origin", "agent", "error", err)
+		h.Log.Warn("chat row not kept", "origin", "agent", "error", err)
 	}
 }
 
@@ -1674,7 +1674,7 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	parts, _ := json.Marshal(row, json.Deterministic(true))
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: t.Name, OK: ok}); err != nil {
-		h.Log.Warn("tool call persist failed", "origin", "agent", "error", err)
+		h.Log.Warn("tool call not kept", "origin", "agent", "error", err)
 	}
 }
 
@@ -2336,7 +2336,11 @@ const unlistedTitle = "Model not listed"
 // not the model row: mid-turn the row is the running turn's model.
 func (h *Host) warnUnlisted(id string) {
 	if _, ok := h.modelSpec(id); !ok {
-		h.Notify(slog.LevelWarn, unlistedTitle, unlistedDetail(id))
+		detail := unlistedDetail(id)
+		if near := DidYouMean(id, h.ModelIDs()); near != "" {
+			detail += "; did you mean " + near + "?"
+		}
+		h.Notify(slog.LevelWarn, unlistedTitle, detail)
 	}
 }
 

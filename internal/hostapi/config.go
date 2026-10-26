@@ -239,7 +239,7 @@ func (h *Host) keepPick(path config.Key) {
 		err = h.GlobalDB.SetKV(kvConfigPrefix+string(path), string(b))
 	}
 	if err != nil {
-		h.Log.Warn("could not keep a pick", "origin", "config", "path", path, "error", err)
+		h.Log.Warn("pick not kept", "origin", "config", "path", path, "error", err)
 		return
 	}
 	h.picked[path] = live

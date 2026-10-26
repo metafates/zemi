@@ -217,7 +217,15 @@ func (a *App) runSlashCommand(text string) {
 	name, args := hostapi.SplitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
-		a.pushToast(slog.LevelWarn, "Unknown command", "/"+name+"; /help lists them")
+		detail := "/" + name + "; /help lists them"
+		var names []string
+		for _, c := range a.host.Commands.List() {
+			names = append(names, c.Name)
+		}
+		if near := hostapi.DidYouMean(name, names); near != "" {
+			detail += "; did you mean /" + near + "?"
+		}
+		a.pushToast(slog.LevelWarn, "Unknown command", detail)
 		return
 	}
 	a.clearComposer()

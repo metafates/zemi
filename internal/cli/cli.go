@@ -668,7 +668,7 @@ func projectsCommand(o *options) *cobra.Command {
 				}
 			}
 			if len(unreadable) > 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: could not read %d project %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
 			}
 			// the root at column 36, for cut -c36-
 			t := table{p: cp, cols: []tableCol{

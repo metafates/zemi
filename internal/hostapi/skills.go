@@ -511,7 +511,7 @@ func (h *Host) openSkillFile(name string) error {
 	}
 	s, ok := h.skillByName(name)
 	if !ok {
-		return Usagef("no skill %q", name)
+		return Usagef("no such skill %q", name)
 	}
 	if s.Source == skill.Builtin {
 		return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; its /skills row shows the text", name)

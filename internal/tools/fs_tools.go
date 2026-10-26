@@ -914,8 +914,8 @@ func (p *Pipeline) notFound(path string, err error) string {
 		if e.IsDir() {
 			continue
 		}
-		if d := editDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
-			near = append(near, sibling{name: e.Name(), stem: d, full: editDistance(name, base)})
+		if d := EditDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
+			near = append(near, sibling{name: e.Name(), stem: d, full: EditDistance(name, base)})
 		}
 	}
 	slices.SortStableFunc(near, func(a, b sibling) int { return cmp.Or(a.stem-b.stem, a.full-b.full) })
@@ -929,8 +929,8 @@ func (p *Pipeline) notFound(path string, err error) string {
 	return msg
 }
 
-// editDistance is the Levenshtein distance between two short names.
-func editDistance(a, b string) int {
+// EditDistance is the Levenshtein distance between two short names.
+func EditDistance(a, b string) int {
 	prev := make([]int, len(b)+1)
 	for j := range prev {
 		prev[j] = j
