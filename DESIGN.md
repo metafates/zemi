@@ -754,7 +754,8 @@ the binary's API version is `zemi.api.version`.
   `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
   `zemi.ui.theme`, `zemi.config`), `set`
   writes a value, `get` and `list` read back, `del` removes and reports
-  whether it did. A new call takes the verb its shape already has, so the
+  whether it did (`zemi.state.del` reports only a store failure). A new call
+  takes the verb its shape already has, so the
   surface stays guessable without the type annotations open.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
   model ask, timer, session) is a handle with colon-call methods (`h:wait()`,
@@ -781,6 +782,7 @@ the binary's API version is `zemi.api.version`.
 zemi.config.get("models.titles")             -- dotted path lookup
 zemi.config.set("ui.theme", "whorl")
 zemi.config.watch("models.titles", function(new, old) end)
+zemi.config.off(watch_id)                    -- drop one watch, true when it did
 zemi.env.get("EDITOR")                        -- env-read
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
@@ -1175,7 +1177,8 @@ while a builtin's key may be exported for other tools.
 comes from `zemi.env.get` and is never exposed back to Lua.
 
 `zemi.model.ask` is one tool-less model call on a role's model or an id
-(default `chat`), run off the interpreter and billed to the live session.
+(default `default`, the conversation's model), run off the interpreter and
+billed to the live session.
 It costs money, and the manifest's `uses` naming `model` is what consents to it (§9);
 a reload cancels it. `zemi.agent.send` from a plugin settles the same way. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
@@ -1573,8 +1576,8 @@ UI extensibility contract:
   the terminal it came from).
   `panel` and `band`, a spec's own included, are kept within 0.13 of bg's
   OKLCH lightness, and every text role is then moved along OKLCH lightness,
-  hue kept, to a WCAG floor on the least contrasting of bg, panel and band
-  (fg 7, warn 3.5, the rest 4.5), so no theme, a plugin's included, can hide
+  hue kept, to a WCAG floor on the least contrasting of bg, panel, band and
+  well (fg 7, warn 3.5, the rest 4.5), so no theme, a plugin's included, can hide
   prompt text. The shipped ones are whorl (and whorl-light) plus ports of
   Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
   rose-pine, kanagawa, one, everforest and github, most with a `-light`
@@ -1913,8 +1916,10 @@ rides the `memories.md` line and its ledger entries.
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping the filter and the
   selection on its row wherever the rebuild moved it, when the caller may
-  close it (the isolation rule above); otherwise the open is refused and
-  lands in /errors. Go parses each
+  close it: user config, builtin code or the origin that opened it, and of
+  the plugins only the one that opened it - a Go screen's overlay is out of
+  every plugin's reach. Otherwise the open is refused and lands in /errors.
+  Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
   (a list item's `id` is its own data). A row has one view: its fields and
@@ -2801,7 +2806,7 @@ Skill format (agentskills.io compatible, crush parity):
 ```
 skills/
   local-integration/
-    SKILL.md            # yaml frontmatter: name, description, user-invocable;
+    SKILL.md            # yaml frontmatter: name, description;
                         # body = instructions
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
@@ -2809,10 +2814,10 @@ skills/
 Discovery merges three sources, the higher-trust one winning a name
 clash: user (config dir, then `~/.agents/skills`, the dir other agents
 share, whose `zemi-skill.lua` never runs since installers write there)
-over builtin (zemi's own three: `zemi`, whose SKILL.md routes to
-reference files beside it that the model reads on demand, `sessions`,
-which finds, reads and resumes a past conversation through the `zemi
-sessions` commands, and `codescan`, the recipes for answering a
+over builtin (zemi's own two: `zemi`, whose SKILL.md routes to
+reference files beside it that the model reads on demand - the sessions
+procedure among them, finding, reading and resuming a past conversation
+through the `zemi sessions` commands - and `codescan`, the recipes for answering a
 many-file question in one lua script; embedded under `runtime/skills/`, rewritten to
 `<data>/builtin-skills/` on every sync, so `/skills` offers them no
 editor) over plugin (each enabled plugin's `skills/`, by plugin name, body
@@ -3041,7 +3046,7 @@ internal/glob/              rg-style glob matching for the file tools, LSP and b
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler quotes)
 internal/logging/           the slog log file, one per launch
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
-runtime/skills/             the builtin skills (zemi, sessions, codescan); runtime/workflows/, the builtin ones
+runtime/skills/             the builtin skills (zemi, codescan); runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 
