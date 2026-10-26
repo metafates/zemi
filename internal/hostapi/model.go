@@ -44,6 +44,31 @@ func (h *Host) resolveModel(id string) (fantasy.LanguageModel, error) {
 // ErrNoModel is the send failure when config registered no model.
 var ErrNoModel = errors.New("no model yet")
 
+// resolveTurnModel is resolveModel with one keychain attempt between the
+// failure and the give-up: a send, a title, a compaction or a reflector run
+// racing the stored-key pass fills the key instead of failing. Never
+// classify: it resolves on the Lua actor, where nothing waits on a
+// keychain subprocess.
+func (h *Host) resolveTurnModel(id string) (fantasy.LanguageModel, error) {
+	model, err := h.resolveModel(id)
+	if err == nil {
+		return model, nil
+	}
+	prov := agent.ModelID(id).Provider()
+	_, registered := h.Providers.Lookup(prov)
+	if registered && h.Providers.HasKey(prov) {
+		return model, err // the failure is not a missing key
+	}
+	if !registered && !h.missingProvider(prov) {
+		return model, err // an id nobody registered never gains a stored key
+	}
+	if !h.fillStored(prov, false) {
+		return model, err
+	}
+	h.keysChanged(prov)
+	return h.resolveModel(id)
+}
+
 func (h *Host) initPath() string { return perm.TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
 
 func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
@@ -106,7 +131,7 @@ func (h *Host) modelRunErr(id string) error {
 // job passes retry, so the working rule counts down its provider retries.
 func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), ref string) (*fantasy.AgentResult, error) {
 	id := h.modelRef(ref)
-	model, err := h.resolveModel(id)
+	model, err := h.resolveTurnModel(id)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +166,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 // any other, including one whose reply did not fit the schema.
 func (h *Host) generateObject(ctx context.Context, sid, system, prompt string, schema fantasy.Schema, maxOut *int64, temp *float64, ref string) (any, string, error) {
 	id := h.modelRef(ref)
-	model, err := h.resolveModel(id)
+	model, err := h.resolveTurnModel(id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -648,7 +673,8 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
 		}
-		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key")); err != nil {
+		origin := h.RT.CurrentOrigin(L) == lua.OriginPlugin
+		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key"), origin); err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
 		}
 		return 0

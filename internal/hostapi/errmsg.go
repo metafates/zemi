@@ -35,6 +35,9 @@ func (h *Host) explain(err error) (cause, advice string) {
 		if spec.KeyEnv != "" {
 			key = "check " + spec.KeyEnv
 		}
+		if _, isStored := h.Providers.Stored(me.Provider); isStored {
+			key = "replace the stored key with /keys"
+		}
 	}
 	switch {
 	case err == nil:

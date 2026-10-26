@@ -24,6 +24,7 @@ type composerState struct {
 	cursor int               // rune index, 0 <= cursor <= len(runes)
 	pastes map[string]string // paste token -> the text it stands for
 	pasteN int               // tokens handed out, so a number is never reused
+	secret bool              // an input overlay's secret: a bullet per rune, the text never echoes
 
 	history []string
 	histIdx int // len(history) = live draft
@@ -506,7 +507,13 @@ func spaced(segs []hostapi.Segment) []hostapi.Segment {
 // cut to them, so typing never widens the box drawn around it. An empty
 // line shows ghost dim under the cursor, what submitting it would mean.
 func (c *composerState) inputRow(width int, ghost string) []hostapi.Segment {
-	segs := cursorSegs([]rune(c.text), c.cursor, "")
+	r := []rune(c.text)
+	if c.secret {
+		for i := range r {
+			r[i] = '•'
+		}
+	}
+	segs := cursorSegs(r, c.cursor, "")
 	if c.text == "" && ghost != "" {
 		segs = cursorSegs([]rune(ghost), 0, "Dim")
 	}

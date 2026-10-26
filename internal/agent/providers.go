@@ -25,6 +25,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"charm.land/catwalk/pkg/catwalk"
 	"charm.land/catwalk/pkg/embedded"
@@ -131,7 +132,8 @@ func (s Spec) Model(id string) (Model, bool) {
 
 // Catalog is the builtin providers with their env vars resolved: a
 // provider whose key is exported is a Spec with its key in Keys, one
-// without is Missing, so /health can name the variable to export.
+// without is Missing with the spec it would run as, so /health can name
+// the variable to export and a pasted key can activate the provider whole.
 type Catalog struct {
 	Specs   []Spec
 	Keys    map[string]string
@@ -168,8 +170,13 @@ func (i CatalogInfo) Summary() string {
 	return n(i.Providers, "provider") + ", " + n(i.Models, "model")
 }
 
-// MissingKey is a builtin provider whose key env var is not exported.
-type MissingKey struct{ ID, Env string }
+// MissingKey is a builtin provider whose key env var is not exported. Spec
+// is what it would run as, so a key pasted into the TUI can activate the
+// provider whole.
+type MissingKey struct {
+	ID, Env string
+	Spec    Spec
+}
 
 // builtinKinds maps catwalk types to zemi kinds. NOTE: azure, bedrock,
 // google-vertex and copilot are left out: they need more than one key
@@ -208,13 +215,15 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		if !ok || p.APIKey == "" || !bundledRef(p.APIKey) || !bundledRef(p.APIEndpoint) {
 			continue
 		}
+		// the feed is untrusted (bundledRef skips its key refs too): an id
+		// that is not a plain word never reaches a keychain account or a
+		// key file
+		if !plainID(string(p.ID)) {
+			continue
+		}
 		c.Info.Providers++
 		c.Info.Models += len(p.Models)
 		name, key := env(p.APIKey)
-		if key == "" {
-			c.Missing = append(c.Missing, MissingKey{ID: string(p.ID), Env: name})
-			continue
-		}
 		_, base := env(p.APIEndpoint)
 		// Reset skips Register's guard, and the fantasy default is
 		// api.openai.com, which would get the key
@@ -234,10 +243,22 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort,
 			})
 		}
+		if key == "" {
+			c.Missing = append(c.Missing, MissingKey{ID: string(p.ID), Env: name, Spec: spec})
+			continue
+		}
 		c.Specs = append(c.Specs, spec)
 		c.Keys[spec.ID] = key
 	}
 	return c
+}
+
+// plainID says whether id may name a provider: it becomes a keychain
+// account, a command argument and a file in the data dir, so it stays a
+// plain word.
+func plainID(id string) bool {
+	return id != "" && !strings.ContainsAny(id, `/\ `) && !strings.Contains(id, "..") &&
+		!strings.ContainsFunc(id, unicode.IsControl)
 }
 
 // bundledRefs are the "$NAME" references the bundled catalog makes.
@@ -390,11 +411,13 @@ func (k Kind) takesObjectMode() bool {
 // It also keeps the catalog's Missing list, minus what config deleted, so
 // a hint never names a provider init.lua turned off.
 type Registry struct {
-	// mu guards all three: user config registers on the interpreter
+	// mu guards all five: user config registers on the interpreter
 	// goroutine while turns, subagents and the UI read.
 	mu      sync.RWMutex
 	specs   []Spec
 	keys    map[string]string
+	stored  map[string]bool // id -> the keychain took the paste, else the file did
+	plugins map[string]bool // id registered by a plugin: never holds a stored key
 	missing []MissingKey
 }
 
@@ -408,6 +431,8 @@ func (r *Registry) Reset(c Catalog) {
 	defer r.mu.Unlock()
 	r.specs = slices.Clone(c.Specs)
 	r.keys = maps.Clone(c.Keys)
+	r.stored = nil
+	r.plugins = nil
 	r.missing = slices.Clone(c.Missing)
 }
 
@@ -429,6 +454,8 @@ func (r *Registry) Delete(providerID string) bool {
 	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool { return s.ID == providerID })
 	r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == providerID })
 	delete(r.keys, providerID)
+	delete(r.stored, providerID)
+	delete(r.plugins, providerID)
 	return len(r.specs)+len(r.missing) < had
 }
 
@@ -441,6 +468,7 @@ func (r *Registry) DropBuiltin() {
 	r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool {
 		if s.Builtin {
 			delete(r.keys, s.ID)
+			delete(r.stored, s.ID)
 		}
 		return s.Builtin
 	})
@@ -475,12 +503,18 @@ func (r *Registry) Default() string {
 // replaces it: config is declarative and every reload replays the file, so
 // raising here would abort init.lua on the second run and drop everything
 // after it; a builtin id is replaced whole, key included, so a gateway
-// base_url works. Only user config may register (the Lua boundary enforces
-// it, DESIGN §6.3).
-func (r *Registry) Register(spec Spec, apiKey string) error {
+// base_url works (DESIGN §6.3: any caller may register; the key is never
+// exposed back to Lua). fromPlugin marks a plugin's registration: it never
+// holds a stored key, whose requests would ride its endpoint unasked.
+func (r *Registry) Register(spec Spec, apiKey string, fromPlugin bool) error {
 	spec.Builtin = false
 	if spec.ID == "" || spec.Kind == "" {
 		return errors.New("provider needs id and kind")
+	}
+	// the id names a keychain account, a command argument and a file in the
+	// data dir, so it stays a plain word
+	if !plainID(spec.ID) {
+		return fmt.Errorf("provider id %q: a plain name, no slashes, spaces or dot runs", spec.ID)
 	}
 	if !slices.Contains(Kinds, spec.Kind) {
 		names := make([]string, len(Kinds))
@@ -515,12 +549,132 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 		r.specs = append(r.specs, spec)
 	}
 	r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == spec.ID })
+	delete(r.stored, spec.ID)
+	if fromPlugin {
+		if r.plugins == nil {
+			r.plugins = map[string]bool{}
+		}
+		r.plugins[spec.ID] = true
+	} else {
+		delete(r.plugins, spec.ID)
+	}
 	if apiKey != "" {
 		r.keys[spec.ID] = apiKey
 	} else {
 		delete(r.keys, spec.ID)
 	}
 	return nil
+}
+
+// IsPlugin reports whether a plugin registered id's spec.
+func (r *Registry) IsPlugin(id string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.plugins[id]
+}
+
+// ErrStoredRefused says the provider's key is one config or the environment
+// already answered for; the caller that has the spec names which.
+// ErrStoredPlugin is its plugin case, worded once here.
+var (
+	ErrStoredRefused = errors.New("the provider's key is not zemi's to set")
+	ErrStoredPlugin  = fmt.Errorf("%w: a plugin's provider", ErrStoredRefused)
+)
+
+// ApplyStored activates a pasted key: a missing builtin gains its catalog
+// spec whole, and a keyless or already-stored spec gains the key. chain says
+// the keychain took the write, else the 0600 file did - where the key lives
+// is what the keys screen says about it. A key config or the environment
+// already answers for is refused - config wins, and a builtin's env var
+// outranks the chain, so the hints that name it stay true - and so is a
+// plugin's spec, whose endpoint a stored key would ride unasked. A stored
+// key is zemi's own: replaceable by a later paste, removable without
+// touching config.
+func (r *Registry) ApplyStored(id, key string, chain bool) error {
+	if key == "" {
+		return errors.New("empty key")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.storable(id); err != nil {
+		return err
+	}
+	if i := slices.IndexFunc(r.missing, func(m MissingKey) bool { return m.ID == id }); i >= 0 {
+		r.specs = append(r.specs, r.missing[i].Spec)
+		r.missing = slices.DeleteFunc(r.missing, func(m MissingKey) bool { return m.ID == id })
+		r.keys[id] = key
+		r.setStored(id, chain)
+		return nil
+	}
+	s := slices.IndexFunc(r.specs, func(s Spec) bool { return s.ID == id })
+	if s < 0 {
+		return fmt.Errorf("provider %q is not registered", id)
+	}
+	r.keys[id] = key
+	r.setStored(id, chain)
+	return nil
+}
+
+// CheckStored reports whether a paste may act on id without touching the
+// stores, so a refused one never overwrites the key it holds.
+func (r *Registry) CheckStored(id string) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.storable(id)
+}
+
+// storable is the paste gate: a plugin's provider never holds a stored key,
+// and a key config or the environment answers for outranks one.
+func (r *Registry) storable(id string) error {
+	if r.plugins[id] {
+		return ErrStoredPlugin
+	}
+	if r.keys[id] != "" && !r.storedHere(id) {
+		return fmt.Errorf("%w: %s", ErrStoredRefused, id)
+	}
+	return nil
+}
+
+// RemoveStored drops a stored key: the provider is keyless again, and a
+// builtin returns to the Missing list with its catalog spec, so the no-key
+// hints name it. False when no stored key is held.
+func (r *Registry) RemoveStored(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.stored[id]; !ok {
+		return false
+	}
+	delete(r.stored, id)
+	delete(r.keys, id)
+	if i := slices.IndexFunc(r.specs, func(s Spec) bool { return s.ID == id }); i >= 0 && r.specs[i].Builtin {
+		r.missing = append(r.missing, MissingKey{ID: id, Env: r.specs[i].KeyEnv, Spec: r.specs[i]})
+		r.specs = slices.DeleteFunc(r.specs, func(s Spec) bool { return s.ID == id })
+	}
+	return true
+}
+
+// Stored reports whether id holds a pasted key and whether the keychain
+// took it, else the 0600 file did - where the key lives is what the keys
+// screen says about it.
+func (r *Registry) Stored(id string) (inChain, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	inChain, ok = r.stored[id]
+	return inChain, ok
+}
+
+func (r *Registry) setStored(id string, chain bool) {
+	if r.stored == nil {
+		r.stored = map[string]bool{}
+	}
+	r.stored[id] = chain
+}
+
+// storedHere reports whether id's key is a stored one, not config's or the
+// environment's.
+func (r *Registry) storedHere(id string) bool {
+	_, ok := r.stored[id]
+	return ok
 }
 
 // Decisions reports the spec and the catalog entry an id names when that model

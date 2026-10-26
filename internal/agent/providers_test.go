@@ -40,14 +40,14 @@ func TestCallOptions(t *testing.T) {
 		{ID: "bg", Kind: KindGoogle, Builtin: true, Models: []Model{{ID: "gemini-2.5-pro"}, {ID: "lite", Efforts: []string{"minimal", "low"}, Effort: "minimal"}}},
 	}})
 	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}, {ID: "or", Kind: "openrouter"}, {ID: "v", Kind: "vercel"}} {
-		if err := r.Register(s, "k"); err != nil {
+		if err := r.Register(s, "k", false); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := r.Register(Spec{ID: "bare", Kind: "openai_compat"}, "k"); err == nil || !strings.Contains(err.Error(), "base_url is required") {
+	if err := r.Register(Spec{ID: "bare", Kind: "openai_compat"}, "k", false); err == nil || !strings.Contains(err.Error(), "base_url is required") {
 		t.Fatalf("openai_compat without base_url: %v", err)
 	}
-	if err := r.Register(Spec{ID: "orp", Kind: "openrouter", BaseURL: "https://proxy.example/v1"}, "k"); err == nil || !strings.Contains(err.Error(), "fixed base_url") {
+	if err := r.Register(Spec{ID: "orp", Kind: "openrouter", BaseURL: "https://proxy.example/v1"}, "k", false); err == nil || !strings.Contains(err.Error(), "fixed base_url") {
 		t.Fatalf("openrouter with base_url: %v", err)
 	}
 	for _, c := range []struct {
@@ -136,7 +136,7 @@ func cacheKey(o fantasy.ProviderOptionsData) string {
 // or without a reasoning effort.
 func TestCallOptionsBody(t *testing.T) {
 	r := &Registry{}
-	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Body: map[string]any{"service_tier": "flex"}}, "k"); err != nil {
+	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Body: map[string]any{"service_tier": "flex"}}, "k", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, effort := range []string{"", "high"} {
@@ -246,7 +246,7 @@ func TestBuiltin(t *testing.T) {
 			t.Errorf("%s: present %v, %+v", tc.id, ok, s)
 		}
 	}
-	if byID["anthropic"].KeyEnv != "ANTHROPIC_API_KEY" || c.Keys["anthropic"] != "sk-a" || !slices.Contains(c.Missing, MissingKey{"deepseek", "DEEPSEEK_API_KEY"}) || slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "azure" || m.ID == "bedrock" }) {
+	if byID["anthropic"].KeyEnv != "ANTHROPIC_API_KEY" || c.Keys["anthropic"] != "sk-a" || !slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "deepseek" }) || slices.ContainsFunc(c.Missing, func(m MissingKey) bool { return m.ID == "azure" || m.ID == "bedrock" }) {
 		t.Errorf("keys %d, missing %v", len(c.Keys), c.Missing)
 	}
 	if c.Specs[0].ID != "anthropic" || c.Specs[1].ID != "openai" {
@@ -350,36 +350,36 @@ func TestRegistryBuiltin(t *testing.T) {
 	r.Reset(Catalog{Specs: []Spec{
 		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultModel: "big", Models: []Model{{ID: "big"}}},
 		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},
-	}, Keys: map[string]string{"a": "ka", "o": "ko"}, Missing: []MissingKey{{"x", "X_KEY"}, {"y", "Y_KEY"}}})
+	}, Keys: map[string]string{"a": "ka", "o": "ko"}, Missing: []MissingKey{{ID: "x", Env: "X_KEY"}, {ID: "y", Env: "Y_KEY"}}})
 	if r.Default() != "a/big" || !r.HasKey("o") {
 		t.Fatalf("seed: %s", r.Default())
 	}
 	r.Delete("a")
 	r.Delete("nope")
 	r.Delete("x")
-	if r.Default() != "o/first" || r.HasKey("a") || !slices.Equal(r.Missing(), []MissingKey{{"y", "Y_KEY"}}) {
+	if r.Default() != "o/first" || r.HasKey("a") || !slices.EqualFunc(r.Missing(), []MissingKey{{ID: "y", Env: "Y_KEY"}}, func(a, b MissingKey) bool { return a.ID == b.ID && a.Env == b.Env }) {
 		t.Fatalf("after delete: %s %v", r.Default(), r.Missing())
 	}
-	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, ""); err != nil {
+	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if r.Default() != "o/first" {
 		t.Fatalf("model-less user spec ahead of a builtin: %s", r.Default())
 	}
 	r.Delete("empty")
-	if err := r.Register(Spec{ID: "local", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Builtin: true, Models: []Model{{ID: "q"}}}, ""); err != nil {
+	if err := r.Register(Spec{ID: "local", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Builtin: true, Models: []Model{{ID: "q"}}}, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if r.Default() != "local/q" {
 		t.Fatalf("user spec after a builtin: %s", r.Default())
 	}
-	if err := r.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: "http://gw/v1", Models: []Model{{ID: "g"}}}, ""); err != nil {
+	if err := r.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: "http://gw/v1", Models: []Model{{ID: "g"}}}, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if r.Default() != "o/g" || r.HasKey("o") {
 		t.Fatalf("override: %s", r.Default())
 	}
-	if err := r.Register(Spec{ID: "y", Kind: KindAnthropic}, ""); err != nil {
+	if err := r.Register(Spec{ID: "y", Kind: KindAnthropic}, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if len(r.Missing()) != 0 {
@@ -396,6 +396,130 @@ func TestRegistryBuiltin(t *testing.T) {
 	r.Reset(Catalog{})
 	if r.Default() != "" || len(r.List()) != 0 {
 		t.Fatal("reset to empty")
+	}
+}
+
+// TestRegistryStored: a pasted key activates a missing builtin whole, fills
+// a keyless spec, replaces an earlier stored key, and refuses where config
+// or the environment already answered; removing a stored key restores the
+// no-key state.
+func TestRegistryStored(t *testing.T) {
+	spec := Spec{ID: "x", Kind: KindAnthropic, Builtin: true, KeyEnv: "X_KEY", DefaultModel: "big", Models: []Model{{ID: "big"}}}
+	for _, c := range []struct {
+		name string
+		run  func(t *testing.T, r *Registry)
+	}{
+		{"a missing builtin gains its catalog spec whole", func(t *testing.T, r *Registry) {
+			if err := r.ApplyStored("x", "kp", true); err != nil {
+				t.Fatal(err)
+			}
+			s, ok := r.Lookup("x")
+			if !ok || !s.Builtin || s.DefaultModel != "big" || !r.HasKey("x") || !stored(r, "x") {
+				t.Fatalf("fill: %+v ok=%v", s, ok)
+			}
+			if slices.ContainsFunc(r.Missing(), func(m MissingKey) bool { return m.ID == "x" }) {
+				t.Fatalf("missing %v", r.Missing())
+			}
+		}},
+		{"a stored key is replaced by the next paste", func(t *testing.T, r *Registry) {
+			if err := r.ApplyStored("x", "k1", true); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ApplyStored("x", "k2", true); err != nil {
+				t.Fatal(err)
+			}
+			if r.Key("x") != "k2" {
+				t.Fatalf("key %q", r.Key("x"))
+			}
+		}},
+		{"config's key refuses a paste", func(t *testing.T, r *Registry) {
+			if err := r.Register(Spec{ID: "u", Kind: KindAnthropic}, "cfg", false); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ApplyStored("u", "kp", true); !errors.Is(err, ErrStoredRefused) {
+				t.Fatalf("err %v", err)
+			}
+			if r.Key("u") != "cfg" {
+				t.Fatalf("key %q", r.Key("u"))
+			}
+		}},
+		{"an env key refuses a paste", func(t *testing.T, r *Registry) {
+			r.Reset(Catalog{Specs: []Spec{spec}, Keys: map[string]string{"x": "env"}})
+			if err := r.ApplyStored("x", "kp", true); !errors.Is(err, ErrStoredRefused) {
+				t.Fatalf("err %v", err)
+			}
+		}},
+		{"a keyless user spec takes a stored key, and loses it on removal", func(t *testing.T, r *Registry) {
+			if err := r.Register(Spec{ID: "u", Kind: KindAnthropic}, "", false); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ApplyStored("u", "kp", true); err != nil {
+				t.Fatal(err)
+			}
+			if !r.HasKey("u") || !stored(r, "u") {
+				t.Fatal("fill")
+			}
+			if !r.RemoveStored("u") || r.HasKey("u") || stored(r, "u") {
+				t.Fatal("remove")
+			}
+		}},
+		{"removing a stored key returns the builtin to Missing", func(t *testing.T, r *Registry) {
+			if err := r.ApplyStored("x", "kp", true); err != nil {
+				t.Fatal(err)
+			}
+			if !r.RemoveStored("x") || r.HasKey("x") || stored(r, "x") {
+				t.Fatal("remove")
+			}
+			if _, ok := r.Lookup("x"); ok || !slices.ContainsFunc(r.Missing(), func(m MissingKey) bool { return m.ID == "x" }) {
+				t.Fatalf("missing %v", r.Missing())
+			}
+		}},
+		{"a cleared builtin repastes whole", func(t *testing.T, r *Registry) {
+			if err := r.ApplyStored("x", "kp", true); err != nil {
+				t.Fatal(err)
+			}
+			if !r.RemoveStored("x") {
+				t.Fatal("remove")
+			}
+			if err := r.ApplyStored("x", "kp2", true); err != nil {
+				t.Fatal(err)
+			}
+			s, ok := r.Lookup("x")
+			if !ok || !s.Builtin || s.DefaultModel != "big" || r.Key("x") != "kp2" {
+				t.Fatalf("repaste: %+v ok=%v key=%q", s, ok, r.Key("x"))
+			}
+		}},
+		{"removing nothing, filling nothing", func(t *testing.T, r *Registry) {
+			if r.RemoveStored("x") {
+				t.Fatal("removed a key nobody stored")
+			}
+			if err := r.ApplyStored("nope", "kp", true); err == nil {
+				t.Fatal("filled an unknown provider")
+			}
+			if err := r.ApplyStored("x", "", true); err == nil {
+				t.Fatal("stored an empty key")
+			}
+		}},
+		{"a replayed config shadows the stored key", func(t *testing.T, r *Registry) {
+			if err := r.ApplyStored("x", "kp", true); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.Register(spec, "cfg", false); err != nil {
+				t.Fatal(err)
+			}
+			if stored(r, "x") || r.Key("x") != "cfg" {
+				t.Fatal("register did not take the key over")
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := &Registry{}
+			r.Reset(Catalog{
+				Specs: []Spec{{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultModel: "big", Models: []Model{{ID: "big"}}}}, Keys: map[string]string{"a": "ka"},
+				Missing: []MissingKey{{ID: "x", Env: "X_KEY", Spec: spec}},
+			})
+			c.run(t, r)
+		})
 	}
 }
 
@@ -418,4 +542,9 @@ func TestModelID(t *testing.T) {
 			t.Errorf("%q: Split %q, %q, %v; Provider %q, Model %q", c.id, provider, model, ok, c.id.Provider(), c.id.Model())
 		}
 	}
+}
+
+func stored(r *Registry, id string) bool {
+	_, ok := r.Stored(id)
+	return ok
 }

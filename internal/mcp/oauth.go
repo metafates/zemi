@@ -87,7 +87,7 @@ func (a *Auth) Ref() keyring.Ref {
 func (a *Auth) load() *Token {
 	if !a.loaded {
 		a.loaded = true
-		if s, ok := a.Ref().Get(); ok {
+		if s, _, ok := a.Ref().Get(); ok {
 			var t Token
 			if json.Unmarshal([]byte(s), &t) == nil && t.ServerURL == a.ServerURL && t.AccessToken != "" {
 				a.tok = &t

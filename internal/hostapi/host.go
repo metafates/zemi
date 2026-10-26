@@ -162,12 +162,18 @@ type Overlay struct {
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text. A Go screen's prompt
-	// sets Run instead, a command the text is appended to; Lua never sets it.
-	// Placeholder shows dim in the empty line, what submitting it would mean.
+	// sets Run instead, a command the text is appended to; Lua never sets
+	// it, and a Go screen holding a secret sets OnInput, which receives the
+	// text off the command path. Placeholder shows dim in the empty line,
+	// what submitting it would mean; Secret draws a bullet per rune, the
+	// only kind of input whose text may never echo.
 	Input       bool
 	Default     string
 	Placeholder string
 	Run         string
+	Secret      bool
+	OnInput     func(text string) error // Go-only: what a secret's submit runs, the box reopened with Default on its error
+	Note        string                  // dim under an input's line, where submitting it puts the text
 
 	// Reload makes a list a toggle list: enter and space run the row's "run"
 	// command or on_select and rebuild the items, keeping the overlay open.
@@ -470,9 +476,12 @@ type Host struct {
 	// Builtin seeds Providers on every generation: the catalog with the
 	// env keys resolved at boot, since the environment cannot change under
 	// a running zemi, and again by /model update.
-	Builtin  atomic.Pointer[agent.Catalog]
-	DB       *store.DB
-	GlobalDB *store.DB
+	Builtin atomic.Pointer[agent.Catalog]
+	// storedKeysPass marks a stored-key pass in flight, so stacked reloads
+	// do not exec the keychain twice over.
+	storedKeysPass atomic.Bool
+	DB             *store.DB
+	GlobalDB       *store.DB
 
 	Keymaps  *KeymapRegistry
 	Commands *CommandRegistry
@@ -2202,8 +2211,26 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
 }
 
-// SubmitOverlayInput hands an input overlay's text to on_select.
+// SubmitOverlayInput hands an input overlay's text to on_select, or to the
+// Go-side OnInput a secret's box sets: the save closes the box, and an
+// error reopens it with the text back, so enter retries without re-pasting.
+// The reopen lands only while the box is still shown: an esc during the
+// save stays a cancel.
 func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
+	if o.OnInput != nil {
+		if err := o.OnInput(strings.TrimSpace(text)); err != nil {
+			o.Default = strings.TrimSpace(text)
+			if ui := h.hooks(); ui != nil {
+				ui.RefreshOverlay(o.ID, func() Overlay { return o })
+			}
+			h.Notify(slog.LevelWarn, "Could not save the key", err.Error())
+			return
+		}
+		if ui := h.hooks(); ui != nil {
+			ui.CloseOverlay(o.ID, o.Origin, o.Path)
+		}
+		return
+	}
 	h.overlayAnswered(o, text)
 	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, text)
 }
@@ -2282,6 +2309,8 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		h.syncSkills()
 		h.syncTypes()
 		h.GoSafe("git status", func() { h.gitStatus() })
+		// the keychain is a subprocess per entry; the pass never holds boot
+		h.GoSafe("stored keys", func() { h.loadStoredKeys() })
 	}
 
 	g.SB.SetGuard(h.guardLua)
@@ -2328,7 +2357,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.141.0"))
+	api.RawSetString("version", glua.LString("0.142.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

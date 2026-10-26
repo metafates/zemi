@@ -1488,7 +1488,7 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
-		if len(o.Items) != 1 || o.Items[0].Text != "deepseek" || o.Items[0].Copy != "export DEEPSEEK_API_KEY=" || !strings.HasPrefix(o.Body, "No model yet: export") {
+		if len(o.Items) != 1 || o.Items[0].Text != "deepseek" || o.Items[0].Copy != "export DEEPSEEK_API_KEY=" || o.Items[0].Run != "keys paste deepseek" || !strings.HasPrefix(o.Body, "No model yet: press enter") {
 			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
 		}
 	}
@@ -1503,8 +1503,8 @@ func TestModelPickerOdd(t *testing.T) {
 	if o.Selected != 2 || len(o.Items) != 5 || row.Text != "a/typo" || row.Run != "model a/typo" || row.Key != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
-	// the keyless builtins still close the list, copy only, with no body
-	if last := o.Items[4]; last.Text != "deepseek" || last.Run != "" || last.Copy != "export DEEPSEEK_API_KEY=" || o.Body != "" {
+	// the keyless builtins still close the list, now with paste on enter
+	if last := o.Items[4]; last.Text != "deepseek" || last.Run != "keys paste deepseek" || last.Verb != VerbPaste || last.Copy != "export DEEPSEEK_API_KEY=" || o.Body != "" {
 		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
 	if w := h.modelRow().Detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {

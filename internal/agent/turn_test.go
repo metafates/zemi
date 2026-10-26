@@ -659,7 +659,7 @@ func TestRegistryResolve(t *testing.T) {
 	err := r.Register(Spec{
 		ID: "myllm", Kind: "openai_compat", BaseURL: "https://llm.internal/v1",
 		Models: []Model{{ID: "main", Display: "Main"}},
-	}, "k")
+	}, "k", false)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -668,7 +668,7 @@ func TestRegistryResolve(t *testing.T) {
 	}
 	// every reload replays init.lua, so registering an id again replaces it,
 	// key included
-	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}, ""); err != nil {
+	if err := r.Register(Spec{ID: "myllm", Kind: "openai"}, "", false); err != nil {
 		t.Fatalf("re-register: %v", err)
 	}
 	if specs := r.List(); len(specs) != 1 || specs[0].Kind != "openai" || r.HasKey("myllm") {
@@ -687,7 +687,7 @@ func TestRegistryConcurrentReload(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 100 {
-			_ = r.Register(Spec{ID: fmt.Sprint("p", i%3), Kind: KindOpenAI}, "k")
+			_ = r.Register(Spec{ID: fmt.Sprint("p", i%3), Kind: KindOpenAI}, "k", false)
 		}
 	})
 	for range 100 {
@@ -734,7 +734,7 @@ func TestProviderHeadersRideRequests(t *testing.T) {
 		ID: "gw", Kind: KindOpenAICompat, BaseURL: srv.URL,
 		Headers: map[string]string{"X-Team": "core"},
 		Models:  []Model{{ID: "m"}},
-	}, "k")
+	}, "k", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +802,7 @@ func TestOpenAIResponses(t *testing.T) {
 	}))
 	defer srv.Close()
 	reg := &Registry{}
-	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL, Body: map[string]any{"prompt_cache_retention": "24h"}}, "k"); err != nil {
+	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL, Body: map[string]any{"prompt_cache_retention": "24h"}}, "k", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
@@ -914,7 +914,7 @@ func TestCacheBreakpoints(t *testing.T) {
 	}
 	reg := &Registry{}
 	for _, s := range []Spec{{ID: "a", Kind: KindAnthropic}, {ID: "or", Kind: KindOpenRouter}} {
-		if err := reg.Register(s, "k"); err != nil {
+		if err := reg.Register(s, "k", false); err != nil {
 			t.Fatal(err)
 		}
 	}

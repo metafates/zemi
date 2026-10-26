@@ -1175,6 +1175,21 @@ while a builtin's key may be exported for other tools.
 `zemi.provider.add` and `zemi.provider.del` take any caller: a provider's key
 comes from `zemi.env.get` and is never exposed back to Lua.
 
+A key can also be pasted into the TUI (`/keys`, or enter on a provider in
+`/model`'s "Needs a key" section): zemi stores it in the OS keychain under
+`key:<provider>`, with a 0600 file in the data dir where no chain answers,
+and it is zemi's own - a key config or the environment already answers for
+outranks it, so the hints that name those stay true, and a paste on such a
+provider is refused with the way back named. The precedence is config, then
+the environment, then the keychain: after every generation seeds the
+registry, one background pass fills the providers still keyless from the
+chain, and a send that would fail for a missing key makes one attempt
+itself, so a paste is live with no restart and boot pays the chain's
+subprocess per entry only once, off the boot path. `/keys` says which store
+holds each key, pastes and replaces the stored ones, and removes one with
+`x`; the paste box is masked (a bullet per rune) and a key never reaches a
+command line, a log, a toast or a copy.
+
 `zemi.model.ask` is one tool-less model call on a role's model or an id
 (default `default`, the conversation's model), run off the interpreter and
 billed to the live session.
@@ -3053,5 +3068,5 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 
 ## 13. Open questions
 
-- Credential storage and auth flow (MCP grants persist in the OS keychain with
-  a 0600 file fallback; provider keys are still only read with `zemi.env.get`).
+- A headless path to the stored keys (`echo $KEY | zemi keys paste <provider>`),
+  for the servers the 0600 file fallback exists for.

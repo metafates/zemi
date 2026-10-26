@@ -1243,7 +1243,7 @@ func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 // the keychain subprocess would open it late. A grant saved in another
 // window shows here only after the next add.
 func (h *Host) refreshMCPSignIn(s *mcpServer) {
-	_, ok := h.mcpAuth(s).Ref().Get()
+	_, _, ok := h.mcpAuth(s).Ref().Get()
 	s.mu.Lock()
 	moved := ok != s.signedIn
 	s.signedIn = ok
@@ -1407,7 +1407,7 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 		return err
 	}
 	auth := h.mcpAuth(s)
-	if _, signedIn := auth.Ref().Get(); s.specSnapshot().URL == "" || !signedIn {
+	if _, _, signedIn := auth.Ref().Get(); s.specSnapshot().URL == "" || !signedIn {
 		return Usagef("%s is not signed in", name)
 	}
 	if !yes {

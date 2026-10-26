@@ -44,9 +44,10 @@ func TestRef(t *testing.T) {
 		noDir  bool   // set: File under a missing directory
 		want   string // get
 		wantOK bool   // get: found; set: stored in the chain
+		wChain bool   // get: the keychain answered, not the file
 		noErr  bool   // set and delete: no error
 	}{
-		{name: "the keychain wins over the file", op: "get", chain: &stubChain{val: "kc"}, file: "filedata", want: "kc", wantOK: true, noErr: true},
+		{name: "the keychain wins over the file", op: "get", chain: &stubChain{val: "kc"}, file: "filedata", want: "kc", wantOK: true, wChain: true, noErr: true},
 		{name: "a keychain miss reads the file", op: "get", chain: &stubChain{getErr: ErrNotFound}, file: "filedata", want: "filedata", wantOK: true, noErr: true},
 		{name: "neither store holds one", op: "get", chain: &stubChain{getErr: ErrNotFound}},
 		{name: "a keychain save clears the file", op: "set", chain: &stubChain{}, file: "old", secret: "grant", wantOK: true, noErr: true},
@@ -80,9 +81,9 @@ func TestRef(t *testing.T) {
 
 			switch tc.op {
 			case "get":
-				got, ok := ref.Get()
-				if got != tc.want || ok != tc.wantOK {
-					t.Errorf("Get = (%q, %v), want (%q, %v)", got, ok, tc.want, tc.wantOK)
+				got, chain, ok := ref.Get()
+				if got != tc.want || ok != tc.wantOK || (ok && chain != tc.wChain) {
+					t.Errorf("Get = (%q, %v, %v), want (%q, %v)", got, chain, ok, tc.want, tc.wantOK)
 				}
 			case "set":
 				inChain, err := ref.Set(tc.secret)
@@ -109,7 +110,7 @@ func TestRef(t *testing.T) {
 					}
 				}
 				// a reader gets the secret from either store, chain copies dropped
-				if got, ok := ref.Get(); got != tc.secret || !ok {
+				if got, _, ok := ref.Get(); got != tc.secret || !ok {
 					t.Errorf("Get after Set = (%q, %v), want (%q, true)", got, ok, tc.secret)
 				}
 			case "delete":

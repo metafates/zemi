@@ -519,6 +519,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	}
 	st := overlayState{o: o, filterable: len(o.Items) >= filterMin}
 	if o.Input {
+		st.input.secret = o.Secret
 		st.input.insert(sanitize.String(o.Default))
 		return st
 	}
@@ -943,7 +944,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.closeOverlayByID(o.ID)
 			return cmd
 		case verb == "":
-		case verb == hostapi.VerbOpen && o.OnSelect == nil:
+		case (verb == hostapi.VerbOpen || verb == hostapi.VerbPaste) && o.OnSelect == nil:
 			return a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
 			var cmd tea.Cmd
@@ -1075,6 +1076,13 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	switch key {
 	case "enter":
 		o, value := st.o, in.text
+		if o.OnInput != nil {
+			// the save closes or reopens the box itself: a failed one comes
+			// back with the text
+			a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
+			a.bump()
+			return
+		}
 		if o.Run != "" {
 			name, args := hostapi.SplitCommand(o.Run + " " + value)
 			if err := a.runCommandErr(name, args, false); err != nil {
@@ -1189,10 +1197,16 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 			// wrapped to the width the box keeps, so a long one costs height
 			// and never widens or shifts the frame
 			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: st.inputErr, HL: hostapi.ChromeDanger}}, min(inner, max(st.size.w, 20)))...)
+		} else if st.o.Note != "" {
+			body = append(body, []hostapi.Segment{{Text: st.o.Note, HL: "Dim"}})
 		} else {
 			body = append(body, nil)
 		}
-		body = append(body, hint(inner, sendHint, hintPair{key: "esc", verb: "close"}))
+		save := sendHint
+		if st.o.Secret {
+			save = hintPair{key: "enter", verb: "save"}
+		}
+		body = append(body, hint(inner, save, hintPair{key: "esc", verb: "close"}))
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list with previews reads as text; a detail view widens to its

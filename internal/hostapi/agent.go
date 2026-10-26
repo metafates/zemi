@@ -342,7 +342,7 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 
 func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) {
 	id := h.roleModel(defaultRole)
-	model, err := h.resolveModel(id)
+	model, err := h.resolveTurnModel(id)
 	if err != nil {
 		return nil, err
 	}
@@ -736,7 +736,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 	}
 	// before the session row, so a send that cannot run leaves no empty session
 	id := h.roleModel(defaultRole)
-	if _, err := h.resolveModel(id); err != nil {
+	if _, err := h.resolveTurnModel(id); err != nil {
 		return fail(err)
 	}
 	if err := h.ensureSession(text); err != nil {
@@ -2095,14 +2095,15 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.Items = nil
 	}
 	// the builtin providers without a key close the list, so a user finds
-	// what else zemi supports and the variable that turns each on
+	// what else zemi supports and the variable that turns each on; enter
+	// pastes a key, y still copies the export line
 	for _, m := range h.Providers.Missing() {
-		o.Items = append(o.Items, OverlayItem{Text: m.ID, Section: "Needs a key", Desc: "export " + m.Env, Copy: "export " + m.Env + "="})
+		o.Items = append(o.Items, missingKeyRow(m))
 	}
 	if !usable && len(o.Items) > 0 {
 		// the init.lua path is split at its slashes, so a narrow box wraps it
 		// whole-component instead of mid-word; Body stays the line y copies
-		segs := []Segment{{Text: "No model yet: export one of these keys in your shell and start zemi again, or add a provider to "}}
+		segs := []Segment{{Text: "No model yet: press enter on a provider below to paste its key, export one in your shell and start zemi again, or add a provider to "}}
 		for part := range strings.SplitAfterSeq(h.initPath(), "/") {
 			segs = append(segs, Segment{Text: part})
 		}
@@ -2118,6 +2119,33 @@ func (h *Host) modelPicker(name string) Overlay {
 			}
 		}
 		o.BodySegs, o.Body = [][]Segment{segs}, SegsText(segs)
+	}
+	return o
+}
+
+// refreshModelPickers rebuilds the open model pickers, the selection on
+// provider's first model where one is named - where a paste from its
+// Needs-a-key row lands. The ids are modelPicker's own.
+func (h *Host) refreshModelPickers(provider string) {
+	ui := h.hooks()
+	if ui == nil {
+		return
+	}
+	p := provider
+	ui.RefreshOverlay("model", func() Overlay { return h.modelPickerAt("", p) })
+	for _, name := range h.targetNames() {
+		ui.RefreshOverlay("model "+name, func() Overlay { return h.modelPickerAt(name, p) })
+	}
+}
+
+// modelPickerAt is the picker with the selection on provider's first model.
+func (h *Host) modelPickerAt(name, provider string) Overlay {
+	o := h.modelPicker(name)
+	if provider == "" {
+		return o
+	}
+	if i := slices.IndexFunc(o.Items, func(it OverlayItem) bool { return agent.ModelID(it.ID).Provider() == provider }); i >= 0 {
+		o.Selected = i
 	}
 	return o
 }

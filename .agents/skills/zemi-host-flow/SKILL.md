@@ -90,7 +90,13 @@ providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot 
 variables the bundled one names (`bundledRef`), so the feed cannot pick which secret goes. No
 network at boot. Each builtin is on only while its key is exported, one without is in
 `Registry.Missing` so the no-model hint (`NoModelHint`) can name the variable, and
-`Registry.Reset` seeds every generation before `init.lua` (DESIGN §6.3).
+`Registry.Reset` seeds every generation before `init.lua` (DESIGN §6.3). A key can also
+live in the OS keychain: `/keys` (or enter on a "Needs a key" row in `/model`) pastes one
+under `key:<provider>` (`DataHome/keys/<provider>` as the 0600 file fallback), precedence
+is init.lua `api_key` > env > keychain, a `GoSafe("stored keys")` pass after each
+`Providers.Reset` fills the still-keyless providers, and a send that fails for a missing
+key makes one keychain attempt itself (`resolveTurnModel`; never in `modelRunErr`, which
+classify runs on the Lua actor). `/keys` pastes, replaces and removes the stored ones.
 Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
 trees (`setReload`, `Host.SetReload`; past dot-directories (a plugin's `.zemi` aside),
 `node_modules` and the editor configs zemi writes itself, `.luarc.json` and `.emmyrc.json`, plus

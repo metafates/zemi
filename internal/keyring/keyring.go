@@ -58,15 +58,17 @@ type Ref struct {
 	File    string
 }
 
-// Get reads the secret, keychain first; false means neither store holds one.
-func (r Ref) Get() (string, bool) {
+// Get reads the secret, keychain first; false means neither store holds
+// one, and chain is whether the keychain itself answered - where a key
+// lives is what the UI says about it.
+func (r Ref) Get() (secret string, chain, ok bool) {
 	if s, err := Chain.Get(Service, r.Account); err == nil && s != "" {
-		return s, true
+		return s, true, true
 	}
 	if b, err := os.ReadFile(r.File); err == nil && len(b) > 0 {
-		return string(b), true
+		return string(b), false, true
 	}
-	return "", false
+	return "", false, false
 }
 
 // Set stores the secret in the keychain, where it works, and removes the
@@ -77,10 +79,14 @@ func (r Ref) Set(secret string) (inChain bool, err error) {
 		_ = os.Remove(r.File) // ErrNotExist is the usual case, a cleanup miss no news
 		return true, nil
 	}
-	// Get reads the chain first, so an older copy there would shadow the
-	// file's newer one forever; the chain refused this write anyway.
+	// the chain refused this write, but an older copy it holds would shadow
+	// the file's newer one forever; it goes only once the file holds the
+	// secret, so a failed save never destroys the old key
+	if err := config.WriteFileAtomic(r.File, []byte(secret)); err != nil {
+		return false, err
+	}
 	_ = Chain.Delete(Service, r.Account)
-	return false, config.WriteFileAtomic(r.File, []byte(secret))
+	return false, nil
 }
 
 // Delete removes the secret from both stores; absent is fine.

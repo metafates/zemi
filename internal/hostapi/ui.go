@@ -602,9 +602,10 @@ const (
 	VerbCopy   Verb = "copy"   // the row's value
 	VerbGo     Verb = "go"     // a browsing list's leaf: close it, keeping the place
 	VerbStop   Verb = "stop"   // the screen's own thing stops: a loop, a goal
+	VerbPaste  Verb = "paste"  // a secret into the masked input it opens
 )
 
-var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo, VerbStop}
+var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo, VerbStop, VerbPaste}
 
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.

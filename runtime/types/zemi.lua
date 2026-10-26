@@ -1036,6 +1036,7 @@ function zemi.event.stats() end
 ---| "copy" the row's value
 ---| "go" a following list's row: enter lands there, closing the menu
 ---| "stop" the screen's own thing stops: a running loop or goal
+---| "paste" a key into the masked input the row opens
 
 --- One of a row's keys: a character that acts on the row from the list.
 ---@class zemi.OverlayItemKey
@@ -1597,7 +1598,7 @@ function zemi.log.list() end
 ---@class zemi.ProviderSpec
 ---@field id string
 ---@field kind zemi.ProviderKind
----@field api_key? string Read it with `zemi.env.get`; never write a key into a file.
+---@field api_key? string Read it with `zemi.env.get`; leave it empty and paste a key in /keys instead - zemi stores that in the OS keychain. Never write a key into a file.
 ---@field base_url? string Required for openai_compat, refused for openrouter; overrides the default endpoint for the other kinds.
 ---@field headers? table<string, string> Sent with every request; as secret as the key.
 ---@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). Not sent by google.
