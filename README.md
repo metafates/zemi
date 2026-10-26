@@ -51,9 +51,9 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 - Learns from previous sessions
 - Compatible with Claude Code plugins
 
-## API Keys
+## API keys
 
-You can use zemi with any provider, including local models or custom providers.
+You can use zemi with any provider.
 
 | Environment Variable        | Provider                                           |
 | --------------------------- | -------------------------------------------------- |
@@ -85,3 +85,19 @@ You can use zemi with any provider, including local models or custom providers.
 | `AZURE_OPENAI_API_VERSION`  | Azure OpenAI models                                |
 | `MOONSHOT_API_KEY`          | Moonshot                                           |
 | `XAI_API_KEY`               | xAI                                                |
+
+## Local models & custom providers
+
+zemi talks to any OpenAI-compatible server: Ollama, llama.cpp, LM Studio, vLLM, a gateway like LiteLLM. Register it in `~/.config/zemi/init.lua`:
+
+```lua
+zemi.provider.add({
+	id = "local",
+	kind = "openai_compat", -- or "anthropic", "openai" (OpenAI itself), "google", ...
+	base_url = "http://localhost:11434/v1",
+	-- api_key = zemi.env.get("MY_KEY"),   -- for a server that wants one
+	models = { { id = "qwen3", context_window = 32000 } },   -- listed by hand; the id is the name your server reports
+})
+```
+
+Then pick the model in `/model`. Registering under a builtin's id, say `openai`, replaces that builtin whole.
