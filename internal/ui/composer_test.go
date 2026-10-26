@@ -242,7 +242,7 @@ func TestComposerPlaceholder(t *testing.T) {
 		{"typed", "h", "", "h", 1, false},
 		{"command draft", "/", "", "/", 2, false},
 		{"a node has the keys", "", "side", "Ask anything", -1, false},
-		{"a modal has the keys", "", "", "", -1, true},
+		{"a modal has the keys", "", "", "Ask anything", -1, true},
 	} {
 		app.composer.text, app.composer.cursor = c.text, len(c.text)
 		app.host.SetFocus(c.focus)
