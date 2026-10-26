@@ -1955,8 +1955,9 @@ rides the `memories.md` line and its ledger entries.
   and a workflow's view also rebuild in place when a server, a run or a
   slow action changes their state off the key loop (`Overlay.Refresh`, for
   a run a 1 s ticker's `RefreshOverlay` that lives only as long as some run
-  does and builds only an open screen), a detail open over them too; `/sessions` rebuilds the same way, so a deleted
-  one goes without the list closing. A row's binary state (a skill or plugin on or off, a
+  does and builds only an open screen), a detail open over them too, and an
+  open group level with its servers; `/sessions` rebuilds the same way, so a
+  deleted one goes without the list closing. A row's binary state (a skill or plugin on or off, a
   picked option of a multi-select) is one 5-cell switch in the key column,
   `◆ on ` in Ok, `◇ off` or a locked `  on ` in Hint, so a toggle never
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
@@ -2991,9 +2992,11 @@ the AfterWrite hook scrubs what the user approves.
   at most five per search, kept per session and per subagent run. A lua
   script reaches any of them by name, deferred or not, through the same gate,
   and `zemi.tool.list()` names the run's MCP tools beside its own. A server
-  carries a `group` label: `/mcp` draws each group with its own switch (on
-  only when every member is on, so space turns a mixed or off group on and
-  an all-on group off) and `/mcp enable|disable|toggle` and `zemi.mcp.enable`
+  carries a `group` label: `/mcp` draws each group as one row with its own
+  switch (on only when every member is on, so space turns a mixed or off
+  group on and an all-on group off; enter and space toggle, `l` opens the
+  group's level, its servers listed there the way a `/messages` row nests a
+  rail) and `/mcp enable|disable|toggle` and `zemi.mcp.enable`
   act on a group or one server. The switches persist per server in the
   global store's kv (`mcp:<name>`, sparse: absent is on); a disabled server
   registers as `off` and never starts, and a name is a server or a group,

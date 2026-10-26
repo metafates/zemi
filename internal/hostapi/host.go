@@ -496,11 +496,12 @@ type Host struct {
 	viewBack string    // the command that reopens the screen view came from
 	viewMenu string    // the overlay left open under view, whose esc goes to the view
 
-	// msgMu guards the messages picker's levels opened in this session, and
-	// the call view on top of them: a transcript that grows rebuilds each
-	// where it is open
+	// msgMu guards the messages picker's levels opened in this session, the
+	// call view on top of them, and mcp's open group level: a transcript that
+	// grows rebuilds each where it is open, and a server's state its level
 	msgMu     sync.Mutex
 	msgLevels []string
+	mcpLevel  string // the group level /mcp opened last, "" for none
 	callRow   int    // the row the open call view shows
 	callID    string // that call's id, which names the row it settles at
 	callServe int    // the row the live call view's watcher serves, so an

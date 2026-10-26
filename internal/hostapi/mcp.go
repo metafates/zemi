@@ -61,6 +61,7 @@ type mcpServer struct {
 	err         string
 	signIn      string // the sign-in URL while one waits in the browser
 	authorizing bool   // a flow is between its start and its park, so no second one starts
+	signedIn    bool   // a stored grant existed the last time the keychain was asked
 	stopped     bool
 	refreshing  bool // a tools/list refresh is running
 	queued      bool // a list_changed landed during it: one more run after
@@ -118,6 +119,11 @@ func (h *Host) addMCP(name string, spec mcpSpec) error {
 		}
 	}
 	h.mcp.mu.Unlock()
+	if spec.URL != "" {
+		// the row's sign-out key rests on this one fact, and the keychain
+		// subprocess is far too slow to ask on every /mcp build
+		h.GoSafe("mcp grant "+name, func() { h.refreshMCPSignIn(s) })
+	}
 	// a racing add for the same name may have stopped s between the sections
 	s.mu.Lock()
 	starting := s.status == StatusStarting
@@ -446,13 +452,24 @@ func (h *Host) setMCP(s *mcpServer, status ServiceStatus, err string) bool {
 	return moved
 }
 
-// mcpChanged redraws what shows the servers, an open /mcp included. The
-// refresh builds nothing for a closed one.
+// mcpChanged redraws what shows the servers, an open /mcp and its open group
+// level included. The refresh builds nothing for a closed one.
 func (h *Host) mcpChanged() {
 	h.refresh()
 	if ui := h.hooks(); ui != nil {
 		ui.RefreshOverlay("mcp", h.mcpOverlay)
+		if group := h.mcpOpenGroup(); group != "" {
+			ui.RefreshOverlay("mcp group "+group, func() Overlay { return h.mcpGroupOverlay(group) })
+		}
 	}
+}
+
+// mcpOpenGroup is the group whose level /mcp opened last, "" for none: a
+// closed one builds nothing (RefreshOverlay draws only open overlays).
+func (h *Host) mcpOpenGroup() string {
+	h.msgMu.Lock()
+	defer h.msgMu.Unlock()
+	return h.mcpLevel
 }
 
 func (h *Host) needsSignIn(s *mcpServer) {
@@ -975,19 +992,21 @@ func (h *Host) mcpCommands() []*Command {
 				return h.signInMCP(strings.TrimSpace(name))
 			case "sign-in-all":
 				return h.signInAllMCP()
+			case "group":
+				return h.openMCPGroup(strings.TrimSpace(name))
 			case "sign-out":
 				name, confirm = ConfirmArgs(name, confirm)
 				return h.signOutMCP(name, confirm)
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
-		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out", "enable", "disable", "toggle"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out", "enable", "disable", "toggle", "group"}, func(h *Host, sub string) []string {
 			var names []string
 			for _, s := range h.mcp.list() {
 				names = append(names, s.name)
-				// the toggle verbs act on groups too; restart and sign-in do not
+				// the toggle verbs and group act on groups; restart and sign-in do not
 				switch sub {
-				case "enable", "disable", "toggle":
+				case "enable", "disable", "toggle", "group":
 					if g := s.group(); g != "" && !slices.Contains(names, g) {
 						names = append(names, g)
 					}
@@ -1058,10 +1077,10 @@ var mcpMarks = map[ServiceStatus]MarkKind{
 	StatusSignIn: tools.MarkWait, StatusStopped: tools.MarkStop, StatusOff: tools.MarkStop,
 }
 
-// mcpItems lists the servers as a tree: a group's switch reads on only when
-// every member is on, so space on it turns a mixed or off group on and an
-// all-on group off. No Fields on the group row: a row with a view opens it on
-// enter instead of toggling.
+// mcpItems lists the servers: ungrouped ones flat, each group one row whose
+// switch reads on only when every member is on, so space turns a mixed or
+// off group on and an all-on group off; l opens the group's level, its
+// servers listed there.
 func (h *Host) mcpItems() []OverlayItem {
 	servers := h.mcp.list()
 	groups := map[string][]*mcpServer{}
@@ -1069,7 +1088,6 @@ func (h *Host) mcpItems() []OverlayItem {
 	for _, s := range servers {
 		if g := s.group(); g == "" {
 			solo = append(solo, s)
-			continue
 		} else {
 			groups[g] = append(groups[g], s)
 		}
@@ -1086,31 +1104,72 @@ func (h *Host) mcpItems() []OverlayItem {
 		items = append(items, OverlayItem{
 			ID:   "mcp group " + g,
 			Text: g,
-			Row:  []Segment{{Text: "  "}, {Text: g, HL: "Title"}},
+			Row:  []Segment{{Text: g, HL: "Title"}},
 			Desc: fmt.Sprintf("%d of %d on", on, len(members)),
 			On:   new(on == len(members)),
 			Run:  "mcp toggle " + g,
 			Keys: []ItemKey{
+				{Key: "l", Desc: "open", Run: "mcp group " + g, Verb: VerbOpen},
 				{Key: "e", Desc: "enable all", Run: "mcp enable " + g},
 				{Key: "d", Desc: "disable all", Run: "mcp disable " + g},
 			},
 		})
-		for _, s := range members {
-			items = append(items, h.mcpItem(s, g))
-		}
 	}
 	for _, s := range solo {
-		items = append(items, h.mcpItem(s, ""))
+		items = append(items, h.mcpItem(s))
 	}
 	return items
 }
 
+// mcpGroupItems lists one group's servers as the rows its level toggles.
+func (h *Host) mcpGroupItems(group string) []OverlayItem {
+	var items []OverlayItem
+	for _, s := range h.mcp.list() {
+		if s.group() == group {
+			items = append(items, h.mcpItem(s))
+		}
+	}
+	return items
+}
+
+// mcpGroupOverlay is one group's level: its servers, toggled in place. The
+// id extends the list's own, so the menu closes whole from any of its levels
+// and esc lands back on the list.
+func (h *Host) mcpGroupOverlay(group string) Overlay {
+	return Overlay{
+		ID:     "mcp group " + group,
+		Title:  "MCP servers / " + group,
+		Origin: lua.OriginBuiltin,
+		Items:  h.mcpGroupItems(group),
+		Reload: func() []OverlayItem { return h.mcpGroupItems(group) },
+		Empty:  "No servers in this group.",
+	}
+}
+
+// openMCPGroup opens one group's level; /mcp group <name>.
+func (h *Host) openMCPGroup(group string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if group == "" {
+		return Usagef("usage: /mcp group <group>")
+	}
+	if len(h.mcpGroupItems(group)) == 0 {
+		return Usagef("no MCP group %q", group)
+	}
+	ui.OpenOverlay(h.mcpGroupOverlay(group))
+	h.msgMu.Lock()
+	h.mcpLevel = group
+	h.msgMu.Unlock()
+	return nil
+}
+
 // mcpItem is one server row: the switch is the persisted switch, the mark and
-// desc the runtime state, and enter still opens the detail. A group's member
-// rows carry the tree line.
-func (h *Host) mcpItem(s *mcpServer, group string) OverlayItem {
+// desc the runtime state, and enter still opens the detail.
+func (h *Host) mcpItem(s *mcpServer) OverlayItem {
 	s.mu.Lock()
-	status, errText, signIn := s.status, s.err, s.signIn
+	status, errText, signIn, signedIn := s.status, s.err, s.signIn, s.signedIn
 	spec := s.spec
 	var tools []string
 	for _, t := range s.tools {
@@ -1145,19 +1204,13 @@ func (h *Host) mcpItem(s *mcpServer, group string) OverlayItem {
 	if status == StatusSignIn {
 		keys = append(keys, ItemKey{Key: "s", Desc: "sign in", Run: "mcp sign-in " + s.name})
 	}
-	if spec.URL != "" {
-		_, signedIn := h.mcpAuth(s).Ref().Get()
-		if signedIn {
-			keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name})
-		}
+	if spec.URL != "" && signedIn {
+		keys = append(keys, ItemKey{Key: "x", Desc: "sign out", Danger: true, Run: "mcp sign-out " + s.name})
 	}
 	item := OverlayItem{
 		ID: "mcp " + s.name, Text: s.name, Desc: desc,
 		Mark: mcpMarks[status], On: new(s.enabledFlag()), Run: "mcp toggle " + s.name,
 		Fields: fields, Keys: keys,
-	}
-	if group != "" {
-		item.Row = []Segment{{Text: "│ ", HL: "Dim"}, {Text: s.name}}
 	}
 	if signIn != "" {
 		// the URL is too long for a toast; y copies it when the browser
@@ -1182,6 +1235,21 @@ func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 	return &mcp.Auth{
 		Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
 		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret, CallbackPort: s.spec.CallbackPort,
+	}
+}
+
+// refreshMCPSignIn asks the keychain once whether a stored grant exists. It
+// runs off the UI path at registration: /mcp builds a row per server, and
+// the keychain subprocess would open it late. A grant saved in another
+// window shows here only after the next add.
+func (h *Host) refreshMCPSignIn(s *mcpServer) {
+	_, ok := h.mcpAuth(s).Ref().Get()
+	s.mu.Lock()
+	moved := ok != s.signedIn
+	s.signedIn = ok
+	s.mu.Unlock()
+	if moved {
+		h.mcpChanged()
 	}
 }
 

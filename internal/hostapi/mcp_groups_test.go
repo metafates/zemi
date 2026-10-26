@@ -7,15 +7,20 @@ package hostapi
 import (
 	"encoding/json"
 	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -390,8 +395,8 @@ func TestMCPGroupItems(t *testing.T) {
 	})
 
 	items := h.mcpItems()
-	if len(items) != 4 {
-		t.Fatalf("%d items, want group row, two members, one solo", len(items))
+	if len(items) != 2 {
+		t.Fatalf("%d items, want the group row and the solo server", len(items))
 	}
 	g := items[0]
 	if g.ID != "mcp group work" || g.Text != "work" || g.Run != "mcp toggle work" {
@@ -400,45 +405,159 @@ func TestMCPGroupItems(t *testing.T) {
 	if g.On == nil || *g.On || g.Desc != "1 of 2 on" {
 		t.Fatalf("group row switch = %v desc %q, want off, 1 of 2 on", g.On, g.Desc)
 	}
-	if len(g.Row) != 2 || g.Row[1].HL != "Title" || g.Row[1].Text != "work" {
+	if len(g.Row) != 1 || g.Row[0].HL != "Title" || g.Row[0].Text != "work" {
 		t.Fatalf("group row label = %+v, want the title-colored name", g.Row)
 	}
 	if len(g.Fields) != 0 {
 		t.Fatalf("group row has fields %v: enter would open a view instead of toggling", g.Fields)
 	}
-	if len(g.Keys) != 2 || g.Keys[0].Key != "e" || g.Keys[1].Key != "d" {
-		t.Fatalf("group row keys = %+v, want enable all and disable all", g.Keys)
+	if len(g.Keys) != 3 || g.Keys[0].Key != "l" || g.Keys[0].Run != "mcp group work" || g.Keys[0].Verb != VerbOpen ||
+		g.Keys[1].Key != "e" || g.Keys[2].Key != "d" {
+		t.Fatalf("group row keys = %+v, want l open, enable all and disable all", g.Keys)
 	}
-
-	jira := items[1]
-	if jira.ID != "mcp jira" || jira.Text != "jira" || jira.Run != "mcp toggle jira" {
-		t.Fatalf("member row = %+v", jira)
-	}
-	if jira.On == nil || !*jira.On || jira.Mark != tools.MarkOK {
-		t.Fatalf("member row switch %v mark %v, want on, ok", jira.On, jira.Mark)
-	}
-	if len(jira.Row) != 2 || jira.Row[0].Text != "│ " || jira.Row[0].HL != "Dim" || jira.Row[1].Text != "jira" {
-		t.Fatalf("member row label = %+v, want the dimmed tree line", jira.Row)
-	}
-	if len(jira.Fields) == 0 {
-		t.Fatal("a member row lost its detail fields")
-	}
-
-	off := items[2]
-	if off.On == nil || *off.On || off.Desc != string(StatusOff) || off.Mark != tools.MarkStop {
-		t.Fatalf("disabled member = %+v, want off switch, off desc, stop mark", off)
-	}
-	for _, k := range off.Keys {
-		if k.Key == "r" {
-			t.Fatal("a disabled server offers a restart")
-		}
-	}
-
-	solo := items[3]
+	solo := items[1]
 	if solo.Row != nil {
 		t.Fatalf("an ungrouped row carries a tree line %v", solo.Row)
 	}
 	if solo.On == nil || !*solo.On || solo.Run != "mcp toggle solo" {
 		t.Fatalf("solo row = %+v, want a switch and a toggle run", solo)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openMCPGroup("nope"); err == nil {
+		t.Fatal("an unknown group opened a level")
+	}
+	if err := h.openMCPGroup(""); err == nil {
+		t.Fatal("a groupless open opened a level")
+	}
+	if err := h.openMCPGroup("work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ui.overlays(); len(got) != 1 || got[0].ID != "mcp group work" || got[0].Title != "MCP servers / work" {
+		t.Fatalf("group level = %+v", ui.overlays())
+	}
+	o := ui.overlays()[0]
+	if len(o.Items) != 2 || o.Items[0].ID != "mcp jira" || o.Items[0].Row != nil {
+		t.Fatalf("level rows = %+v", o.Items)
+	}
+	if o.Reload == nil {
+		t.Fatal("the level is not a toggle list")
+	}
+	row := o.Items[1]
+	if row.ID != "mcp wiki" || *row.On || row.Desc != string(StatusOff) || row.Mark != tools.MarkStop {
+		t.Fatalf("the disabled member row = %+v, want off switch, off desc, stop mark", row)
+	}
+	if slices.ContainsFunc(row.Keys, func(k ItemKey) bool { return k.Key == "r" }) {
+		t.Fatal("a disabled server offers a restart")
+	}
+}
+
+// TestMCPGroupLevelRefresh: a server's state moving off the key loop rebuilds
+// the group level beside the list, and a member toggled inside the level
+// shows in the list once it is uncovered.
+func TestMCPGroupLevelRefresh(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	addFakeMCP(t, h, r, "jira", "work")
+	addFakeMCP(t, h, r, "solo", "")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openMCPGroup("work"); err != nil {
+		t.Fatal(err)
+	}
+	h.setMCP(serverOf(t, h, "jira"), StatusFailed, "boom")
+	ids, rebuilt := snapUI(ui)
+	if !slices.Contains(ids, "mcp") || !slices.Contains(ids, "mcp group work") {
+		t.Fatalf("refreshes = %v, want the list and the level", ids)
+	}
+	i := slices.IndexFunc(rebuilt, func(o Overlay) bool { return o.ID == "mcp group work" })
+	if i < 0 {
+		t.Fatalf("no level rebuild in %v", ids)
+	}
+	if row := rebuilt[i].Items[0]; row.ID != "mcp jira" || row.Desc != "failed" {
+		t.Fatalf("the rebuilt level row = %+v, want the failed state", row)
+	}
+	if err := h.toggleMCPName("jira"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if s := serverOf(t, h, "jira"); s.enabledFlag() {
+			return errors.New("the toggle has not settled")
+		}
+		return nil
+	})
+	items := h.mcpItems()
+	if len(items) != 2 || items[0].Desc != "0 of 1 on" {
+		t.Fatalf("list after the member toggle = %+v", items)
+	}
+}
+
+// snapUI reads a fakeUI's refresh ids and rebuilt overlays under its lock.
+func snapUI(ui *fakeUI) ([]string, []Overlay) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	return slices.Clone(ui.refreshed), slices.Clone(ui.rebuilt)
+}
+
+// plantGrant writes a stored grant for one server the way the OS keychain or
+// its fallback file would hold it.
+func plantGrant(t *testing.T, h *Host, s *mcpServer) {
+	t.Helper()
+	spec := s.specSnapshot()
+	grant, err := jsonv2.Marshal(mcp.Token{
+		ServerURL: spec.URL, AccessToken: "a0", ClientID: "c",
+		AuthURL: spec.URL + "/a", TokenURL: spec.URL + "/t", RedirectURI: spec.URL + "/c",
+	}, jsonv2.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(h.mcpAuth(s).Path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.mcpAuth(s).Path, grant, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// signOutKey reports whether a server's row offers x.
+func signOutKey(items []OverlayItem, name string) bool {
+	i := slices.IndexFunc(items, func(it OverlayItem) bool { return it.ID == "mcp "+name })
+	return i >= 0 && slices.ContainsFunc(items[i].Keys, func(k ItemKey) bool { return k.Key == "x" })
+}
+
+// TestMCPSignOutKey: the keychain is asked once per registration off the UI
+// path, so the sign-out key follows the grant without a read on every build.
+func TestMCPSignOutKey(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostDB(t)
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	addFakeMCP(t, h, r, "solo", "")
+	if signOutKey(h.mcpItems(), "solo") {
+		t.Fatal("a server with no grant offers the sign-out key")
+	}
+	plantGrant(t, h, serverOf(t, h, "solo"))
+	if err := h.restartMCP("solo"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if !signOutKey(h.mcpItems(), "solo") {
+			return errors.New("the stored grant never showed the sign-out key")
+		}
+		return nil
+	})
+	if err := h.signOutMCP("solo", true); err != nil {
+		t.Fatal(err)
+	}
+	if signOutKey(h.mcpItems(), "solo") {
+		t.Fatal("the sign-out key stayed after signing out")
+	}
+	// the build never asks the keychain: a grant planted now waits for the
+	// next registration instead of lighting the key mid-list
+	plantGrant(t, h, serverOf(t, h, "solo"))
+	if signOutKey(h.mcpItems(), "solo") {
+		t.Fatal("a list build read the keychain")
 	}
 }
