@@ -607,10 +607,6 @@ func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 		return cmp.Or(st.o.Verb, hostapi.VerbRun)
 	case r.Fill != "":
 		return cmp.Or(r.Verb, hostapi.VerbFill)
-	case st.o.Follow && st.o.Rail != 0:
-		// the run closes with the list, so enter cannot leave the chat on a
-		// row of it: the list stays where the preview put it
-		return ""
 	case st.o.Follow:
 		// the list already moved the chat to the row: enter keeps that place
 		return hostapi.VerbGo

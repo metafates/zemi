@@ -448,8 +448,9 @@ func turnElements(p pickTr, rows []int) []msgElement {
 }
 
 // messageCallRow is one call or thought of a rail: what it reads as, and the
-// view or run its key opens over the list. A live call (a negative row) is
-// still running: it bands and copies but opens no call view of its own.
+// view or run its key opens over the list - a live call (a negative row)
+// opens its live view, the one its chat row's click opens, which follows it
+// until it settles.
 func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}
@@ -466,7 +467,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 		item.Run = "workflows view " + m.Run
 	case m.Run != "":
 		item.Run = "agents show " + m.Run
-	case idx > 0:
+	default:
 		item.Run = "call " + strconv.Itoa(idx)
 	}
 	if item.Run != "" {

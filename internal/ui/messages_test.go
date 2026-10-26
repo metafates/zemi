@@ -1488,4 +1488,26 @@ func TestRailBandCoversTheLiveOnlyRun(t *testing.T) {
 	if from < 0 || from < chat.top || to >= chat.top+chat.viewH {
 		t.Fatalf("the pick is off screen: rows %d..%d of view %d..%d", from, to, chat.top, chat.top+chat.viewH)
 	}
+	// l on the run row opens the rail level, and l on its live call opens the
+	// live view the call's chat row's click opens; esc returns to the rail
+	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	for app.Pump() {
+	}
+	if id := top().o.ID; id != "messages rail -1" {
+		t.Fatalf("l on the live-only run row opened %q", id)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	waitPrompt(t, app, func() bool { return top().o.ID == "call:-1" })
+	for app.Pump() {
+	}
+	if !strings.Contains(ansi.Strip(app.Frame()), "hold the turn") {
+		t.Fatalf("the live view shows nothing:\n%s", ansi.Strip(app.Frame()))
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
+	for app.Pump() {
+	}
+	if n, id := len(app.overlays), top().o.ID; n != 2 || id != "messages rail -1" {
+		t.Fatalf("esc on the live view: %d overlays, %q", n, id)
+	}
 }

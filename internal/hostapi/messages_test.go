@@ -191,9 +191,10 @@ func TestMessagesRun(t *testing.T) {
 // TestMessagesLiveCalls: the picker reads the conversation the chat draws -
 // the calls a running turn has not settled yet are rows of the run its
 // settled rows end in, listed call by call in the rail level and counted by
-// the list's run row, though still running ones open no view of their own.
-// Nothing lists while no call has settled (the run does not exist yet), and
-// a reply that started folds the run the way the chat does.
+// the list's run row; a still running one opens its live view, the one its
+// chat row's click opens. Nothing lists while no call has settled (the run
+// does not exist yet), and a reply that started folds the run the way the
+// chat does.
 func TestMessagesLiveCalls(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
@@ -236,8 +237,8 @@ func TestMessagesLiveCalls(t *testing.T) {
 	want := []row{
 		{"start the dev server", 2, "call 2"},
 		{"job_read job-1", 3, "call 3"},
-		{"job_read job-1", -1, ""},
-		{"fix f1", -2, ""},
+		{"job_read job-1", -1, "call -1"},
+		{"fix f1", -2, "call -2"},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("rail rows = %+v, want %+v", got, want)
@@ -248,7 +249,7 @@ func TestMessagesLiveCalls(t *testing.T) {
 	if edit.Mark != tools.MarkOK || edit.Copy != "f1.go" {
 		t.Errorf("live edit = %+v", edit)
 	}
-	if call := messageCallRow(-2, pickTr{live: []ChatMessage{{Kind: RowTool, Tool: "read", Text: "a.go"}}}.at(-2)); call.Run != "" || call.Verb != "" {
+	if call := messageCallRow(-2, pickTr{live: []ChatMessage{{Kind: RowTool, Tool: "read", Text: "a.go"}}}.at(-2)); call.Run != "call -2" || call.Verb != VerbGo {
 		t.Errorf("a live call opens %+v", call.Run)
 	}
 
