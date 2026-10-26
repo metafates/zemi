@@ -42,7 +42,7 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 
 func TestShellTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
-	p := &Pipeline{Jobs: NewJobs()}
+	p := &Pipeline{Jobs: &Jobs{}}
 	res, _ := runShell(t.Context(), p, shellArgs{
 		Command: "echo started; sleep 30", TimeoutMS: 400,
 	})
@@ -77,7 +77,7 @@ func TestShellOrphanIsNotAnError(t *testing.T) {
 // TestJobStreamsOutput: job_read shows a long-running process's output
 // while it runs, and a shell line works without args.
 func TestJobStreamsOutput(t *testing.T) {
-	p := &Pipeline{Jobs: NewJobs()}
+	p := &Pipeline{Jobs: &Jobs{}}
 	res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "echo ready && sleep 30"})
 	if res.IsError {
 		t.Fatal(res.Content)
@@ -109,7 +109,7 @@ func TestJobStreamsOutput(t *testing.T) {
 // chunk, which since() has already moved past.
 func TestJobReadSpillsTheCut(t *testing.T) {
 	dir := t.TempDir()
-	p := &Pipeline{Jobs: NewJobs(), Pad: dir}
+	p := &Pipeline{Jobs: &Jobs{}, Pad: dir}
 	if res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "seq 1 4000"}); res.IsError {
 		t.Fatal(res.Content)
 	}
@@ -146,7 +146,7 @@ func TestJobReadOfAFailedJobIsAnError(t *testing.T) {
 		{"a job the user killed", "sleep 30", true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			p := &Pipeline{Jobs: NewJobs(), Pad: t.TempDir()}
+			p := &Pipeline{Jobs: &Jobs{}, Pad: t.TempDir()}
 			start, _ := runJobStart(t.Context(), p, jobStartArgs{Command: c.command})
 			if start.IsError {
 				t.Fatal(start.Content)

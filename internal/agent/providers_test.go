@@ -29,7 +29,7 @@ import (
 )
 
 func TestCallOptions(t *testing.T) {
-	r := NewRegistry()
+	r := &Registry{}
 	r.Reset(Catalog{Specs: []Spec{
 		{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{
 			{ID: "haiku"},
@@ -135,7 +135,7 @@ func cacheKey(o fantasy.ProviderOptionsData) string {
 // TestCallOptionsBody: a spec's extra body fields ride every request, with
 // or without a reasoning effort.
 func TestCallOptionsBody(t *testing.T) {
-	r := NewRegistry()
+	r := &Registry{}
 	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Body: map[string]any{"service_tier": "flex"}}, "k"); err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestUpdateCatalog(t *testing.T) {
 // the spec's default model, Register clears Builtin so DropBuiltin keeps
 // the override, Delete and Register drop an id from Missing.
 func TestRegistryBuiltin(t *testing.T) {
-	r := NewRegistry()
+	r := &Registry{}
 	r.Reset(Catalog{Specs: []Spec{
 		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultModel: "big", Models: []Model{{ID: "big"}}},
 		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},

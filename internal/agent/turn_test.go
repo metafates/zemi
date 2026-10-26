@@ -645,7 +645,7 @@ func TestCancelAbortsTurn(t *testing.T) {
 }
 
 func TestRegistryResolve(t *testing.T) {
-	r := NewRegistry()
+	r := &Registry{}
 	if _, err := r.Resolve("nosuch/model"); err == nil {
 		t.Fatal("unknown provider must fail")
 	}
@@ -683,7 +683,7 @@ func TestRegistryResolve(t *testing.T) {
 // TestRegistryConcurrentReload: a config reload registers while turns read
 // (go test -race catches an unguarded registry).
 func TestRegistryConcurrentReload(t *testing.T) {
-	r := NewRegistry()
+	r := &Registry{}
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 100 {
@@ -729,7 +729,7 @@ func TestProviderHeadersRideRequests(t *testing.T) {
 		fmt.Fprint(w, `{"error":{"message":"no model here"}}`)
 	}))
 	defer srv.Close()
-	r := NewRegistry()
+	r := &Registry{}
 	err := r.Register(Spec{
 		ID: "gw", Kind: KindOpenAICompat, BaseURL: srv.URL,
 		Headers: map[string]string{"X-Team": "core"},
@@ -801,7 +801,7 @@ func TestOpenAIResponses(t *testing.T) {
 			`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, "[DONE]")
 	}))
 	defer srv.Close()
-	reg := NewRegistry()
+	reg := &Registry{}
 	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL, Body: map[string]any{"prompt_cache_retention": "24h"}}, "k"); err != nil {
 		t.Fatal(err)
 	}
@@ -912,7 +912,7 @@ func TestCacheBreakpoints(t *testing.T) {
 			return http.DefaultTransport.RoundTrip(r)
 		})}
 	}
-	reg := NewRegistry()
+	reg := &Registry{}
 	for _, s := range []Spec{{ID: "a", Kind: KindAnthropic}, {ID: "or", Kind: KindOpenRouter}} {
 		if err := reg.Register(s, "k"); err != nil {
 			t.Fatal(err)

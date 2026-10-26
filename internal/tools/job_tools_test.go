@@ -28,7 +28,7 @@ func waitFor(t *testing.T, check func() bool) {
 // TestJobKillReadOnlyDeny: job_kill makes no gate request, so runJobKill
 // carries the read-only deny itself instead of killing ungated.
 func TestJobKillReadOnlyDeny(t *testing.T) {
-	p := &Pipeline{Jobs: NewJobs(), ReadOnly: func() bool { return true }}
+	p := &Pipeline{Jobs: &Jobs{}, ReadOnly: func() bool { return true }}
 	if res, _ := runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"}); !res.IsError || !strings.Contains(res.Content, ByReadOnly) {
 		t.Fatalf("a read-only agent's kill must deny: %+v", res)
 	}
@@ -36,7 +36,7 @@ func TestJobKillReadOnlyDeny(t *testing.T) {
 
 func TestJobsEvictFinished(t *testing.T) {
 	t.Parallel()
-	m := NewJobs()
+	m := &Jobs{}
 	n := maxKeptJobs + 5
 	changes := make(chan struct{}, 2*n)
 	waits := make(map[string]chan error, n)
@@ -76,7 +76,7 @@ func TestJobsEvictFinished(t *testing.T) {
 // sweep, so the refresh still finds the job and its view leaves "running".
 func TestJobsExitRefreshSeesTheJob(t *testing.T) {
 	t.Parallel()
-	m := NewJobs()
+	m := &Jobs{}
 	n := maxKeptJobs + 1
 	changes := make(chan struct{}, 2*n)
 	waits := make(map[string]chan error, n)

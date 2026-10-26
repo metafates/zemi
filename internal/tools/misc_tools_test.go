@@ -319,7 +319,7 @@ func TestJobToolsLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	p, _ := testPipeline(t, true)
 	t.Chdir(dir)
-	p.Jobs = NewJobs()
+	p.Jobs = &Jobs{}
 	changed := make(chan struct{}, 8)
 	// non-blocking: the hooks outlive the asserts that drain it, and a
 	// blocked send would hang the tool call itself

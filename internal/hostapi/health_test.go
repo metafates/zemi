@@ -226,6 +226,7 @@ func TestHealthMCPRow(t *testing.T) {
 		{[]ServiceStatus{StatusFailed, StatusSignIn}, "warn", "2 servers: 1 failed, 1 needs sign-in"},
 	} {
 		h, _ := newTestHostDB(t)
+		h.mcp.servers = map[string]*mcpServer{}
 		for i, st := range c.statuses {
 			h.mcp.servers[strconv.Itoa(i)] = &mcpServer{status: st}
 		}
@@ -241,6 +242,7 @@ func TestHealthMCPRow(t *testing.T) {
 func TestWaitMCP(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
+	h.mcp.servers = map[string]*mcpServer{}
 	s := &mcpServer{status: "starting"}
 	h.mcp.servers["a"] = s
 	ctx, cancel := context.WithCancel(t.Context())
