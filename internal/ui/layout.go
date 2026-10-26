@@ -15,15 +15,15 @@ import (
 
 // spanKid is one child of a box as the solver sees it.
 type spanKid struct {
-	size     hostapi.Size
-	want     int // a content node's measured cells
-	min, max int // max 0 means none
+	size        hostapi.Size
+	want        int // a content node's measured cells
+	floor, ceil int // ceil 0 means none
 }
 
 func (k spanKid) clamp(n int) int {
-	n = max(n, k.min)
-	if k.max > 0 {
-		n = min(n, k.max)
+	n = max(n, k.floor)
+	if k.ceil > 0 {
+		n = min(n, k.ceil)
 	}
 	return n
 }
@@ -57,7 +57,7 @@ func span(avail int, kids []spanKid) []int {
 	for ; used < avail; used++ {
 		best := -1
 		for i, k := range kids {
-			if k.size.Kind != hostapi.SizeFill || k.max > 0 && out[i] >= k.max {
+			if k.size.Kind != hostapi.SizeFill || k.ceil > 0 && out[i] >= k.ceil {
 				continue
 			}
 			if best < 0 || (given[i]+1)*weight(kids[best]) < (given[best]+1)*weight(k) {
@@ -90,7 +90,7 @@ func span(avail int, kids []spanKid) []int {
 				}
 				lo := 0
 				if floor {
-					lo = kids[i].min
+					lo = kids[i].floor
 				}
 				cut := min(used-avail, max(out[i]-lo, 0))
 				out[i] -= cut
@@ -241,14 +241,14 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 		avail = max(avail, 0)
 		kids = make([]spanKid, len(items))
 		for i, c := range items {
-			kids[i] = spanKid{size: c.Size, min: c.Min, max: c.Max}
+			kids[i] = spanKid{size: c.Size, floor: c.Min, ceil: c.Max}
 			if c.Size.Kind == hostapi.SizeContent && !row {
 				kids[i].want = a.measure(c, cross)
 			}
 		}
 		mins, gone := 0, -1
 		for i, c := range items {
-			mins += kids[i].min
+			mins += kids[i].floor
 			if c.Collapse {
 				gone = i
 			}
