@@ -28,6 +28,8 @@ $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the grace
 $S/zemi-lab size 60 15             # narrow and short layouts
+$S/zemi-lab peer                   # a second zemi on the same tree and store
+$S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
 $S/zemi-lab db                     # this project's zemi.db; logs is the launch log
 $S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
 ```
