@@ -130,13 +130,13 @@ func (h *Host) memoriesOverlay() Overlay {
 		if k < 0 || z.l == 0 { // the line merged away or the zoom was popped past
 			continue
 		}
-		a, b := store.ViewLineText{L: z.l - 1, I: z.i * 2}, store.ViewLineText{L: z.l - 1, I: z.i*2 + 1}
-		for _, c := range []*store.ViewLineText{&a, &b} {
+		left, right := store.ViewLineText{L: z.l - 1, I: z.i * 2}, store.ViewLineText{L: z.l - 1, I: z.i*2 + 1}
+		for _, c := range []*store.ViewLineText{&left, &right} {
 			if n, err := h.DB.NodeAt(c.L, c.I); err == nil {
 				c.Text, c.Size = n.Text, n.Size
 			}
 		}
-		lines = slices.Replace(lines, k, k+1, a, b)
+		lines = slices.Replace(lines, k, k+1, left, right)
 	}
 	jumps := h.chatJumpRows()
 	for _, ln := range lines {

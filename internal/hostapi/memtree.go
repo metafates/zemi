@@ -66,6 +66,10 @@ const placeholder = "(not summarized yet: zoom it)"
 // the same way and no retry can fix it - the node parks on its first one.
 var errEmptyReply = errors.New("empty compaction reply")
 
+// errWiped: the log shrank under the builder's cursor - another window's
+// /reset. The run loop answers it with a rebuild.
+var errWiped = errors.New("the chat was reset in another window")
+
 // nodeID names one tree node: node(l,i) summarizes the 2^l messages from
 // i*2^l on. The model reads it as "id+n" and zooms it open.
 type nodeID struct {
@@ -398,6 +402,9 @@ func (b *memTree) run() {
 	for {
 		if err := b.syncNew(); err != nil {
 			b.h.Log.Warn("memtree sync failed", "origin", "agent", "error", err)
+			if errors.Is(err, errWiped) {
+				b.rebuild() // another window wiped the chat: start over from its log
+			}
 		}
 		b.dispatch()
 		b.batch(false)
@@ -539,12 +546,18 @@ func (b *memTree) resyncView() error {
 
 // syncNew learns the appends that landed since the last round: their view
 // lines, their leaves, the template-built ones' sizes. Failed builds rejoin
-// their queues here, per their streak.
+// their queues here, per their streak. A log that shrank under b.seen is
+// another window's /reset: the wiped seqs are new rows now, so rebuild.
 func (b *memTree) syncNew() error {
 	fresh := false
 	for {
 		rows, err := b.h.DB.LogFrom(b.seen+1, syncBatch)
 		if err != nil {
+			return err
+		}
+		if count, err := b.h.DB.LogCount(); err == nil && count < b.msgs {
+			return errWiped
+		} else if err != nil {
 			return err
 		}
 		fresh = fresh || len(rows) > 0

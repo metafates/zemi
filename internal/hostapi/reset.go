@@ -86,4 +86,3 @@ func (h *Host) openReset(confirm string) error {
 	return nil
 }
 
-var _ = slog.LevelInfo

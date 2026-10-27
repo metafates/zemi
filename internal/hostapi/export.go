@@ -1,8 +1,7 @@
-// export.go is what a session can be copied out of: /export writes the
+// export.go is what a chat can be copied out of: /export writes the
 // conversation as markdown, /copy puts a reply or a code block on the
-// clipboard, /fork continues it in a new session so the original stays as it
-// was, and /usage reports what it cost. It also caches the todo list the chat
-// widget shows.
+// clipboard, and /usage reports what it cost. It also caches the todo list the
+// chat widget shows.
 
 package hostapi
 

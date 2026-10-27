@@ -237,6 +237,46 @@ func TestBuilderWakesOnRealTurns(t *testing.T) {
 	}
 }
 
+// TestBuilderRebuildsAfterForeignReset: another window's /reset shrank the
+// log under this builder's cursor; its next wake must rebuild and build the
+// fresh seqs instead of stalling until restart.
+func TestBuilderRebuildsAfterForeignReset(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	m := replyStub(t, h, "ok")
+	h.SetUIHooks(&fakeUI{})
+	line := strings.Repeat("u", 600)
+	for range 3 {
+		if _, err := h.chat.User(line, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 2); err != nil {
+			return fmt.Errorf("pre-reset leaf 2 unbuilt: %w", err)
+		}
+		return nil
+	})
+	// another window wipes; the fresh rows share this window's seq space again
+	if err := h.DB.ResetLog(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := h.chat.User("after the foreign reset", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 1); err != nil {
+			return fmt.Errorf("post-reset leaf 1 unbuilt: %w", err)
+		}
+		return nil
+	})
+	if m.calls.Load() == 0 {
+		t.Fatal("no builder call after the foreign reset")
+	}
+}
+
 // TestPromptCarriesTheViewSection: the main conversation's prompt renders
 // the view section and the builder's shares it, word for word; a subagent's
 // prompt gains neither.
