@@ -14,6 +14,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,7 +53,22 @@ const (
 	leafWaitLines = 8
 	// syncBatch bounds one read of the appends a wake stands for.
 	syncBatch = 1000
+	// buildCoolCap is the longest rate-limit cooldown: consecutive
+	// rate-limited rounds double buildCoolBase up to it.
+	buildCoolCap = 5 * time.Minute
 )
+
+// buildCoolBase is the first cooldown a rate-limited build arms. Unlike an
+// ordinary failure, which rides no timer, a rate limit is about the clock:
+// the cooldown retries the failed builds without fresh rows, a quiet
+// session's placeholders wait out the provider's rate window instead of
+// parking until its next message.
+var buildCoolBase = 20 * time.Second
+
+// buildMaxRetries is the provider retries one builder call gets, below the
+// turn's five: a rate-limited round should fail fast into the cooldown
+// instead of eight slots each burning fantasy's whole retry pass.
+var buildMaxRetries = 2
 
 // placeholder is the line a message shows until its node is built.
 const placeholder = "(not summarized yet: zoom it)"
@@ -65,6 +81,14 @@ var errEmptyReply = errors.New("empty compaction reply")
 // errWiped: the log shrank under the builder's cursor - another window's
 // /reset. The run loop answers it with a rebuild.
 var errWiped = errors.New("the chat was reset in another window")
+
+// rateLimited says whether a build failed on the provider's rate limit:
+// fantasy wraps the refusal in its retry error. Such a build cools down and
+// retries on the cooldown, not only on fresh rows.
+func rateLimited(err error) bool {
+	pe, ok := errors.AsType[*fantasy.ProviderError](err)
+	return ok && pe.StatusCode == http.StatusTooManyRequests
+}
 
 // nodeID names one tree node: node(l,i) summarizes the 2^l messages from
 // i*2^l on. The model reads it as "id+n" and zooms it open.
@@ -218,6 +242,8 @@ type memTree struct {
 	draining   bool       // a batch left the view above the floor
 	cv         []viewLine // the compaction view, the second sawtooth
 	cvBytes    int
+	cool       <-chan time.Time // a rate-limit cooldown's timer, nil when none
+	streak     int              // consecutive rate-limited rounds
 
 	// health is what /health reads of the queues; the worker rewrites it
 	// each round, so a reader never takes the worker's state.
@@ -225,9 +251,10 @@ type memTree struct {
 }
 
 // builderHealth is the builder's queue depth, unbuilt lines and failed
-// builds, what /health's builder row says.
+// builds, what /health's builder row says. coolingUntil is the rate-limit
+// cooldown's deadline, unix nanos, 0 when none.
 type builderHealth struct {
-	unbuilt, failed, queued atomic.Int64
+	unbuilt, failed, queued, coolingUntil atomic.Int64
 }
 
 // quiesceWait bounds a reset's wait for the in-flight builds: a provider
@@ -387,6 +414,11 @@ func (b *memTree) run() {
 			close(ack)
 		case r := <-b.results:
 			b.apply(r)
+		case <-b.cool:
+			// the rate-limit cooldown elapsed: the failed builds try again
+			b.health.coolingUntil.Store(0)
+			b.cool = nil
+			b.requeue()
 		}
 		b.reportHealth()
 	}
@@ -522,19 +554,19 @@ func (b *memTree) syncNew() error {
 			b.addLine(line)
 		}
 		if len(rows) < syncBatch {
-			b.requeue(fresh)
+			if fresh {
+				b.requeue()
+			}
 			return nil
 		}
 	}
 }
 
-// requeue moves failed builds back into their queues when fresh rows landed -
-// a failed call tries again at the next message, never in a timer loop - and
-// drops nodes the log no longer holds.
-func (b *memTree) requeue(fresh bool) {
-	if !fresh {
-		return
-	}
+// requeue moves failed builds back into their queues: the call tries again
+// at the next message (fresh rows land) or when a rate-limit cooldown
+// elapses - never in a timer loop otherwise - and drops nodes the log no
+// longer holds.
+func (b *memTree) requeue() {
 	keep := b.leafRetry[:0]
 	for _, seq := range b.leafRetry {
 		if seq >= b.msgs { // the row is gone (rewound)
@@ -565,9 +597,10 @@ func (b *memTree) addLine(line viewLine) {
 // dispatch fills the build slots: leaves first, then merges whose halves are
 // both built. A quiesce holds it: no call dispatches into a reset's wipe.
 // The boot gate holds it too: no call dispatches before the config step ran,
-// when no provider exists yet to answer one.
+// when no provider exists yet to answer one. A rate-limit cooldown holds it
+// until its timer fires.
 func (b *memTree) dispatch() {
-	if b.heldNow() || !b.ready.Load() {
+	if b.heldNow() || !b.ready.Load() || b.cool != nil {
 		return
 	}
 	for b.slots() < buildSlots {
@@ -697,7 +730,8 @@ func (b *memTree) send(r buildResult) {
 
 // apply installs a finished build. A failure holds its place in the retry
 // list: per the recipe, the call tries again at the next message - fresh
-// rows requeue it, and the retry rides no timer. The view self-heals.
+// rows requeue it - and a rate-limited one cools down and retries without
+// them. The view self-heals.
 func (b *memTree) apply(r buildResult) {
 	if r == (buildResult{}) {
 		return // the quiesce fence's zero result
@@ -715,13 +749,29 @@ func (b *memTree) apply(r buildResult) {
 		} else {
 			b.mergeRetry = append(b.mergeRetry, r.parent)
 		}
+		b.coolDown(r.err)
 		return
 	}
+	b.streak = 0 // the provider served a request: the next rate limit starts small
 	if r.leaf {
 		b.insertBuilt(nodeID{0, r.seq}, r.text)
 		return
 	}
 	b.insertBuilt(r.parent, r.text)
+}
+
+// coolDown arms the rate-limit cooldown on a rate-limited build: dispatch
+// holds until the timer fires, which requeues the failed builds without
+// fresh rows. Consecutive rate-limited rounds double the wait up to the
+// cap; any success resets the streak.
+func (b *memTree) coolDown(err error) {
+	if !rateLimited(err) || b.cool != nil {
+		return
+	}
+	b.streak++
+	d := min(buildCoolBase<<uint(min(b.streak-1, 8)), buildCoolCap)
+	b.health.coolingUntil.Store(time.Now().Add(d).UnixNano())
+	b.cool = time.NewTimer(d).C
 }
 
 // insertBuilt records a node the store accepted and moves its view line off
@@ -1001,6 +1051,7 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
 			MaxOutputTokens: &maxOut,
+			MaxRetries:      &buildMaxRetries,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 			ProviderOptions: opts,
 			Headers:         agent.SessionHeaders(store.MainSessionID),

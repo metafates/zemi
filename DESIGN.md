@@ -1001,9 +1001,16 @@ zemi.provider.add({
 	base_url = "https://llm.internal/v1",
 	api_key = zemi.env.get("MYLLM_KEY"),
 	body = { service_tier = "flex" },         -- extra request-body fields (not google)
+	rate_limit = 10,                          -- requests per minute the provider allows
 	models = { { id = "main", display = "Main" } },
 })
 ```
+
+A `rate_limit` paces every call to the provider through one token bucket
+(the conversation, the summary builder, subagents), burst the minute's
+budget then one call at the minute's rate, so a low-rate-limit provider
+serves the turn instead of refusing it; two zemi windows pace their own
+halves.
 
 There is one session per project: the anchor row `main` the migration
 inserts (§7), which billing and the todo list ride. The chat itself is the
@@ -2557,11 +2564,17 @@ One builder worker per project store (`memTree` in `hostapi/memtree.go`)
 owns the tree state; appends reach it through `Wake`, finished calls
 through its results channel, a reset through `RebuildQueues`. No lease: a
 second window races on `INSERT OR IGNORE` and on merges of children already
-gone, so a race wastes one cheap call and nothing else. A call that failed
-retries on a doubling backoff (1s to 60s) and parks after six failures in a
-row until new log rows land - except an empty reply, which no try can fix:
-the model spent its output on reasoning or a cap cut it, so the node parks
-on its first one, its build prompt in its own prefix. The view self-heals.
+gone, so a race wastes one cheap call and nothing else. A failed build
+retries at the next log row - no timer loop, the failure parks until fresh
+rows land. The exception is a rate-limited one (`429`): it arms a cooldown
+(`buildCoolBase`, doubling per consecutive rate-limited round up to
+`buildCoolCap`) that holds dispatch and retries the failed builds when the
+timer fires, since a rate limit passes with the clock and a quiet session
+must heal without a next message; a success resets the doubling, and an
+empty reply, which no wait can fix, parks on its first one. A builder call
+keeps fewer provider retries than a turn (`buildMaxRetries`): a
+rate-limited round should fail into the cooldown, not have 8 slots each
+burn a full retry pass. The view self-heals.
 
 A reset quiesces the builder, and quiesce is a fence: while it holds, the
 worker dispatches nothing, and every build dispatched before it has landed
@@ -2584,8 +2597,7 @@ plus a `thinking: {"type": "disabled"}` body field - measured on
 acme-gateway and DeepSeek, where effort low alone turns thinking ON on
 DeepSeek and the thinking field alone does nothing on the gateway; a model
 that ignores both still burns it, and the failure says to pick a plain
-model. A build that fails retries when fresh log rows land, never on a
-timer: a failed call is tried again at the next message.
+model.
 
 ### 10.3 The view
 

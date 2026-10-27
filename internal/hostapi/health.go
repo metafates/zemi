@@ -263,9 +263,15 @@ func (h *Host) builderRow() HealthRow {
 	failed := h.chat.tree.health.failed.Load()
 	queued := h.chat.tree.health.queued.Load()
 	detail := fmt.Sprintf("%d lines still placeholders, %d builds queued", unbuilt, queued)
+	how := "they retry when new messages land"
+	if until := h.chat.tree.health.coolingUntil.Load(); until > 0 {
+		if left := time.Until(time.Unix(0, until)); left > 0 {
+			how = fmt.Sprintf("the provider rate-limits, the next try is in %s", left.Round(time.Second))
+		}
+	}
 	switch {
 	case failed > 0:
-		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; they retry when new messages land (see /errors)", failed, detail)}
+		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; %s (see /errors)", failed, detail, how)}
 	case unbuilt > 4*leafWaitLines:
 		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
 	}

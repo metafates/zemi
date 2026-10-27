@@ -15,6 +15,7 @@ zemi.provider.add({
 	-- headers = { ["X-Team"] = "core" }, -- as secret as the key
 	-- body = { service_tier = "flex" }, -- extra request fields; not sent by GOOGLE
 	-- object_mode = "tool", -- how a schema'd ask is put to it: "auto", "json", "tool" or "text"
+	-- rate_limit = 10, -- requests per minute the provider allows; every call paces to it
 	models = {
 		{ id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
 	},
@@ -22,6 +23,8 @@ zemi.provider.add({
 zemi.config.set("models.default", "gw/deepseek-chat")
 zemi.provider.del("openai") -- drop one builtin; providers.builtin = false drops them all
 ```
+
+A provider that rate-limits hard (`429` errors, "too many requests") takes `rate_limit`: the number of requests per minute it allows. Every call to that provider paces through one budget - your messages wait their turn beside the summary builder's, instead of the builder's burst tripping the limit - so set it to what the provider actually allows. Without it, a rate-limited build still recovers on its own: the builder cools down and retries (the wait doubles per rate-limited round), and `/health`'s chat builder row names the wait. The budget is per zemi process: two open windows pace separately, so together they can still exceed a tight limit.
 
 A longer prompt cache is an opt-in `body` entry, never a default since model support varies: `body = { prompt_cache_retention = "24h" }` on an `OPENAI` provider keeps OpenAI's cache for a day on the models that accept it.
 

@@ -136,6 +136,20 @@ func TestProviderBody(t *testing.T) {
 	}
 }
 
+// TestProviderRateLimit: a spec's rate_limit is kept as its per-minute pace,
+// and a value no pace can run is refused where it is written.
+func TestProviderRateLimit(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", api_key = "k", rate_limit = 10, models = { { id = "m" } } })`)
+	spec, ok := h.Providers.Lookup("gw")
+	if !ok || spec.RateLimit != 10 {
+		t.Fatalf("rate_limit = %+v (ok %v), want 10", spec.RateLimit, ok)
+	}
+	runExpectErr(t, r, `zemi.provider.add({ id = "x", kind = "openai", api_key = "k", rate_limit = 0, models = { { id = "m" } } })`, "rate_limit")
+	runExpectErr(t, r, `zemi.provider.add({ id = "x", kind = "openai", api_key = "k", rate_limit = "ten", models = { { id = "m" } } })`, "rate_limit must be a number")
+}
+
 func TestCheckToolNames(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)

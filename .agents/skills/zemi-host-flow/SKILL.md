@@ -249,10 +249,11 @@ applied one. A store made before goose only gains its version table: the baselin
   message lines (a message of at most 512 bytes its own node verbatim; the tool, echo and
   thought leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
-  Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with the
-  shortest fitting line kept; a failed build retries on a doubling backoff and parks after
-  six failures in a row until new rows land (`buildStreak`) - except an empty reply, which no
-  try can fix, and parks on its first one. Builder calls get the model's own output cap (8192
+  Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with
+  the shortest fitting line kept; a failed build retries at the next message, no timer -
+  except a rate-limited one, which arms a doubling cooldown (`buildCoolBase` to
+  `buildCoolCap`) that retries without fresh rows; an empty reply, which no
+  try can fix, parks on its first one. Builder calls get the model's own output cap (8192
   when it names none) and, when the model lists effort levels, its lowest. A model that lists
   none (a user-spec gateway model) gets the force-off: effort low plus a
   `thinking: {"type": "disabled"}` extra-body field - reasoning models spend the whole output

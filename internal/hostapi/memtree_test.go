@@ -28,7 +28,8 @@ var errBuildFails = errors.New("compaction failed")
 // treeModel is the builder's stub: every compaction is answered with the next
 // scripted reply and the calls' conversations are kept for assertions. A gate
 // holds every call from gateAfter on until its channel closes, and fail
-// fails them all. finish, when set, replaces the reply's finish reason.
+// fails them all. rate fails them all with a 429, the builder's cooldown
+// trigger. finish, when set, replaces the reply's finish reason.
 type treeModel struct {
 	mu        sync.Mutex
 	replies   []string
@@ -38,6 +39,7 @@ type treeModel struct {
 	gate      chan struct{}
 	gateAfter int
 	fail      atomic.Bool
+	rate      atomic.Bool
 	burn      atomic.Bool
 	finish    fantasy.FinishReason
 }
@@ -55,6 +57,11 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+	if m.rate.Load() {
+		return nil, &fantasy.RetryError{Errors: []error{&fantasy.ProviderError{
+			StatusCode: 429, Message: "Rate limit exceeded",
+		}}}
 	}
 	if m.fail.Load() {
 		return nil, errBuildFails
@@ -818,11 +825,6 @@ func TestResetRebuilds(t *testing.T) {
 	}
 }
 
-// TestBuildStreak: a failing node's backoff doubles per try up to the cap,
-// the streak parks it after parkAfter failures until fresh rows revive it
-// for one try, a failure no try can fix parks at once, and readiness follows
-// the clock.
-
 // TestResetRefusesAWedgedBuilder: a build wedged past quiesceWait refuses
 // the reset instead of wedging it, releases the gate, and the builder
 // dispatches again over the log it kept.
@@ -994,6 +996,59 @@ func TestBuilderRetryPerMessage(t *testing.T) {
 		_, err := h.DB.NodeAt(0, 1)
 		return err
 	})
+}
+
+// TestBuilderCoolDownOnRateLimit: a rate-limited build arms a cooldown that
+// retries it without fresh rows, doubling per consecutive rate-limited
+// round; a success clears it, and the rounds share one error entry.
+func TestBuilderCoolDownOnRateLimit(t *testing.T) {
+	oldBase, oldTries := buildCoolBase, buildMaxRetries
+	buildCoolBase, buildMaxRetries = 200*time.Millisecond, 0 // calls are rounds
+	defer func() { buildCoolBase, buildMaxRetries = oldBase, oldTries }()
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.rate.Store(true)
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() == 0 {
+			return errors.New("no build ran")
+		}
+		return nil
+	})
+	waitFor(t, func() error {
+		if m.callCount() < 4 {
+			return fmt.Errorf("%d calls, want the cooldown retrying without fresh rows", m.callCount())
+		}
+		return nil
+	})
+	// each consecutive rate-limited round doubles the wait: the gaps floor
+	// at the base, its powers in turn
+	m.mu.Lock()
+	times := slices.Clone(m.times)
+	m.mu.Unlock()
+	for i := 1; i < len(times); i++ {
+		if gap := times[i].Sub(times[i-1]); gap < buildCoolBase<<(i-1) {
+			t.Fatalf("call %d followed the last by %v, want the doubled cooldown", i+1, gap)
+		}
+	}
+	waitFor(t, func() error {
+		if row := h.builderRow(); !strings.Contains(row.Detail, "rate-limits") {
+			return fmt.Errorf("builder row = %q, want the cooldown named", row.Detail)
+		}
+		return nil
+	})
+	if msgs := h.errorsSince(time.Time{}, "chat builder"); len(msgs) != 1 {
+		t.Fatalf("%d error rows, want the rounds deduped to one", len(msgs))
+	}
+	m.rate.Store(false)
+	waitFor(t, func() error {
+		_, err := h.DB.NodeAt(0, 0)
+		return err
+	})
+	if row := h.builderRow(); row.Level != HealthOK {
+		t.Fatalf("builder row = %q (%v), want the recovery", row.Detail, row.Level)
+	}
 }
 
 // TestOverflowRetrySendsAMergedView: a context-too-large refusal merges the

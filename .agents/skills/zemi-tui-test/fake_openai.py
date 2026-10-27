@@ -4,6 +4,8 @@
 # classify, zemi.model.ask) get a plain chat.completion. Every request body lands
 # in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json, so two
 # consecutive bodies diff byte for byte (prompt cache).
+# While OUTDIR/rate_fail holds a positive count, that many requests are refused
+# with a 429 and a 300ms retry-after, the count decrementing per refusal.
 # usage: python3 fake_openai.py PORT [OUTDIR]   (OUTDIR default: the CWD)
 import json, os, re, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -28,6 +30,21 @@ class H(BaseHTTPRequestHandler):
         open(tmp2, "w").write(data)
         os.replace(tmp2, os.path.join(OUT, "last_request.json"))
         print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
+        failp = os.path.join(OUT, "rate_fail")
+        if os.path.exists(failp):
+            try:
+                fail = int(open(failp).read().strip() or 0)
+            except ValueError:
+                fail = 0
+            if fail > 0:
+                open(failp + ".tmp", "w").write(str(fail - 1))
+                os.replace(failp + ".tmp", failp)
+                out = json.dumps({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}).encode()
+                self.send_response(429); self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After-Ms", "300")
+                self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+                print("REQ %d -> 429 (%d left)" % (n, fail - 1), flush=True)
+                return
         usage = {"prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050}
         if not body.get("stream"):
             msg = {"role": "assistant", "content": "done"}

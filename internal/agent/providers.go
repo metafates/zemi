@@ -114,7 +114,10 @@ type Spec struct {
 	// a value out): "" leaves the kind's own ladder (native JSON, a forced
 	// tool call, the schema in the prompt). Only KindsWithObjectMode take it.
 	ObjectMode fantasy.ObjectMode
-	Models     []Model
+	// RateLimit is the requests per minute the provider allows; every call
+	// to it paces through one token bucket. 0 runs unpaced.
+	RateLimit int
+	Models    []Model
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
 	Builtin      bool
@@ -412,7 +415,7 @@ func (k Kind) takesObjectMode() bool {
 // It also keeps the catalog's Missing list, minus what config deleted, so
 // a hint never names a provider init.lua turned off.
 type Registry struct {
-	// mu guards all five: user config registers on the interpreter
+	// mu guards all six: user config registers on the interpreter
 	// goroutine while turns, subagents and the UI read.
 	mu      sync.RWMutex
 	specs   []Spec
@@ -420,6 +423,7 @@ type Registry struct {
 	stored  map[string]bool // id -> the keychain took the paste, else the file did
 	plugins map[string]bool // id registered by a plugin: never holds a stored key
 	missing []MissingKey
+	limits  map[string]*rateLimiter // id -> the pace every call to the provider shares
 }
 
 // Reset replaces every spec and key with the catalog, so a provider config
@@ -775,6 +779,11 @@ func (r *Registry) List() []Spec {
 func (r *Registry) Lookup(providerID string) (Spec, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	return r.lookupLocked(providerID)
+}
+
+// lookupLocked is Lookup with mu held for writing.
+func (r *Registry) lookupLocked(providerID string) (Spec, bool) {
 	for _, s := range r.specs {
 		if s.ID == providerID {
 			return s, true
@@ -917,8 +926,41 @@ func nearestEffort(levels []string, effort string) string {
 }
 
 // Resolve turns "provider/model" into a fantasy language model; a missing
-// key surfaces as an error at send time.
+// key surfaces as an error at send time. A spec with a rate_limit wraps the
+// model in the pace every call to that provider shares.
 func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
+	m, err := r.resolve(id)
+	if err != nil {
+		return nil, err
+	}
+	prov, _, ok := id.Split()
+	if !ok {
+		return m, nil
+	}
+	r.mu.RLock()
+	l, ok := r.limits[prov]
+	r.mu.RUnlock()
+	if ok {
+		return rateModel{LanguageModel: m, limiter: l}, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	spec, ok := r.lookupLocked(prov)
+	if !ok || spec.RateLimit <= 0 {
+		return m, nil
+	}
+	if r.limits == nil {
+		r.limits = map[string]*rateLimiter{}
+	}
+	if l, ok := r.limits[prov]; ok {
+		return rateModel{LanguageModel: m, limiter: l}, nil
+	}
+	l = newRateLimiter(spec.RateLimit)
+	r.limits[prov] = l
+	return rateModel{LanguageModel: m, limiter: l}, nil
+}
+
+func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 	providerID, model, ok := id.Split()
 	if !ok {
 		return nil, fmt.Errorf("model id must be provider/model, got %q", id)

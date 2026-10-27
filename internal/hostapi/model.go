@@ -720,7 +720,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		return agent.Spec{}, fmt.Errorf("spec: %w", err)
 	}
 	fields, _ := raw.(map[string]any)
-	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models", "object_mode"); err != nil {
+	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models", "object_mode", "rate_limit"); err != nil {
 		return agent.Spec{}, err
 	}
 	spec := agent.Spec{
@@ -728,6 +728,16 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		Kind:    agent.Kind(rawString(L, tb, "kind")),
 		BaseURL: rawString(L, tb, "base_url"),
 		Headers: rawStringMap(L, tb, "headers"),
+	}
+	switch v := fields["rate_limit"].(type) {
+	case nil:
+	case float64:
+		if v < 1 {
+			return agent.Spec{}, errors.New("rate_limit must be at least 1 request per minute")
+		}
+		spec.RateLimit = int(v)
+	default:
+		return agent.Spec{}, fmt.Errorf("rate_limit must be a number, not a %T", v)
 	}
 	switch mode := fantasy.ObjectMode(rawString(L, tb, "object_mode")); mode {
 	case "":
