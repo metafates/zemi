@@ -101,6 +101,7 @@ type agentHost struct {
 	stepTools            []StreamTool
 	stepRows             int
 	stepThought          time.Duration
+	stepTurnThought      time.Duration
 	tools                []StreamTool
 	steering             []string
 	// spoke is closed when the user's own message arrives during a turn
@@ -147,7 +148,8 @@ type agentHost struct {
 
 	// turn timing: turnStart pins the clock at AgentSend, thinking
 	// tracks the open reasoning block, thought accumulates closed ones
-	// since the last flush and stepThinking those of the current step.
+	// since the last flush, turnThought the turn's whole total (the stat
+	// the log's reply row rides) and stepThinking those of the current step.
 	// clock is the host's, which the live snapshot reads: a stamp on one
 	// clock and a read on another measures the gap between them.
 	clock        lua.Clock
@@ -155,6 +157,7 @@ type agentHost struct {
 	thinkStart   time.Time
 	thinking     bool
 	thought      time.Duration
+	turnThought  time.Duration
 	stepThinking time.Duration
 
 	// retryAt is when the next provider retry fires, zero again once the
@@ -1189,8 +1192,9 @@ func (ag *agentHost) beginTurn() {
 	ag.tools = nil
 	// no step has started, so a retry before one (compact's) takes nothing
 	// back, the last turn's rows included
-	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = "", "", nil, math.MaxInt, 0
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought, ag.stepTurnThought = "", "", nil, math.MaxInt, 0, 0
 	ag.turnStart = ag.clock.Now()
+	ag.turnThought = 0
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
@@ -1346,6 +1350,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
 	}
+	ag.turnThought += ag.thought
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
 	h.appendTranscript(rows...)
 	h.stampLogSeqs()

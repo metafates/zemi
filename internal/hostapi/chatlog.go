@@ -51,6 +51,9 @@ const (
 type chatLog struct {
 	h    *Host
 	tree *memTree
+	// reply is the last agent row's seq (Agent), which a turn's stat lands
+	// on when the turn ends; -1 for none.
+	reply int64
 }
 
 // quiesce stops the builder's dispatch and waits for its in-flight builds;
@@ -64,7 +67,7 @@ func (c *chatLog) resume() { c.tree.resume() }
 // newChatLog opens the writer and starts the builder worker on ctx: the
 // caller's Close ends both.
 func newChatLog(ctx context.Context, h *Host) *chatLog {
-	return &chatLog{h: h, tree: newMemTree(ctx, h)}
+	return &chatLog{h: h, tree: newMemTree(ctx, h), reply: -1}
 }
 
 // Close ends the builder: its context cancels, in-flight model calls abort,
@@ -73,13 +76,21 @@ func (c *chatLog) Close() { c.tree.Close() }
 
 // User logs the user's words; parts carries the message's images, which
 // zoom replays. It returns the first seq it wrote.
-func (c *chatLog) User(text, parts string) (int64, error) { return c.append(kindUser, text, "", parts) }
+func (c *chatLog) User(text, parts string) (int64, error) {
+	first, _, err := c.append(kindUser, text, "", parts)
+	return first, err
+}
 
-// Agent logs one of zemi's replies.
-func (c *chatLog) Agent(text string) error { _, err := c.append(kindAgent, text, "", ""); return err }
+// Agent logs one of zemi's replies, remembering the last row it wrote: the
+// row the turn's stat lands on when the turn ends.
+func (c *chatLog) Agent(text string) error {
+	_, last, err := c.append(kindAgent, text, "", "")
+	c.reply = last
+	return err
+}
 
 // Note logs a memory from before the chat: a chapter mark.
-func (c *chatLog) Note(text string) error { _, err := c.append(kindNote, text, "", ""); return err }
+func (c *chatLog) Note(text string) error { _, _, err := c.append(kindNote, text, "", ""); return err }
 
 // Work logs a subagent's report: the run it reports for and the "[Name]" head
 // it opens with.
@@ -91,7 +102,7 @@ func (c *chatLog) Work(run, name, text string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.append(kindWork, text, string(meta), "")
+	_, _, err = c.append(kindWork, text, string(meta), "")
 	return err
 }
 
@@ -131,21 +142,50 @@ func (c *chatLog) Echo(name string, ok bool, output string) error {
 	return nil
 }
 
+// replyStat is the readout a finished turn rides its last reply row's meta:
+// the model, the turn's wall time, its tokens out, when it ended, and the
+// turn's whole thought, which reasoning never being logged leaves to it.
+type replyStat struct {
+	Model     string `json:"model"`
+	TurnMS    int64  `json:"turn_ms"`
+	Out       int64  `json:"out"`
+	ThoughtMS int64  `json:"thought_ms"`
+	Ended     int64  `json:"ended"`
+}
+
+// setReplyStat writes the finished turn's readout onto its last reply row,
+// which Agent remembered. A turn that wrote no reply (a cancel before any
+// text) writes nothing.
+func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
+	if c.reply < 0 {
+		return nil
+	}
+	meta, err := json.Marshal(replyStat{
+		Model: stat.Model, TurnMS: stat.ElapsedMS, Out: stat.Out,
+		ThoughtMS: thought.Milliseconds(), Ended: stat.Ended,
+	}, json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	return c.h.DB.SetLogMeta(c.reply, string(meta))
+}
+
 // append logs the rows a text splits into, each with its view line, and
-// returns the first seq.
-func (c *chatLog) append(kind, text, meta, parts string) (int64, error) {
-	first := int64(-1)
+// returns the first and the last seq it wrote.
+func (c *chatLog) append(kind, text, meta, parts string) (int64, int64, error) {
+	first, last := int64(-1), int64(-1)
 	for _, row := range splitText(text, chatSplitChars) {
 		seq, err := c.h.DB.AppendLog(kind, row, meta, parts, "")
 		if err != nil {
-			return first, err
+			return first, last, err
 		}
 		if first < 0 {
 			first = seq
 		}
+		last = seq
 	}
 	c.tree.Wake()
-	return first, nil
+	return first, last, nil
 }
 
 // toolLeaf renders a tool call's line mechanically: the tool and the first

@@ -232,7 +232,10 @@ applied one. A store made before goose only gains its version table: the baselin
   row; reasoning is never logged. A text past 8,000 characters (`chatSplitChars`) is logged
   as several sibling rows; an echo clips to 30,000 (`echoClipChars`). Every append commits in
   one transaction and wakes the builder. `Host.Note` appends a note row (`/note`), mid-turn
-  included.
+  included. A turn's readout rides its last reply row's meta (`chatLog.setReplyStat` at
+  `TurnDone`, the model, tokens, wall time, ended clock and the turn's whole thought), which
+  `logRows` reads back: reasoning is never logged, so a window rebuilt from the log draws the
+  readout and the run digest's thought from that row.
 - **The builder** (`memtree.go`): one worker per store owns the tree state. Leaves are
   message lines (a message of at most 512 bytes its own node verbatim; the tool and echo
   leaves template-built in the append transaction), merges join siblings, and both go out as

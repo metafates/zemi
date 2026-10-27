@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 )
@@ -451,6 +452,58 @@ func TestLogHoldsTheTurn(t *testing.T) {
 	logRows, err := h.DB.LogTail(2)
 	if err != nil || len(logRows) != 2 || logRows[0].Kind != kindUser || logRows[0].Text != "hello" || logRows[1].Kind != kindAgent || logRows[1].Text != "kept" {
 		t.Fatalf("log rows = %+v, %v", logRows, err)
+	}
+}
+
+// TestResumedWindowKeepsTheTurn: the turn's readout and thought ride the
+// log's reply row, so the window a restart rebuilds from the log draws both,
+// as the live one did (reasoning itself is never logged).
+func TestResumedWindowKeepsTheTurn(t *testing.T) {
+	clock := &fakeClock{now: testEpoch}
+	h := newTestHostUI(t, clock)
+	h.SetUIHooks(&fakeUI{})
+	// the turn as it ran: the words, a thought, a call, the reply; the log
+	// rows land the way persistMessage writes them
+	if _, err := h.chat.User("go", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
+	hk := h.streamHooks()
+	hk.ReasoningDelta("thinking it over.")
+	clock.set(testEpoch.Add(3 * time.Second))
+	if err := h.chat.Tool("read", `{"path":"a.go"}`); err != nil {
+		t.Fatal(err)
+	}
+	hk.ToolCallPending("t1", "read")
+	if err := h.chat.Echo("read", true, "data"); err != nil {
+		t.Fatal(err)
+	}
+	hk.ToolCallEnd("t1", "read", out("data"), "")
+	hk.TextDelta("The answer.")
+	if err := h.chat.Agent("The answer."); err != nil {
+		t.Fatal(err)
+	}
+	h.agents.mu.Lock()
+	h.agents.turnStart, h.agents.turnModel = testEpoch, "acme-gateway/big"
+	h.agents.mu.Unlock()
+	(&streamAdapter{h: h}).TurnDone(nil, fantasy.Usage{OutputTokens: 895})
+	// the restart: the window rebuilds from the log's tail
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	tr := h.Session().Transcript
+	reply := tr[len(tr)-1]
+	if reply.Stat == nil || reply.Stat.Model != "acme-gateway/big" ||
+		reply.Stat.Out != 895 || reply.Stat.ElapsedMS != 3000 || reply.Stat.ThoughtMS != 3000 || reply.Stat.Ended == 0 {
+		t.Fatalf("the rebuilt reply lost the turn's stat: %+v", reply.Stat)
+	}
+	got := widgetText(t, h, "chat", 80, UIState{})
+	for _, want := range []string{"thought 3.0s", "acme-gateway/big", "895 out"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the resumed window lost %q:\n%s", want, got)
+		}
 	}
 }
 

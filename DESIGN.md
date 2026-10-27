@@ -1728,9 +1728,10 @@ log(seq, kind, text, meta_json, parts_json, created_at)  -- the eternal chat: on
                                                          -- the index stays dense; a reset empties
                                                          -- the log and the next append starts at 0);
                                                          -- kind: user | agent | tool | echo | work | note;
-                                                         -- meta_json names a tool row's tool and a
-                                                         -- work row's run, parts_json replays a
-                                                         -- message's images
+                                                         -- meta_json names a tool row's tool, a work
+                                                         -- row's run and an agent row's turn stat (the
+                                                         -- readout a resumed window draws), parts_json
+                                                         -- replays a message's images
 nodes(l, i, text, size, built_at)                        -- the summary tree: node(l,i) covers the 2^l
                                                          -- messages from i*2^l on, one line each;
                                                          -- INSERT OR IGNORE dedupes two windows

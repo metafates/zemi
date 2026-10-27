@@ -122,6 +122,15 @@ func (s *DB) LogCount() (int64, error) {
 	return n, err
 }
 
+// SetLogMeta fills one log row's meta_json after the append: the turn stat
+// its reply row gains when the turn ends. The text and the seq never move.
+func (s *DB) SetLogMeta(seq int64, metaJSON string) error {
+	if _, err := s.db.Exec(`UPDATE log SET meta_json = ? WHERE seq = ?`, nullString(metaJSON), seq); err != nil {
+		return fmt.Errorf("store: set log meta: %w", err)
+	}
+	return nil
+}
+
 // CVKey is the kv row the builder's compaction view persists in: a JSON
 // array of [l, i] pairs.
 const CVKey = "chatlog.cv"

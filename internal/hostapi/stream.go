@@ -43,7 +43,7 @@ func (s *streamAdapter) StepStart() {
 	ag := s.h.agents
 	ag.mu.Lock()
 	// capped, so a pending row appended later cannot write into the saved slice
-	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought, ag.stepTurnThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought, ag.turnThought
 	ag.stepThinking = 0
 	ag.mu.Unlock()
 }
@@ -53,7 +53,7 @@ func (s *streamAdapter) StepStart() {
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false, 0
+	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.turnThought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, ag.stepTurnThought, false, 0
 	rows := ag.stepRows
 	ag.retries++
 	ag.retryAt = s.h.now().Add(delay)
@@ -244,10 +244,19 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		}
 	}
 	h.flushOutput(stat)
+	thought := ag.turnThought
 	ag.mu.Unlock()
 	h.refresh()
 	if hold {
 		return
+	}
+	// the readout rides the log's last reply row too: a window rebuilt from
+	// the log draws it and the run digest's thought from there, reasoning
+	// being never logged
+	if text != "" && h.chat != nil {
+		if err := h.chat.setReplyStat(stat, thought); err != nil {
+			h.Log.Warn("turn stat not logged", "origin", "agent", "error", err)
+		}
 	}
 	cost := h.turnCost(model, usage)
 	switch {

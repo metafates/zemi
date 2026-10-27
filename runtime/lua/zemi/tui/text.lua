@@ -292,15 +292,25 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 function M.digest(rows, first, last)
 	---@type zemi.TranscriptRow[]
 	local calls = {}
-	local secs = 0
+	local secs, reasoned = 0, false
 	for i = first, last do
 		local m = rows[i]
 		if m.kind == "reasoning" then
 			secs = secs + (m.thought or 0)
+			reasoned = true
 		elseif digests(m) then
 			calls[#calls + 1] = m
 		end
 	end
+	-- the turn's thought: reasoning is never logged, so a resumed window has
+	-- no thought rows and reads the turn's total from the stat the reply
+	-- after the run carries (the log's last stretch when the reply was split).
+	-- NOTE: a multi-run turn's whole total lands on its last run's digest.
+	local at = last + 1
+	while rows[at] and (rows[at].kind or "") == "" and rows[at].role == "assistant" do
+		at = at + 1
+	end
+	if at > last + 1 and not reasoned then secs = secs + (rows[at - 1].thought or 0) end
 	---@type string[]
 	local parts = {}
 	if #calls > 0 then

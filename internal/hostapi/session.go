@@ -195,7 +195,7 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			}
 		case kindAgent:
 			if s := strings.TrimSpace(row.Text); s != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Seq: row.Seq})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Seq: row.Seq, Stat: replyMeta(row.MetaJSON)})
 			}
 		case kindTool:
 			name := rowTool(row)
@@ -232,6 +232,20 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line
+}
+
+// replyMeta is the turn stat the reply row's meta carries, nil for a row
+// that predates it or wrote none: the readout and the digest's thought draw
+// from it.
+func replyMeta(meta string) *TurnStat {
+	if meta == "" {
+		return nil
+	}
+	var m replyStat
+	if json.Unmarshal([]byte(meta), &m) != nil {
+		return nil
+	}
+	return &TurnStat{Model: m.Model, ElapsedMS: m.TurnMS, Out: m.Out, ThoughtMS: m.ThoughtMS, Ended: m.Ended}
 }
 
 // stampMS is a log stamp as unix ms, 0 when it does not parse.
