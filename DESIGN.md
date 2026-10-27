@@ -2637,8 +2637,9 @@ Every turn is a fresh call:
   merge batch (`MergeOnce`) runs and the turn retries once - the view
   outgrew the model's window. A refused output cap is dropped, and image
   parts a model refuses become a note; each is remembered for the process.
-- The goal check (§6.3) is the one cross-turn follow-up: it judges the
-  view on the same prefix after a turn that ended cleanly.
+- A message queued behind a turn becomes one follow-up turn under the claim;
+  after a turn that ended cleanly with nothing queued, the goal check
+  (§6.3) is what `nextTurn` starts under the same claim.
 
 ### 10.5 zoom, date and /note
 
