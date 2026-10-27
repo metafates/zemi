@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // stubChain answers from fields; Set keeps the secret in stored.
@@ -30,6 +32,47 @@ func (s *stubChain) Delete(string, string) error {
 		s.val, s.stored = "", ""
 	}
 	return s.delErr
+}
+
+// hungChain stands in for the OS keychain that never answers: every call
+// blocks until release, the wedged-call shape the first-run audit hit.
+type hungChain struct{ release chan struct{} }
+
+func (h hungChain) Get(string, string) (string, error) { <-h.release; return "", ErrNotFound }
+func (h hungChain) Set(string, string, string) error   { <-h.release; return nil }
+func (h hungChain) Delete(string, string) error        { <-h.release; return ErrNotFound }
+
+// TestRefStalled: a keychain call that never returns costs the deadline,
+// not the session - the write lands in the 0600 file with inChain false
+// (the "(no keychain)" toast's trigger), a read falls to the file, a
+// delete names the stall instead of hanging.
+func TestRefStalled(t *testing.T) {
+	oldDeadline, oldChain := chainDeadline, Chain
+	t.Cleanup(func() { chainDeadline, Chain = oldDeadline, oldChain })
+	chainDeadline = 25 * time.Millisecond
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) }) // the wedged calls end with the test
+	Chain = hungChain{release}
+
+	ref := Ref{Account: "mcp:test", File: filepath.Join(t.TempDir(), "grant.json")}
+	inChain, err := ref.Set("grant")
+	if err != nil || inChain {
+		t.Fatalf("Set = (%v, %v), want in the file, no error", inChain, err)
+	}
+	b, err := os.ReadFile(ref.File)
+	if err != nil || string(b) != "grant" {
+		t.Fatalf("the file holds %q (%v), want the secret", b, err)
+	}
+	if fi, err := os.Stat(ref.File); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("file mode = %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
+	if key, chain, ok := ref.Get(); !ok || key != "grant" || chain {
+		t.Fatalf("Get = (%q, %v, %v), want the file's secret", key, chain, ok)
+	}
+	err = ref.Delete()
+	if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		t.Fatalf("Delete = %v, want the stall named", err)
+	}
 }
 
 // TestRef: the keychain answers first, the file covers its misses and

@@ -294,7 +294,10 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	r.cur.Store(gen)
 
 	for _, step := range steps {
-		if err := step.Run(ctx, r, gen); err != nil {
+		started := time.Now()
+		err := step.Run(ctx, r, gen)
+		r.log.Debug("boot step", "origin", "boot", "name", step.Name, "elapsed", time.Since(started).String())
+		if err != nil {
 			err = &StepError{step.Name, err}
 			// no dispatcher will run this generation, so its requests,
 			// queued and future, must fail fast until a reload succeeds
