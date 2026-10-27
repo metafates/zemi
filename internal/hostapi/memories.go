@@ -170,18 +170,17 @@ type chatJumps struct {
 	rows map[int64]int
 }
 
-// chatJumpRows reads the jump map from the transcript window: a row whose seq
-// the stamping filled names the row the chat draws it at. The log's own first
-// message carries seq 0, so the rows the pairing claimed read as
-// authoritative even at 0; a row the pairing marked -1 (a failed log write)
-// names nothing.
+// chatJumpRows reads the jump map from the transcript window: a row whose
+// seq the stamping filled names the row the chat draws it at; a row the
+// pairing marked NoSeq (a failed log write, or not stamped yet) names
+// nothing.
 func (h *Host) chatJumpRows() chatJumps {
 	h.tMu.RLock()
-	tr, claimed := h.session.Transcript, h.stampRow
+	tr := h.session.Transcript
 	h.tMu.RUnlock()
 	j := chatJumps{rows: make(map[int64]int, len(tr))}
 	for i, m := range tr {
-		if m.Seq > 0 || m.Seq == 0 && i < claimed {
+		if m.Seq != NoSeq {
 			j.seqs = append(j.seqs, m.Seq)
 			j.rows[m.Seq] = i + 1
 		}

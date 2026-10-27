@@ -224,6 +224,64 @@ func TestMemoriesRange(t *testing.T) {
 	}
 }
 
+// TestSeqZeroIsARealMessage: the log's first message is seq 0, not a
+// sentinel - the stamping names a live row with it, the jump map and the
+// /memories and /messages rows anchor it, zoom opens it, nothing older is
+// offered past it, and a rewind to it empties the chat.
+func TestSeqZeroIsARealMessage(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	// the first turn: the live row lands before its log write
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "first words"})
+	if _, err := h.DB.AppendLog(kindUser, "first words", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.stampLogSeqs()
+	if tr := h.Session().Transcript; tr[0].Seq != 0 {
+		t.Fatalf("the first turn's row carries seq %d, want the log's 0", tr[0].Seq)
+	}
+	// the stamping cursor sits past it, and the jump map answers for it
+	h.tMu.RLock()
+	from := h.stampFrom
+	h.tMu.RUnlock()
+	if from != 1 {
+		t.Fatalf("the stamping resumes from %d, want 1", from)
+	}
+	jumps := h.chatJumpRows()
+	if got := jumps.at(0, 0); got != 1 {
+		t.Fatalf("seq 0 jumps to row %d, want 1", got)
+	}
+
+	// the browser's line and the picker's row anchor and name it
+	o := h.memoriesOverlay()
+	if len(o.Items) != 1 || o.Items[0].Anchor != 1 {
+		t.Fatalf("the view lists %+v, want one line anchored at 1", o.Items)
+	}
+	if err := h.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	list := ui.overlays()[len(ui.overlays())-1]
+	if list.Items[0].ID != "0" {
+		t.Fatalf("the picker's first row = id %q, want \"0\"", list.Items[0].ID)
+	}
+	if _, ok := h.messagesOlder(); ok {
+		t.Error("a page loaded before the log's first message")
+	}
+
+	// zoom opens message 0 whole, and a rewind to before it empties the chat
+	if res := zoomCall(t, h, `{"id":0}`); !strings.Contains(res.Content, "first words") {
+		t.Fatalf("zoom(0) = %q", res.Content)
+	}
+	if _, err := h.RewindTo(0); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := h.DB.LogCount(); n != 0 {
+		t.Fatalf("%d rows survived the rewind to 0", n)
+	}
+}
+
 // TestStampLogSeqs: a real turn stamps the rows it landed in the transcript
 // with the log seqs they were written at, so a browser row can jump the chat
 // to them.
@@ -254,10 +312,8 @@ func TestStampLogSeqs(t *testing.T) {
 	}
 	stamped := 0
 	for _, m := range tr {
-		if m.Seq == 0 {
-			// the log's own first message reads as unstamped; anything else
-			// stampable that stayed at 0 missed its pairing
-			if stampable(m) && !logged[0] {
+		if m.Seq == NoSeq {
+			if stampable(m) {
 				t.Errorf("row %q stayed unstamped", clipRunes(m.Text, 30))
 			}
 			continue
@@ -267,7 +323,7 @@ func TestStampLogSeqs(t *testing.T) {
 			t.Errorf("row %q carries seq %d, which the log holds no message for", clipRunes(m.Text, 30), m.Seq)
 		}
 	}
-	if stamped < 3 { // the log's first row aside, every message named its row
+	if stamped < 4 { // every message named its row, the log's own 0 included
 		t.Fatalf("%d rows stamped", stamped)
 	}
 	// the jump map answers for the newest message
@@ -292,7 +348,7 @@ func TestStampLogSeqsMismatch(t *testing.T) {
 	// the log holds two rows; the window's first row's write failed
 	h.tMu.Lock()
 	h.session = &Session{Transcript: []ChatMessage{
-		{Role: fantasy.MessageRoleUser, Text: "lost"},
+		{Role: fantasy.MessageRoleUser, Text: "lost", Seq: NoSeq},
 		{Role: fantasy.MessageRoleUser, Text: "later"},
 	}}
 	h.tMu.Unlock()

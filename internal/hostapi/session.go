@@ -80,7 +80,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 // logged row's, so the log rows after it are the unclaimed ones.
 func (h *Host) stampedTail(tr []ChatMessage) int64 {
 	for _, m := range slices.Backward(tr) {
-		if m.Seq > 0 {
+		if m.Seq != NoSeq {
 			return m.Seq + 1
 		}
 	}
@@ -141,7 +141,7 @@ func (h *Host) stampLogSeqs() {
 		tr = slices.Clone(tr)
 		for _, s := range stamps {
 			if s.gone {
-				tr[s.at].Seq = -1 // names no message, now or ever
+				tr[s.at].Seq = NoSeq // names no message, now or ever
 			} else {
 				tr[s.at].Seq = s.seq
 			}

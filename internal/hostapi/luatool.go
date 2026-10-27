@@ -64,10 +64,10 @@ var luaReadOnly = set.Of(
 	"json.decode", "json.encode",
 	"keymap.get", "keymap.list",
 	"log", "log.list", "log.debug", "log.info", "log.warn", "log.error",
-	"lsp.list", "mcp.list", "memory.list",
+	"lsp.list", "mcp.list",
 	"model.list", "notify.list",
 	"project.root", "project.trusted", "provider.list",
-	"session.id", "session.list", "session.messages", "session.title", "session.todos",
+	"session.id", "session.todos",
 	"skills.list", "state.get", "tool.describe", "tool.list",
 	"ui.focus.get", "ui.hl.get", "ui.layout.get", "ui.layout.rects", "ui.markdown", "ui.highlight", "ui.diff", "ui.wrap", "ui.width", "ui.screenshot", "ui.theme.get", "ui.theme.list", "ui.widget.list",
 	"workflow.list", "job:wait", "http:wait", "tool:wait",
@@ -99,7 +99,7 @@ type luaArgs struct {
 }
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
-	approval := " A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
+	approval := " A script that only reads (zemi.config.get, zemi.session.todos, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) or drives tools runs at once; one that changes anything needs the user's approval once, so write every call out by name."
 	props, required := tools.ArgsOf(luaArgs{})
 	return fantasy.ToolInfo{
 		Name: string(tools.ToolLua),

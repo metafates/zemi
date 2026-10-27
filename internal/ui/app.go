@@ -745,9 +745,8 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 // endTurn stamps how the last turn ended for the eyes and the tab title,
-// arms the recap and the reflector, and alerts an unfocused terminal; a
-// chain a loop run began arms no recap and alerts nobody, since no one waits
-// on it.
+// arms the recap, and alerts an unfocused terminal; a chain a loop run
+// began arms no recap and alerts nobody, since no one waits on it.
 func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	byLoop := a.host.AgentStream().ByLoop
 	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK

@@ -157,8 +157,8 @@ const contextOpener = "<context>\nzemi's notes for this session, not the user's 
 
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
-// files, the environment with the run's scratchpad
-// (readOnly: a read-only agent's) and the session's # Brain section.
+// files, the project's skills index, and the environment with the run's
+// scratchpad (readOnly: a read-only agent's).
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
 	system, ctxMsg, _ = h.systemFor(sys, toolset, pad, readOnly, "")
 	return system, ctxMsg
@@ -471,9 +471,8 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 }
 
 // environmentPrompt describes the machine and repository. It is pinned per
-// session and again after a compaction, like the # Brain section, so a changing git
-// status does not bust the prompt cache every turn; environmentFor fills
-// in what the run and trust decide.
+// session, so a changing git status does not bust the prompt cache every
+// turn; environmentFor fills in what the run and trust decide.
 func (h *Host) environmentPrompt() string {
 	ag := h.agents
 	ag.mu.Lock()

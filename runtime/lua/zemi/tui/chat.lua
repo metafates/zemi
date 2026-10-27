@@ -832,9 +832,6 @@ zemi.ui.widget.add({
 				end
 			elseif notice(m) then
 				B.notices(tr, first, last)
-			elseif m.kind == "compact" then
-				B.gap("note")
-				B.lines[#B.lines + 1] = B.note("note", m.text, m.detail)
 			elseif m.kind == "error" then
 				-- the headline, then the raw error as its detail
 				B.gap("note")
@@ -929,11 +926,12 @@ zemi.ui.widget.add({
 		if reset or not cacheable then
 			units, units_key, settled = {}, key, nil
 		end
-		-- A long session resumed, a new width or a new theme leave every unit
-		-- to render, far more than one render may take: the latest come first,
-		-- and once they fill the view and 30 ms passed, the render returns them
-		-- and asks for another, so a slow or loaded machine still draws the view
-		-- whole; the header above them, the prompt the view pins, goes on top.
+		-- A window swapped in whole (a rewind's cut), a new width or a new
+		-- theme leave every unit to render, far more than one render may
+		-- take: the latest come first, and once they fill the view and 30 ms
+		-- passed, the render returns them and asks for another, so a slow or
+		-- loaded machine still draws the view whole; the header above them,
+		-- the prompt the view pins, goes on top.
 		local more = false
 		local ag = ctx.agent or {}
 		-- A reply closes the run it follows at once, streaming or settled: the run

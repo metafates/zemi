@@ -130,8 +130,8 @@ function M.empty_chat(ctx)
 end
 
 --- The on_click of a widget whose click ids are a command and its
---- arguments ("resume 3f9c", "theme"), or "fill <text>", which puts the text
---- in the composer for the user to send.
+--- arguments ("theme whorl", "note mid"), or "fill <text>", which puts the
+--- text in the composer for the user to send.
 ---@param ev zemi.WidgetClick
 function M.run_click(ev)
 	local fill = ev.id:match("^fill (.*)$")

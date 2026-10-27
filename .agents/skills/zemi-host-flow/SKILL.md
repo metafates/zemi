@@ -319,7 +319,11 @@ drops the old memory tables and rebuilds `checkpoints` keyed by the log seq (DES
   `DeleteLogFrom` deletes the log rows from seq on, every node and view line touching them
   and the checkpoints from seq on, `patchView` re-covers the survivors with leaf lines, the
   todo list is rebuilt from the log's `todos` rows before the cut, the goal is rewound with
-  its kv row, and the prompt text goes back to the composer. A shell call's changes are checkpointed from the
+  its kv row, and the prompt text goes back to the composer. `/reset` (`ResetChat`) is the
+  same claim, quiesce and `cutMu` around `ResetLog`, which wipes the log, the nodes, the view
+  lines and the checkpoints whole and then vacuums and truncates the WAL so the text leaves
+  the file; the todo list clears, every goal drops, and the transcript swaps to the empty
+  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`. A shell call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.

@@ -379,6 +379,11 @@ type rowMeta struct {
 	Job    string     `json:"job,omitempty"`
 }
 
+// NoSeq marks a transcript row the log holds no message for: a live-only
+// notice, a run row, a live row the stamping has not named yet. The log's
+// own first message is seq 0, so 0 is a real seq like any other.
+const NoSeq int64 = -1
+
 // ChatMessage is a transcript entry (composer submissions); assistant
 // replies carry the turn stats the chat widget renders.
 type ChatMessage struct {
@@ -397,8 +402,8 @@ type ChatMessage struct {
 	Stat   *TurnStat
 	CallID string // tool rows: the stream's call id, so a report names a call once
 	// Seq is the row's log message: the rewind picker names it, and a user
-	// row's is where a rewind cuts. 0 for a row the log holds no message
-	// for (a live-only notice, a run row).
+	// row's is where a rewind cuts. NoSeq for a row the log holds no
+	// message for (a live-only notice, a run row).
 	Seq    int64
 	ID     string // a run row's stored message id (its transcript rebuilds from the store)
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
@@ -621,7 +626,7 @@ type Host struct {
 	stops      *stopReg
 	// test is set, before boot, only in a zemi plugin test zemi
 	test *PluginTest
-	// cutMu orders a rewind's cut against a reflector run's writes, so a run
+	// cutMu orders a rewind's cut against a detached run's writes, so a run
 	// never stores what it read from rows a rewind removed.
 	cutMu    sync.Mutex
 	initFail atomic.Pointer[string]                    // headline of the user init.lua failure this boot recorded
@@ -817,10 +822,16 @@ const stampBatch = 256
 
 // appendTranscript appends rows to the window and trims its head once it
 // passes chatWindowRows. Replaced whole, like setTranscript: readers share
-// the old array and the chat widget caches rows by index.
+// the old array and the chat widget caches rows by index. Rows appended
+// live never carry a log seq; the stamping names them from the log.
 func (h *Host) appendTranscript(rows ...ChatMessage) {
 	if len(rows) == 0 {
 		return
+	}
+	for i := range rows {
+		if rows[i].Seq == 0 {
+			rows[i].Seq = NoSeq
+		}
 	}
 	h.tMu.Lock()
 	tr := append(h.session.Transcript, rows...)

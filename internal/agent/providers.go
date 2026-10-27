@@ -59,7 +59,8 @@ func (id ModelID) Provider() string { p, _, _ := id.Split(); return p }
 func (id ModelID) Model() string { _, m, _ := id.Split(); return m }
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
-// the token budget the context percent and auto compaction divide by.
+// the token budget the context percent and a subagent's history cap divide
+// by.
 type Model struct {
 	ID            string
 	Display       string

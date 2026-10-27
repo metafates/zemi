@@ -46,8 +46,8 @@ func (h *Host) resolveModel(id string) (fantasy.LanguageModel, error) {
 var ErrNoModel = errors.New("no model yet")
 
 // resolveTurnModel is resolveModel with one keychain attempt between the
-// failure and the give-up: a send, a title, a compaction or a reflector run
-// racing the stored-key pass fills the key instead of failing. Never
+// failure and the give-up: a send, a summary build or a detached run racing
+// the stored-key pass fills the key instead of failing. Never
 // classify: it resolves on the Lua actor, where nothing waits on a
 // keychain subprocess.
 func (h *Host) resolveTurnModel(id string) (fantasy.LanguageModel, error) {
@@ -124,8 +124,8 @@ func (h *Host) modelRunErr(id string) error {
 	return nil
 }
 
-// generate runs one tool-less, single-step call (summaries, titles, the
-// reflector, zemi.model.ask) on ref, a role or a model id, and bills it to sid. The spec's body fields
+// generate runs one tool-less, single-step call (a summary build, the goal
+// check, zemi.model.ask) on ref, a role or a model id, and bills it to sid. The spec's body fields
 // ride it (a gateway's routing, service_tier), the reasoning effort not: a
 // short job need not think. It streams: Anthropic's SDK refuses a large
 // max_tokens otherwise, and the idle timer covers only a stream. A turn's
@@ -334,9 +334,9 @@ func (h *Host) modelAsk(L *glua.LState) int {
 }
 
 // bill adds a model call's usage to session sid, and to the live tally when
-// sid is still the open session: a background run or the reflector may
-// outlive it. A call on the "main" anchor is the conversation's own, builder
-// bursts included, so it moves the tally too.
+// sid is still the open session: a background run may outlive it. A call on
+// the "main" anchor is the conversation's own, builder bursts included, so
+// it moves the tally too.
 func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	cost := h.turnCost(modelID, u)
 	h.Log.Debug("model call", "origin", "model", "model", modelID, "session", sid,
@@ -628,7 +628,7 @@ func (h *Host) modelPriced(id string) bool {
 }
 
 // contextWindow is the model spec's window, 0 when it names none (unknown:
-// no percent readout, no auto compaction).
+// no percent readout, a subagent trims only after the provider refuses it).
 func (h *Host) contextWindow(modelID string) int64 {
 	m, _ := h.modelSpec(modelID)
 	return m.ContextWindow

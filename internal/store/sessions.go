@@ -234,7 +234,7 @@ type ToolCall struct {
 
 // AddToolCall records a tool invocation together with the message row it
 // points at, in one transaction: a telemetry row that fails to land after
-// its message leaves an orphan and the reflector's counts short.
+// its message leaves an orphan behind.
 func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
 	return s.inTx(func(tx *sql.Tx) error {
 		if err := insertMessage(tx, m); err != nil {
@@ -257,8 +257,8 @@ type ToolStat struct {
 }
 
 // ToolCallStats aggregates a session's tool_calls rows per tool, busiest
-// first (reflector input, DESIGN §10.3); afterID limits it to the calls
-// stored after that message, "" counts them all.
+// first; afterID limits it to the calls stored after that message, ""
+// counts them all.
 func (s *DB) ToolCallStats(sessionID, afterID string) ([]ToolStat, error) {
 	rows, err := s.db.Query(`SELECT t.tool, COUNT(*),
 			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END)

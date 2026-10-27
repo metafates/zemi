@@ -149,13 +149,12 @@ var sectionDesc = map[string]string{
 	"models":    "the model each job runs on",
 	"providers": "the builtin providers and their keys",
 	"ui":        "the theme, the mouse and alerts",
-	"agent":     "effort and compaction",
-	"session":   "naming sessions and the idle recap",
+	"agent":     "reasoning effort and background agents",
+	"session":   "the idle recap",
 	"lsp":       "language servers and when they start",
 	"editor":    "the editor zemi opens",
 	"keymap":    "the key <leader> stands for",
 	"log":       "what the launch log records",
-	"memory":    "how memories are proposed and stored",
 	"plugins":   "settings the plugins register",
 }
 

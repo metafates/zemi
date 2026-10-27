@@ -69,9 +69,9 @@ func TestHealthListFromLua(t *testing.T) {
 // TestHealthAction: a row's action label and key come from its Run, and a
 // run the table does not label takes no action.
 func TestHealthAction(t *testing.T) {
-	label, key, ok := healthAction("memory")
-	if !ok || label != "Review memories" || key != "r" {
-		t.Errorf("memory = %q, %q, %v", label, key, ok)
+	label, key, ok := healthAction("errors")
+	if !ok || label != "Show errors" || key != "s" {
+		t.Errorf("errors = %q, %q, %v", label, key, ok)
 	}
 	if _, _, ok := healthAction("nothing"); ok {
 		t.Error("a run with no label took an action")
@@ -158,7 +158,7 @@ func TestHealthModelRows(t *testing.T) {
 		{"unlisted model", "model", anthropic + `zemi.config.set("models.default", "a/other")`, openai, "warn", "a/other: not in the provider's models list"},
 		{"a role's row is named after it", "compact model", anthropic + `zemi.config.set("models.compact", "nobody/m")`, openai, "error", `provider "nobody" is not registered: add a provider to `},
 		{"the conversation pick", "model", chat, nil, "ok", "a/m"},
-		{"the conversation's and the agents' windows", "context", chat, nil, "warn", "window unknown for a/m: no context percent, no auto compaction; b/m: subagents"},
+		{"the conversation's and the agents' windows", "context", chat, nil, "warn", "window unknown for a/m: no context percent in /usage; b/m: subagents"},
 		{"a role reads no window", "context", ab + `zemi.config.set("models.compact", "b/m")`, nil, "ok", ""},
 		{"agents read one", "context", ab + `zemi.config.set("models.agents", "b/m")`, nil, "warn", ""},
 	} {

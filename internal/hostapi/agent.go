@@ -802,7 +802,7 @@ func (h *Host) endScope(scope *turnScope) {
 	scope.cancel()
 }
 
-// handOff ends a claim that ran no turn (/compact, rewind). Messages queued
+// handOff ends a claim that ran no turn (/reset, rewind). Messages queued
 // meanwhile start under the same claim, so a submit cannot jump ahead of
 // them; after a cancel the queue waits for the UI to hand it back.
 func (h *Host) handOff(scope *turnScope) {
@@ -1380,6 +1380,9 @@ func (h *Host) joinReasoning(text string) bool {
 // the live rows that finished, which move there first, and above the calls
 // still running.
 func (h *Host) appendAfterLive(m ChatMessage) {
+	if m.Seq == 0 { // a live row names no log message until the stamping pairs it
+		m.Seq = NoSeq
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	h.flushOutput(TurnStat{})

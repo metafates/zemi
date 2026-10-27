@@ -115,6 +115,102 @@ func atoi64(s string) (int64, error) {
 	return n, err
 }
 
+// TestResetChat: /reset refuses mid-turn, asks alone (the armed screen),
+// wipes the log, the tree and the view once answered, clears the todos, and
+// the next turn is the log's seq 0 again on a builder that learned the empty
+// state.
+func TestResetChat(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if _, err := h.DB.AppendLog(kindUser, "earlier", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.InsertNode(0, 0, "earlier"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.AddCheckpoint(0, store.Checkpoint{Path: "/x", Existed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.SetTodos(store.MainSessionID, []store.Todo{{Content: "a", Status: store.TodoPending}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// a provider that never answers holds the turn open
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { return nil }}, nil
+	}
+	if err := h.AgentSend("slow"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResetChat(false); !errors.Is(err, errTurnRunning) {
+		t.Fatalf("unconfirmed mid-turn = %v, want the turn-running refusal", err)
+	}
+	if err := h.ResetChat(true); !errors.Is(err, errTurnRunning) {
+		t.Fatalf("confirmed mid-turn = %v, want the turn-running refusal", err)
+	}
+	h.AgentCancel()
+	waitIdle(t, h)
+
+	// alone it asks: the screen opens armed, and nothing moved yet
+	before, err := h.DB.LogCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResetChat(false); err != nil {
+		t.Fatal(err)
+	}
+	opened := ui.overlays()
+	ask := opened[len(opened)-1]
+	if ask.ID != "reset" || ask.Confirm != "reset --yes" || len(ask.Items) != 1 ||
+		ask.Items[0].Keys[0].Run != "reset" || !ask.Items[0].Keys[0].Danger {
+		t.Fatalf("the ask opened %+v", ask)
+	}
+	if n, _ := h.DB.LogCount(); n != before {
+		t.Fatalf("%d log rows survived the ask, want the %d it held", n, before)
+	}
+
+	// --yes wipes and starts over
+	if err := h.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := h.DB.LogCount(); n != 0 {
+		t.Fatalf("%d log rows survived the reset", n)
+	}
+	if nodes, _ := h.DB.BuiltNodes(); len(nodes) != 0 {
+		t.Fatalf("%d nodes survived the reset", len(nodes))
+	}
+	if lines, _ := h.DB.LoadView(); len(lines) != 0 {
+		t.Fatalf("%d view lines survived the reset", len(lines))
+	}
+	if cps, _ := h.DB.CheckpointsFrom(0); len(cps) != 0 {
+		t.Fatalf("%d checkpoints survived the reset", len(cps))
+	}
+	if todos := h.todoSnapshot(); len(todos) != 0 {
+		t.Fatalf("todos %+v survived the reset", todos)
+	}
+
+	// a next turn works, and the log restarts at 0 with its summary
+	reflectStub(t, h, "fresh reply")
+	if err := h.AgentSend("again"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	rows, err := h.DB.LogFrom(0, 10)
+	if err != nil || len(rows) != 2 || rows[0].Seq != 0 || rows[0].Kind != kindUser || rows[1].Kind != kindAgent {
+		t.Fatalf("the next turn logged %+v, %v", rows, err)
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 0); err != nil {
+			return errors.New("the builder did not rebuild over the empty log")
+		}
+		return nil
+	})
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 0 {
+		t.Fatalf("the chat restarted with %+v", tr)
+	}
+}
+
 // TestRewind runs turns that write files and todo lists, then rewinds them
 // one by one: each rewind restores the files and the todo list as they were
 // before that turn and cuts the log back to the prompt before it.

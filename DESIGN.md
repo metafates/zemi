@@ -743,7 +743,7 @@ the binary's API version is `zemi.api.version`.
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
   (`zemi.fs.read`/`write`, `zemi.state.get`/`set`, `zemi.json.decode`,
-  `zemi.job.start`, the memory, learn and skills calls) return
+  `zemi.job.start`, the skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
   failures never raise; misuse (bad arguments, a call a render may not
   make) and a permission gate that does not allow always raise.
@@ -2210,9 +2210,9 @@ view.
   window of at most 12 rows (a third of the chat) follow the item in progress,
   saying `… N more todos` under the window and `… N more todos above` when it
   starts past it.
-  The rendered view is derived from host-held blocks: the raw message JSON
-  is always in the store, reachable via
-  `zemi.session.messages` and `/copy` (the last reply as the model wrote it),
+  The rendered view is derived from host-held blocks: the raw message text
+  is always in the log, reachable via
+  `zoom` and `/copy` (the last reply as the model wrote it),
   so no widget can hide what the model actually received. `/messages` is the
   map of it (`alt+m`): one builtin list of the whole conversation, every turn
   a section header over the rows it held (a prompt, reply, notice, error or
@@ -2307,6 +2307,9 @@ view.
   `/rewind [seq]` (restore the files the turns from seq on changed, cut the
   chat there and hand the prompt back; without a seq, the picker of the
   chat's prompts, `r` rewinds to the chosen one),
+  `/reset` (wipe the chat's log, every summary and the view, vacuum the
+  store so the text is gone from disk, and start the log over at seq 0;
+  asks first, a screen's armed key or `--yes` answers),
   `/goal <condition>` (work until
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
@@ -2462,8 +2465,8 @@ view.
   run that must not touch the machine runs in a container or VM.
 - An action is everything but a read: `fs.write`, `tool.shell`,
   `tool.lua`, `tool.workflow`, `lua.http.<method>`, a Lua tool (`tool.<name>`),
-  an MCP tool its server does not mark read-only (`Read` on the request),
-  `memory.write`. Reads (`fs.read`) settle on their own.
+  an MCP tool its server does not mark read-only (`Read` on the request).
+  Reads (`fs.read`) settle on their own.
 - Subjects label the ask and the `tool.denied` event.
   A request carries tool, subject, arg, reason, preview, description,
   agent, owner, script; the pipeline fills read-only and the script

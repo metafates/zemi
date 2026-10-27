@@ -2,7 +2,7 @@
 
 ## Subagents (`agents/<name>.md`)
 
-A subagent is a model run the main agent starts for a self-contained task. Its first message is the view (`zemi memories.md` explains it): the caller's whole chat as one-line summaries, read-only, so its work builds on what the chat holds; its own transcript is a child session's rows, not the chat's. On top of that: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), and the task the main agent writes. It has no `zoom` or `date`, so the view is all it sees of the chat (a fork continues the live conversation instead, `## Forks`). The body is the job alone: zemi already says the rest.
+A subagent is a model run the main agent starts for a self-contained task. Its first message is the view (`zemi memories.md` explains it): the caller's whole chat as one-line summaries, read-only, so its work builds on what the chat holds; its own transcript is a child session's rows, not the chat's. On top of that: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), and the task the main agent writes. `zoom` and `date` are how it reads the chat behind the view - the summaries first, a message whole when a line leaves out what it needs (`zemi memories.md`). A fork continues the live conversation instead (`## Forks`). The body is the job alone: zemi already says the rest.
 
 ```markdown
 ---

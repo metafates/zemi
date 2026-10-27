@@ -510,7 +510,7 @@ function zemi.command.list() end
 ---@class zemi.ev.AgentFinish: zemi.Event
 ---@field session string
 ---@field model string
----@field usage zemi.Usage This turn's own model calls; subagents and a step resent after compaction are only in `zemi.agent.usage()`.
+---@field usage zemi.Usage This turn's own model calls; subagents' calls are only in `zemi.agent.usage()`.
 
 --- One model call of a turn, a subagent's included.
 ---@class zemi.ev.AgentStep: zemi.Event
@@ -530,9 +530,8 @@ function zemi.command.list() end
 ---@field cache_write integer
 ---@field cost number
 
---- Fired when the main agent's prompt is built (a new session, a resume, a
---- compaction, a model, trust or tool change), not per send, and
---- once per subagent run.
+--- Fired when the main agent's prompt is built (a model, trust or tool
+--- change rebuilds it), not per send, and once per subagent run.
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string
 
@@ -1535,7 +1534,7 @@ function zemi.log.list() end
 ---@class zemi.ModelSpec
 ---@field id string
 ---@field display? string
----@field context_window? integer Without it there is no context percent and no auto compaction.
+---@field context_window? integer Without it there is no context percent in /usage and a subagent trims its history only after the provider refuses it.
 ---@field cost_per_1m_in? number
 ---@field cost_per_1m_out? number
 ---@field cost_per_1m_cache_write? number

@@ -531,11 +531,18 @@ func (t *dateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantas
 	return fantasy.NewTextResponse(row.CreatedAt), nil
 }
 
-// chatCommands is /note: one line into the eternal chat, a chapter mark.
+// chatCommands are the eternal chat's own: /note, one line into the log, a
+// chapter mark, and /reset, the wipe that starts the log over.
 func (h *Host) chatCommands() []*Command {
 	return []*Command{{
 		Name: "note", NArgs: NArgsSome, Desc: "add a note to the chat's memory",
 		GoFn: func(h *Host, args string, confirm bool) error { return h.Note(args) },
+	}, {
+		Name: "reset", NArgs: NArgsOptional, Desc: "wipe this chat's log and summary tree and start it over",
+		GoFn: func(h *Host, args string, confirm bool) error {
+			_, yes := ConfirmArgs(args, confirm)
+			return h.ResetChat(yes)
+		},
 	}}
 }
 

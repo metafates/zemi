@@ -332,7 +332,7 @@ const chatPageRows = 250
 // transcript row: the chat window does not hold it.
 func olderRow(m ChatMessage) OverlayItem {
 	item := messageRow(0, m)
-	if m.Seq > 0 {
+	if m.Seq != NoSeq {
 		item.Run = "messages view #" + strconv.FormatInt(m.Seq, 10)
 	}
 	return item
@@ -345,17 +345,17 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 	if h.DB == nil {
 		return Overlay{}, false
 	}
-	// the window's oldest claimed row: the pages stop before it, whatever seq
-	// it carries, the log's own 0 included
+	// the window's oldest claimed row: the pages stop before it, whatever
+	// seq it carries, the log's own 0 included
 	h.tMu.RLock()
 	tr, claimed := h.session.Transcript, h.stampRow
 	h.tMu.RUnlock()
-	head := int64(-1)
+	head := NoSeq
 	if claimed > 0 && len(tr) > 0 {
 		head = tr[0].Seq
 	} else {
 		for _, m := range tr {
-			if m.Seq > 0 {
+			if m.Seq != NoSeq {
 				head = m.Seq
 				break
 			}
@@ -365,7 +365,7 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 	oldest := h.msgFrom
 	h.msgMu.Unlock()
 	if oldest < 0 {
-		if head <= 0 {
+		if head < 0 {
 			return Overlay{}, false
 		}
 		oldest = head
@@ -382,7 +382,7 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 	h.msgMu.Lock()
 	// a rewind cut the log under the loaded pages: only what is still before
 	// the window's first logged row survives it
-	if head > 0 {
+	if head >= 0 {
 		page = append(page, slices.DeleteFunc(h.msgOld, func(m ChatMessage) bool { return m.Seq >= head })...)
 	}
 	h.msgOld, h.msgFrom = page, lo
@@ -587,7 +587,7 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
 		head, glyph, hl = cmp.Or(messageHead(text), "(empty prompt)"), "▌", "UserMsg"
-		if m.Seq > 0 {
+		if m.Seq != NoSeq {
 			item.ID = strconv.FormatInt(m.Seq, 10) // r rewinds to it; the list's key checks the rows
 		}
 	case m.Kind == "" && text != "":

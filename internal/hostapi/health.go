@@ -1,6 +1,6 @@
 // health.go is /health (after neovim's :checkhealth): one row per check,
-// so a piece failing quietly (no API key, a
-// reflector that keeps erroring) is visible in one place.
+// so a piece failing quietly (no API key, a build that keeps failing) is
+// visible in one place.
 
 package hostapi
 
@@ -284,9 +284,9 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	if h.DB == nil || h.GlobalDB == nil {
-		add(HealthError, "store", fmt.Sprintf("sessions and memory unavailable: %v", h.initErr))
+		add(HealthError, "store", fmt.Sprintf("the chat log and run storage unavailable: %v", h.initErr))
 	} else {
-		add(HealthOK, "store", "sessions and memory on disk")
+		add(HealthOK, "store", "the chat log and run storage on disk")
 	}
 
 	var names []string
@@ -315,7 +315,7 @@ func (h *Host) goHealthRows() []HealthRow {
 
 	id := h.sessionModelID()
 	out = append(out, h.modelRow())
-	// a target's own model would otherwise fail only at its first run, title or
+	// a target's own model would otherwise fail only at its first run or
 	// summary, where nobody looks
 	ids := []string{id}
 	for _, name := range h.targetNames()[1:] {
@@ -328,12 +328,11 @@ func (h *Host) goHealthRows() []HealthRow {
 		}
 	}
 
-	// compactDue never fires on an unknown window, so the turn runs until
-	// the provider refuses it. A summary budgets by the conversation's window
-	// when the compact model's is unknown, and titles and the reflector read none.
+	// the chat's context is the persisted view's, bounded by the builder; a
+	// model's window sizes the /usage read and a subagent's history cap
 	var unknown []string
 	if id != "" && h.contextWindow(id) == 0 {
-		unknown = append(unknown, id+": no context percent, no auto compaction")
+		unknown = append(unknown, id+": no context percent in /usage")
 	}
 	if m := h.roleModel("agents"); m != "" && m != id && h.contextWindow(m) == 0 {
 		unknown = append(unknown, m+": subagents trim their history only after the provider refuses it")
@@ -341,7 +340,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	if len(unknown) > 0 {
 		add(HealthWarn, "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry")
 	} else if id != "" {
-		add(HealthOK, "context", "window known, auto compaction on")
+		add(HealthOK, "context", "window known; the view bounds the chat, subagents trim by it")
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
@@ -547,7 +546,7 @@ func (h *Host) WaitMCP(ctx context.Context) {
 
 // healthActions labels the command a check's detail view runs; its initial
 // is the key.
-var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "memory": "Review memories", "plugins": "Open plugins"}
+var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugins": "Open plugins"}
 
 // healthAction is what a check's Run resolves to. A run the table does not
 // label takes no action rather than reading a missing label.

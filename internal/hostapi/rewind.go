@@ -141,15 +141,16 @@ func (h *Host) RewindTo(seq int64) (int, error) {
 		if len(failed) > 0 {
 			return fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 		}
-		// the builder first: quiesced, so no build lands over the cut
+		// the builder first: quiesced, so no build lands over the cut, and
+		// resumed whatever the cut did
 		h.chat.quiesce()
+		defer h.chat.resume()
 		if err := h.DB.DeleteLogFrom(seq); err != nil {
 			return err
 		}
 		if err := h.patchView(seq); err != nil {
 			return err
 		}
-		h.chat.resume()
 		return nil
 	}()
 	if err != nil {
@@ -311,5 +312,80 @@ func (h *Host) OpenRewind() error {
 	}
 	// builtin origin: the UI runs a row's command only for trusted overlays
 	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind", Origin: lua.OriginBuiltin, Items: items, Empty: "No prompts to rewind yet. Send a message to make one."})
+	return nil
+}
+
+// ResetChat wipes the eternal chat and starts it over (/reset, the fresh
+// start /new was): the log, every summary node and view line, and the
+// checkpoints go, VACUUM reclaims the file, and the next message is seq 0.
+// It refuses mid-turn and while any run lives, the way a rewind does.
+func (h *Host) ResetChat(yes bool) error {
+	if h.DB == nil || h.chat == nil {
+		return Usagef("no chat log in this boot")
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	if ag.active {
+		ag.mu.Unlock()
+		return errTurnRunning
+	}
+	// claimed like a turn, so no send starts on the log being wiped
+	scope := h.claim()
+	ag.mu.Unlock()
+	defer h.handOff(scope)
+	// a detached run's reports would land in the log being wiped
+	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
+		return err
+	}
+	if !yes {
+		return AskFirst("reset --yes", "", h.openReset)
+	}
+	err := func() error {
+		h.cutMu.Lock()
+		defer h.cutMu.Unlock()
+		// the builder first: quiesced, so no build lands over the wipe, and
+		// resumed whatever the wipe did
+		h.chat.quiesce()
+		defer h.chat.resume()
+		if err := h.DB.ResetLog(); err != nil {
+			return err
+		}
+		_, err := h.DB.DelKV(cvKey)
+		return err
+	}()
+	if err != nil {
+		return err
+	}
+	if err := h.DB.SetTodos(store.MainSessionID, nil); err != nil {
+		h.Log.Warn("todo list not cleared", "origin", "reset", "error", err)
+	}
+	h.todosStale.Store(true)
+	h.resetTodoNag(nil)
+	h.goalRewound(0) // every goal: the message that set it is gone
+	ag.mu.Lock()
+	ag.runner, ag.turnModel, ag.turnSeq = nil, "", -1
+	ag.lastIn = 0
+	ag.mu.Unlock()
+	h.forgetInstructions()
+	h.setTranscriptFromLog()
+	h.Notify(slog.LevelInfo, "Chat reset", "the log, its summary tree and the view start over")
+	return nil
+}
+
+// openReset is the screen /reset asks through: one row, whose key AskFirst
+// arms.
+func (h *Host) openReset(confirm string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "reset", Title: "Reset", Origin: lua.OriginBuiltin, Confirm: confirm,
+		Items: []OverlayItem{{
+			Text:   "Wipe this chat and start it over",
+			Detail: "Every message, summary and view line is deleted from the store, the vacuum reclaims the file, and the next message is the first again. A rewind restores the files of what it cuts; a reset touches no file.",
+			Keys:   []ItemKey{{Key: "x", Desc: "reset", Danger: true, Run: "reset"}},
+		}},
+	})
 	return nil
 }

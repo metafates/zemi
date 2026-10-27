@@ -183,8 +183,8 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 	}, nil
 }
 
-// SessionCount is how many top-level sessions the store holds. The memory
-// figure comes from the brain's partition, not this frozen table.
+// SessionCount is how many top-level sessions the store holds: the anchor
+// and the subagent runs' child sessions.
 func (s *DB) SessionCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n)
@@ -244,7 +244,7 @@ func (s *DB) sweep() error {
 	}
 	// NOTE: VACUUM rewrites the whole file before the UI starts, so it waits
 	// until a quarter of the pages are free; SQLite reuses the rest, and
-	// DeleteSession vacuums on its own so a deleted conversation is gone.
+	// ResetLog vacuums on its own so a wiped chat is gone.
 	var free, pages int64
 	if err := s.db.QueryRow(`SELECT * FROM pragma_freelist_count(), pragma_page_count()`).Scan(&free, &pages); err != nil || free*4 <= pages {
 		return err

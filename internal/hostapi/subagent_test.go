@@ -707,6 +707,28 @@ func TestUpdateToolReportsAFailedSend(t *testing.T) {
 	}
 }
 
+// TestSubagentToolSet: the default set keeps zoom and date (the run opens on
+// the view, and they are how it reads the chat behind it) and drops the
+// nesting, the user's attention and the lua tool.
+func TestSubagentToolSet(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	kept, _ := filterTools(h.allTools(h.PipelineFor()), nil, subagentExcluded)
+	var names []string
+	for _, k := range kept {
+		names = append(names, k.Info().Name)
+	}
+	for _, want := range []string{"zoom", "date"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("the subagent set lacks %s: %v", want, names)
+		}
+	}
+	for _, gone := range []string{"agent", "workflow", "todos", "question", "plan", "lua"} {
+		if slices.Contains(names, gone) {
+			t.Errorf("the subagent set keeps %s: %v", gone, names)
+		}
+	}
+}
+
 // TestFilterToolsNamesTheUnknown: an agent file spelling its tools another
 // harness's way names nothing here, and a run with no tools would invent
 // its report instead of failing.

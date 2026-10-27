@@ -408,8 +408,10 @@ func TestMessagesPageUp(t *testing.T) {
 				i, o.Items[i].Anchor, rowKey(o.Items[i]), was.Anchor, rowKey(was))
 		}
 	}
-	if o.Items[0].Anchor != 0 || o.Items[0].ID != "" {
-		t.Errorf("a loaded row anchors %d id %q, want none", o.Items[0].Anchor, o.Items[0].ID)
+	// the log's first message is seq 0, a real row: it names its seq like
+	// every other one, and r rewinds to before it
+	if o.Items[0].Anchor != 0 || o.Items[0].ID != "0" {
+		t.Errorf("the first logged prompt anchors %d id %q, want anchor 0 id \"0\"", o.Items[0].Anchor, o.Items[0].ID)
 	}
 	if o.Items[1].ID != "1" || o.Items[1].Run != "messages view #1" {
 		t.Errorf("the loaded prompt = id %q run %q", o.Items[1].ID, o.Items[1].Run)

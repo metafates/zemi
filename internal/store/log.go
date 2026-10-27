@@ -149,6 +149,31 @@ func (s *DB) DeleteLogFrom(seq int64) error {
 	})
 }
 
+// ResetLog wipes the chat: the log rows, every summary node and view line,
+// and the checkpoints keyed by log seq. The next append starts at seq 0
+// again. VACUUM and a TRUNCATE checkpoint follow, so the wiped text leaves
+// the file, the way a deleted conversation once did.
+func (s *DB) ResetLog() error {
+	err := s.inTx(func(tx *sql.Tx) error {
+		for _, table := range []string{"log", "nodes", "view_lines", "checkpoints"} {
+			if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
+				return fmt.Errorf("store: reset %s: %w", table, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return fmt.Errorf("store: vacuum: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return fmt.Errorf("store: checkpoint: %w", err)
+	}
+	return nil
+}
+
 // InsertNode stores a built summary, reporting whether this call inserted it:
 // INSERT OR IGNORE dedupes concurrent builders, and a builder that lost the
 // race reads the winner back instead of rebuilding.
