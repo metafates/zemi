@@ -729,22 +729,11 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		BaseURL: rawString(L, tb, "base_url"),
 		Headers: rawStringMap(L, tb, "headers"),
 	}
-	switch v := fields["rate_limit"].(type) {
-	case nil:
-	case float64:
-		if v < 1 {
-			return agent.Spec{}, errors.New("rate_limit must be at least 1 request per minute")
-		}
-		spec.RateLimit = agent.RateLimit{Requests: int(v), Window: 60}
-	case map[string]any:
-		rl, err := rateLimitFromLua(v)
-		if err != nil {
-			return agent.Spec{}, err
-		}
-		spec.RateLimit = rl
-	default:
-		return agent.Spec{}, fmt.Errorf("rate_limit must be a number or a table, not a %T", v)
+	rate, err := parseRateLimit(fields, "rate_limit")
+	if err != nil {
+		return agent.Spec{}, err
 	}
+	spec.RateLimit = rate
 	switch mode := fantasy.ObjectMode(rawString(L, tb, "object_mode")); mode {
 	case "":
 	case fantasy.ObjectModeAuto, fantasy.ObjectModeJSON, fantasy.ObjectModeTool, fantasy.ObjectModeText:
@@ -775,7 +764,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if !ok {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		if err := onlyKeys(e, at, append([]string{"id", "display", "vision", "decisions"}, modelNumericKeys...)...); err != nil {
+		if err := onlyKeys(e, at, append([]string{"id", "display", "vision", "decisions", "rate_limit"}, modelNumericKeys...)...); err != nil {
 			return agent.Spec{}, err
 		}
 		decided, err := modelBool(e, at, "decisions")
@@ -797,6 +786,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			return agent.Spec{}, fmt.Errorf("%s.id is required", at)
 		}
 		display, _ := e["display"].(string)
+		mrate, err := parseRateLimit(e, at+".rate_limit")
+		if err != nil {
+			return agent.Spec{}, err
+		}
 		spec.Models = append(spec.Models, agent.Model{
 			ID:                  id,
 			Display:             display,
@@ -808,6 +801,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			CostPer1MCacheRead:  nums["cost_per_1m_cache_read"],
 			TextOnly:            e["vision"] == false,
 			Decisions:           decided,
+			RateLimit:           mrate,
 		})
 	}
 	switch {
@@ -822,10 +816,35 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	return spec, nil
 }
 
+// parseRateLimit reads a rate_limit field: a number is the requests
+// shorthand for a 60s window, a table the full quota.
+func parseRateLimit(fields map[string]any, at string) (agent.RateLimit, error) {
+	switch v := fields["rate_limit"].(type) {
+	case nil:
+		return agent.RateLimit{}, nil
+	case float64:
+		if v < 1 {
+			return agent.RateLimit{}, fmt.Errorf("%s must be at least 1 request per minute", at)
+		}
+		return agent.RateLimit{Requests: int(v), Window: 60}, nil
+	case map[string]any:
+		rl, err := rateLimitFromLua(v, at)
+		if err != nil {
+			return agent.RateLimit{}, err
+		}
+		if rl.Window == 0 {
+			rl.Window = 60
+		}
+		return rl, nil
+	default:
+		return agent.RateLimit{}, fmt.Errorf("%s must be a number or a table, not a %T", at, v)
+	}
+}
+
 // rateLimitFromLua reads the rate_limit table's quotas: requests and
 // completion_tokens, per window seconds. Either quota alone is a pace.
-func rateLimitFromLua(fields map[string]any) (agent.RateLimit, error) {
-	if err := onlyKeys(fields, "rate_limit", "requests", "completion_tokens", "window"); err != nil {
+func rateLimitFromLua(fields map[string]any, at string) (agent.RateLimit, error) {
+	if err := onlyKeys(fields, at, "requests", "completion_tokens", "window"); err != nil {
 		return agent.RateLimit{}, err
 	}
 	var rl agent.RateLimit
@@ -834,7 +853,7 @@ func rateLimitFromLua(fields map[string]any) (agent.RateLimit, error) {
 		case nil:
 		case float64:
 			if v < 1 {
-				return agent.RateLimit{}, fmt.Errorf("rate_limit.%s must be at least 1", k)
+				return agent.RateLimit{}, fmt.Errorf("%s.%s must be at least 1", at, k)
 			}
 			switch k {
 			case "requests":
@@ -845,14 +864,11 @@ func rateLimitFromLua(fields map[string]any) (agent.RateLimit, error) {
 				rl.Window = int(v)
 			}
 		default:
-			return agent.RateLimit{}, fmt.Errorf("rate_limit.%s must be a number, not a %T", k, v)
+			return agent.RateLimit{}, fmt.Errorf("%s.%s must be a number, not a %T", at, k, v)
 		}
 	}
 	if !rl.Paced() {
-		return agent.RateLimit{}, errors.New("rate_limit needs requests or completion_tokens")
-	}
-	if rl.Window == 0 {
-		rl.Window = 60
+		return agent.RateLimit{}, fmt.Errorf("%s needs requests or completion_tokens", at)
 	}
 	return rl, nil
 }

@@ -77,6 +77,9 @@ type Model struct {
 	Decisions bool
 	Efforts   []string // a builtin's reasoning levels; empty takes no effort
 	Effort    string   // a builtin's level when /effort is unset
+	// RateLimit is the model's own quota, for a gateway that limits per
+	// model alias; unset takes the provider's.
+	RateLimit RateLimit
 }
 
 // Kind is a provider kind: which fantasy implementation talks to the
@@ -934,56 +937,84 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	prov, _, ok := id.Split()
+	prov, modelName, ok := id.Split()
 	if !ok {
 		return m, nil
 	}
 	r.mu.RLock()
-	l, ok := r.limits[prov]
 	spec, has := r.lookupLocked(prov)
 	r.mu.RUnlock()
 	// the limiter rides the spec: a reload that changes or drops rate_limit
-	// must not keep pacing at the old rate through a stale limiter
-	if !has || !spec.RateLimit.Paced() {
+	// must not keep pacing at the old rate through a stale limiter. A model
+	// with its own quota paces in its own bucket, keyed by the full id.
+	rate, key := spec.RateLimit, prov
+	if has {
+		if mo, ok := spec.Model(modelName); ok && mo.RateLimit.Paced() {
+			rate, key = mo.RateLimit, string(id)
+		}
+	}
+	if !has || !rate.Paced() {
 		return m, nil
 	}
-	if ok && l.spec == spec.RateLimit.normalize() {
+	r.mu.RLock()
+	l, ok := r.limits[key]
+	r.mu.RUnlock()
+	if ok && l.spec == rate.normalize() {
 		return rateModel{LanguageModel: m, limiter: l}, nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	spec, has = r.lookupLocked(prov)
-	if !has || !spec.RateLimit.Paced() {
+	if !has {
 		return m, nil
 	}
-	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(prov, spec.RateLimit)}, nil
+	rate = spec.RateLimit
+	if mo, ok := spec.Model(modelName); ok && mo.RateLimit.Paced() {
+		rate, key = mo.RateLimit, string(id)
+	} else {
+		key = prov
+	}
+	if !rate.Paced() {
+		return m, nil
+	}
+	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(key, rate)}, nil
 }
 
-// sharedLimiterLocked returns the provider's one bucket for this rate,
-// replacing a stale one a changed spec left behind; r.mu is held for writing.
-func (r *Registry) sharedLimiterLocked(providerID string, rate RateLimit) *rateLimiter {
+// sharedLimiterLocked returns the key's one bucket for this rate, replacing
+// a stale one a changed spec left behind; r.mu is held for writing.
+func (r *Registry) sharedLimiterLocked(key string, rate RateLimit) *rateLimiter {
 	if r.limits == nil {
 		r.limits = map[string]*rateLimiter{}
 	}
-	l, ok := r.limits[providerID]
+	l, ok := r.limits[key]
 	if !ok || l.spec != rate.normalize() {
 		l = newRateLimiter(rate)
-		r.limits[providerID] = l
+		r.limits[key] = l
 	}
 	return l
 }
 
-// Limiter is the provider's shared pace for a raw-HTTP caller (classify's
-// provider protocol), nil when unpaced: the same bucket the models resolve
-// to.
-func (r *Registry) Limiter(providerID string) *rateLimiter {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	spec, ok := r.lookupLocked(providerID)
-	if !ok || !spec.RateLimit.Paced() {
+// Limiter is the id's shared pace for a raw-HTTP caller (classify's provider
+// protocol), nil when unpaced: the same bucket the models resolve to.
+func (r *Registry) Limiter(id ModelID) *rateLimiter {
+	prov, model, ok := id.Split()
+	if !ok {
 		return nil
 	}
-	return r.sharedLimiterLocked(providerID, spec.RateLimit)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	spec, has := r.lookupLocked(prov)
+	if !has {
+		return nil
+	}
+	rate, key := spec.RateLimit, prov
+	if mo, ok := spec.Model(model); ok && mo.RateLimit.Paced() {
+		rate, key = mo.RateLimit, string(id)
+	}
+	if !rate.Paced() {
+		return nil
+	}
+	return r.sharedLimiterLocked(key, rate)
 }
 
 func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {

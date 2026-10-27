@@ -114,7 +114,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 	req := classify.Request{State: state, Questions: questions}
 	if spec, model, ok := h.Providers.Decisions(agent.ModelID(id)); ok {
 		httpc := agent.ModelHTTP()
-		if l := h.Providers.Limiter(spec.ID); l != nil {
+		if l := h.Providers.Limiter(agent.ModelID(id)); l != nil {
 			c := *httpc
 			c.Transport = agent.PaceTransport(l, httpc.Transport)
 			httpc = &c

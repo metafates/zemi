@@ -1006,14 +1006,16 @@ zemi.provider.add({
 })
 ```
 
-A `rate_limit` paces every call to the provider through one pair of token
-buckets (the conversation, the summary builder, subagents): `requests`
-calls per window and, when set, `completion_tokens` reply tokens per the
-same window, each bursting its whole budget then refilling at its rate.
-A number is the requests shorthand for a 60s window. A reply charging
-more than the budget holds sinks it negative, so later calls wait out the
-drain instead of forcing the provider's 429; two zemi windows pace their
-own halves.
+A `rate_limit` paces every call through one pair of token buckets (the
+conversation, the summary builder, subagents): `requests` calls per window
+and, when set, `completion_tokens` reply tokens per the same window, each
+bursting its whole budget then refilling at its rate. A number is the
+requests shorthand for a 60s window. The quota sits on the provider, and a
+model entry may carry its own (`models = { { id = "m", rate_limit = { ... } } }`)
+for a gateway that limits per model alias, that model alone in its own
+bucket. A reply charging more than the budget holds sinks it negative, so
+later calls wait out the drain instead of forcing the provider's 429; two
+zemi windows pace their own halves.
 
 There is one session per project: the anchor row `main` the migration
 inserts (§7), which billing and the todo list ride. The chat itself is the
