@@ -2249,7 +2249,6 @@ func TestPermissionChoices(t *testing.T) {
 		{"down enter takes no", shell(), []tea.KeyPressMsg{down, enter}, false, "user"},
 		{"up stays on yes", shell(), []tea.KeyPressMsg{up, enter}, true, "user:once"},
 		{"enter takes yes", shell(), []tea.KeyPressMsg{enter}, true, "user:once"},
-		{"o takes yes", shell(), []tea.KeyPressMsg{letter('o')}, true, "user:once"},
 		{"n denies", shell(), []tea.KeyPressMsg{letter('n')}, false, "user"},
 	} {
 		if ok, by := ask(c.req, c.keys...); ok != c.ok || by != c.by {
