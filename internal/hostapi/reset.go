@@ -81,6 +81,7 @@ func (h *Host) chatDropped() {
 	h.resetTodoNag(nil)
 	h.goalDropped()
 	h.forgetInstructions()
+	h.EmitAsync(EventSessionReset, nil)
 }
 
 // openReset is the screen /reset asks through: one row, whose key AskFirst

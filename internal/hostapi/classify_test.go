@@ -378,7 +378,7 @@ test("a stubbed classify stands in for the call", function()
 	assert(tostring(failErr):match("the classifier is down"), tostring(failErr))
 end)
 
-test("on_answer reaches a plain handler", function()
+test("on_done reaches a plain handler", function()
 	local got, gotErr
 	test.stub("lua.classify.ask", "*", {
 		strategy = "protocol",
@@ -387,7 +387,7 @@ test("on_answer reaches a plain handler", function()
 	zemi.classify.ask({
 		state = { cmd = "ls" },
 		questions = { safe = { type = "bool", instructions = "is it safe", criteria = { ["true"] = "y", ["false"] = "n" } } },
-		on_answer = function(res, err) got, gotErr = res, err end,
+		on_done = function(res, err) got, gotErr = res, err end,
 	})
 	test.advance(1)
 	assert(gotErr == nil, tostring(gotErr))

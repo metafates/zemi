@@ -121,7 +121,7 @@ func (h *Host) permNamespace(L *glua.LState) *glua.LTable {
 				if err != nil {
 					return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 				}
-				return []glua.LValue{lua.FromGo(L, map[string]any{"answer": answer})}
+				return []glua.LValue{lua.FromGo(L, map[string]any{"decision": answer})}
 			})
 		})))
 		lua.GuardFuncs(L, handle, "perm:", h.guardLua)

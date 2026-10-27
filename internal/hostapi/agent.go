@@ -2024,7 +2024,7 @@ func (h *Host) modelPicker(name string) Overlay {
 		o.ID, o.Title, run, cur = "model "+name, "Model roles / "+name, "model "+name+" ", h.Settings.Str(config.ModelKey(name))
 		head := h.followRow(name, run)
 		if cur == "" {
-			head.Key = "current"
+			head.Tag = "current"
 		}
 		o.Items = []OverlayItem{head}
 	}
@@ -2053,7 +2053,7 @@ func (h *Host) modelPicker(name string) Overlay {
 			// marks the model it names
 			item := OverlayItem{ID: id, Text: m.ID, Section: section, Desc: modelDesc(id, m), Run: run + id, Copy: id}
 			if id == cur {
-				item.Key = "current"
+				item.Tag = "current"
 			}
 			rows = append(rows, modelRow{id, item})
 		}
@@ -2079,7 +2079,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = slices.Insert(o.Items, heads, OverlayItem{ID: cur, Text: cur, Run: run + cur, Key: "current, not in the list", Desc: "the provider decides whether it exists"})
+		o.Items = slices.Insert(o.Items, heads, OverlayItem{ID: cur, Text: cur, Run: run + cur, Tag: "current, not in the list", Desc: "the provider decides whether it exists"})
 		o.Selected = heads
 	}
 	// f marks the model a row names, wherever it sits in the list
@@ -2234,7 +2234,7 @@ func (h *Host) modelSlotRow(name, desc string) OverlayItem {
 		Verb: VerbOpen, Run: "model " + name,
 	}
 	if tag := h.slotTag(name); tag != "" {
-		item.Key = tag
+		item.Tag = tag
 	}
 	return item
 }
@@ -2489,7 +2489,7 @@ func (h *Host) OpenEffortPicker() error {
 		name := cmp.Or(level, "default")
 		item := OverlayItem{Text: name, Run: "effort " + name, Desc: h.effortDesc(model, level)}
 		if level == pick {
-			item.Key, sel = "current", len(items)
+			item.Tag, sel = "current", len(items)
 		}
 		items = append(items, item)
 	}
@@ -2589,7 +2589,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("usage", L.NewFunction(func(L *glua.LState) int {
 		s := h.AgentStream()
 		out := usageTable(L, s, h.modelPriced(h.turnModelID()))
-		contextTable(L, s).ForEach(func(k, v glua.LValue) { out.RawSetString("context_"+k.String(), v) })
+		out.RawSetString("context", contextTable(L, s))
 		L.Push(out)
 		return 1
 	}))

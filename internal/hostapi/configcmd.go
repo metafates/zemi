@@ -382,7 +382,7 @@ func (h *Host) pickItems(path config.Key) (items []OverlayItem, sel int) {
 	for i, c := range h.configChoices(path) {
 		item := OverlayItem{Text: cmp.Or(c, "default"), Run: "config set " + string(path) + " " + c, Verb: VerbPick}
 		if c == cur {
-			item.Key, sel = "current", i
+			item.Tag, sel = "current", i
 		}
 		items = append(items, item)
 	}

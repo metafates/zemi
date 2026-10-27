@@ -814,8 +814,9 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 }
 
 type lspRow struct {
-	Name, Command, Filetypes, Error string
-	Status                          ServiceStatus
+	Name, Command, Error string
+	Filetypes            []string
+	Status               ServiceStatus
 }
 
 // lspRows lists the servers this project can use with their state: running
@@ -827,11 +828,11 @@ func (h *Host) lspRows() []lspRow {
 	var out []lspRow
 	for _, d := range defs {
 		if _, running := h.lsp.running[d.Name]; !running {
-			out = append(out, lspRow{Name: d.Name, Command: d.Command, Filetypes: strings.Join(d.Exts, " "), Status: StatusIdle})
+			out = append(out, lspRow{Name: d.Name, Command: d.Command, Filetypes: d.Exts, Status: StatusIdle})
 		}
 	}
 	for name, p := range h.lsp.running {
-		row := lspRow{Name: name, Command: p.def.Command, Filetypes: strings.Join(p.def.Exts, " "), Status: StatusStarting}
+		row := lspRow{Name: name, Command: p.def.Command, Filetypes: p.def.Exts, Status: StatusStarting}
 		select {
 		case <-p.ready:
 			row.Status = StatusReady
@@ -907,12 +908,12 @@ func (h *Host) lspOverlay(refresh bool) Overlay {
 func (h *Host) lspItems() []OverlayItem {
 	var items []OverlayItem
 	for _, row := range h.lspRows() {
-		files := row.Filetypes
+		files := strings.Join(row.Filetypes, " ")
 		if row.Status == StatusIdle {
 			files += " (starts on the first one)"
 		}
 		item := OverlayItem{
-			Text: row.Name, Desc: string(row.Status) + " · " + row.Filetypes,
+			Text: row.Name, Desc: string(row.Status) + " · " + strings.Join(row.Filetypes, " "),
 			Fields: fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
 		}
 		if row.Status != StatusIdle {

@@ -117,7 +117,7 @@ func TestLSPConfig(t *testing.T) {
 	}
 	runUser(t, r, `
 		local rows = zemi.lsp.list()
-		assert(#rows == 1 and rows[1].name == "gopls" and rows[1].status == "idle" and rows[1].filetypes == ".go", "list: " .. tostring(rows[1] and rows[1].status))
+		assert(#rows == 1 and rows[1].name == "gopls" and rows[1].status == "idle" and rows[1].filetypes[1] == ".go", "list: " .. tostring(rows[1] and rows[1].status))
 	`)
 }
 

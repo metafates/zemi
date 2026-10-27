@@ -23,7 +23,7 @@ import (
 // waits a minute rather than the ten minutes a model ask may.
 const classifyTimeout = time.Minute
 
-// classifyAsk is zemi.classify.ask({ model, state, questions, timeout }):
+// classifyAsk is zemi.classify.ask({ model, state, questions, timeout_ms }):
 // every question judged in one call, by whichever strategy the model's provider
 // answers with, billed to the live session. It costs money, and a plugin's
 // manifest `uses` naming `model` is what consents to its call.
@@ -37,10 +37,10 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 		return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
 	})
 	timeout := classifyTimeout
-	if n, ok := opt[glua.LNumber](L, spec, "timeout"); ok && n > 0 {
-		timeout = time.Duration(float64(n) * float64(time.Second))
+	if n, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && n > 0 {
+		timeout = time.Duration(n) * time.Millisecond
 	}
-	onAnswer, _ := opt[*glua.LFunction](L, spec, "on_answer")
+	onDone, _ := opt[*glua.LFunction](L, spec, "on_done")
 	at := h.callerOf(L)
 	// a stub stands in for the whole call, a model and all
 	var req classify.Request
@@ -75,7 +75,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 				res, askErr = classify.Ask(ctx, req)
 				h.bill(sid, id, res.Usage)
 			}
-			if onAnswer != nil {
+			if onDone != nil {
 				// the same table wait() answers, delivered as a task, so a
 				// handler that cannot suspend still acts on the answer
 				var out, errArg any
@@ -86,7 +86,7 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 				} else {
 					out = classifyResultMap(h, id, res)
 				}
-				h.callLuaAsync("zemi.classify on_answer", at, onAnswer, out, errArg)
+				h.callLuaAsync("zemi.classify on_done", at, onDone, out, errArg)
 			}
 		},
 		ret: func(L *glua.LState, err error) []glua.LValue {

@@ -82,7 +82,7 @@ func dumpItem(it OverlayItem) string {
 	}
 	add("fill", it.Fill)
 	add("id", it.ID)
-	add("key", it.Key)
+	add("tag", it.Tag)
 	if len(it.Keys) > 0 {
 		add("keys", "["+strings.Join(dumpKeys(it.Keys), " ")+"]")
 	}

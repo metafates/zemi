@@ -389,6 +389,15 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
+	// hl.del(group) drops the group's definition, so the themes' own draws
+	// again; it reports whether one was set.
+	hl.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
+		ok := h.Themes.DelHL(L.CheckString(1))
+		h.refresh()
+		L.Push(glua.LBool(ok))
+		return 1
+	}))
+
 	// hl.get(group) is how the group draws under the active theme, links
 	// followed and roles resolved to hex (an ANSI color name is the
 	// terminal's, so it stays a name), or nil when nothing sets it.
@@ -610,7 +619,7 @@ var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, 
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
-	Text, Desc, Key, Section, Detail, Fill, Copy, Run, ID, Preview string
+	Text, Desc, Tag, Section, Detail, Fill, Copy, Run, ID, Preview string
 	Verb                                                           Verb
 	Mark                                                           MarkKind   // drawn ahead of the text
 	On, Locked                                                     *bool      // On: the switch is drawn, on or off; Locked: it stands with nothing to switch
@@ -692,7 +701,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	for _, f := range []struct {
 		key string
 		dst *string
-	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}} {
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"tag", &p.Tag}, {"section", &p.Section}, {"detail", &p.Detail}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case string:

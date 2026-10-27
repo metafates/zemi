@@ -1623,7 +1623,7 @@ func TestOverlaySwitch(t *testing.T) {
 		sw, hl string
 	}{
 		{hostapi.OverlayItem{Text: "a", On: new(true)}, "◆ on ", "Host:Ok"},
-		{hostapi.OverlayItem{Text: "a", On: new(false), Key: "tag"}, "◇ off", "Host:Hint"},
+		{hostapi.OverlayItem{Text: "a", On: new(false), Tag: "tag"}, "◇ off", "Host:Hint"},
 		{hostapi.OverlayItem{Text: "a", Locked: new(true)}, "  on ", "Host:Hint"},
 	} {
 		its := (&App{}).overlayState(hostapi.Overlay{Items: []hostapi.OverlayItem{c.item}}).items
@@ -1682,7 +1682,7 @@ func TestOverlayTailLabel(t *testing.T) {
 	for _, w := range []int{40, 80, 120} {
 		app, _ := bootAgentApp(t, w, 20)
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Items: []hostapi.OverlayItem{
-			{Text: path, Tail: true, Desc: "undecided · 1 session · 5m ago", Key: "current"},
+			{Text: path, Tail: true, Desc: "undecided · 1 session · 5m ago", Tag: "current"},
 		}})
 		var text string
 		for _, r := range app.overlayBox(&app.overlays[0], w, 20, true) {
@@ -1719,7 +1719,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 func TestOverlayItemFields(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 16)
-	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "run",
+	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", tag = "k", section = "s", detail = "x", verb = "run",
   fill = "f", copy = "c", run = "r", id = "i", danger = true, tail = true, on = false, locked = true, keys = { { key = "a", desc = "A" } }, fields = { { "a", "b" } } } } })
 for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { keys = "x" }, { keys = { { id = 1 } } }, { keys = { { key = "j" } } }, { keys = { { key = "o", run = "a" }, { key = "o", run = "b" } } }, { keys = { { key = "a", verb = "nope" } } }, { fields = { "x" } }, { danger = "yes" }, { tail = 1 }, { verb = "nope" } }) do
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
@@ -1727,7 +1727,7 @@ end
 	assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
 	// the fields the row renderer and the key handling read, from the Lua above
 	it := app.overlays[0].items[0].row
-	if it.Text != "t" || it.Desc != "d" || it.Key != "k" || it.Section != "s" || it.Detail != "x" ||
+	if it.Text != "t" || it.Desc != "d" || it.Tag != "k" || it.Section != "s" || it.Detail != "x" ||
 		it.Verb != hostapi.VerbRun || it.Fill != "f" || it.Copy != "c" || it.Run != "r" || it.ID != "i" ||
 		!it.Danger || !it.Tail || it.On == nil || *it.On || it.Locked == nil || !*it.Locked || len(it.Keys) != 1 || it.Keys[0].Key != "a" || it.Keys[0].Desc != "A" ||
 		fmt.Sprint(it.Fields) != "[{a b}]" {

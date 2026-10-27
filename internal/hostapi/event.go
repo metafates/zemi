@@ -34,6 +34,7 @@ const (
 	EventComposerChange      = "composer.change"
 	EventComposerSubmit      = "composer.submit"
 	EventJobExit             = "job.exit"
+	EventSessionReset        = "session.reset"
 	EventLSPRequest          = "lsp.request"
 )
 
@@ -48,6 +49,7 @@ var eventCatalogue = set.Of(
 	EventPermissionRequest, EventPermissionResolved,
 	EventUIResize, EventComposerChange, EventComposerSubmit,
 	EventJobExit,
+	EventSessionReset,
 	EventLSPRequest,
 )
 

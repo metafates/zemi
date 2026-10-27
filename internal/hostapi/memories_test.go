@@ -114,8 +114,8 @@ func TestMemoriesZoom(t *testing.T) {
 	if o.Items[0].Run != "memories zoom 1 0" || o.Items[2].Run != "memories view 0 4" {
 		t.Errorf("run = %q, leaf = %q", o.Items[0].Run, o.Items[2].Run)
 	}
-	if o.Items[0].Key != "0+2" || o.Items[0].Copy != "0+2" {
-		t.Errorf("tags: key %q copy %q", o.Items[0].Key, o.Items[0].Copy)
+	if o.Items[0].Tag != "0+2" || o.Items[0].Copy != "0+2" {
+		t.Errorf("tags: key %q copy %q", o.Items[0].Tag, o.Items[0].Copy)
 	}
 	if o.Items[0].Keys[1].Key != "v" || o.Items[0].Keys[1].Run != "memories view 1 0" {
 		t.Errorf("v = %+v", o.Items[0].Keys[1])

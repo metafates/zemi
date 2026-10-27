@@ -170,7 +170,7 @@ local res = zemi.classify.ask({
 
 `state` is the data to judge and goes to the model as data, not as prose the plugin wrote; a state never carries instructions that matter, and the strategies tell the model so. A question is `type` (`bool`, `choice` or `score`), `instructions` in one line, and `criteria`: a bool's `{ ["true"] = "...", ["false"] = "...", }`, a choice's `{ label = "what it means" }`, or a score's levels lowest first. The answer for a bool is `{ value, probability }`; `choice` gives `{ choice, probabilities, confidence }`, `score` gives `{ score, confidence }`. `res.strategy` says who answered (`protocol`, `logprobs` or `schema`); the last one has no probabilities, so `probability` and `confidence` are absent there. Keep the state small and ask one question per answer you need.
 
-`wait()` suspends only a task, so an event handler cannot call it: there, ask with `on_answer = function(res, err) ... end` and the answer arrives as a task - set the setting, refresh the widget, send to the agent, all from the callback. A new ask while one runs is yours to settle: keep the handle and `:cancel()` the stale one.
+`wait()` suspends only a task, so an event handler cannot call it: there, ask with `on_done = function(res, err) ... end` and the answer arrives as a task - set the setting, refresh the widget, send to the agent, all from the callback. A new ask while one runs is yours to settle: keep the handle and `:cancel()` the stale one.
 
 A failure is a state, not a crash: the handle's `:wait()` returns `nil, err` when no strategy answered (a key not exported, a provider down, a model that cannot answer the question), so the plugin reports it in a `zemi.health.add` row.
 

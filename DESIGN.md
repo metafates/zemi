@@ -906,6 +906,8 @@ Event catalogue (each emitted on the interpreter thread):
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `composer.change`, `composer.submit` (vetoable)
+- session: `session.reset` (a /reset wiped the chat: this window's, or
+  another window's that this one reloads after)
 - io: `job.exit`, `lsp.request`
 
 A handler vetoes by returning `{ decision = "deny", reason = "..." }`; `tool.pre`
@@ -1225,7 +1227,7 @@ that arrived and did not fit the schema comes back as `nil` and the error,
 whose text carries the reply.
 
 Classifying a state is its own call. `zemi.classify.ask({ model, state,
-questions, timeout })` (`zemi.ClassifySpec`) judges `state` and answers one
+questions, timeout_ms })` (`zemi.ClassifySpec`) judges `state` and answers one
 typed answer per question - a bool with its probability, a choice with its
 label probabilities, a score - and nothing parses a sentence. `model` is any
 target or `"provider/model"` id, the conversation's model by default. The

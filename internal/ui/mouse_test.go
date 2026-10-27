@@ -224,7 +224,7 @@ func TestHoverTargets(t *testing.T) {
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "beta and a much longer row"}, {Text: "alpha"}, {Text: "gamma", Section: "Remembered"}}})
 	}
 	keyed := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a much longer row than the other"}, {Text: "alpha", Key: "current"}}})
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a much longer row than the other"}, {Text: "alpha", Tag: "current"}}})
 	}
 	perm := func(app *App) {
 		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}

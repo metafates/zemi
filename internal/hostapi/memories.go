@@ -184,7 +184,7 @@ func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem 
 		Text: text,
 		// the line's own id is what zoom and the model name it by
 		Copy: id.id(),
-		Key:  id.id(),
+		Tag:  id.id(),
 	}
 	at := jumps.at(id.first(), id.last())
 	if at > 0 {

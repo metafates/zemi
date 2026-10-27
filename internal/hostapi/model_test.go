@@ -213,7 +213,7 @@ func TestModelTargetUI(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := ui.opened[1].Items[0]
-	if head.Text != "Follow the registered model" || head.Desc != "a/small" || head.Key != "current" {
+	if head.Text != "Follow the registered model" || head.Desc != "a/small" || head.Tag != "current" {
 		t.Errorf("clf's first row %+v", head)
 	}
 	// the conversation list's head is the follow row, and picking it clears
@@ -316,7 +316,7 @@ func TestSetModelArgs(t *testing.T) {
 	}
 	// the roles list tags what follows default, and zemi.model.list says what runs where
 	roles := ui.opened[2].Items
-	if k := roles[2].Key; k != "follows default" {
+	if k := roles[2].Tag; k != "follows default" {
 		t.Errorf("compact row key %q", k)
 	}
 	for _, c := range []struct{ line, want string }{

@@ -524,6 +524,15 @@ func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
 	r.groups[group] = spec
 }
 
+// DelHL drops a highlight group's definition and reports whether it had one.
+func (r *ThemeRegistry) DelHL(group string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.groups[group]
+	delete(r.groups, group)
+	return ok
+}
+
 // maxHLLinks bounds a chain of linked groups, so a cycle resolves to nothing.
 const maxHLLinks = 8
 

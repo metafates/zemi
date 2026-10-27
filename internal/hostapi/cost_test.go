@@ -47,7 +47,7 @@ func TestAgentFinishUsage(t *testing.T) {
 		zemi.config.set("models.default", "p/m")
 		zemi.event.on("agent.finish", function(ev)
 			local u, s = ev.usage, zemi.agent.usage()
-			zemi.state.set("fin", table.concat({ ev.session, ev.model, u["in"], u.out, u.total, u.cost, s.cost, s.total, s.context_window }, " "))
+			zemi.state.set("fin", table.concat({ ev.session, ev.model, u["in"], u.out, u.total, u.cost, s.cost, s.total, s.context.window }, " "))
 		end)`)
 	for range 2 {
 		u := fantasy.Usage{InputTokens: 1_000_000, CacheReadTokens: 5, OutputTokens: 500_000}

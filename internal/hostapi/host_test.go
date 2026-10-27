@@ -196,7 +196,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.148.2", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.149.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -645,7 +645,7 @@ func TestThemeCommand(t *testing.T) {
 	}
 	key := func(items []OverlayItem, name string) string {
 		r, _ := row(items, name)
-		return r.Key
+		return r.Tag
 	}
 	items := opened[0].Items
 	if _, ok := row(items, "catppuccin-light"); !ok || key(items, "nord") != "current" {

@@ -489,6 +489,7 @@ function zemi.command.list() end
 ---| "composer.change"
 ---| "composer.submit"
 ---| "job.exit"
+---| "session.reset"
 ---| "lsp.request"
 
 --- The payload every handler receives, plus the event's own fields.
@@ -961,7 +962,7 @@ function zemi.event.stats() end
 ---@field id? string the row's own data: what a callback matches on, and the row the list reopens at
 ---@field desc? string dim column after the text; the filter finds words in it
 ---@field preview? string shown whole under the list while this row is selected, in a pane as tall as the longest preview (4 rows at most), so moving never shifts a row; the filter matches it too
----@field key? string right-aligned tag
+---@field tag? string right-aligned tag
 ---@field on? boolean draws the on/off switch in the tag's place
 ---@field locked? boolean draws the switch on with nothing to switch
 ---@field danger? boolean cannot be undone: drawn in Danger, and the first enter only arms it (never the open of a row with a detail view); the footer then says to press it again, and any other key disarms
@@ -1366,6 +1367,11 @@ zemi.ui.hl = {}
 ---@param spec zemi.HLSpec
 function zemi.ui.hl.set(group, spec) end
 
+--- Drop a group's definition, so the themes' own draws again: whether one was set.
+---@param group string
+---@return boolean removed
+function zemi.ui.hl.del(group) end
+
 --- How a group draws under the active theme: links followed, roles
 --- resolved to hex, keys the group leaves unset left out. Nil when
 --- nothing defines the group.
@@ -1748,11 +1754,11 @@ zemi.classify = {}
 ---@field model? zemi.ModelTarget|string Any model target or `"provider/model"` id; the conversation's model by default.
 ---@field state table The data to judge, handed to the model as data. A prompt-injection attempt inside it is data too.
 ---@field questions table<string, zemi.ClassifierQuestion> What to ask about the state.
----@field timeout? number Seconds to wait, 60 by default.
----@field on_answer? fun(res: zemi.ClassifyResult|nil, err: string|nil) Runs as a task when the verdict settles, `res` as `wait` answers it. The one way to act from a plain event handler, where `wait` cannot suspend.
+---@field timeout_ms? integer Milliseconds to wait, 60000 by default.
+---@field on_done? fun(res: zemi.ClassifyResult|nil, err: string|nil) Runs as a task when the verdict settles, `res` as `wait` answers it. The one way to act from a plain event handler, where `wait` cannot suspend.
 
 ---@class zemi.ClassifyHandle
----@field wait fun(self: zemi.ClassifyHandle): zemi.ClassifyResult|nil, string|nil Suspends the task until the verdict, `timeout` at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. From a plain event handler, pass `on_answer` instead.
+---@field wait fun(self: zemi.ClassifyHandle): zemi.ClassifyResult|nil, string|nil Suspends the task until the verdict, `timeout_ms` at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`. From a plain event handler, pass `on_done` instead.
 ---@field cancel fun(self: zemi.ClassifyHandle)
 
 --- Judge data with a model: every question gets a validated answer, or the
@@ -1791,9 +1797,7 @@ function zemi.classify.ask(spec) end
 ---@field model string
 
 ---@class zemi.AgentUsage: zemi.Usage
----@field context_tokens integer
----@field context_window integer
----@field context_pct number
+---@field context zemi.ContextUsage
 
 ---@class zemi.AgentDef
 ---@field name string
@@ -1942,7 +1946,7 @@ zemi.session = {}
 function zemi.session.id() end
 
 --- The chat's todo list, as the todos tool last wrote it.
----@return { content: string, status: string, active_form: string }[]|nil todos
+---@return zemi.Todo[]|nil todos
 function zemi.session.todos() end
 
 -- zemi.composer
@@ -2020,7 +2024,7 @@ function zemi.composer.edit() end
 ---@field preview? string A diff or code the overlay shows under the ask.
 
 ---@class zemi.PermAnswer
----@field answer "allow"|"deny"|"told" `told`: the user denied and told zemi what to do instead.
+---@field decision "allow"|"deny"|"told" `told`: the user denied and told zemi what to do instead.
 
 ---@class zemi.PermAskHandle
 ---@field wait fun(self: zemi.PermAskHandle): zemi.PermAnswer|nil, string|nil Suspends the task until the user answers; raises outside a task, like `zemi.JobHandle.wait`.
@@ -2034,7 +2038,7 @@ zemi.perm = {}
 ---
 --- ```lua
 --- local ans = zemi.perm.ask({ subject = "fs.write", arg = path, reason = "cache refresh" }):wait()
---- if ans.answer ~= "allow" then return nil, "refused" end
+--- if ans.decision ~= "allow" then return nil, "refused" end
 --- ```
 ---@param spec zemi.PermAskSpec
 ---@return zemi.PermAskHandle
@@ -2586,7 +2590,7 @@ function zemi.mcp.enable(name, on) end
 ---@class zemi.LSPInfo
 ---@field name string
 ---@field command string
----@field filetypes string
+---@field filetypes string[] The extensions the server handles, as `add` takes them.
 ---@field status zemi.ServiceStatus "idle", "starting", "ready", "failed" or "stopped".
 ---@field error string
 

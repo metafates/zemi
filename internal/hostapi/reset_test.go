@@ -10,6 +10,23 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// TestResetEmitsSessionReset: a reset tells Lua, so state derived from the
+// chat can drop with it. Another window's reset reaches the same event
+// through its own chatDropped.
+func TestResetEmitsSessionReset(t *testing.T) {
+	h, r := newTestHostDB(t)
+	runUser(t, r, `zemi.event.on("session.reset", function(ev) zemi.state.set("reset_seen", ev.name) end)`)
+	if err := h.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if v, _ := h.GlobalDB.GetKV("reset_seen"); v != `"session.reset"` {
+			return errors.New("handler has not run")
+		}
+		return nil
+	})
+}
+
 // TestResetChat: /reset refuses mid-turn, asks alone (the armed screen),
 // wipes the log, the tree and the view once answered, clears the todos and
 // the goal, and the next turn is the log's seq 0 again on a builder that
