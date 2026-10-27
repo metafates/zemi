@@ -745,7 +745,14 @@ func (b *memTree) apply(r buildResult) {
 	}
 	if r.err != nil {
 		if b.ctx.Err() == nil { // a Close's failures are not build failures
-			b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" failed: "+r.err.Error())
+			if rateLimited(r.err) {
+				// a rate limit is the cooldown's job, not an error to act
+				// on: /health carries the wait, the errors list stays for
+				// failures a retry cannot fix
+				b.h.Log.Warn("build rate-limited", "origin", "agent", "node", id.id())
+			} else {
+				b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" failed: "+r.err.Error())
+			}
 		}
 		if r.leaf {
 			b.leafRetry = append(b.leafRetry, r.seq)

@@ -1006,16 +1006,20 @@ zemi.provider.add({
 })
 ```
 
-A `rate_limit` paces every call through one pair of token buckets (the
-conversation, the summary builder, subagents): `requests` calls per window
-and, when set, `completion_tokens` reply tokens per the same window, each
-bursting its whole budget then refilling at its rate. A number is the
+A `rate_limit` paces every call through one shared state: `requests` calls
+spread evenly across the window - a metronome, never a burst, so the quota's
+own pace cannot trip a rolling window - and, when set, `completion_tokens`
+reply tokens per the same window, charged as they arrive. A number is the
 requests shorthand for a 60s window. The quota sits on the provider, and a
 model entry may carry its own (`models = { { id = "m", rate_limit = { ... } } }`)
 for a gateway that limits per model alias, that model alone in its own
-bucket. A reply charging more than the budget holds sinks it negative, so
-later calls wait out the drain instead of forcing the provider's 429; two
-zemi windows pace their own halves.
+pace. A reply charging more than the budget holds sinks it negative, so
+later calls wait out the drain instead of forcing the provider's 429. The
+state lives in `<state>/pace` keyed by the api key, so every zemi process
+of the user draws one quota together and parallel windows cannot double it;
+a state nothing can read starts fresh, and a window on another state home
+paces its own. A refusal a call sees holds the whole pace (shared file
+included) until the Retry-After it names, or the window, passes.
 
 There is one session per project: the anchor row `main` the migration
 inserts (§7), which billing and the todo list ride. The chat itself is the

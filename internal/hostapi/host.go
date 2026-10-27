@@ -876,6 +876,11 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		tasks:     newTaskReg(settings),
 		lsp:       &lspReg{},
 	}
+	if dirs.StateHome != "" {
+		// the rate limiters share their buckets with every other zemi
+		// process of the user, so parallel windows pace one quota
+		h.Providers.PaceDir = filepath.Join(dirs.StateHome, "pace")
+	}
 	h.Builtin.Store(&agent.Catalog{})
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnChange = func() {

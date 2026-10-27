@@ -3,14 +3,19 @@
 // completion-tokens-per-window bucket charged after each reply. Both are
 // shared by everything calling the provider (the conversation, the builder,
 // subagents), so a low-rate-limit provider serves the calls instead of
-// refusing them. NOTE: per process; two zemi windows on one provider each
-// pace their own half.
+// refusing them. The buckets' state lives in <state>/pace, shared with the
+// other zemi processes of the user (pace.go), so parallel windows pace the
+// provider's one quota together; a process that cannot read the file, or
+// one on another state home, paces its own.
 
 package agent
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -40,11 +45,19 @@ func (r RateLimit) Paced() bool {
 }
 
 type rateLimiter struct {
-	spec RateLimit
+	spec   RateLimit
+	shared *paceFile // set when the pace is shared with the other zemi processes
 
-	mu   sync.Mutex
-	reqs bucket
-	toks *bucket // nil without a completion-tokens quota
+	mu    sync.Mutex
+	state paceState
+}
+
+// paceState is a limiter's mutable pacing state: in the limiter's memory, or
+// loaded fresh from the shared file on every access.
+type paceState struct {
+	last time.Time // the requests metronome's last admission
+	toks *bucket   // nil without a completion-tokens quota
+	hold time.Time // no call starts before it: a 429 taught the pace the window is spent
 }
 
 type bucket struct {
@@ -54,14 +67,22 @@ type bucket struct {
 	last   time.Time
 }
 
-func newRateLimiter(spec RateLimit) *rateLimiter {
+func newRateLimiter(spec RateLimit, shared *paceFile) *rateLimiter {
 	spec = spec.normalize()
-	l := &rateLimiter{spec: spec, reqs: newBucket(spec.Requests, spec.Window)}
-	if spec.CompletionTokens > 0 {
-		b := newBucket(spec.CompletionTokens, spec.Window)
-		l.toks = &b
-	}
+	l := &rateLimiter{spec: spec, shared: shared}
+	l.state = *l.freshState()
 	return l
+}
+
+// freshState builds the state a limiter starts from: the metronome unset,
+// the token bucket full.
+func (l *rateLimiter) freshState() *paceState {
+	st := &paceState{}
+	if l.spec.CompletionTokens > 0 {
+		b := newBucket(l.spec.CompletionTokens, l.spec.Window)
+		st.toks = &b
+	}
+	return st
 }
 
 // newBucket makes a bucket of allow per windowSecs, full to start.
@@ -74,30 +95,40 @@ func (b *bucket) refill(now time.Time) {
 	b.last = now
 }
 
-// wait holds until one request fits both quotas or ctx ends.
+// take admits one request when the state allows it, answering how long a
+// retry should wait; 0 means the request was taken.
+func (st *paceState) take(spec RateLimit) time.Duration {
+	now := time.Now()
+	if now.Before(st.hold) {
+		return st.hold.Sub(now)
+	}
+	if spec.Requests > 0 {
+		// a metronome, not a burst: the window's requests spread evenly, so
+		// the quota's own pace never empties a rolling window and then
+		// refills into refusals the way a full-to-start bucket would
+		if d := st.last.Add(time.Duration(float64(spec.Window) / float64(spec.Requests) * float64(time.Second))).Sub(now); d > 0 {
+			return d
+		}
+		st.last = now
+	}
+	if st.toks != nil {
+		st.toks.refill(now)
+		// a drained token budget holds the call: it would 429 otherwise
+		if st.toks.tokens < 1 {
+			return time.Duration((1 - st.toks.tokens) / st.toks.perSec * float64(time.Second))
+		}
+	}
+	return 0
+}
+
+// wait holds until one request fits both quotas and no refusal hold is
+// armed, or ctx ends.
 func (l *rateLimiter) wait(ctx context.Context) error {
 	for {
-		l.mu.Lock()
-		now := time.Now()
-		if l.spec.Requests > 0 {
-			l.reqs.refill(now)
-		}
-		d := time.Duration(0)
-		if l.spec.Requests > 0 && l.reqs.tokens < 1 {
-			d = time.Duration((1 - l.reqs.tokens) / l.reqs.perSec * float64(time.Second))
-		} else if l.toks != nil {
-			l.toks.refill(now)
-			// a drained token budget holds the call: it would 429 otherwise
-			if l.toks.tokens < 1 {
-				d = time.Duration((1 - l.toks.tokens) / l.toks.perSec * float64(time.Second))
-			}
-		}
-		if d <= 0 {
-			l.reqs.tokens--
-			l.mu.Unlock()
+		d := l.take()
+		if d == 0 {
 			return nil
 		}
-		l.mu.Unlock()
 		t := time.NewTimer(d)
 		select {
 		case <-ctx.Done():
@@ -108,17 +139,85 @@ func (l *rateLimiter) wait(ctx context.Context) error {
 	}
 }
 
+// take runs one admission against the memory state, or the shared file's.
+func (l *rateLimiter) take() time.Duration {
+	if l.shared == nil {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		return l.state.take(l.spec)
+	}
+	var d time.Duration
+	l.shared.update(l, func(st *paceState) { d = st.take(l.spec) })
+	return d
+}
+
 // charge bills a reply's tokens against the completion budget; the bucket
 // may go negative, so later calls wait out the drain instead of forcing a
 // 429 the wait could have avoided.
 func (l *rateLimiter) charge(tokens int64) {
-	if l.toks == nil || tokens <= 0 {
+	if tokens <= 0 {
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.toks.refill(time.Now())
-	l.toks.tokens -= float64(tokens)
+	mutate := func(st *paceState) {
+		if st.toks == nil {
+			return
+		}
+		st.toks.refill(time.Now())
+		st.toks.tokens -= float64(tokens)
+	}
+	if l.shared == nil {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		mutate(&l.state)
+		return
+	}
+	l.shared.update(l, mutate)
+}
+
+// refused teaches the pace from a gateway refusal: a 429 arms the hold, so
+// the retries fantasy spaces seconds apart land after the reset instead of
+// spending the window's remaining quota on refusals.
+func (l *rateLimiter) refused(err error) {
+	if pe, ok := errors.AsType[*fantasy.ProviderError](err); ok && pe.StatusCode == http.StatusTooManyRequests {
+		// fantasy keeps the header's own case in ProviderError
+		l.hold429(pe.ResponseHeaders["retry-after-ms"], pe.ResponseHeaders["retry-after"],
+			pe.ResponseHeaders["Retry-After-Ms"], pe.ResponseHeaders["Retry-After"])
+	}
+}
+
+// hold429 arms the hold until the refusal says the window rolls: its
+// Retry-After when it names one, the spec's window when it does not. A
+// nonsense or over-long header falls back to the window too.
+func (l *rateLimiter) hold429(retryAfterMs, retryAfter, retryAfterMsUp, retryAfterUp string) {
+	d := time.Duration(l.spec.Window) * time.Second
+	if v := cmp.Or(retryAfterMs, retryAfterMsUp); v != "" {
+		if ms, err := strconv.ParseFloat(v, 64); err == nil && ms > 0 {
+			d = time.Duration(ms * float64(time.Millisecond))
+		}
+	} else if v := cmp.Or(retryAfter, retryAfterUp); v != "" {
+		if s, err := strconv.ParseFloat(v, 64); err == nil && s > 0 {
+			d = time.Duration(s * float64(time.Second))
+		} else if t, err := http.ParseTime(v); err == nil && time.Until(t) > 0 {
+			d = time.Until(t)
+		}
+	}
+	if d <= 0 {
+		d = time.Duration(l.spec.Window) * time.Second
+	} else if d > 10*time.Minute {
+		d = 10 * time.Minute
+	}
+	mutate := func(st *paceState) {
+		if until := time.Now().Add(d); until.After(st.hold) {
+			st.hold = until
+		}
+	}
+	if l.shared == nil {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		mutate(&l.state)
+		return
+	}
+	l.shared.update(l, mutate)
 }
 
 // rateModel is a provider's paced model. The wait sits outside idleModel,
@@ -135,6 +234,7 @@ func (m rateModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 	}
 	resp, err := m.LanguageModel.Stream(ctx, call)
 	if err != nil {
+		m.limiter.refused(err)
 		return nil, err
 	}
 	var seen int64
@@ -157,6 +257,7 @@ func (m rateModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Re
 	}
 	resp, err := m.LanguageModel.Generate(ctx, call)
 	if err != nil {
+		m.limiter.refused(err)
 		return nil, err
 	}
 	m.limiter.charge(resp.Usage.OutputTokens)
@@ -169,6 +270,7 @@ func (m rateModel) GenerateObject(ctx context.Context, call fantasy.ObjectCall) 
 	}
 	resp, err := m.LanguageModel.GenerateObject(ctx, call)
 	if err != nil {
+		m.limiter.refused(err)
 		return nil, err
 	}
 	m.limiter.charge(resp.Usage.OutputTokens)
@@ -181,6 +283,7 @@ func (m rateModel) StreamObject(ctx context.Context, call fantasy.ObjectCall) (f
 	}
 	resp, err := m.LanguageModel.StreamObject(ctx, call)
 	if err != nil {
+		m.limiter.refused(err)
 		return nil, err
 	}
 	var seen int64
@@ -214,5 +317,10 @@ func (p paceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := p.limiter.wait(req.Context()); err != nil {
 		return nil, err
 	}
-	return p.base.RoundTrip(req)
+	resp, err := p.base.RoundTrip(req)
+	if err == nil && resp.StatusCode == http.StatusTooManyRequests {
+		// the protocol reads the body itself; the pace learns from the headers
+		p.limiter.hold429(resp.Header.Get("Retry-After-Ms"), resp.Header.Get("Retry-After"), "", "")
+	}
+	return resp, err
 }

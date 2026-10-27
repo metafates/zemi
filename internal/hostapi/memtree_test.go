@@ -1000,7 +1000,8 @@ func TestBuilderRetryPerMessage(t *testing.T) {
 
 // TestBuilderCoolDownOnRateLimit: a rate-limited build arms a cooldown that
 // retries it without fresh rows, doubling per consecutive rate-limited
-// round; a success clears it, and the rounds share one error entry.
+// round; a success clears it, and the rounds leave no error entry - the
+// cooldown is a wait, not a failure to act on.
 func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 	oldBase, oldTries := buildCoolBase, buildMaxRetries
 	buildCoolBase, buildMaxRetries = 200*time.Millisecond, 0 // calls are rounds
@@ -1035,11 +1036,13 @@ func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 	waitFor(t, func() error {
 		if row := h.builderRow(); !strings.Contains(row.Detail, "rate-limits") {
 			return fmt.Errorf("builder row = %q, want the cooldown named", row.Detail)
+		} else if strings.Contains(row.Detail, "/errors") {
+			return fmt.Errorf("builder row = %q, want no errors pointer while cooling", row.Detail)
 		}
 		return nil
 	})
-	if msgs := h.errorsSince(time.Time{}, "chat builder"); len(msgs) != 1 {
-		t.Fatalf("%d error rows, want the rounds deduped to one", len(msgs))
+	if msgs := h.errorsSince(time.Time{}, "chat builder"); len(msgs) != 0 {
+		t.Fatalf("%d error rows, want a rate limit to leave none", len(msgs))
 	}
 	m.rate.Store(false)
 	waitFor(t, func() error {

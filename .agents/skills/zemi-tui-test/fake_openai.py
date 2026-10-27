@@ -6,12 +6,16 @@
 # consecutive bodies diff byte for byte (prompt cache).
 # While OUTDIR/rate_fail holds a positive count, that many requests are refused
 # with a 429 and a 300ms retry-after, the count decrementing per refusal.
-# usage: python3 fake_openai.py PORT [OUTDIR]   (OUTDIR default: the CWD)
-import json, os, re, sys
+# OUTDIR/rate_limit holds "REQUESTS[:TOKENS][:WINDOW]" (e.g. "40:52000:60"): the
+# server enforces it as a sliding window over its own requests and refuses one
+# that would exceed it with a 429 whose Retry-After names when the oldest
+# entry leaves the window. usage: python3 fake_openai.py PORT [OUTDIR]   (OUTDIR default: the CWD)
+import json, os, re, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 OUT = sys.argv[2] if len(sys.argv) > 2 else "."
 os.makedirs(os.path.join(OUT, "requests"), exist_ok=True)
+REQS, TOKS = [], []  # sliding-window entries: monotonic times, (time, completion tokens)
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -30,6 +34,31 @@ class H(BaseHTTPRequestHandler):
         open(tmp2, "w").write(data)
         os.replace(tmp2, os.path.join(OUT, "last_request.json"))
         print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
+        try:
+            parts = (open(os.path.join(OUT, "rate_limit")).read().strip() or "0").split(":")
+            reqs_cap = int(parts[0])
+            tok_cap = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+            win = float(parts[2]) if len(parts) > 2 and parts[2] else 60.0
+        except (OSError, ValueError):
+            reqs_cap, tok_cap, win = 0, 0, 60.0
+        if reqs_cap > 0 or tok_cap > 0:
+            now = time.monotonic()
+            while REQS and REQS[0] <= now - win: REQS.pop(0)
+            while TOKS and TOKS[0][0] <= now - win: TOKS.pop(0)
+            retry = None
+            if reqs_cap > 0 and len(REQS) >= reqs_cap:
+                retry = REQS[0] + win - now
+            elif tok_cap > 0 and sum(t for _, t in TOKS) + 50 > tok_cap:
+                retry = TOKS[0][0] + win - now
+            if retry is not None:
+                out = json.dumps({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}).encode()
+                self.send_response(429); self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", "%.0f" % max(1, retry))
+                self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+                print("REQ %d -> 429 window full (%d reqs, %d toks in %.0fs)" % (n, len(REQS), sum(t for _, t in TOKS), win), flush=True)
+                return
+            REQS.append(now)
+            TOKS.append((now, 50))
         failp = os.path.join(OUT, "rate_fail")
         if os.path.exists(failp):
             try:

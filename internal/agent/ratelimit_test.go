@@ -3,31 +3,35 @@ package agent
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"charm.land/fantasy"
 )
 
-// TestRateLimiterWait: the bucket serves a burst at once, then paces at the
-// minute's rate, and a caller whose context ends during the wait gets it.
+// TestRateLimiterWait: the metronome spreads the window's requests evenly -
+// one at once, then one every window/allow - and a caller whose context ends
+// during the wait gets it.
 func TestRateLimiter(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{Requests: 2}) // 2 a minute: the burst, then one every 30s
+		l := newRateLimiter(RateLimit{Requests: 2}, nil) // 2 a minute: one every 30s
 		start := time.Now()
 		for range 3 {
 			if err := l.wait(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if d := time.Since(start); d != 30*time.Second {
-			t.Fatalf("3 calls took %v, want the burst at once then one pace", d)
+		if d := time.Since(start); d != 60*time.Second {
+			t.Fatalf("3 calls took %v, want the first at once then two paces", d)
 		}
 	})
 }
 
 func TestRateLimiterCancel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{Requests: 1}) // one a minute
+		l := newRateLimiter(RateLimit{Requests: 1}, nil) // one a minute
 		if err := l.wait(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +50,7 @@ func TestRateLimiterCancel(t *testing.T) {
 // until a token refills, and the reply's charge may sink it negative.
 func TestRateLimiterTokens(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{Requests: 100, CompletionTokens: 10})
+		l := newRateLimiter(RateLimit{CompletionTokens: 10}, nil)
 		if err := l.wait(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +69,7 @@ func TestRateLimiterTokens(t *testing.T) {
 // request quota.
 func TestRateLimiterTokensOnly(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{CompletionTokens: 10})
+		l := newRateLimiter(RateLimit{CompletionTokens: 10}, nil)
 		start := time.Now()
 		for range 3 {
 			if err := l.wait(context.Background()); err != nil {
@@ -75,6 +79,65 @@ func TestRateLimiterTokensOnly(t *testing.T) {
 		}
 		if d := time.Since(start); d < 12*time.Second {
 			t.Fatalf("3 drained calls took %v, want each to wait a token out", d)
+		}
+	})
+}
+
+// TestRateLimiterHold: a 429 through the limiter holds the next calls for
+// the spec's window, so fantasy's retries land after the reset instead of
+// spending the window's quota on refusals; anything but a 429 teaches
+// nothing.
+func TestRateLimiterHold(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newRateLimiter(RateLimit{Requests: 100}, nil)
+		l.refused(errors.New("plain failure"))
+		l.refused(&fantasy.ProviderError{StatusCode: http.StatusForbidden})
+		start := time.Now()
+		if err := l.wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if d := time.Since(start); d != 0 {
+			t.Fatalf("a non-429 held the call %v, want none", d)
+		}
+		l.refused(&fantasy.ProviderError{StatusCode: http.StatusTooManyRequests})
+		start = time.Now()
+		if err := l.wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if d := time.Since(start); d != 60*time.Second {
+			t.Fatalf("the refusal held the call %v, want the window's 60s", d)
+		}
+	})
+}
+
+// TestRateLimiterHoldRidesRetryAfter: the refusal's own Retry-After sets the
+// hold, seconds or HTTP date, and one asking a decade clamps to ten minutes.
+func TestRateLimiterHoldRidesRetryAfter(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newRateLimiter(RateLimit{Requests: 100}, nil)
+		l.hold429("250", "", "", "")
+		start := time.Now()
+		if err := l.wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if d := time.Since(start); d != 250*time.Millisecond {
+			t.Fatalf("the hold lasted %v, want retry-after-ms's 250ms", d)
+		}
+		l.hold429("", "7", "", "")
+		start = time.Now()
+		if err := l.wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if d := time.Since(start); d != 7*time.Second {
+			t.Fatalf("the hold lasted %v, want retry-after's 7s", d)
+		}
+		l.hold429("", "99999", "", "")
+		start = time.Now()
+		if err := l.wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if d := time.Since(start); d != 10*time.Minute {
+			t.Fatalf("the hold lasted %v, want the decade clamped to ten minutes", d)
 		}
 	})
 }

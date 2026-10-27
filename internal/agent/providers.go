@@ -428,6 +428,9 @@ type Registry struct {
 	plugins map[string]bool // id registered by a plugin: never holds a stored key
 	missing []MissingKey
 	limits  map[string]*rateLimiter // id -> the pace every call to the provider shares
+	// PaceDir is where limiter states are shared with the other zemi
+	// processes of the user (<state>/pace); empty paces per process only.
+	PaceDir string
 }
 
 // Reset replaces every spec and key with the catalog, so a provider config
@@ -956,6 +959,7 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 	if !has || !rate.Paced() {
 		return m, nil
 	}
+	apiKey := r.apiKey(prov)
 	r.mu.RLock()
 	l, ok := r.limits[key]
 	r.mu.RUnlock()
@@ -977,18 +981,25 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 	if !rate.Paced() {
 		return m, nil
 	}
-	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(key, rate)}, nil
+	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(key, apiKey, rate)}, nil
 }
 
 // sharedLimiterLocked returns the key's one bucket for this rate, replacing
-// a stale one a changed spec left behind; r.mu is held for writing.
-func (r *Registry) sharedLimiterLocked(key string, rate RateLimit) *rateLimiter {
+// a stale one a changed spec left behind; r.mu is held for writing. The
+// bucket's state is shared with the other zemi processes of the user when a
+// pace dir is set, keyed by the api key, since the gateway's quota follows
+// it and not the provider's id.
+func (r *Registry) sharedLimiterLocked(key, apiKey string, rate RateLimit) *rateLimiter {
 	if r.limits == nil {
 		r.limits = map[string]*rateLimiter{}
 	}
 	l, ok := r.limits[key]
 	if !ok || l.spec != rate.normalize() {
-		l = newRateLimiter(rate)
+		var shared *paceFile
+		if r.PaceDir != "" {
+			shared = newPaceFile(r.PaceDir, apiKey, key)
+		}
+		l = newRateLimiter(rate, shared)
 		r.limits[key] = l
 	}
 	return l
@@ -1001,9 +1012,9 @@ func (r *Registry) Limiter(id ModelID) *rateLimiter {
 	if !ok {
 		return nil
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
 	spec, has := r.lookupLocked(prov)
+	r.mu.RUnlock()
 	if !has {
 		return nil
 	}
@@ -1014,7 +1025,10 @@ func (r *Registry) Limiter(id ModelID) *rateLimiter {
 	if !rate.Paced() {
 		return nil
 	}
-	return r.sharedLimiterLocked(key, rate)
+	apiKey := r.apiKey(prov)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sharedLimiterLocked(key, apiKey, rate)
 }
 
 func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
