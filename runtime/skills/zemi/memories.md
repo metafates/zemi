@@ -1,6 +1,6 @@
 # The chat is your memory
 
-zemi keeps one chat per project, and it never ends. Every message - the user's words, your replies, every tool call and result, each agent's report - is logged word for word, forever. Nothing is ever deleted from it except a `/rewind` cut.
+zemi keeps one chat per project, and it never ends. Every message - the user's words, your replies, every tool call and result, each agent's report - is logged word for word, forever. Nothing is ever deleted from it except a `/rewind` cut. The user watches the same graph you see: `/memories` opens the view as lines you can zoom the way `zoom` does.
 
 You never read that log whole. A background builder compresses it into a binary tree of one-line summaries while you work: each message becomes a line of at most 512 bytes, then adjacent lines merge in pairs, again and again, so recent lines cover one message each and older ones cover more. A short message is its own line, word for word.
 
