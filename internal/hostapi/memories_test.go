@@ -1,10 +1,12 @@
-// memories_test.go pins /memories: the live view as rows exactly the model
-// reads, the zoom round-trip a line's children make, the placeholders unbuilt
-// leaves carry, and the jump a leaf's anchor names in the chat.
+// memories_test.go pins /memories: the live view one row per line, the
+// drill-in a digest's l opens, the placeholders unbuilt leaves carry, and
+// the jump a leaf's anchor names in the chat.
 
 package hostapi
 
 import (
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -59,92 +61,164 @@ func seedMemories(t *testing.T) (*Host, *fakeUI) {
 	return h, ui
 }
 
+// seedMemoriesDeep seeds sixteen messages as one level-3 line over the tail's
+// leaves, so the browser can zoom three levels deep.
+func seedMemoriesDeep(t *testing.T) (*Host, *fakeUI) {
+	t.Helper()
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	for range 16 {
+		if _, err := h.DB.AppendLog(kindUser, strings.Repeat("row ", 200), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 16 {
+		if _, err := h.DB.InsertNode(0, int64(i), "msg "+strconv.Itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for j := range 8 {
+		if _, err := h.DB.InsertNode(1, int64(j), "msgs "+strconv.Itoa(2*j)+"-"+strconv.Itoa(2*j+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k := range 4 {
+		if _, err := h.DB.InsertNode(2, int64(k), "msgs "+strconv.Itoa(4*k)+"-"+strconv.Itoa(4*k+3)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.DB.InsertNode(3, 0, "msgs 0-7"); err != nil {
+		t.Fatal(err)
+	}
+	// the merges climb: pairs first, then the level-2 parents, then the root
+	merges := []store.ViewMerge{{L: 1, I: 0}, {L: 1, I: 1}, {L: 2, I: 0}, {L: 1, I: 2}, {L: 1, I: 3}, {L: 2, I: 1}, {L: 3, I: 0}}
+	if n, err := h.DB.MergeViewLines(merges); err != nil || n != 7 {
+		t.Fatalf("the merges: %d applied, %v", n, err)
+	}
+	return h, ui
+}
+
 func TestMemoriesZoom(t *testing.T) {
 	t.Parallel()
-	h, ui := seedMemories(t)
+	h, _ := seedMemories(t)
 
 	if err := h.MemoriesCommand(""); err != nil {
 		t.Fatal(err)
 	}
 	o := h.memoriesOverlay()
-	want := []string{"0+2|msgs 0-1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}
+	want := []string{"msgs 0-1", "msgs 2-3", "msg 4", "(not summarized yet: zoom it)"}
 	if got := lines(o); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the view rows:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	if o.Items[0].Run != "memories zoom 1 0" || o.Items[2].Run != "" {
 		t.Errorf("run = %q, leaf = %q", o.Items[0].Run, o.Items[2].Run)
 	}
+	if o.Items[0].Key != "0+2" || o.Items[0].Copy != "0+2" {
+		t.Errorf("tags: key %q copy %q", o.Items[0].Key, o.Items[0].Copy)
+	}
 	if o.Items[0].Keys[1].Key != "v" || o.Items[0].Keys[1].Run != "memories view 1 0" {
 		t.Errorf("v = %+v", o.Items[0].Keys[1])
 	}
 	if len(o.Items[0].Keys) != 2 {
-		t.Errorf("u offered with no zoom open: %+v", o.Items[0].Keys)
+		t.Errorf("extra keys on the root rows: %+v", o.Items[0].Keys)
 	}
 
-	// zoom opens the line's two children in its place, the rest unchanged
+	// l drills into the line's two children as an overlay of its own, the
+	// root list unchanged under it
 	if err := h.MemoriesCommand("zoom 1 0"); err != nil {
 		t.Fatal(err)
 	}
-	o = h.memoriesOverlay()
-	zoomed := []string{"0+1|msg 0", "1+1|msg 1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}
-	if got := lines(o); strings.Join(got, "\n") != strings.Join(zoomed, "\n") {
-		t.Fatalf("zoomed rows:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(zoomed, "\n"))
+	z, ok := h.memoriesZoomOverlay(nodeID{1, 0})
+	if !ok {
+		t.Fatal("the drill-in refused")
 	}
-	if o.Selected != 0 {
-		t.Errorf("the zoom landed on selection %d, want the first child", o.Selected)
+	if z.ID != "memories zoom 1 0" || z.Title != "Memories / 0+2" || z.Body != "msgs 0-1" {
+		t.Fatalf("the drill-in = %s %q body %q", z.ID, z.Title, z.Body)
 	}
-	if o.Items[0].Keys[2].Key != "u" || o.Items[0].Keys[2].Run != "memories pop" {
-		t.Errorf("u = %+v", o.Items[0].Keys[2])
+	if got := lines(z); strings.Join(got, "|") != "msg 0|msg 1" {
+		t.Fatalf("the drill-in rows: %v", got)
 	}
-
-	// the other merged line zooms beside the open one, and u pops one zoom
-	// at a time
-	if err := h.MemoriesCommand("zoom 1 1"); err != nil {
-		t.Fatal(err)
+	if !slices.Contains(h.msgLevels, "memories zoom 1 0") {
+		t.Errorf("the level is untracked: %v", h.msgLevels)
 	}
-	if got := lines(h.memoriesOverlay()); strings.Join(got, "|") != "0+1|msg 0|1+1|msg 1|2+1|msg 2|3+1|msg 3|4+1|msg 4|5+1|(not summarized yet: zoom it)" {
-		t.Fatalf("both lines open: %v", got)
-	}
-	if err := h.MemoriesCommand("pop"); err != nil {
-		t.Fatal(err)
-	}
-	if got := lines(h.memoriesOverlay()); strings.Join(got, "|") != "0+1|msg 0|1+1|msg 1|2+2|msgs 2-3|4+1|msg 4|5+1|(not summarized yet: zoom it)" {
-		t.Fatalf("after one pop: %v", got)
-	}
-	if err := h.MemoriesCommand("pop"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.MemoriesCommand("pop"); err != nil { // popping an empty stack is nothing
-		t.Fatal(err)
-	}
-	o = h.memoriesOverlay()
-	if got := lines(o); strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("popped back to: %v", got)
+	if got := h.memoriesOverlay().Items[0].Text; got != "msgs 0-1" {
+		t.Errorf("the root row moved under the drill-in: %q", got)
 	}
 
-	// the opens the UI saw name the level moves, so the filter swaps only on
-	// them: the zoom and every pop move a level, the plain open does not
-	var moves, plain int
-	for _, o := range ui.overlays() {
-		if o.ID != "memories" {
-			continue
-		}
-		if o.Zoom {
-			moves++
-		} else {
-			plain++
+	// the flush rebuild reaches the drill-in level by its id
+	lv, ok := h.messagesLevel("memories zoom 1 0", pickTr{})
+	if !ok || lv.ID != "memories zoom 1 0" || len(lv.Items) != 2 {
+		t.Fatalf("the tracked level rebuilt as %v ok=%v", lv.ID, ok)
+	}
+
+	// a leaf has no children, and the view's span reaches down, never up or
+	// past the log
+	for _, c := range []struct{ args, why string }{
+		{"0 4", "a leaf"},
+		{"3 1", "past the log"},
+		{"2 0", "above the view"},
+	} {
+		if err := h.MemoriesCommand("zoom " + c.args); err == nil {
+			t.Errorf("zooming %s ran (%s)", c.args, c.why)
 		}
 	}
-	if moves != 5 || plain != 1 { // zoom, zoom, and three pops, the empty stack's included
-		t.Fatalf("the UI saw %d level moves and %d plain opens, want 5 and 1", moves, plain)
+}
+
+// TestMemoriesZoomDeep: the drill-in climbs down three levels from the view,
+// each level its own overlay naming the line it opened; a node above the
+// view's coarsest line has nothing under it to open, and a node the log no
+// longer reaches closes its level on the rebuild.
+func TestMemoriesZoomDeep(t *testing.T) {
+	t.Parallel()
+	h, _ := seedMemoriesDeep(t)
+
+	if err := h.MemoriesCommand("zoom 3 0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.MemoriesCommand("zoom 2 0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.MemoriesCommand("zoom 1 0"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		id   nodeID
+		want string
+	}{
+		{nodeID{3, 0}, "msgs 0-3|msgs 4-7"},
+		{nodeID{2, 0}, "msgs 0-1|msgs 2-3"},
+		{nodeID{1, 0}, "msg 0|msg 1"},
+	} {
+		z, ok := h.memoriesZoomOverlay(c.id)
+		if !ok {
+			t.Fatalf("the drill-in for %s refused", c.id.id())
+		}
+		if got := strings.Join(lines(z), "|"); got != c.want {
+			t.Errorf("zoom %s rows: %s, want %s", c.id.id(), got, c.want)
+		}
+		if z.Title != "Memories / "+c.id.id() {
+			t.Errorf("zoom %s title %q", c.id.id(), z.Title)
+		}
+		if want := map[string]string{"0+8": "memories zoom 2 0", "0+4": "memories zoom 1 0", "0+2": ""}[c.id.id()]; z.Items[0].Run != want {
+			t.Errorf("zoom %s child run %q, want %q", c.id.id(), z.Items[0].Run, want)
+		}
 	}
 
-	// a leaf has no children to open, and a stranger is no line of the view
-	if err := h.MemoriesCommand("zoom 0 4"); err == nil {
-		t.Error("zooming a leaf ran")
+	// a node the view's coarsest line does not reach has nothing under it
+	if err := h.MemoriesCommand("zoom 9 0"); err == nil {
+		t.Error("zooming above the view ran")
 	}
-	if err := h.MemoriesCommand("zoom 3 1"); err == nil {
-		t.Error("zooming a node the view does not hold ran")
+	// the rebuild a flush runs: a level the log still reaches rebuilds, one
+	// past the log's end closes
+	if _, ok := h.messagesLevel("memories zoom 3 0", pickTr{}); !ok {
+		t.Error("the log's level did not rebuild")
+	}
+	if lv, ok := h.messagesLevel("memories zoom 4 2", pickTr{}); ok || lv.ID != "memories zoom 4 2" {
+		t.Errorf("a level past the log rebuilt as %v ok=%v, want closed", lv.ID, ok)
+	}
+	if _, ok := h.messagesLevel("memories", pickTr{}); !ok {
+		t.Error("the browser did not rebuild")
 	}
 }
 
@@ -165,10 +239,10 @@ func TestMemoriesJump(t *testing.T) {
 		line string
 		want int
 	}{
-		{"0+2|msgs 0-1", 1}, // its first message is the chat's first row
-		{"2+2|msgs 2-3", 3},
-		{"4+1|msg 4", 5},
-		{"5+1|(not summarized yet: zoom it)", 6},
+		{"msgs 0-1", 1}, // its first message is the chat's first row
+		{"msgs 2-3", 3},
+		{"msg 4", 5},
+		{"(not summarized yet: zoom it)", 6},
 	} {
 		i := 0
 		for ; i < len(o.Items) && o.Items[i].Text != c.line; i++ {
@@ -181,18 +255,18 @@ func TestMemoriesJump(t *testing.T) {
 		}
 	}
 
-	// a zoomed child anchors at its own first message
-	if err := h.MemoriesCommand("zoom 1 1"); err != nil {
-		t.Fatal(err)
+	// a drill-in's children anchor at their own first messages
+	z, ok := h.memoriesZoomOverlay(nodeID{1, 1})
+	if !ok {
+		t.Fatal("the drill-in refused")
 	}
-	o = h.memoriesOverlay()
-	if got := o.Items[1].Anchor; got != 3 || o.Items[2].Anchor != 4 {
-		t.Errorf("children anchor %d and %d, want 3 and 4", o.Items[1].Anchor, o.Items[2].Anchor)
+	if got := z.Items[0].Anchor; got != 3 || z.Items[1].Anchor != 4 {
+		t.Errorf("children anchor %d and %d, want 3 and 4", z.Items[0].Anchor, z.Items[1].Anchor)
 	}
 
 	// the window cut down to its tail: the merged lines reach past it and
 	// name no row; the tail's leaves still do
-	if err := h.MemoriesCommand(""); err != nil { // a fresh browser, the zooms gone
+	if err := h.MemoriesCommand(""); err != nil { // a fresh browser
 		t.Fatal(err)
 	}
 	h.SetTranscript(logRows(rows[4:]))

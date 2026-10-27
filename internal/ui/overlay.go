@@ -76,9 +76,6 @@ type listFilter struct {
 	match         [][]int
 	selected      int
 	view          viewport // the list, or a detail view's actions
-	// held is the query the zoom level under this one showed, back when the
-	// level move comes
-	held string
 }
 
 func (f *listFilter) apply() {
@@ -422,11 +419,6 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	st := a.overlayState(o)
 	f := old.listFilter
 	f.labels, f.texts = st.labels, st.texts
-	if o.Zoom { // a level move: the children are a new world, the parent's query waits under it
-		q := f.held
-		f.held = f.query
-		f.set(q)
-	}
 	st.listFilter, st.size = f, old.size
 	// a live body moves under the reader as its work writes: the view stays
 	// where they scrolled, and on its tail while they did not
@@ -1258,10 +1250,22 @@ const listRowsMax = 20
 func listRowsCap(h int) int { return max(min(h-4, 3*h/5, listRowsMax), 3) }
 
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
-// §8): the body, then the list, then the keys that act on the selection.
-// h is the height the box may take, top whether it is the stack's frontmost
-// box, the only one its h back names.
+// §8): the body, then the list, then the keys that act on the selection. A
+// box's width settles during its first draw - a footer wider than the
+// measuring floor grows it - and the rows built before the settle pad to the
+// floor: draw once more when the rows lag the settled width, so a box's
+// right-hand tags sit at its edge from its first frame.
 func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segment {
+	box := a.overlayBoxDrawn(st, w, h, top)
+	if st.rows != nil && st.rowsKey.minW != st.size.w {
+		box = a.overlayBoxDrawn(st, w, h, top)
+	}
+	return box
+}
+
+// overlayBoxDrawn draws the box once: §8's body, list, keys; h is the height
+// the box may take, top whether it is the stack's frontmost box.
+func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.Segment {
 	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {

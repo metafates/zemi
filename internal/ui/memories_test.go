@@ -1,6 +1,7 @@
-// memories_test.go drives /memories in the real UI: the zoom keys replace a
-// line with its children in place, a leaf's enter leaves the chat standing at
-// the message it covers, and the browser reads the live view.
+// memories_test.go drives /memories in the real UI: l opens a digest's
+// children as an overlay of their own and h climbs back, a leaf's enter
+// leaves the chat standing at the message it covers, and the browser reads
+// the live view.
 
 package ui
 
@@ -62,8 +63,8 @@ func pump(t *testing.T, app *App) {
 	app.Frame()
 }
 
-// TestMemoriesZoomKeys: l opens a line's two children in its place and u
-// puts the line back; the rows around them never move.
+// TestMemoriesZoomKeys: l opens a line's two children as an overlay of their
+// own and h climbs back; the rows around them never move.
 func TestMemoriesZoomKeys(t *testing.T) {
 	t.Parallel()
 	app, host := seedMemoriesApp(t, 100, 24)
@@ -75,7 +76,7 @@ func TestMemoriesZoomKeys(t *testing.T) {
 	if st.o.ID != "memories" || !st.o.Follow {
 		t.Fatalf("the browser = %s follow=%v", st.o.ID, st.o.Follow)
 	}
-	if got := st.items[0].label; got != "0+2|msgs 0-1" {
+	if got := st.items[0].label; got != "msgs 0-1" {
 		t.Fatalf("the first row reads %q", got)
 	}
 	st.selected = 0 // the browser opened on the tail's line
@@ -83,17 +84,20 @@ func TestMemoriesZoomKeys(t *testing.T) {
 	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	pump(t, app)
 	st = &app.overlays[len(app.overlays)-1]
-	if got := st.items[0].label + "|" + st.items[1].label; got != "0+1|msg 0|1+1|msg 1" {
+	if st.o.ID != "memories zoom 1 0" || st.o.Title != "Memories / 0+2" {
+		t.Fatalf("l opened %s %q, want the line's children", st.o.ID, st.o.Title)
+	}
+	if got := st.items[0].label + "|" + st.items[1].label; got != "msg 0|msg 1" {
 		t.Fatalf("l reads %q", got)
 	}
-	if st.selected != 0 {
-		t.Fatalf("the zoom landed on %d, want the first child", st.selected)
-	}
-	press(t, app, tea.KeyPressMsg{Code: 'u', Text: "u"})
+	press(t, app, tea.KeyPressMsg{Code: 'h', Text: "h"})
 	pump(t, app)
 	st = &app.overlays[len(app.overlays)-1]
-	if got := st.items[0].label; got != "0+2|msgs 0-1" {
-		t.Fatalf("u reads %q", got)
+	if len(app.overlays) != 1 || st.o.ID != "memories" {
+		t.Fatalf("h left %d overlays, top %s", len(app.overlays), st.o.ID)
+	}
+	if got := st.items[0].label; got != "msgs 0-1" {
+		t.Fatalf("h reads %q", got)
 	}
 }
 
@@ -189,7 +193,7 @@ func TestMemoriesFollowBands(t *testing.T) {
 	}
 	pump(t, app)
 	ov := &app.overlays[len(app.overlays)-1]
-	ov.selected = 1 // 2+2|msgs 2-3: the chat's third row
+	ov.selected = 1 // msgs 2-3: the chat's third row
 	app.Frame()
 	if got := bandedChatRows(app); len(got) == 0 {
 		t.Fatal("the line's covered messages drew unbanded")

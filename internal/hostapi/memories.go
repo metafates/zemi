@@ -1,8 +1,9 @@
 // memories.go is /memories: the browser over the eternal chat. It shows the
-// live view - exactly the lines the next model call sends, placeholders
-// included - and zooms a line into its two children in place, the model's
-// own zoom, interactive. It is read-only: no key here mutates the log or the
-// tree.
+// live view - the lines the next model call sends, placeholders included,
+// each without its id prefix - one row per line, the model's id for it as
+// the right-hand tag. l drills into a line's two children as an overlay of
+// its own, the way /messages descends into turns and rails, and h climbs
+// back. It is read-only: no key here mutates the log or the tree.
 
 package hostapi
 
@@ -23,21 +24,18 @@ func (h *Host) memoriesCommands() []*Command {
 	return []*Command{{
 		Name: "memories", NArgs: NArgsAny, Desc: "browse the chat view the model reads",
 		GoFn:       func(h *Host, args string, confirm bool) error { return h.MemoriesCommand(args) },
-		GoComplete: SubcommandCompleter([]string{"zoom", "pop", "view"}, nil),
+		GoComplete: SubcommandCompleter([]string{"zoom", "view"}, nil),
 	}}
 }
 
 // MemoriesCommand is /memories: no argument opens the browser, "zoom l i"
-// opens a line's two children in its place, "pop" closes one zoom, "view l i"
+// drills into a line's two children as an overlay of its own, "view l i"
 // reads the messages a line covers.
 func (h *Host) MemoriesCommand(args string) error {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	switch verb {
 	case "":
-		h.msgMu.Lock()
-		h.memZoom = nil
-		h.msgMu.Unlock()
-		return h.openMemories(false)
+		return h.openMemories()
 	case "zoom", "view":
 		l, i, err := parseNodeArgs(rest)
 		if err != nil {
@@ -46,46 +44,41 @@ func (h *Host) MemoriesCommand(args string) error {
 		if verb == "view" {
 			return h.openMemoriesRange(l, i)
 		}
-		return h.zoomMemories(nodeID{l, i})
-	case "pop":
-		h.msgMu.Lock()
-		if n := len(h.memZoom); n > 0 {
-			h.memZoom = h.memZoom[:n-1]
-		}
-		h.msgMu.Unlock()
-		return h.openMemories(true)
+		return h.openMemoriesZoom(nodeID{l, i})
 	}
-	return Usagef("usage: /memories [zoom <l> <i> | pop | view <l> <i>]")
+	return Usagef("usage: /memories [zoom <l> <i> | view <l> <i>]")
 }
 
-// parseNodeArgs reads a tree node's "l i" arguments.
+// parseNodeArgs reads a tree node's "l i" arguments. The level is a shift
+// count downstream, so it stays in the range a tree over any log can hold.
 func parseNodeArgs(rest string) (int64, int64, error) {
 	l, i, _ := strings.Cut(strings.TrimSpace(rest), " ")
 	li, err1 := strconv.ParseInt(strings.TrimSpace(l), 10, 64)
 	ii, err2 := strconv.ParseInt(strings.TrimSpace(i), 10, 64)
-	if err1 != nil || err2 != nil {
+	if err1 != nil || err2 != nil || li < 0 || ii < 0 || li > 62 {
 		return 0, 0, errors.New("not a line")
 	}
 	return li, ii, nil
 }
 
 // openMemories opens the browser and tracks it, so a flush rebuilds it the
-// way the messages picker's levels are. zoom says the open moved a zoom
-// level, so the filter swaps with the one the level under it held.
-func (h *Host) openMemories(zoom bool) error {
+// way the messages picker's levels are.
+func (h *Host) openMemories() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	o := h.memoriesOverlay()
-	o.Zoom = zoom
-	ui.OpenOverlay(o)
+	ui.OpenOverlay(h.memoriesOverlay())
 	h.trackMessages("memories")
 	return nil
 }
 
-// zoomMemories pushes one zoom onto the stack and reopens the browser.
-func (h *Host) zoomMemories(id nodeID) error {
+// openMemoriesZoom drills into one view node: an overlay of its own holding
+// the node's two children under its own line. The gate reaches from the
+// view: the node must be a view line or hang under one - zoom climbs down
+// from what the model reads, never above it. A leaf has no children and
+// refuses, which is the toast that says enter takes the chat to the message.
+func (h *Host) openMemoriesZoom(id nodeID) error {
 	if id.l == 0 {
 		return Usagef("%s is a leaf: enter takes the chat to the message", id.id())
 	}
@@ -96,23 +89,34 @@ func (h *Host) zoomMemories(id nodeID) error {
 	if err != nil {
 		return err
 	}
-	if !slices.ContainsFunc(lines, func(v store.ViewLineText) bool { return v.L == id.l && v.I == id.i }) {
-		return Usagef("no line %s in the view right now", id.id())
+	above := -1 // the view line the node's first message falls in
+	for k, ln := range lines {
+		if (nodeID{ln.L, ln.I}).first() > id.first() {
+			break
+		}
+		above = k
 	}
-	h.msgMu.Lock()
-	h.memZoom = append(h.memZoom, id)
-	h.msgMu.Unlock()
-	return h.openMemories(true)
+	if above < 0 || id.last() > (nodeID{lines[above].L, lines[above].I}).last() {
+		return Usagef("%s is above the view: zoom reaches down from it", id.id())
+	}
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	o, ok := h.memoriesZoomOverlay(id)
+	if !ok {
+		return errors.New("no chat log in this boot")
+	}
+	ui.OpenOverlay(o)
+	h.trackMessages(o.ID)
+	return nil
 }
 
-// memoriesOverlay is the browser: one row per line of the live view, the
-// zoom stack's expansions applied, oldest first. The rows the chat draws the
-// line's first covered message at are the anchors, so moving the selection
-// takes the chat there (/messages' jump path) and enter on a leaf keeps it.
+// memoriesOverlay is the browser: one row per line of the live view, oldest
+// first. The rows the chat draws the line's first covered message at are the
+// anchors, so moving the selection takes the chat there (/messages' jump
+// path) and enter on a leaf keeps it.
 func (h *Host) memoriesOverlay() Overlay {
-	h.msgMu.Lock()
-	zoom := slices.Clone(h.memZoom)
-	h.msgMu.Unlock()
 	o := Overlay{
 		ID: "memories", Title: "Memories", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "The chat's view is empty.",
@@ -125,48 +129,72 @@ func (h *Host) memoriesOverlay() Overlay {
 		return o
 	}
 	b, n, levels, unbuilt := viewStatsOf(lines)
-	for _, z := range zoom {
-		k := slices.IndexFunc(lines, func(v store.ViewLineText) bool { return v.L == z.l && v.I == z.i })
-		if k < 0 || z.l == 0 { // the line merged away or the zoom was popped past
-			continue
-		}
-		left, right := store.ViewLineText{L: z.l - 1, I: z.i * 2}, store.ViewLineText{L: z.l - 1, I: z.i*2 + 1}
-		for _, c := range []*store.ViewLineText{&left, &right} {
-			if n, err := h.DB.NodeAt(c.L, c.I); err == nil {
-				c.Text, c.Size = n.Text, n.Size
-			}
-		}
-		lines = slices.Replace(lines, k, k+1, left, right)
-	}
 	jumps := h.chatJumpRows()
 	for _, ln := range lines {
-		id := nodeID{ln.L, ln.I}
-		item := OverlayItem{
-			ID:   id.key(),
-			Text: renderLine(ln.L, ln.I, ln.Text),
-			// the line's own id is what zoom and the model name it by
-			Copy: id.id(),
-		}
-		if at := jumps.at(id.first(), id.last()); at > 0 {
-			item.Anchor = at
-		}
-		if ln.L > 0 {
-			item.Run, item.Verb = "memories zoom "+id.args(), VerbOpen
-		}
-		// l zooms the line the footer names it by; on a leaf the zoom refuses,
-		// which is the toast that says enter takes the chat to the message
-		item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
-		item.Keys = append(item.Keys, ItemKey{Key: "v", Desc: "preview", Run: "memories view " + id.args(), Verb: VerbOpen})
-		if len(zoom) > 0 {
-			item.Keys = append(item.Keys, ItemKey{Key: "u", Desc: "zoom out", Run: "memories pop", Verb: VerbOpen})
-		}
-		o.Items = append(o.Items, item)
+		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, jumps))
 	}
 	if n > 0 {
 		o.Foot = fmt.Sprintf("%s · %s · %s · %s unbuilt", fmtBytes(int64(b)), pluralCount(n, "line", "lines"),
 			pluralCount(levels, "level", "levels"), strconv.Itoa(unbuilt))
 	}
 	return o
+}
+
+// memoriesZoomOverlay is one drill-in level: the opened line's own text and
+// its two children, placeholders included. ok false once the log no longer
+// reaches the node, so a flush closes the level; a node hanging from message
+// 0 outlives a reset until the builder re-merges.
+func (h *Host) memoriesZoomOverlay(id nodeID) (Overlay, bool) {
+	o := Overlay{
+		ID: "memories zoom " + id.args(), Title: "Memories / " + id.id(), Origin: lua.OriginBuiltin,
+		Anchor: OverlayBottomRight, Follow: true,
+	}
+	if h.DB == nil {
+		return o, false
+	}
+	count, err := h.DB.LogCount()
+	if err != nil || id.first() >= count {
+		return o, false
+	}
+	if n, err := h.DB.NodeAt(id.l, id.i); err == nil && n.Text != "" {
+		o.Body = n.Text
+		o.Foot = fmt.Sprintf("%s · %s", fmtBytes(int64(n.Size)), pluralCount(int(id.span()), "message", "messages"))
+	} else {
+		o.Foot = pluralCount(int(id.span()), "message", "messages")
+	}
+	jumps := h.chatJumpRows()
+	for _, child := range []nodeID{{id.l - 1, id.i * 2}, {id.l - 1, id.i*2 + 1}} {
+		text := ""
+		if n, err := h.DB.NodeAt(child.l, child.i); err == nil {
+			text = n.Text
+		}
+		o.Items = append(o.Items, h.memoriesRow(child, text, jumps))
+	}
+	return o, true
+}
+
+// memoriesRow is one browser row: the line's text as the model reads it, the
+// model's id for the line as the right-hand tag.
+func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem {
+	if text == "" {
+		text = placeholder
+	}
+	item := OverlayItem{
+		ID:   id.key(),
+		Text: text,
+		// the line's own id is what zoom and the model name it by
+		Copy: id.id(),
+		Key:  id.id(),
+	}
+	if at := jumps.at(id.first(), id.last()); at > 0 {
+		item.Anchor = at
+	}
+	if id.l > 0 {
+		item.Run, item.Verb = "memories zoom "+id.args(), VerbOpen
+	}
+	item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
+	item.Keys = append(item.Keys, ItemKey{Key: "v", Desc: "preview", Run: "memories view " + id.args(), Verb: VerbOpen})
+	return item
 }
 
 // chatJumps is where the chat draws the logged messages now: the stamped

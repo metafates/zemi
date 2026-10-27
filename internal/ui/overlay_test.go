@@ -1094,11 +1094,10 @@ func fiveRows() []hostapi.OverlayItem {
 	return []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}
 }
 
-// TestOverlayZoomSwapsTheFilter: a zoom opens the children as a new world -
-// unfiltered, the parent's query held under it - and the pop brings the
-// parent's list back with its query, so a filter can never strand the
-// browser on a list it hides.
-func TestOverlayZoomSwapsTheFilter(t *testing.T) {
+// TestOverlayFlushKeepsTheFilter: a rebuild of the same list is no level
+// move - the query survives it, so a filter never strands the browser on a
+// list it hides.
+func TestOverlayFlushKeepsTheFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	parent := []hostapi.OverlayItem{
 		{Text: "msg one", Run: "memories zoom 1 0"},
@@ -1116,24 +1115,6 @@ func TestOverlayZoomSwapsTheFilter(t *testing.T) {
 	st := &a.overlays[0]
 	if st.query != "one" || len(st.visible) != 1 {
 		t.Fatalf("filter = %q over %d rows, want one hit", st.query, len(st.visible))
-	}
-
-	// the zoom: the children the query names nothing of all show
-	children := []hostapi.OverlayItem{
-		{Text: "m0"}, {Text: "m1"}, {Text: "msg six"}, {Text: "msg ten"}, {Text: "msg four"},
-	}
-	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: children, Zoom: true})
-	st = &a.overlays[0]
-	if st.query != "" || st.held != "one" || len(st.visible) != len(children) {
-		t.Fatalf("zoomed filter = %q held %q rows %d, want the query held and the children whole",
-			st.query, st.held, len(st.visible))
-	}
-
-	// the pop restores the parent's list with its filter state
-	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent, Zoom: true})
-	st = &a.overlays[0]
-	if st.query != "one" || len(st.visible) != 1 || st.items[st.visible[0]].row.Text != "msg one" {
-		t.Fatalf("popped filter = %q hits %d, want msg one back under its query", st.query, len(st.visible))
 	}
 
 	// a flush rebuild is no level move: the query survives it
@@ -2457,10 +2438,9 @@ func TestBodyPartsWell(t *testing.T) {
 	}
 }
 
-// TestMemoriesZoomPop: l on a merged line zooms it to its children and u
-// pops the zoom back to the view whole; u is a silent no-op on the root
-// view, which names no u in its footer.
-func TestMemoriesZoomPop(t *testing.T) {
+// TestMemoriesDrillBack: l on a merged line opens its children as an overlay
+// of their own, h climbs back to the view whole, esc closes the whole menu.
+func TestMemoriesDrillBack(t *testing.T) {
 	_, cfg := tempHome(t)
 	app, host := bootAgentAppOn(t, 140, 40, tipClock, cfg)
 	if _, err := host.Commands.Add(&hostapi.Command{
@@ -2502,25 +2482,44 @@ func TestMemoriesZoomPop(t *testing.T) {
 		}
 		return out
 	}
-	if got, want := rows(), []string{"0+2|msgs 0-1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
+	if got, want := rows(), []string{"msgs 0-1", "msgs 2-3", "msg 4", "(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
 		t.Fatalf("root rows %q, want %q", got, want)
 	}
-	if keys := app.overlays[len(app.overlays)-1].items[0].row.Keys; slices.ContainsFunc(keys, func(k hostapi.ItemKey) bool { return k.Key == "u" }) {
-		t.Fatalf("the root view offers u: %+v", keys)
-	}
-	// l zooms the first line
+	// l opens the first line's children as an overlay of their own, the
+	// line's own text above them
 	app.overlayKey("g", "")
 	app.overlayKey("l", "")
 	for app.Pump() {
 	}
-	if got, want := rows(), []string{"0+1|msg 0", "1+1|msg 1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
-		t.Fatalf("zoomed rows %q, want %q", got, want)
+	if len(app.overlays) != 2 {
+		t.Fatalf("%d overlays open after l, want the browser and the drill-in", len(app.overlays))
 	}
-	// u pops it back
-	app.overlayKey("u", "")
+	if got, want := rows(), []string{"msg 0", "msg 1"}; !slices.Equal(got, want) {
+		t.Fatalf("drill-in rows %q, want %q", got, want)
+	}
+	st := &app.overlays[len(app.overlays)-1]
+	if st.o.ID != "memories zoom 1 0" || st.o.Title != "Memories / 0+2" || st.o.Body != "msgs 0-1" {
+		t.Fatalf("the drill-in = %s %q body %q", st.o.ID, st.o.Title, st.o.Body)
+	}
+	// h climbs back to the view whole
+	app.overlayKey("h", "")
 	for app.Pump() {
 	}
-	if got, want := rows(), []string{"0+2|msgs 0-1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
-		t.Fatalf("popped rows %q, want %q", got, want)
+	if len(app.overlays) != 1 {
+		t.Fatalf("%d overlays open after h, want the browser alone", len(app.overlays))
+	}
+	if got, want := rows(), []string{"msgs 0-1", "msgs 2-3", "msg 4", "(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
+		t.Fatalf("root rows after h %q, want %q", got, want)
+	}
+	// esc closes the whole menu from a drill-in
+	app.overlayKey("g", "")
+	app.overlayKey("l", "")
+	for app.Pump() {
+	}
+	app.overlayKey("esc", "")
+	for app.Pump() {
+	}
+	if len(app.overlays) != 0 {
+		t.Fatalf("%d overlays open after esc", len(app.overlays))
 	}
 }

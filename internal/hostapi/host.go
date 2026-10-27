@@ -147,11 +147,6 @@ type Overlay struct {
 	// and band that message's rows while it is open: enter keeps the place,
 	// esc puts the region back where it found it
 	Follow bool
-	// Zoom marks an open that moved a zoom level of the same list (a
-	// browser's zoom in or out): the children are a new world, so the filter
-	// swaps with the one the level under it held - they open unfiltered, and
-	// the way back restores the parent's query
-	Zoom bool
 	// OpenAt is the transcript row the reader was at when the open was
 	// made, pinned by a host that opens several levels of one list: the
 	// levels the open itself puts up move the chat, and a level deriving
@@ -549,9 +544,7 @@ type Host struct {
 	callID    string // that call's id, which names the row it settles at
 	callServe int    // the row the live call view's watcher serves, so an
 	// opened view supersedes the last watcher instead of adding one
-	// memZoom is /memories' stack of lines zoomed into their children, and
 	// msgOld the pages of log rows a page-up loaded past the window
-	memZoom []nodeID
 	msgOld  []ChatMessage
 	msgFrom int64 // the oldest log seq the pages loaded, -1 for none
 

@@ -188,6 +188,12 @@ func (h *Host) messagesLevel(id string, p pickTr) (Overlay, bool) {
 	if id == "memories" {
 		return h.memoriesOverlay(), true
 	}
+	if _, rest, ok := strings.Cut(id, " zoom "); ok { // a drill-in level
+		if l, i, err := parseNodeArgs(rest); err == nil {
+			return h.memoriesZoomOverlay(nodeID{l, i})
+		}
+		return Overlay{}, false
+	}
 	if _, rail, ok := strings.Cut(id, " rail "); ok { // a run's rail level
 		if n, err := strconv.Atoi(rail); err == nil {
 			return h.messagesRailOverlay(p, n, 0)

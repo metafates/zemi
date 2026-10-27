@@ -260,9 +260,9 @@ func TestGoldenMessages(t *testing.T) {
 }
 
 // TestGoldenMemories pins the memories browser (§8): the live view one row
-// per line exactly as the model reads it, the unbuilt tail's placeholder, the
-// stats line in the footer, and the selected line's message banded in the
-// chat.
+// per line, each the line's text with its id as the right-hand tag, the
+// unbuilt tail's placeholder, the stats line in the footer, and the selected
+// line's message banded in the chat.
 func TestGoldenMemories(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	testStore(t, host)
