@@ -2135,7 +2135,11 @@ view; a reset's wipe drops the row with the chat.
   transcript index as an `anchor`, which nothing draws: `/messages` names the
   same numbers, so the picker's selection scrolls the chat to that unit's
   first row and bands all of its rows (`Overlay.Follow`), while the picker
-  opens on the unit the reader is at. A banded message is the one thing a
+  opens on the unit the reader is at. The window sheds its head past
+  `chatWindowRows`; the chat then keys its cached rows by their place in the
+  log's tail (the index plus the ctx's `transcript_cut`) and restamps the
+  drawn rows' anchors and calls by the delta, so a trim neither re-renders
+  the window nor drops a fold the reader opened. A banded message is the one thing a
   picker leaves undimmed: the map sinks the chat around what it looks at.
   A settled turn folds each run of activity into one dim digest row, `· 6
   files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,

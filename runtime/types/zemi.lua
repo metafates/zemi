@@ -849,6 +849,7 @@ function zemi.event.stats() end
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field log_count integer Log rows older than the window's first row, 0 while the window holds the whole log; 0 too while an agent run shows, whose transcript is no cut of the log.
+---@field transcript_cut integer Rows the window's head has shed since boot; the chat shifts its cached rows' keys by it instead of dropping them. 0 while an agent run shows.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run or a printed run is shown, whose rows it does not describe.
 ---@field transcript_edit integer Changes when a settled row's text grew in place: every unit redraws, unlike `transcript_epoch`, whose bump also drops the rows the reader opened.
 ---@field view_revision integer Changes when the shown run rewrites its transcript, in place included; 0 while the session shows.

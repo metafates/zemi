@@ -432,14 +432,15 @@ func TestUsageTablesCache(t *testing.T) {
 // TestTranscriptTableCachesRows: a render reuses an unchanged row's subtable
 // and rebuilds one whose fields moved - same length included - while a longer
 // transcript reuses the prefix; a moved epoch, edit, revision or a shorter
-// transcript rebuilds them all, so no stale row reaches a widget.
+// transcript rebuilds or truncates, so no stale row reaches a widget, and a
+// head cut shifts the cache at one place lower instead of rebuilding it.
 func TestTranscriptTableCachesRows(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
-	rows := func(epoch, edit int64, rev uint64, tr []ChatMessage) []*glua.LTable {
+	rows := func(epoch, edit int64, rev uint64, tr []ChatMessage, cut int64) []*glua.LTable {
 		var out []*glua.LTable
 		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
-			tb := h.transcriptTable(L, epoch, edit, rev, tr)
+			tb := h.transcriptTable(L, epoch, edit, rev, tr, cut)
 			for i := 1; i <= tb.Len(); i++ {
 				out = append(out, tb.RawGetInt(i).(*glua.LTable))
 			}
@@ -456,8 +457,8 @@ func TestTranscriptTableCachesRows(t *testing.T) {
 			{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "read", Status: CallOK},
 		}
 	}
-	first := rows(1, 0, 0, base())
-	again := rows(1, 0, 0, base())
+	first := rows(1, 0, 0, base(), 0)
+	again := rows(1, 0, 0, base(), 0)
 	for i := range first {
 		if first[i] != again[i] {
 			t.Fatalf("row %d rebuilt", i+1)
@@ -481,13 +482,13 @@ func TestTranscriptTableCachesRows(t *testing.T) {
 		{"epoch moved", 2, 0, 0, base, 0},
 		{"edit moved", 1, 1, 0, base, 0},
 		{"revision moved", 1, 0, 1, base, 0},
-		{"shrunk", 1, 0, 0, func() []ChatMessage { return base()[:1] }, 0},
+		{"shrunk", 1, 0, 0, func() []ChatMessage { return base()[:1] }, 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rows(1, 0, 0, base()) // settle the cache at two rows
-			prev := rows(1, 0, 0, base())
-			got := rows(c.epoch, c.edit, c.rev, c.tr())
+			rows(1, 0, 0, base(), 0) // settle the cache at two rows
+			prev := rows(1, 0, 0, base(), 0)
+			got := rows(c.epoch, c.edit, c.rev, c.tr(), 0)
 			for i := range got {
 				switch {
 				case i < c.keptFromFirst && got[i] != prev[i]:
@@ -502,5 +503,16 @@ func TestTranscriptTableCachesRows(t *testing.T) {
 				}
 			}
 		})
+	}
+	// a head cut shifts the cache at one place lower instead of rebuilding it:
+	// the surviving row keeps its table, the joined row converts
+	prevRows := rows(1, 0, 0, base(), 0)
+	shifted := append(base()[1:], ChatMessage{Role: fantasy.MessageRoleUser, Text: "more"})
+	gotRows := rows(1, 0, 0, shifted, 1)
+	if gotRows[0] != prevRows[1] {
+		t.Fatal("the cut rebuilt the row it shifted")
+	}
+	if gotRows[1] == prevRows[0] || gotRows[1] == prevRows[1] {
+		t.Fatal("the joined row kept a table")
 	}
 }

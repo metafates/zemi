@@ -19,8 +19,9 @@ local util = require("zemi.util")
 -- hands back as they are while the transcript has `count` rows.
 ---@class zemi.tui.ChatUnit
 ---@field lines zemi.Line[]
----@field next integer Index of the message after the unit.
+---@field next integer Key of the message after the unit, the row's pos().
 ---@field mode zemi.tui.RunMode|"" How its activity run drew; "" for any other unit.
+---@field cut integer The head cut the unit drew at: its rows' anchors and calls name the window of that render.
 ---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
@@ -91,6 +92,19 @@ local live_tools = 0
 -- the live run's first row, kept across the renders whose settled cache skips
 -- the transcript read: the count and the rail name it, and a new view voids both
 local live_count, live_rail, live_known = -1, -1, 0
+-- the head rows the window has shed, the ctx's transcript_cut last seen: the
+-- tables above key rows by transcript index plus it, so a trim moves every
+-- key by one arithmetic delta instead of dropping what the reader opened
+local cut_seen = 0
+-- The cache key of transcript row n: its place in the log's tail, the window
+-- index plus the head cut, which a trim shifts without a rebuild. The live
+-- turn's negative indexes are no transcript rows and stay.
+---@param n integer
+---@return integer
+local function pos(n)
+	if n > 0 then return n + cut_seen end
+	return n
+end
 
 ---@class zemi.tui.chat
 ---@field click fun(ev: zemi.WidgetClick) The shipped chat's `on_click`, keyed by its click ids, so a replacement chat keeps its rows acting.
@@ -170,7 +184,7 @@ local counts = {}
 ---@param idx integer The row's transcript index, negative for a live call.
 ---@return zemi.Line
 local function diffstat(diff, idx)
-	local c = counts[idx]
+	local c = counts[pos(idx)]
 	if not c or c.diff ~= diff then
 		local add, del = 0, 0
 		for l in diff:gmatch("[^\n]+") do
@@ -181,7 +195,7 @@ local function diffstat(diff, idx)
 			end
 		end
 		c = { diff = diff, add = add, del = del }
-		counts[idx] = c
+		counts[pos(idx)] = c
 	end
 	---@type zemi.Line
 	local out = {}
@@ -396,7 +410,7 @@ local function builder(ctx, width)
 		-- a click opens the row's own view; an agent's row opens its transcript
 		-- and a workflow's its view (ids must differ between adjacent rows)
 		local click = (t.run or "") ~= "" and ((name == "workflow" and "workflow:" or "agent:") .. t.run)
-			or ("call:" .. idx)
+			or ("call:" .. pos(idx))
 		-- a call that only looked around reads plainly, as its step's row does
 		local vhl = dim and "Dim" or fmt.looks(t) and "Normal" or "AgentToolName"
 		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = vhl } }
@@ -519,7 +533,7 @@ local function builder(ctx, width)
 			return
 		end
 		local head = opened and "section" or nil
-		local click = "turn:" .. first
+		local click = "turn:" .. pos(first)
 		B.digestRow(digest, click, head)
 		if not opened then return end
 		local at = #B.lines
@@ -562,12 +576,12 @@ local function builder(ctx, width)
 		B.gap("note")
 		local hidden = last - first + 1 - NOTICES_KEEP
 		if hidden > 1 then
-			local label, click = foldRow(whole[first], hidden, "more:" .. first)
+			local label, click = foldRow(whole[pos(first)], hidden, "more:" .. pos(first))
 			B.lines[#B.lines + 1] = {
 				{ text = "  ", copy = false, hover = false },
 				{ text = label, hl = "Dim", click = click },
 			}
-			if not whole[first] then first = last - NOTICES_KEEP + 1 end
+			if not whole[pos(first)] then first = last - NOTICES_KEEP + 1 end
 		end
 		for i = first, last do
 			local m = list[i]
@@ -593,7 +607,7 @@ local function builder(ctx, width)
 		-- it, the earlier ones behind one row that a click opens or closes. A
 		-- closed fold's earlier entries are never drawn: the entry count walks
 		-- the tool list and only the kept tail builds rows.
-		local key = o.live and 0 or o.run or first
+		local key = o.live and 0 or pos(o.run or first)
 		local n = 0
 		if not o.full then
 			local i = first
@@ -650,7 +664,7 @@ local function builder(ctx, width)
 			if (prev ~= nil or not headed) and (prev ~= kind or prev_fail or fail) then frame() end
 			prev, prev_fail = kind, fail
 			if t.kind == "reasoning" then
-				local click = "call:" .. idx
+				local click = "call:" .. pos(idx)
 				local at = #B.lines + 1
 				if o.unroll and (t.text or "") ~= "" then
 					B.reasoning(t.text, nil, click)
@@ -667,8 +681,8 @@ local function builder(ctx, width)
 				end
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
-				B.group(group, "step:" .. idx)
-				if o.full or steps[idx] then
+				B.group(group, "step:" .. pos(idx))
+				if o.full or steps[pos(idx)] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
 						local at = #B.lines + 1
@@ -711,7 +725,10 @@ function M.click(ev)
 	elseif flow then
 		assert(zemi.command.run("workflows", "view " .. flow))
 	elseif call then
-		assert(zemi.command.run("call", call))
+		-- the id names the row by its place in the log's tail; /call speaks the
+		-- window's indexing
+		local n = tonumber(call)
+		assert(zemi.command.run("call", tostring(n > 0 and n - cut_seen or n)))
 	elseif job then
 		-- a restart sweeps handed-off jobs; a stale click does nothing
 		zemi.command.run("jobs", "view " .. job)
@@ -776,9 +793,30 @@ zemi.ui.widget.add({
 		-- rows are keyed by transcript index, and an agent view reports epoch 0
 		-- for whichever run it shows: that run is the identity instead
 		local ident = ctx.view and ctx.view.id or epoch
-		if ident ~= opened_in then
+		-- Rows key by pos(): the index plus the head cut, so a trim moves every
+		-- key down by the delta and the keys at or under the cut are the rows
+		-- the window shed. A replaced window (a reset, a splice) renumbers
+		-- under its epoch: the tables drop and the new cut is adopted.
+		local cut = ctx.transcript_cut or 0
+		if ident ~= opened_in or cut < cut_seen then
 			steps, unfolded, whole, queued_open, opened_in = {}, {}, {}, nil, ident
 			live_count, live_rail, live_known = -1, -1, 0
+			cut_seen = cut
+		elseif cut > cut_seen then
+			for k in pairs(units) do
+				if k <= cut then units[k] = nil end
+			end
+			for k in pairs(counts) do
+				if k > 0 and k <= cut then counts[k] = nil end
+			end
+			for _, folds in ipairs({ unfolded, steps, whole }) do
+				for k in pairs(folds) do
+					if k > 0 and k <= cut then folds[k] = nil end
+				end
+			end
+			if live_known > 0 then live_known = math.max(live_known - (cut - cut_seen), 0) end
+			settled = nil
+			cut_seen = cut
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
@@ -903,7 +941,7 @@ zemi.ui.widget.add({
 				end
 			end
 			anchored(B.lines, first, content)
-			return { lines = B.lines, next = last + 1, mode = mode }
+			return { lines = B.lines, next = pos(last + 1), mode = mode, cut = cut_seen }
 		end
 
 		-- markdown and code carry the theme's colors: a light terminal's
@@ -986,7 +1024,7 @@ zemi.ui.widget.add({
 				-- the one an agent view shows included
 				if first == live_first then return "rail" end
 				if (ctx.rail or 0) == first then return "unfold" end
-				return unfolded[first] and "unfold" or "fold"
+				return unfolded[pos(first)] and "unfold" or "fold"
 			end
 			local deadline = cacheable and os.clock() + 0.03
 			---@type zemi.tui.ChatUnit[]
@@ -995,17 +1033,59 @@ zemi.ui.widget.add({
 			---@param tail boolean? The group holding the last row: a run rewrites it in place as it streams, so it always redraws.
 			local function stale(first, last, tail)
 				if tail then return true end
-				local u = units[first]
-				return not u or u.next ~= last + 1 or u.mode ~= mode_of(first)
+				local u = units[pos(first)]
+				return not u or u.next ~= pos(last + 1) or u.mode ~= mode_of(first)
+			end
+			-- A unit drawn before the last trim: its content is good, its
+			-- anchors and calls name the window it drew in, so it restamps
+			-- rather than rebuilds - and fills like a rebuild does.
+			---@param first integer
+			---@return boolean
+			local function shifted(first)
+				local u = units[pos(first)]
+				return u ~= nil and u.cut ~= cut_seen
+			end
+			-- A trim moved every row down since the unit drew: its rows' anchors
+			-- and calls still name the window they were drawn in, so a re-shown
+			-- unit's rows are copied with theirs shifted. A copy is a line table
+			-- the conversion has not seen, so the host reads the fresh numbers.
+			---@param u zemi.tui.ChatUnit
+			local function restamp(u)
+				local by = cut_seen - u.cut
+				for i, row in ipairs(u.lines) do
+					local s = row[1]
+					if s and ((s.anchor or 0) > 0 or (s.call or 0) > 0) then
+						-- the head's numbers move in place: the converter keys
+						-- its cache on the line table, which is new here, so it
+						-- reads the segment fresh and the old line that shared
+						-- it is dropped from the unit
+						s.anchor = (s.anchor or 0) > 0 and s.anchor - by or nil
+						s.call = (s.call or 0) > 0 and s.call - by or nil
+						local line = {}
+						for j = 1, #row do
+							line[j] = row[j]
+						end
+						u.lines[i] = line
+					end
+				end
+				u.cut = cut_seen
 			end
 			local function cached(first, last, tail)
+				local k = pos(first)
+				local u = units[k]
+				if u and u.cut ~= cut_seen then
+					restamp(u)
+					-- a restamp reconverts the unit's rows like a rebuild
+					-- does, so it spends the budget the same way
+					if not tail then rendered = rendered + 1 end
+				end
 				if stale(first, last, tail) then
-					units[first] = unit(tr, first, last, mode_of(first))
+					units[k] = unit(tr, first, last, mode_of(first))
 					-- the tail redraws every frame and is no work the budget
 					-- needs to bound: only a group the cache lost counts
 					if not tail then rendered = rendered + 1 end
 				end
-				return units[first]
+				return units[k]
 			end
 			local last = #tr
 			local tail = true
@@ -1020,7 +1100,13 @@ zemi.ui.widget.add({
 						first = first - 1
 					end
 				end
-				if deadline and rendered > 0 and got >= ctx.height and stale(first, last) and os.clock() > deadline then
+				if
+					deadline
+					and rendered > 0
+					and got >= ctx.height
+					and (stale(first, last) or shifted(first))
+					and os.clock() > deadline
+				then
 					more = true
 					break
 				end

@@ -597,6 +597,7 @@ type Host struct {
 		gen         Gen
 		epoch, edit int64
 		rev         uint64
+		cut         int64
 		prev        []ChatMessage
 		rows        []*glua.LTable
 	}
@@ -608,6 +609,12 @@ type Host struct {
 	// reasoning chunk), which re-renders every cached unit: trEpoch would also
 	// drop the rows the reader opened.
 	trEdit atomic.Int64
+	// trCut counts the rows the window's head has shed since boot. A trim
+	// moves every row down by one delta, which a key shift absorbs, so it
+	// must not bump trEpoch: that would re-render the whole window per flush
+	// for the rest of a long chat. A whole replacement leaves it; the chat
+	// re-adopts it when the epoch hands it a new window.
+	trCut atomic.Int64
 
 	watches *watchReg
 	hookReg *hookReg
@@ -851,8 +858,8 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 	tr := append(h.session.Transcript, rows...)
 	if cut := len(tr) - chatWindowRows; cut > 0 {
 		tr = slices.Clone(tr[cut:])
-		h.trEpoch.Add(1)
-		h.stampCursor(cut) // the pairing's row moved down with the head
+		h.trCut.Add(int64(cut)) // the chat shifts its keys by the delta; no wipe
+		h.stampCursor(cut)      // the pairing's row moved down with the head
 	}
 	h.session.Transcript = tr
 	h.tMu.Unlock()
@@ -1865,6 +1872,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	// it. Before the ctx writes below, which read stream.
 	run := h.viewedRun()
 	transcript := sess.Transcript
+	// The head cut reads with the rows it names: a trim landing between the
+	// two would shift the chat's keys past the rows they index. A run's
+	// transcript is no cut of the log, so it reports none.
+	cut := int64(0)
+	if run == nil {
+		h.tMu.RLock()
+		transcript, cut = h.session.Transcript, h.trCut.Load()
+		h.tMu.RUnlock()
+	}
 	var view *glua.LTable
 	var rev uint64
 	if run != nil {
@@ -1957,6 +1973,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		epoch = 0
 	}
 	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
+	tb.RawSetString("transcript_cut", glua.LNumber(cut))
 	tb.RawSetString("view_revision", glua.LNumber(rev))
 	tb.RawSetString("transcript_edit", glua.LNumber(edit))
 
@@ -1985,7 +2002,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			return out
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return h.agentTable(L, stream, h.now()) },
-		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript) },
+		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript, cut) },
 		"log_count": func(L *glua.LState) glua.LValue {
 			// log rows the window's head cut off: the oldest stamped row's
 			// seq, which is also their count, the log's seqs dense from 0 -
@@ -2179,23 +2196,37 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 // beside the transcript snapshot in widgetCtxTable: a changed transcript
 // moves one, a longer one reuses the prefix, and an unchanged row reuses its
 // table where a changed one is rebuilt.
-func (h *Host) transcriptTable(L *glua.LState, epoch, edit int64, rev uint64, transcript []ChatMessage) *glua.LTable {
+func (h *Host) transcriptTable(L *glua.LState, epoch, edit int64, rev uint64, transcript []ChatMessage, cut int64) *glua.LTable {
 	tr := L.CreateTable(len(transcript), 0)
 	c := &h.transcriptRows
 	n := len(transcript)
-	switch {
-	case c.gen != h.currentGen() || c.epoch != epoch || c.edit != edit || c.rev != rev || len(c.prev) > n:
-		c.prev, c.rows = slices.Clone(transcript), make([]*glua.LTable, n)
-	case len(c.prev) < n:
-		prev := make([]ChatMessage, n)
-		copy(prev, c.prev)
-		c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, n-len(c.rows))...)
+	// The head cut shifts every row down one place per row shed: the cache
+	// reads at the shifted index, so a trim converts only what left the
+	// window and what joined, not the whole window again. skip >= 0 reads
+	// ahead of every write, so the arrays move in place.
+	skip := cut - c.cut
+	if c.gen != h.currentGen() || c.epoch != epoch || c.edit != edit || c.rev != rev || skip < 0 || skip > int64(len(c.rows)) {
+		c.prev, c.rows, skip = slices.Clone(transcript), make([]*glua.LTable, n), 0
+	} else {
+		switch d := n - len(c.rows); {
+		case d > 0:
+			prev := make([]ChatMessage, n)
+			copy(prev, c.prev)
+			c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, d)...)
+		case d < 0:
+			c.prev, c.rows = c.prev[:n], c.rows[:n]
+		}
 	}
-	c.gen, c.epoch, c.edit, c.rev = h.currentGen(), epoch, edit, rev
+	c.gen, c.epoch, c.edit, c.rev, c.cut = h.currentGen(), epoch, edit, rev, cut
 	for i, m := range transcript {
-		if row := c.rows[i]; row != nil && c.prev[i] == m {
-			tr.Append(row)
-			continue
+		if j := i + int(skip); j < len(c.rows) {
+			if row := c.rows[j]; row != nil && c.prev[j] == m {
+				if j != i {
+					c.rows[i], c.prev[i] = row, m
+				}
+				tr.Append(row)
+				continue
+			}
 		}
 		row := chatRow(L, m)
 		c.rows[i], c.prev[i] = row, m
@@ -2409,7 +2440,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.148.1"))
+	api.RawSetString("version", glua.LString("0.148.2"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
