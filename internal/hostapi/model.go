@@ -758,8 +758,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	}
 	// an empty table marshals as a map
 	models, ok := fields["models"].([]any)
-	if m, isMap := fields["models"].(map[string]any); !ok && fields["models"] != nil && (!isMap || len(m) > 0) {
-		return agent.Spec{}, errors.New("models must be a list of model entries")
+	if !ok && fields["models"] != nil {
+		if m, isMap := fields["models"].(map[string]any); !isMap || len(m) > 0 {
+			return agent.Spec{}, errors.New("models must be a list of model entries")
+		}
 	}
 	for i, v := range models {
 		at := fmt.Sprintf("models[%d]", i+1)

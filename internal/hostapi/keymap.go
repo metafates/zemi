@@ -145,16 +145,19 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			focus, list = rawString(L, opts, "focus"), rawBool(L, opts, "list")
 		}
 		key, err := h.keySeq(L.CheckString(1), focus != "" || list)
-		switch {
-		case list && focus != "":
+		if list && focus != "" {
 			err = errors.New("focus and list do not combine")
-		case err == nil && list && strings.Contains(key, " "):
-			err = errors.New("a list key is one key")
-		case err == nil && list && len([]rune(key)) == 1:
-			err = errors.New("a list key is non-printable: printable keys filter the list")
-		case err == nil && list && slices.Contains([]string{"enter", "esc", "tab", "shift+tab", "space", "backspace"}, key):
-			// taking one would leave a prompt no way to answer or close
-			err = fmt.Errorf("%s is a key the lists answer with", key)
+		}
+		if err == nil && list {
+			switch {
+			case strings.Contains(key, " "):
+				err = errors.New("a list key is one key")
+			case len([]rune(key)) == 1:
+				err = errors.New("a list key is non-printable: printable keys filter the list")
+			case slices.Contains([]string{"enter", "esc", "tab", "shift+tab", "space", "backspace"}, key):
+				// taking one would leave a prompt no way to answer or close
+				err = fmt.Errorf("%s is a key the lists answer with", key)
+			}
 		}
 		if err != nil && what != "get" {
 			L.RaiseError("zemi.keymap.%s: %v", what, err)

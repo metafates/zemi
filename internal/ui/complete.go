@@ -53,7 +53,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	r := a.composer.runes()
 	cur := a.composer.cursor
 	i := cur
-	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
+	for i > 0 && !strings.ContainsRune(" \t\n", r[i-1]) {
 		i--
 	}
 	files := i < cur && r[i] == '@'

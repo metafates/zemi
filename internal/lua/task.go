@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -327,7 +328,7 @@ func RaiseScript(L *glua.LState, format string, args ...any) {
 		}
 		switch {
 		case fn.IsG, fn.Proto == suspendingProto.FunctionPrototypes[0]:
-		case fn.Proto.SourceName == "" || fn.Proto.SourceName == "[G]" || fn.Proto.SourceName == "<string>":
+		case slices.Contains([]string{"", "[G]", "<string>"}, fn.Proto.SourceName):
 		default:
 			L.Error(glua.LString(msg), level+1)
 			return

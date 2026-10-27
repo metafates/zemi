@@ -118,7 +118,7 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	// more trusted sequence would take it over (or be dead)
 	for k, old := range r.bindings {
 		related := k.list == b.List && (k.focus == b.Focus || k.focus == "" || b.Focus == "")
-		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || k.key == b.Key && k.focus == "" && b.Focus != ""
+		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || (k.key == b.Key && k.focus == "" && b.Focus != "")
 		if !related || !overlap {
 			continue
 		}

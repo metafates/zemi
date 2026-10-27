@@ -431,7 +431,7 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	br := bufio.NewReaderSize(f, 64<<10)
 	head, _ := br.Peek(sniffBytes)
 	switch mt := http.DetectContentType(head); {
-	case mt == "image/png" || mt == "image/jpeg" || mt == "image/gif" || mt == "image/webp":
+	case slices.Contains([]string{"image/png", "image/jpeg", "image/gif", "image/webp"}, mt):
 		if fi.Size() > readMaxImage {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", rel, fi.Size(), readMaxImage)), nil
 		}
@@ -904,7 +904,8 @@ func (p *Pipeline) notFound(path string, err error) string {
 		if e.IsDir() {
 			continue
 		}
-		if d := EditDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
+		fuzzy := len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s))
+		if d := EditDistance(s, stem); s == stem || fuzzy || d <= 2 {
 			near = append(near, sibling{name: e.Name(), stem: d, full: EditDistance(name, base)})
 		}
 	}

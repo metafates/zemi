@@ -57,7 +57,7 @@ function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 --- nil when nothing runs.
 ---@param ctx zemi.WidgetCtx
 ---@return string?
-function M.running(ctx)
+local function running(ctx)
 	local flows, agents, jobs = ctx.workflows_running or 0, ctx.agents_running or 0, ctx.jobs_running or 0
 	if flows == 0 and agents == 0 and jobs == 0 then return nil end
 	---@type string[]
@@ -92,7 +92,7 @@ function M.pending(ctx)
 	local parts = {}
 	-- the live rail already names the run the turn waits on: counts are other work
 	if not ctx.agent_active then
-		local running = M.running(ctx)
+		local running = running(ctx)
 		if running then parts[#parts + 1] = running end
 	end
 	local busy = ctx.busy or {}
@@ -139,11 +139,6 @@ function M.run_click(ev)
 	local name, args = ev.id:match("^(%S+)%s*(.*)$")
 	assert(zemi.command.run(name, args))
 end
-
---- The label a splash or exit row leads with, padded so the values line up.
----@param name string
----@return zemi.Segment
-function M.label(name) return { text = string.format("%-9s", name), hl = "Dim" } end
 
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>

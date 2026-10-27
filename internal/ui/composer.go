@@ -316,7 +316,7 @@ func (c *composerState) delWord() {
 	if i > 0 && r[i-1] == '\n' {
 		i--
 	} else {
-		for i > 0 && r[i-1] != ' ' && r[i-1] != '\t' && r[i-1] != '\n' {
+		for i > 0 && !strings.ContainsRune(" \t\n", r[i-1]) {
 			i--
 		}
 	}

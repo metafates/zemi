@@ -361,12 +361,13 @@ func (h *Host) addCompletion(L *glua.LState) int {
 		fn: fn, origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L), gen: h.currentGen(),
 	}
 	r, size := utf8.DecodeRuneInString(s.trigger)
+	bad := size != len(s.trigger) || !(unicode.IsPunct(r) || unicode.IsSymbol(r)) || r == '/' || r == '+'
 	switch {
 	case s.id == "" || fn == nil:
 		L.RaiseError("zemi.composer.add: id and items are required")
 	case (s.trigger == "") == (s.command == ""):
 		L.RaiseError("zemi.composer.add: set trigger or command, not both")
-	case s.trigger != "" && (size != len(s.trigger) || !unicode.IsPunct(r) && !unicode.IsSymbol(r) || r == '/' || r == '+'):
+	case s.trigger != "" && bad:
 		L.RaiseError("zemi.composer.add: trigger must be one punctuation character other than / or +, got %q", s.trigger)
 	}
 	reg := &h.completions

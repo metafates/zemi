@@ -218,12 +218,14 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	// the sequence arrived: there the notifier goes first. Elsewhere a
 	// terminal that draws OSC 9 is the more native banner, and notify-send
 	// may not be installed at all.
-	native := tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool)
+	remote := slices.ContainsFunc([]string{"SSH_TTY", "SSH_CONNECTION"}, func(k string) bool { return env(k) != "" })
+	native := tool != "" && !remote && has(tool)
 	if native && goos == "darwin" {
 		return config.NotifyNative, "auto: via " + tool, false
 	}
 	// tmux, GNU screen and zellij drop OSC 9 unless it is passed through
-	if env("TMUX") == "" && env("STY") == "" && env("ZELLIJ") == "" {
+	muxed := slices.ContainsFunc([]string{"TMUX", "STY", "ZELLIJ"}, func(k string) bool { return env(k) != "" })
+	if !muxed {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
 			if v := env(k); slices.Contains(oscTerms, v) {
 				return config.NotifyOSC, "auto: " + k + "=" + v, false

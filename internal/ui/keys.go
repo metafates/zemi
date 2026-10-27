@@ -235,7 +235,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 
 	// Popups take the list moves but for the ones that edit the draft: a
 	// printable key (j, k, g) types, it never jumps.
-	popupMove := key != "k" && key != "j" && key != "g" && key != "G" && !lineKey(key)
+	popupMove := !slices.Contains([]string{"k", "j", "g", "G"}, key) && !lineKey(key)
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			p.moved = true

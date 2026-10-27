@@ -895,8 +895,7 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 		return vercel.NewProviderOptions(o)
 	case KindGoogle:
 		if re != nil {
-			level := strings.ToUpper(effort)
-			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
+			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: new(strings.ToUpper(effort))}}}
 		}
 	case KindOpenAI: // answered above; the exhaustive linter wants the case
 	case KindSystemOne: // a decisions provider runs no chat call

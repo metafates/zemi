@@ -71,8 +71,7 @@ func (q Question) schema() (fantasy.Schema, error) {
 		}
 		s = fantasy.Schema{Type: "string", Enum: enum, Description: q.Instructions}
 	case TypeScore:
-		high := q.max()
-		s = fantasy.Schema{Type: "integer", Minimum: new(0.0), Maximum: &high, Description: q.Instructions}
+		s = fantasy.Schema{Type: "integer", Minimum: new(0.0), Maximum: new(q.max()), Description: q.Instructions}
 	}
 	return s, nil
 }

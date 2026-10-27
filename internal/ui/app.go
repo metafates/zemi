@@ -655,12 +655,23 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 	}
 }
 
+// frameWork is the work that redraws by itself: a turn, a shown run or a
+// busy job. turnRunning differs per caller: tickInterval reads last frame's
+// a.turnActive, onFrame the fresh AgentActive.
+func (a *App) frameWork(turnRunning bool) bool {
+	busy, _ := a.host.BusyNow()
+	return turnRunning || a.host.ViewedRunRunning() || busy != ""
+}
+
+func (a *App) frameAwake(st hostapi.UIState) bool {
+	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun
+}
+
 // tickInterval is idleInterval unless something on screen moves by itself:
 // a turn's readouts, a shown run's clock, a spinner, a toast's or the done
 // frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
-	st := a.lastState
-	if busy, _ := a.host.BusyNow(); a.turnActive || a.host.ViewedRunRunning() || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
+	if a.frameAwake(a.lastState) {
 		return frameInterval
 	}
 	return idleInterval
@@ -677,7 +688,7 @@ func (a *App) onFrame() tea.Cmd {
 	// While a turn, a shown run or a busy job runs every tick re-renders, so
 	// the eyes and the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if busy, _ := a.host.BusyNow(); active || a.host.ViewedRunRunning() || busy != "" {
+	if a.frameWork(active) {
 		a.frameGen++
 	}
 	a.turnActive = active

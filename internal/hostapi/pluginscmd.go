@@ -167,36 +167,41 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
 		return pluginsErr(verb, plugin.Run(context.Background(), h.Dirs, args, io.Discard))
-	case verb == "marketplace" && len(args) > 1 && args[1] == "list":
-		// file reads only, and the list it refreshes shows the same rows
-		if err := plugin.Run(context.Background(), h.Dirs, args, io.Discard); err != nil {
-			return pluginsErr(usage, err)
-		}
-		h.GoSafe("plugin", func() { h.openPlugins(ui, true, "") })
-		return nil
-	case verb == "marketplace" && len(args) == 2 && !slices.Contains([]string{"add", "remove", "update"}, args[1]):
-		// the drill-down a marketplace row's enter opens; the build reads the
-		// clone's manifest, so it runs off the key loop, and a gone
-		// marketplace opens on its removed row
-		h.GoSafe("plugin", func() { h.openMarketplace(ui, args[1]) })
-	case verb == "marketplace" && len(args) > 1:
-		sub := args[1]
-		if sub != "add" && sub != "remove" && sub != "update" {
-			return pluginsErr(usage, plugin.ErrUsage)
-		}
-		background(marketplaceLabel(args), func(ctx context.Context) error {
-			var out strings.Builder
-			err := plugin.Run(ctx, h.Dirs, args, &out)
-			body := strings.TrimSpace(out.String())
-			title := map[string]string{"add": "Marketplace added", "remove": "Marketplace removed", "update": "Marketplace updated"}[sub]
-			if body == plugin.MarketplacesUpToDate {
-				title, body = body, ""
+	case verb == "marketplace":
+		switch {
+		case len(args) > 1 && args[1] == "list":
+			// file reads only, and the list it refreshes shows the same rows
+			if err := plugin.Run(context.Background(), h.Dirs, args, io.Discard); err != nil {
+				return pluginsErr(usage, err)
 			}
-			if err == nil || body != "" {
-				h.Notify(slog.LevelInfo, title, body)
+			h.GoSafe("plugin", func() { h.openPlugins(ui, true, "") })
+			return nil
+		case len(args) == 2 && !slices.Contains(marketplaceVerbs, args[1]):
+			// the drill-down a marketplace row's enter opens; the build reads the
+			// clone's manifest, so it runs off the key loop, and a gone
+			// marketplace opens on its removed row
+			h.GoSafe("plugin", func() { h.openMarketplace(ui, args[1]) })
+		case len(args) > 1:
+			sub := args[1]
+			if !slices.Contains(marketplaceVerbs, sub) {
+				return pluginsErr(usage, plugin.ErrUsage)
 			}
-			return err
-		})
+			background(marketplaceLabel(args), func(ctx context.Context) error {
+				var out strings.Builder
+				err := plugin.Run(ctx, h.Dirs, args, &out)
+				body := strings.TrimSpace(out.String())
+				title := map[string]string{"add": "Marketplace added", "remove": "Marketplace removed", "update": "Marketplace updated"}[sub]
+				if body == plugin.MarketplacesUpToDate {
+					title, body = body, ""
+				}
+				if err == nil || body != "" {
+					h.Notify(slog.LevelInfo, title, body)
+				}
+				return err
+			})
+		default:
+			return pluginsErr(verb, plugin.ErrUsage)
+		}
 	case verb == "install" || verb == "add" || verb == "delete":
 		// the last word names the busy line either way
 		name := "plugin"
@@ -222,6 +227,11 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 	}
 	return nil
 }
+
+// marketplaceVerbs are the marketplace subcommands that run in the
+// background: the build reads the clone's manifest, so it runs off the key
+// loop.
+var marketplaceVerbs = []string{"add", "remove", "update"}
 
 // marketplaceLabel is the busy line a marketplace verb shows while it runs:
 // the clone decides a marketplace's name, so add names the source it was

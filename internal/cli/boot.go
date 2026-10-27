@@ -436,13 +436,18 @@ func configFingerprint(skip string, roots ...string) string {
 			walk = append(walk, r)
 		}
 	}
+	// ignored says whether a walked directory holds nothing the fingerprint
+	// reads: a dot-dir but a plugin's code dir, node_modules, the skip tree
+	// or another walked root.
+	ignored := func(d fs.DirEntry, p string) bool {
+		return d.Name()[0] == '.' && d.Name() != plugin.CodeDir || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)
+	}
 	for _, root := range walk {
 		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			switch {
 			case err != nil:
 				return nil
-			// .zemi is a plugin's code, where an edit must reload zemi
-			case d.IsDir() && p != root && (d.Name()[0] == '.' && d.Name() != plugin.CodeDir || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)):
+			case d.IsDir() && p != root && ignored(d, p):
 				return filepath.SkipDir // a root is walked once
 			case d.IsDir() || d.Name() == ".luarc.json" || d.Name() == ".emmyrc.json":
 				return nil

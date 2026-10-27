@@ -327,9 +327,8 @@ func (m *lineMarker) Write(p []byte) (int, error) {
 // returns a key that changes whenever those groups do. Nothing is left to
 // glamour's stock palette: a block the theme does not color draws in Normal.
 func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
-	margin, zero := uint(2), uint(0)
 	cfg := gansi.StyleConfig{
-		Document:      gansi.StyleBlock{Margin: &zero},
+		Document:      gansi.StyleBlock{Margin: new(uint(0))},
 		BlockQuote:    gansi.StyleBlock{Indent: new(uint(1)), IndentToken: new("│ ")},
 		List:          gansi.StyleList{LevelIndent: 2},
 		Heading:       gansi.StyleBlock{StylePrimitive: gansi.StylePrimitive{BlockSuffix: "\n", Bold: new(true)}},
@@ -342,7 +341,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		Enumeration:    gansi.StylePrimitive{BlockPrefix: ". "},
 		Task:           gansi.StyleTask{Ticked: "✓ ", Unticked: "○ "},
 		ImageText:      gansi.StylePrimitive{Format: "Image: {{.text}}"},
-		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: &margin}},
+		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: new(uint(2))}},
 	}
 	theme := h.ActiveTheme()
 	var key strings.Builder
@@ -818,7 +817,11 @@ func escapeLine(line string) string {
 var autolink = regexp.MustCompile(`^<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>`)
 
 func tagStart(c byte) bool {
-	return c == '/' || c == '!' || c == '?' || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+	switch c {
+	case '/', '!', '?':
+		return true
+	}
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 }
 
 // fenceRun is the 3+-of-one-character run a fenced code block opens with
