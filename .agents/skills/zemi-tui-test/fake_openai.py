@@ -104,6 +104,13 @@ class H(BaseHTTPRequestHandler):
         reply = ctl_text("judge") if text.startswith("Judge whether") else ""
         if reply:
             set_ctl("judge", "")
+        # a builder call (Compaction: compress message / merge lines) answers
+        # with the one-lined head 400B of its <input> block: a
+        # compression-shaped digest instead of the canned line
+        if not reply and re.search(r"Compaction: (compress message|merge lines)", text):
+            inp = re.search(r"<input>(.*)</input>", text, re.S)
+            if inp:
+                reply = " ".join(inp.group(1).split())[:400]
         usage = {"prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050}
         if not body.get("stream"):
             msg = {"role": "assistant", "content": "done"}

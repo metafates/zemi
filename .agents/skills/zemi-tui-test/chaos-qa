@@ -65,7 +65,15 @@ checks() {
     [ "$bad" = "0" ] || { echo "  FAIL: view coverage: $bad"; fail=1; }
     bad=$(sqlite3 "$db" "select count(*) from (select seq - lag(seq) over (order by seq) d from log) where d is not null and d != 1" 2>&1)
     [ "$bad" = "0" ] || { echo "  FAIL: log seq not dense: $bad"; fail=1; }
-    pgrep -f "zemi-safe $T" >/dev/null || { echo "  FAIL: the process is gone"; fail=1; }
+    # the supervisor sh and the zemi-safe wrapper both outlive a
+    # crash-looping zemi, so the alive check names the real process: the
+    # exec'd binary's argv is "<ZB> <tree> --trust", nothing else carries it
+    ok=""
+    for _ in 1 2 3 4 5; do
+        pgrep -f "$(basename "$ZB") $T" >/dev/null && { ok=1; break; }
+        sleep 1
+    done
+    [ -n "$ok" ] || { echo "  FAIL: the process is gone"; fail=1; }
     return $fail
 }
 
