@@ -6,7 +6,7 @@ description: "Load to check a UI or agent change end to end, capture a screen, o
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
-pickers) or crosses the model loop (tools, permission asks, the view, rewind).
+pickers) or crosses the model loop (tools, permission asks, the view, a reset).
 Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
 
 ## The lab: zemi-lab

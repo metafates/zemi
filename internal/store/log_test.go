@@ -6,39 +6,6 @@ import (
 	"testing"
 )
 
-// TestLogSeqDenseAfterCut: seq is the message index, max+1 inside the append
-// transaction, so a rewind's tail cut leaves it dense.
-func TestLogSeqDenseAfterCut(t *testing.T) {
-	db := openTest(t)
-	for range 3 {
-		if _, err := db.AppendLog("user", "hi", "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := db.DeleteLogFrom(2); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if _, err := db.AppendLog("user", "back", "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	rows, err := db.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seqs := make([]int64, len(rows))
-	for i, r := range rows {
-		seqs[i] = r.Seq
-	}
-	if !slices.Equal(seqs, []int64{0, 1, 2, 3}) {
-		t.Fatalf("seqs after the cut and two appends: %v", seqs)
-	}
-	if n, err := db.LogCount(); err != nil || n != 4 {
-		t.Fatalf("count = %d, %v", n, err)
-	}
-}
-
 // TestLogAppendReads: the row, its view line and its template node commit
 // together, and the windowed reads order oldest first.
 func TestLogAppendReads(t *testing.T) {
@@ -66,6 +33,39 @@ func TestLogAppendReads(t *testing.T) {
 	}
 	if _, err := db.LogAt(5); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("LogAt(5) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestLogSeqDense: seq is the message index, max+1 inside the append
+// transaction, so it stays dense and a reset's empty log starts over at 0.
+func TestLogSeqDense(t *testing.T) {
+	db := openTest(t)
+	for range 3 {
+		if _, err := db.AppendLog("user", "hi", "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.ResetLog(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := db.AppendLog("user", "back", "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := db.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seqs := make([]int64, len(rows))
+	for i, r := range rows {
+		seqs[i] = r.Seq
+	}
+	if !slices.Equal(seqs, []int64{0, 1}) {
+		t.Fatalf("seqs after the reset and two appends: %v", seqs)
+	}
+	if n, err := db.LogCount(); err != nil || n != 2 {
+		t.Fatalf("count = %d, %v", n, err)
 	}
 }
 
@@ -104,46 +104,6 @@ func TestViewMerges(t *testing.T) {
 	}
 	if lines, _ = db.LoadView(); len(lines) != 1 || lines[0].L != 2 || lines[0].I != 0 {
 		t.Fatalf("view = %+v, want the root alone", lines)
-	}
-}
-
-// TestDeleteLogFrom: the cut takes the log rows from seq on, every node
-// whose range intersects them, and the view lines that start there.
-func TestDeleteLogFrom(t *testing.T) {
-	db := openTest(t)
-	for i := range 4 {
-		if _, err := db.AppendLog("user", "hi", "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.AppendViewLine(0, int64(i)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// a leaf and an ancestor holding the cut
-	if _, err := db.InsertNode(0, 3, "leaf"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.InsertNode(2, 0, "root"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.DeleteLogFrom(2); err != nil {
-		t.Fatal(err)
-	}
-	if n, err := db.LogCount(); err != nil || n != 2 {
-		t.Fatalf("log rows = %d, %v, want 2", n, err)
-	}
-	if _, err := db.NodeAt(0, 3); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("leaf survived the cut: %v", err)
-	}
-	if _, err := db.NodeAt(2, 0); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("ancestor survived the cut: %v", err)
-	}
-	lines, err := db.LoadView()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 2 || lines[1].I != 1 {
-		t.Fatalf("view = %+v, want the lines before the cut", lines)
 	}
 }
 

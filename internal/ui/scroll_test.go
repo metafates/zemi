@@ -302,7 +302,7 @@ func TestAgentViewSendSnapsToTail(t *testing.T) {
 }
 
 // TestChatScrollFollows pins the snap-back: sending a message, or a new
-// transcript (new, resume, rewind), returns the view to the tail.
+// transcript (a reset's wipe), returns the view to the tail.
 func TestChatScrollFollows(t *testing.T) {
 	for name, act := range map[string]func(*App, *hostapi.Host) error{
 		"submit": func(app *App, _ *hostapi.Host) error {
@@ -310,8 +310,8 @@ func TestChatScrollFollows(t *testing.T) {
 			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			return nil
 		},
-		"rewind": func(_ *App, host *hostapi.Host) error {
-			// a rewind replaces the window, which re-opens at the tail
+		"reset": func(_ *App, host *hostapi.Host) error {
+			// a reset replaces the window, which re-opens at the tail
 			host.SetTranscript(nil)
 			return nil
 		},

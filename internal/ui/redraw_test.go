@@ -202,7 +202,7 @@ func TestFrameCache(t *testing.T) {
 		t.Fatal("a View with nothing behind it recomposed")
 	}
 
-	app.composerKey("x", tea.KeyPressMsg{Text: "x"})
+	app.Update(tea.KeyPressMsg{Text: "x"})
 	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "changed under the cachex") {
 		t.Fatalf("the draft did not repaint:\n%s", frame)
 	}

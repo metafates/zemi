@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -189,10 +190,15 @@ func (a *App) clearComposer() {
 
 // submitComposer routes the composer submit: slash lines run commands,
 // everything else goes through the vetoable composer.submit event and the
-// agent (DESIGN §6.2, §6.3).
+// agent (DESIGN §6.2, §6.3). A draft the cap refuses (a recalled message, a
+// paste token's text) refuses whole, the draft kept for trimming.
 func (a *App) submitComposer() {
 	text := strings.TrimSpace(a.composer.expand(a.composer.text))
 	if text == "" {
+		return
+	}
+	if utf8.RuneCountInString(text) > maxDraftChars {
+		a.draftCapToast()
 		return
 	}
 	if strings.HasPrefix(text, "/") {

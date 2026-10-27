@@ -228,7 +228,7 @@ func TestMemoriesRange(t *testing.T) {
 // TestSeqZeroIsARealMessage: the log's first message is seq 0, not a
 // sentinel - the stamping names a live row with it, the jump map and the
 // /memories and /messages rows anchor it, zoom opens it, nothing older is
-// offered past it, and a rewind to it empties the chat.
+// offered past it.
 func TestSeqZeroIsARealMessage(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -264,22 +264,16 @@ func TestSeqZeroIsARealMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := ui.overlays()[len(ui.overlays())-1]
-	if list.Items[0].ID != "0" {
-		t.Fatalf("the picker's first row = id %q, want \"0\"", list.Items[0].ID)
+	if list.Items[0].Anchor != 1 {
+		t.Fatalf("the picker's first row = %+v, want the row anchored at 1", list.Items[0])
 	}
 	if _, ok := h.messagesOlder(); ok {
 		t.Error("a page loaded before the log's first message")
 	}
 
-	// zoom opens message 0 whole, and a rewind to before it empties the chat
+	// zoom opens message 0 whole
 	if res := zoomCall(t, h, `{"id":0}`); !strings.Contains(res.Content, "first words") {
 		t.Fatalf("zoom(0) = %q", res.Content)
-	}
-	if _, err := h.RewindTo(0); err != nil {
-		t.Fatal(err)
-	}
-	if n, _ := h.DB.LogCount(); n != 0 {
-		t.Fatalf("%d rows survived the rewind to 0", n)
 	}
 }
 

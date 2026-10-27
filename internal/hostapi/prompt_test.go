@@ -261,14 +261,10 @@ func TestPromptPinned(t *testing.T) {
 			handEdit(h, agentsMD(h), "run make check")
 			h.SetProjectTrusted(false)
 		}, true, 0},
-		{"hand edit sent, then rewound", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"hand edit rides the next message once", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			handEdit(h, agentsMD(h), "run make check")
 			sender(t, h)("mid")
-			rows, _ := h.DB.LogKindBack(kindUser, 10)
-			if _, err := h.RewindTo(rows[len(rows)-1].Seq); err != nil {
-				t.Fatal(err)
-			}
-		}, false, 1},
+		}, false, 0},
 		{"AGENTS.md edited through the edit tool", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			all := tools.All(h.PipelineFor())
 			for _, call := range []struct {

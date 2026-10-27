@@ -54,7 +54,7 @@ type chatLog struct {
 }
 
 // quiesce stops the builder's dispatch and waits for its in-flight builds;
-// resume releases it. A rewind holds both around the cut. False when the
+// resume releases it. A reset holds both around the wipe. False when the
 // host is closing: the fence cannot hold, the caller must not cut.
 func (c *chatLog) quiesce() bool { return c.tree.quiesce() }
 

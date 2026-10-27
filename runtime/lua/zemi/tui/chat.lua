@@ -926,7 +926,7 @@ zemi.ui.widget.add({
 		if reset or not cacheable then
 			units, units_key, settled = {}, key, nil
 		end
-		-- A window swapped in whole (a rewind's cut), a new width or a new
+		-- A window swapped in whole (a reset's wipe), a new width or a new
 		-- theme leave every unit to render, far more than one render may
 		-- take: the latest come first, and once they fill the view and 30 ms
 		-- passed, the render returns them and asks for another, so a slow or

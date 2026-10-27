@@ -6,9 +6,7 @@ package hostapi
 
 import (
 	"cmp"
-	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,7 +22,7 @@ import (
 // levels under it a list row opens.
 func (h *Host) messagesCommands() []*Command {
 	return []*Command{{
-		Name: "messages", NArgs: NArgsAny, Desc: "read, copy or rewind a message",
+		Name: "messages", NArgs: NArgsAny, Desc: "read or copy a message",
 		GoFn: func(h *Host, args string, confirm bool) error { return h.MessagesCommand(args) },
 	}}
 }
@@ -145,7 +143,7 @@ func (h *Host) OpenMessages() error {
 
 // refreshMessages rebuilds the open levels of the messages picker from the
 // conversation as it grows, so a call that settles or a reply that lands
-// shows there; a level the conversation no longer holds (a rewind, a
+// shows there; a level the conversation no longer holds (a reset, a
 // compaction) closes. A caller holding ag.mu hands the conversation it read
 // under that lock (flushOutput); the rest read it here.
 func (h *Host) refreshMessages() {
@@ -316,9 +314,6 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 			}
 			item.Section = section
 			o.Items = append(o.Items, item)
-			if item.ID != "" {
-				o.Keys = h.rewindKey(o.Keys)
-			}
 		}
 	}
 	o.Items = append(o.Items, h.otherWindowRows()...)
@@ -328,7 +323,7 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 
 // otherWindowRows reads the log rows this window never drew: another
 // window's turns land in the shared log above the seqs this transcript
-// stamped, and /rewind and /memories show them, so the picker does too. They
+// stamped, and /memories shows them, so the picker does too. They
 // name no transcript row, the way a loaded page's rows do. The stamping runs
 // first, so the rows this window drew but has not named yet stay out. NOTE:
 // capped at one page; a longer gap waits for this window to draw its way to
@@ -365,7 +360,7 @@ func (h *Host) otherWindowRows() []OverlayItem {
 const chatPageRows = 250
 
 // olderRow is a loaded page row: what it reads as, its log seq for the
-// rewind key on a prompt, and the view that reads it whole. It names no
+// view that reads it whole. It names no
 // transcript row: the chat window does not hold it.
 func olderRow(m ChatMessage) OverlayItem {
 	item := messageRow(0, m)
@@ -417,8 +412,7 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 	}
 	page := logRows(rows)
 	h.msgMu.Lock()
-	// a rewind cut the log under the loaded pages: only what is still before
-	// the window's first logged row survives it
+	// a reset wiped the log under the loaded pages: nothing survives it
 	if head >= 0 {
 		page = append(page, slices.DeleteFunc(h.msgOld, func(m ChatMessage) bool { return m.Seq >= head })...)
 	}
@@ -454,32 +448,6 @@ func turnSection(p pickTr, t msgTurn) string {
 		return "Turn " + strconv.Itoa(t.n)
 	}
 	return "Turn " + strconv.Itoa(t.n) + " · " + strings.Join(desc, " · ")
-}
-
-// rewindKey adds r once: the key rewinds to the prompt a row names, and only
-// such a row carries it.
-func (h *Host) rewindKey(keys []OverlayKey) []OverlayKey {
-	if slices.ContainsFunc(keys, func(k OverlayKey) bool { return k.Key == "r" }) {
-		return keys
-	}
-	return append(keys, OverlayKey{
-		Key: "r", Desc: "rewind", Danger: true,
-		Applies: func(it OverlayItem) bool { return it.ID != "" },
-		Act:     func(it OverlayItem) { h.rewindTo(it.ID) },
-	})
-}
-
-// rewindTo runs the rewind command on a row's stored message, the way
-// /rewind <id> does. A refusal (a turn running, a run still going) leaves the
-// chat standing, so the picker comes back with it instead of closing under
-// the toast.
-func (h *Host) rewindTo(id string) {
-	if err := h.RunCommand(context.Background(), "rewind", id, false); err != nil {
-		h.Notify(slog.LevelWarn, "Could not rewind", err.Error())
-		if err := h.OpenMessages(); err != nil {
-			h.Log.Debug("messages picker not reopened", "origin", "rewind", "error", err)
-		}
-	}
 }
 
 // openMessagesRail lists the calls and thoughts of one activity run, the
@@ -619,7 +587,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 }
 
 // messageRow is one row of a turn: what it reads as, what y copies, and the
-// actions that open it or rewind to it. Its text is empty for a row the list
+// actions that open it. Its text is empty for a row the list
 // leaves out.
 func messageRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
@@ -629,9 +597,6 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
 		head, glyph, hl = cmp.Or(messageHead(text), "(empty prompt)"), "▌", "UserMsg"
-		if m.Seq != NoSeq {
-			item.ID = strconv.FormatInt(m.Seq, 10) // r rewinds to it; the list's key checks the rows
-		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
 		head, glyph, hl = messageHead(text), "◆", "Dim"

@@ -257,7 +257,7 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 		Title: "Memories / " + id.id(), Origin: lua.OriginBuiltin,
 		Body: b.String(),
 	}
-	if b.Len() == 0 { // the rows were gone before the read (a rewind raced)
+	if b.Len() == 0 { // the rows were gone before the read (a reset raced)
 		o.Empty = "the log rows are gone from this store"
 	}
 	ui.OpenOverlay(o)

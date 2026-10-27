@@ -26,9 +26,8 @@ func rowKey(it OverlayItem) string {
 }
 
 // TestMessagesList: /messages lists every turn's rows in order, each turn a
-// section header naming its clock and what it held; a prompt row names the
-// message r rewinds to, a run folds into the row l opens the rail from, and
-// a call copies the input it acted on.
+// section header naming its clock and what it held; a run folds into the row
+// l opens the rail from, and a call copies the input it acted on.
 func TestMessagesList(t *testing.T) {
 	t.Parallel()
 	sent := time.Date(2026, 10, 19, 14, 2, 0, 0, time.Local)
@@ -83,15 +82,13 @@ func TestMessagesList(t *testing.T) {
 	if sel := h.messagesList(pickTr{tr: tr}, 3).Selected; sel != 1 {
 		t.Errorf("the reader in the run selects %d, want the digest", sel)
 	}
-	// a prompt names the message r rewinds to
-	if prompt := o.Items[0]; prompt.ID != "7" || prompt.Keys != nil {
+	// a prompt row's run reads it whole, and no key acts on it
+	if prompt := o.Items[0]; prompt.ID != "" || prompt.Keys != nil {
 		t.Errorf("prompt = %+v", prompt)
 	}
-	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
-	if !r.Danger || !r.Applies(OverlayItem{ID: "7"}) || r.Applies(OverlayItem{Text: "again"}) {
-		t.Errorf("rewind key = %+v", r)
-	}
-	// a call copies the input it acted on; one that took nothing worth
+	if slices.ContainsFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" }) {
+		t.Errorf("the list offers a rewind key")
+	} // a call copies the input it acted on; one that took nothing worth
 	// keeping copies nothing
 	if call := messageCallRow(3, ChatMessage{Kind: RowTool, Tool: "shell", Text: "go test"}); call.Copy != "go test" {
 		t.Errorf("a shell call copies %q", call.Copy)
@@ -134,7 +131,7 @@ func TestMessagesList(t *testing.T) {
 // TestStampingPairsResultRows: a tool result's log row draws no row of its
 // own, so the pairing passes it instead of spending the next row's slot on
 // it - which stalled every turn after the first tool call and left its rows
-// unnamed, the rewind keys on them dead.
+// unnamed, the log ids on them dead.
 func TestStampingPairsResultRows(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -165,17 +162,16 @@ func TestStampingPairsResultRows(t *testing.T) {
 	if want := []int64{0, 1, 3, 4, 5, 7}; !slices.Equal(got, want) {
 		t.Fatalf("stamped seqs = %v, want %v", got, want)
 	}
-	// the picker's prompt rows name them, so r rewinds to each
+	// the picker's prompt rows anchor at the rows the seqs stamp
 	o := h.messagesList(h.pickerTranscript(), 0)
-	if o.Items[0].ID != "0" || o.Items[3].ID != "4" {
-		t.Fatalf("prompt ids = %q %q, want \"0\" and \"4\"", o.Items[0].ID, o.Items[3].ID)
+	if o.Items[0].Anchor != 1 || o.Items[3].Anchor != 4 {
+		t.Fatalf("prompt anchors = %d %d, want 1 and 4", o.Items[0].Anchor, o.Items[3].Anchor)
 	}
 }
 
 // TestMessagesCrossWindow: the turns another window logged appear in the
-// picker, the way /rewind and /memories show them, under their own section
-// and named by their log seq; the rows this window drew but has not stamped
-// yet stay out.
+// picker, the way /memories shows them, under their own section and named by
+// their log seq; the rows this window drew but has not stamped yet stay out.
 func TestMessagesCrossWindow(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -197,15 +193,15 @@ func TestMessagesCrossWindow(t *testing.T) {
 		rows = append(rows, it.Section+"|"+it.Text+"|"+it.ID)
 	}
 	want := []string{
-		"Turn 1|mine|0", // the window's row
-		"From another window|their prompt|1",
-		"From another window|their reply|", // a reply names no rewind; its run reads it whole
+		"Turn 1|mine|", // the window's row
+		"From another window|their prompt|",
+		"From another window|their reply|", // a reply names no prompt; its run reads it whole
 	}
 	if !slices.Equal(rows, want) {
 		t.Fatalf("rows = %q, want %q", rows, want)
 	}
-	if o.Items[2].Run != "messages view #2" {
-		t.Fatalf("the logged reply's run = %q, want its seq view", o.Items[2].Run)
+	if o.Items[1].Run != "messages view #1" || o.Items[2].Run != "messages view #2" {
+		t.Fatalf("the logged rows' runs = %q %q, want their seq views", o.Items[1].Run, o.Items[2].Run)
 	}
 }
 
@@ -486,18 +482,18 @@ func TestMessagesPageUp(t *testing.T) {
 				i, o.Items[i].Anchor, rowKey(o.Items[i]), was.Anchor, rowKey(was))
 		}
 	}
-	// the log's first message is seq 0, a real row: it names its seq like
-	// every other one, and r rewinds to before it
-	if o.Items[0].Anchor != 0 || o.Items[0].ID != "0" {
-		t.Errorf("the first logged prompt anchors %d id %q, want anchor 0 id \"0\"", o.Items[0].Anchor, o.Items[0].ID)
+	// the log's first message is seq 0, a real row: its view names its seq
+	// like every other one
+	if o.Items[0].Anchor != 0 {
+		t.Errorf("the first logged prompt anchors %d, want 0", o.Items[0].Anchor)
 	}
-	if o.Items[1].ID != "1" || o.Items[1].Run != "messages view #1" {
-		t.Errorf("the loaded prompt = id %q run %q", o.Items[1].ID, o.Items[1].Run)
+	if o.Items[1].Run != "messages view #1" {
+		t.Errorf("the loaded prompt's run = %q", o.Items[1].Run)
 	}
 	if _, ok := h.messagesOlder(); ok {
 		t.Error("a page loaded past the log's first message")
 	}
-	// a rewind's swap drops the loaded pages with the rows they name
+	// a reset's swap drops the loaded pages with the rows they name
 	h.SetTranscript(h.Session().Transcript)
 	h.msgMu.Lock()
 	n := len(h.msgOld)

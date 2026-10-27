@@ -1,6 +1,6 @@
 ---
 name: zemi-host-flow
-description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, chatlog, memtree, session, rewind, classify or prompt code: boot order and trust, the CLI, config reload and kept picks, turns, the chat log and its builder, rewind and the pinned prompt."
+description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, chatlog, memtree, session, classify or prompt code: boot order and trust, the CLI, config reload and kept picks, turns, the chat log and its builder, reset and the pinned prompt."
 ---
 
 # Host flow: CLI, boot, config, turns
@@ -188,9 +188,10 @@ zemis never run one twice; a change is a new numbered file there, never an edit 
 applied one. A store made before goose only gains its version table: the baseline is all
 `CREATE ... IF NOT EXISTS`. The chat's tables (`log`, `nodes`, `view_lines`) are 0006; 0007
 seeds the old memory table's live project facts into the log as note messages, then drops
-the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §7).
+the old memory tables and re-keys `checkpoints` on the log seq (DESIGN §7). Migration 0009
+drops the checkpoints table whole: rewind is gone.
 
-## Turns, the chat and the builder (internal/hostapi: agent.go, chatlog.go, memtree.go, session.go, rewind.go)
+## Turns, the chat and the builder (internal/hostapi: agent.go, chatlog.go, memtree.go, session.go, reset.go)
 
 - **Models are targets.** `models.default` is the root: it runs the conversation and every
   role left unset follows it; `models.agents`
@@ -242,8 +243,8 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
   six failures in a row until new rows land (`buildStreak`). The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
-  kv, pruned past every rewind's cut. A rewind quiesces the builder - a fence: nothing
-  dispatches into the cut and every build before it has landed. `/health`'s `chat builder`
+  kv. A reset quiesces the builder - a fence: nothing
+  dispatches into the wipe and every build before it has landed. `/health`'s `chat builder`
   row reads the queue depths and the parked builds (`builderHealth`).
 - **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
   view as one user message of 4-line parts, `chatlog.go viewMessage`) before every send, so
@@ -266,7 +267,7 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so steered
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
-  held across that handoff (`nextTurn`) so a submit cannot jump the queue; rewind claims
+  held across that handoff (`nextTurn`) so a submit cannot jump the queue; reset claims
   `active` and a `turnScope` together for the same reason. With nothing left, a
   set goal's continuation is the other follow-up `nextTurn` starts under the claim. `release`
   settles the todo list on the way out.
@@ -275,8 +276,8 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
   carrying the brief `SetGoal` last sent, and stores it in the kv row `goal` (the condition
   and the log seq it was set at). After a turn that
   ended cleanly `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
-  (`checkGoal`, `parseVerdict`). A verdict is a live notice row; `goalRewound` drops a goal
-  whose setting message a rewind cut away.
+  (`checkGoal`, `parseVerdict`). A verdict is a live notice row; `goalDropped` drops the goal
+  a reset wipes the chat of.
 - **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only, DESIGN §6.3)
   keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
@@ -297,7 +298,7 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
   moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
   stops it and the chat's pending row names it.
 - **The chat window** (session.go): the live transcript is the log's last `chatWindowRows`
-  (1000) settled rows (`LogTail` at boot, `setTranscriptFromLog` after a rewind), appended to
+  (1000) settled rows (`LogTail` at boot, `setTranscriptFromLog` after a reset), appended to
   and replaced whole; `InputHistory` reads the log's user rows. `historyFrom` decodes a run's
   stored messages into model history and transcript rows for its child session.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
@@ -315,24 +316,13 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
 - **Roots.** `inRoots` resolves symlinks on both the path and the roots; `@file` attachments,
   instruction files, project LSP servers and recipe scrubbing all rely on it.
 
-## Rewind, read-only agents, prompts, composer bridge
+## Reset, read-only agents, prompts, composer bridge
 
-- **Rewind** (rewind.go, store/log.go): the pipeline's `Checkpoint` hook saves a file's
-  pre-turn content (keyed by the log seq of the turn's user message, first write wins) before a
-  write tool touches it. `RewindTo` restores files first and only then cuts, so a failed
-  restore leaves the chat intact; the cut holds `cutMu` and the builder quiesced, then
-  `DeleteLogFrom` runs in one transaction: the log rows from seq on, every node and view
-  line touching them, the checkpoints from seq on, leaf lines re-covering the survivors
-  (`patchCut`) and the compaction view's gone lines. The
-  todo list is rebuilt from the log's `todos` rows before the cut, the goal is rewound with
-  its kv row, and the prompt text goes back to the composer. `/reset` (`ResetChat`) is the
-  same claim, quiesce and `cutMu` around `ResetLog`, which wipes the log, the nodes, the view
-  lines, the checkpoints and the compaction view whole and then vacuums and truncates the WAL so the text leaves
+- **Reset** (reset.go, store/log.go): `/reset` (`ResetChat`) takes the claim, `cutMu` and the
+  builder quiesced around `ResetLog`, which wipes the log, the nodes, the view lines and the
+  compaction view whole and then vacuums and truncates the WAL so the text leaves
   the file; the todo list clears, every goal drops, and the transcript swaps to the empty
-  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`. A shell call's changes are checkpointed from the
-  before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
-  a repository, no submodule, and not once two slow snapshots switched the
-  snapshot off); a symbolic link comes back as a link.
+  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`.
 - **Read-only agents** (`AgentDef.ReadOnly`) are enforced in
   `tools.Pipeline.check` (`Pipeline.ReadOnly`): every action denied - a write, a command, a
   Lua tool; reads and scratchpad writes pass. A subagent the plan builtin starts, or one
@@ -370,7 +360,7 @@ the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §
   `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
   schema fails calls). `deleteRecipe` clears its key (`dropPin`: `/prompt` and a running turn
   keep the text, and a
-  build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on
+  build a drop overtook is not stored); a reset keeps it, and a reload drops nothing, since the config watcher reloads on
   any config-tree write, the model's own skill writes included. So instruction files, skills,
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
   when it is built, and a hit costs no file read and no Lua. The one exception, an instruction

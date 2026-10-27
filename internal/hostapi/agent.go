@@ -179,8 +179,8 @@ type agentHost struct {
 	// hookCtx is what the plugins' SessionStart hooks captured for the chat.
 	hookCtx string
 
-	// turnSeq is the log seq of the running turn's user message; write tools
-	// checkpoint files against it (rewind). -1 before the message is logged.
+	// turnSeq is the log seq of the running turn's user message; the goal
+	// keys on it. -1 before the message is logged.
 	turnSeq int64
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
@@ -801,7 +801,7 @@ func (h *Host) endScope(scope *turnScope) {
 	scope.cancel()
 }
 
-// handOff ends a claim that ran no turn (/reset, rewind). Messages queued
+// handOff ends a claim that ran no turn (/reset). Messages queued
 // meanwhile start under the same claim, so a submit cannot jump ahead of
 // them; after a cancel the queue waits for the UI to hand it back.
 func (h *Host) handOff(scope *turnScope) {
@@ -821,7 +821,7 @@ func (h *Host) handOff(scope *turnScope) {
 		h.refresh()
 		return
 	}
-	// sending waits on the interpreter, and rewind may be called from Lua
+	// sending waits on the interpreter, and a reset may be called from Lua
 	h.GoSafe("agent send", func() {
 		if err := h.sendClaimed(scope, queued, nil); err != nil {
 			h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
@@ -1893,7 +1893,7 @@ func (h *Host) recap(ctx context.Context) {
 			row.Detail = "off in /config"
 		}
 	}
-	// a send, a report or a rewind since the call would leave it stale
+	// a send, a report or a reset since the call would leave it stale
 	h.tMu.RLock()
 	added := ctx.Err() == nil && len(h.session.Transcript) == len(tr)
 	h.tMu.RUnlock()
@@ -2641,7 +2641,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Ask:        h.askHook(),
 		Veto:       h.vetoHook(),
 		Log:        h.Log,
-		Checkpoint: h.checkpointFile,
 		AfterWrite: h.afterWrite,
 		Changes:    h.shellChanges,
 		Progress: func(id string, p tools.Progress) {

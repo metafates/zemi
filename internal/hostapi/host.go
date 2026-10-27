@@ -401,8 +401,8 @@ type ChatMessage struct {
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
 	CallID string // tool rows: the stream's call id, so a report names a call once
-	// Seq is the row's log message: the rewind picker names it, and a user
-	// row's is where a rewind cuts. NoSeq for a row the log holds no
+	// Seq is the row's log message: the /memories jump names it, and a user
+	// row's is where a reset cuts. NoSeq for a row the log holds no
 	// message for (a live-only notice, a run row).
 	Seq    int64
 	ID     string // a run row's stored message id (its transcript rebuilds from the store)
@@ -589,7 +589,7 @@ type Host struct {
 	}
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
-	// rewind), so the chat widget can cache the rows of settled messages.
+	// reset), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
 	// trEdit changes when a settled row's text grew in place (a joined
 	// reasoning chunk), which re-renders every cached unit: trEpoch would also
@@ -626,8 +626,8 @@ type Host struct {
 	stops      *stopReg
 	// test is set, before boot, only in a zemi plugin test zemi
 	test *PluginTest
-	// cutMu orders a rewind's cut against a detached run's writes, so a run
-	// never stores what it read from rows a rewind removed.
+	// cutMu orders a reset's wipe against a detached run's writes, so a run
+	// never stores what it read from rows the wipe removed.
 	cutMu    sync.Mutex
 	initFail atomic.Pointer[string]                    // headline of the user init.lua failure this boot recorded
 	modelFn  func() (fantasy.LanguageModel, error)     // stubs every model in tests
@@ -2355,7 +2355,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.143.0"))
+	api.RawSetString("version", glua.LString("0.144.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

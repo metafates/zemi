@@ -371,7 +371,7 @@ type lspSig struct {
 // touch) ran (lspDirty).
 // NOTE: inside a repository the listing misses gitignored files and the
 // config and plugin trees a zemiLua server is rooted at; both reach the
-// server when the file is next opened. rewind's treeDiff carries the first
+// server when the file is next opened. treeDiff carries the first
 // ceiling too.
 func (h *Host) lspSync(force bool) {
 	h.lsp.scanMu.Lock()

@@ -198,6 +198,8 @@ type App struct {
 	wake           chan struct{}     // a bump while the frame tick sleeps idle
 	refreshPending atomic.Bool       // a Refresh is queued
 	lastSel        map[string]string // per overlay id, the selected row's key when it last closed
+	capToastAt     time.Time         // when the draft-cap toast may push again
+	sizedDraft     string            // the draft the last size-only render pass ran at
 
 	// the last composed frame, published for Screenshot: reading a
 	// snapshot is what lets any goroutine ask what the screen says
@@ -447,14 +449,18 @@ func (a *App) Init() tea.Cmd {
 }
 
 // Update re-renders at once the widgets a message resized, so no frame draws
-// lines rendered for another size; the tick renders the rest.
-// NOTE: that solves the layout once per message, mouse motion included; if it
-// shows in a profile, run it only on a composer height change and a refresh.
+// lines rendered for another size; the tick renders the rest. A keystroke
+// that left the draft as it was (a refused one above the cap, a move) resized
+// nothing: the size pass would solve the layout a key.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := a.update(msg)
 	if _, tick := msg.(frameTickMsg); tick {
 		return a, cmd
 	}
+	if _, ok := msg.(tea.KeyPressMsg); ok && a.composer.text == a.sizedDraft {
+		return a, cmd
+	}
+	a.sizedDraft = a.composer.text
 	return a, tea.Batch(cmd, a.renderStaleWidgetsCmd(true))
 }
 

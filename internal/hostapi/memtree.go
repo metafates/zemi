@@ -2,7 +2,7 @@
 // a binary tree of 512-byte one-line summaries and keeps the view, the
 // sawtooth list of lines a turn reads. Its tree state is owned by its worker
 // goroutine; appends reach it through Wake, finished model calls through
-// results, and a rewind through RebuildQueues. No lease: two windows race on
+// results, and a reset through RebuildQueues. No lease: two windows race on
 // INSERT OR IGNORE and on view merges skipped for children already gone, so
 // a race wastes one cheap call and nothing else.
 
@@ -191,7 +191,7 @@ type memTree struct {
 	callMu     sync.Mutex
 	flight     int                // model calls in flight
 	leafFlight int                // leaf calls in flight: the unbuilt lines a leaf waits behind
-	held       bool               // dispatch paused (a rewind quiesces); guarded by callMu
+	held       bool               // dispatch paused (a reset quiesces); guarded by callMu
 	burst      chan struct{}      // closed when the burst's first response starts
 	force      chan chan struct{} // the overflow guard's one batch, acked when it ran
 	retryTimer *time.Timer        // wakes the builder at the earliest retry's backoff
@@ -289,7 +289,7 @@ func (b *memTree) Wake() {
 	}
 }
 
-// RebuildQueues tells the builder the log moved under it (a rewind cut):
+// RebuildQueues tells the builder the log moved under it (a reset wiped it):
 // queues and the view reload from the store on the next round.
 func (b *memTree) RebuildQueues() {
 	select {
@@ -316,7 +316,7 @@ func (b *memTree) MergeOnce() {
 }
 
 // quiesce stops dispatch and holds the fence: no build dispatches after it,
-// and every build dispatched before it has landed, so a rewind's cut runs
+// and every build dispatched before it has landed, so a reset's wipe runs
 // under no build. resume releases it. It returns false when the host is
 // closing: the caller must not cut, the fence cannot hold.
 func (b *memTree) quiesce() bool {
@@ -436,7 +436,7 @@ func (b *memTree) reportHealth() {
 	b.health.queued.Store(int64(len(b.leaves) + len(b.merges)))
 }
 
-// rebuild reloads everything from the store: at boot, and after a rewind cut
+// rebuild reloads everything from the store: at boot, and after a reset wipe
 // moved the log under the builder.
 func (b *memTree) rebuild() error {
 	count, err := b.h.DB.LogCount()
@@ -597,7 +597,7 @@ func (b *memTree) addLine(line viewLine) {
 }
 
 // dispatch fills the build slots: leaves first, then merges whose halves are
-// both built. A quiesce holds it: no call dispatches into a rewind's cut.
+// both built. A quiesce holds it: no call dispatches into a reset's wipe.
 func (b *memTree) dispatch() {
 	if b.heldNow() {
 		return
@@ -1050,7 +1050,7 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 func (b *memTree) takeSlot() (first bool, wait chan struct{}, ok bool) {
 	b.callMu.Lock()
 	defer b.callMu.Unlock()
-	if b.held { // quiesced for a rewind: no call dispatches into the cut
+	if b.held { // quiesced for a reset: no call dispatches into the wipe
 		return false, nil, false
 	}
 	b.calls.Add(1) // the fence counts the call from here, before the spawn

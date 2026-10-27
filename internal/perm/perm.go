@@ -1,6 +1,6 @@
 // Package perm holds the pieces the permission gate and the file tools
 // share: the subjects a request names, path resolution (RealPath, Path),
-// the pad the spill and checkpoint rules key on, and the glob a stub match
+// the pad the spill rules key on, and the glob a stub match
 // uses.
 package perm
 

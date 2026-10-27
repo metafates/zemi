@@ -1273,7 +1273,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		}
 	}
 	// a run another session started (/new leaves a background run behind)
-	// still writes files and blocks /rewind, so it is listed, named by that session
+	// still writes files and blocks /reset, so it is listed, named by that session
 	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
 		row(run.id, status, run.label(), took, run.agent+h.fromSession(run.parent), calls, run)

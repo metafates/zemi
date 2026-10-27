@@ -259,10 +259,6 @@ type Pipeline struct {
 	// writes and its reads settle on their own; nil = never.
 	ReadOnly func() bool
 
-	// Checkpoint records a file's content before a write tool changes it,
-	// so the turn can be rewound; nil = no checkpoints.
-	Checkpoint func(path string)
-
 	// Script is the lua tool call a run driven by a script came from, set on the
 	// copy its calls run under: it labels their asks and keeps their output
 	// whole, where a call the model made gets the cut. "" for the model's own.

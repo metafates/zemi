@@ -38,7 +38,7 @@
    grep -n 'ERROR\|WARN\|panic' ~/.local/state/zemi/logs/<file>.log
    ```
 
-   Each line is `time=... level=WARN msg=... origin=... key=value...`, a value with spaces or escapes quoted and a `zemi.log` field as `ctx.<key>=`. Origins worth grepping: `agent`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`, and a Lua `zemi.log` line's `user`, `plugin` or `project`. A recovered panic logs its full stack under `origin=panic`.
+   Each line is `time=... level=WARN msg=... origin=... key=value...`, a value with spaces or escapes quoted and a `zemi.log` field as `ctx.<key>=`. Origins worth grepping: `agent`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `reset`, `tools`, `commands`, `workflows`, and a Lua `zemi.log` line's `user`, `plugin` or `project`. A recovered panic logs its full stack under `origin=panic`.
 7. A trail that leads into zemi's Go code or a dependency reads the source where it already is: `go env GOMODCACHE` names the module cache, no network fetch.
 
 ## Common failures
@@ -67,7 +67,7 @@
 SQLite, read through `zemi db <sql>` (`db.md` has the grammar, the schema of every table and the read-only guarantee):
 
 - `~/.local/state/zemi/zemi.db` (global): skill enabled state (`skills`), `kv`.
-- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): the chat (`log`, `nodes`, `view_lines` - `db.md` has them all), `sessions` (the `main` anchor and the subagent runs' transcripts), `messages`, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores). The same directory holds `skills/` (recipes).
+- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): the chat (`log`, `nodes`, `view_lines` - `db.md` has them all), `sessions` (the `main` anchor and the subagent runs' transcripts), `messages`, `todos`, `tool_calls`. The same directory holds `skills/` (recipes).
 
 ## Reproduce without touching the user's setup
 

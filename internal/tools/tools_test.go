@@ -697,7 +697,7 @@ func TestEditSafety(t *testing.T) {
 	}
 }
 
-// TestScratchpad: the pad is no project a rewind restores, and its writes
+// TestScratchpad: the pad is outside every project rule, and its writes
 // gate like any other write - the ask-everything gate asks, one with no
 // asker runs - except a read-only agent, whose pad is the one place it may
 // write. A path a shell would expand is refused naming the real one, and a
@@ -708,8 +708,6 @@ func TestScratchpad(t *testing.T) {
 	t.Chdir(proj)
 	p, asked := testPipeline(t, false)
 	p.Pad, p.Seen = pad, &sync.Map{}
-	var checkpoints []string
-	p.Checkpoint = func(path string) { checkpoints = append(checkpoints, path) }
 	os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("a\n"), 0o644)
 	for _, c := range []struct {
 		name, tool, input string
@@ -746,22 +744,17 @@ func TestScratchpad(t *testing.T) {
 	if v := ro.Check(Request{Tool: string(ToolWrite), Subject: perm.SubjectWrite, Arg: filepath.Join(proj, "n.md")}); v.Allowed || v.DecidedBy != ByReadOnly {
 		t.Fatalf("a read-only agent's project write: %+v", v)
 	}
-	// an ungated pipeline writes the pad and a temp dir, and the pad is no
-	// project a rewind restores: the temp write is checkpointed, the pad write is not
+	// an ungated pipeline writes the pad and a temp dir, and neither lands
+	// in the project: a path is taken as the pad or the temp dir names it
 	allow, _ := testPipeline(t, true)
 	allow.Pad, allow.Seen = pad, p.Seen
-	allow.Checkpoint = p.Checkpoint
-	freeNote := filepath.Join(free, "notes.txt")
-	for _, path := range []string{filepath.Join(pad, "made.txt"), freeNote} {
+	for _, path := range []string{filepath.Join(pad, "made.txt"), filepath.Join(free, "notes.txt")} {
 		if res := call(t, toolNamed(t, string(ToolWrite), allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
 			t.Errorf("ungated write to %s: %q", path, res.Content)
 		}
 	}
 	if res := call(t, toolNamed(t, string(ToolEdit), allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
 		t.Errorf("ungated edit in the pad: %q", res.Content)
-	}
-	if len(checkpoints) != 1 || checkpoints[0] != freeNote {
-		t.Errorf("checkpoints %v, want only %s", checkpoints, freeNote)
 	}
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)

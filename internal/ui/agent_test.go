@@ -1150,11 +1150,10 @@ func TestQueuedFoldOne(t *testing.T) {
 
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s, an agent view takes it as back, a busy job's chord cancels the job, and
-// idle the second press opens /rewind, the draft included; an esc armed to
-// interrupt never fires a rewind once the turn ends between presses. ctrl+c
-// interrupts at once, clears a draft into the history, and on an empty
-// composer arms quit. A held key prefix replays as plain keys when the next
-// key breaks it or it times out, and ctrl+c drops it.
+// idle on a draft it does nothing. ctrl+c interrupts at once, clears a draft
+// into the history, and on an empty composer arms quit. A held key prefix
+// replays as plain keys when the next key breaks it or it times out, and
+// ctrl+c drops it.
 func TestInterruptKeys(t *testing.T) {
 	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
 	ctrlE, x := tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
@@ -1165,28 +1164,27 @@ func TestInterruptKeys(t *testing.T) {
 	for _, c := range []struct {
 		name                      string
 		active, view, busy, quest bool
-		rewind                    bool
 		draft                     string
 		keys                      []tea.KeyPressMsg
 		cancel, armed             bool
 		composer, row             string
 	}{
-		{"esc arms", true, false, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
-		{"esc esc interrupts", true, false, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
-		{"esc arms again after 3s", true, false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
-		{"esc in an agent view goes back and disarms", true, true, false, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
-		{"idle esc esc opens rewind, the draft kept", false, false, false, false, true, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", "No prompts to rewind"},
-		{"idle esc arms again after 3s", false, false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", ""},
-		{"esc armed to interrupt never rewinds after the turn ends", true, false, false, false, false, "", []tea.KeyPressMsg{esc, stop, esc}, false, false, "", ""},
-		{"esc esc with a busy job cancels it, no rewind", false, false, true, false, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
-		{"esc in an overlay closes it and never arms rewind", false, false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
-		{"ctrl+c interrupts at once", true, false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
-		{"ctrl+c clears a draft, up restores it", false, false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
-		{"a broken prefix replays", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
-		{"a timed out prefix replays", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
-		{"ctrl+c drops a held prefix", false, false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
-		{"interrupt dismisses a parked question ask", true, false, false, true, false, "", nil, true, false, "also this", "ctrl+c quit"},
+		{"esc arms", true, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
+		{"esc esc interrupts", true, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
+		{"esc arms again after 3s", true, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
+		{"esc in an agent view goes back and disarms", true, true, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
+		{"idle esc esc does nothing, the draft kept", false, false, false, false, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", ""},
+		{"idle esc arms again after 3s", false, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", ""},
+		{"esc armed to interrupt disarms after the turn ends", true, false, false, false, "", []tea.KeyPressMsg{esc, stop, esc}, false, false, "", ""},
+		{"esc esc with a busy job cancels it", false, false, true, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
+		{"esc in an overlay closes it", false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
+		{"ctrl+c interrupts at once", true, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
+		{"ctrl+c clears a draft, up restores it", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c on an empty composer arms quit", false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
+		{"a broken prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
+		{"a timed out prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
+		{"ctrl+c drops a held prefix", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
+		{"interrupt dismisses a parked question ask", true, false, false, true, "", nil, true, false, "also this", "ctrl+c quit"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -1252,8 +1250,7 @@ func TestInterruptKeys(t *testing.T) {
 			}
 			app.renderSync(t)
 			frame := ansi.Strip(app.Frame())
-			rewind := len(app.overlays) == 1 && app.overlays[0].o.ID == "rewind"
-			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != c.armed || len(app.keySeq) > 0 || rewind != c.rewind || (len(app.overlays) > 0 && !rewind) {
+			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != c.armed || len(app.keySeq) > 0 || len(app.overlays) > 0 {
 				t.Fatalf("cancelling=%v composer=%q view=%q overlays=%d frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), len(app.overlays), frame)
 			}
 		})

@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -450,20 +449,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenHelp()
-		}},
-		{Name: "rewind", NArgs: hostapi.NArgsOptional, Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			if args = strings.TrimSpace(args); args == "" {
-				return h.OpenRewind()
-			}
-			seq, err := strconv.ParseInt(args, 10, 64)
-			if err != nil {
-				return hostapi.Usagef("usage: /rewind [<message id>]")
-			}
-			n, err := h.RewindTo(seq)
-			if err == nil {
-				h.Notify(slog.LevelInfo, "Chat rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, hostapi.Plural(n, "file", "files")))
-			}
-			return err
 		}},
 		{Name: "effort", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			if args = strings.TrimSpace(args); args == "" {

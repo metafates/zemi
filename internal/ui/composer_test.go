@@ -124,6 +124,112 @@ func TestDraftCap(t *testing.T) {
 	}
 }
 
+// TestOverCapDraft: an over-cap draft (a recalled message, a restored queue)
+// refuses every edit whole - a backspace trims it one cluster, never a
+// clamp; enter refuses the send and keeps the draft; ctrl+c and esc clear it
+// and the next ctrl+c arms quit; and a refused keystroke marks no frame, so
+// a flood of them recomposes nothing.
+func TestOverCapDraft(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	over := strings.Repeat("x", maxDraftChars+1000)
+	app.composer.text, app.composer.cursor = over, utf8.RuneCountInString(over)
+
+	// one backspace trims one cluster and keeps the rest, still over cap
+	app.composerKey("backspace", tea.KeyPressMsg{})
+	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+999 {
+		t.Fatalf("backspace left %d runes, want %d intact", got, maxDraftChars+999)
+	}
+	// enter refuses whole: the draft stands and the cap toasted
+	app.submitComposer()
+	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+999 {
+		t.Fatalf("enter left %d runes, want the draft kept", got)
+	}
+	if toast := lastToast(app); !strings.Contains(toast, "20k") {
+		t.Fatalf("the send boundary toasted %q", toast)
+	}
+	// ctrl+c clears, and the next one arms quit
+	app.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if !app.composer.empty() {
+		t.Fatalf("ctrl+c left %d runes", utf8.RuneCountInString(app.composer.text))
+	}
+	app.composer.text, app.composer.cursor = over, utf8.RuneCountInString(over)
+	app.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !app.composer.empty() {
+		t.Fatalf("esc left %d runes", utf8.RuneCountInString(app.composer.text))
+	}
+	if !app.isArmed("ctrl+c") && app.armed.key != "" {
+		t.Fatalf("after the clears quit is not one ctrl+c away: %+v", app.armed)
+	}
+
+	// a refused keystroke changes nothing and marks no frame: the flood pays
+	// no compose a key
+	app.composer.text, app.composer.cursor = over, utf8.RuneCountInString(over)
+	app.draftCapToast() // the toast showing: the flood's first refusal
+	app.frameDirty = false
+	for range 100 {
+		app.handleKey(tea.KeyPressMsg{Text: "x"})
+		if !app.frameDirty {
+			continue
+		}
+		t.Fatal("a refused keystroke marked the frame")
+	}
+	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+1000 {
+		t.Fatalf("the flood left %d runes, want the draft untouched", got)
+	}
+}
+
+// TestCapNeverClamps: the cap refuses an edit, it never rewrites the text:
+// a keystroke past the cap is refused, a paste past it rides its token
+// whole, and the send boundary refuses the expanded text while a draft at
+// the cap sends whole.
+func TestCapNeverClamps(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 12)
+	runLua(t, app, `zemi.event.on("composer.submit", function(ev)
+		if #ev.text == 20000 then return { decision = "rewrite", text = "reached whole" } end
+	end)`)
+	sent := func() string {
+		n := len(app.composer.history)
+		if n == 0 {
+			return ""
+		}
+		return app.composer.history[n-1]
+	}
+	// a 20000-char draft sends whole: the submit event saw every byte
+	app.composer.text = strings.Repeat("x", maxDraftChars)
+	app.composer.cursor = maxDraftChars
+	app.submitComposer()
+	if got := sent(); got != "reached whole" {
+		t.Fatalf("the send boundary sent %q, want the draft at the cap whole", got)
+	}
+	sentN := len(app.composer.history)
+	// one keystroke past the cap is refused: the draft holds the cap, no
+	// character of the user's text was dropped
+	app.clearComposer()
+	app.composer.text = strings.Repeat("x", maxDraftChars)
+	app.composer.cursor = maxDraftChars
+	app.composerKey("y", tea.KeyPressMsg{Text: "y"})
+	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars || strings.ContainsRune(app.composer.text, 'y') {
+		t.Fatalf("the past-cap keystroke left %d runes, want the cap kept whole", got)
+	}
+	// a 20001-char paste rides its token whole and enter refuses it whole
+	big := strings.Repeat("p", maxDraftChars+1)
+	app.clearComposer()
+	app.Update(tea.PasteMsg{Content: big})
+	if got := app.composer.expand(app.composer.text); got != big {
+		t.Fatalf("the paste holds %d chars, want all %d", len(got), len(big))
+	}
+	app.submitComposer()
+	if len(app.composer.history) != sentN {
+		t.Fatalf("the send boundary sent %q", sent())
+	}
+	if got := app.composer.expand(app.composer.text); got != big {
+		t.Fatalf("the refused draft holds %d chars, want the paste kept whole", len(got))
+	}
+	if toast := lastToast(app); !strings.Contains(toast, "20k") {
+		t.Fatalf("the send boundary toasted %q", toast)
+	}
+}
+
 // TestComposerRowMoves: up and down move by the visual row the composer
 // draws, so a wrapped line walks its own rows and history only recalls off
 // the drawn first or last row.

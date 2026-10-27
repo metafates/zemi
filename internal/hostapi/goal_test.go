@@ -16,9 +16,8 @@ import (
 // TestGoalLoop drives /goal against a model that works and, asked to
 // judge, answers from the case's verdicts: what each check decides, what
 // stops the chain, the notice rows it leaves, and that a resume draws the
-// same rows and restores the same goal while a rewind to /goal drops it. An
-// interrupt of the goal's own work stops a loop too; one of a typed turn
-// does not.
+// same rows and restores the same goal. An interrupt of the goal's own work
+// stops a loop too; one of a typed turn does not.
 func TestGoalLoop(t *testing.T) {
 	paused := append(slices.Repeat([]string{"Goal not met yet: x"}, goalMaxRuns), "Goal paused: after 20 turns without you; send a message to go on")
 	for _, c := range []struct {
@@ -122,18 +121,6 @@ func TestGoalLoop(t *testing.T) {
 				}
 				return nil
 			})
-
-			// a rewind before the message that set the goal drops it
-			seq, _ := h.DB.LogKindBack(kindUser, 10)
-			if len(seq) == 0 {
-				t.Fatal("no prompts logged")
-			}
-			if _, err := h.RewindTo(seq[0].Seq); err != nil {
-				t.Fatal(err)
-			}
-			if _, ok := h.Goal(); ok {
-				t.Error("a rewind to /goal left the goal set")
-			}
 		})
 	}
 }

@@ -366,7 +366,7 @@ func TestWorkflowControl(t *testing.T) {
 		want         string // the result, or the error's text
 	}{
 		{
-			name:   "pause holds a queued agent that blocks rewind; resume starts it with the flow's session as parent",
+			name:   "pause holds a queued agent that blocks reset; resume starts it with the flow's session as parent",
 			script: `return wf.agent("a") .. wf.agent("b")`,
 			drive: func(c ctl) {
 				running(1)(c)
@@ -377,7 +377,7 @@ func TestWorkflowControl(t *testing.T) {
 					c.t.Fatalf("paused run started %+v", v.agents[1])
 				}
 				if c.h.tasks.stillRunning(func(string) bool { return true }) == nil {
-					c.t.Fatal("a paused workflow does not block a rewind")
+					c.t.Fatal("a paused workflow does not block a reset")
 				}
 				act(c, actResume, 0, "")
 				running(1)(c)
@@ -1725,7 +1725,7 @@ func TestWorkflowCancel(t *testing.T) {
 }
 
 // TestWorkflowPanicEnds: a panic under the scheduler ends the run as failed,
-// so it holds back no rewind or queued report.
+// so it holds back no reset or queued report.
 func TestWorkflowPanicEnds(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)

@@ -1,14 +1,12 @@
 // log.go is the eternal chat's storage: the append-only log, the binary tree
 // of summary nodes built over it, and the persisted view. One main log per
-// project DB; seq is the 0-based message index and stays dense through a
-// rewind's tail cut.
+// project DB; seq is the 0-based message index and stays dense by
+// construction: a reset empties the log and the next append starts at 0.
 
 package store
 
 import (
 	"database/sql"
-	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -105,7 +103,7 @@ func (s *DB) LogTail(n int) ([]LogEntry, error) {
 }
 
 // LogKindBack reads the last n rows of one kind, oldest first: the composer
-// history's user rows, the rewind picker's prompts.
+// history's user rows.
 func (s *DB) LogKindBack(kind string, limit int) ([]LogEntry, error) {
 	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at
 		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
@@ -124,123 +122,17 @@ func (s *DB) LogCount() (int64, error) {
 	return n, err
 }
 
-// DeleteLogFrom rewinds the chat to seq: the log rows from seq on, every node
-// whose range intersects them (node(l,i) covers [i*2^l, (i+1)*2^l), so an
-// ancestor holding the cut goes too), and every view line whose node touches
-// them - the lines past the cut and the straddling ones, whose node is gone.
-// The same transaction re-covers what survives and prunes the compaction
-// view: patchCut. The next append takes max(seq)+1 of what is left, so the
-// index stays dense.
-func (s *DB) DeleteLogFrom(seq int64) error {
-	return s.inTx(func(tx *sql.Tx) error {
-		for _, q := range []struct {
-			what string
-			sql  string
-		}{
-			{"log", `DELETE FROM log WHERE seq >= ?`},
-			{"nodes", `DELETE FROM nodes WHERE (i + 1) * (1 << l) > ?`},
-			{"view", `DELETE FROM view_lines WHERE (i + 1) * (1 << l) > ?`},
-			{"checkpoints", `DELETE FROM checkpoints WHERE seq >= ?`},
-		} {
-			if _, err := tx.Exec(q.sql, seq); err != nil {
-				return fmt.Errorf("store: rewind %s: %w", q.what, err)
-			}
-		}
-		return patchCut(tx, seq)
-	})
-}
-
-// patchCut re-covers the messages the cut left behind: every surviving
-// message not covered by a surviving line becomes a leaf line again, which
-// the builder re-merges, and the compaction view drops the lines whose
-// nodes the cut took. One transaction with the deletes: a second window
-// cutting in between would leave leaf lines for messages it already
-// deleted, and cv lines whose nodes are gone.
-func patchCut(tx *sql.Tx, cut int64) error {
-	// Bound the re-cover by the surviving log, not the cut: a second window's
-	// lower cut can land between this window's validation and its delete, and
-	// seeding lines for the seqs it removed fabricates messages.
-	var end int64
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(seq), -1) + 1 FROM log`).Scan(&end); err != nil {
-		return fmt.Errorf("store: rewind view: %w", err)
-	}
-	rows, err := tx.Query(`SELECT l, i FROM view_lines`)
-	if err != nil {
-		return fmt.Errorf("store: rewind view: %w", err)
-	}
-	lines, err := collect(rows, err, func(r scanner) (v ViewLine, err error) {
-		err = r.Scan(&v.L, &v.I)
-		return v, err
-	})
-	if err != nil {
-		return fmt.Errorf("store: rewind view: %w", err)
-	}
-	covered := make([]bool, end)
-	for _, ln := range lines {
-		for s := max(ln.I<<ln.L, int64(0)); s < min((ln.I+1)<<ln.L, end); s++ {
-			covered[s] = true
-		}
-	}
-	for s, ok := range covered {
-		if !ok {
-			if _, err := tx.Exec(`INSERT OR REPLACE INTO view_lines (ord, l, i) VALUES (?, 0, ?)`, s, s); err != nil {
-				return fmt.Errorf("store: rewind view: %w", err)
-			}
-		}
-	}
-	return pruneCV(tx, cut)
-}
-
 // CVKey is the kv row the builder's compaction view persists in: a JSON
-// array of [l, i] pairs, pruned past every cut.
+// array of [l, i] pairs.
 const CVKey = "chatlog.cv"
 
-// pruneCV drops the compaction view's lines whose nodes the cut took: a
-// line left behind would stop every build's context at the first phantom.
-func pruneCV(tx *sql.Tx, cut int64) error {
-	var raw sql.NullString
-	err := tx.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, CVKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("store: rewind compaction view: %w", err)
-	}
-	var pairs [][]int64
-	if json.Unmarshal([]byte(raw.String), &pairs) != nil {
-		pairs = nil // a value nothing can read is not kept
-	}
-	kept := pairs[:0]
-	for _, p := range pairs {
-		if len(p) == 2 && p[0] >= 0 && p[1] >= 0 && (p[1]+1)*(1<<p[0]) <= cut {
-			kept = append(kept, p)
-		}
-	}
-	if len(kept) == 0 {
-		if _, err := tx.Exec(`DELETE FROM kv WHERE key = ?`, CVKey); err != nil {
-			return fmt.Errorf("store: rewind compaction view: %w", err)
-		}
-		return nil
-	}
-	value, err := json.Marshal(kept, json.Deterministic(true))
-	if err != nil {
-		return fmt.Errorf("store: rewind compaction view: %w", err)
-	}
-	if _, err := tx.Exec(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ?`,
-		string(value), now(), CVKey); err != nil {
-		return fmt.Errorf("store: rewind compaction view: %w", err)
-	}
-	return nil
-}
-
 // ResetLog wipes the chat: the log rows, every summary node and view line,
-// the checkpoints keyed by log seq, and the compaction view. The next append
-// starts at seq 0 again. VACUUM and a TRUNCATE checkpoint follow: without
-// them the wiped rows would stay in the file's free pages, and a wiped chat
-// would be readable there.
+// and the compaction view. The next append starts at seq 0 again. VACUUM and
+// a TRUNCATE wal_checkpoint follow: without them the wiped rows would stay
+// in the file's free pages, and a wiped chat would be readable there.
 func (s *DB) ResetLog() error {
 	err := s.inTx(func(tx *sql.Tx) error {
-		for _, table := range []string{"log", "nodes", "view_lines", "checkpoints"} {
+		for _, table := range []string{"log", "nodes", "view_lines"} {
 			if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
 				return fmt.Errorf("store: reset %s: %w", table, err)
 			}
@@ -265,7 +157,7 @@ func (s *DB) ResetLog() error {
 // InsertNode stores a built summary, reporting whether this call inserted it:
 // INSERT OR IGNORE dedupes concurrent builders, and a builder that lost the
 // race reads the winner back instead of rebuilding. A node whose range runs
-// past the surviving log is refused: its build raced a cut, and the seqs it
+// past the log is refused: its build raced a reset's wipe, and the seqs it
 // names are gone or reused.
 func (s *DB) InsertNode(l, i int64, text string) (bool, error) {
 	var msgs int64

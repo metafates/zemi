@@ -989,7 +989,7 @@ function zemi.event.stats() end
 --- One of a row's keys: a character that acts on the row from the list.
 ---@class zemi.OverlayItemKey
 ---@field key string one character; j, k, /, y and Y are the list's and raise
----@field desc? string named beside the key in the footer, a lowercase word or phrase like every hint ("open the view", "rewind")
+---@field desc? string named beside the key in the footer, a lowercase word or phrase like every hint ("open the view", "copy")
 ---@field id? string hands the key to the overlay's on_action, which takes it over fill and run
 ---@field fill? string put in the composer, closing the list
 ---@field run? string a command line, run on the row; with `verb = "open"` the screen it opens sits over the list, which stays, and with `verb = "go"` it takes the chat, closing even a `reload` list
@@ -1930,13 +1930,6 @@ zemi.session = {}
 --- The chat's session id: the anchor row, "main".
 ---@return string id
 function zemi.session.id() end
-
---- Rewind the chat to the log message `seq` (a user row the rewind picker
---- lists): the messages from it on and every file changed since go back.
----@param seq integer
----@return integer|nil restored How many files came back.
----@return string|nil err
-function zemi.session.rewind(seq) end
 
 --- The chat's todo list, as the todos tool last wrote it.
 ---@return { content: string, status: string, active_form: string }[]|nil todos

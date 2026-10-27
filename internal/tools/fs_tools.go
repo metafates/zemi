@@ -779,18 +779,9 @@ func (p *Pipeline) wrote(path string) string {
 	return note
 }
 
-// checkpoint leaves out the pad, which is no project a rewind restores.
-func (p *Pipeline) checkpoint(path string) {
-	if p.Checkpoint != nil && !perm.InPad(p.Pad, path) {
-		p.Checkpoint(path)
-	}
-}
-
-// writeThrough is how every file tool writes: the prior bytes are
-// checkpointed first. The caller records the file as read after, once any
-// afterWrite hook has rewritten it.
+// writeThrough is how every file tool writes. The caller records the file as
+// read after, once any afterWrite hook has rewritten it.
 func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) error {
-	p.checkpoint(path.String())
 	return WriteFile(path, data, mode)
 }
 
@@ -813,9 +804,8 @@ func (p *Pipeline) ScriptRead(path perm.Path) ([]byte, error) {
 
 // ScriptWrite writes a file a model's Lua script changed, on the terms a
 // write call takes: a file this session has not read, or one that changed
-// since, is refused rather than overwritten, the old bytes are checkpointed
-// for rewind, and the afterWrite hooks run. A user or plugin script writes
-// raw, as its own code does.
+// since, is refused rather than overwritten, and the afterWrite hooks run. A
+// user or plugin script writes raw, as its own code does.
 func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) error {
 	defer lockFile(path.String())()
 	if fi, err := os.Stat(path.String()); err == nil {

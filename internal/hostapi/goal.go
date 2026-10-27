@@ -16,7 +16,8 @@ import (
 )
 
 // goalKV is the kv row the live goal persists in: what must hold and the log
-// seq of the message that set it, so a rewind past that seq drops it.
+// seq of the message that set it, so a reset (the chat it was set in gone)
+// drops it.
 const goalKV = "goal"
 
 // goalMaxRuns bounds the turns a goal starts on its own before anyone else
@@ -85,7 +86,7 @@ func (h *Host) loadGoal() {
 		return
 	}
 	if count, err := h.DB.LogCount(); err != nil || g.SetAt >= count {
-		return // the log moved under it (a rewind cleared it but not the row)
+		return // the log moved under it (a reset cleared it but not the row)
 	}
 	h.agents.mu.Lock()
 	h.agents.goal = &g
@@ -275,19 +276,16 @@ func goalNotice(ev goalEvent, reason, detail string) (ChatMessage, bool) {
 	return m, true
 }
 
-// goalRewound drops a goal the rewind's cut removed the message of, and
-// settles a surviving one's turn count.
-func (h *Host) goalRewound(cut int64) {
+// goalDropped drops the goal: the chat it was set in is gone (/reset).
+func (h *Host) goalDropped() {
 	ag := h.agents
 	ag.mu.Lock()
 	g := ag.goal
-	if g != nil && g.SetAt >= cut {
-		ag.goal = nil
-		ag.mu.Unlock()
-		h.storeGoal(nil)
-		return
-	}
+	ag.goal = nil
 	ag.mu.Unlock()
+	if g != nil {
+		h.storeGoal(nil)
+	}
 }
 
 // goalReason is a check's verdict as the goal row names it.

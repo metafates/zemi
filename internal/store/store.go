@@ -64,8 +64,6 @@ func Open(path string) (*DB, error) {
 		d.Close()
 		return nil, err
 	}
-	// best effort: a failed sweep must never keep zemi from starting
-	_ = s.sweep()
 	return s, nil
 }
 
@@ -76,8 +74,8 @@ func isBusy(err error) bool {
 	return ok && e.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-// OpenRead opens an existing store read-only: no migration, no sweep and
-// no checkpoint on close, so a look waits on no lock a running zemi holds.
+// OpenRead opens an existing store read-only: no migration and no checkpoint
+// on close, so a look waits on no lock a running zemi holds.
 // A missing file is fs.ErrNotExist; one this binary's migrations have not
 // reached is ErrUnmigrated; one SQLite cannot read names that failure.
 func OpenRead(path string) (*DB, error) {
@@ -226,31 +224,6 @@ func (s *DB) migrate() error {
 	defer unlock()
 	if _, err := p.Up(context.Background()); err != nil {
 		return fmt.Errorf("store: migrate %s: %w", s.path, err)
-	}
-	return nil
-}
-
-// CheckpointTTL is how long a checkpoint, a whole file each, is kept. The
-// sweep runs at open, before the live session exists, so it never cuts the
-// conversation in progress. Sessions are never swept: losing a conversation
-// costs more than the disk it holds.
-const CheckpointTTL = 30 * 24 * time.Hour
-
-// sweep drops aged checkpoints and reclaims their pages once enough are free.
-func (s *DB) sweep() error {
-	if _, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
-		time.Now().Add(-CheckpointTTL).UnixMilli()); err != nil {
-		return fmt.Errorf("store: sweep checkpoints: %w", err)
-	}
-	// NOTE: VACUUM rewrites the whole file before the UI starts, so it waits
-	// until a quarter of the pages are free; SQLite reuses the rest, and
-	// ResetLog vacuums on its own so a wiped chat is gone.
-	var free, pages int64
-	if err := s.db.QueryRow(`SELECT * FROM pragma_freelist_count(), pragma_page_count()`).Scan(&free, &pages); err != nil || free*4 <= pages {
-		return err
-	}
-	if _, err := s.db.Exec(`VACUUM`); err != nil {
-		return fmt.Errorf("store: vacuum: %w", err)
 	}
 	return nil
 }

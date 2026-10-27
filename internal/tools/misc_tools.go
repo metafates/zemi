@@ -104,7 +104,7 @@ func parseTodos(items []todoItem) (out []store.Todo, cancelled int, ok bool, err
 	return out, cancelled, ok, nil
 }
 
-// ParseTodos reads a todos call's input the run does (rewind replays it).
+// ParseTodos reads a todos call's input the run does.
 func ParseTodos(in map[string]any) ([]store.Todo, int, bool, error) {
 	list, ok := in["todos"].([]any)
 	items := make([]todoItem, 0, len(list))

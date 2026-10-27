@@ -1251,9 +1251,8 @@ submit queues behind the whole chain; a message queued
 during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a notice
-row while it happens; a rewind of the message that set the goal drops it
-(the kv row names the seq), and a crash keeps it, since the row lives in
-the store. Lua reads it
+row while it happens; a reset drops it (the chat it was set in is
+gone), and a crash keeps it, since the row lives in the store. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
 
@@ -1296,7 +1295,7 @@ model's own skill writes included. The one exception is an instruction
 file the prompt holds, or one created where it would load, that the user
 edited by hand: its new text rides the next user message once, in the
 same `<instructions>` block a read uses, unless the model read or wrote
-that version itself, and again after a rewind cuts that message. It is
+that version itself, and again after a reset wipes the chat. It is
 checked like the prompt's own files first, so a file that became a link
 out of the repository or to a secret sends nothing. Subagents build
 their prompt once per run; a fork sends the caller's own text and tools
@@ -1701,7 +1700,6 @@ UI extensibility contract:
 
 ```lua
 zemi.session.id()                      -- the chat's session id: "main"
-zemi.session.rewind(seq)               -- restore files, then cut the log (§8)
 zemi.session.todos()                   -- the chat's todo list
 zemi.skills.list(); zemi.skills.enable("local-integration", true)
 ```
@@ -1729,7 +1727,8 @@ log(seq, kind, text, meta_json, parts_json, created_at)  -- the eternal chat: on
                                                          -- per message, word for word; seq is the
                                                          -- dense 0-based index, max+1 inside the
                                                          -- append transaction (never AUTOINCREMENT:
-                                                         -- a rewind's tail cut keeps it dense);
+                                                         -- the index stays dense; a reset empties
+                                                         -- the log and the next append starts at 0);
                                                          -- kind: user | agent | tool | echo | work | note;
                                                          -- meta_json names a tool row's tool and a
                                                          -- work row's run, parts_json replays a
@@ -1754,10 +1753,6 @@ messages(id, session_id, role, parts_json, row_meta, created_at)
                                                          -- chat writes none, the log is its transcript
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)         -- per-tool counts and step stats
-checkpoints(seq, path, existed, link, content, created_at)
-                                                         -- pre-turn file content (a link's target) for
-                                                         -- rewind, keyed by the log seq of the turn's
-                                                         -- user message
 skills(name, path, source, enabled, created_at)          -- source: user|builtin|plugin
 kv(key, value_json, updated_at)                          -- zemi.state, saved config picks, the
                                                          -- builder's compaction view ("chatlog.cv")
@@ -1773,18 +1768,16 @@ which `zoom(id)` and `date(id)` take.
 One file per scope: global DB at `~/.local/state/zemi/zemi.db` (skills and
 kv), per-project DBs at
 `~/.local/state/zemi/projects/<hash of trust root>/zemi.db` (the log, the
-tree, the view, sessions, messages, todos, tool_calls, checkpoints, kv),
+tree, the view, sessions, messages, todos, tool_calls, kv),
 named in the dir's `root` file (read only when it hashes to the dir's
 name), the same repository identity trust uses, so a subdirectory or a
-linked worktree opens the same chat rather than a blank store. Opening a
-store sweeps checkpoints older than 30 days; the log is never swept - it
-is the memory - and the boot reads only its last `chatWindowRows` (1000)
-rows into the live transcript.
+linked worktree opens the same chat rather than a blank store. The log is
+never swept - it is the memory - and the boot reads only its last
+`chatWindowRows` (1000) rows into the live transcript.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,
-`sessions(updated_at)`, `todos(session_id)`,
-`checkpoints(created_at)`, `checkpoints(seq)`.
+`sessions(updated_at)`, `todos(session_id)`.
 
 The schema is embedded goose migrations under `internal/store/migrations`,
 one transaction each, applied on open under a `zemi.db.lock` file lock so
@@ -1793,8 +1786,9 @@ every store at its next open, with no version stamp and no reset to do.
 The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
 goose only gets the version table and keeps its rows. Migration 0006 adds
 the log's three tables; 0007 drops the brain-era tables (`proposals`,
-`memory`, `memory_ops`) and rebuilds `checkpoints` keyed by the log seq,
-since the ids the old rows keyed on the log cannot name. Old main-chat
+`memory`, `memory_ops`) and rebuilds `checkpoints` keyed by the log seq;
+0009 drops `checkpoints` whole, with the rewind it served (the chat never
+ends, and `/reset` is the only wipe). Old main-chat
 transcripts stay in `messages` SQL-reachable and are not imported; the
 migration seeds nothing of them into the log.
 
@@ -1806,8 +1800,7 @@ still there, so two windows merging from stale views can never
 double-cover a message. The compaction view, the second sawtooth the
 builder's calls read, is not a table: it persists as an `[l, i]` pair list
 under the kv key `chatlog.cv`, and the builder reloads it at boot like the
-view; a rewind's cut prunes it in the same transaction, so no line whose
-node is gone survives.
+view; a reset's wipe drops the row with the chat.
 
 ## 8. UI core detail
 
@@ -1914,8 +1907,7 @@ node is gone survives.
   stop, `e` enable, `d` disable, `n` rename, `o` open, `u` update or use now,
   `c` change, and `x` for what cannot be undone (delete, or `/mcp`'s sign
   out, which deletes the saved token); `/health`'s one key per check takes its
-  label's initial. A row or key with `danger` (those `x` keys, `/rewind`'s
-  `r`) draws in the danger color, and
+  label's initial. A row or key with `danger` (those `x` keys) draws in the danger color, and
   its first press only arms it: the footer turns to `x again to delete · esc
   cancel`, the verb in that color and the keys drawn as keys, the same key,
   enter or space runs it, esc disarms and stays, and any other key, or a click
@@ -2239,12 +2231,11 @@ node is gone survives.
   the one way down a level: a row's own view or the run its keys open. `enter`
   on a row of any level is the place itself - the menu closes and the chat
   stays there, the run folding under it - so enter answers "open in chat"
-  everywhere. What a row offers past that is its flat keys, `r` to rewind a
-  prompt; a call's job opens from its view, never by a second key on the
-  list. The list is
+  everywhere. What a row offers past that is its flat keys; a call's job
+  opens from its view, never by a second key on the list. The list is
   a window on the transcript, not a copy of it: a row that lands while it is
   open shows there at once, and a level the transcript no longer holds (a
-  rewind) closes. Prompt and reply rows lead with the
+  reset) closes. Prompt and reply rows lead with the
   speaker's kind glyph, `▌` in the accent and `◆` in dim, and the state rows
   keep their marks, a marked row drawing no glyph of its own. It follows the
   chat: moving the selection scrolls the transcript to the row the item
@@ -2287,10 +2278,9 @@ node is gone survives.
   Go-reserved cancel and reload triggers, §6.2; a keymap bound to plain
   `esc` shadows the esc chords, so they are a default, never a guarantee):
   `enter` sends, `esc` twice within 2s or `ctrl+c` once interrupts the turn
-  (`esc` in an agent view goes back; the esc chord stops a busy job, and
-  when idle - a draft in the composer included - opens /rewind; `ctrl+c`
-  moves a draft into the history, and on an empty composer twice within 2s
-  quits), `pgup`/`pgdown`,
+  (`esc` in an agent view goes back; the esc chord stops a busy job;
+  `ctrl+c` moves a draft into the history, and on an empty composer twice
+  within 2s quits), `pgup`/`pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
@@ -2305,9 +2295,6 @@ node is gone survives.
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`,
-  `/rewind [seq]` (restore the files the turns from seq on changed, cut the
-  chat there and hand the prompt back; without a seq, the picker of the
-  chat's prompts, `r` rewinds to the chosen one),
   `/reset` (wipe the chat's log, every summary and the view, vacuum the
   store so the text is gone from disk, and start the log over at seq 0;
   asks first, a screen's armed key or `--yes` answers),
@@ -2339,9 +2326,9 @@ node is gone survives.
   Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   The menus share one list: a row that only a closer look should act on
-  (an error, a server, a skill, a workflow, a rewind) opens a detail view
-  in place of the list with its full text and the actions as a list, so a restart, a
-  multi-agent run or a rewind is never one stray enter; esc goes back.
+  (an error, a server, a skill, a workflow) opens a detail view
+  in place of the list with its full text and the actions as a list, so a restart or a
+  multi-agent run is never one stray enter; esc goes back.
 - **Mouse**: one hit test (`App.target`) serves clicks and hover, so a
   highlight always means a click acts. Go chrome items carry a Go-only
   item index; widget segments carry their `click` id (§6.6) and are
@@ -2557,15 +2544,15 @@ mechanical lines naming the tool, its outcome and its subject; a NOTE in
 
 One builder worker per project store (`memTree` in `hostapi/memtree.go`)
 owns the tree state; appends reach it through `Wake`, finished calls
-through its results channel, a rewind through `RebuildQueues`. No lease: a
+through its results channel, a reset through `RebuildQueues`. No lease: a
 second window races on `INSERT OR IGNORE` and on merges of children already
 gone, so a race wastes one cheap call and nothing else. A call that failed
 retries on a doubling backoff (1s to 60s) and parks after six failures in a
 row until new log rows land; the view self-heals.
 
-A rewind quiesces the builder, and quiesce is a fence: while it holds, the
+A reset quiesces the builder, and quiesce is a fence: while it holds, the
 worker dispatches nothing, and every build dispatched before it has landed
-in the view, so the cut runs under no build.
+in the view, so the wipe runs under no build.
 
 The builder runs up to 8 model calls at once (`buildSlots`) on
 `models.compact`, falling back to `models.default` while unset. One leaf
@@ -2670,27 +2657,20 @@ not the machine.
   append, so it works while a turn runs as well as while the agent is idle.
   It is the way the user marks a chapter or states a standing fact.
 
-### 10.6 Rewind
+### 10.6 Reset
 
-`/rewind [seq]` (and `zemi.session.rewind(seq)`) goes back to just before a
-prompt, keyed by the log seq of its user row:
+`/reset` wipes the chat and starts it over; there is no rewind. The chat
+never ends, and the wipe is the only deletion (the owner's call: the cut
+was the hardest correctness surface, and the spec has none).
 
-- Files first, then the cut: every checkpoint of the turns from seq on is
-  restored before anything is deleted, so a failed restore leaves the chat
-  intact and the rewind can be retried. A file over 4 MiB is never
-  checkpointed, and the row says so the first time.
-- The cut holds the builder quiesced (`quiesce`: no dispatch, in-flight
-  builds waited out), then deletes the log rows from seq on, every node
-  whose range intersects them (an ancestor holding the cut goes too), every
-  view line whose node touches them, and the checkpoints from seq on, in
-  one transaction (`DeleteLogFrom`). The next append takes max(seq)+1 of
-  what is left, so the index stays dense.
-- `patchView` re-covers the messages the cut left behind: every surviving
-  message not covered by a surviving line becomes a leaf line again, and
-  the builder re-merges it as the tree grows back.
-- The todo list is rebuilt from the surviving log's `todos` tool and echo
-  rows, the goal is dropped or settled from the kv row it lives in, the
-  runner is dropped, and the prompt text goes back to the composer.
+- The wipe holds the builder quiesced (`quiesce`: no dispatch, in-flight
+  builds waited out), then deletes the log rows, every summary node, every
+  view line and the compaction view's kv row in one transaction
+  (`ResetLog`), vacuums and truncates the WAL so the text is gone from
+  disk. The next append starts at seq 0.
+- The todo list clears, every goal drops with its kv row, the runner is
+  dropped, and the transcript swaps to the empty log. It refuses a live
+  turn or run, and asks through the armed screen or `--yes`.
 
 ### 10.7 Skills
 
@@ -2773,7 +2753,7 @@ internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, the chat log and its builder (chatlog.go,
                             memtree.go), subagents, workflows, agent runs,
                             skills hosting, permissions, mcp and
-                            lsp wiring, rewind, scratchpads, health, export,
+                            lsp wiring, reset, scratchpads, health, export,
                             zemi.test
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/classify/          judging data with a model: protocol, logprobs, schema

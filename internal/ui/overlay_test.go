@@ -21,6 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -2403,5 +2404,73 @@ func TestBodyPartsWell(t *testing.T) {
 		if w := hostapi.SegsWidth(row); len(row) > 0 && w != 20 {
 			t.Fatalf("a row of the well is %d wide: %v", w, row)
 		}
+	}
+}
+
+// TestMemoriesZoomPop: l on a merged line zooms it to its children and u
+// pops the zoom back to the view whole; u is a silent no-op on the root
+// view, which names no u in its footer.
+func TestMemoriesZoomPop(t *testing.T) {
+	_, cfg := tempHome(t)
+	app, host := bootAgentAppOn(t, 140, 40, tipClock, cfg)
+	if _, err := host.Commands.Add(&hostapi.Command{
+		Name: "memories", NArgs: hostapi.NArgsAny,
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.MemoriesCommand(args) },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db := testStore(t, host)
+	for i := range 6 {
+		kind := map[bool]string{true: "user", false: "agent"}[i%2 == 0]
+		if _, err := db.AppendLog(kind, fmt.Sprintf("msg %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.InsertNode(1, 0, "msgs 0-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.InsertNode(1, 1, "msgs 2-3"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		if _, err := db.InsertNode(0, int64(i), fmt.Sprintf("msg %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := db.MergeViewLines([]store.ViewMerge{{L: 1, I: 0}, {L: 1, I: 1}}); err != nil || n != 2 {
+		t.Fatalf("merges: %d, %v", n, err)
+	}
+	if err := host.MemoriesCommand(""); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	rows := func() []string {
+		var out []string
+		for _, it := range app.overlays[len(app.overlays)-1].items {
+			out = append(out, it.row.Text)
+		}
+		return out
+	}
+	if got, want := rows(), []string{"0+2|msgs 0-1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
+		t.Fatalf("root rows %q, want %q", got, want)
+	}
+	if keys := app.overlays[len(app.overlays)-1].items[0].row.Keys; slices.ContainsFunc(keys, func(k hostapi.ItemKey) bool { return k.Key == "u" }) {
+		t.Fatalf("the root view offers u: %+v", keys)
+	}
+	// l zooms the first line
+	app.overlayKey("g", "")
+	app.overlayKey("l", "")
+	for app.Pump() {
+	}
+	if got, want := rows(), []string{"0+1|msg 0", "1+1|msg 1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
+		t.Fatalf("zoomed rows %q, want %q", got, want)
+	}
+	// u pops it back
+	app.overlayKey("u", "")
+	for app.Pump() {
+	}
+	if got, want := rows(), []string{"0+2|msgs 0-1", "2+2|msgs 2-3", "4+1|msg 4", "5+1|(not summarized yet: zoom it)"}; !slices.Equal(got, want) {
+		t.Fatalf("popped rows %q, want %q", got, want)
 	}
 }

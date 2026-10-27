@@ -44,8 +44,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description carries the
   whole script API, inline first (a model sent to a skill wrote a file instead);
   `TestPromptBudget` counts it. A run (`flowRun`) is live work until its script ends, paused or
-  between agents too: `taskReg.live` counts it, and not its agents, for rewind and the
-  project switch (`stillRunning`) and for the agent send and the
+  between agents too: `taskReg.live` counts it, and not its agents, for the reset
+  guard (`stillRunning`) and for the agent send and the
   statusline (`runningFor`); an agent fork's setup reads no registry. The tool's `list` action names this session's
   runs (`flowsOf`), with the id to steer one: a run the user started in `/workflows` is a
   chat row the model never reads, so that list is its only notice of one while it runs. `flowControl` is
@@ -108,7 +108,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   the row's desc keeping the definition. `/agents` lists the live session's runs and,
   under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
-  `fromSession`): they block `/rewind`, so their stop must be reachable. Every run, agent and job
+  `fromSession`): they block `/reset`, so their stop must be reachable. Every run, agent and job
   row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`,
   `tools.Job.Mark`, into `hostapi.Marks`, the one table `zemi.ui.marks` hands chat.lua), as
   does the status field of its detail and of a run's view (`Overlay.Mark`), and a run's view
@@ -188,7 +188,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   something other than zemi's own file tools ran (`lspDirty`, marked when the command finishes,
   not when it starts). Without a repository an mtime walk over the running zemiLua trees stands
   in for the listing, skipping `.git` alone; the gitignore ceiling is the listing's, above
-  (rewind's treeDiff ceiling too).
+  (the treeDiff listing ceiling too).
   A slow or failed server means no diagnostics, never a failed edit. Test against `internal/lsp/lsptest`.
 - **Never start a turn on the interpreter goroutine.** `systemWith` runs `agent.assemble`
   handlers through `RT.Do`, so `AgentSend` from Lua would deadlock; `zemi.agent.send` goes

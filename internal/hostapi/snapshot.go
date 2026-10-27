@@ -18,27 +18,23 @@ import (
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/store"
 )
 
 const (
 	// git CPU time, or a wall time load alone does not reach, that makes a
 	// snapshot slow
-	snapSlow        = 300 * time.Millisecond
-	snapStall       = 3 * time.Second
-	snapFiles       = 5       // files a row's diff shows
-	snapCheckpoints = 100     // files a shell call checkpoints for rewind
-	snapBytes       = 4 << 10 // and the bytes they may take
-	snapNoteMax     = 10      // paths the model's line names
-	snapOverlap     = "may include changes from concurrent commands"
+	snapSlow    = 300 * time.Millisecond
+	snapStall   = 3 * time.Second
+	snapFiles   = 5       // files a row's diff shows
+	snapBytes   = 4 << 10 // and the bytes they may take
+	snapNoteMax = 10      // paths the model's line names
+	snapOverlap = "may include changes from concurrent commands"
 )
 
 type snapshots struct {
 	mu    sync.Mutex // one snapshot at a time: they share the warm index
 	slow  int        // slow snapshots in a row; two turn snapshots off
 	swept bool       // the stores of gone processes are removed
-
-	skipped sync.Map // turn and path a rewind was said not to restore
 
 	state sync.Mutex
 	open  int                 // shell calls between their two snapshots
@@ -158,12 +154,8 @@ func (h *Host) shellChanges(dir string) func() (note, diff string, paths []strin
 	s.state.Unlock()
 	jobs := h.jobsRunningCount() > 0
 	root, env, before := h.snapshot(dir)
-	mid := h.turnSeq()
 	return func() (string, string, []string) {
 		_, _, after := h.snapshot(dir)
-		// a command adopted as a job reports after its turn: its changes
-		// belong to no later prompt's rewind
-		ckpt := mid >= 0 && mid == h.turnSeq()
 		s.state.Lock()
 		mixed, wrote := s.mixed || jobs || h.jobsRunningCount() > 0, s.wrote
 		if s.open--; s.open == 0 {
@@ -173,7 +165,7 @@ func (h *Host) shellChanges(dir string) func() (note, diff string, paths []strin
 		if before == "" || after == "" || before == after {
 			return "", "", nil
 		}
-		return h.treeDiff(root, env, before, after, mixed, ckpt, wrote)
+		return h.treeDiff(root, env, before, after, mixed, wrote)
 	}
 }
 
@@ -202,7 +194,7 @@ func (h *Host) noteWrite(path string) {
 	}
 }
 
-func (h *Host) treeDiff(root string, env []string, before, after string, mixed, ckpt bool, wrote map[string][32]byte) (note, diff string, changed []string) {
+func (h *Host) treeDiff(root string, env []string, before, after string, mixed bool, wrote map[string][32]byte) (note, diff string, changed []string) {
 	out, err := h.gitEnv(root, env, "diff", "--raw", "--no-renames", "-z", before, after)
 	if err != nil {
 		return "", "", nil
@@ -224,12 +216,6 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 		// NOTE: changed is uncapped; a branch switch in a huge repo marshals every
 		// path once per tool.post handler. Cap it here if that shows up.
 		paths, changed = append(paths, path), append(changed, abs)
-		// rewind: what the command deleted or changed, as the before tree
-		// holds it (git processes per path, so capped); an ignored file is
-		// in no tree and stays as the command left it
-		if ckpt && len(changed) <= snapCheckpoints {
-			h.checkpointBlob(root, env, before+":"+path, abs, meta[0][1:], meta[1])
-		}
 		if len(paths) <= snapFiles {
 			shown = append(shown, path)
 		}
@@ -287,25 +273,4 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 		fmt.Fprintf(&b, "%d more %s\n", more, Plural(more, "file", "files"))
 	}
 	return note, strings.TrimRight(b.String(), "\n"), changed
-}
-
-// checkpointBlob checkpoints abs as blob (a before-tree path) holds it.
-// NOTE: the store keeps no file mode, so a submodule is not restored and a
-// deleted executable comes back without its exec bit.
-func (h *Host) checkpointBlob(root string, env []string, blob, abs, oldMode, newMode string) {
-	switch {
-	case oldMode == "160000" || newMode == "160000":
-		h.uncheckpointed(abs, "is a submodule")
-	case oldMode == "000000":
-		h.checkpoint(store.Checkpoint{Path: abs})
-	default:
-		// the size first: a large file is never read whole
-		size, _ := h.gitEnv(root, env, "cat-file", "-s", blob)
-		if n, _ := strconv.Atoi(strings.TrimSpace(size)); n > maxCheckpointBytes {
-			h.uncheckpointed(abs, "is too large to checkpoint")
-		} else if data, err := h.gitEnv(root, env, "cat-file", "-p", blob); err == nil {
-			// a link's blob is its target
-			h.checkpoint(store.Checkpoint{Path: abs, Existed: true, Link: oldMode == "120000", Content: []byte(data)})
-		}
-	}
 }

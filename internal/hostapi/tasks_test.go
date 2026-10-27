@@ -552,7 +552,7 @@ func TestQueueDroppedOnFailure(t *testing.T) {
 // is queued and starts no turn; once the run finishes the send that follows
 // (the report) starts a turn and the queued text reaches the model.
 // TestAgentItemsListRunsOfOtherSessions: a run left behind by /new still
-// blocks /rewind, so /agents lists it under Running, named by its session.
+// blocks /reset, so /agents lists it under Running, named by its session.
 func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)

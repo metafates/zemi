@@ -314,7 +314,7 @@ type wfRun struct {
 }
 
 // runFlow runs f's script to its end and records how it ended, a panic's
-// end too: a flow left running would block rewind until zemi exits.
+// end too: a flow left running would block /reset until zemi exits.
 func (h *Host) runFlow(ctx context.Context, f *flowRun, spec flowSpec) {
 	val, err := "", errors.New("the workflow crashed")
 	defer func() { h.markRunRow(f.id, callMark(f.end(val, err))) }()
@@ -2000,7 +2000,7 @@ func (h *Host) openWorkflows() error {
 }
 
 // workflowsOverlay is /workflows: the runs, live ones first (another
-// session's too: they block /rewind), then this session's earlier ones,
+// session's too: they block /reset), then this session's earlier ones,
 // then the saved workflows by source.
 func (h *Host) workflowsOverlay() Overlay {
 	sid := h.AgentSessionID()

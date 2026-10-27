@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -20,7 +21,7 @@ import (
 var goKeys = [][2]string{
 	{"enter", "send; steers a running turn"},
 	{"shift+enter, alt+enter, ctrl+enter", "newline"},
-	{"esc", "back; twice to interrupt or rewind"},
+	{"esc", "back; twice to interrupt"},
 	{"ctrl+c", "interrupt, clear the draft, quit"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
@@ -131,11 +132,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.interrupt()
 		case !a.composer.empty():
 			// the draft stays one up away, and one ctrl+z
-			a.seedHistory()
-			a.composer.pushHistory(a.composer.text)
-			prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
-			a.clearComposer()
-			a.composer.snapshot(prev, false)
+			a.clearDraft()
 		case a.arm(key, "quit"):
 			a.Quit()
 		}
@@ -224,9 +221,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 // the slash palette capture navigation while open. Returns a cmd when the
 // file scan should launch.
 func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
-	// a key may move only the draft or a popup, which repaints without
-	// re-rendering the widgets: typing stays off the frame generation
-	a.frameDirty = true
+	// A key may move only the draft or a popup, which repaints without
+	// re-rendering the widgets: typing stays off the frame generation. The
+	// draft's changes mark through publishComposer, so a key that changes
+	// nothing marks nothing - a flood of refused keys must not recompose the
+	// screen a key.
 	c := &a.composer
 	if key == "ctrl+z" {
 		c.undoLast()
@@ -241,6 +240,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			p.moved = true
+			a.frameDirty = true
 			return nil
 		}
 		switch key {
@@ -248,6 +248,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			return a.acceptPalette()
 		case "esc":
 			a.dismissPalette()
+			a.frameDirty = true
 			return nil
 		case "enter":
 			// the highlighted argument replaces a typed or picked one, so a
@@ -266,11 +267,13 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 
 	if f := &a.completion; f.shown() {
 		if popupMove && moveSel(&f.selected, f.count(), f.view.viewH, key) {
+			a.frameDirty = true
 			return nil
 		}
 		switch {
 		case key == "esc":
 			a.completion.close()
+			a.frameDirty = true
 			return nil
 		case key != "tab" && key != "enter":
 		case a.completion.count() > 0:
@@ -331,8 +334,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
 		// transcript, or else interrupts on a second press: esc closes every
-		// box, and one press too many must not kill the turn. Idle, the
-		// second press opens /rewind instead.
+		// box, and one press too many must not kill the turn. Over the draft
+		// cap esc clears: every edit there is refused, so back is the way out.
 		if a.host.ViewedAgent() != "" {
 			a.leaveAgentView()
 		} else if label, _ := a.host.BusyNow(); a.host.AgentActive() || label != "" {
@@ -340,10 +343,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 				a.host.CancelBusy()
 				a.interrupt()
 			}
-		} else if a.arm(key, "rewind") {
-			if err := a.host.OpenRewind(); err != nil {
-				a.host.CommandFailed("rewind", err)
-			}
+		} else if utf8.RuneCountInString(a.composer.text) > maxDraftChars {
+			a.clearDraft()
 		}
 		return nil
 	default:
@@ -362,15 +363,29 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 
 // draftCapToast refuses text past maxDraftChars, with the way out the send
 // boundary's refusal names too. One showing toast is enough: a paste flood
-// refused per keystroke must not pay a repaint a key.
+// refused per keystroke must not pay a repaint a key, and the cooldown after
+// it lets the toast fade while the refusals keep coming.
 func (a *App) draftCapToast() {
-	for _, t := range a.toasts {
-		if t.level == slog.LevelWarn && t.title == "Draft too long" {
-			return
-		}
+	if a.now().Before(a.capToastAt) {
+		return
 	}
+	a.capToastAt = a.now().Add(capToastTTL)
 	a.pushToast(slog.LevelWarn, "Draft too long",
 		fmt.Sprintf("the composer holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
+}
+
+// capToastTTL is how long a draft-cap toast lives and how long the next one
+// waits: pushToast's warn ttl.
+const capToastTTL = 8 * time.Second
+
+// clearDraft empties the draft the way ctrl+c does: one history entry up and
+// one ctrl+z back.
+func (a *App) clearDraft() {
+	a.seedHistory()
+	a.composer.pushHistory(a.composer.text)
+	prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
+	a.clearComposer()
+	a.composer.snapshot(prev, false)
 }
 
 // leaveAgentView is esc on a shown run: it restores the menu the view was

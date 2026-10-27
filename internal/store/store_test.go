@@ -115,11 +115,9 @@ func TestMigrationKeepsData(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a store from an older zemi: no goose table, and none of the columns a
-	// later migration added, under the names it used. Checkpoints go too: the
-	// baseline recreates the shape it knew, which the later migration retargets.
+	// later migration added, under the names it used.
 	for _, q := range []string{
 		`DROP TABLE goose_db_version`,
-		`DROP TABLE checkpoints`,
 		`ALTER TABLE messages DROP COLUMN row_meta`,
 		`ALTER TABLE sessions RENAME COLUMN agent TO profile`,
 		`PRAGMA user_version = 8`,
@@ -346,81 +344,6 @@ func TestConcurrentOpen(t *testing.T) {
 	}
 }
 
-// TestSweepVacuum: the open that ages out checkpoints rewrites the file
-// only when they were a quarter of it.
-func TestSweepVacuum(t *testing.T) {
-	for _, c := range []struct {
-		name         string
-		aged, kept   int
-		wantVacuumed bool
-	}{
-		{"a few pages", 1, 20, false},
-		{"most of the file", 20, 1, true},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "zemi.db")
-			db, err := Open(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			blob := make([]byte, 16<<10)
-			for i := range c.aged + c.kept {
-				if err := db.AddCheckpoint(int64(i), Checkpoint{Path: "/f", Existed: true, Content: blob}); err != nil {
-					t.Fatal(err)
-				}
-				if i < c.aged {
-					if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = 0 WHERE seq = ?`, i); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			db.Close()
-			if db, err = Open(path); err != nil {
-				t.Fatal(err)
-			}
-			defer db.Close()
-			var free int
-			if err := db.db.QueryRow(`PRAGMA freelist_count`).Scan(&free); err != nil {
-				t.Fatal(err)
-			}
-			if (free == 0) != c.wantVacuumed {
-				t.Fatalf("%d free pages, want vacuumed %v", free, c.wantVacuumed)
-			}
-		})
-	}
-}
-
-// TestRetentionSweep: opening drops checkpoints past CheckpointTTL, keeps
-// the ones inside it, and never deletes a session.
-func TestRetentionSweep(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := range int64(2) {
-		if err := db.AddCheckpoint(i, Checkpoint{Path: "/tmp/f", Existed: true, Content: []byte("x")}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// one of the two is old enough to go on its own
-	if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = ? WHERE seq = 1`,
-		time.Now().Add(-CheckpointTTL-time.Hour).UnixMilli()); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-
-	db, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	paths, err := db.CheckpointPaths()
-	if err != nil || len(paths) != 1 || paths[0] == nil {
-		t.Fatalf("paths = %+v, %v; want only the checkpoint inside the window", paths, err)
-	}
-}
-
 func TestSessionLifecycle(t *testing.T) {
 	db := openTest(t)
 	if err := db.CreateSession("s1", "parent0", "first", "coder"); err != nil {
@@ -521,29 +444,6 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
 		&ToolCall{Tool: "shell", OK: true}); err == nil {
 		t.Fatal("an unknown session must fail")
-	}
-}
-
-// TestCheckpoints: a checkpoint keys on the log seq of the turn's user
-// message, and CheckpointsFrom returns the earliest content per path.
-func TestCheckpoints(t *testing.T) {
-	db := openTest(t)
-	if err := db.AddCheckpoint(3, Checkpoint{Path: "/f", Existed: true, Content: []byte("first")}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AddCheckpoint(7, Checkpoint{Path: "/f", Existed: true, Content: []byte("later")}); err != nil {
-		t.Fatal(err)
-	}
-	cps, err := db.CheckpointsFrom(4)
-	if err != nil || len(cps) != 1 || string(cps[0].Content) != "later" {
-		t.Fatalf("from 4 = %+v, %v; want only the later row", cps, err)
-	}
-	if cps, err = db.CheckpointsFrom(0); err != nil || len(cps) != 1 || string(cps[0].Content) != "first" {
-		t.Fatalf("from 0 = %+v, %v", cps, err)
-	}
-	paths, err := db.CheckpointPaths()
-	if err != nil || len(paths) != 2 || len(paths[3]) != 1 || paths[3][0] != "/f" {
-		t.Fatalf("paths = %+v, %v", paths, err)
 	}
 }
 

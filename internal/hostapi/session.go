@@ -1,5 +1,5 @@
 // session.go is what the main chat keeps per process: the composer history
-// read from the log, the transcript window swap a rewind does, and the
+// read from the log, the transcript window swap a reset does, and the
 // stored-row decoding a subagent run's transcript rebuilds from.
 
 package hostapi
@@ -45,7 +45,7 @@ func (h *Host) InputHistory(limit int) []string {
 }
 
 // setTranscriptFromLog replaces the chat window with the log's tail (a
-// rewind), which opens at its tail: a place scrolled to in the old one means
+// reset), which opens at its tail: a place scrolled to in the old one means
 // nothing in the new.
 func (h *Host) setTranscriptFromLog() {
 	if h.DB == nil {
@@ -53,14 +53,14 @@ func (h *Host) setTranscriptFromLog() {
 	}
 	rows, err := h.DB.LogTail(chatWindowRows)
 	if err != nil {
-		h.Log.Warn("chat window not rebuilt", "origin", "rewind", "error", err)
+		h.Log.Warn("chat window not rebuilt", "origin", "reset", "error", err)
 		return
 	}
 	h.SetTranscript(logRows(rows))
 }
 
 // SetTranscript replaces the chat, which opens at its tail: the swap a
-// rewind's cut does to the window.
+// reset's wipe does to the window.
 func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript, h.view = tr, nil
@@ -164,7 +164,7 @@ func (h *Host) stampCursor(cut int) {
 }
 
 // stampReset points the pairing past a window that is stamped whole: a
-// rewind's swap, the boot seed.
+// reset's swap, the boot seed.
 func (h *Host) stampReset(tr []ChatMessage) {
 	h.tMu.Lock()
 	h.stampRow = len(tr)
@@ -241,14 +241,6 @@ func stampMS(stamp string) int64 {
 		return 0
 	}
 	return at.UnixMilli()
-}
-
-// agoStamp is how long ago a log stamp is, as the lists say it.
-func agoStamp(stamp string) string {
-	if ms := stampMS(stamp); ms > 0 {
-		return ago(ms)
-	}
-	return ""
 }
 
 // historyFrom decodes a run's stored messages into model history and
@@ -414,14 +406,6 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("id", L.NewFunction(func(L *glua.LState) int {
 		L.Push(glua.LString(store.MainSessionID))
-		return 1
-	}))
-	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
-		n, err := h.RewindTo(L.CheckInt64(1))
-		if err != nil {
-			return luaResult(L, err)
-		}
-		L.Push(glua.LNumber(n))
 		return 1
 	}))
 	tb.RawSetString("todos", L.NewFunction(func(L *glua.LState) int {

@@ -670,11 +670,11 @@ func TestBurstGate(t *testing.T) {
 	}
 }
 
-// TestRewindFencesTheBuilder: a rewind's quiesce holds the gate - the build
-// in flight when it starts lands before the cut, none dispatch after it -
-// and the fresh message that reuses a cut seq gets its own node, not a stale
-// summary of the old one.
-func TestRewindFencesTheBuilder(t *testing.T) {
+// TestResetFencesTheBuilder: a reset's quiesce holds the gate - the build
+// in flight when it starts lands before the wipe, none dispatch after it -
+// and the fresh message that takes the wiped seq 0 gets its own node, not a
+// stale summary of the wiped ones.
+func TestResetFencesTheBuilder(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	m.gate = make(chan struct{})
@@ -692,36 +692,35 @@ func TestRewindFencesTheBuilder(t *testing.T) {
 		}
 		return nil
 	})
-	rewound := make(chan error, 1)
+	reset := make(chan error, 1)
 	go func() {
-		_, err := h.RewindTo(1)
-		rewound <- err
+		reset <- h.ResetChat(true)
 	}()
 	// the quiesce waits behind the in-flight build; release it only then
 	waitFor(t, func() error {
 		cl.tree.callMu.Lock()
 		defer cl.tree.callMu.Unlock()
 		if !cl.tree.held || cl.tree.flight == 0 {
-			return errors.New("the rewind has not quiesced behind the in-flight build")
+			return errors.New("the reset has not quiesced behind the in-flight build")
 		}
 		return nil
 	})
 	close(m.gate)
 	select {
-	case err := <-rewound:
+	case err := <-reset:
 		if err != nil {
 			t.Fatal(err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("the rewind did not finish behind a gated build")
+		t.Fatal("the reset did not finish behind a gated build")
 	}
-	// a fresh message reuses seq 1: its node is its own words, and no stale
-	// summary of the old one may land over it
+	// a fresh message takes seq 0 again: its node is its own words, and no
+	// stale summary of the wiped ones may land over it
 	if _, err := cl.User("fresh words", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		n, err := h.DB.NodeAt(0, 1)
+		n, err := h.DB.NodeAt(0, 0)
 		if errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -729,10 +728,54 @@ func TestRewindFencesTheBuilder(t *testing.T) {
 			return err
 		}
 		if n.Text != "fresh words" {
-			return fmt.Errorf("node(0,1) = %q, want the fresh message's own text", n.Text)
+			return errors.New("node(0,0) is not the fresh message's own text")
 		}
 		return nil
 	})
+}
+
+// TestResetRebuilds: the builder survives a wipe and builds the fresh rows
+// dense, never going backwards.
+func TestResetRebuilds(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	for range 6 {
+		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(2, 0); err != nil {
+			return err
+		}
+		return nil
+	})
+	calls := m.callCount()
+	if err := h.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if n, err := h.DB.LogCount(); err != nil || n != 0 {
+			return errors.New("the wipe has not settled")
+		}
+		return nil
+	})
+	// new appends land dense and build over the wipe
+	for range 2 {
+		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(1, 0); err != nil {
+			return err
+		}
+		return nil
+	})
+	coverage(t, h.DB, 2)
+	if m.callCount() < calls {
+		t.Fatal("the builder went backwards")
+	}
 }
 
 // TestBuildStreak: a failing node's backoff doubles per try up to the cap,
@@ -919,48 +962,5 @@ func TestBuilderRowParked(t *testing.T) {
 	row := h.builderRow()
 	if row.Level != HealthError || !strings.Contains(row.Detail, "2 builds parked") {
 		t.Fatalf("builder row = %+v, want the parked builds named", row)
-	}
-}
-
-func TestRewindCutRebuild(t *testing.T) {
-	t.Parallel()
-	h, cl, m := newTree(t, strings.Repeat("s", 400))
-	for range 6 {
-		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	waitFor(t, func() error {
-		if _, err := h.DB.NodeAt(2, 0); err != nil {
-			return err
-		}
-		return nil
-	})
-	calls := m.callCount()
-	if err := h.DB.DeleteLogFrom(4); err != nil {
-		t.Fatal(err)
-	}
-	cl.tree.RebuildQueues()
-	waitFor(t, func() error {
-		if n, err := h.DB.LogCount(); err != nil || n != 4 {
-			return fmt.Errorf("log holds %d rows: %w", n, err)
-		}
-		return nil
-	})
-	// new appends land dense and build over the cut
-	for range 2 {
-		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	waitFor(t, func() error {
-		if _, err := h.DB.NodeAt(1, 2); err != nil {
-			return err
-		}
-		return nil
-	})
-	coverage(t, h.DB, 6)
-	if m.callCount() < calls {
-		t.Fatal("the builder went backwards")
 	}
 }

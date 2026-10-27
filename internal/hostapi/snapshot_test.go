@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -85,52 +84,12 @@ func TestShellChanges(t *testing.T) {
 		t.Errorf("the user's index moved: %q", now)
 	}
 
-	// a command that outlived its turn checkpoints nothing: a later prompt's
-	// rewind must not restore what an earlier command changed
-	h.agents.mu.Lock()
-	h.agents.turnSeq = 1
-	h.agents.mu.Unlock()
-	late, now := h.shellChanges(dir), h.shellChanges(dir)
-	write("a.txt", "three\n")
-	h.agents.mu.Lock()
-	h.agents.turnSeq = 2
-	h.agents.mu.Unlock()
-	late()
-	h.agents.mu.Lock()
-	h.agents.turnSeq = 1
-	h.agents.mu.Unlock()
-	now()
-	if paths, _ := h.DB.CheckpointPaths(); len(paths[1]) != 1 || len(paths[2]) != 0 {
-		t.Errorf("checkpoints = %v, want a.txt under seq 1 only", paths)
-	}
-
 	// two calls at once cannot be told apart
 	first, second := h.shellChanges(dir), h.shellChanges(dir)
 	write("b.txt", "b\n")
 	first()
 	if _, diff, _ := second(); !strings.HasPrefix(diff, snapOverlap) {
 		t.Errorf("overlap not labeled:\n%s", diff)
-	}
-	// a file too large to checkpoint is never read whole and is said so once per turn
-	trace := filepath.Join(t.TempDir(), "trace")
-	t.Setenv("GIT_TRACE", trace)
-	write("big.log", strings.Repeat("w", maxCheckpointBytes+1))
-	for _, fill := range []string{"x", "y"} {
-		done := h.shellChanges(dir)
-		write("big.log", strings.Repeat(fill, maxCheckpointBytes+1))
-		done()
-	}
-	said := 0
-	for _, n := range h.evlog.notes {
-		if strings.Contains(n.body, "big.log") {
-			said++
-		}
-	}
-	if said != 1 {
-		t.Errorf("big.log was reported %d times, want 1", said)
-	}
-	if log, _ := os.ReadFile(trace); regexp.MustCompile(`cat-file -p \S*big\.log`).Match(log) {
-		t.Error("big.log was read whole")
 	}
 
 	// a gc prunes a blob the warm index still names: the next snapshot starts cold
@@ -149,7 +108,7 @@ func TestShellChanges(t *testing.T) {
 
 // TestSnapshotRacyEntry: a file rewritten at the same size in the second its
 // index was written looks clean by stat alone; the first snapshot must still
-// hash it, or a shell row misses the change and a rewind restores the old text.
+// hash it, or a shell row misses the change the second snapshot should show.
 func TestSnapshotRacyEntry(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	dir := h.Dirs.ProjectDir
