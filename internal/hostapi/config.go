@@ -368,8 +368,8 @@ func kindNames() []string {
 	return names
 }
 
-// addKey registers a key the schema does not own — a plugin's setting or a
-// model target's models.<name> — and applies the pick kept for it: loadPicks
+// addKey registers a key the schema does not own (a plugin's setting or a
+// model target's models.<name>) and applies the pick kept for it: loadPicks
 // stored that before any Lua ran, so the registration is what applies it.
 func (h *Host) addKey(def config.Setting) error {
 	changed, err := h.Settings.Add(def)

@@ -1027,10 +1027,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	return nil
 }
 
-// disarmIfMoved returns what drops the top overlay's arm once a click, a
-// wheel or a bar drag moved its selection, as any other key does, so moving
-// back never finds the row armed. A click or a wheel (acts) drops an armed
-// list key at once, as any other key does.
+// disarmIfMoved returns what drops the top overlay's arm when the act moved
+// its selection, as any key does. A click or a wheel (acts) drops an armed
+// list key at once.
 func (a *App) disarmIfMoved(acts bool) func() {
 	if n := len(a.overlays); acts && n > 0 && a.overlays[n-1].keyArmed != "" {
 		a.overlays[n-1].keyArmed = ""

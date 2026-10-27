@@ -39,15 +39,17 @@ const (
 
 // Goal is the chat's goal (/goal): what must hold, when it was set and the
 // log seq of the message that set it, and the checks so far. Turns and
-// reason are this process' state; the condition and its set-at survive.
+// reason are this process' state; the condition and its set-at survive. The
+// tags are the kv row's spelling; re-spelling them drops a live goal on
+// resume.
 type Goal struct {
-	Condition string
-	Reason    string // the last check, "not yet: <why>", "" before the first
-	Turns     int    // the turns it was checked after
-	SetAt     int64  // the log seq of the message that set it
-	Since     time.Time
-	Tokens    int64
-	Cost      float64
+	Condition string    `json:"Condition"`
+	Reason    string    `json:"Reason"` // the last check, "not yet: <why>", "" before the first
+	Turns     int       `json:"Turns"`  // the turns it was checked after
+	SetAt     int64     `json:"SetAt"`  // the log seq of the message that set it
+	Since     time.Time `json:"Since"`
+	Tokens    int64     `json:"Tokens"`
+	Cost      float64   `json:"Cost"`
 }
 
 const goalBrief = `Work until the conversation shows it holds: run the checks that prove it and keep their output in view. After each of your turns zemi checks the goal against the conversation and sends you back while it does not hold. If only the user can unblock it, say what you need and stop.`
@@ -219,7 +221,6 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		return ""
 	}
 	ev, reason, ok := parseVerdict(reply)
-	var detail string
 	switch {
 	case err != nil:
 		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
@@ -245,7 +246,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	} else {
 		ag.mu.Unlock()
 	}
-	if m, ok := goalNotice(ev, reason, detail); ok {
+	if m, ok := goalNotice(ev, reason); ok {
 		h.AppendChat(m)
 	}
 	if ev != goalNotYet {
@@ -259,8 +260,8 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 }
 
 // goalNotice is a goal event's live row; a set row has none.
-func goalNotice(ev goalEvent, reason, detail string) (ChatMessage, bool) {
-	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(ev), Detail: detail}
+func goalNotice(ev goalEvent, reason string) (ChatMessage, bool) {
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(ev)}
 	switch ev {
 	case goalSet:
 		return m, false

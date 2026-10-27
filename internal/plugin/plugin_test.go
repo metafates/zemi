@@ -182,7 +182,7 @@ func TestReadme(t *testing.T) {
 
 // TestCheckUses pins the vocabulary a manifest's uses draws from.
 func TestCheckUses(t *testing.T) {
-	want := []string{"agent", "fs.write", "http", "job", "model", "perm", "tool"}
+	want := []string{"agent", "fs.write", "http", "job", "model", "perm", "tool", "workflow"}
 	if !slices.Equal(Uses, want) {
 		t.Errorf("the vocabulary is %v, want %v", Uses, want)
 	}
@@ -509,7 +509,8 @@ func TestMarketplace(t *testing.T) {
 			"owner": {"name": "t"},
 			"$schema": "https://example.com/schema.json",
 			"plugins": [
-				{"name": "Rel One", "source": "./plugins/rel-one", "version": %q, "description": "the rel one"},
+				{"name": "Rel One", "source": "./plugins/rel-one", "version": %q, "description": "the rel one",
+				 "author": {"name": "Ada", "email": "ada@example.com"}},
 				{"name": "entry-manifest", "source": "./plugins/entry-manifest", "version": %q,
 				 "mcpServers": {"srv": {"command": "srv"}}},
 				{"name": "Own Manifest", "source": "./plugins/own-manifest", "version": "5.0.0"},
@@ -723,6 +724,13 @@ func TestMarketplace(t *testing.T) {
 				}
 				if got := provides(t, "rel-one"); !slices.Equal(got, []string{"2 skills"}) {
 					t.Errorf("provides %v", got)
+				}
+				m, err := ReadClaudeRaw(dir, "/data", prov.Manifest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if m.Author.Name != "Ada" || m.Author.Email != "ada@example.com" {
+					t.Errorf("the entry's author did not survive the manifest: %+v", m.Author)
 				}
 			},
 		},

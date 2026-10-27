@@ -38,7 +38,9 @@ func IsClaude(dir string) bool {
 
 // ClaudeAuthor is a manifest's author.
 type ClaudeAuthor struct {
-	Name, Email, URL string
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	URL   string `json:"url"`
 }
 
 // ClaudeMCPServer is one server of .mcp.json or the manifest's mcpServers,

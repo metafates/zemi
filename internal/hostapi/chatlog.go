@@ -474,7 +474,7 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 	}
 	row, err := h.DB.LogAt(in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		// the row was rewound between the count and here
+		// the row was wiped between the count and here (a reset)
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("no line %d+%d in a chat of %d messages", in.ID, in.N, count)), nil
 	}
 	if err != nil {
@@ -585,7 +585,7 @@ func zoomChild(db *store.DB, l, i int64) string {
 
 // zoomImages replays a message's stored images. NOTE: one image per zoom
 // result is what a tool response carries; a multi-image message replays its
-// first, and the rest wait for wave B's viewer.
+// first, and the rest wait for a result that can carry more.
 func zoomImages(row store.LogEntry) fantasy.ToolResponse {
 	var imgs []fantasy.FilePart
 	if err := json.Unmarshal([]byte(row.PartsJSON), &imgs); err != nil {

@@ -613,7 +613,7 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	}
 }
 
-// TestThemeCommand: /theme <name> sets a theme and refuses one nothing
+// TestThemeCommand: /theme <name> sets a theme and refuses a name nothing
 // added; bare, it lists every theme, the light twins included, and the
 // list stays open over a pick with the current row moved.
 func TestThemeCommand(t *testing.T) {

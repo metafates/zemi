@@ -376,7 +376,8 @@ func (h *Host) goHealthRows() []HealthRow {
 	if h.DB == nil {
 		add(HealthWarn, "chat builder", "no store: the chat runs with no summary tree")
 	} else {
-		add(h.builderRow().Level, "chat builder", h.builderRow().Detail)
+		row := h.builderRow()
+		add(row.Level, "chat builder", row.Detail)
 	}
 
 	// the project's own skills are always on and never in the registry, so

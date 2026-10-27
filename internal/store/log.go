@@ -12,8 +12,7 @@ import (
 )
 
 // LogEntry is one row of the log: one message, word for word. Kind is user,
-// agent, tool, echo, work or note.
-// LogEntry is one row of the eternal chat's log.
+// agent, tool, echo, work, note, thought, error or shell.
 type LogEntry struct {
 	Seq       int64
 	Kind      string
@@ -54,11 +53,6 @@ type ViewMerge struct {
 }
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
-
-// Origin is the writer id this DB's log rows carry, set by the host once at
-// open: two windows share one repository's log, and the live pairing tells
-// their rows apart by it. ” stamps rows for a store no host claimed.
-var _ = 0
 
 // AppendLog appends one chat row and its view line in one transaction and
 // returns the row's seq: max+1 inside the transaction, so a tail cut leaves
