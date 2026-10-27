@@ -38,8 +38,8 @@ An ask nobody can answer (no UI) denies fail-closed (`tools.ByNobody`). Asks rea
 time under `Host.askMu`; no Lua runs under the lock.
 
 Subjects label the asks: `tool.shell`, `tool.lua`, `tool.workflow`, `tool.<name>` of a Lua
-tool, `fs.read`, `fs.write`, `mcp.<server>`,
-`memory.write`, and `lua.<ns.call>` for a host-API call config code makes (`lua.fs.write`,
+tool, `fs.read`, `fs.write`, `mcp.<server>`, and
+`lua.<ns.call>` for a host-API call config code makes (`lua.fs.write`,
 `lua.job.start`, `lua.http.<method>`, ...). The overlay offers three answers: y (yes, once),
 n (no), t (no, and tell zemi - denies the waiting asks and stops the turn).
 

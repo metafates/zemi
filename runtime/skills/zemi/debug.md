@@ -16,13 +16,13 @@
    return zemi.errors.list() -- newest first: { index, at, source, message }
    ```
 
-   For a question about what the model was told - an `agent.assemble` section, an instruction file the budget cut, the brain section - read the prompt itself:
+   For a question about what the model was told - an `agent.assemble` section, an instruction file the budget cut, the view section - read the prompt itself:
 
    ```lua
    return zemi.agent.prompt() -- the pinned system prompt and context message, "" before the first send
    ```
 
-   `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned for the session, so it may lag the files on disk: an edit to a skill or an `agent.assemble` handler shows after `/new` or `/compact`, and a hand edit to an instruction file rides the next message instead.
+   `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned per pin build (the first send, a model, trust or tool change), so it may lag the files on disk: an edit to a skill or an `agent.assemble` handler shows at the next rebuild, and a hand edit to an instruction file rides the next message instead.
 4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay in the way, text wrapping badly, a statusline that lost a segment - look instead of asking:
 
    ```lua
@@ -51,7 +51,8 @@
 | `boot failed` on a plain, colorless screen | zemi's own Lua layer did not load (a broken install or a bug; user config, plugins and the project can never cause this: a failure there shows the `errors` pill and zemi boots on); `c` in the box copies the error for a report, the log the box names has the whole traceback |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "Images left out" toast, "`<model>` takes no images; vision = false on its model entry skips this" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
-| context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry |
+| context percent missing | the model has no `context_window` (`/health` context row); add it to the model entry |
+| the `/health` `chat builder` row is warn | the builder is behind: lines unbuilt or queued (`zemi memories.md` says what the view is); `zoom` still reads the raw log rows while it catches up |
 | project `.agents/` config, AGENTS.md or language servers ignored | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root (`/projects` lists them and forgets one); a linked worktree uses its main checkout's |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `<plugin x>/.zemi/lua/x.lua` or `.zemi/lua/x/init.lua` (a plugin answers only requires under its own name, so plugin `zemi-branch` cannot answer `require("branch")`), or plugin x is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
 | `module "..." at ... is outside plugin <name>` | a relative require or a symlink left the plugin's own directory, or reached a disabled plugin |
@@ -65,8 +66,8 @@
 
 SQLite, read through `zemi db <sql>` (`db.md` has the grammar, the schema of every table and the read-only guarantee):
 
-- `~/.local/state/zemi/zemi.db` (global): user-scope proposals, the `memory_ops` ledger of user-brain writes, skill enabled state (`skills`), `kv`. The user brain itself is files under `~/.local/share/zemi/brain/user/`.
-- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): `sessions`, `messages`, proposals, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores), and the project's `memory_ops` ledger. The same directory holds `skills/` (recipes) and `brain/` (this project's `brain/memories.md` and its map files).
+- `~/.local/state/zemi/zemi.db` (global): skill enabled state (`skills`), `kv`.
+- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): the chat (`log`, `nodes`, `view_lines` - `db.md` has them all), `sessions` (the `main` anchor and the subagent runs' transcripts), `messages`, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores). The same directory holds `skills/` (recipes).
 
 ## Reproduce without touching the user's setup
 

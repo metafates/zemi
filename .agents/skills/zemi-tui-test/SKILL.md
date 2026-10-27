@@ -6,7 +6,7 @@ description: "Load to check a UI or agent change end to end, capture a screen, o
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
-pickers) or crosses the model loop (tools, permission asks, compaction, resume).
+pickers) or crosses the model loop (tools, permission asks, the view, rewind).
 Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
 
 ## The lab: zemi-lab
@@ -46,8 +46,8 @@ delta, or calls a tool once when the user message reads `call NAME {json}`, and 
 non-streaming requests (the object calls: classify, `zemi.model.ask`) with a plain
 completion. Every request body lands in `last_request.json` and `requests/NNN.json` under
 the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
-prints the latest. The generated init.lua sets `session.auto_title = false`, else the title
-request overwrites `last_request.json`.
+prints the latest. The generated init.lua adds no second model, so nothing else writes a
+request between yours.
 
 A permission ask needs a gate plugin - zemi never asks by design (DESIGN §9): `up --asks`
 installs one whose `permission.request` handler returns `{decision = "ask"}` (a plugin with
@@ -89,7 +89,6 @@ zemi.provider.add({ id = "fake", kind = "openai_compat",
 	api_key = "x", base_url = "http://127.0.0.1:18472/v1",
 	models = { { id = "m", context_window = 128000 } } })
 zemi.config.set("models.default", "fake/m")
-zemi.config.set("session.auto_title", false)
 L
 tmux -L zt new-session -d -s zt -x 140 -y 40 -c $T/proj \
   "env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$PWD/bin/zemi \

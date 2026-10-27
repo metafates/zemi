@@ -1,19 +1,19 @@
 ---
 name: zemi-host-flow
-description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, session, compact, memory, classify or prompt code: boot order and trust, the CLI, config reload and kept picks, turns, sessions, compaction and the pinned prompt."
+description: "Load before changing main.go, internal/cli, internal/config, internal/store, internal/classify, or hostapi agent, chatlog, memtree, session, rewind, classify or prompt code: boot order and trust, the CLI, config reload and kept picks, turns, the chat log and its builder, rewind and the pinned prompt."
 ---
 
 # Host flow: CLI, boot, config, turns
 
 ## CLI (internal/cli/cli.go)
 
-The command line is a cobra tree (`execute`): `zemi` opens the TUI, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
-stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
-sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on; `sessions -a` walks every
-project's store through `hostapi.ListAllSessions`, skipping one it cannot read), `projects` (`hostapi.ListProjects` with its
-stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
+The command line is a cobra tree (`execute`): `zemi` opens the TUI, and
+`projects` (`hostapi.ListProjects` with its
+stores read through `store.OpenRead`, which creates, migrates and
+sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on;
+one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
 `db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
-`Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
+`Args` (cobra checks positionals only on the root). The listing ones (`projects`,
 `plugin`, `health`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines share one `table` renderer (aligned columns,
 `paint` over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot),
@@ -30,11 +30,10 @@ error is 1, and one that printed its own diagnostic returns `exitError`. That ho
 dir` (`enterDir`: `PWD` follows) before anything else, then resolves `config.Dirs` once into
 `options.dirs`, which every command reads (`completionDirs` resolves its own, since cobra runs no
 hook before a completion function), and a switch from `/projects` is an exec
-of `zemi -C <dir>` (with `-r <session>` when the switch resumes one, `relaunch`), so this
-run's other flags are left behind; `-r` without `-C` re-roots into the session's project
-(`enterDir`). The TUI takes a terminal on stdin and stdout, and refuses
+of `zemi -C <dir>` (`relaunch`), so this
+run's other flags are left behind. The TUI takes a terminal on stdin and stdout, and refuses
 a pipe on either.
-Completion offers session ids from the project store (`completeSessions`) and plugin names
+Completion offers plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
 completion function. `zemi models` and the `-m` completion boot
 inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
@@ -170,8 +169,7 @@ leave the old decision in force) under the watcher's lock, so the watcher does n
 for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: skills, agents,
 commands), instruction files (AGENTS.md, else CLAUDE.md, per directory),
-project skills, every project language server, the Lua tool's ask, and the private brain
-partition. `Host.git` and
+project skills, every project language server, and the Lua tool's ask. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
 smudging, log's signature checks (`gpg.program`), every transport but https, ssh and file, and repo-local filter drivers (a plugin
@@ -181,21 +179,22 @@ nested repo whose config zemi would run.
 ## Store
 
 The store (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
-`MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under
+`MaxOpenConns(1)`. Two handles: a global DB (skills, kv) and a per-project one under
 `<state>/projects/<hash of Dirs.TrustRoot()>/`, whose `root` file names it (`store.ProjectRoot`
 reads it only when it hashes to the dir), so a subdirectory and a worktree share the
-repository's sessions and memories. The schema is goose migrations embedded from
+repository's one chat. The schema is goose migrations embedded from
 `internal/store/migrations` and applied on open, under a `zemi.db.lock` file lock so two
 zemis never run one twice; a change is a new numbered file there, never an edit of an
 applied one. A store made before goose only gains its version table: the baseline is all
-`CREATE ... IF NOT EXISTS`.
+`CREATE ... IF NOT EXISTS`. The chat's tables (`log`, `nodes`, `view_lines`) are 0006; 0007
+drops the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §7).
 
-## Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
+## Turns, the chat and the builder (internal/hostapi: agent.go, chatlog.go, memtree.go, session.go, rewind.go)
 
 - **Models are targets.** `models.default` is the root: it runs the conversation and every
   role left unset follows it; `models.agents`
-  (subagents with no model of their own), `models.titles`, `models.compact`, `models.memory`
-  (the reflector) each fall back to it while empty (`roleModel`). Nothing falls
+  (subagents with no model of their own) and `models.compact` (the summary
+  builder) fall back to it while empty (`roleModel`). Nothing falls
   back to a cheaper model on its own, so the `/model roles` list shows every mapping. A
   `models.*` value is `""` or an id with a `/` (`config.set` refuses a bare word), so targets
   never nest, and a bare `/model` pick writes the default role and no other slot. A
@@ -219,38 +218,38 @@ applied one. A store made before goose only gains its version table: the baselin
   call is gated as `lua.classify.ask` (a plugin needs `model` in its uses), billed to the
   live session, and waits `classifyTimeout`, a minute. A `decisions` model is never resolved as
   a chat model: only the slots `zemi.model.add(name, { classify = true })` made take one.
-- **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
-  live tally when that session is still open. A runner's call counts as its stream
+- **One ledger.** Every model call is billed through `Host.bill`: the `main` session row, and
+  the live tally while the chat runs. A runner's call counts as its stream
   finishes (`StreamHooks.StreamDone`), before its tools run, so the tally and a subagent's
-  row move during a slow tool; a subagent's run bills once, at its end. Calls outside a runner (summary, title,
-  reflector) go through `Host.generate`, which bills them and sends the provider's body fields
-  without the effort; the reflector bills the session it read, closed or not.
-- **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model and
-  tools may change; the prompt comes from `ag.pin`); `AgentSend` carries the previous idle runner's conversation over (`Runner.Continue`), and
-  every step's input passes `Runner.signed`, which drops the thinking whose signed prefix
-  (system prompt, tool names, earlier messages) changed since the last step, so no history
-  edit replays a signature Anthropic refuses; the open tool loop past the last user text
-  (a steered one joins the tool results and closes nothing) keeps its own until that loop closes, since Anthropic refuses a final tool_use without it
-  on every account. `runTurns`
-  loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
-  runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
-  context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
-  unknown window means no auto compaction. A send whose pin key moved since the last step
-  (`ag.lastSent`, stamped at `StepDone`) first offers `handoffGate`'s compact on the previous
-  model, once per change and past `handoffMinTokens` (`agent.handoff_compact`): the summary
-  rides the old model's warm prefix. When `models.compact` is the runner's model
-  (`ag.turnModel`, "" for the bare runner a resume or rewind leaves) - or the reason is the
-  handoff - the summary is asked
-  through `Runner.Aside` after the whole unpruned history, with a note naming how many
-  messages stay as the verbatim tail (`summarizeAside`, `compactNote`), so it reads the
-  prefix the last step just cached; a separate compact model, an overflow (the whole
-  history was just refused), or an aside with no summary or a context-too-long refusal
-  gets the flat `summarize`. The summary row is followed by the verbatim tail stored with
-  row role `tail`, which resume reads and transcript readers skip. An unfinished
-  todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never
-  merged.
-- **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
-  `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
+  row move during a slow tool; a subagent's run bills once, at its end. A builder call bills
+  `main` too (`memtree.build` on `models.compact`). Calls outside a runner (`zemi.model.ask`,
+  the goal check) go through `Host.generate` or an aside, which bill and send the provider's
+  body fields without the effort.
+- **The eternal chat** (`chatlog.go`): every main-chat message persists into the `log` table
+  (`persistMessage` -> `logChatMessage`), a failure costing the log a line, never the turn.
+  A reply is agent rows per text stretch, each call its own tool row, each result an echo
+  row; reasoning is never logged. A text past 8,000 characters (`chatSplitChars`) is logged
+  as several sibling rows; an echo clips to 30,000 (`echoClipChars`). Every append commits in
+  one transaction and wakes the builder. `Host.Note` appends a note row (`/note`), mid-turn
+  included.
+- **The builder** (`memtree.go`): one worker per store owns the tree state. Leaves are
+  message lines (a message of at most 512 bytes its own node verbatim; the tool and echo
+  leaves template-built in the append transaction), merges join siblings, and both go out as
+  calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
+  Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with the
+  shortest fitting line kept; a failed build retries at the next append. The view is the
+  persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
+  merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
+  kv. `/health`'s `chat builder` row reads the queue depths (`builderHealth`).
+- **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
+  view as one user message of 4-line parts, `chatlog.go viewMessage`) before every send, so
+  nothing carries between turns but the view; `keepSigned` degenerates to a no-op
+  cross-turn. A context-too-large refusal runs one view merge batch (`MergeOnce`) and
+  retries once; a refused output cap is dropped, and image parts a model refuses become a
+  note, both remembered for the process (`capRejected`, `imagesRejected`).
+- **A turn's work survives the turn.** A run's runner wires its own `Persist`
+  (`storeMessage`), so a cancelled or crashed run keeps what it did in its child session's
+  rows; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left
   unanswered (providers refuse a dangling call); a reply cut mid-arguments by a provider that
   then drops the call (openai-compatible) gets a note naming the pending tool instead, so
@@ -262,18 +261,17 @@ applied one. A store made before goose only gains its version table: the baselin
 - **Steering.** Messages sent mid-turn queue; `Runner.Steer` injects them at the next step
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so steered
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
-  held across that handoff (`nextTurn`) so a submit cannot jump the queue; `/compact` and
-  rewind claim `active` and a `turnScope` together for the same reason. With nothing left, a
+  held across that handoff (`nextTurn`) so a submit cannot jump the queue; rewind claims
+  `active` and a `turnScope` together for the same reason. With nothing left, a
   set goal's continuation is the other follow-up `nextTurn` starts under the claim. `release`
-  settles the todo list on the way out, and `ResumeSession` settles it too: a leftover
-  `in_progress` goes back to `pending`, so no item reads as work in hand while no turn runs.
+  settles the todo list on the way out.
 - **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`, DESIGN §6.3) sends the typed line with
-  a brief behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` only when it stores a
-  user row carrying the brief `SetGoal` last sent (`ag.goalPending`, `setGoalFrom`), so attached
-  text that quotes one, or a queued /goal a cancel hands back, sets nothing. After a turn that
+  a brief behind `agent.Attached("goal")`; `setGoalFrom` sets `ag.goal` only for a user row
+  carrying the brief `SetGoal` last sent, and stores it in the kv row `goal` (the condition
+  and the log seq it was set at). After a turn that
   ended cleanly `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
-  (`checkGoal`, `parseVerdict`). Each verdict is a `goal` row, and `goalIn` reads the goal back
-  on resume and rewind; `historyFrom` draws the goal notice row from the other `goal` rows.
+  (`checkGoal`, `parseVerdict`). A verdict is a live notice row; `goalRewound` drops a goal
+  whose setting message a rewind cut away.
 - **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only, DESIGN §6.3)
   keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
@@ -292,17 +290,11 @@ applied one. A store made before goose only gains its version table: the baselin
   arms it `session.recap` after a turn that ended well
   with no input since, and its live-only `Recap: ...` notice row is dropped when the transcript
   moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
-  stops it and the chat's pending row names it. An idle auto compact works the same
-  way off `agent.compact_idle` (off by default): the UI arms it after every turn,
-  loop runs included, and `Host.AutoCompact` runs /compact's flow silently when
-  the runner holds history.
-- **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
-  millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
-  anything that does not decode as a fantasy message, and reads a file tool's or a shell call's
-  diff, an agent call's run and summary line, a step's thought time and the turn's own tokens
-  and duration back from the telemetry rows that carry them (a resume could not rebuild them;
-  the turn's rides one row written after its messages, which the resume gives to the reply
-  those rows left).
+  stops it and the chat's pending row names it.
+- **The chat window** (session.go): the live transcript is the log's last `chatWindowRows`
+  (1000) settled rows (`LogTail` at boot, `setTranscriptFromLog` after a rewind), appended to
+  and replaced whole; `InputHistory` reads the log's user rows. `historyFrom` decodes a run's
+  stored messages into model history and transcript rows for its child session.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
   order (reasoning after a call or a reply, a call after a reply), and at every tool call that
@@ -311,52 +303,23 @@ applied one. A store made before goose only gains its version table: the baselin
   finished, so none settles early, and
   moves both sides under `ag.mu`, which the widget ctx reads them under (`liveView`), so no
   frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
-  an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
-  same way, so a resume draws the rows the live turn drew.
-- **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`. `/memory` is a
-  Go-built toggle list whose actions are `memoryCommand` verbs by row id ending in `--yes`, which
-  no note takes, applied at once; each, and a saved edit (`o` opens the raw text through
-  `EditFile`, re-running intake as user origin and keeping the id), pushes its reverse onto
-  `Host.memUndo`, which `u` pops and opening the list empties, and rebuilds the whole list, since
-  its `u` key shows only while the stack holds a step.
-- **Reflector timing** (DESIGN §10.3). It runs on session close (`/new`, `/resume`), once the
-  open session has had no turn for `ReflectIdle` (`Host.ReflectLive`), and in a startup sweep
-  (`ReflectSweep`, once per process, not on a reload), never on quit. `reflectDue` reads the
-  delta past kv `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the
-  copied history) and holds a floor, since one exchange that went fine would cost a model call
-  at every launch; `/reflect` skips it. The sweep records every session it listed with the count
-  it held (`Host.swept`), and `reflectPending` skips a session still at that count, so one
-  process reflects a session's rows once; the sweep itself runs at most one call
-  (`reflectSweepMax`), a backlog a crash left draining one per process.
-  `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so two
-  windows never reflect it at once. A reply that is not the JSON document asked for marks the
-  delta seen and is the `/health` reflector row's news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
-  and `gateMemory` like the `memory` tool's, and an entry with empty text and `replaces`
-  queues a forget proposal, never auto-applied. There is no config-patch pipeline, the agent
-  edits config files directly. The brain build (`brainFor`) renders the `# Brain` section: the
-  partitions' catalogs, the memory lines newest first per scope under the scope budget, the loop
-  text and the lint warnings; no search, no ranking in the render - recall is the memory tool's
-  `query` (live lines plus the ledger trail, `memorySearch`) and a one-liner graduates into a
-  brain file through the tool's `promote` mode (`brain.Promote`, its pre-flight `promoteChecks`
-  and `brain.CatalogAdmits`; a user-scope or user-origin promote always queues, the accept
-  journals the supersede entry with the file name and a paired write op, and the accept's undo
-  is `undoPromote`, whose ledger-only case re-archives under the literal sid "user" no rewind
-  replays).
+  an interrupt and as failed after an error.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
-  provider bugs (this once made the reflector read empty output everywhere).
+  provider bugs (this once made a summary call read empty output everywhere).
 - **Roots.** `inRoots` resolves symlinks on both the path and the roots; `@file` attachments,
   instruction files, project LSP servers and recipe scrubbing all rely on it.
 
 ## Rewind, read-only agents, prompts, composer bridge
 
-- **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a file's
-  pre-turn content (keyed by the turn's user message, first write wins) before a write tool
-  touches it. `RewindTo` restores files first and only then truncates messages, so a failed
-  restore leaves the conversation intact; then it drops what the session learned between the
-  prompt and the last row (`forgetLearned`: a reflector run or an accept after it stays) and
-  rebuilds the todo list from the kept rows. The cut holds `cutMu`, which a reflector run takes
-  to store what it read, so a run whose rows a rewind removed during its model call stores nothing. A shell call's changes are checkpointed from the
+- **Rewind** (rewind.go, store/log.go): the pipeline's `Checkpoint` hook saves a file's
+  pre-turn content (keyed by the log seq of the turn's user message, first write wins) before a
+  write tool touches it. `RewindTo` restores files first and only then cuts, so a failed
+  restore leaves the chat intact; the cut holds `cutMu` and the builder quiesced, then
+  `DeleteLogFrom` deletes the log rows from seq on, every node and view line touching them
+  and the checkpoints from seq on, `patchView` re-covers the survivors with leaf lines, the
+  todo list is rebuilt from the log's `todos` rows before the cut, the goal is rewound with
+  its kv row, and the prompt text goes back to the composer. A shell call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
@@ -382,12 +345,10 @@ applied one. A store made before goose only gains its version table: the baselin
   first, so a huge root `AGENTS.md` cannot squeeze out the package's own), the project's skills
   and recipes (`skillsIndexPrompt`'s second half), the per-session pinned `environmentPrompt` (in a
   trusted repository with its top level as the read tool lists it, `topLevel`, and the last
-  commits: repository free text, left out untrusted), the
-  `# Brain` section and, for the main agent on the shipped prompt, `replyReminder` last.
-  The main agent stores it as a `context` row (`contextRow`, which no transcript reader reads)
-  whenever the pin is built anew, and a resume sends the stored one again while `contextKey`
-  (the pin key, working directory, scratchpad and brain render) holds, so the provider's cache of the whole
-  conversation holds too; `dropPin` forgets it. It is built from the
+  commits: repository free text, left out untrusted) and, for the main agent on the shipped
+  prompt, `replyReminder` last. The main agent stores it as a `context` row (`contextRow`,
+  which no transcript reader reads) whenever the pin is built anew, so a fork and a builder
+  call that re-sends it read the same bytes. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`
   drops its "Using tools" line. No kept tool's description names a dropped tool
@@ -397,8 +358,8 @@ applied one. A store made before goose only gains its version table: the baselin
   first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
   and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (model,
   `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
-  schema fails calls). `closeSession` (`/new`, `/resume`) zeroes it, `compactDone` and
-  `deleteRecipe` clear its key (`dropPin`: `/prompt` and a running turn keep the text, and a
+  schema fails calls). `deleteRecipe` clears its key (`dropPin`: `/prompt` and a running turn
+  keep the text, and a
   build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on
   any config-tree write, the model's own skill writes included. So instruction files, skills,
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
@@ -416,13 +377,8 @@ applied one. A store made before goose only gains its version table: the baselin
 
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
   reaching widgets or overlays; the log's slog handler quotes any key or value holding a
-  newline or an unprintable rune. Secrets are scrubbed by the learn intake scrubber at the
-  memory/store boundary - don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance required,
-  `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
-  `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
-  `memory.autonomy` is set through `zemi.config.set`, which passes the Lua-call gate like any
-  other key.
+  newline or an unprintable rune. Secrets are scrubbed by the shape scrubber
+  (`sanitize.ScrubShapes`) where a recipe is written - don't log raw tool output.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema plus
   the `plugins.<name>.*` keys a plugin registers while it loads (`zemi.config.add`, `Store.Add`;
   plugin code names its own by the bare key, `settingPath`;

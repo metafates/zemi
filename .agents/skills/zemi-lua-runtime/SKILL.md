@@ -101,8 +101,7 @@ Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skill
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
 since installers write there; the config dir wins a name clash), builtin (zemi's
 self-knowledge, one skill per directory in `runtime/skills`: `zemi`, whose SKILL.md routes to
-reference files the model reads on demand, `sessions`, finding, reading and resuming a past
-conversation, and `codescan`, one script over many files; each reference file fits the skill tool's cap (`TestBuiltinSkillsFitTheSkillTool`)
+reference files the model reads on demand, and `codescan`, one script over many files; each reference file fits the skill tool's cap (`TestBuiltinSkillsFitTheSkillTool`)
 and is named in its own SKILL.md (`TestBuiltinSkillReferences`), and every builtin body ends with
 this binary's path (`skillNote`); embedded and rewritten to `<data>/builtin-skills/` on
 every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body only), all in the
@@ -116,7 +115,7 @@ prompt, and `runSkill` marks the file read so an `edit` can follow. The agent wr
 the plain file tools (the environment's `Recipes:` line names the dir, the system prompt's
 `recipesUse` says how); a write there is an ordinary write.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
-rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`: no entropy
+rewrite the file) scrubs every file written there in place (`sanitize.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
 lines and tells the model what will not load. `/skills` and its commands read the dir live.
 `/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one

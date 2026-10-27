@@ -14,9 +14,10 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | keymaps, widgets, the statusline, themes and colors, layout | `ui.md`, then `lua.md` for API |
 | a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a widget or key), which says when `lua.md` is needed |
 | a subagent | `agents.md` |
+| the chat's memory: the view, zoom, what a summary owes, how to leave things for later | `memories.md` |
 | a skill or a prompt command | `skills.md` |
 | a workflow: controlling a run, rerunning, saving or making one | `workflows.md` |
-| the store zemi keeps its state in: query it read-only, read a past session | `db.md` |
+| the store zemi keeps its state in: query it read-only, read the chat log or a run's transcript | `db.md` |
 | zemi misbehaves: an error, a silent model, config that does not load | `debug.md` |
 | several branches at once in git worktrees | `worktrees.md` |
 
