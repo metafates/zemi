@@ -1,7 +1,8 @@
 # AGENTS.md - zemi
 
-zemi is a terminal AI agent harness whose userland (default UI, keymaps, widgets, learning
-machinery) is written in embedded Lua while Go owns the runtime: the agent loop over
+zemi is a terminal AI agent harness whose userland (default UI, keymaps, widgets, the chat's
+summary builder surface) is written in embedded Lua while Go owns the runtime: the agent loop
+over
 `charm.land/fantasy`, the bubbletea v2 TUI, the sandboxed gopher-lua interpreter, and SQLite
 persistence. `DESIGN.md` is the spec; code comments cite its sections (`DESIGN §4`, `§6.2`).
 **Before changing behavior, read the DESIGN section the code cites** - it explains the why
@@ -10,7 +11,7 @@ always wrong. When spec and tree disagree, the tree is the truth.
 
 Prior art with local checkouts under `~/Code/github/` (study, don't copy): `crush` (same Go
 stack; tool descriptions, permission flow and store patterns trace back to it), `pi` (prompt
-wording), `hermes-agent` (learning machinery), `codex` and `opencode` (tool behavior), `neovim`
+wording), `codex` and `opencode` (tool behavior), `neovim`
 (the model for the Lua userland: `runtime/lua/vim/` for keymap, highlight, health and loader
 patterns).
 
@@ -121,7 +122,7 @@ that waits on goroutines - concurrency, timers, turn or step ordering, and the t
 
 The flow, the invariants and the gotchas behind these commands are this repo's own skills under
 `.agents/skills/`, one per area: the permission gate and the process layer; the Lua runtime and
-its types; host flow, the CLI, boot and trust, config, turns and sessions; subagents, workflows,
+its types; host flow, the CLI, boot and trust, config, turns and the chat's builder; subagents, workflows,
 MCP and LSP; the TUI. Their triggers are in the skills index in your context - load the matching
 one before changing that area. `zemi-dev-lessons` and `zemi-tui-test` hold the traps and how to
 drive the binary.
