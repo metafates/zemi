@@ -2,7 +2,7 @@
 
 ## Subagents (`agents/<name>.md`)
 
-A subagent is a model run the main agent starts for a self-contained task. It gets a fresh context: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), the brain section, and the task the main agent writes. It never sees the conversation (a fork does, `## Forks`). The body is the job alone: zemi already says the rest.
+A subagent is a model run the main agent starts for a self-contained task. Its first message is the view (`zemi memories.md` explains it): the caller's whole chat as one-line summaries, read-only, so its work builds on what the chat holds; its own transcript is a child session's rows, not the chat's. On top of that: zemi's lines saying it is a subagent whose final message is its whole report, the file's body, the tool rules, the project instructions, the skills index when it has the `skill` tool, the `agent.assemble` sections, the environment (working directory, scratchpad), and the task the main agent writes. It has no `zoom` or `date`, so the view is all it sees of the chat (a fork continues the live conversation instead, `## Forks`). The body is the job alone: zemi already says the rest.
 
 ```markdown
 ---
@@ -22,7 +22,7 @@ Report a one-line verdict (ready, or fix first), then each finding as `path:line
 - `description` (required) is how the main agent picks the agent: it reads every description, cut at 200 characters, on every request. Say what it does and when to use it, in one sentence specific enough that no other agent matches. "Use after X" or "use for any Y" gets it used without being named.
 - `tools` is an allowlist (`read, grep, glob`), or `-name` entries that remove from the full set (`-glob`), so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`, which no subagent gets. `update` is outside the allowlist and every agent definition has it: it sends the caller a line while the run goes on. Names are the lowercase tool names you call yourself (`config.md` lists them; MCP tools are `mcp_<server>_<tool>`). An unknown tool name fails the agent.
 - `read_only: true` denies every action - a write, a command, a Lua tool - whatever its tools, like `explore`; the agent is told so, and its write and edit still work in the scratchpad. Use it for any agent that should only look; a build or a test run usually writes inside the project (build dirs, caches) and is denied under it.
-- `model` is a target (`default`, `agents`, `titles`, `compact`, `memory`, a name `zemi.model.add` registered, or a `provider/model`); omitted or `inherit`, `models.agents`. An id that resolves to nothing fails the run, not the file: `provider ... is not registered`.
+- `model` is a target (`default`, `agents`, `compact`, a name `zemi.model.add` registered, or a `provider/model`); omitted or `inherit`, `models.agents`. An id that resolves to nothing fails the run, not the file: `provider ... is not registered`.
 - The body is the job, in under 40 lines: its one job in a line; the steps, with this project's real commands and paths; what to check; the report's shape; what it must not do.
 - `/agents` lists every agent; its first row, New agent, fills `/agents new`, and `/agents open <name>` edits a file agent.
 

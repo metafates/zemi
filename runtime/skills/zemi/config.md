@@ -63,7 +63,7 @@ isolation. A run that must not touch the machine goes in a container or a VM.
 
 At a prompt `y` allows once, `n` denies, and `t` denies and stops the turn so the user can say what to do instead.
 
-Model tool names, for the `tools` of an agent: `shell`, `read`, `write`, `edit`, `glob`, `grep`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `skill`, `agent`, `workflow`, `lua`, `update` (subagent definitions only, and not a fork's: see `agents.md`), `mcp_<server>_<tool>`, `tool_search` (past ten MCP tools their schemas leave the request and the model loads them through it) and tools added from Lua.
+Model tool names, for the `tools` of an agent: `shell`, `read`, `write`, `edit`, `glob`, `grep`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `skill`, `agent`, `workflow`, `lua`, `update` (subagent definitions only, and not a fork's: see `agents.md`), `mcp_<server>_<tool>`, `tool_search` (past ten MCP tools their schemas leave the request and the model loads them through it) and tools added from Lua. A subagent never gets `zoom` or `date` either: its chat context is the one view message it opens on (`agents.md`).
 
 Planning is the `plan` tool: the agent presents a plan for approval (implemented in the same turn), asks changes to, or saves to start later, and keeps its own capabilities the whole time.
 
@@ -86,8 +86,8 @@ Language servers (gopls, pyright, typescript, clangd, rust-analyzer, luals - the
 
 ## Command line
 
-`zemi [flags] [prompt]` opens the TUI; the prompt is sent as the first message, or run when it names a command. A message prompt is on the chat from the first frame, thinking while zemi boots, and goes as the first turn once boot is done; esc takes it back to the composer. It takes `-c` (continue the last session), `-r <id>`, `-m provider/model` and `--trust`; `-C <dir>` runs any command as if started in dir. The TUI needs a terminal on stdin and stdout.
-`zemi health` prints the checks (exits 1 when one errors); `zemi sessions` lists this project's sessions (`-a` every project's, `search <words>` finds them by what was said), `zemi sessions export <id>` prints one as markdown (`--full` as `/export full`); `zemi db <sql>` runs one read-only query against the store (`db.md`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `sessions`, `projects`, `plugins`, `health` and `db` take `--json`: one object per line (DESIGN §8 has the fields). `/btw` prints its answer, and `/goal make check is clean` runs until the goal is met. `zemi plugin ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
+`zemi [flags] [prompt]` opens the TUI; the prompt is sent as the first message, or run when it names a command. A message prompt is on the chat from the first frame, thinking while zemi boots, and goes as the first turn once boot is done; esc takes it back to the composer. It takes `-m provider/model` and `--trust`; `-C <dir>` runs any command as if started in dir. The TUI needs a terminal on stdin and stdout.
+`zemi health` prints the checks (exits 1 when one errors); `zemi db <sql>` runs one read-only query against the store (`db.md`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `projects`, `plugins`, `health` and `db` take `--json`: one object per line (DESIGN §8 has the fields). `/btw` prints its answer, and `/goal make check is clean` runs until the goal is met. `zemi plugin ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
 
 ## Commands and input
 

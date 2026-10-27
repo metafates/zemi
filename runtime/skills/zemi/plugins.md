@@ -210,22 +210,24 @@ zemi.tool.override("shell", {
 })
 ```
 
-A command that summarizes the session with the user's compact model and leaves the note in the composer:
+A command that marks a chapter in the chat's memory, and one that asks the user's compact model over a file and leaves the answer in the composer:
 
 ```lua
--- .zemi/lua/handoff/init.lua: /handoff asks a side model for a handoff note
-zemi.command.add("handoff", function()
-	local turns = {}
-	for _, m in ipairs(zemi.session.messages()) do
-		if m.text ~= "" then turns[#turns + 1] = m.text end
-	end
+-- .zemi/lua/draft/init.lua
+zemi.command.add("chapter", function(a)
+	zemi.command.run("note", "-- " .. (a.args ~= "" and a.args or os.date("%Y-%m-%d")))
+end, { desc = "mark a chapter in the chat's memory" })
+
+zemi.command.add("draft", function(a)
+	local body, err = zemi.fs.read(a.list[1])
+	if not body then return zemi.notify.error(err) end
 	local note, err = zemi.model.ask({
 		model = "compact",
-		prompt = "Summarize this session for whoever picks it up:\n" .. table.concat(turns, "\n"),
+		prompt = "Summarize this file for the chat's memory:\n" .. body,
 	}):wait()
 	if not note then return zemi.notify.error(err) end
-	zemi.composer.set("Handoff:\n" .. note)
-end, { desc = "summarize the session into the composer" })
+	zemi.composer.set("Draft:\n" .. note)
+end, { nargs = "+", desc = "summarize a file into the composer" })
 ```
 
 ## Style

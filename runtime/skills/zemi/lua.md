@@ -38,7 +38,7 @@ One script for a whole step is called codemode: when calls chain, a shape of cal
 
 ## The API
 
-Zemi can read itself from a script: the current model is `zemi.agent.current().model`, the session `zemi.session.id()` and `.title()`, the screen as text `zemi.ui.screenshot()`, errors `zemi.errors.list()`, health `zemi.health.list()` and the layout rects `zemi.ui.layout.rects()`. `zemi.model.pick()` opens the model picker (choosing one runs `/model`); it does not return the current model.
+Zemi can read itself from a script: the current model is `zemi.agent.current().model`, the session id `zemi.session.id()`, the screen as text `zemi.ui.screenshot()`, errors `zemi.errors.list()`, health `zemi.health.list()` and the layout rects `zemi.ui.layout.rects()`. `zemi.model.pick()` opens the model picker (choosing one runs `/model`); it does not return the current model.
 
 Every member, with its parameters, is one shell grep of the types file (the system prompt names it): `grep -n '^function zemi\.'` lists all of them, `grep -n -B20 'function zemi.lsp.'` one namespace with the `---` lines above each hit, which are its rules: who may call it, what it returns, when it raises. `grep -n -A20 '@class zemi.<Name>'` gives the fields of the class a parameter names. `zemi.notify` and `zemi.log` are also callable, and `zemi.api.version` is the API version string. `lua.md` itself has `zemi.skills` with examples.
 
