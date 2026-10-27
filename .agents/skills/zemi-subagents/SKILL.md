@@ -1,6 +1,6 @@
 ---
 name: zemi-subagents
-description: "Load before changing a subagent, a fork, an agent run, the workflow tool, the lua tool, MCP or LSP: definitions and nesting, run lifecycle and reporting, workflow scripts and their Lua sandbox, model memory writes, MCP tools and language servers."
+description: "Load before changing a subagent, a fork, an agent run, the workflow tool, the lua tool, MCP or LSP: definitions and nesting, run lifecycle and reporting, workflow scripts and their Lua sandbox, MCP tools and language servers."
 ---
 
 # Subagents, workflows, MCP and LSP
@@ -12,7 +12,11 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1: only the live turn forks). A run is a child session (`parent_id`) named by the run's id;
-  `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
+  `ListSessions` hides children. Its first message is the view (`viewMessage`, read-only:
+  `forkBase` marks where its own messages start past it), so its work builds on the caller's
+  chat without seeing the conversation's steps; its own transcript is rows of its own, which
+  `zoom(id, 1)` on its work row reads back (DESIGN §10.5). They have no summarizer:
+  `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
   `delegationPrompt`: without it models rarely delegate. The fork is the one run that is no
@@ -40,8 +44,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description carries the
   whole script API, inline first (a model sent to a skill wrote a file instead);
   `TestPromptBudget` counts it. A run (`flowRun`) is live work until its script ends, paused or
-  between agents too: `taskReg.live` counts it, and not its agents, for rewind, find, session
-  delete, a session fork and the project switch (`stillRunning`) and for the agent send and the
+  between agents too: `taskReg.live` counts it, and not its agents, for rewind and the
+  project switch (`stillRunning`) and for the agent send and the
   statusline (`runningFor`); an agent fork's setup reads no registry. The tool's `list` action names this session's
   runs (`flowsOf`), with the id to steer one: a run the user started in `/workflows` is a
   chat row the model never reads, so that list is its only notice of one while it runs. `flowControl` is
@@ -97,8 +101,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   turn, a step boundary, a drained queue), so it sits under the rows of the turn it
   arrived in. Consecutive notice rows are one block in the chat (chat.lua `B.notices`), no
   blank row between them and the older ones of a long burst behind one click-to-open row, so
-  a fleet of runs reporting at once cannot take the transcript over. A report a
-  closing session drops (`/new`, `/resume`) is stored in its own session and toasted
+  a fleet of runs reporting at once cannot take the transcript over. A report whose
+  turn is gone is still logged as the chat's work row (§10.5) and toasted
   (`notifyReport`). A run's notice and its `/agents` row are named by the run's label
   (`agentRun.label`: the model's description, or the definition's name when it wrote none),
   the row's desc keeping the definition. `/agents` lists the live session's runs and,
@@ -113,7 +117,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 - **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, 8 characters (`store.ShortID`),
   for a tidy path. A pipeline binds it once (`Pipeline.Pad`):
   `PipelineFor` the live session's, a subagent run its parent session's, so a run
-  that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
+  outliving its caller keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. Commands the model
   starts run with the parent's environ (`Pipeline.cmdEnv`), as does the
   user's `!command`. Writes in the pad settle like any write,
@@ -140,15 +144,6 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
   before the script (`ReloadIfChanged`), whose note leads the result: the model never
   schedules a reload, since no caller can outlive the generation its reload retires.
-- **Model memory writes** (DESIGN §10.4): the one `memory` tool goes through `memoryTool` ->
-  `gateMemory`, as the reflector's entries do: `learn.Similar` refuses a near-duplicate, a
-  learned user-scope memory's `quote` is checked against the typed part of the session's user
-  rows (`quoteInSession`, cut at `agent.AttachMarker`), and an apply that would push its
-  scope past `brain.ScopeBudget` cuts its oldest learned lines to the ledger. Under
-  `memory.autonomy = auto` (the default) everything applies or retires at once, a memory the
-  user saved never among them; `ask` queues for /memory instead. A forget (`forgetMemory`) of
-  a memory the user saved asks (`memory.write`). A plugin's send reaches the model behind
-  `agent.Attached("plugin:<name>")`, so no quote comes from it.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration; grants persist in the OS keychain
