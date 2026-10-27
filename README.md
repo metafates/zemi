@@ -6,7 +6,7 @@
 
 Zemi is a (coding) agent harness \[insert buzzword\] that...
 
-- learns like [hermes](https://github.com/nousresearch/hermes-agent)
+- one chat that never ends: the chat itself is the memory, summarized in the background
 - fast and native like [crush](https://github.com/charmbracelet/crush)
 - extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
 - batteries included like [codex](https://github.com/openai/codex) & [claude-code](https://github.com/anthropics/claude-code)
@@ -48,7 +48,7 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 - Does more with less steps
 - Subagents, workflows, background jobs, lsp, mcp, and more.
 - Fully scriptable with Lua and knows how to modify itself
-- Learns from previous sessions
+- Remembers everything: one eternal chat per project, read back through zoom
 - Compatible with Claude Code plugins
 
 ## API keys
