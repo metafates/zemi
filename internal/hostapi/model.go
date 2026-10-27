@@ -75,10 +75,11 @@ func (h *Host) initPath() string { return perm.TildePath(filepath.Join(h.Dirs.Co
 func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
 
 // NoModelHint is the one sentence that says how to get a model: the first
-// builtin provider's key to export (read at start), or where to add a provider.
+// builtin provider's key to export (read at start), or the paste route the
+// model picker offers. It fits the splash tip's two rows.
 func (h *Host) NoModelHint() string {
 	if missing := h.Providers.Missing(); len(missing) > 0 {
-		return "export " + missing[0].Env + " and start zemi again, or add a provider to init.lua"
+		return "export " + missing[0].Env + " and start zemi again, or press enter on a provider in /model to paste its key"
 	}
 	return h.addProvider()
 }

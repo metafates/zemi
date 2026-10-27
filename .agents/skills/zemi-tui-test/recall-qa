@@ -1,0 +1,141 @@
+#!/bin/sh
+# recall-qa: plant nonce facts into a zemi-lab chat and score which survived
+# into the summary (the compaction view) the model reads.
+#
+# Each planted message carries a unique nonce at a known position - head for
+# even i, tail for odd i - and filler that pushes it past nodeBytes (512B):
+# a shorter message becomes its own summary line verbatim, with no compaction
+# call. The fake model answers a compaction call with the 400B head of the
+# message, so a head nonce survives the build and a tail one is lost; that
+# loss boundary is the point of the score. A real model's answers are graded
+# by the same score.
+#
+# usage: recall-qa [-n name] command
+set -u
+
+usage() {
+	cat <<'U'
+usage: recall-qa [-n name] command
+
+  up [N]     zemi-lab up, then plant N nonce facts (default 6) and a flush
+  plant [N]  plant N more nonce facts into a running lab
+  score      which planted nonces the latest compaction call's <chat> keeps
+  down       tear the lab down (zemi-lab down)
+U
+	exit 2
+}
+
+[ $# -ge 1 ] || usage
+NAME=recallqa
+while [ $# -ge 2 ] && [ "$1" = "-n" ]; do NAME=$2; shift 2; done
+CMD=$1; shift
+
+DIR=$(cd "$(dirname "$0")" && pwd)
+LAB="$DIR/zemi-lab"
+TREE=${ZEMI_LAB_TREE:-${TMPDIR:-/tmp}/zemi-lab-$NAME}
+STATE=$TREE/recallqa
+NONCES=$STATE/nonces.txt
+
+die() { printf 'recall-qa: %s\n' "$*" >&2; exit 1; }
+
+WORDS="zebra lantern cactus harbor meadow quartz thistle cobalt juniper amber slate heron"
+FILL="plain filler about weather, the sea and the clocks, of no interest. "
+
+nonce_word() { echo "$WORDS" | cut -d' ' -f$(( ($1 % 12) + 1 )); }
+
+# padded: the args grown past nodeBytes (512B) with filler, so the builder
+# makes a compaction call for the message instead of keeping it verbatim
+padded() {
+	s=$*
+	while [ ${#s} -lt 640 ]; do s="$s$FILL"; done
+	printf '%s' "$s"
+}
+
+# nonce_msg: message i. Even i leads with the nonce; odd i buries it at the
+# very end, past the 400B digest head the fake keeps.
+nonce_msg() {
+	i=$1
+	w=$(nonce_word "$i")
+	case $((i % 2)) in
+		0) padded "NONCE$i-$w marks fact $i. " ;;
+		1)
+			s=""
+			while [ ${#s} -lt 640 ]; do s="$s$FILL"; done
+			printf '%sFact %d ends at NONCE%d-%s.' "$s" "$i" "$i" "$w"
+			;;
+	esac
+}
+
+plant() {
+	N=${1:-6}
+	[ -f "$NONCES" ] || die "no nonces planted (recall-qa up first)"
+	COUNT=$(wc -l <"$NONCES" | tr -d ' ')
+	i=$COUNT
+	while [ "$i" -lt $((COUNT + N)) ]; do
+		i=$((i + 1))
+		case $((i % 2)) in 0) pos=head ;; *) pos=tail ;; esac
+		printf 'NONCE%d-%s %s\n' "$i" "$(nonce_word "$i")" "$pos" >>"$NONCES"
+		"$LAB" -n "$NAME" prompt "$(nonce_msg "$i")" ||
+			die "the lab refused nonce prompt $i (zemi-lab up first?)"
+	done
+	# a padded nonce-free flush: its call's <chat> is the first that can
+	# carry every digest built so far, and it is the call score reads
+	"$LAB" -n "$NAME" prompt "$(padded 'A flush with no nonce, filler only. ')" ||
+		die "the flush prompt failed"
+	say "planted $N nonce facts, $((COUNT + N)) total; score with: recall-qa -n $NAME score"
+}
+
+cmd_up() {
+	N=${1:-6}
+	rm -rf "$STATE"
+	mkdir -p "$STATE"
+	: >"$NONCES"
+	"$LAB" -n "$NAME" up || exit 1
+	plant "$N"
+}
+
+cmd_score() {
+	[ -f "$NONCES" ] || die "no nonces planted (recall-qa up first)"
+	TREE="$TREE" NONCES="$NONCES" python3 - <<'PY'
+import glob, json, os, re, sys
+
+tree, nonces_path = os.environ["TREE"], os.environ["NONCES"]
+planted = [l.split() for l in open(nonces_path) if l.strip()]
+comp, total = [], 0
+for f in sorted(glob.glob(os.path.join(tree, "requests", "*.json"))):
+	total += 1
+	try:
+		body = json.load(open(f))
+	except Exception:
+		continue
+	msgs = body.get("messages", [])
+	if not msgs:
+		continue
+	c = msgs[-1].get("content") or ""
+	if isinstance(c, list):
+		c = " ".join(p.get("text", "") for p in c)
+	if isinstance(c, str) and "Compaction:" in c:
+		comp.append((f, c))
+if not comp:
+	sys.exit("no compaction call yet in %d requests; plant more or wait for the builder" % total)
+f, last = comp[-1]
+m = re.search(r"<chat>\n(.*?)\n</chat>", last, re.S)
+chat = m.group(1) if m else ""
+print("latest compaction call: %s (%d compaction calls of %d requests)" % (os.path.basename(f), len(comp), total))
+kept = 0
+for row in planted:
+	tok, pos = (row + ["?"])[:2]
+	hit = tok in chat
+	kept += hit
+	print("  %-14s %-5s %s" % (tok, pos, "survived" if hit else "lost"))
+print("%d/%d nonces survived into the view" % (kept, len(planted)))
+PY
+}
+
+case "$CMD" in
+	up) cmd_up "$@" ;;
+	plant) plant "$@" ;;
+	score) cmd_score "$@" ;;
+	down) exec "$LAB" -n "$NAME" down "$@" ;;
+	*) usage ;;
+esac

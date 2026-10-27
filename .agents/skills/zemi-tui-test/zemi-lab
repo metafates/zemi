@@ -24,6 +24,10 @@ usage: zemi-lab [-n name] command [args]
                      cursor optimization, so split panes over a non-multiple-of-8
                      origin may render captured rows misaligned - upstream, not zemi
   size W H           resize the window
+  snap [FILE]        capture, mask the volatile spans, save (default
+                     $TREE/snap/prev.txt; the raw capture is kept beside it)
+  diff [A] [B]       diff two masked captures - a fresh one against A, or
+                     A against B - and exit 1 when rows moved
   last               the fake model's last request body
   db | logs | status | health [args...]
   attach             the lab in a real terminal
@@ -34,6 +38,7 @@ U
 
 [ $# -ge 1 ] || usage
 NAME=zt
+SESSION=main
 while [ $# -ge 3 ] && [ "$1" = "-n" ]; do NAME=$2; shift 2; done
 while [ $# -ge 2 ] && [ "$1" = "-s" ]; do SESSION=$2; shift 2; done
 CMD=$1; shift
@@ -42,7 +47,6 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 REPO=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || true)
 TREE=${ZEMI_LAB_TREE:-${TMPDIR:-/tmp}/zemi-lab-$NAME}
 SERVER=zl-$NAME
-SESSION=main
 ENVF=$TREE/.lab.env
 export TMUX_TMPDIR="${TMPDIR:-/tmp}"
 
@@ -60,6 +64,24 @@ load() {
 }
 
 cap() { tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true; }
+
+# mask_volatile blanks the spans that move on their own - the readout's
+# elapsed seconds, tokens and cost, the braille spinner, the clock - so a
+# diff shows only real row shifts. Raw captures are kept beside the masked
+# ones (snap saves both), so any diff is re-checkable unmasked.
+mask_volatile() {
+	python3 -c '
+import re, sys
+for line in sys.stdin:
+    line = re.sub(r"[\u2800-\u28ff]+", "@", line)  # the spinner animates
+    line = re.sub(r"\b\d+m\b", "@m", line)         # elapsed minutes
+    line = re.sub(r"\d+(\.\d+)?s", "@s", line)     # elapsed seconds
+    line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
+    line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
+    line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
+    sys.stdout.write(line)
+'
+}
 
 # wait_stable [pattern] [secs]: the app redraws nothing when idle, so three
 # identical captures mean settled; with a pattern, 0 once it shows, 1 when the
@@ -240,6 +262,45 @@ cmd_cap() {
 	fi
 }
 
+# cmd_snap: capture, mask, save - one side of a row-shift diff.
+cmd_snap() {
+	load
+	out=${1:-$TREE/snap/prev.txt}
+	mkdir -p "$(dirname "$out")"
+	cap >"${out%.txt}.raw"
+	[ -s "${out%.txt}.raw" ] || die "capture failed (the pane is gone?)"
+	mask_volatile <"${out%.txt}.raw" >"$out" || die "python3 is needed"
+	say "$out (raw beside it)"
+}
+
+# cmd_diff: two masked captures diffed - the row-shift house rule as a
+# check, exit 1 when rows moved. No file diffs a fresh capture against the
+# last snap; one file diffs against FILE; two diffs those two.
+cmd_diff() {
+	load
+	case $# in
+		0) A=$TREE/snap/prev.txt B="" ;;
+		1) A=$1 B="" ;;
+		2) A=$1 B=$2 ;;
+		*) die "diff: [FILE-A] [FILE-B]" ;;
+	esac
+	[ -f "$A" ] || die "no snapshot at $A (zemi-lab snap first)"
+	mkdir -p "$TREE/snap"
+	if [ -n "$B" ]; then
+		[ -f "$B" ] || die "no capture at $B"
+	else
+		B=$TREE/snap/now.txt
+		cap >"$TREE/snap/now.raw"
+		[ -s "$TREE/snap/now.raw" ] || die "capture failed (the pane is gone?)"
+		mask_volatile <"$TREE/snap/now.raw" >"$B" || die "python3 is needed"
+	fi
+	if diff -u --label A --label B "$A" "$B"; then
+		say "no row shift"
+	else
+		exit 1
+	fi
+}
+
 cmd_size() { [ $# -eq 2 ] || die "size: W H"; tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2"; }
 
 # cmd_peer: a second zemi on the same tree, so two windows share the store,
@@ -318,6 +379,8 @@ case "$CMD" in
 	ask) load; cmd_ask "$@" ;;
 	cap) load; cmd_cap "$@" ;;
 	size) load; cmd_size "$@" ;;
+	snap) cmd_snap "$@" ;;
+	diff) cmd_diff "$@" ;;
 	last) load; cmd_last "$@" ;;
 	db) load; cmd_db "$@" ;;
 	logs) load; cmd_logs "$@" ;;

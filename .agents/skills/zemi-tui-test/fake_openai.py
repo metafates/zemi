@@ -12,7 +12,10 @@
 # entry leaves the window.
 # While OUTDIR/drop holds a positive count, that many requests get a streamed
 # reply cut off mid-stream (headers and a couple of events, then the socket),
-# the count decrementing per drop. usage: python3 fake_openai.py PORT [OUTDIR]
+# the count decrementing per drop. OUTDIR/delay_ms sleeps that long before a
+# reply that is not a refusal (a 429 or a drop), holding the turn open;
+# OUTDIR/pace_ms sleeps that long between streamed chunks, pacing the stream.
+# usage: python3 fake_openai.py PORT [OUTDIR]
 #   (OUTDIR default: the CWD)
 import json, os, re, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -45,7 +48,7 @@ class H(BaseHTTPRequestHandler):
         last = body["messages"][-1]
         c = last.get("content") or ""
         text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
-        m = last["role"] == "user" and re.search(r"call (\w+) (\{.*\})", text)
+        m = last["role"] == "user" and re.match(r"call (\w+) (\{.*\})", text)
         n = len(os.listdir(os.path.join(OUT, "requests"))) + 1
         data = json.dumps(body, indent=1)
         tmp = os.path.join(OUT, "requests/.%d.json" % n)
@@ -99,6 +102,11 @@ class H(BaseHTTPRequestHandler):
             self.connection.close()
             print("REQ %d -> dropped mid-stream" % n, flush=True)
             return
+        # delay_ms holds the reply (turn) open, pace_ms spaces the chunks
+        delay = ctl("delay_ms")
+        if delay > 0:
+            time.sleep(delay / 1000.0)
+        pace = ctl("pace_ms") / 1000.0
         # while OUTDIR/judge holds text, the next goal check ("Judge whether")
         # answers with it, once: the goal's verdicts scripted per check
         reply = ctl_text("judge") if text.startswith("Judge whether") else ""
@@ -121,6 +129,8 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data); return
         self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
         def ev(delta, fin=None, u=None):
+            if pace:
+                time.sleep(pace)
             d = {"id": "c", "object": "chat.completion.chunk", "model": "m",
                  "choices": [{"index": 0, "delta": delta, "finish_reason": fin}]}
             if u: d["usage"] = u

@@ -439,7 +439,7 @@ func TestNoModelHint(t *testing.T) {
 		{
 			"no key exported",
 			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}},
-			"export ANTHROPIC_API_KEY and start zemi again, or add a provider to init.lua",
+			"export ANTHROPIC_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
 		},
 	} {
 		h, _ := newTestHost(t)

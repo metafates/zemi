@@ -30,6 +30,8 @@ $S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the g
 $S/zemi-lab size 60 15             # narrow and short layouts
 $S/zemi-lab peer                   # a second zemi on the same tree and store
 $S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
+$S/zemi-lab snap && $S/zemi-lab diff          # row-shift check: mask volatile spans,
+                                   # exit 1 when rows moved (raw captures kept beside)
 $S/zemi-lab db                     # this project's zemi.db; logs is the launch log
 $S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
 ```
@@ -49,7 +51,9 @@ non-streaming requests (the object calls: classify, `zemi.model.ask`) with a pla
 completion. Every request body lands in `last_request.json` and `requests/NNN.json` under
 the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
 prints the latest. The generated init.lua adds no second model, so nothing else writes a
-request between yours.
+request between yours. Control files in the tree, read per request like `drop` and
+`rate_fail`: `delay_ms` holds a reply open (not a 429 or a drop), `pace_ms` spaces the
+streamed chunks.
 
 A permission ask needs a gate plugin - zemi never asks by design (DESIGN §9): `up --asks`
 installs one whose `permission.request` handler returns `{decision = "ask"}` (a plugin with
@@ -61,14 +65,19 @@ installs one whose `permission.request` handler returns `{decision = "ask"}` (a 
   click. Keys typed as the box opened are swallowed by the grace, past it they answer the
   ask (a draft under it is kept), which is why `ask` resends until the box is gone.
 - Compare captures for row shifts: the same state change must not add or remove a row
-  (house rule). Diff two captures with `diff <(...) <(...)`.
+  (house rule). `zemi-lab snap` saves a masked capture, `zemi-lab diff` diffs a fresh one
+  against it and exits 1 on a shift; the mask blanks what moves on its own (spinner,
+  elapsed seconds, token counts, cost, the clock) and the raw captures are kept beside
+  the masked ones for re-checking.
 - The pane title marks state: a spinner while a turn runs, `? ` while an ask is up -
   `tmux -L zl-<name> display -p '#{pane_title}'`.
 - Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
   row-range captures made a working app look hung three separate times.
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
-  keys until 201~) while zemi stays healthy: `respawn-pane` revives it. The lab sends one
-  atomic call per command.
+  keys until 201~) while zemi stays healthy: send the terminator itself with
+  `tmux send-keys -l ... $'\x1b[201~'` - a `respawn-pane` does NOT clear it (the bytes
+  survive the respawn and re-wedge the fresh zemi). The lab sends one atomic call per
+  command.
 - send-keys cannot inject a positioned mouse click: a click path is Go-test only, with
   findCell and clickAt in internal/ui/mouse_test.go.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
@@ -120,6 +129,25 @@ the process alive. A failure names the seed, so a broken run replays:
 The fake server's `drop` control file (a positive count of replies cut
 mid-stream) is what drives the network-drop path; `rate_fail` and
 `rate_limit` are described at its top.
+
+## The recall eval
+
+`recall-qa` (next to `chaos-qa`) plants nonce facts into a lab chat and
+scores which survived into the summary the model reads. Each planted message
+carries a unique nonce - head for even i, tail for odd i - and filler past
+nodeBytes (512B), so the builder makes a real compaction call per message;
+a padded nonce-free flush closes the round so the latest call's `<chat>`
+carries every digest. Score greps that `<chat>`:
+
+```sh
+.agents/skills/zemi-tui-test/recall-qa -n recallqa up 6   # lab + 6 nonces + flush
+.agents/skills/zemi-tui-test/recall-qa -n recallqa score  # per-nonce survived/lost
+.agents/skills/zemi-tui-test/recall-qa -n recallqa down
+```
+
+With the fake (digest = the 400B head of the message) head nonces survive
+and tail ones are lost - the loss boundary, made measurable. A real model
+is graded by the same score.
 
 ## Clean up
 

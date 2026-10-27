@@ -116,13 +116,13 @@ zemi.ui.widget.add({
 // no-model hint wrapped to a second row under its text, and a tip that wraps
 // moves nothing above it, on a short chat too.
 func TestSplashTip(t *testing.T) {
-	hint := "export ANTHROPIC_API_KEY and start zemi again, or add a provider to ~/.config/zemi/init.lua"
+	hint := "export ANTHROPIC_API_KEY and start zemi again, or press enter on a provider in /model to paste its key"
 	cases := []struct {
 		name, ctx, want, fill string
 		moved                 bool // the logo moved: the listed rows changed
 	}{
 		{"init.lua failed", `init_error = "/cfg/init.lua:12: boom", model = ""`, "● Tip  init.lua:12 failed: /errors", "", false},
-		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\nadd a provider to ~/.config/zemi/init.lua", "", false},
+		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\npress enter on a provider in /model to paste its key", "", false},
 		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this project's instructions and run code", "", false},
 		{"at home", `trusted = false, trustable = false`, "● Tip  !git status runs in your shell; the output rides your next prompt", "!git status", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
