@@ -393,7 +393,9 @@ mcp, lsp, plugins, config, projects) -> the
 shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
-user `init.lua` -> user skills' enable hooks -> markdown commands (user, then each plugin's, then a
+user `init.lua` -> user skills' enable hooks -> the chat builder's
+release (its dispatch waits for this step, when a model first exists) ->
+markdown commands (user, then each plugin's, then a
 trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
 trust prompt without holding the UI. The host's own steps (namespaces, builtin

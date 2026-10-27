@@ -73,6 +73,14 @@ func newChatLog(ctx context.Context, h *Host) *chatLog {
 	return &chatLog{h: h, tree: newMemTree(ctx, h), reply: -1}
 }
 
+// ReleaseBuilder opens the builder's boot gate: the config step ran, so its
+// compaction calls can resolve models. A host without a store has no builder.
+func (h *Host) ReleaseBuilder() {
+	if h.chat != nil {
+		h.chat.tree.release()
+	}
+}
+
 // Close ends the builder: its context cancels, in-flight model calls abort,
 // and Close returns once every builder goroutine exited.
 func (c *chatLog) Close() { c.tree.Close() }

@@ -47,6 +47,7 @@ func newTestHostSkillsNoBoot(t *testing.T) (*Host, *lua.Runtime) {
 		StateHome:  state,
 		ProjectDir: proj,
 	})
+	h.ReleaseBuilder() // tests stub the model and boot no config
 	return h, r
 }
 

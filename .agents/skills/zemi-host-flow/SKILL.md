@@ -146,7 +146,8 @@ init.lua. A `/config` verb that opens a screen refuses without one; only `config
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
-`init.lua` -> user skill hooks -> markdown commands
+`init.lua` -> user skill hooks -> the chat builder's release (its dispatch
+waits for this step, when a model first exists) -> markdown commands
 (`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
@@ -241,7 +242,10 @@ applied one. A store made before goose only gains its version table: the baselin
   one drew. The stamping pairs past those rows - they draw with their seq, not from the
   pairing - and the digest's thought falls back to the reply stat only where a log predates
   thought rows.
-- **The builder** (`memtree.go`): one worker per store owns the tree state. Leaves are
+- **The builder** (`memtree.go`): one worker per store owns the tree state. Dispatch waits on
+  a boot gate (`memTree.release` through the builder-gate boot step, right after config): a
+  resumed window's first builds would otherwise meet no provider and fail "no model yet" per
+  node. Leaves are
   message lines (a message of at most 512 bytes its own node verbatim; the tool, echo and
   thought leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.

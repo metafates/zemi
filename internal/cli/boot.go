@@ -322,8 +322,21 @@ func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, p
 	return slices.Concat(
 		coreSteps(h, cmds),
 		trust, []lua.BootStep{plugins}, config,
-		[]lua.BootStep{h.MarkdownCommandsStep(), readyStep(h, reflect)},
+		[]lua.BootStep{builderGateStep(h), h.MarkdownCommandsStep(), readyStep(h, reflect)},
 	)
+}
+
+// builderGateStep releases the chat builder: config has run, so its
+// compaction calls can resolve models. Go-only and unable to fail, so no
+// soft wrapper; a reload replays it and the release is idempotent.
+func builderGateStep(h *hostapi.Host) lua.BootStep {
+	return lua.BootStep{
+		Name: "builder gate",
+		Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+			h.ReleaseBuilder()
+			return nil
+		},
+	}
 }
 
 // setReload gives the host its reload of steps and the check that the

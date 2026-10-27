@@ -103,6 +103,7 @@ func newTree(t *testing.T, replies ...string) (*Host, *chatLog, *treeModel) {
 	h, _ := newTestHostDB(t)
 	m := &treeModel{replies: replies}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	h.ReleaseBuilder()
 	return h, h.chat, m
 }
 
@@ -414,6 +415,34 @@ func TestViewConcurrentCoverage(t *testing.T) {
 	coverage(t, db, total)
 }
 
+// TestBuilderWaitsForConfig: the builder dispatches nothing before the
+// boot's config step released it - no model exists yet to answer a call -
+// and a message that landed before the release still builds after it.
+func TestBuilderWaitsForConfig(t *testing.T) {
+	t.Parallel()
+	// booted by hand, so the gate holds: no helper releases it
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{
+		StateHome:  t.TempDir(),
+		DataHome:   t.TempDir(),
+		ProjectDir: t.TempDir(),
+	})
+	t.Cleanup(h.Close)
+	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	m := &treeModel{replies: []string{"ok"}}
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	h.ReleaseBuilder()
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 0); err != nil {
+			return errors.New("node 0+0 did not build after the release")
+		}
+		return nil
+	})
+}
+
 // TestBuilderCloseQuiet: Close returns once the builder's goroutines exited,
 // a call still hanging on the model included, and a wake afterwards neither
 // blocks nor panics.
@@ -423,6 +452,7 @@ func TestBuilderCloseQuiet(t *testing.T) {
 	m := &treeModel{gate: make(chan struct{})} // calls hang until released
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	b := newMemTree(context.Background(), h)
+	b.release()
 	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
@@ -1036,6 +1066,7 @@ func TestBuilderSurvivesACorruptView(t *testing.T) {
 		t.Fatalf("Boot: %v", err)
 	}
 	replyStub(t, h, "ok")
+	h.ReleaseBuilder() // tests stub the model and boot no config
 	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}

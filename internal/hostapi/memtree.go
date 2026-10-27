@@ -203,6 +203,7 @@ type memTree struct {
 	held       bool               // dispatch paused (a reset quiesces); guarded by callMu
 	burst      chan struct{}      // closed when the burst's first response starts
 	force      chan chan struct{} // the overflow guard's one batch, acked when it ran
+	ready      atomic.Bool        // the boot gate: no dispatch before the config step ran
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -325,6 +326,14 @@ func (b *memTree) resume() {
 	b.held = false
 	b.callMu.Unlock()
 	b.RebuildQueues()
+}
+
+// release opens the boot gate and wakes the worker: the config step ran, so
+// the builds it held dispatch now. Idempotent, and a reload replays it.
+func (b *memTree) release() {
+	if b.ready.CompareAndSwap(false, true) {
+		b.Wake()
+	}
 }
 
 // Close ends the builder: the context cancels, in-flight model calls abort,
@@ -555,8 +564,10 @@ func (b *memTree) addLine(line viewLine) {
 
 // dispatch fills the build slots: leaves first, then merges whose halves are
 // both built. A quiesce holds it: no call dispatches into a reset's wipe.
+// The boot gate holds it too: no call dispatches before the config step ran,
+// when no provider exists yet to answer one.
 func (b *memTree) dispatch() {
-	if b.heldNow() {
+	if b.heldNow() || !b.ready.Load() {
 		return
 	}
 	for b.slots() < buildSlots {

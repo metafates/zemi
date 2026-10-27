@@ -733,6 +733,7 @@ func newTestHostPlugin(t *testing.T, uses string) (*Host, *lua.Runtime) {
 	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir(), StateHome: t.TempDir()}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	h.ReleaseBuilder() // tests stub the model and boot no config
 	t.Cleanup(h.Close)
 	pluginFixture(t, h, uses)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
