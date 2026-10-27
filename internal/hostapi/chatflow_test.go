@@ -488,6 +488,63 @@ func TestLogHoldsTheThought(t *testing.T) {
 	}
 }
 
+// TestReplyStatCarriesTheThought: the reply row's stat carries the turn's
+// whole thought, so the live digest says what the rebuilt window reads from
+// the log's reply row.
+func TestReplyStatCarriesTheThought(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		m := &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return append(reasoningParts("weighing it."), textParts("kept")...)
+		}}
+		return slowThought{LanguageModel: m, gap: 60 * time.Millisecond}, nil
+	}
+	h.SetUIHooks(&fakeUI{})
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	h.tMu.Lock()
+	tr := h.session.Transcript
+	h.tMu.Unlock()
+	var reply *ChatMessage
+	for i := range tr {
+		if tr[i].Kind == "" && tr[i].Role == fantasy.MessageRoleAssistant {
+			reply = &tr[i]
+		}
+	}
+	if reply == nil || reply.Stat == nil || reply.Stat.ThoughtMS < 50 {
+		t.Fatalf("last reply row = %+v, want the turn's thought in its stat", reply)
+	}
+}
+
+// slowThought streams a model's parts with a wall gap before each one after
+// the first, so a thought accrues time the way a streaming provider's does.
+type slowThought struct {
+	fantasy.LanguageModel
+	gap time.Duration
+}
+
+func (m slowThought) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	resp, err := m.LanguageModel.Stream(ctx, call)
+	if err != nil {
+		return nil, err
+	}
+	first := true
+	return func(yield func(fantasy.StreamPart) bool) {
+		for part := range resp {
+			if !first {
+				time.Sleep(m.gap)
+			}
+			first = false
+			if !yield(part) {
+				return
+			}
+		}
+	}, nil
+}
+
 // TestResumedWindowKeepsTheTurn: the turn's readout and thought ride the
 // log's reply row, so the window a restart rebuilds from the log draws both,
 // as the live one did.

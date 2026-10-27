@@ -230,7 +230,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	now := h.now()
 	model := h.turnModelID()
 	text, tools := ag.textBuf, ag.tools
-	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model}
+	// the reply row's stat carries the turn's whole thought: the live digest
+	// reads it the way the rebuilt window reads the log's row
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model, ThoughtMS: (ag.turnThought + ag.thought).Milliseconds()}
 	if !ag.turnStart.IsZero() {
 		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}
