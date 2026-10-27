@@ -22,6 +22,7 @@ up)
     ROUNDS=${2:-${ROUNDS:-20}}
     SEED=${3:-${SEED:-42}}
     "$S/zemi-lab" -n $NAME down >/dev/null 2>&1
+    rm -rf "$T"
     mkdir -p "$T"/{config,data,state,cache,out/requests,proj}
     (cd "$T/proj" && git init -q)
     cat > "$T/config/init.lua" <<L
@@ -32,8 +33,10 @@ zemi.config.set("models.default", "fake/m")
 L
     python3 "$S/fake_openai.py" $PORT "$T/out" &
     FPID=$!
+    # the pane's shell is whatever tmux's default is (fish here): run the
+    # supervisor through sh, whose syntax the loop is
     tmux -L z$NAME new-session -d -s $NAME -x 140 -y 40 -c "$T/proj" \
-        "while true; do env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$ZB $S/zemi-safe $T --trust; sleep 1; done"
+        "sh -c 'while true; do env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$ZB $S/zemi-safe $T --trust; sleep 1; done'"
     sleep 12
     echo "chaos: lab up, $ROUNDS rounds, seed $SEED (pid $FPID)"
     ;;
@@ -81,10 +84,11 @@ act() {
     7) echo $(( (i % 5) + 1 )) > "$T/out/rate_fail" ;;
     8) echo $(( (i % 3) + 1 )) > "$T/out/drop" ;;
     9) tmux -L z$NAME resize-window -t $NAME -x $(( 100 + (i % 4) * 20 )) 2>/dev/null ;;
-    10) # SIGKILL mid-anything: the worst exit a machine deals; the pane's
-        # supervisor loop boots the next window in a second
-        zp=$(tmux -L z$NAME display -p -t $NAME '#{pane_pid}')
-        kill -9 "$(pgrep -P "$zp" | head -1)" 2>/dev/null
+    10) # SIGKILL mid-anything: the worst exit a machine deals; the pane is
+        # fish > sh(supervisor) > zemi, so the kill takes the sh's children
+        # and the loop boots the next window in a second
+        shpid=$(pgrep -P "$(tmux -L z$NAME display -p -t $NAME '#{pane_pid}')" | head -1)
+        pkill -9 -P "$shpid" 2>/dev/null
         sleep 12
         ;;
     11) tmux -L z$NAME send-keys -t $NAME '/memories' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape; tmux -L z$NAME send-keys -t $NAME Escape ;;
