@@ -4,9 +4,13 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+
+	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -215,5 +219,234 @@ func TestSyncChatWithoutAStore(t *testing.T) {
 	h.SyncChat() // must not panic
 	if got := windowText(h); len(got) != 0 {
 		t.Fatalf("a storeless window drew %q", got)
+	}
+}
+
+// TestSyncChatReloadsARegrownReset: a foreign reset whose wiped place the
+// log already regrown past - a turn or machine-paced sends refilled it
+// before the tick - is still caught, by content: the window reloads and
+// toasts instead of drawing the wiped chat forever.
+func TestSyncChatReloadsARegrownReset(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, ma := newWindow(t, state, proj)
+	ui := &notifyUI{}
+	a.SetUIHooks(ui)
+	b, mb := newWindow(t, state, proj)
+	sendTurns(t, a, ma, "one", "two")
+	a.SyncChat()
+	if n, err := a.DB.LogCount(); err != nil || n != 4 {
+		t.Fatalf("a's log holds %d rows, want 4", n)
+	}
+	if err := b.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	sendTurns(t, b, mb, "r1", "r2", "r3") // regrows past a's cursor before any tick
+	a.SyncChat()
+	got := windowText(a)
+	if len(got) != 6 || !strings.Contains(got[0], "r1") || !strings.Contains(got[4], "r3") {
+		t.Fatalf("a's window after the regrown reset = %q, want b's fresh chat", got)
+	}
+	if got := ui.titles(); !slices.Contains(got, "Chat reset by another window") {
+		t.Fatalf("a's toasts = %q, want the reset one", got)
+	}
+	// the window keeps working: a's next turn lands on the fresh chat and stamps
+	sendTurns(t, a, ma, "after the reset")
+	a.SyncChat()
+	got = windowText(a)
+	if len(got) != 8 || !strings.Contains(got[6], "after the reset") {
+		t.Fatalf("a's window after its own next turn = %q", got)
+	}
+	for i, m := range a.Session().Transcript {
+		if m.Seq == NoSeq {
+			t.Fatalf("a's row %d drew unstamped after the reload: %+v", i, m)
+		}
+	}
+}
+
+// TestSyncChatSpliceWaitsForTheTurn: a sync that runs while a turn owns the
+// tail (the caller's AgentActive read raced, or a direct caller) defers the
+// splice to the next tick, and the spliced rows never step over the turn's
+// unstamped ones.
+func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, mb := newWindow(t, state, proj)
+	hold := make(chan struct{})
+	var calls atomic.Int32
+	a.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			if calls.Add(1) == 1 {
+				// a tool call keeps the turn going: its result comes back for
+				// a step that waits on hold
+				return []fantasy.StreamPart{
+					{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"},
+					{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+				}
+			}
+			<-hold
+			return textParts("step two")
+		}}, nil
+	}
+	if err := a.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if calls.Load() < 2 {
+			return errors.New("the held step has not started")
+		}
+		return nil
+	})
+	sendTurns(t, b, mb, "from b") // foreign rows land while the turn holds
+	a.SyncChat()                  // a direct sync mid-turn, the guard the idle tick relies on raced
+	if got := windowText(a); slices.Contains(got, "from b") {
+		t.Fatalf("a spliced under its live turn = %q", got)
+	}
+	close(hold)
+	waitIdle(t, a)
+	a.SyncChat()
+	// own rows keep their seqs, the foreign pair sits at its place, and the
+	// live order is the order a restart reads
+	tr := a.Session().Transcript
+	foreignSeqs := map[int64]bool{}
+	if rows, err := a.DB.LogFrom(0, 1000); err == nil {
+		for _, r := range rows {
+			if r.Origin != a.origin {
+				foreignSeqs[r.Seq] = true
+			}
+		}
+	}
+	for i, m := range tr {
+		if m.Foreign != foreignSeqs[m.Seq] {
+			t.Fatalf("a's row %d (seq %d) foreign = %v, want %v", i, m.Seq, m.Foreign, foreignSeqs[m.Seq])
+		}
+	}
+	if got := windowText(a); !slices.Contains(got, "from b") || got[len(got)-1] != "step two" {
+		t.Fatalf("a's window = %q, want the splice under the turn's own rows", got)
+	}
+	c, _ := newWindow(t, state, proj)
+	if got := windowText(c); !slices.Equal(got, windowText(a)) {
+		t.Fatalf("a fresh window reads %q, the live window drew %q", got, windowText(a))
+	}
+}
+
+// TestSyncChatReloadsUnderTheTurn: a foreign reset the log regrew past
+// while a turn runs here is caught by the pairing itself - the window
+// reloads mid-turn, the turn's next rows land on the fresh log, and the
+// wiped chat is gone.
+func TestSyncChatReloadsUnderTheTurn(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	ui := &notifyUI{}
+	a.SetUIHooks(ui)
+	b, mb := newWindow(t, state, proj)
+	hold := make(chan struct{})
+	var calls atomic.Int32
+	a.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			if calls.Add(1) == 1 {
+				return []fantasy.StreamPart{
+					{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"},
+					{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+				}
+			}
+			<-hold
+			return textParts("held step done")
+		}}, nil
+	}
+	if err := a.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if calls.Load() < 2 {
+			return errors.New("the held step has not started")
+		}
+		return nil
+	})
+	if err := b.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	sendTurns(t, b, mb, "r1", "r2") // the wiped place regrows before a's next persist
+	close(hold)
+	waitIdle(t, a)
+	a.SyncChat()
+	got := windowText(a)
+	if !slices.Contains(got, "r1") || got[len(got)-1] != "held step done" {
+		t.Fatalf("a's window under the turn = %q, want the fresh chat with the turn's row", got)
+	}
+	waitFor(t, func() error {
+		if !slices.Contains(ui.titles(), "Chat reset by another window") {
+			return errors.New("the reset toast has not landed")
+		}
+		return nil
+	})
+	for i, m := range a.Session().Transcript {
+		if m.Seq == NoSeq {
+			t.Fatalf("a's row %d drew unstamped after the mid-turn reload: %+v", i, m)
+		}
+	}
+	c, _ := newWindow(t, state, proj)
+	if got := windowText(c); !slices.Equal(got, windowText(a)) {
+		t.Fatalf("a fresh window reads %q, the live window drew %q", got, windowText(a))
+	}
+}
+
+// TestSyncChatSplicesFreshMeta: a foreign reply the pairing buffered before
+// its readout landed splices with the readout the log holds now, the way a
+// restart reads it.
+func TestSyncChatSplicesFreshMeta(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	seq, err := b.DB.AppendLog("agent", "hello from b", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.stampLogSeqs() // the pairing buffers the foreign row before the readout lands
+	if err := b.DB.SetLogMeta(seq, `{"turn_ms":7000,"out":50}`); err != nil {
+		t.Fatal(err)
+	}
+	a.SyncChat()
+	for _, m := range a.Session().Transcript {
+		if m.Text != "hello from b" {
+			continue
+		}
+		if !m.Foreign || m.Stat == nil || m.Stat.ElapsedMS != 7000 || m.Stat.Out != 50 {
+			t.Fatalf("the spliced reply drew foreign=%v stat=%+v, want the mark and the readout", m.Foreign, m.Stat)
+		}
+		return
+	}
+	t.Fatalf("the foreign reply never spliced: %q", windowText(a))
+}
+
+// TestLogRowsToolWithoutEcho: a call whose echo never landed (a window
+// killed mid-turn) draws failed, not a quiet success; one whose echo may
+// still be beyond the read stays quiet.
+func TestLogRowsToolWithoutEcho(t *testing.T) {
+	tool := func(seq int64) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: kindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell"}`}
+	}
+	echo := func(seq int64, ok bool) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: kindEcho, Text: "out", MetaJSON: `{"tool":"shell","ok":` + strconv.FormatBool(ok) + `}`}
+	}
+	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: kindUser, Text: "next"} }
+	for _, c := range []struct {
+		name string
+		rows []store.LogEntry
+		want CallStatus
+	}{
+		{"an echoed call reads its echo", []store.LogEntry{tool(0), echo(1, true), user(2)}, CallOK},
+		{"a failed echo reads failed", []store.LogEntry{tool(0), echo(1, false), user(2)}, CallErr},
+		{"a call killed before its echo reads failed", []store.LogEntry{tool(0), user(1)}, CallErr},
+		{"a call the read cut before its echo stays quiet", []store.LogEntry{tool(0)}, CallOK},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tr := logRows(c.rows)
+			if len(tr) == 0 || tr[0].Kind != RowTool {
+				t.Fatalf("logRows drew %+v, want the tool row first", tr)
+			}
+			if tr[0].Status != c.want {
+				t.Fatalf("the call drew %v, want %v", tr[0].Status, c.want)
+			}
+		})
 	}
 }

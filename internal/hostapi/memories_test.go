@@ -445,11 +445,12 @@ func TestStampLogSeqsMismatch(t *testing.T) {
 	if _, err := h.DB.AppendLog(kindUser, "later", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	// the log holds two rows; the window's first row's write failed
+	// the log holds two rows; the window's first row's write failed. Both
+	// rows drew live, so neither names a message yet.
 	h.tMu.Lock()
 	h.session = &Session{Transcript: []ChatMessage{
 		{Role: fantasy.MessageRoleUser, Text: "lost", Seq: NoSeq},
-		{Role: fantasy.MessageRoleUser, Text: "later"},
+		{Role: fantasy.MessageRoleUser, Text: "later", Seq: NoSeq},
 	}}
 	h.tMu.Unlock()
 	h.stampLogSeqs()

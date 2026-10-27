@@ -984,6 +984,9 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
+	if goal != nil && !h.goalMine(goal) {
+		goal = nil // another window set it: its chain is that window's to run
+	}
 	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(store.MainSessionID) > 0 {
 		goal = nil
 	}

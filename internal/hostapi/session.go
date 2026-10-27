@@ -7,6 +7,7 @@ package hostapi
 import (
 	"cmp"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -110,6 +111,22 @@ func (h *Host) stampLogSeqs() {
 // splice in at their place, and the pairing cursor passes them like the
 // kinds it pairs with nothing.
 func (h *Host) stampLogSeqsLocked() {
+	if h.logWipedLocked() {
+		// the log under this turn was reset: reload now, so the turn's next
+		// rows pair with the log it really writes. What belonged to the chat
+		// drops off this goroutine: a flush calls here under ag.mu, and tMu
+		// must never wait on it.
+		if h.reloadChatLocked() {
+			h.GoSafe("chat dropped by another window", func() {
+				h.chatDropped()
+				h.refreshMessages()
+				h.scroll(ScrollBottom, "")
+				h.refresh()
+				h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
+			})
+		}
+		return
+	}
 	tr := h.session.Transcript
 	rows, err := h.DB.LogFrom(h.stampFrom, stampBatch)
 	if err != nil || len(rows) == 0 {
@@ -136,8 +153,8 @@ func (h *Host) stampLogSeqsLocked() {
 			consumed++
 			continue
 		}
-		for w < len(tr) && !stampable(tr[w]) {
-			w++ // a notice, a thought or an error row: the log row it follows pairs past it
+		for w < len(tr) && (!stampable(tr[w]) || tr[w].Foreign && tr[w].Seq != NoSeq) {
+			w++ // a notice, a thought or an error row pairs past it; a spliced foreign row is named already
 		}
 		if w >= len(tr) {
 			break
@@ -193,11 +210,22 @@ func (h *Host) stampReset(tr []ChatMessage) {
 // window's transcript, on the config watch's idle tick: two windows on one
 // repository are the one chat it keeps, and the log's newest word is the
 // truth. A live turn or run owns the tail, so the tick's own AgentActive
-// guard covers it. A log that shrank under this window is another window's
-// reset: the window reloads whole, the way its own reset left it.
+// guard covers it. A log that shrank under this window, or whose row this
+// window stamped now reads differently, is another window's reset: the
+// window reloads whole, the way its own reset left it.
 func (h *Host) SyncChat() {
 	if h.DB == nil || h.DB.Origin == "" {
 		return
+	}
+	// a foreign goal the kv row no longer holds was met or stopped in the
+	// window that set it: drop the copy, with no judge run here
+	if g, ok := h.Goal(); ok && g.Writer != "" && g.Writer != h.origin {
+		if _, err := h.DB.GetKV(goalKV); errors.Is(err, store.ErrNotFound) {
+			h.agents.mu.Lock()
+			h.agents.goal = nil
+			h.agents.mu.Unlock()
+			h.refresh()
+		}
 	}
 	h.tMu.Lock()
 	count, err := h.DB.LogCount()
@@ -205,20 +233,9 @@ func (h *Host) SyncChat() {
 		h.tMu.Unlock()
 		return
 	}
-	if count < h.stampFrom {
-		// the log shrank under this window's cursor: another window reset
-		rows, err := h.DB.LogTail(chatWindowRows)
-		if err != nil {
-			h.tMu.Unlock()
-			return
-		}
-		h.session.Transcript, h.view = logRows(rows), nil
-		h.trEpoch.Add(1)
-		h.msgMu.Lock()
-		h.msgOld, h.msgFrom = nil, -1
-		h.msgMu.Unlock()
-		h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
-		h.foreignPend = nil
+	if (count < h.stampFrom || h.logWipedLocked()) && h.reloadChatLocked() {
+		// the log shrank under this window's cursor, or the row it stamped
+		// reads differently: another window reset, its regrown rows included
 		h.tMu.Unlock()
 		h.chatDropped()
 		h.refreshMessages()
@@ -230,7 +247,27 @@ func (h *Host) SyncChat() {
 	h.stampLogSeqsLocked()
 	foreign := h.foreignPend
 	h.foreignPend = nil
+	h.agents.mu.Lock()
+	active := h.agents.active
+	h.agents.mu.Unlock()
+	if len(foreign) > 0 && active {
+		// a turn owns the tail: its unstamped rows are the pairing's to
+		// claim, not a splice's to step over - the next tick splices them
+		h.foreignPend = foreign
+		foreign = nil
+	}
 	if len(foreign) > 0 {
+		// the pairing buffered copies, and a reply's readout lands in its
+		// row's meta after that: re-read the span, then splice what the log
+		// holds now
+		if fresh, err := h.DB.LogFrom(foreign[0].Seq, int(foreign[len(foreign)-1].Seq-foreign[0].Seq)+1); err == nil {
+			foreign = foreign[:0]
+			for _, row := range fresh {
+				if row.Origin != h.origin {
+					foreign = append(foreign, row)
+				}
+			}
+		}
 		tr := h.session.Transcript
 		for _, row := range foreign {
 			// splice at the row's place in the log, so the window draws the
@@ -247,11 +284,12 @@ func (h *Host) SyncChat() {
 				rows[i].Foreign = true
 			}
 			tr = slices.Insert(tr, at, rows...)
+			if at <= h.stampRow {
+				h.stampRow++ // the pairing's row moved down with the insert
+			}
 		}
 		h.session.Transcript = tr
 		h.trEpoch.Add(1)
-		// the spliced rows arrive stamped: the pairing claims them whole
-		h.stampRow = len(tr)
 	}
 	h.tMu.Unlock()
 	if len(foreign) > 0 {
@@ -265,6 +303,71 @@ func (h *Host) SyncChat() {
 			h.Notify(slog.LevelInfo, "Another window sent a message", "your draft is kept")
 		}
 	}
+}
+
+// logWipedLocked reports whether another window reset the shared log under
+// this window: the row its transcript last stamped no longer is the row the
+// store holds at that seq. A count cannot see a wipe that regrown rows
+// already cover; the row's own words are the evidence.
+func (h *Host) logWipedLocked() bool {
+	var m ChatMessage
+	found := false
+	for _, c := range slices.Backward(h.session.Transcript) {
+		if c.Seq != NoSeq {
+			m, found = c, true
+			break
+		}
+	}
+	if !found {
+		return false // nothing stamped: no identity to check
+	}
+	row, err := h.DB.LogAt(m.Seq)
+	if err != nil {
+		return true // the cursor names a seq the log no longer holds
+	}
+	return !logRowMatches(row, m)
+}
+
+// logRowMatches reports whether the store row still is the transcript row
+// carrying its seq: the kind and text identity the pairing stamps by.
+func logRowMatches(row store.LogEntry, m ChatMessage) bool {
+	text := strings.TrimSpace(row.Text)
+	switch row.Kind {
+	case kindUser:
+		return m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
+	case kindAgent:
+		return m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
+	case kindTool:
+		return m.Kind == RowTool && toolSummary(rowTool(row), row.Text) == m.Text
+	case kindThought:
+		return m.Kind == RowReasoning && row.Text == m.Text
+	case kindError:
+		return m.Kind == RowError && row.Text == m.Text
+	case kindShell:
+		return m.Kind == RowShell && row.Text == m.Text
+	case kindWork:
+		return m.Kind == RowNotice // its text needs the row's meta; the kind is identity enough
+	default: // an echo or note: no transcript row carries their seq
+		return false
+	}
+}
+
+// reloadChatLocked swaps the chat window for the log's tail: what a reset
+// leaves, this window's own or another window's. tMu held. False when the
+// read failed, leaving the window as it was.
+func (h *Host) reloadChatLocked() bool {
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		return false
+	}
+	h.session.Transcript, h.view = logRows(rows), nil
+	h.msgMu.Lock()
+	h.msgOld, h.msgFrom = nil, -1
+	h.msgMu.Unlock()
+	h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
+	h.foreignPend = nil
+	h.trEpoch.Add(1)
+	return true
 }
 
 // stampable reports whether a transcript row comes from a log row the
@@ -334,6 +437,10 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				if json.Unmarshal([]byte(rows[j].MetaJSON), &meta) == nil && !meta.Ok {
 					status = CallErr
 				}
+			} else if j < len(rows) && rows[j].Kind == kindUser {
+				// a turn killed between the call and its echo (a window
+				// quitting mid-turn): the call never answered
+				status = CallErr
 			}
 			tr = append(tr, ChatMessage{
 				Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name),

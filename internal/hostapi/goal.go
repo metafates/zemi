@@ -39,14 +39,15 @@ const (
 
 // Goal is the chat's goal (/goal): what must hold, when it was set and the
 // log seq of the message that set it, and the checks so far. Turns and
-// reason are this process' state; the condition and its set-at survive. The
-// tags are the kv row's spelling; re-spelling them drops a live goal on
-// resume.
+// reason are this process' state; the condition, its set-at and the window
+// that set it survive. The tags are the kv row's spelling; re-spelling them
+// drops a live goal on resume.
 type Goal struct {
 	Condition string    `json:"Condition"`
 	Reason    string    `json:"Reason"` // the last check, "not yet: <why>", "" before the first
 	Turns     int       `json:"Turns"`  // the turns it was checked after
 	SetAt     int64     `json:"SetAt"`  // the log seq of the message that set it
+	Writer    string    `json:"Writer"` // the window that set it; '' predates the field
 	Since     time.Time `json:"Since"`
 	Tokens    int64     `json:"Tokens"`
 	Cost      float64   `json:"Cost"`
@@ -155,7 +156,7 @@ func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 	}
 	ag.goalPending = ""
 	old := ag.goal
-	g := &Goal{Condition: cond, Since: time.Now(), SetAt: seq, Tokens: ag.sessIn + ag.sessOut, Cost: ag.sessCost}
+	g := &Goal{Condition: cond, Since: time.Now(), SetAt: seq, Writer: h.origin, Tokens: ag.sessIn + ag.sessOut, Cost: ag.sessCost}
 	ag.goal = g
 	ag.mu.Unlock()
 	h.storeGoal(g)
@@ -163,6 +164,13 @@ func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 		h.Notify(slog.LevelInfo, "Replaced the goal", old.Condition)
 	}
 	h.refresh()
+}
+
+// goalMine reports whether this window runs g's chain: the window that set
+// it did. A goal persisted before the writer field named no owner and keeps
+// the old every-window chain.
+func (h *Host) goalMine(g *Goal) bool {
+	return g.Writer == "" || g.Writer == h.origin
 }
 
 func (h *Host) stopGoal() error {

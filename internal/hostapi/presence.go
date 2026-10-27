@@ -56,9 +56,15 @@ func (h *Host) beat() {
 		Working bool `json:"working"`
 	}{Working: h.AgentActive()})
 	tmp := h.peersPath + ".tmp"
-	if os.WriteFile(tmp, raw, 0o600) == nil {
-		_ = os.Rename(tmp, h.peersPath)
+	if os.WriteFile(tmp, raw, 0o600) != nil {
+		// the peers dir can vanish under a running window (a cleanup, a
+		// prune): rebuild it, so presence recovers within a beat instead of
+		// at the next restart
+		if os.MkdirAll(filepath.Dir(h.peersPath), 0o700) == nil {
+			_ = os.WriteFile(tmp, raw, 0o600)
+		}
 	}
+	_ = os.Rename(tmp, h.peersPath)
 	view := peersView{}
 	entries, err := os.ReadDir(filepath.Dir(h.peersPath))
 	if err != nil {

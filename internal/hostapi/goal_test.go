@@ -254,6 +254,85 @@ func TestGoalOnlyFromSetGoal(t *testing.T) {
 	}
 }
 
+// TestGoalChainsOnlyWhereSet: the goal's chain runs in the window that set
+// it. A window that boots on the same store loads the condition, never runs
+// a judge on it, and drops its copy when the row says the goal is gone.
+func TestGoalChainsOnlyWhereSet(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	var aChecks atomic.Int32
+	a.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			if strings.HasPrefix(last, "Judge whether") {
+				if aChecks.Add(1) == 1 {
+					return textParts("BLOCKED: needs a token") // keeps the goal, ends the chain
+				}
+				return textParts("MET: done")
+			}
+			return textParts("worked")
+		}}, nil
+	}
+	if err := a.SetGoal("the tests pass"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a)
+	var row Goal
+	raw, err := a.DB.GetKV(goalKV)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal([]byte(raw), &row) != nil || row.Condition != "the tests pass" || row.Writer != a.origin {
+		t.Fatalf("the goal row = %s, want a's condition under a's writer", raw)
+	}
+	// b boots on the store: it loads the goal and chains none of it
+	b, _ := newWindow(t, state, proj)
+	var bChecks atomic.Int32
+	b.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			if strings.HasPrefix(last, "Judge whether") {
+				bChecks.Add(1)
+				return textParts("MET: x")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	if g, ok := b.Goal(); !ok || g.Condition != "the tests pass" || g.Writer != a.origin {
+		t.Fatalf("b loaded the goal %+v, want a's", g)
+	}
+	if err := b.AgentSend("from b"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, b)
+	if got := bChecks.Load(); got != 0 {
+		t.Fatalf("b ran %d judge asides on a's goal, want none", got)
+	}
+	// the row still names a, and a's chain still runs to its MET
+	if raw, err = a.DB.GetKV(goalKV); err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal([]byte(raw), &row) != nil || row.Writer != a.origin {
+		t.Fatalf("the goal row = %s, want a's writer kept", raw)
+	}
+	if err := a.AgentSend("again"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a)
+	if aChecks.Load() < 2 {
+		t.Fatalf("a's chain ran %d checks, want the met one", aChecks.Load())
+	}
+	if _, err := a.DB.GetKV(goalKV); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the met goal's row survived: %v", err)
+	}
+	// b's copy of the now-gone foreign goal drops without a judge here
+	b.SyncChat()
+	if _, ok := b.Goal(); ok {
+		t.Fatal("b still holds the goal the row dropped")
+	}
+	if got := bChecks.Load(); got != 0 {
+		t.Fatalf("b ran %d judge asides, want none", got)
+	}
+}
+
 func TestParseVerdict(t *testing.T) {
 	for _, c := range []struct {
 		reply string

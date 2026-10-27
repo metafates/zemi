@@ -68,3 +68,32 @@ func TestPeersBeatWritesOwn(t *testing.T) {
 		t.Fatalf("ClosePeers left the heartbeat behind: %v", err)
 	}
 }
+
+// TestPeersBeatRebuildsTheDir: a peers dir deleted under a running window
+// recovers within a beat, own heartbeat first, siblings after.
+func TestPeersBeatRebuildsTheDir(t *testing.T) {
+	h := newTestHostUI(t)
+	h.peersPath = filepath.Join(t.TempDir(), "peers", "key", "mine.json")
+	if err := os.MkdirAll(filepath.Dir(h.peersPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h.beat()
+	if _, err := os.Stat(h.peersPath); err != nil {
+		t.Fatalf("the beat wrote no heartbeat: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Dir(filepath.Dir(h.peersPath))); err != nil {
+		t.Fatal(err)
+	}
+	h.beat()
+	if _, err := os.Stat(h.peersPath); err != nil {
+		t.Fatalf("the beat did not rebuild the peers dir: %v", err)
+	}
+	sibling := filepath.Join(filepath.Dir(h.peersPath), "aaaa.json")
+	if err := os.WriteFile(sibling, []byte(`{"working":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.beat()
+	if got := h.peerView(); got.n != 1 || got.working != 1 {
+		t.Fatalf("beat read %d peers, %d working, want 1 and 1", got.n, got.working)
+	}
+}
