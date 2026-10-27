@@ -106,7 +106,6 @@ cmd_up() {
 		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
 		echo '	models = { { id = "m", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 } } })'
 		echo 'zemi.config.set("models.default", "fake/m")'
-		echo 'zemi.config.set("session.auto_title", false) -- else the title call overwrites last_request.json'
 		[ -n "$THEME" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
 	} >"$TREE/config/init.lua"
 
