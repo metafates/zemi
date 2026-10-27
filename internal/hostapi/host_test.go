@@ -83,7 +83,7 @@ func TestToolStatus(t *testing.T) {
 		want      CallStatus
 	}{
 		{"a finished call", out("package a"), false, tools.Outcome{}, CallOK},
-		{"a dropped memory", outErr("dropped: quote not found in this session's messages"), false, tools.Outcome{}, CallErr},
+		{"a failed call", outErr("boom: exit status 1"), false, tools.Outcome{}, CallErr},
 		{"a job that died", outErr("job-3 failed: exit status 1"), false, tools.Outcome{}, CallErr},
 		{"an ask the user denied", outErr("permission denied (user): fs.write /p/b.go"), false, tools.Outcome{Stopped: true}, CallStopped},
 		{"a question the user dismissed", outErr("The user dismissed the questions. Stop and wait for them to say how to proceed."), false, tools.Outcome{Stopped: true}, CallStopped},

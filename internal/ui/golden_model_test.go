@@ -34,9 +34,9 @@ func TestGoldenModelRoles(t *testing.T) {
 	frame("roles")
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> titles
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> compact
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	frame("titles")
+	frame("compact")
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> haiku

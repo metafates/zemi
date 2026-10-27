@@ -88,7 +88,7 @@ func TestResetChat(t *testing.T) {
 	}
 
 	// a next turn works, and the log restarts at 0 with its summary
-	reflectStub(t, h, "fresh reply")
+	replyStub(t, h, "fresh reply")
 	if err := h.AgentSend("again"); err != nil {
 		t.Fatal(err)
 	}

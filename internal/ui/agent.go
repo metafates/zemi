@@ -1014,7 +1014,7 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 }
 
 // permTarget is the facts table's first row: what a request acts on, as
-// its name and value; no value when the title names it (a tool, a memory).
+// its name and value; no value when the title names it (an mcp tool, a script).
 func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment) {
 	// a path, URL or command wraps at its slashes: its file name, its host
 	// and its pipes are what the user approves

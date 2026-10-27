@@ -937,8 +937,8 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	return h
 }
 
-// TempDir is a directory for the host's own scratch files (a memory the
-// editor opens, a warm diff index).
+// TempDir is a directory for the host's own scratch files (the editor's
+// draft file, a warm diff index).
 func (h *Host) TempDir() (string, error) {
 	if h.Dirs.StateHome == "" {
 		return "", errors.New("no state dir for temp files")

@@ -21,7 +21,7 @@ import (
 // askModel answers "pong" once release is closed; asked closes when the
 // first call arrives, gone when one ends by its cancel.
 type askModel struct {
-	*reflectStubModel
+	*replyStubModel
 	asked, release, gone chan struct{}
 	once                 sync.Once
 }
@@ -70,7 +70,7 @@ func TestModelAsk(t *testing.T) {
 			t.Parallel()
 			h, r := newTestHostPlugin(t, `["model"]`)
 			sid := seedSession(t, h)
-			m := &askModel{reflectStubModel: &reflectStubModel{}, asked: make(chan struct{}), release: make(chan struct{}), gone: make(chan struct{})}
+			m := &askModel{replyStubModel: &replyStubModel{}, asked: make(chan struct{}), release: make(chan struct{}), gone: make(chan struct{})}
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 			done := make(chan error, 1)
 			go func() { done <- chunkAs(t.Context(), h, r, c.origin, ask) }()
@@ -104,7 +104,7 @@ func TestModelAsk(t *testing.T) {
 
 // objModel answers an object call with reply, recording every call it saw.
 type objModel struct {
-	*reflectStubModel
+	*replyStubModel
 	mu    sync.Mutex
 	calls []fantasy.ObjectCall
 	reply func(fantasy.ObjectCall) (*fantasy.ObjectResponse, error)
@@ -157,7 +157,7 @@ func TestModelAskSchema(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
 			sid := seedSession(t, h)
-			m := &objModel{reflectStubModel: &reflectStubModel{}}
+			m := &objModel{replyStubModel: &replyStubModel{}}
 			m.reply = func(fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
 				if c.err != nil {
 					return nil, c.err

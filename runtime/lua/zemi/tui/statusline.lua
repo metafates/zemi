@@ -108,7 +108,6 @@ zemi.ui.widget.add({
 	end,
 })
 
--- Learned proposals waiting for review; they persist across restarts.
 -- The keys of a bound sequence typed so far, waiting for the rest.
 zemi.ui.widget.add({
 	id = "statusline.keys",

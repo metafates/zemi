@@ -309,7 +309,7 @@ func TestPromptPinned(t *testing.T) {
 			h.Dirs.ConfigHome = t.TempDir()
 			h.SetProjectTrusted(true)
 			h.Settings.SetQuiet("models.default", "stub/m")
-			m := reflectStub(t, h, "ok")
+			m := replyStub(t, h, "ok")
 			os.WriteFile(filepath.Join(h.Dirs.ProjectDir, cmp.Or(c.setup, "AGENTS.md")), []byte("run make test"), 0o644)
 			runUser(t, r, `local n = 0
 zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`)

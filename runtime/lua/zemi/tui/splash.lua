@@ -74,7 +74,7 @@ local TIP = TIPS[math.floor(os.time() / 3600) % #TIPS + 1]
 --- init.lua, no model, an untrusted repository, no instruction file, a
 --- first session, else how to go on.
 ---@param ctx zemi.WidgetCtx
----@param listed boolean Recent sessions or projects are listed.
+---@param listed boolean Recent projects are listed.
 ---@return zemi.Segment[]
 local function tip(ctx, listed)
 	---@param text string
@@ -122,7 +122,7 @@ local function lastRow(ctx, room)
 	return row
 end
 
---- The splash rows: the logo, recent sessions to pick up and one tip, each
+--- The splash rows: the logo, recent projects and one tip, each
 --- group centered in ctx.width and the whole a little below the middle of
 --- ctx.height, near the composer.
 ---@param ctx zemi.WidgetCtx

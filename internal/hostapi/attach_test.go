@@ -442,7 +442,7 @@ func TestImagesRefusedContinues(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), tinyPNG(), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			m := reflectStub(t, h, "ok")
+			m := replyStub(t, h, "ok")
 			m.toolStep.Store(50_000)
 			m.failOnce.Store(&fantasy.ProviderError{StatusCode: 400, Message: c.refusal})
 			sender(t, h)("what is in @shot.png")

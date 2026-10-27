@@ -816,7 +816,7 @@ func TestPluginUses(t *testing.T) {
 			h.SetUIHooks(ui)
 			if c.stub {
 				seedSession(t, h)
-				reflectStub(t, h, "pong")
+				replyStub(t, h, "pong")
 			}
 			err := r.ExecuteChunk(t.Context(), strings.NewReplacer("%project%", dir, "%plugin%", own).Replace(c.call), filepath.Join(own, ".zemi", "init.lua"), lua.OriginPlugin)
 			switch {

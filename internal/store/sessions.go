@@ -15,8 +15,8 @@ import (
 var ErrNotFound = errors.New("store: not found")
 
 // ErrSessionGone is returned by the writes that foreign-key to sessions when
-// the session row is missing: another window deleted the session under this
-// one, and only /new moves this window onto a session that exists.
+// the session row is missing: a store deleted under this window, which
+// repeats on every send.
 var ErrSessionGone = errors.New("session was deleted")
 
 // Session is one persisted conversation.

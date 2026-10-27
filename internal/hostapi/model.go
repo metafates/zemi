@@ -483,7 +483,7 @@ func (h *Host) roleModel(name string) string {
 
 // modelRef resolves a model reference, a target name or a provider/model id. A
 // builtin role name stays a name: it is resolved here on every read, so a slot
-// registered with model = "titles" follows models.titles set or picked
+// registered with model = "compact" follows models.compact set or picked
 // later.
 func (h *Host) modelRef(ref string) string {
 	if h.isTarget(ref) {

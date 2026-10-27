@@ -19,7 +19,7 @@ import (
 func TestExportAndCopy(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "pong")
+	replyStub(t, h, "pong")
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestCopyReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reply := "Two:\n\n```go\nx := 1\n```\n\n~~~\ny\n~~~"
-	reflectStub(t, h, reply)
+	replyStub(t, h, reply)
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestCopyReply(t *testing.T) {
 func TestCopyRunReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "pong")
+	replyStub(t, h, "pong")
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestTurnExtras(t *testing.T) {
 		t.Fatalf("diffs = %q", diffs)
 	}
 
-	reflectStub(t, h, "ok")
+	replyStub(t, h, "ok")
 	if err := h.AgentSend("hi"); err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestTokens(t *testing.T) {
 func TestUsageBreaksThePromptDown(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "")
+	replyStub(t, h, "")
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	toolset := h.mainTools()
@@ -379,7 +379,7 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 func TestPromptCommandShowsTheText(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "")
+	replyStub(t, h, "")
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 0 || h.evlog.notes[len(h.evlog.notes)-1].title != "Nothing to show yet" {

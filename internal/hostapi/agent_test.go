@@ -51,7 +51,7 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 func TestCommandSendsTypedLine(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
+	m := replyStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	h.RecordError("lua", "", "boom")
 	h.Dirs.DataHome = t.TempDir()
@@ -664,7 +664,7 @@ func TestHeldCommandPrompt(t *testing.T) {
 func TestFreshTurnPerTurn(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
+	m := replyStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	if err := h.AgentSend("one"); err != nil {
 		t.Fatal(err)
@@ -1177,7 +1177,7 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 func TestTurnPricedWithItsModel(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
-	reflectStub(t, h, "ok")
+	replyStub(t, h, "ok")
 	runUser(t, r, `
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", models = { { id = "cheap" } } })
 		zemi.model.set("p/cheap")
@@ -1383,7 +1383,7 @@ func TestSetModel(t *testing.T) {
 func TestConcurrentSendsQueue(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "ok")
+	replyStub(t, h, "ok")
 	errs := make(chan error, 2)
 	for _, text := range []string{"one", "two"} {
 		go func() { errs <- h.AgentSend(text) }()
@@ -1571,8 +1571,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 2 and ps[1].id == "a" and ps[1].builtin == true and ps[2].builtin == true, "seed")
 	`)
-	if h.roleModel("default") != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
-		t.Fatalf("catalog defaults: %s %s", h.roleModel("default"), h.roleModel("titles"))
+	if h.roleModel("default") != "a/big" || h.roleModel("agents") != "a/big" || !h.Providers.HasKey("a") {
+		t.Fatalf("catalog defaults: %s %s", h.roleModel("default"), h.roleModel("agents"))
 	}
 	reload(`
 		zemi.provider.add({ id = "a", kind = "anthropic", base_url = "http://gw", api_key = "mine", models = { { id = "m" } } })
@@ -1583,8 +1583,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 1 and ps[1].id == "a" and ps[1].builtin == false and ps[1].base_url == "http://gw", "override: " .. #ps)
 	`)
-	if h.roleModel("default") != "a/m" || h.roleModel("titles") != "a/m" {
-		t.Fatalf("user defaults: %s %s", h.roleModel("default"), h.roleModel("titles"))
+	if h.roleModel("default") != "a/m" || h.roleModel("agents") != "a/m" {
+		t.Fatalf("user defaults: %s %s", h.roleModel("default"), h.roleModel("agents"))
 	}
 	reload(`
 		zemi.provider.add({ id = "local", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "q" } } })
@@ -1713,7 +1713,7 @@ func TestBtw(t *testing.T) {
 func TestRecap(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "fixing the build;\n\n  next: run  make check\nignored")
+	m := replyStub(t, h, "fixing the build;\n\n  next: run  make check\nignored")
 	const recap = "Recap: fixing the build; next: run make check"
 	turn := func(tools bool) func() {
 		return func() {

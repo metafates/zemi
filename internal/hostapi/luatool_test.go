@@ -22,9 +22,8 @@ import (
 )
 
 // TestAgentSelfAccess covers what the agent reaches of zemi itself: the lua
-// tool returns prints and values without leaking globals, the scratchpad
-// takes writes without asking, and memory edits apply only when autonomy
-// lets them.
+// tool returns prints and values without leaking globals, and the scratchpad
+// takes writes without asking.
 func TestAgentSelfAccess(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -83,7 +82,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	for _, c := range []struct{ name, script, scan, member string }{
 		{"composer shell", `zemi.composer.set("!touch MARKER") zemi.composer.submit()`, "zemi.composer.set", "composer.set"},
 		{"editor command", `zemi.config.set("editor.command", "touch MARKER; true") zemi.ui.edit("f.txt", {}, function() end)`, "zemi.config.set", "config.set"},
-		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.titles", "e/m")`, "zemi.provider.add", "provider.add"},
+		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.compact", "e/m")`, "zemi.provider.add", "provider.add"},
 		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
 		{"model call", `zemi.model.ask({ prompt = "x" })`, "zemi.model.ask", "model.ask"},

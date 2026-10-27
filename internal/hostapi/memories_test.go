@@ -283,7 +283,7 @@ func TestSeqZeroIsARealMessage(t *testing.T) {
 func TestStampLogSeqs(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "pong")
+	replyStub(t, h, "pong")
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}

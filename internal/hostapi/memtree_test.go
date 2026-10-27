@@ -871,7 +871,7 @@ func TestBuilderBackoff(t *testing.T) {
 func TestOverflowRetrySendsAMergedView(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "done")
+	m := replyStub(t, h, "done")
 	m.overflow.Store(1) // the turn's first request is refused, the retry is not
 	h.SetUIHooks(&fakeUI{})
 	// two hundred long messages: verbatim leaves, but every pair is over the
@@ -934,7 +934,7 @@ func TestBuilderSurvivesACorruptView(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	reflectStub(t, h, "ok")
+	replyStub(t, h, "ok")
 	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}

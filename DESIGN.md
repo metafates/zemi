@@ -112,8 +112,8 @@ Layers and ownership:
   and date tools. `internal/sanitize` strips escapes at the render boundary
   and scrubs secret shapes from files the agent writes.
 - **Store** (`internal/store`): SQLite (the log, the summary tree, the view,
-  sessions as run transcripts, todos, tool-call telemetry, checkpoints,
-  skills, kv; §7), an embedded goose migration set applied on open; a schema
+  sessions as run transcripts, todos, tool-call telemetry, skills, kv; §7),
+  an embedded goose migration set applied on open; a schema
   change is a new numbered file, never a version refusal.
 
 ## 4. Concurrency model

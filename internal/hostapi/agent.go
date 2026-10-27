@@ -42,7 +42,7 @@ type PermRequest struct {
 	Subject string
 	Arg     string
 	Reason  string
-	Preview string // a file tool's unified diff, a script, a memory's text
+	Preview string // a file tool's unified diff, a script, a tool call's input
 	// Description is the model's summary of a command, not checked against it
 	Description string
 	// Agent is the subagent asking, as the prompt names it ("explore
@@ -734,8 +734,8 @@ func (ag *agentHost) spokeClose() {
 }
 
 // notKept reports a store write a turn made that failed. A session deleted
-// under this window repeats on every send, so it is named with its remedy and
-// recorded once; anything else keeps its raw error.
+// under this window repeats on every send, so it is named and recorded once;
+// anything else keeps its raw error.
 func (h *Host) notKept(what string, err error) {
 	if errors.Is(err, store.ErrSessionGone) {
 		h.RecordErrorOnce("agent", "", what+": "+h.friendlyError(err))

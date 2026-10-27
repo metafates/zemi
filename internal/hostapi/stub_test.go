@@ -19,10 +19,10 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// reflectStubModel answers side calls through Generate and turns through
+// replyStubModel answers side calls through Generate and turns through
 // Stream with a fixed text (Stream records the prompt size); object calls
 // refuse.
-type reflectStubModel struct {
+type replyStubModel struct {
 	resp string
 	err  error
 	// how long a call takes, in ns: a race-free read, since a title call
@@ -42,7 +42,7 @@ type reflectStubModel struct {
 	tools      [][]fantasy.Tool    // and its tools
 }
 
-func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+func (m *replyStubModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
 	m.calls.Add(1)
 	m.lastOpts.Store(&call.ProviderOptions)
 	if m.during != nil {
@@ -69,7 +69,7 @@ func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fa
 	}, nil
 }
 
-func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m *replyStubModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	if sideCall(call) {
 		res, err := m.Generate(ctx, call)
 		if err != nil {
@@ -126,24 +126,24 @@ func streamOf(res *fantasy.Response) fantasy.StreamResponse {
 	}
 }
 
-// reflectStub installs m as the model every call resolves to.
-func reflectStub(t *testing.T, h *Host, resp string) *reflectStubModel {
+// replyStub installs m as the model every call resolves to.
+func replyStub(t *testing.T, h *Host, resp string) *replyStubModel {
 	t.Helper()
-	m := &reflectStubModel{resp: resp}
+	m := &replyStubModel{resp: resp}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	return m
 }
 
-func (m *reflectStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+func (m *replyStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *reflectStubModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
+func (m *replyStubModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *reflectStubModel) Provider() string { return "stub" }
-func (m *reflectStubModel) Model() string    { return "stub-1" }
+func (m *replyStubModel) Provider() string { return "stub" }
+func (m *replyStubModel) Model() string    { return "stub-1" }
 
 // sender sends one message and waits for its turn to settle.
 func sender(t *testing.T, h *Host) func(string) {

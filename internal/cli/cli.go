@@ -41,7 +41,7 @@ const envHelp = `{{if not .HasParent}}
 Environment:
   ZEMI_CONFIG_HOME  config: init.lua, skills (~/.config/zemi)
   ZEMI_DATA_HOME    data: plugins, model catalog (~/.local/share/zemi)
-  ZEMI_STATE_HOME   state: sessions, memory, logs (~/.local/state/zemi)
+  ZEMI_STATE_HOME   state: chat databases, logs (~/.local/state/zemi)
   ZEMI_CACHE_HOME   cache: language server builds (~/.cache/zemi)
                     each defaults to $XDG_<NAME>_HOME/zemi when that is set;
                     a relative XDG_<NAME>_HOME is ignored, a relative
@@ -259,7 +259,6 @@ func completionDirs(c *cobra.Command) (config.Dirs, error) {
 	return config.ResolveDirs()
 }
 
-// completeSessions was the -r and export id list; both are gone.
 // completePlugins offers the plugin names: the first argument of the verbs
 // that take one, and test's first may be a directory too.
 func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {

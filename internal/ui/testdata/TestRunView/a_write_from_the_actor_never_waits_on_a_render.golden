@@ -1,18 +1,0 @@
-zemi: warning: tick
-[?2026h[?25l▌ why does TestFlushOrder fail?
-
-│
-│ ⠋ run the flush tests
-│   ⎿ go test ./internal/hostapi
-│
-
- @·· ─────────────────────────────────────────────────────────────────────────── ctrl+c stop · 6s [?2026l[?2026h[7A[J▌ why does TestFlushOrder fail?
-[?25l
-│
-│ ⠋ run the flush tests
-│   ⎿ go test ./internal/hostapi
-│
-
- @·· ─────────────────────────────────────────────────────────────────────────── ctrl+c stop · 6s [?2026l[6A[J[?25h
-  resume   zemi -r 7hq2m4xk
-

@@ -281,7 +281,7 @@ func TestPluginsSend(t *testing.T) {
 			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				t.Fatal(err)
 			}
-			m := reflectStub(t, h, "ok")
+			m := replyStub(t, h, "ok")
 			if !c.headless {
 				h.SetUIHooks(&fakeUI{})
 			}

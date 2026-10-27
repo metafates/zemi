@@ -18,7 +18,7 @@ import (
 
 // sendTurns runs the turns a test names and returns every non-side prompt
 // the stub saw.
-func sendTurns(t *testing.T, h *Host, m *reflectStubModel, texts ...string) [][]fantasy.Message {
+func sendTurns(t *testing.T, h *Host, m *replyStubModel, texts ...string) [][]fantasy.Message {
 	t.Helper()
 	for _, text := range texts {
 		if err := h.AgentSend(text); err != nil {
@@ -107,7 +107,7 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 // gateStub holds the turn's own model calls until the test releases them;
 // side calls (titles, the builder) pass through.
 type gateStub struct {
-	*reflectStubModel
+	*replyStubModel
 	release chan struct{}
 	arrived chan struct{} // closed when the turn's first call reached the model
 	once    sync.Once
@@ -122,7 +122,7 @@ func (g *gateStub) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 			return nil, ctx.Err()
 		}
 	}
-	return g.reflectStubModel.Stream(ctx, call)
+	return g.replyStubModel.Stream(ctx, call)
 }
 
 // TestSteeringLogsAtInjection: a message sent mid-turn logs as a user row
@@ -131,9 +131,9 @@ func (g *gateStub) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 func TestSteeringLogsAtInjection(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	base := reflectStub(t, h, "mid\n\nfinal")
+	base := replyStub(t, h, "mid\n\nfinal")
 	base.toolStep.Store(1) // step 1 ends in a tool call
-	g := &gateStub{reflectStubModel: base, release: make(chan struct{}), arrived: make(chan struct{})}
+	g := &gateStub{replyStubModel: base, release: make(chan struct{}), arrived: make(chan struct{})}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return g, nil }
 	h.SetUIHooks(&fakeUI{})
 	if err := h.AgentSend("start work"); err != nil {
@@ -185,7 +185,7 @@ func TestSteeringLogsAtInjection(t *testing.T) {
 func TestNoteCommandAppends(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
+	m := replyStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	if err := h.Note("chapter one"); err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestNoteCommandAppends(t *testing.T) {
 func TestBuilderWakesOnRealTurns(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
+	m := replyStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	line := strings.Repeat("u", 600) // over the leaf budget: a model call per row
 	for range 4 {
@@ -287,7 +287,7 @@ func dateCall(t *testing.T, h *Host, input string) fantasy.ToolResponse {
 func TestZoomAndDateRoundTrip(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "ok") // the children's model merge reads it
+	replyStub(t, h, "ok") // the children's model merge reads it
 	if err := h.chat.Echo("shell", true, strings.Repeat("e", 20_000)); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestZoomAndDateRoundTrip(t *testing.T) {
 func TestUserImagesZoomBack(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	reflectStub(t, h, "ok")
+	replyStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	msg := fantasy.Message{
 		Role: fantasy.MessageRoleUser,
@@ -408,7 +408,7 @@ func TestUserImagesZoomBack(t *testing.T) {
 func TestLogHoldsTheTurn(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "kept")
+	m := replyStub(t, h, "kept")
 	h.SetUIHooks(&fakeUI{})
 	sendTurns(t, h, m, "hello")
 	logRows, err := h.DB.LogTail(2)
@@ -424,7 +424,7 @@ func TestLogHoldsTheTurn(t *testing.T) {
 func TestToolMarkBudgetOnTheFlow(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "done")
+	m := replyStub(t, h, "done")
 	m.toolStep.Store(1) // the first step ends in a tool call, so a second runs
 	h.SetUIHooks(&fakeUI{})
 	for range 5 { // five lines: two view parts, so the newest stable block is marked

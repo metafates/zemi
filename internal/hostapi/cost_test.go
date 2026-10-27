@@ -122,14 +122,14 @@ func (streamOnly) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse,
 	return streamOf(&fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "a title"}}, FinishReason: fantasy.FinishReasonStop}), nil
 }
 
-// TestGenerateStreams: titles, summaries and the reflector stream, since
-// Anthropic's SDK refuses a large max_tokens without streaming.
+// TestGenerateStreams pins generate's streaming: Anthropic's SDK refuses a
+// large max_tokens without it.
 func TestGenerateStreams(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
 	maxOut := int64(128_000)
-	res, err := h.generate(t.Context(), store.MainSessionID, "Name the conversation:", "hi", &maxOut, nil, "titles")
+	res, err := h.generate(t.Context(), store.MainSessionID, "Name the conversation:", "hi", &maxOut, nil, "compact")
 	if err != nil || res.Response.Content.Text() != "a title" {
 		t.Fatalf("generate = %+v, %v", res, err)
 	}

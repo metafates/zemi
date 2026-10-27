@@ -38,8 +38,8 @@ func (h *Host) SweepBoot() {
 }
 
 // sweepTmp removes the temp files and snapshot stores idle past the
-// scratch TTL: a composer draft, a memory edit or a clip a zemi crash
-// left behind. A snap store a live process writes stays fresh; one idle
+// scratch TTL: a composer draft or a paste a zemi crash left behind. A
+// snap store a live process writes stays fresh; one idle
 // this long is re-warmed by its next snapshot.
 func (h *Host) sweepTmp(dir string) {
 	cutoff := time.Now().Add(-scratchTTL)
