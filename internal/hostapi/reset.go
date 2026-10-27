@@ -85,4 +85,3 @@ func (h *Host) openReset(confirm string) error {
 	})
 	return nil
 }
-
