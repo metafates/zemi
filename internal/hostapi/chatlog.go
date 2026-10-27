@@ -1,8 +1,8 @@
 // chatlog.go is the append-only writer for the main log, the chat that never
-// ends. Kinds: user, agent, tool, echo, work, note. Reasoning is never
-// logged - no method takes it. Every append commits in one store transaction
-// (the log row, its view line and, for the kinds a template can line, the
-// message's own node) and then wakes the builder.
+// ends. Kinds: user, agent, tool, echo, work, note, thought, error, shell.
+// Every append commits in one store transaction (the log row, its view line
+// and, for the kinds a template can line, the message's own node) and then
+// wakes the builder.
 
 package hostapi
 
@@ -30,12 +30,15 @@ import (
 
 // Tool and echo leaves are template-built in the append transaction.
 const (
-	kindUser  = "user"
-	kindAgent = "agent"
-	kindTool  = "tool"
-	kindEcho  = "echo"
-	kindWork  = "work"
-	kindNote  = "note"
+	kindUser    = "user"
+	kindAgent   = "agent"
+	kindTool    = "tool"
+	kindEcho    = "echo"
+	kindWork    = "work"
+	kindNote    = "note"
+	kindThought = "thought"
+	kindError   = "error"
+	kindShell   = "shell"
 )
 
 const (
@@ -91,6 +94,48 @@ func (c *chatLog) Agent(text string) error {
 
 // Note logs a memory from before the chat: a chapter mark.
 func (c *chatLog) Note(text string) error { _, _, err := c.append(kindNote, text, "", ""); return err }
+
+// Thought logs one settled reasoning stretch: its text and the wall time its
+// flush measured, which the rebuilt row and the run digest read back.
+func (c *chatLog) Thought(text string, ms int64) error {
+	meta, err := json.Marshal(struct {
+		MS int64 `json:"ms"`
+	}{ms}, json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	if _, err := c.h.DB.AppendLog(kindThought, text, string(meta), "", thoughtLeaf(text)); err != nil {
+		return err
+	}
+	c.tree.Wake()
+	return nil
+}
+
+// Error logs a failed turn's error row: the text it drew and whether the user
+// cancelled the turn.
+func (c *chatLog) Error(text string, cancelled bool) error {
+	meta, err := json.Marshal(struct {
+		Cancelled bool `json:"cancelled"`
+	}{cancelled}, json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	_, _, err = c.append(kindError, text, string(meta), "")
+	return err
+}
+
+// Shell logs a !command row: the command, its output head and its outcome.
+func (c *chatLog) Shell(cmd, out string, ok bool) error {
+	meta, err := json.Marshal(struct {
+		OK  bool   `json:"ok"`
+		Out string `json:"out"`
+	}{ok, out}, json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	_, _, err = c.append(kindShell, cmd, string(meta), "")
+	return err
+}
 
 // Work logs a subagent's report: the run it reports for and the "[Name]" head
 // it opens with.
@@ -213,6 +258,12 @@ func echoLeaf(name string, ok bool, output string) string {
 		line += ": " + out
 	}
 	return clipBytes(line, nodeBytes)
+}
+
+// thoughtLeaf renders a reasoning stretch's line mechanically: its head.
+// NOTE: sparser than a model line; merges re-compress these later.
+func thoughtLeaf(text string) string {
+	return clipBytes("thought: "+firstText(text, nodeBytes), nodeBytes)
 }
 
 // inputSubject picks the input field that says what the call acted on.

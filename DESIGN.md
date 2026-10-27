@@ -1727,11 +1727,15 @@ log(seq, kind, text, meta_json, parts_json, created_at)  -- the eternal chat: on
                                                          -- append transaction (never AUTOINCREMENT:
                                                          -- the index stays dense; a reset empties
                                                          -- the log and the next append starts at 0);
-                                                         -- kind: user | agent | tool | echo | work | note;
+                                                         -- kind: user | agent | tool | echo | work |
+                                                         -- note | thought | error | shell;
                                                          -- meta_json names a tool row's tool, a work
-                                                         -- row's run and an agent row's turn stat (the
-                                                         -- readout a resumed window draws), parts_json
-                                                         -- replays a message's images
+                                                         -- row's run, a thought row's wall time, an
+                                                         -- error row's cancellation, a shell row's
+                                                         -- outcome and output head, an agent row's
+                                                         -- turn stat (the readout a resumed window
+                                                         -- draws), parts_json replays a message's
+                                                         -- images
 nodes(l, i, text, size, built_at)                        -- the summary tree: node(l,i) covers the 2^l
                                                          -- messages from i*2^l on, one line each;
                                                          -- INSERT OR IGNORE dedupes two windows
@@ -2508,16 +2512,25 @@ never tokens.
 `user` (the user's words, images in `parts_json`), `agent` (zemi's replies),
 `tool` (one call: its name and the input as sent), `echo` (a tool result),
 `work` (a subagent's report, `meta_json` naming the run and the "[Name]"
-head it opens with), `note` (a `/note` line, a chapter mark).
+head it opens with), `note` (a `/note` line, a chapter mark), `thought` (one
+reasoning stretch, `meta_json` the wall time its flush measured), `error` (a
+failed turn's row, `meta_json` whether the user cancelled it) and `shell` (a
+`!command`, `meta_json` its outcome and output head).
 
 - Only append. Every append commits in one transaction (the row, its view
-  line and, for `tool` and `echo`, the message's own node) and then wakes
-  the builder; there is no flush boundary a crash can lose a reply across.
-- Reasoning is never logged: `chatlog.go` takes it nowhere.
+  line and, for `tool`, `echo` and `thought`, the message's own node) and
+  then wakes the builder; there is no flush boundary a crash can lose a reply
+  across.
+- A reasoning stretch logs when the step's message persists, each stretch
+  taking the wall time its flush measured - a retried step never persisted
+  its attempt, so a cut stretch leaves no row behind. The stamping pairs
+  past thought, error and shell rows: they draw from `logRows` with their
+  seq, not from the pairing.
 - A tool result clips to its head and tail, 30,000 characters in all
   (`echoClipChars`); every other long text is never cut, it is logged as
   several sibling rows of about 8,000 characters (`chatSplitChars`), split
-  at a newline when one is near the cut.
+  at a newline when one is near the cut - a thought row excepted: a stretch
+  drew one row live, so one row is what the rebuild draws, however long.
 - `zoom(id, 1)` is what a long row is read back whole with: paged at 8,000
   characters, images replayed from `parts_json`.
 
@@ -2532,9 +2545,10 @@ node(l, i) = node(l-1, 2i) and node(l-1, 2i+1) merged, in at most 512 bytes
 `id+n` (`40+8`) and calls `zoom(40, 8)` to open it. A message that fits in
 512 bytes is its own node verbatim, with no model call; a merge whose
 children's newline join still fits is that join, also with no call. The
-`tool` and `echo` leaves are template-built in the append transaction,
-mechanical lines naming the tool, its outcome and its subject; a NOTE in
-`chatlog.go` names their ceiling, and later merges re-compress them.
+`tool`, `echo` and `thought` leaves are template-built in the append
+transaction, mechanical lines naming the tool, its outcome and its subject,
+a thought's head; a NOTE in `chatlog.go` names their ceiling, and later
+merges re-compress them.
 
 One builder worker per project store (`memTree` in `hostapi/memtree.go`)
 owns the tree state; appends reach it through `Wake`, finished calls

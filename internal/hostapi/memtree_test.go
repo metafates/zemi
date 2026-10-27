@@ -983,7 +983,7 @@ func TestOverflowRetrySendsAMergedView(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	waitFor(t, func() error {
+	waitForWithin(t, time.Minute, func() error {
 		_, err := h.DB.NodeAt(1, 99) // every level-1 pair built
 		return err
 	})

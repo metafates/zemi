@@ -52,10 +52,14 @@ func (h *Host) RunShell(cmd string) {
 		}
 		// the model reads the output as a shell call's, through shellNotes; the
 		// row keeps its head and its tail, where the failure is
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
+		row := ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status}
+		h.AppendChat(row)
 		// the log holds what the model will read of it, an echo beside the
-		// user row it rides in with
+		// shell row the transcript drew
 		if h.chat != nil {
+			if err := h.chat.Shell(row.Text, row.Detail, status != CallErr); err != nil {
+				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+			}
 			if err := h.chat.Echo("!command", status != CallErr, text); err != nil {
 				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
 			}

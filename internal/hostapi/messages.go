@@ -704,6 +704,8 @@ func (h *Host) openLogView(seq int64) error {
 		title, md = "Prompt", true
 	case kindAgent:
 		title, md = "Reply", true
+	case kindThought:
+		title, md = "Thought", true
 	case kindNote:
 		title = "Note"
 	case kindEcho:

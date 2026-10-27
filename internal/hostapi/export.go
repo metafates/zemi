@@ -7,6 +7,7 @@ package hostapi
 
 import (
 	"cmp"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -234,7 +235,7 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 	speaker := ""
 	for _, row := range rows {
 		who := "zemi"
-		if row.Kind == kindUser {
+		if row.Kind == kindUser || row.Kind == kindShell {
 			who = "You"
 		}
 		if who != speaker || who == "You" {
@@ -260,6 +261,31 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 			fmt.Fprintf(b, "\n_%s_\n", text)
 		case kindNote:
 			fmt.Fprintf(b, "\n> _note: %s_\n", text)
+		case kindThought:
+			// reasoning joins the export in full only, as the command says
+			if full {
+				fmt.Fprintf(b, "\n> _thought:_\n")
+				for line := range strings.Lines(text) {
+					fmt.Fprintf(b, "> %s", line)
+				}
+			}
+		case kindError:
+			fmt.Fprintf(b, "\n> _error: %s_\n", strings.ReplaceAll(text, "\n", " "))
+		case kindShell:
+			var meta struct {
+				OK  bool   `json:"ok"`
+				Out string `json:"out"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			if full {
+				fmt.Fprintf(b, "\n**!command**\n")
+				b.WriteString(codeFence("bash", text))
+				if strings.TrimSpace(meta.Out) != "" {
+					b.WriteString(codeFence("", meta.Out))
+				}
+			} else {
+				fmt.Fprintf(b, "- `!%s`\n", clipLine(firstLine(text), 120))
+			}
 		default:
 			fmt.Fprintf(b, "\n%s\n", demoteHeadings(text, level))
 		}

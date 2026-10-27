@@ -95,6 +95,10 @@ type agentHost struct {
 	active    bool
 	textBuf   string
 	reasonBuf string
+	// stretchMS holds the wall time of each reasoning stretch the turn has
+	// flushed since the step began, oldest first: the step's message persists
+	// its reasoning parts in the same order, and each takes the next time.
+	stretchMS []int64
 	// the stream state and transcript length when the current step began: a
 	// provider retry streams the step again from there
 	stepText, stepReason string
@@ -1193,6 +1197,7 @@ func (ag *agentHost) beginTurn() {
 	// no step has started, so a retry before one (compact's) takes nothing
 	// back, the last turn's rows included
 	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought, ag.stepTurnThought = "", "", nil, math.MaxInt, 0, 0
+	ag.stretchMS = nil
 	ag.turnStart = ag.clock.Now()
 	ag.turnThought = 0
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
@@ -1338,7 +1343,11 @@ func (h *Host) flushOutput(stat TurnStat) {
 	ag.endThinking()
 	var rows []ChatMessage
 	if strings.TrimSpace(ag.reasonBuf) != "" {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ag.thought.Milliseconds()}})
+		ms := ag.thought.Milliseconds()
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ms}})
+		// the stretch's time waits for the step's message persist, which logs
+		// the row; a retry re-streams the step and takes the queue back with it
+		ag.stretchMS = append(ag.stretchMS, ms)
 	}
 	done := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == CallRun || t.Status == CallWait })
 	if done < 0 {
@@ -1579,8 +1588,8 @@ func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Durati
 }
 
 // persistMessage persists one main-chat message into the eternal log: the
-// user's words, replies, tool calls and results; reasoning is never logged.
-// A failure costs the log a line, never the turn. A run's session keeps its
+// user's words, replies, thought rows, tool calls and results. A failure
+// costs the log a line, never the turn. A run's session keeps its
 // own rows, wired on the run's runner.
 func (h *Host) persistMessage(msg fantasy.Message) error {
 	if h.chat == nil {
@@ -1625,8 +1634,10 @@ func (h *Host) logChatMessage(msg fantasy.Message) (int64, error) {
 	return -1, nil
 }
 
-// logAssistant logs a step's reply, its tool calls apart: the text as one
-// agent row per stretch, each call its own tool row.
+// logAssistant logs a step's reply, its thought rows and its tool calls
+// apart: the text as one agent row per stretch, each call its own tool row,
+// each reasoning stretch the thought row the live turn drew, in content
+// order.
 func (h *Host) logAssistant(msg fantasy.Message) error {
 	var text strings.Builder
 	flush := func() error {
@@ -1638,7 +1649,13 @@ func (h *Host) logAssistant(msg fantasy.Message) error {
 	}
 	for _, p := range msg.Content {
 		switch p := p.(type) {
-		case fantasy.ReasoningPart: // never logged
+		case fantasy.ReasoningPart:
+			if strings.TrimSpace(p.Text) == "" {
+				break
+			}
+			if err := h.logThought(p.Text); err != nil {
+				return err
+			}
 		case fantasy.TextPart:
 			text.WriteString(p.Text)
 		case fantasy.ToolCallPart:
@@ -1651,6 +1668,20 @@ func (h *Host) logAssistant(msg fantasy.Message) error {
 		}
 	}
 	return flush()
+}
+
+// logThought logs one reasoning stretch with the wall time its flush
+// measured, oldest first; a stretch whose flush never happened (a part a
+// provider added without a flush) reads as no time.
+func (h *Host) logThought(text string) error {
+	var ms int64
+	ag := h.agents
+	ag.mu.Lock()
+	if n := len(ag.stretchMS); n > 0 {
+		ms, ag.stretchMS = ag.stretchMS[0], ag.stretchMS[1:]
+	}
+	ag.mu.Unlock()
+	return h.chat.Thought(text, ms)
 }
 
 // logResults logs a step's tool results as echo rows, each named by the call

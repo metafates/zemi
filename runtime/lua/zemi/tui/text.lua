@@ -302,9 +302,10 @@ function M.digest(rows, first, last)
 			calls[#calls + 1] = m
 		end
 	end
-	-- the turn's thought: reasoning is never logged, so a resumed window has
-	-- no thought rows and reads the turn's total from the stat the reply
-	-- after the run carries (the log's last stretch when the reply was split).
+	-- the turn's thought, when the run drew no thought rows: logs written
+	-- before thoughts were kept have none, and read the turn's total from
+	-- the stat the reply after the run carries (the log's last stretch when
+	-- the reply was split).
 	-- NOTE: a multi-run turn's whole total lands on its last run's digest.
 	local at = last + 1
 	while rows[at] and (rows[at].kind or "") == "" and rows[at].role == "assistant" do

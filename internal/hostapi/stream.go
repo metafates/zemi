@@ -44,6 +44,7 @@ func (s *streamAdapter) StepStart() {
 	ag.mu.Lock()
 	// capped, so a pending row appended later cannot write into the saved slice
 	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought, ag.stepTurnThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought, ag.turnThought
+	ag.stretchMS = nil
 	ag.stepThinking = 0
 	ag.mu.Unlock()
 }
@@ -54,6 +55,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.turnThought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, ag.stepTurnThought, false, 0
+	ag.stretchMS = nil // the failed attempt's stretches re-stream and queue again
 	rows := ag.stepRows
 	ag.retries++
 	ag.retryAt = s.h.now().Add(delay)
@@ -251,8 +253,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		return
 	}
 	// the readout rides the log's last reply row too: a window rebuilt from
-	// the log draws it and the run digest's thought from there, reasoning
-	// being never logged
+	// the log draws it from there, and each stretch's thought from its own row
 	if text != "" && h.chat != nil {
 		if err := h.chat.setReplyStat(stat, thought); err != nil {
 			h.Log.Warn("turn stat not logged", "origin", "agent", "error", err)
@@ -282,6 +283,11 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
+		}
+		if h.chat != nil {
+			if err := h.chat.Error(row.Text, row.Status == CallCancelled); err != nil {
+				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+			}
 		}
 		h.AppendChat(row)
 	} else {

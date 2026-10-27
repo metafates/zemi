@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -441,7 +442,7 @@ func TestUserImagesZoomBack(t *testing.T) {
 	}
 }
 
-// TestLogHoldsTheTurn: the turn's messages land in the log as they happen:
+// TestLogHoldsTheThought: the turn's messages land in the log as they happen:
 // the user's words, the reply.
 func TestLogHoldsTheTurn(t *testing.T) {
 	t.Parallel()
@@ -455,9 +456,41 @@ func TestLogHoldsTheTurn(t *testing.T) {
 	}
 }
 
+// TestLogHoldsTheThought: a reasoning stretch lands in the log as the thought
+// row it drew, ahead of the reply, with the wall time its flush measured.
+func TestLogHoldsTheThought(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	var calls atomic.Int64
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			if calls.Add(1) == 1 {
+				return append(reasoningParts("pondering the ask."), textParts("kept")...)
+			}
+			return textParts("done")
+		}}, nil
+	}
+	h.SetUIHooks(&fakeUI{})
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	rows, err := h.DB.LogTail(3)
+	if err != nil || len(rows) != 3 || rows[0].Kind != kindUser || rows[0].Text != "go" ||
+		rows[1].Kind != kindThought || rows[1].Text != "pondering the ask." ||
+		rows[2].Kind != kindAgent || rows[2].Text != "kept" {
+		t.Fatalf("log rows = %+v, %v", rows, err)
+	}
+	tr := logRows(rows)
+	if len(tr) != 3 || tr[1].Kind != RowReasoning || tr[1].Text != "pondering the ask." ||
+		tr[1].Stat == nil || tr[1].Stat.ThoughtMS < 0 || tr[1].Seq != rows[1].Seq {
+		t.Fatalf("rebuilt rows = %+v", tr)
+	}
+}
+
 // TestResumedWindowKeepsTheTurn: the turn's readout and thought ride the
 // log's reply row, so the window a restart rebuilds from the log draws both,
-// as the live one did (reasoning itself is never logged).
+// as the live one did.
 func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	clock := &fakeClock{now: testEpoch}
 	h := newTestHostUI(t, clock)
@@ -471,6 +504,9 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	hk := h.streamHooks()
 	hk.ReasoningDelta("thinking it over.")
 	clock.set(testEpoch.Add(3 * time.Second))
+	if err := h.chat.Thought("thinking it over.", 3000); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.chat.Tool("read", `{"path":"a.go"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -499,11 +535,78 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 		reply.Stat.Out != 895 || reply.Stat.ElapsedMS != 3000 || reply.Stat.ThoughtMS != 3000 || reply.Stat.Ended == 0 {
 		t.Fatalf("the rebuilt reply lost the turn's stat: %+v", reply.Stat)
 	}
+	thought := tr[len(tr)-3]
+	if thought.Kind != RowReasoning || thought.Text != "thinking it over." ||
+		thought.Stat == nil || thought.Stat.ThoughtMS != 3000 || thought.Seq == 0 {
+		t.Fatalf("the rebuilt thought row is not the one the turn drew: %+v", thought)
+	}
 	got := widgetText(t, h, "chat", 80, UIState{})
 	for _, want := range []string{"thought 3.0s", "acme-gateway/big", "895 out"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the resumed window lost %q:\n%s", want, got)
 		}
+	}
+}
+
+// TestResumedWindowKeepsTheFailuresAndCommands: a failed turn's error row and
+// a !command row land in the log, so the window a restart rebuilds from the
+// log draws them as the live one did.
+func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{})
+	// a turn that fails: the error row is the only record of it
+	if _, err := h.chat.User("go", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
+	(&streamAdapter{h: h}).TurnDone(errors.New("the provider failed"), fantasy.Usage{})
+	// the user's own command, which logs beside the echo the model reads
+	h.RunShell("echo hi")
+	waitFor(t, func() error {
+		rows, err := h.DB.LogKindBack(kindShell, 1)
+		if err != nil || len(rows) == 0 {
+			return fmt.Errorf("the shell row has not landed: %w", err)
+		}
+		return nil
+	})
+	live := h.Session().Transcript
+	var liveErr, liveShell *ChatMessage
+	for i := range live {
+		if live[i].Kind == RowError {
+			liveErr = &live[i]
+		}
+		if live[i].Kind == RowShell {
+			liveShell = &live[i]
+		}
+	}
+	if liveErr == nil || liveShell == nil {
+		t.Fatalf("the live window holds no error and shell rows: %+v", live)
+	}
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	tr := h.Session().Transcript
+	var gotErr, gotShell *ChatMessage
+	for i := range tr {
+		if tr[i].Kind == RowError {
+			gotErr = &tr[i]
+		}
+		if tr[i].Kind == RowShell {
+			gotShell = &tr[i]
+		}
+	}
+	if gotErr == nil || gotErr.Text != liveErr.Text || gotErr.Status != liveErr.Status {
+		t.Fatalf("the rebuilt error row is not the one the turn drew: %+v want %+v", gotErr, liveErr)
+	}
+	if gotShell == nil || gotShell.Text != liveShell.Text || gotShell.Detail != liveShell.Detail || gotShell.Status != liveShell.Status {
+		t.Fatalf("the rebuilt shell row is not the one the command drew: %+v want %+v", gotShell, liveShell)
+	}
+	got := widgetText(t, h, "chat", 80, UIState{})
+	if !strings.Contains(got, firstLine(liveErr.Text)) || !strings.Contains(got, liveShell.Text) {
+		t.Fatalf("the resumed window lost the failure or the command:\n%s", got)
 	}
 }
 

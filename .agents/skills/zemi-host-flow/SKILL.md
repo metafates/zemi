@@ -229,16 +229,21 @@ applied one. A store made before goose only gains its version table: the baselin
 - **The eternal chat** (`chatlog.go`): every main-chat message persists into the `log` table
   (`persistMessage` -> `logChatMessage`), a failure costing the log a line, never the turn.
   A reply is agent rows per text stretch, each call its own tool row, each result an echo
-  row; reasoning is never logged. A text past 8,000 characters (`chatSplitChars`) is logged
-  as several sibling rows; an echo clips to 30,000 (`echoClipChars`). Every append commits in
-  one transaction and wakes the builder. `Host.Note` appends a note row (`/note`), mid-turn
-  included. A turn's readout rides its last reply row's meta (`chatLog.setReplyStat` at
-  `TurnDone`, the model, tokens, wall time, ended clock and the turn's whole thought), which
-  `logRows` reads back: reasoning is never logged, so a window rebuilt from the log draws the
-  readout and the run digest's thought from that row.
+  row, each reasoning stretch a thought row logged as the step's message persists (its
+  `stretchMS` queue gives it the wall time its flush measured, and a retried step re-streams
+  without leaving a row). A text past 8,000 characters (`chatSplitChars`) is logged
+  as several sibling rows; an echo clips to 30,000 (`echoClipChars`); a thought row is one
+  row however long. Every append commits in one transaction and wakes the builder. `Host.Note`
+  appends a note row (`/note`), mid-turn included. A turn's readout rides its last reply
+  row's meta (`chatLog.setReplyStat` at `TurnDone`, the model, tokens, wall time, ended clock
+  and the turn's whole thought), which `logRows` reads back; thought, error and `!command`
+  (`shell`) rows draw from it too, so a window rebuilt from the log holds every row the live
+  one drew. The stamping pairs past those rows - they draw with their seq, not from the
+  pairing - and the digest's thought falls back to the reply stat only where a log predates
+  thought rows.
 - **The builder** (`memtree.go`): one worker per store owns the tree state. Leaves are
-  message lines (a message of at most 512 bytes its own node verbatim; the tool and echo
-  leaves template-built in the append transaction), merges join siblings, and both go out as
+  message lines (a message of at most 512 bytes its own node verbatim; the tool, echo and
+  thought leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
   Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with the
   shortest fitting line kept; a failed build retries on a doubling backoff and parks after

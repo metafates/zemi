@@ -114,8 +114,8 @@ func (h *Host) stampLogSeqs() {
 	consumed := 0
 	for _, row := range rows {
 		if row.Kind != kindUser && row.Kind != kindAgent && row.Kind != kindTool {
-			// a result, report or note draws no row of its own: the cursor
-			// passes it, nothing pairs with it
+			// a result, report, note, thought, error or shell row pairs with
+			// nothing: the cursor passes it
 			consumed++
 			continue
 		}
@@ -174,7 +174,8 @@ func (h *Host) stampReset(tr []ChatMessage) {
 
 // stampable reports whether a transcript row comes from a log row the
 // stamping can name: the user's words, a reply's stretch, a tool call.
-// Notices, thoughts, errors and !commands have no log row of their own.
+// Notices, thoughts, errors and !commands draw rows the stamping pairs past:
+// a notice has no log row, the others read theirs back by seq in logRows.
 func stampable(m ChatMessage) bool {
 	if m.Kind == RowTool {
 		return true
@@ -184,7 +185,8 @@ func stampable(m ChatMessage) bool {
 
 // logRows converts log rows into the transcript rows the chat draws: a user
 // or agent message its text, a tool call and its echo one row, a work report
-// a notice naming the run. Notes draw nothing: zoom reaches them.
+// a notice naming the run, a thought, an error or a !command its own row.
+// Notes draw nothing: zoom reaches them.
 func logRows(rows []store.LogEntry) []ChatMessage {
 	tr := make([]ChatMessage, 0, len(rows))
 	for i, row := range rows {
@@ -197,6 +199,33 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			if s := strings.TrimSpace(row.Text); s != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Seq: row.Seq, Stat: replyMeta(row.MetaJSON)})
 			}
+		case kindThought:
+			var meta struct {
+				MS int64 `json:"ms"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: row.Text, Stat: &TurnStat{ThoughtMS: meta.MS}, Seq: row.Seq})
+		case kindError:
+			var meta struct {
+				Cancelled bool `json:"cancelled"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: row.Text, Seq: row.Seq}
+			if meta.Cancelled {
+				m.Status = CallCancelled
+			}
+			tr = append(tr, m)
+		case kindShell:
+			var meta struct {
+				OK  bool   `json:"ok"`
+				Out string `json:"out"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			status := CallOK
+			if !meta.OK {
+				status = CallErr
+			}
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: row.Text, Detail: meta.Out, Status: status, Seq: row.Seq})
 		case kindTool:
 			name := rowTool(row)
 			var out string
