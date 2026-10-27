@@ -2034,6 +2034,9 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		if strings.TrimSpace(prompt) == "" {
 			L.RaiseError("zemi.agent.run: prompt is required")
 		}
+		h.luaGate(L, luaAgentRun, clipRunes(prompt, 40), func() map[string]any {
+			return map[string]any{"prompt": prompt, "agent": rawString(L, spec, "agent")}
+		})
 		def, err := h.agentDef(rawString(L, spec, "agent"))
 		if err != nil {
 			L.RaiseError("zemi.agent.run: %v", err)

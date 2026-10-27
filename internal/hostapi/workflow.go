@@ -2114,6 +2114,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		if strings.TrimSpace(src) == "" {
 			L.RaiseError("zemi.workflow.run: script or name is required")
 		}
+		h.luaGate(L, luaWorkflowRun, cmp.Or(rawString(L, spec, "name"), "(script)"), nil)
 		args, err := lua.ToGo(spec.RawGetString("args"))
 		if err != nil {
 			L.RaiseError("zemi.workflow.run: args: %v", err)

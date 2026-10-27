@@ -24,7 +24,8 @@ Everything zemi runs or reads as Lua goes under `.zemi/`; the layer dirs stay at
 | name | what it grants |
 | --- | --- |
 | `model` | `zemi.model.ask`, `zemi.classify.ask`: a model call, billed to the user |
-| `agent` | `zemi.agent.send`: text into the model's conversation |
+| `agent` | `zemi.agent.send`, `zemi.agent.run`: text into the model's conversation; a detached run of an agent |
+| `workflow` | `zemi.workflow.run`: a workflow run, whose agents are model calls |
 | `http` | `zemi.http.*`: a request to any URL |
 | `job` | `zemi.job.start`: a command |
 | `fs.write` | a `zemi.fs` write, to any path: with it a plugin can rewrite the user's config and skills, so it runs with the user's own power |

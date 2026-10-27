@@ -128,16 +128,20 @@ const (
 	luaModelAsk    = "lua.model.ask"
 	luaClassifyAsk = "lua.classify.ask"
 	luaAgentSend   = "lua.agent.send"
+	luaAgentRun    = "lua.agent.run"
+	luaWorkflowRun = "lua.workflow.run"
 	luaJobStart    = "lua.job.start"
 	luaHTTP        = "lua.http." // a prefix: one subject per method
 )
 
 // pluginCaps is the capability each gated subject needs declared, keyed by
-// subject prefix: every lua.http.<method> and every tool.<name> share one row.
+// subject prefix: every lua.http.<method>, every tool.<name> and every
+// lua.agent.* call share one row.
 var pluginCaps = []struct{ prefix, cap string }{
 	{luaModelAsk, plugin.CapModel},
 	{luaClassifyAsk, plugin.CapModel},
-	{luaAgentSend, plugin.CapAgent},
+	{"lua.agent.", plugin.CapAgent},
+	{luaWorkflowRun, plugin.CapWorkflow},
 	{luaFSWrite, plugin.CapFSWrite},
 	{luaHTTP, plugin.CapHTTP},
 	{"tool.", plugin.CapTool},

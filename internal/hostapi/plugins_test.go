@@ -85,7 +85,7 @@ func TestPluginsStep(t *testing.T) {
 				"local/a/.zemi/plugin.json": `{"uses": ["http", "fs.read"]}`,
 			},
 			want: []string{
-				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, model, perm, tool`,
+				`plugin a: uses "fs.read" is not a capability; the valid ones are agent, fs.write, http, job, model, perm, tool, workflow`,
 				"health: 1 plugin: 1 failed, 0 ready",
 			},
 			not: []string{"a ran"},
@@ -682,6 +682,9 @@ func TestPluginCapVocabulary(t *testing.T) {
 		cap     string
 	}{
 		{"lua.job.start", "job"},
+		{"lua.agent.send", "agent"},
+		{"lua.agent.run", "agent"},
+		{"lua.workflow.run", "workflow"},
 		{"lua.fs.read", ""},  // a read is not declarable
 		{"zemi.env.get", ""}, // nor is the plugin's own env
 	} {
@@ -789,6 +792,26 @@ func TestPluginUses(t *testing.T) {
 			name: "an undeclared agent send is refused",
 			call: `zemi.agent.send("hi")`,
 			err:  `plugin a declares no "agent"`,
+		},
+		{
+			name: "a declared agent run settles", uses: `["agent"]`, stub: true,
+			call: `local text, err = zemi.agent.run({ prompt = "ping" }):wait()
+				assert(text == "pong", tostring(err))`,
+		},
+		{
+			name: "an undeclared agent run is refused",
+			call: `zemi.agent.run({ prompt = "ping" })`,
+			err:  `plugin a declares no "agent"`,
+		},
+		{
+			name: "a declared workflow run settles", uses: `["workflow"]`, stub: true,
+			call: `local res, err = zemi.workflow.run({ script = "return 'pong'" }):wait()
+				assert(res == "pong", tostring(err))`,
+		},
+		{
+			name: "an undeclared workflow run is refused",
+			call: `zemi.workflow.run({ script = "return 1" })`,
+			err:  `plugin a declares no "workflow"`,
 		},
 		{
 			name: "a declared write settles", uses: `["fs.write"]`,
