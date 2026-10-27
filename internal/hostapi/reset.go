@@ -62,16 +62,25 @@ func (h *Host) ResetChat(yes bool) error {
 		h.Log.Warn("todo list not cleared", "origin", "reset", "error", err)
 	}
 	h.todosStale.Store(true)
-	h.resetTodoNag(nil)
-	h.goalDropped()
-	ag.mu.Lock()
-	ag.runner, ag.turnModel, ag.turnSeq = nil, "", -1
-	ag.lastIn = 0
-	ag.mu.Unlock()
-	h.forgetInstructions()
+	h.chatDropped()
 	h.setTranscriptFromLog()
 	h.Notify(slog.LevelInfo, "Chat reset", "the log, its summary tree and the view start over")
 	return nil
+}
+
+// chatDropped drops what belongs to the chat that is gone, so the window it
+// left is fresh: a reset's wipe and another window's reset (SyncChat's
+// shrink) both end the chat this way.
+func (h *Host) chatDropped() {
+	ag := h.agents
+	ag.mu.Lock()
+	ag.runner, ag.turnModel = nil, ""
+	ag.lastIn = 0
+	ag.shellNotes = nil
+	ag.mu.Unlock()
+	h.resetTodoNag(nil)
+	h.goalDropped()
+	h.forgetInstructions()
 }
 
 // openReset is the screen /reset asks through: one row, whose key AskFirst

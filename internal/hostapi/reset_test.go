@@ -6,6 +6,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -28,6 +29,7 @@ func TestResetChat(t *testing.T) {
 	}
 	h.agents.mu.Lock()
 	h.agents.goal = &Goal{Condition: "hold", SetAt: 0}
+	h.agents.shellNotes = []string{agent.AttachElement(`shell command="make test" status="0"`, "ok")}
 	h.agents.mu.Unlock()
 
 	// a provider that never answers holds the turn open
@@ -80,6 +82,9 @@ func TestResetChat(t *testing.T) {
 	}
 	if _, ok := h.Goal(); ok {
 		t.Fatal("the goal survived the reset")
+	}
+	if notes := h.takeShellNotes(); notes != "" {
+		t.Fatalf("shell output from the wiped chat survived: %q", notes)
 	}
 	if todos := h.todoSnapshot(); len(todos) != 0 {
 		t.Fatalf("todos %+v survived the reset", todos)

@@ -66,6 +66,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
+	h.foreignPend = nil
 	h.tMu.Unlock()
 	// the loaded pages and the stamping cursor speak the cut log's shape, and
 	// the window is stamped whole from the log
@@ -75,6 +76,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.stampReset(tr)
 	h.scroll(ScrollBottom, "")
 	h.refresh()
+	h.refreshMessages()
 }
 
 // stampedTail is the seq the transcript's stamping resumes from: the last
@@ -218,6 +220,8 @@ func (h *Host) SyncChat() {
 		h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
 		h.foreignPend = nil
 		h.tMu.Unlock()
+		h.chatDropped()
+		h.refreshMessages()
 		h.scroll(ScrollBottom, "")
 		h.refresh()
 		h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")

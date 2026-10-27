@@ -280,12 +280,11 @@ func goalNotice(ev goalEvent, reason, detail string) (ChatMessage, bool) {
 func (h *Host) goalDropped() {
 	ag := h.agents
 	ag.mu.Lock()
-	g := ag.goal
 	ag.goal = nil
 	ag.mu.Unlock()
-	if g != nil {
-		h.storeGoal(nil)
-	}
+	// the row dies with the chat even when this window held none: a window
+	// without the goal may be the one resetting the shared store
+	h.storeGoal(nil)
 }
 
 // goalReason is a check's verdict as the goal row names it.

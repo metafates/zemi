@@ -10,6 +10,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -109,14 +110,25 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 			t.Fatalf("b's window holds an unstamped row: %+v", m)
 		}
 	}
-	// a foreign reset wipes under this window: it reloads whole, and the
-	// reset names itself
+	// a foreign reset wipes under this window: it reloads whole, the goal
+	// this window held drops with its kv row, and the reset names itself
+	g := &Goal{Condition: "the tests pass", SetAt: 0}
+	a.agents.mu.Lock()
+	a.agents.goal = g
+	a.agents.mu.Unlock()
+	a.storeGoal(g)
 	if err := b.ResetChat(true); err != nil {
 		t.Fatal(err)
 	}
 	a.SyncChat()
 	if got := windowText(a); len(got) != 0 {
 		t.Fatalf("a's window after the foreign reset = %q, want empty", got)
+	}
+	if _, ok := a.Goal(); ok {
+		t.Fatal("the goal survived the foreign reset")
+	}
+	if _, err := a.DB.GetKV("goal"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the goal's kv row survived the foreign reset: %v", err)
 	}
 	if got := ui.titles(); len(got) == 0 || got[len(got)-1] != "Chat reset by another window" {
 		t.Fatalf("a's toasts after the foreign reset = %q", got)
