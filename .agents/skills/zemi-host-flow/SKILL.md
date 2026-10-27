@@ -322,7 +322,10 @@ applied one. A store made before goose only gains its version table: the baselin
 - **The chat window** (session.go): the live transcript is the log's last `chatWindowRows`
   (1000) settled rows (`LogTail` at boot, `setTranscriptFromLog` after a reset), appended to
   and replaced whole; `InputHistory` reads the log's user rows. `historyFrom` decodes a run's
-  stored messages into model history and transcript rows for its child session.
+  stored messages into model history and transcript rows for its child session. A second
+  window's rows carry a different log `origin`, which the seq stamping skips and `SyncChat`
+  (the config watch's idle tick) splices into this window at their place, so two windows on
+  one repository draw the one chat the log keeps; a foreign reset reloads this window whole.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
   order (reasoning after a call or a reply, a call after a reply), and at every tool call that

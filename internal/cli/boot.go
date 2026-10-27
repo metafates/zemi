@@ -110,6 +110,7 @@ func launch(o options) int {
 			for range time.Tick(time.Second) {
 				if !host.AgentActive() {
 					host.ReloadIfChanged()
+					host.SyncChat()
 				}
 			}
 		})

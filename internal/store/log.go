@@ -13,6 +13,7 @@ import (
 
 // LogEntry is one row of the log: one message, word for word. Kind is user,
 // agent, tool, echo, work or note.
+// LogEntry is one row of the eternal chat's log.
 type LogEntry struct {
 	Seq       int64
 	Kind      string
@@ -20,6 +21,7 @@ type LogEntry struct {
 	MetaJSON  string // "" when none
 	PartsJSON string // "" when none
 	CreatedAt string
+	Origin    string // the window that wrote it; '' predates the column
 }
 
 // Node is one built summary: node(L,I) covers the 2^L messages from I*2^L on
@@ -53,6 +55,11 @@ type ViewMerge struct {
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
+// Origin is the writer id this DB's log rows carry, set by the host once at
+// open: two windows share one repository's log, and the live pairing tells
+// their rows apart by it. ” stamps rows for a store no host claimed.
+var _ = 0
+
 // AppendLog appends one chat row and its view line in one transaction and
 // returns the row's seq: max+1 inside the transaction, so a tail cut leaves
 // the index dense. When nodeText is not "", the message's own node lands
@@ -61,10 +68,10 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 func (s *DB) AppendLog(kind, text, metaJSON, partsJSON, nodeText string) (int64, error) {
 	var seq int64
 	err := s.inTx(func(tx *sql.Tx) error {
-		err := tx.QueryRow(`INSERT INTO log (seq, kind, text, meta_json, parts_json, created_at)
-			VALUES ((SELECT COALESCE(MAX(seq), -1) + 1 FROM log), ?, ?, ?, ?, ?)
+		err := tx.QueryRow(`INSERT INTO log (seq, kind, text, meta_json, parts_json, created_at, origin)
+			VALUES ((SELECT COALESCE(MAX(seq), -1) + 1 FROM log), ?, ?, ?, ?, ?, ?)
 			RETURNING seq`,
-			kind, text, nullString(metaJSON), nullString(partsJSON), nowStamp()).Scan(&seq)
+			kind, text, nullString(metaJSON), nullString(partsJSON), nowStamp(), s.Origin).Scan(&seq)
 		if err != nil {
 			return fmt.Errorf("store: append log: %w", err)
 		}
@@ -82,10 +89,10 @@ func (s *DB) AppendLog(kind, text, metaJSON, partsJSON, nodeText string) (int64,
 	return seq, err
 }
 
-const logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at`
+const logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at, COALESCE(origin, '')`
 
 func scanLog(r scanner) (e LogEntry, err error) {
-	err = r.Scan(&e.Seq, &e.Kind, &e.Text, &e.MetaJSON, &e.PartsJSON, &e.CreatedAt)
+	err = r.Scan(&e.Seq, &e.Kind, &e.Text, &e.MetaJSON, &e.PartsJSON, &e.CreatedAt, &e.Origin)
 	return e, err
 }
 
@@ -97,7 +104,7 @@ func (s *DB) LogFrom(seq int64, limit int) ([]LogEntry, error) {
 
 // LogTail reads the last n rows, oldest first.
 func (s *DB) LogTail(n int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at
+	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
 		FROM log ORDER BY seq DESC LIMIT ?) ORDER BY seq`, n)
 	return collect(rows, err, scanLog)
 }
@@ -105,7 +112,7 @@ func (s *DB) LogTail(n int) ([]LogEntry, error) {
 // LogKindBack reads the last n rows of one kind, oldest first: the composer
 // history's user rows.
 func (s *DB) LogKindBack(kind string, limit int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at
+	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
 		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
 	return collect(rows, err, scanLog)
 }

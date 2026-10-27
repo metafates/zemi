@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -554,6 +556,12 @@ type Host struct {
 	stampFrom int64
 	stampRow  int
 
+	// origin is this window's writer id, what its log rows carry and the
+	// pairing tells its rows apart by; foreignPend buffers the other
+	// windows' rows the pairing passed, for syncChat to splice in.
+	origin      string
+	foreignPend []store.LogEntry
+
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that
 	// moved. The Lua actor goroutine fills it, like the renders, and the gen
@@ -907,6 +915,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
 	if h.DB != nil {
+		// the window names itself in its log rows, so a second window's
+		// pairing tells the rows apart and syncChat splices its own in
+		h.origin = originID()
+		h.DB.Origin = h.origin
 		h.chat = newChatLog(context.Background(), h)
 		// the window opens on the log's tail: the chat that never ends has
 		// no resume, only more of itself
@@ -955,6 +967,17 @@ func (h *Host) TempDir() (string, error) {
 	}
 	dir := filepath.Join(h.Dirs.StateHome, "tmp")
 	return dir, os.MkdirAll(dir, 0o700)
+}
+
+// originID is a window's writer id for the log rows it writes: two windows
+// on one repository pair their live transcripts against the same log, and
+// each must tell the other's rows from its own.
+func originID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("w%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // now is the time Lua sees (lua.Clock): a toast's, a log line's, a render's.

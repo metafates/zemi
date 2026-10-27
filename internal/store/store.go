@@ -34,6 +34,11 @@ import (
 type DB struct {
 	db   *sql.DB
 	path string // named in errors: there is a global and a per-project one
+
+	// Origin is the writer id this process's log rows carry: two windows
+	// share one repository's log, and the live pairing tells their rows
+	// apart by it. Empty until the host names itself at open.
+	Origin string
 }
 
 // Open creates the parent directory if needed and opens the database with

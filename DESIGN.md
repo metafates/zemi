@@ -1794,7 +1794,12 @@ named in the dir's `root` file (read only when it hashes to the dir's
 name), the same repository identity trust uses, so a subdirectory or a
 linked worktree opens the same chat rather than a blank store. The log is
 never swept - it is the memory - and the boot reads only its last
-`chatWindowRows` (1000) rows into the live transcript.
+`chatWindowRows` (1000) rows into the live transcript. Every log row
+carries the writer window's `origin`, so the second window's live pairing
+tells its rows from the first's, and the config watch's idle tick syncs
+the other window's rows into this one's transcript at their place: two
+windows on one repository draw the one chat it keeps, in the order a
+restart reads, and a foreign reset reloads the window whole.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,

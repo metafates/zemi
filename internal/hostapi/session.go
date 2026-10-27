@@ -99,6 +99,14 @@ func (h *Host) stampLogSeqs() {
 	}
 	h.tMu.Lock()
 	defer h.tMu.Unlock()
+	h.stampLogSeqsLocked()
+}
+
+// stampLogSeqsLocked is stampLogSeqs with tMu held. Rows another window
+// wrote pair with nothing here: they buffer in foreignPend for syncChat to
+// splice in at their place, and the pairing cursor passes them like the
+// kinds it pairs with nothing.
+func (h *Host) stampLogSeqsLocked() {
 	tr := h.session.Transcript
 	rows, err := h.DB.LogFrom(h.stampFrom, stampBatch)
 	if err != nil || len(rows) == 0 {
@@ -113,6 +121,12 @@ func (h *Host) stampLogSeqs() {
 	w := min(h.stampRow, len(tr))
 	consumed := 0
 	for _, row := range rows {
+		if row.Origin != h.origin {
+			// another window's row: never this transcript's to stamp
+			h.foreignPend = append(h.foreignPend, row)
+			consumed++
+			continue
+		}
 		if row.Kind != kindUser && row.Kind != kindAgent && row.Kind != kindTool {
 			// a result, report, note, thought, error or shell row pairs with
 			// nothing: the cursor passes it
@@ -170,6 +184,69 @@ func (h *Host) stampReset(tr []ChatMessage) {
 	h.stampRow = len(tr)
 	h.stampFrom = h.stampedTail(tr)
 	h.tMu.Unlock()
+}
+
+// SyncChat pulls what other windows appended to the shared log into this
+// window's transcript, on the config watch's idle tick: two windows on one
+// repository are the one chat it keeps, and the log's newest word is the
+// truth. A live turn or run owns the tail, so the tick's own AgentActive
+// guard covers it. A log that shrank under this window is another window's
+// reset: the window reloads whole, the way its own reset left it.
+func (h *Host) SyncChat() {
+	if h.DB == nil || h.DB.Origin == "" {
+		return
+	}
+	h.tMu.Lock()
+	count, err := h.DB.LogCount()
+	if err != nil {
+		h.tMu.Unlock()
+		return
+	}
+	if count < h.stampFrom {
+		// the log shrank under this window's cursor: another window reset
+		rows, err := h.DB.LogTail(chatWindowRows)
+		if err != nil {
+			h.tMu.Unlock()
+			return
+		}
+		h.session.Transcript, h.view = logRows(rows), nil
+		h.trEpoch.Add(1)
+		h.msgMu.Lock()
+		h.msgOld, h.msgFrom = nil, -1
+		h.msgMu.Unlock()
+		h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
+		h.foreignPend = nil
+		h.tMu.Unlock()
+		h.scroll(ScrollBottom, "")
+		h.refresh()
+		return
+	}
+	h.stampLogSeqsLocked()
+	foreign := h.foreignPend
+	h.foreignPend = nil
+	if len(foreign) > 0 {
+		tr := h.session.Transcript
+		for _, row := range foreign {
+			// splice at the row's place in the log, so the window draws the
+			// order a restart reads
+			at := len(tr)
+			for i, m := range tr {
+				if m.Seq != NoSeq && m.Seq > row.Seq {
+					at = i
+					break
+				}
+			}
+			tr = slices.Insert(tr, at, logRows([]store.LogEntry{row})...)
+		}
+		h.session.Transcript = tr
+		h.trEpoch.Add(1)
+		// the spliced rows arrive stamped: the pairing claims them whole
+		h.stampRow = len(tr)
+	}
+	h.tMu.Unlock()
+	if len(foreign) > 0 {
+		h.refresh()
+	}
 }
 
 // stampable reports whether a transcript row comes from a log row the
