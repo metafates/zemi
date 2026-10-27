@@ -9,6 +9,7 @@ package agent
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -84,4 +85,23 @@ func (m rateModel) StreamObject(ctx context.Context, call fantasy.ObjectCall) (f
 		return nil, err
 	}
 	return m.LanguageModel.StreamObject(ctx, call)
+}
+
+// PaceTransport wraps a transport in the limiter's wait, so a raw-HTTP
+// caller (classify's provider protocol) shares the pace the models go
+// through.
+func PaceTransport(l *rateLimiter, base http.RoundTripper) http.RoundTripper {
+	return paceTransport{base: base, limiter: l}
+}
+
+type paceTransport struct {
+	base    http.RoundTripper
+	limiter *rateLimiter
+}
+
+func (p paceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := p.limiter.wait(req.Context()); err != nil {
+		return nil, err
+	}
+	return p.base.RoundTrip(req)
 }

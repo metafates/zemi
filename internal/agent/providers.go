@@ -939,25 +939,50 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 	}
 	r.mu.RLock()
 	l, ok := r.limits[prov]
+	spec, has := r.lookupLocked(prov)
 	r.mu.RUnlock()
-	if ok {
+	// the limiter rides the spec: a reload that changes or drops rate_limit
+	// must not keep pacing at the old rate through a stale limiter
+	if !has || spec.RateLimit <= 0 {
+		return m, nil
+	}
+	if ok && l.perMin == float64(spec.RateLimit) {
 		return rateModel{LanguageModel: m, limiter: l}, nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	spec, ok := r.lookupLocked(prov)
-	if !ok || spec.RateLimit <= 0 {
+	spec, has = r.lookupLocked(prov)
+	if !has || spec.RateLimit <= 0 {
 		return m, nil
 	}
+	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(prov, spec.RateLimit)}, nil
+}
+
+// sharedLimiterLocked returns the provider's one bucket for this rate,
+// replacing a stale one a changed spec left behind; r.mu is held for writing.
+func (r *Registry) sharedLimiterLocked(providerID string, perMin int) *rateLimiter {
 	if r.limits == nil {
 		r.limits = map[string]*rateLimiter{}
 	}
-	if l, ok := r.limits[prov]; ok {
-		return rateModel{LanguageModel: m, limiter: l}, nil
+	l, ok := r.limits[providerID]
+	if !ok || l.perMin != float64(perMin) {
+		l = newRateLimiter(perMin)
+		r.limits[providerID] = l
 	}
-	l = newRateLimiter(spec.RateLimit)
-	r.limits[prov] = l
-	return rateModel{LanguageModel: m, limiter: l}, nil
+	return l
+}
+
+// Limiter is the provider's shared pace for a raw-HTTP caller (classify's
+// provider protocol), nil when unpaced: the same bucket the models resolve
+// to.
+func (r *Registry) Limiter(providerID string) *rateLimiter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	spec, ok := r.lookupLocked(providerID)
+	if !ok || spec.RateLimit <= 0 {
+		return nil
+	}
+	return r.sharedLimiterLocked(providerID, spec.RateLimit)
 }
 
 func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {

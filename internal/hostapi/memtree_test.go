@@ -1051,6 +1051,36 @@ func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 	}
 }
 
+// TestResetDropsAStaleCooldown: the wipe's fresh log owes the wiped
+// cooldown's patience nothing - its timer must not hold the new builds.
+func TestResetDropsAStaleCooldown(t *testing.T) {
+	oldBase, oldTries := buildCoolBase, buildMaxRetries
+	buildCoolBase, buildMaxRetries = 30*time.Second, 0 // calls are rounds
+	defer func() { buildCoolBase, buildMaxRetries = oldBase, oldTries }()
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.rate.Store(true)
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() == 0 {
+			return errors.New("the rate-limited round has not run")
+		}
+		return nil
+	})
+	if err := h.ResetChat(true); err != nil {
+		t.Fatal(err)
+	}
+	m.rate.Store(false)
+	if _, err := cl.User(strings.Repeat("q", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		_, err := h.DB.NodeAt(0, 0)
+		return err
+	})
+}
+
 // TestOverflowRetrySendsAMergedView: a context-too-large refusal merges the
 // view synchronously, so the retry sends the merged view instead of the
 // bytes that were refused.

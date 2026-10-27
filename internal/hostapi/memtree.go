@@ -480,6 +480,9 @@ func (b *memTree) rebuild() error {
 		return cmpDue(b.msgs, a.last(), a.span()/2, c.last(), c.span()/2)
 	})
 	b.leafRetry, b.mergeRetry = nil, nil
+	// the wipe's fresh log owes no provider patience: a stale cooldown and
+	// its doubling start over
+	b.cool, b.streak = nil, 0
 	b.draining = b.viewBytes > viewCeiling
 	return b.loadCV()
 }
@@ -753,6 +756,10 @@ func (b *memTree) apply(r buildResult) {
 		return
 	}
 	b.streak = 0 // the provider served a request: the next rate limit starts small
+	if b.cool != nil {
+		// a success while cooling proves the limit passed; the timer is stale
+		b.cool = nil
+	}
 	if r.leaf {
 		b.insertBuilt(nodeID{0, r.seq}, r.text)
 		return

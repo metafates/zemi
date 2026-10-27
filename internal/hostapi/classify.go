@@ -113,12 +113,18 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 func (h *Host) classifyRequest(id, sid string, state map[string]any, questions map[string]classify.Question) (classify.Request, error) {
 	req := classify.Request{State: state, Questions: questions}
 	if spec, model, ok := h.Providers.Decisions(agent.ModelID(id)); ok {
+		httpc := agent.ModelHTTP()
+		if l := h.Providers.Limiter(spec.ID); l != nil {
+			c := *httpc
+			c.Transport = agent.PaceTransport(l, httpc.Transport)
+			httpc = &c
+		}
 		req.Protocol = &classify.Protocol{
 			BaseURL: spec.BaseURL,
 			APIKey:  h.Providers.Key(spec.ID),
 			Model:   model.ID,
 			Headers: classifyHeaders(spec.Headers, sid),
-			HTTP:    agent.ModelHTTP(),
+			HTTP:    httpc,
 		}
 		return req, nil
 	}

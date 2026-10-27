@@ -41,3 +41,42 @@ func TestRateLimiterCancel(t *testing.T) {
 		}
 	})
 }
+
+// TestLimiterRidesTheSpec: a re-register that changes or drops rate_limit
+// replaces or drops the pace, so a config reload cannot keep pacing at the
+// old rate through a stale limiter.
+func TestLimiterRidesTheSpec(t *testing.T) {
+	r := &Registry{}
+	spec := func(rate int) Spec {
+		return Spec{ID: "gw", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", RateLimit: rate, Models: []Model{{ID: "m"}}}
+	}
+	paced := func() float64 {
+		m, err := r.Resolve("gw/m")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rm, is := m.(rateModel)
+		if !is {
+			return 0
+		}
+		return rm.limiter.perMin
+	}
+	if err := r.Register(spec(6), "k", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := paced(); got != 6 {
+		t.Fatalf("pace = %v, want 6", got)
+	}
+	if err := r.Register(spec(60), "k", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := paced(); got != 60 {
+		t.Fatalf("pace after the re-register = %v, want 60", got)
+	}
+	if err := r.Register(spec(0), "k", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := paced(); got != 0 {
+		t.Fatalf("a dropped rate_limit still paces at %v, want unpaced", got)
+	}
+}
