@@ -1851,7 +1851,7 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for run, want := range map[*flowRun]bool{f: true, loaded: false} {
-		if got := slices.ContainsFunc(h.flowOverlay(run).Keys, func(k OverlayKey) bool { return k.Key == "s" }); got != want {
+		if got := slices.ContainsFunc(h.flowOverlay(run).Keys, func(k OverlayKey) bool { return k.Key == "w" }); got != want {
 			t.Errorf("Save offered %v, want %v", got, want)
 		}
 	}

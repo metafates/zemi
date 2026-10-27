@@ -925,7 +925,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		return nil
 	}
 	if declared >= 0 && len(st.visible) > 0 {
-		a.pushToast(slog.LevelWarn, "Cannot "+o.Keys[declared].Desc, st.items[st.visible[st.selected]].row.Detail)
+		a.pushToast(slog.LevelWarn, "Could not "+o.Keys[declared].Desc, st.items[st.visible[st.selected]].row.Detail)
 		return nil
 	}
 	switch key {
@@ -1167,14 +1167,19 @@ func (a *App) unfollow(st overlayState) {
 	delete(a.pendingAnchor, a.scrollDef)
 }
 
-// cancelMenu cancels the top overlay's whole menu, not only a detail view
-// drawn over it.
+// cancelMenu cancels the whole menu the top overlay belongs to: a browsing
+// menu's levels close with their root, the way esc does, not only the level
+// or the detail view drawn over it.
 func (a *App) cancelMenu() {
 	i := len(a.overlays) - 1
 	for i > 0 && a.overlays[i].back {
 		i--
 	}
-	a.cancelOverlay(a.overlays[i].o)
+	o := a.overlays[i].o
+	if o.Follow && a.cancelMenuRoot(o) {
+		return
+	}
+	a.cancelOverlay(o)
 }
 
 // stepSettled ends the walk's run: the view it posted swaps for the held one

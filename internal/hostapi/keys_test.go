@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,8 +50,11 @@ func TestKeysOverlayRows(t *testing.T) {
 	if r.Desc == "" || len(r.Fields) != 4 || r.Detail == "" {
 		t.Errorf("chain-filled: %+v", r)
 	}
-	if len(r.Keys) != 2 || r.Keys[0].Run != "keys paste wait" || r.Keys[1].Key != "x" || !r.Keys[1].Danger {
+	if len(r.Keys) != 2 || r.Keys[0].Key != "p" || r.Keys[0].Run != "keys paste wait" || r.Keys[1].Key != "x" || !r.Keys[1].Danger {
 		t.Errorf("chain-filled keys: %+v", r.Keys)
+	}
+	if slices.ContainsFunc(r.Keys, func(k ItemKey) bool { return k.Key == "k" }) {
+		t.Errorf("a row key claimed k, which moves the list: %+v", r.Keys)
 	}
 }
 

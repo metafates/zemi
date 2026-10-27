@@ -120,7 +120,9 @@ func (h *Host) keyRow(s agent.Spec) OverlayItem {
 			it.Fields = append(it.Fields, Field{Name: "env", Value: s.KeyEnv})
 		}
 		it.Keys = []ItemKey{
-			{Key: "k", Desc: "paste a key", Run: "keys paste " + s.ID, Verb: VerbOpen},
+			// p, not k: k moves the list (overlay.go's moveSel runs before a
+			// row key is consulted), so k here was a dead key the footer named
+			{Key: "p", Desc: "paste a key", Run: "keys paste " + s.ID, Verb: VerbOpen},
 			{Key: "x", Desc: "remove the stored key", Run: "keys clear " + s.ID, Danger: true},
 		}
 	}

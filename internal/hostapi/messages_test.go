@@ -457,6 +457,10 @@ func TestMessagesPageUp(t *testing.T) {
 	if o.Items[1].Run != "messages view #1" {
 		t.Errorf("the loaded prompt's run = %q", o.Items[1].Run)
 	}
+	// enter opens the view like l does: the row names no chat place to close on
+	if o.Items[1].Verb != VerbOpen {
+		t.Errorf("the loaded prompt's enter = %q, want the view opened", o.Items[1].Verb)
+	}
 	if _, ok := h.messagesOlder(); ok {
 		t.Error("a page loaded past the log's first message")
 	}

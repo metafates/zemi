@@ -23,7 +23,8 @@ import (
 func (h *Host) messagesCommands() []*Command {
 	return []*Command{{
 		Name: "messages", NArgs: NArgsAny, Desc: "read or copy a message",
-		GoFn: func(h *Host, args string, confirm bool) error { return h.MessagesCommand(args) },
+		GoFn:       func(h *Host, args string, confirm bool) error { return h.MessagesCommand(args) },
+		GoComplete: SubcommandCompleter([]string{"rail", "view"}, nil),
 	}}
 }
 
@@ -331,11 +332,13 @@ const chatPageRows = 250
 
 // olderRow is a loaded page row: what it reads as, its log seq for the
 // view that reads it whole. It names no
-// transcript row: the chat window does not hold it.
+// transcript row: the chat window does not hold it, so enter opens the
+// view like a rail row's l does instead of closing on a place it names.
 func olderRow(m ChatMessage) OverlayItem {
 	item := messageRow(0, m)
 	if m.Seq != NoSeq {
 		item.Run = "messages view #" + strconv.FormatInt(m.Seq, 10)
+		item.Verb = VerbOpen
 	}
 	return item
 }

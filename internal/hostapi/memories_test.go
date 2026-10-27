@@ -111,7 +111,7 @@ func TestMemoriesZoom(t *testing.T) {
 	if got := lines(o); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the view rows:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if o.Items[0].Run != "memories zoom 1 0" || o.Items[2].Run != "" {
+	if o.Items[0].Run != "memories zoom 1 0" || o.Items[2].Run != "memories view 0 4" {
 		t.Errorf("run = %q, leaf = %q", o.Items[0].Run, o.Items[2].Run)
 	}
 	if o.Items[0].Key != "0+2" || o.Items[0].Copy != "0+2" {
@@ -200,7 +200,7 @@ func TestMemoriesZoomDeep(t *testing.T) {
 		if z.Title != "Memories / "+c.id.id() {
 			t.Errorf("zoom %s title %q", c.id.id(), z.Title)
 		}
-		if want := map[string]string{"0+8": "memories zoom 2 0", "0+4": "memories zoom 1 0", "0+2": ""}[c.id.id()]; z.Items[0].Run != want {
+		if want := map[string]string{"0+8": "memories zoom 2 0", "0+4": "memories zoom 1 0", "0+2": "memories view 0 0"}[c.id.id()]; z.Items[0].Run != want {
 			t.Errorf("zoom %s child run %q, want %q", c.id.id(), z.Items[0].Run, want)
 		}
 	}
@@ -274,8 +274,22 @@ func TestMemoriesJump(t *testing.T) {
 	if got := o.Items[0].Anchor; got != 0 {
 		t.Errorf("a line past the window anchors %d", got)
 	}
+	// a merged line the chat does not reach still drills: the desc says why
+	// the chat cannot jump, the run keeps the zoom
+	if it := o.Items[0]; it.Desc != "older than the chat window" || it.Run != "memories zoom 1 0" {
+		t.Errorf("a merged line past the window = %+v", it)
+	}
 	if got := o.Items[3].Anchor; got != 2 {
 		t.Errorf("the tail's leaf anchors %d, want 2", got)
+	}
+
+	// a leaf past the window: enter reads its preview instead of closing on
+	// a place the chat does not show
+	h.SetTranscript(logRows(rows[5:]))
+	o = h.memoriesOverlay()
+	if it := o.Items[2]; it.Anchor != 0 || it.Desc != "older than the chat window" ||
+		it.Run != "memories view 0 4" || it.Verb != VerbOpen {
+		t.Errorf("a leaf past the window = %+v", it)
 	}
 }
 

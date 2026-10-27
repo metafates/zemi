@@ -186,11 +186,21 @@ func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem 
 		Copy: id.id(),
 		Key:  id.id(),
 	}
-	if at := jumps.at(id.first(), id.last()); at > 0 {
+	at := jumps.at(id.first(), id.last())
+	if at > 0 {
 		item.Anchor = at
+	} else {
+		// the chat window holds none of the line's messages: there is no row
+		// to move the chat to, and the row says so
+		item.Desc = "older than the chat window"
 	}
-	if id.l > 0 {
+	switch {
+	case id.l > 0:
 		item.Run, item.Verb = "memories zoom "+id.args(), VerbOpen
+	case at == 0:
+		// a leaf the chat does not reach: enter reads its preview instead of
+		// closing on a place the chat does not show
+		item.Run, item.Verb = "memories view "+id.args(), VerbOpen
 	}
 	item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
 	item.Keys = append(item.Keys, ItemKey{Key: "v", Desc: "preview", Run: "memories view " + id.args(), Verb: VerbOpen})

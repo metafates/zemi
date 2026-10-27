@@ -97,7 +97,7 @@ func (h *Host) openFlow(id string) error {
 // phases; enter on one opens its detail, whose actions view, restart or
 // stop it. Its keys act on the run: while it runs p pauses or resumes, + and
 // - change how many run at once and x stops it; once it ended r reruns it
-// in a view of its own, and a run of this session opens its script, which s
+// in a view of its own, and a run of this session opens its script, which w
 // saves when the model wrote it and this process still holds it as it ran.
 func (h *Host) flowOverlay(f *flowRun) Overlay {
 	v := f.view()
@@ -140,7 +140,9 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "script", Run: "workflows open " + f.id})
 	}
 	if f.src != "" && f.name == "" && f.parent == h.AgentSessionID() { // what saveFlow takes; a saved workflow's run is saved already
-		o.Keys = append(o.Keys, OverlayKey{Key: "s", Desc: "save", Run: "workflows save " + f.id})
+		// w, not s: a running agent row's s stops it, and the row keys lose
+		// to the list's
+		o.Keys = append(o.Keys, OverlayKey{Key: "w", Desc: "save", Run: "workflows save " + f.id})
 	}
 	return o
 }

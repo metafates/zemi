@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -2521,5 +2522,75 @@ func TestMemoriesDrillBack(t *testing.T) {
 	}
 	if len(app.overlays) != 0 {
 		t.Fatalf("%d overlays open after esc", len(app.overlays))
+	}
+}
+
+// TestKeysPasteRekey: p on a stored key row opens the paste box over the
+// list, and k only moves the list - k was the row's paste key until the
+// list's move ate it first, leaving the footer's promise dead.
+func TestKeysPasteRekey(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.host.Providers.Reset(agent.Catalog{
+		Specs: []agent.Spec{
+			{ID: "aa", Kind: agent.KindAnthropic, Builtin: true, KeyEnv: "AA_KEY", Models: []agent.Model{{ID: "m"}}},
+			{ID: "bb", Kind: agent.KindAnthropic, Builtin: true, KeyEnv: "BB_KEY", Models: []agent.Model{{ID: "m"}}},
+		},
+		Keys: map[string]string{},
+	})
+	if err := app.host.Providers.ApplyStored("bb", "kp", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.host.Commands.Add(&hostapi.Command{
+		Name: "keys", NArgs: hostapi.NArgsAny,
+		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.KeysCommand(args) },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.host.KeysCommand(""); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	st := &app.overlays[len(app.overlays)-1]
+	if st.o.ID != "keys" {
+		t.Fatalf("the screen = %s", st.o.ID)
+	}
+	app.overlayKey("end", "")
+	if st.selected != 1 {
+		t.Fatalf("the stored row selected %d", st.selected)
+	}
+	app.overlayKey("k", "")
+	if st.selected != 0 || len(app.overlays) != 1 {
+		t.Fatalf("k selected %d with %d overlays open", st.selected, len(app.overlays))
+	}
+	app.overlayKey("end", "")
+	app.overlayKey("p", "p")
+	for app.Pump() {
+	}
+	top := &app.overlays[len(app.overlays)-1]
+	if len(app.overlays) != 2 || top.o.ID != "keys paste" || !top.o.Input || top.o.Title != "Paste the bb API key" {
+		t.Fatalf("p opened %d overlays, top %s input=%v title %q", len(app.overlays), top.o.ID, top.o.Input, top.o.Title)
+	}
+}
+
+// TestCancelMenuClosesTheWholeMenu: ctrl+c and a click outside cancel a
+// browsing menu from any level or detail view, the way esc does.
+func TestCancelMenuClosesTheWholeMenu(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.openOverlay(hostapi.Overlay{
+		ID: "menu", Origin: lua.OriginBuiltin, Follow: true,
+		Items: []hostapi.OverlayItem{{Text: "a", Anchor: 1}},
+	})
+	app.openOverlay(hostapi.Overlay{
+		ID: "menu sub", Origin: lua.OriginBuiltin, Follow: true,
+		Items: []hostapi.OverlayItem{{Text: "b", Anchor: 2, Detail: "the row whole"}},
+	})
+	app.openDetail(&app.overlays[len(app.overlays)-1], 0)
+	if len(app.overlays) != 3 {
+		t.Fatalf("%d overlays open before the cancel", len(app.overlays))
+	}
+	app.cancelMenu()
+	if len(app.overlays) != 0 {
+		t.Fatalf("%d overlays survived the cancel", len(app.overlays))
 	}
 }
