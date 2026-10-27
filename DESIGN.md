@@ -1006,11 +1006,14 @@ zemi.provider.add({
 })
 ```
 
-A `rate_limit` paces every call to the provider through one token bucket
-(the conversation, the summary builder, subagents), burst the minute's
-budget then one call at the minute's rate, so a low-rate-limit provider
-serves the turn instead of refusing it; two zemi windows pace their own
-halves.
+A `rate_limit` paces every call to the provider through one pair of token
+buckets (the conversation, the summary builder, subagents): `requests`
+calls per window and, when set, `completion_tokens` reply tokens per the
+same window, each bursting its whole budget then refilling at its rate.
+A number is the requests shorthand for a 60s window. A reply charging
+more than the budget holds sinks it negative, so later calls wait out the
+drain instead of forcing the provider's 429; two zemi windows pace their
+own halves.
 
 There is one session per project: the anchor row `main` the migration
 inserts (§7), which billing and the todo list ride. The chat itself is the

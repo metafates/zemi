@@ -1549,8 +1549,13 @@ function zemi.log.list() end
 ---@field headers? table<string, string> Sent with every request; as secret as the key.
 ---@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). Not sent by google.
 ---@field object_mode? zemi.ProviderObjectMode Pins how this provider answers an object call (`zemi.model.ask` with a schema, `zemi.classify.ask`). Only the openai, openai_compat, google, openrouter and vercel kinds take it: anthropic always picks its own.
----@field rate_limit? integer Requests per minute this provider allows; every call to it paces through one budget, the conversation waiting its turn beside the summary builder's, so a low-rate-limit provider serves instead of refusing. Leave it unset to run unpaced; an explicit 0 is refused.
+---@field rate_limit? integer|zemi.ProviderRateLimit Requests per minute this provider allows, or the full quota as a table ({ requests = 40, completion_tokens = 52000, window = 60 }): every call to it paces through one budget, the conversation waiting its turn beside the summary builder's, so a low-rate-limit provider serves instead of refusing. Leave it unset to run unpaced; an explicit 0 is refused.
 ---@field models zemi.ModelSpec[]
+
+---@class zemi.ProviderRateLimit
+---@field requests? integer Calls per window.
+---@field completion_tokens? integer Reply tokens per window, charged as the reply streams in; a reply over the budget holds the next calls until it refills.
+---@field window? integer The window in seconds; 60 when unset.
 
 ---@alias zemi.ProviderKind
 ---| "anthropic"

@@ -735,9 +735,15 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if v < 1 {
 			return agent.Spec{}, errors.New("rate_limit must be at least 1 request per minute")
 		}
-		spec.RateLimit = int(v)
+		spec.RateLimit = agent.RateLimit{Requests: int(v), Window: 60}
+	case map[string]any:
+		rl, err := rateLimitFromLua(v)
+		if err != nil {
+			return agent.Spec{}, err
+		}
+		spec.RateLimit = rl
 	default:
-		return agent.Spec{}, fmt.Errorf("rate_limit must be a number, not a %T", v)
+		return agent.Spec{}, fmt.Errorf("rate_limit must be a number or a table, not a %T", v)
 	}
 	switch mode := fantasy.ObjectMode(rawString(L, tb, "object_mode")); mode {
 	case "":
@@ -814,6 +820,41 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		return agent.Spec{}, errors.New("provider needs id and kind")
 	}
 	return spec, nil
+}
+
+// rateLimitFromLua reads the rate_limit table's quotas: requests and
+// completion_tokens, per window seconds. Either quota alone is a pace.
+func rateLimitFromLua(fields map[string]any) (agent.RateLimit, error) {
+	if err := onlyKeys(fields, "rate_limit", "requests", "completion_tokens", "window"); err != nil {
+		return agent.RateLimit{}, err
+	}
+	var rl agent.RateLimit
+	for _, k := range []string{"requests", "completion_tokens", "window"} {
+		switch v := fields[k].(type) {
+		case nil:
+		case float64:
+			if v < 1 {
+				return agent.RateLimit{}, fmt.Errorf("rate_limit.%s must be at least 1", k)
+			}
+			switch k {
+			case "requests":
+				rl.Requests = int(v)
+			case "completion_tokens":
+				rl.CompletionTokens = int(v)
+			case "window":
+				rl.Window = int(v)
+			}
+		default:
+			return agent.RateLimit{}, fmt.Errorf("rate_limit.%s must be a number, not a %T", k, v)
+		}
+	}
+	if !rl.Paced() {
+		return agent.RateLimit{}, errors.New("rate_limit needs requests or completion_tokens")
+	}
+	if rl.Window == 0 {
+		rl.Window = 60
+	}
+	return rl, nil
 }
 
 // decisions reports whether a spec carries a decisions model.

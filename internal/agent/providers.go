@@ -114,9 +114,10 @@ type Spec struct {
 	// a value out): "" leaves the kind's own ladder (native JSON, a forced
 	// tool call, the schema in the prompt). Only KindsWithObjectMode take it.
 	ObjectMode fantasy.ObjectMode
-	// RateLimit is the requests per minute the provider allows; every call
-	// to it paces through one token bucket. 0 runs unpaced.
-	RateLimit int
+	// RateLimit is the quota per window the provider allows; every call to
+	// it paces through one pair of buckets (requests, completion tokens).
+	// The zero value runs unpaced.
+	RateLimit RateLimit
 	Models    []Model
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
@@ -943,16 +944,16 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 	r.mu.RUnlock()
 	// the limiter rides the spec: a reload that changes or drops rate_limit
 	// must not keep pacing at the old rate through a stale limiter
-	if !has || spec.RateLimit <= 0 {
+	if !has || !spec.RateLimit.Paced() {
 		return m, nil
 	}
-	if ok && l.perMin == float64(spec.RateLimit) {
+	if ok && l.spec == spec.RateLimit.normalize() {
 		return rateModel{LanguageModel: m, limiter: l}, nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	spec, has = r.lookupLocked(prov)
-	if !has || spec.RateLimit <= 0 {
+	if !has || !spec.RateLimit.Paced() {
 		return m, nil
 	}
 	return rateModel{LanguageModel: m, limiter: r.sharedLimiterLocked(prov, spec.RateLimit)}, nil
@@ -960,13 +961,13 @@ func (r *Registry) Resolve(id ModelID) (fantasy.LanguageModel, error) {
 
 // sharedLimiterLocked returns the provider's one bucket for this rate,
 // replacing a stale one a changed spec left behind; r.mu is held for writing.
-func (r *Registry) sharedLimiterLocked(providerID string, perMin int) *rateLimiter {
+func (r *Registry) sharedLimiterLocked(providerID string, rate RateLimit) *rateLimiter {
 	if r.limits == nil {
 		r.limits = map[string]*rateLimiter{}
 	}
 	l, ok := r.limits[providerID]
-	if !ok || l.perMin != float64(perMin) {
-		l = newRateLimiter(perMin)
+	if !ok || l.spec != rate.normalize() {
+		l = newRateLimiter(rate)
 		r.limits[providerID] = l
 	}
 	return l
@@ -979,7 +980,7 @@ func (r *Registry) Limiter(providerID string) *rateLimiter {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	spec, ok := r.lookupLocked(providerID)
-	if !ok || spec.RateLimit <= 0 {
+	if !ok || !spec.RateLimit.Paced() {
 		return nil
 	}
 	return r.sharedLimiterLocked(providerID, spec.RateLimit)
