@@ -2548,11 +2548,15 @@ through its results channel, a reset through `RebuildQueues`. No lease: a
 second window races on `INSERT OR IGNORE` and on merges of children already
 gone, so a race wastes one cheap call and nothing else. A call that failed
 retries on a doubling backoff (1s to 60s) and parks after six failures in a
-row until new log rows land; the view self-heals.
+row until new log rows land - except an empty reply, which no try can fix:
+the model spent its output on reasoning or a cap cut it, so the node parks
+on its first one, its build prompt in its own prefix. The view self-heals.
 
 A reset quiesces the builder, and quiesce is a fence: while it holds, the
 worker dispatches nothing, and every build dispatched before it has landed
-in the view, so the wipe runs under no build.
+in the view, so the wipe runs under no build. The wait is bounded
+(`quiesceWait`): a provider call wedged past it refuses the reset with a
+toast instead of wedging it, and the gate releases.
 
 The builder runs up to 8 model calls at once (`buildSlots`) on
 `models.compact`, falling back to `models.default` while unset. One leaf
@@ -2560,7 +2564,10 @@ builds once fewer than 8 lines before it are still unbuilt
 (`leafWaitLines`), so the placeholder tail stays about that long. A build
 is up to 5 tries (`buildTryMax`) in one conversation: an over-long reply
 gets a correction naming its byte count against the 512-dash ruler, and the
-shortest fitting line of the run is kept.
+shortest fitting line of the run is kept. A builder call's output budget is
+the model's own cap, 8192 when it names none, at the model's lowest listed
+reasoning effort: a reasoning model must have budget left to write the
+line, not only to think.
 
 ### 10.3 The view
 
@@ -2664,13 +2671,16 @@ never ends, and the wipe is the only deletion (the owner's call: the cut
 was the hardest correctness surface, and the spec has none).
 
 - The wipe holds the builder quiesced (`quiesce`: no dispatch, in-flight
-  builds waited out), then deletes the log rows, every summary node, every
-  view line and the compaction view's kv row in one transaction
+  builds waited out, the wait bounded so a wedged provider call refuses the
+  reset instead of wedging it), then deletes the log rows, every summary
+  node, every view line and the compaction view's kv row in one transaction
   (`ResetLog`), vacuums and truncates the WAL so the text is gone from
   disk. The next append starts at seq 0.
 - The todo list clears, every goal drops with its kv row, the runner is
   dropped, and the transcript swaps to the empty log. It refuses a live
-  turn or run, and asks through the armed screen or `--yes`.
+  turn or run, and asks through the armed screen or `--yes`. The armed
+  key's press runs the wipe on its own goroutine, so the UI's worker never
+  sits on the quiesce; the toast names the outcome.
 
 ### 10.7 Skills
 

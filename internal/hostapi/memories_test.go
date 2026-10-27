@@ -61,7 +61,7 @@ func seedMemories(t *testing.T) (*Host, *fakeUI) {
 
 func TestMemoriesZoom(t *testing.T) {
 	t.Parallel()
-	h, _ := seedMemories(t)
+	h, ui := seedMemories(t)
 
 	if err := h.MemoriesCommand(""); err != nil {
 		t.Fatal(err)
@@ -120,6 +120,23 @@ func TestMemoriesZoom(t *testing.T) {
 	o = h.memoriesOverlay()
 	if got := lines(o); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("popped back to: %v", got)
+	}
+
+	// the opens the UI saw name the level moves, so the filter swaps only on
+	// them: the zoom and every pop move a level, the plain open does not
+	var moves, plain int
+	for _, o := range ui.overlays() {
+		if o.ID != "memories" {
+			continue
+		}
+		if o.Zoom {
+			moves++
+		} else {
+			plain++
+		}
+	}
+	if moves != 5 || plain != 1 { // zoom, zoom, and three pops, the empty stack's included
+		t.Fatalf("the UI saw %d level moves and %d plain opens, want 5 and 1", moves, plain)
 	}
 
 	// a leaf has no children to open, and a stranger is no line of the view

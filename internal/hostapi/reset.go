@@ -6,7 +6,6 @@
 package hostapi
 
 import (
-	"errors"
 	"log/slog"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -41,9 +40,9 @@ func (h *Host) ResetChat(yes bool) error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
 		// the builder first: quiesced, so no build lands over the wipe, and
-		// resumed whatever the wipe did; a closing host refuses the wipe
-		if !h.chat.quiesce() {
-			return errors.New("zemi is closing")
+		// resumed whatever the wipe did
+		if err := h.chat.quiesce(); err != nil {
+			return err
 		}
 		defer h.chat.resume()
 		// one transaction: the wipe takes the log, the tree, the view and

@@ -240,11 +240,16 @@ drops the checkpoints table whole: rewind is gone.
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
   Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with the
   shortest fitting line kept; a failed build retries on a doubling backoff and parks after
-  six failures in a row until new rows land (`buildStreak`). The view is the
+  six failures in a row until new rows land (`buildStreak`) - except an empty reply, which no
+  try can fix, and parks on its first one. Builder calls get the model's own output cap (8192
+  when it names none) and its lowest listed reasoning effort, so a reasoning model still has
+  budget left to write the line. The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
   kv. A reset quiesces the builder - a fence: nothing
-  dispatches into the wipe and every build before it has landed. `/health`'s `chat builder`
+  dispatches into the wipe and every build before it has landed, the wait bounded by
+  `quiesceWait` so a wedged provider call refuses the reset instead of wedging it. `/health`'s
+  `chat builder`
   row reads the queue depths and the parked builds (`builderHealth`).
 - **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
   view as one user message of 4-line parts, `chatlog.go viewMessage`) before every send, so
@@ -322,7 +327,9 @@ drops the checkpoints table whole: rewind is gone.
   builder quiesced around `ResetLog`, which wipes the log, the nodes, the view lines and the
   compaction view whole and then vacuums and truncates the WAL so the text leaves
   the file; the todo list clears, every goal drops, and the transcript swaps to the empty
-  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`.
+  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`. The
+  armed key's press runs the wipe on its own goroutine (not the UI's command worker), so a
+  builder wedged under the quiesce costs a toast, never a wedged UI.
 - **Read-only agents** (`AgentDef.ReadOnly`) are enforced in
   `tools.Pipeline.check` (`Pipeline.ReadOnly`): every action denied - a write, a command, a
   Lua tool; reads and scratchpad writes pass. A subagent the plan builtin starts, or one

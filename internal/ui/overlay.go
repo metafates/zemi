@@ -76,6 +76,9 @@ type listFilter struct {
 	match         [][]int
 	selected      int
 	view          viewport // the list, or a detail view's actions
+	// held is the query the zoom level under this one showed, back when the
+	// level move comes
+	held string
 }
 
 func (f *listFilter) apply() {
@@ -419,6 +422,11 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	st := a.overlayState(o)
 	f := old.listFilter
 	f.labels, f.texts = st.labels, st.texts
+	if o.Zoom { // a level move: the children are a new world, the parent's query waits under it
+		q := f.held
+		f.held = f.query
+		f.set(q)
+	}
 	st.listFilter, st.size = f, old.size
 	// a live body moves under the reader as its work writes: the view stays
 	// where they scrolled, and on its tail while they did not

@@ -41,6 +41,10 @@ const (
 	// kept; buildSlots is the model calls one builder runs at once.
 	buildTryMax = 5
 	buildSlots  = 8
+	// buildMaxOutput is a builder call's reply budget when the model names
+	// none: a reasoning model spends output thinking before it writes the
+	// line, so the old 2048 starved it into empty replies.
+	buildMaxOutput = 8192
 	// A failed build retries on a doubling backoff up to retryCap, and a
 	// streak past parkAfter parks the node until fresh rows or a reset
 	// revive it: a permanently failing build must not re-fire in a storm.
@@ -56,6 +60,11 @@ const (
 
 // placeholder is the line a message shows until its node is built.
 const placeholder = "(not summarized yet: zoom it)"
+
+// errEmptyReply is a compaction that came back with no line: the model spent
+// its output on reasoning or a cap cut it, so the same conversation answers
+// the same way and no retry can fix it - the node parks on its first one.
+var errEmptyReply = errors.New("empty compaction reply")
 
 // nodeID names one tree node: node(l,i) summarizes the 2^l messages from
 // i*2^l on. The model reads it as "id+n" and zooms it open.
@@ -232,13 +241,14 @@ type buildStreak struct {
 }
 
 // fail records one failure and reschedules the try; it says whether the
-// streak just parked.
-func (s *buildStreak) fail(now time.Time) bool {
+// streak just parked. nowPark parks at once: a failure no try can fix (an
+// empty reply) must not ride the backoff waves out.
+func (s *buildStreak) fail(now time.Time, nowPark bool) bool {
 	s.fails++
 	if s.parked {
 		return false
 	}
-	if s.fails > parkAfter {
+	if nowPark || s.fails > parkAfter {
 		s.parked = true
 		return true
 	}
@@ -260,6 +270,10 @@ func (s *buildStreak) ready(now time.Time, fresh bool) bool {
 func retryBackoff(fails int) time.Duration {
 	return min(retryBase<<(fails-1), retryCap)
 }
+
+// quiesceWait bounds a reset's wait for the in-flight builds: a provider
+// call wedged past it must refuse the reset, never wedge it forever.
+var quiesceWait = 15 * time.Second
 
 // newMemTree starts the builder worker on ctx; the caller's Close ends it.
 func newMemTree(ctx context.Context, h *Host) *memTree {
@@ -317,9 +331,11 @@ func (b *memTree) MergeOnce() {
 
 // quiesce stops dispatch and holds the fence: no build dispatches after it,
 // and every build dispatched before it has landed, so a reset's wipe runs
-// under no build. resume releases it. It returns false when the host is
-// closing: the caller must not cut, the fence cannot hold.
-func (b *memTree) quiesce() bool {
+// under no build. resume releases it. It returns an error when the fence
+// cannot hold - the host is closing, or an in-flight build outlived
+// quiesceWait (a wedged provider call refuses the reset instead of wedging
+// it) - and releases the gate itself then, so the caller must not cut.
+func (b *memTree) quiesce() error {
 	b.callMu.Lock()
 	b.held = true
 	b.callMu.Unlock()
@@ -328,16 +344,23 @@ func (b *memTree) quiesce() bool {
 		b.calls.Wait()
 		close(done)
 	})
+	timer := time.NewTimer(quiesceWait)
+	defer timer.Stop()
 	select {
 	case <-done:
+	case <-timer.C:
+		b.callMu.Lock()
+		b.held = false
+		b.callMu.Unlock()
+		return fmt.Errorf("the builder's in-flight calls did not settle within %s", quiesceWait)
 	case <-b.ctx.Done():
-		return false // closing: the process is going down with the builds
+		return errors.New("zemi is closing") // the process is going down with the builds
 	}
 	// the zero result walks the fence: results are received in the order
 	// they were sent, so once the worker takes it, every build dispatched
 	// before the gate has applied
 	b.send(buildResult{})
-	return true
+	return nil
 }
 
 func (b *memTree) resume() {
@@ -747,7 +770,7 @@ func (b *memTree) apply(r buildResult) {
 				s = &buildStreak{}
 				b.streaks[id] = s
 			}
-			if s.fail(time.Now()) {
+			if s.fail(time.Now(), errors.Is(r.err, errEmptyReply)) {
 				b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" parked: "+r.err.Error())
 				b.h.Log.Warn("memtree build parked", "origin", "agent", "node", id.id(), "error", r.err)
 			} else {
@@ -1011,14 +1034,21 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 	if first {
 		model = burstModel{LanguageModel: model, started: sync.OnceFunc(b.openBurst)}
 	}
-	maxOut := int64(2048)
+	maxOut := cmp.Or(b.h.maxOutput(id), buildMaxOutput)
+	// a builder call runs at the model's own lowest effort, when it lists
+	// levels: its default effort is what starved the line into reasoning
+	effort := ""
+	if m, ok := b.h.modelSpec(id); ok && len(m.Efforts) > 0 {
+		effort = b.h.Providers.Effort(agent.ModelID(id), "low")
+	}
+	opts := b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
 	var best string
 	for range buildTryMax {
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
 			MaxOutputTokens: &maxOut,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
-			ProviderOptions: b.h.Providers.CallOptions(agent.ModelID(id), "", store.MainSessionID),
+			ProviderOptions: opts,
 			Headers:         agent.SessionHeaders(store.MainSessionID),
 		})
 		if err != nil {
@@ -1028,7 +1058,11 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		reply := strings.TrimSpace(concatText(res.Response.Content))
 		switch {
 		case reply == "":
-			// nothing to keep: try again over the same conversation
+			// the same conversation answers the same way: fail the node now
+			if res.Response.FinishReason == fantasy.FinishReasonLength {
+				return "", fmt.Errorf("%w at the output cap - lower the model's reasoning effort or raise its output cap", errEmptyReply)
+			}
+			return "", fmt.Errorf("%w - the model returned no line", errEmptyReply)
 		case len(reply) <= nodeBytes:
 			return reply, nil
 		default:
@@ -1037,9 +1071,6 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 			}
 			convo = append(convo, assistantMessage(reply), agent.UserMessage(tooLongNote(reply)))
 		}
-	}
-	if best == "" {
-		return "", errors.New("compaction returned no line")
 	}
 	return best, nil
 }

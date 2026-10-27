@@ -145,6 +145,11 @@ type Overlay struct {
 	// and band that message's rows while it is open: enter keeps the place,
 	// esc puts the region back where it found it
 	Follow bool
+	// Zoom marks an open that moved a zoom level of the same list (a
+	// browser's zoom in or out): the children are a new world, so the filter
+	// swaps with the one the level under it held - they open unfiltered, and
+	// the way back restores the parent's query
+	Zoom bool
 	// OpenAt is the transcript row the reader was at when the open was
 	// made, pinned by a host that opens several levels of one list: the
 	// levels the open itself puts up move the chat, and a level deriving

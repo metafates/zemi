@@ -37,7 +37,7 @@ func (h *Host) MemoriesCommand(args string) error {
 		h.msgMu.Lock()
 		h.memZoom = nil
 		h.msgMu.Unlock()
-		return h.openMemories()
+		return h.openMemories(false)
 	case "zoom", "view":
 		l, i, err := parseNodeArgs(rest)
 		if err != nil {
@@ -53,7 +53,7 @@ func (h *Host) MemoriesCommand(args string) error {
 			h.memZoom = h.memZoom[:n-1]
 		}
 		h.msgMu.Unlock()
-		return h.openMemories()
+		return h.openMemories(true)
 	}
 	return Usagef("usage: /memories [zoom <l> <i> | pop | view <l> <i>]")
 }
@@ -70,13 +70,16 @@ func parseNodeArgs(rest string) (int64, int64, error) {
 }
 
 // openMemories opens the browser and tracks it, so a flush rebuilds it the
-// way the messages picker's levels are.
-func (h *Host) openMemories() error {
+// way the messages picker's levels are. zoom says the open moved a zoom
+// level, so the filter swaps with the one the level under it held.
+func (h *Host) openMemories(zoom bool) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(h.memoriesOverlay())
+	o := h.memoriesOverlay()
+	o.Zoom = zoom
+	ui.OpenOverlay(o)
 	h.trackMessages("memories")
 	return nil
 }
@@ -99,7 +102,7 @@ func (h *Host) zoomMemories(id nodeID) error {
 	h.msgMu.Lock()
 	h.memZoom = append(h.memZoom, id)
 	h.msgMu.Unlock()
-	return h.openMemories()
+	return h.openMemories(true)
 }
 
 // memoriesOverlay is the browser: one row per line of the live view, the

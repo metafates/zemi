@@ -27,7 +27,7 @@ var errBuildFails = errors.New("compaction failed")
 // treeModel is the builder's stub: every compaction is answered with the next
 // scripted reply and the calls' conversations are kept for assertions. A gate
 // holds every call from gateAfter on until its channel closes, and fail
-// fails them all.
+// fails them all. finish, when set, replaces the reply's finish reason.
 type treeModel struct {
 	mu        sync.Mutex
 	replies   []string
@@ -37,6 +37,7 @@ type treeModel struct {
 	gate      chan struct{}
 	gateAfter int
 	fail      atomic.Bool
+	finish    fantasy.FinishReason
 }
 
 func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
@@ -62,7 +63,11 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 	if i < len(m.replies) {
 		reply = m.replies[i]
 	}
-	return slices.Values(textParts(reply)), nil
+	parts := textParts(reply)
+	if m.finish != "" {
+		parts[len(parts)-1].FinishReason = m.finish
+	}
+	return slices.Values(parts), nil
 }
 
 func (m *treeModel) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
@@ -780,7 +785,8 @@ func TestResetRebuilds(t *testing.T) {
 
 // TestBuildStreak: a failing node's backoff doubles per try up to the cap,
 // the streak parks it after parkAfter failures until fresh rows revive it
-// for one try, and readiness follows the clock.
+// for one try, a failure no try can fix parks at once, and readiness follows
+// the clock.
 func TestBuildStreak(t *testing.T) {
 	now := time.Unix(0, 0)
 	var s buildStreak
@@ -791,7 +797,7 @@ func TestBuildStreak(t *testing.T) {
 		time.Second, 2 * time.Second, 4 * time.Second,
 		8 * time.Second, 16 * time.Second, 32 * time.Second,
 	} {
-		if parked := s.fail(now); parked {
+		if parked := s.fail(now, false); parked {
 			t.Fatalf("try %d parked, want a %s backoff", i+1, want)
 		}
 		if got := s.next.Sub(now); got != want {
@@ -802,7 +808,7 @@ func TestBuildStreak(t *testing.T) {
 	if !s.ready(now, false) {
 		t.Fatal("the backoff ran out but the node is not ready")
 	}
-	if !s.fail(now) {
+	if !s.fail(now, false) {
 		t.Fatal("the seventh failure did not park the node")
 	}
 	if s.ready(now, false) {
@@ -814,6 +820,134 @@ func TestBuildStreak(t *testing.T) {
 	if capped := retryBackoff(20); capped != retryCap {
 		t.Fatalf("backoff %s past the cap, want %s", capped, retryCap)
 	}
+
+	// an empty reply parks on its first failure: no backoff, no waves
+	var d buildStreak
+	if !d.fail(now, true) || !d.parked || d.next != (time.Time{}) {
+		t.Fatalf("fail(now, true) = parked %v next %s, want an immediate park and no backoff", d.parked, d.next)
+	}
+}
+
+// TestResetRefusesAWedgedBuilder: a build wedged past quiesceWait refuses
+// the reset instead of wedging it, releases the gate, and the builder
+// dispatches again over the log it kept.
+func TestResetRefusesAWedgedBuilder(t *testing.T) {
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.gate = make(chan struct{}) // the build never returns
+	defer close(m.gate)
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() == 0 {
+			return errors.New("the build has not started")
+		}
+		return nil
+	})
+	old := quiesceWait
+	quiesceWait = 250 * time.Millisecond
+	defer func() { quiesceWait = old }()
+	if err := h.ResetChat(true); err == nil || !strings.Contains(err.Error(), "did not settle") {
+		t.Fatalf("reset under a wedged build = %v, want the bound's refusal", err)
+	}
+	if n, _ := h.DB.LogCount(); n != 1 {
+		t.Fatalf("%d log rows after the refused reset, want the one it held", n)
+	}
+	cl.tree.callMu.Lock()
+	held := cl.tree.held
+	cl.tree.callMu.Unlock()
+	if held {
+		t.Fatal("the refused reset left the builder fenced")
+	}
+}
+
+// TestResetConfirmLeavesTheWorker: the armed key's press returns at once -
+// the wipe runs on its own goroutine behind the quiesce, so the UI's worker
+// never sits on a wedged builder - and lands once the build settles.
+func TestResetConfirmLeavesTheWorker(t *testing.T) {
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.gate = make(chan struct{})
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() == 0 {
+			return errors.New("the build has not started")
+		}
+		return nil
+	})
+	// the armed key's press runs the command the overlay carries, confirm set
+	reset := slices.IndexFunc(h.chatCommands(), func(c *Command) bool { return c.Name == "reset" })
+	if err := h.chatCommands()[reset].GoFn(h, "", true); err != nil {
+		t.Fatal(err)
+	}
+	// back at once: the wipe is still waiting on the hung build, so nothing
+	// has moved
+	if n, _ := h.DB.LogCount(); n != 1 {
+		t.Fatalf("%d log rows right after the armed press, want the wipe still quiescing", n)
+	}
+	close(m.gate) // the build lands, and the wipe behind it
+	waitFor(t, func() error {
+		if n, _ := h.DB.LogCount(); n != 0 {
+			return errors.New("the wipe has not landed behind the build")
+		}
+		return nil
+	})
+}
+
+// TestBuilderEmptyReplyParks: an empty compaction reply is deterministic, so
+// each node costs one call and parks - no try loop, no backoff waves - the
+// parked queue costs nothing at idle, and fresh rows revive the parked nodes
+// for one try that builds.
+func TestBuilderEmptyReplyParks(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, "", "", strings.Repeat("s", 100))
+	m.finish = fantasy.FinishReasonLength // the output cap ate the reply, as a reasoning model's does
+	for range 2 {
+		if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		if calls := m.callCount(); calls != 2 {
+			return fmt.Errorf("%d calls, want one per node", calls)
+		}
+		if row := h.builderRow(); !strings.Contains(row.Detail, "2 builds parked") {
+			return fmt.Errorf("builder row = %q, want both nodes parked", row.Detail)
+		}
+		return nil
+	})
+	// the park says why, so the model's config is the next thing to look at
+	for _, msg := range h.errorsSince(time.Time{}, "chat builder") {
+		if !strings.Contains(msg, "empty compaction reply at the output cap") {
+			t.Fatalf("parked error %q, want the output cap named", msg)
+		}
+	}
+
+	// a parked queue costs nothing at idle: no timer re-arms, no revival
+	// fires, the window the first backoff would have needed passes callless
+	quiet := m.callCount()
+	time.Sleep(1500 * time.Millisecond) // past retryBase, the earliest backoff
+	if calls := m.callCount(); calls != quiet {
+		t.Fatalf("%d more calls while parked, want none", calls-quiet)
+	}
+
+	// fresh rows revive the parked nodes for one try each, and the reply builds
+	if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		for seq := range int64(3) {
+			if _, err := h.DB.NodeAt(0, seq); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if calls := m.callCount(); calls != 5 {
+		t.Fatalf("%d calls, want the two revivals, the new leaf and the free join", calls)
+	}
+	coverage(t, h.DB, 3)
 }
 
 // TestBuilderBackoff: a failing build retries on its backoff instead of a

@@ -54,9 +54,10 @@ type chatLog struct {
 }
 
 // quiesce stops the builder's dispatch and waits for its in-flight builds;
-// resume releases it. A reset holds both around the wipe. False when the
-// host is closing: the fence cannot hold, the caller must not cut.
-func (c *chatLog) quiesce() bool { return c.tree.quiesce() }
+// resume releases it. A reset holds both around the wipe. An error when the
+// fence cannot hold: the host is closing, or a build outlived the wait - the
+// caller must not cut.
+func (c *chatLog) quiesce() error { return c.tree.quiesce() }
 
 func (c *chatLog) resume() { c.tree.resume() }
 
@@ -561,7 +562,18 @@ func (h *Host) chatCommands() []*Command {
 		Name: "reset", NArgs: NArgsOptional, Desc: "wipe this chat's log and summary tree and start it over",
 		GoFn: func(h *Host, args string, confirm bool) error {
 			_, yes := ConfirmArgs(args, confirm)
-			return h.ResetChat(yes)
+			if !confirm {
+				return h.ResetChat(yes)
+			}
+			// the armed key's press: the wipe leaves the command path at once,
+			// so a builder call wedged under the quiesce never sits on the UI's
+			// worker; the toast names the outcome
+			h.GoSafe("chat reset", func() {
+				if err := h.ResetChat(true); err != nil {
+					h.CommandFailed("reset", err)
+				}
+			})
+			return nil
 		},
 	}}
 }

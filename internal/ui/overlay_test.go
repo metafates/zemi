@@ -1094,6 +1094,56 @@ func fiveRows() []hostapi.OverlayItem {
 	return []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}
 }
 
+// TestOverlayZoomSwapsTheFilter: a zoom opens the children as a new world -
+// unfiltered, the parent's query held under it - and the pop brings the
+// parent's list back with its query, so a filter can never strand the
+// browser on a list it hides.
+func TestOverlayZoomSwapsTheFilter(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	parent := []hostapi.OverlayItem{
+		{Text: "msg one", Run: "memories zoom 1 0"},
+		{Text: "msg two"},
+		{Text: "msg six"},
+		{Text: "msg ten"},
+		{Text: "msg four"},
+	}
+	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
+	a.overlayKey("/", "/")
+	a.overlayKey("o", "o")
+	a.overlayKey("n", "n")
+	a.overlayKey("e", "e")
+	a.overlayKey("enter", "")
+	st := &a.overlays[0]
+	if st.query != "one" || len(st.visible) != 1 {
+		t.Fatalf("filter = %q over %d rows, want one hit", st.query, len(st.visible))
+	}
+
+	// the zoom: the children the query names nothing of all show
+	children := []hostapi.OverlayItem{
+		{Text: "m0"}, {Text: "m1"}, {Text: "msg six"}, {Text: "msg ten"}, {Text: "msg four"},
+	}
+	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: children, Zoom: true})
+	st = &a.overlays[0]
+	if st.query != "" || st.held != "one" || len(st.visible) != len(children) {
+		t.Fatalf("zoomed filter = %q held %q rows %d, want the query held and the children whole",
+			st.query, st.held, len(st.visible))
+	}
+
+	// the pop restores the parent's list with its filter state
+	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent, Zoom: true})
+	st = &a.overlays[0]
+	if st.query != "one" || len(st.visible) != 1 || st.items[st.visible[0]].row.Text != "msg one" {
+		t.Fatalf("popped filter = %q hits %d, want msg one back under its query", st.query, len(st.visible))
+	}
+
+	// a flush rebuild is no level move: the query survives it
+	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
+	st = &a.overlays[0]
+	if st.query != "one" || len(st.visible) != 1 {
+		t.Fatalf("flush kept query %q hits %d, want the filter kept", st.query, len(st.visible))
+	}
+}
+
 // TestOverlayArrowKeys: left and right alias h and l on a list, and an open
 // filter keeps them for its cursor, as it moves and edits the query with
 // them.
