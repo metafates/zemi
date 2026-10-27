@@ -6,6 +6,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -457,18 +458,20 @@ func TestLogHoldsTheTurn(t *testing.T) {
 }
 
 // TestLogHoldsTheThought: a reasoning stretch lands in the log as the thought
-// row it drew, ahead of the reply, with the wall time its flush measured.
+// row it drew, ahead of the reply, with the wall time its flush measured -
+// a stretch no call follows included, whose flush never happens.
 func TestLogHoldsTheThought(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
 	var calls atomic.Int64
 	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+		m := &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
 			if calls.Add(1) == 1 {
 				return append(reasoningParts("pondering the ask."), textParts("kept")...)
 			}
 			return textParts("done")
-		}}, nil
+		}}
+		return slowThought{LanguageModel: m, gap: 60 * time.Millisecond}, nil
 	}
 	h.SetUIHooks(&fakeUI{})
 	if err := h.AgentSend("go"); err != nil {
@@ -481,9 +484,15 @@ func TestLogHoldsTheThought(t *testing.T) {
 		rows[2].Kind != kindAgent || rows[2].Text != "kept" {
 		t.Fatalf("log rows = %+v, %v", rows, err)
 	}
+	var meta struct {
+		MS int64 `json:"ms"`
+	}
+	if err := json.Unmarshal([]byte(rows[1].MetaJSON), &meta); err != nil || meta.MS < 50 {
+		t.Fatalf("thought row meta = %q (%v), want the stretch's wall time", rows[1].MetaJSON, err)
+	}
 	tr := logRows(rows)
 	if len(tr) != 3 || tr[1].Kind != RowReasoning || tr[1].Text != "pondering the ask." ||
-		tr[1].Stat == nil || tr[1].Stat.ThoughtMS < 0 || tr[1].Seq != rows[1].Seq {
+		tr[1].Stat == nil || tr[1].Stat.ThoughtMS < 50 || tr[1].Seq != rows[1].Seq {
 		t.Fatalf("rebuilt rows = %+v", tr)
 	}
 }

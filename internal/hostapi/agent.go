@@ -1671,14 +1671,17 @@ func (h *Host) logAssistant(msg fantasy.Message) error {
 }
 
 // logThought logs one reasoning stretch with the wall time its flush
-// measured, oldest first; a stretch whose flush never happened (a part a
-// provider added without a flush) reads as no time.
+// measured, oldest first; a stretch no call followed never flushed, and
+// reads the thought still open, closed here for the log.
 func (h *Host) logThought(text string) error {
 	var ms int64
 	ag := h.agents
 	ag.mu.Lock()
 	if n := len(ag.stretchMS); n > 0 {
 		ms, ag.stretchMS = ag.stretchMS[0], ag.stretchMS[1:]
+	} else if ag.thinking || ag.thought > 0 {
+		ag.endThinking()
+		ms = ag.thought.Milliseconds()
 	}
 	ag.mu.Unlock()
 	return h.chat.Thought(text, ms)
