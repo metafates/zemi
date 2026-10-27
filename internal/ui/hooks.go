@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -229,13 +230,20 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 		var cmd tea.Cmd
 		switch op {
 		case hostapi.ComposerSet:
+			if utf8.RuneCountInString(text) > maxDraftChars {
+				a.draftCapToast()
+				break
+			}
 			a.composer.text, a.composer.cursor = text, cursor
 			if n := len([]rune(text)); cursor < 0 || cursor > n {
 				a.composer.cursor = n
 			}
 			cmd = a.updateCompletion()
 		case hostapi.ComposerInsert:
-			a.composer.insert(text)
+			if !a.composer.insertFits(text) {
+				a.draftCapToast()
+				break
+			}
 			cmd = a.updateCompletion()
 		case hostapi.ComposerSubmit:
 			a.submitComposer()
@@ -254,8 +262,14 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 	}))
 }
 
-// publishComposer hands the draft to the host for zemi.composer.get.
+// publishComposer hands the draft to the host for zemi.composer.get. A key
+// that changed nothing (a refused one above the draft cap, a move that hit
+// an edge) republishes nothing and marks no frame.
 func (a *App) publishComposer() {
+	if a.published.text == a.composer.text && a.published.cursor == a.composer.cursor {
+		return
+	}
+	a.published = composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 	a.frameDirty = true // the draft edits here too: a paste, the editor
 	a.host.SetComposerSnapshot(a.composer.text, a.composer.cursor)
 }

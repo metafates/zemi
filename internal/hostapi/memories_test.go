@@ -74,10 +74,10 @@ func TestMemoriesZoom(t *testing.T) {
 	if o.Items[0].Run != "memories zoom 1 0" || o.Items[2].Run != "" {
 		t.Errorf("run = %q, leaf = %q", o.Items[0].Run, o.Items[2].Run)
 	}
-	if o.Items[0].Keys[0].Key != "v" || o.Items[0].Keys[0].Run != "memories view 1 0" {
-		t.Errorf("v = %+v", o.Items[0].Keys[0])
+	if o.Items[0].Keys[1].Key != "v" || o.Items[0].Keys[1].Run != "memories view 1 0" {
+		t.Errorf("v = %+v", o.Items[0].Keys[1])
 	}
-	if len(o.Items[0].Keys) != 1 {
+	if len(o.Items[0].Keys) != 2 {
 		t.Errorf("u offered with no zoom open: %+v", o.Items[0].Keys)
 	}
 
@@ -93,8 +93,8 @@ func TestMemoriesZoom(t *testing.T) {
 	if o.Selected != 0 {
 		t.Errorf("the zoom landed on selection %d, want the first child", o.Selected)
 	}
-	if o.Items[0].Keys[1].Key != "u" || o.Items[0].Keys[1].Run != "memories pop" {
-		t.Errorf("u = %+v", o.Items[0].Keys[1])
+	if o.Items[0].Keys[2].Key != "u" || o.Items[0].Keys[2].Run != "memories pop" {
+		t.Errorf("u = %+v", o.Items[0].Keys[2])
 	}
 
 	// the other merged line zooms beside the open one, and u pops one zoom
@@ -216,8 +216,9 @@ func TestMemoriesRange(t *testing.T) {
 	if o.ID != "memories range 1 0" || o.Title != "Memories / 0+2" {
 		t.Fatalf("range view = %s %q", o.ID, o.Title)
 	}
-	if o.Body != "user: "+strings.Repeat("row ", 200)+"\n\nuser: "+strings.Repeat("row ", 200) {
-		t.Errorf("body = %q", clipRunes(o.Body, 80))
+	// each row's head carries its date, the one place a non-coder reaches one
+	if !strings.HasPrefix(o.Body, "user 20") || !strings.Contains(o.Body, ": "+strings.Repeat("row ", 200)) {
+		t.Errorf("body = %q", clipRunes(o.Body, 120))
 	}
 	if err := h.MemoriesCommand("view 4 1"); err == nil {
 		t.Error("a line past the log opened a view")

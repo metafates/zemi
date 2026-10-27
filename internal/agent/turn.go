@@ -133,7 +133,7 @@ type Runner struct {
 
 	// Full is asked after every step with the context that step used
 	// (ContextUsed). True while the model still has tool results to read
-	// ends the turn there, so the host can compact and send "" to continue.
+	// ends the turn there, so a run's prune can drop history and go on.
 	Full func(used int64) bool
 
 	active bool
@@ -789,9 +789,9 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 // signature only where it is enforced.
 // rec, the next step's sent, strips it too, so it goes once the loop closes.
 // NOTE: a prefix that changes inside a turn (tool_search loading an MCP tool,
-// a compaction continuation, a subagent prune) leaves the open loop signed
-// over the old one, which an enforcing account refuses; freezing ActiveTools
-// for the turn or the drop_block beta would lift it.
+// a subagent prune) leaves the open loop signed over the old one, which an
+// enforcing account refuses; freezing ActiveTools for the turn or the
+// drop_block beta would lift it.
 func keepSigned(msgs, sent []fantasy.Message, samePrefix bool) (out, rec []fantasy.Message) {
 	rec = slices.Clone(msgs)
 	edited := !samePrefix

@@ -1,11 +1,12 @@
 // rewind.go undoes turns: before a write tool first changes a file in a
 // turn, its content is checkpointed against that turn's user message (the
 // log seq it was appended at). Rewinding to a message restores every file
-// changed since, deletes the log rows from it on with every tree node and
-// view line touching them, patches the view's hole with leaf lines,
-// rebuilds the todo list, and hands the prompt text back to the composer.
-// A shell call's changes are rewound only for repository files git does not
-// ignore, at most snapCheckpoints of them per call.
+// changed since, then cuts in one store transaction: the log rows from it
+// on, every tree node and view line touching them, leaf lines re-covering
+// what survives, and the compaction view's gone lines. It rebuilds the todo
+// list and hands the prompt text back to the composer. A shell call's
+// changes are rewound only for repository files git does not ignore, at
+// most snapCheckpoints of them per call.
 
 package hostapi
 
@@ -145,13 +146,9 @@ func (h *Host) RewindTo(seq int64) (int, error) {
 		// resumed whatever the cut did
 		h.chat.quiesce()
 		defer h.chat.resume()
-		if err := h.DB.DeleteLogFrom(seq); err != nil {
-			return err
-		}
-		if err := h.patchView(seq); err != nil {
-			return err
-		}
-		return nil
+		// one transaction: the cut, the view's patch and the compaction
+		// view's prune, so a second window cannot cut in between
+		return h.DB.DeleteLogFrom(seq)
 	}()
 	if err != nil {
 		return 0, err
@@ -175,31 +172,6 @@ func (h *Host) RewindTo(seq int64) (int, error) {
 	return len(cps), nil
 }
 
-// patchView re-covers the messages the cut left behind: every surviving
-// message not covered by a view line whose node survived becomes a leaf line
-// again, which the builder re-merges.
-func (h *Host) patchView(cut int64) error {
-	lines, err := h.DB.LoadView()
-	if err != nil {
-		return err
-	}
-	covered := make([]bool, cut)
-	for _, ln := range lines {
-		n := nodeID{ln.L, ln.I}
-		for s := max(0, n.first()); s < min(cut, n.last()+1); s++ {
-			covered[s] = true
-		}
-	}
-	for s, ok := range covered {
-		if !ok {
-			if err := h.DB.AppendViewLine(0, int64(s)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // todosBefore is the todo list the last todos call before seq set, paired
 // from the log's tool and echo rows in order.
 // NOTE: two todos calls in one step pair in call order, which the echo rows
@@ -207,6 +179,7 @@ func (h *Host) patchView(cut int64) error {
 func (h *Host) todosBefore(cut int64) []store.Todo {
 	rows, err := h.DB.LogFrom(0, int(cut))
 	if err != nil {
+		h.Log.Warn("todo list not read", "origin", "rewind", "error", err)
 		return nil
 	}
 	var pending []string
@@ -282,7 +255,10 @@ func (h *Host) OpenRewind() error {
 	if err != nil {
 		return err
 	}
-	paths, _ := h.DB.CheckpointPaths()
+	paths, err := h.DB.CheckpointPaths()
+	if err != nil {
+		h.Log.Warn("checkpoint paths not read", "origin", "rewind", "error", err)
+	}
 	restored := map[string]bool{} // what rewinding to this prompt restores
 	var items []OverlayItem
 	for _, row := range slices.Backward(rows) {
@@ -315,10 +291,10 @@ func (h *Host) OpenRewind() error {
 	return nil
 }
 
-// ResetChat wipes the eternal chat and starts it over (/reset, the fresh
-// start /new was): the log, every summary node and view line, and the
-// checkpoints go, VACUUM reclaims the file, and the next message is seq 0.
-// It refuses mid-turn and while any run lives, the way a rewind does.
+// ResetChat wipes the eternal chat and starts it over (/reset): the log,
+// every summary node and view line, and the checkpoints go, VACUUM reclaims
+// the file, and the next message is seq 0. It refuses mid-turn and while any
+// run lives, the way a rewind does.
 func (h *Host) ResetChat(yes bool) error {
 	if h.DB == nil || h.chat == nil {
 		return Usagef("no chat log in this boot")
@@ -347,11 +323,9 @@ func (h *Host) ResetChat(yes bool) error {
 		// resumed whatever the wipe did
 		h.chat.quiesce()
 		defer h.chat.resume()
-		if err := h.DB.ResetLog(); err != nil {
-			return err
-		}
-		_, err := h.DB.DelKV(cvKey)
-		return err
+		// one transaction: the wipe takes the log, the tree, the view, the
+		// checkpoints and the compaction view
+		return h.DB.ResetLog()
 	}()
 	if err != nil {
 		return err
@@ -383,7 +357,7 @@ func (h *Host) openReset(confirm string) error {
 		ID: "reset", Title: "Reset", Origin: lua.OriginBuiltin, Confirm: confirm,
 		Items: []OverlayItem{{
 			Text:   "Wipe this chat and start it over",
-			Detail: "Every message, summary and view line is deleted from the store, the vacuum reclaims the file, and the next message is the first again. A rewind restores the files of what it cuts; a reset touches no file.",
+			Detail: "Every message, summary and view line is deleted from the store, the store file shrinks back, and the next message is the first again. A rewind restores the files of what it cuts; a resettouches no file.",
 			Keys:   []ItemKey{{Key: "x", Desc: "reset", Danger: true, Run: "reset"}},
 		}},
 	})

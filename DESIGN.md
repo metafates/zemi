@@ -1806,7 +1806,8 @@ still there, so two windows merging from stale views can never
 double-cover a message. The compaction view, the second sawtooth the
 builder's calls read, is not a table: it persists as an `[l, i]` pair list
 under the kv key `chatlog.cv`, and the builder reloads it at boot like the
-view.
+view; a rewind's cut prunes it in the same transaction, so no line whose
+node is gone survives.
 
 ## 8. UI core detail
 
@@ -2559,7 +2560,12 @@ owns the tree state; appends reach it through `Wake`, finished calls
 through its results channel, a rewind through `RebuildQueues`. No lease: a
 second window races on `INSERT OR IGNORE` and on merges of children already
 gone, so a race wastes one cheap call and nothing else. A call that failed
-retries at the next append; the view self-heals.
+retries on a doubling backoff (1s to 60s) and parks after six failures in a
+row until new log rows land; the view self-heals.
+
+A rewind quiesces the builder, and quiesce is a fence: while it holds, the
+worker dispatches nothing, and every build dispatched before it has landed
+in the view, so the cut runs under no build.
 
 The builder runs up to 8 model calls at once (`buildSlots`) on
 `models.compact`, falling back to `models.default` while unset. One leaf
@@ -2638,7 +2644,8 @@ Every turn is a fresh call:
   and joins the model at the next step boundary (§4).
 - Overflow guard: on a provider's context-too-large refusal, one view
   merge batch (`MergeOnce`) runs and the turn retries once - the view
-  outgrew the model's window. A refused output cap is dropped, and image
+  outgrew the model's window; the merge is synchronous, so the retry sends
+  the merged view. A refused output cap is dropped, and image
   parts a model refuses become a note; each is remembered for the process.
 - A message queued behind a turn becomes one follow-up turn under the claim;
   after a turn that ended cleanly with nothing queued, the goal check
@@ -2705,7 +2712,8 @@ There are none: no eval harness, mock provider or CI gate.
 - Every Go->Lua boundary is a `pcall`; errors are logged and show as a
   statusline flag; a `/errors` overlay lists recent handler failures with
   file:line (from Lua `debug.traceback`). A failed builder call is
-  logged and its node retries at the next append (§10.2). Lua code and
+  logged and its node retries on its backoff, parking after six failures
+  in a row (§10.2); `/health`'s builder row says parked builds. Lua code and
   runtime failures are
   recorded by their callers under a slug source (`command boom`, `keymap
   ctrl+t`); a command error that is how it was asked (`ErrUsage`: a bad

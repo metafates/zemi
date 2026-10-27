@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -322,7 +323,8 @@ func TestRewind(t *testing.T) {
 
 // TestRewindCutPatch: the cut leaves every surviving message covered - the
 // straddling view line goes and leaf lines patch its hole - no node
-// intersects the cut, and re-appends keep the seq dense.
+// intersects the cut, and re-appends keep the seq dense. The compaction
+// view's lines past the cut go with it.
 func TestRewindCutPatch(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	// twelve messages; the middle four are summarized up to one 4+4 line
@@ -341,13 +343,20 @@ func TestRewindCutPatch(t *testing.T) {
 			t.Fatalf("merge %v: %d %v", m, n, err)
 		}
 	}
-	// view: 0+4, 4+4 (straddles the cut below), then the leaves 8..11
+	// view: 0+4, 4+4 (straddles the cut below), then the leaves 8..11.
+	// The compaction view holds lines the cut will take too: the leaves
+	// 8..11 and the 1+2 pair they merged into.
 	cut := int64(6)
-	h.chat.quiesce()
-	if err := h.DB.DeleteLogFrom(cut); err != nil {
+	cv, err := json.Marshal([][]int64{{0, 8}, {0, 9}, {0, 10}, {0, 11}, {1, 4}, {0, 5}}, json.Deterministic(true))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.patchView(cut); err != nil {
+	if err := h.DB.SetKV(store.CVKey, string(cv)); err != nil {
+		t.Fatal(err)
+	}
+	h.chat.quiesce()
+	// the cut patches the view and prunes the compaction view itself now
+	if err := h.DB.DeleteLogFrom(cut); err != nil {
 		t.Fatal(err)
 	}
 	h.chat.resume()
@@ -380,6 +389,11 @@ func TestRewindCutPatch(t *testing.T) {
 	}
 	if count, _ := h.DB.LogCount(); count != cut+2 {
 		t.Fatalf("log holds %d rows, want %d dense", count, cut+2)
+	}
+	// the compaction view kept only the line below the cut: the phantom
+	// leaves and their merged parent are gone
+	if raw, err := h.DB.GetKV(store.CVKey); err != nil || raw != "[[0,5]]" {
+		t.Fatalf("compaction view after the cut = %q, %v, want [[0,5]]", raw, err)
 	}
 }
 

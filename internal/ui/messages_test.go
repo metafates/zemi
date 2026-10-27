@@ -771,7 +771,7 @@ func TestMessagesRailClosesOnARenamedNode(t *testing.T) {
 		Items: []hostapi.OverlayItem{{Text: "run", Anchor: 2}},
 	})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "read f0") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "read f1") {
 		t.Fatalf("the rail did not open the run whole:\n%s", frame)
 	}
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -787,7 +787,7 @@ func TestMessagesRailClosesOnARenamedNode(t *testing.T) {
 	if app.railClose != "" || len(app.overlays) != 0 {
 		t.Fatalf("a renamed scroll node stranded the closing rail: closing %q, %d overlays", app.railClose, len(app.overlays))
 	}
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "read f0") {
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "read f1") {
 		t.Fatalf("the run stayed open:\n%s", frame)
 	}
 }
@@ -941,8 +941,9 @@ func TestMessagesRail(t *testing.T) {
 	}
 	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
 	frame := func() string { return ansi.Strip(app.Frame()) }
-	// folded, the run is its digest alone
-	if !strings.Contains(frame(), "1 file, 1 pattern, 1 command") || strings.Contains(frame(), "read a") {
+	// folded, the run is its digest alone: what it counted, then the first
+	// call's about; the later calls' labels stay behind the fold
+	if !strings.Contains(frame(), "1 file, 1 pattern, 1 command · read a") || strings.Contains(frame(), "find Parse") {
 		t.Fatalf("the settled run is not folded:\n%s", frame())
 	}
 	if err := host.OpenMessages(); err != nil {
@@ -1017,7 +1018,7 @@ func TestMessagesRail(t *testing.T) {
 		t.Fatalf("a closing rail: rail %d, closing %q, %d overlays", app.rail, app.railClose, len(app.overlays))
 	}
 	pump()
-	if strings.Contains(frame(), "read a") {
+	if strings.Contains(frame(), "find Parse") {
 		t.Fatalf("the run stayed open:\n%s", frame())
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "· ") {
@@ -1034,7 +1035,7 @@ func TestMessagesRail(t *testing.T) {
 	if n := len(app.overlays); n != 0 {
 		t.Fatalf("esc on the rail left %d overlays", n)
 	}
-	if app.rail != 0 || strings.Contains(frame(), "read a") {
+	if app.rail != 0 || strings.Contains(frame(), "find Parse") {
 		t.Fatalf("rail %d, the run still open:\n%s", app.rail, frame())
 	}
 }

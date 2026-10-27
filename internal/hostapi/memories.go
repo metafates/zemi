@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -149,6 +150,9 @@ func (h *Host) memoriesOverlay() Overlay {
 		if ln.L > 0 {
 			item.Run, item.Verb = "memories zoom "+id.args(), VerbOpen
 		}
+		// l zooms the line the footer names it by; on a leaf the zoom refuses,
+		// which is the toast that says enter takes the chat to the message
+		item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
 		item.Keys = append(item.Keys, ItemKey{Key: "v", Desc: "preview", Run: "memories view " + id.args(), Verb: VerbOpen})
 		if len(zoom) > 0 {
 			item.Keys = append(item.Keys, ItemKey{Key: "u", Desc: "zoom out", Run: "memories pop", Verb: VerbOpen})
@@ -238,18 +242,30 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 		if name := rowTool(row); name != "" {
 			head += " " + name
 		}
+		// the date a non-coder cannot reach anywhere else: zoom names ids,
+		// the log row's stamp is the only when
+		if ms := stampMS(row.CreatedAt); ms > 0 {
+			head += " " + time.UnixMilli(ms).Format(previewStamp)
+		}
 		b.WriteString(head + ": " + row.Text)
 	}
 	if covered := id.span(); covered > int64(len(rows)) {
 		fmt.Fprintf(&b, "\n\n... %d more messages: zoom the line open for them", covered-int64(len(rows)))
 	}
-	ui.OpenOverlay(Overlay{
+	o := Overlay{
 		ID:    "memories range " + id.args(),
 		Title: "Memories / " + id.id(), Origin: lua.OriginBuiltin,
-		Body: b.String(), Empty: "the log rows are gone from this store",
-	})
+		Body: b.String(),
+	}
+	if b.Len() == 0 { // the rows were gone before the read (a rewind raced)
+		o.Empty = "the log rows are gone from this store"
+	}
+	ui.OpenOverlay(o)
 	return nil
 }
+
+// previewStamp is a preview row's head date, local wall clock.
+const previewStamp = "2006-01-02 15:04"
 
 // viewStats sizes the live view from the store: the same snapshot feeds the
 // /usage row.

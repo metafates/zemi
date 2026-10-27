@@ -7,6 +7,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -127,9 +128,9 @@ func (s *DB) LogCount() (int64, error) {
 // whose range intersects them (node(l,i) covers [i*2^l, (i+1)*2^l), so an
 // ancestor holding the cut goes too), and every view line whose node touches
 // them - the lines past the cut and the straddling ones, whose node is gone.
-// The next append takes max(seq)+1 of what is left, so the index stays dense;
-// the uncovered tail of what survives is leaf lines again, which the rewind
-// appends.
+// The same transaction re-covers what survives and prunes the compaction
+// view: patchCut. The next append takes max(seq)+1 of what is left, so the
+// index stays dense.
 func (s *DB) DeleteLogFrom(seq int64) error {
 	return s.inTx(func(tx *sql.Tx) error {
 		for _, q := range []struct {
@@ -145,20 +146,100 @@ func (s *DB) DeleteLogFrom(seq int64) error {
 				return fmt.Errorf("store: rewind %s: %w", q.what, err)
 			}
 		}
-		return nil
+		return patchCut(tx, seq)
 	})
 }
 
+// patchCut re-covers the messages the cut left behind: every surviving
+// message not covered by a surviving line becomes a leaf line again, which
+// the builder re-merges, and the compaction view drops the lines whose
+// nodes the cut took. One transaction with the deletes: a second window
+// cutting in between would leave leaf lines for messages it already
+// deleted, and cv lines whose nodes are gone.
+func patchCut(tx *sql.Tx, cut int64) error {
+	rows, err := tx.Query(`SELECT l, i FROM view_lines`)
+	if err != nil {
+		return fmt.Errorf("store: rewind view: %w", err)
+	}
+	lines, err := collect(rows, err, func(r scanner) (v ViewLine, err error) {
+		err = r.Scan(&v.L, &v.I)
+		return v, err
+	})
+	if err != nil {
+		return fmt.Errorf("store: rewind view: %w", err)
+	}
+	covered := make([]bool, cut)
+	for _, ln := range lines {
+		for s := max(ln.I<<ln.L, int64(0)); s < min((ln.I+1)<<ln.L, cut); s++ {
+			covered[s] = true
+		}
+	}
+	for s, ok := range covered {
+		if !ok {
+			if _, err := tx.Exec(`INSERT OR REPLACE INTO view_lines (ord, l, i) VALUES (?, 0, ?)`, s, s); err != nil {
+				return fmt.Errorf("store: rewind view: %w", err)
+			}
+		}
+	}
+	return pruneCV(tx, cut)
+}
+
+// CVKey is the kv row the builder's compaction view persists in: a JSON
+// array of [l, i] pairs, pruned past every cut.
+const CVKey = "chatlog.cv"
+
+// pruneCV drops the compaction view's lines whose nodes the cut took: a
+// line left behind would stop every build's context at the first phantom.
+func pruneCV(tx *sql.Tx, cut int64) error {
+	var raw sql.NullString
+	err := tx.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, CVKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("store: rewind compaction view: %w", err)
+	}
+	var pairs [][]int64
+	if json.Unmarshal([]byte(raw.String), &pairs) != nil {
+		pairs = nil // a value nothing can read is not kept
+	}
+	kept := pairs[:0]
+	for _, p := range pairs {
+		if len(p) == 2 && p[0] >= 0 && p[1] >= 0 && (p[1]+1)*(1<<p[0]) <= cut {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		if _, err := tx.Exec(`DELETE FROM kv WHERE key = ?`, CVKey); err != nil {
+			return fmt.Errorf("store: rewind compaction view: %w", err)
+		}
+		return nil
+	}
+	value, err := json.Marshal(kept, json.Deterministic(true))
+	if err != nil {
+		return fmt.Errorf("store: rewind compaction view: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ?`,
+		string(value), now(), CVKey); err != nil {
+		return fmt.Errorf("store: rewind compaction view: %w", err)
+	}
+	return nil
+}
+
 // ResetLog wipes the chat: the log rows, every summary node and view line,
-// and the checkpoints keyed by log seq. The next append starts at seq 0
-// again. VACUUM and a TRUNCATE checkpoint follow, so the wiped text leaves
-// the file, the way a deleted conversation once did.
+// the checkpoints keyed by log seq, and the compaction view. The next append
+// starts at seq 0 again. VACUUM and a TRUNCATE checkpoint follow: without
+// them the wiped rows would stay in the file's free pages, and a wiped chat
+// would be readable there.
 func (s *DB) ResetLog() error {
 	err := s.inTx(func(tx *sql.Tx) error {
 		for _, table := range []string{"log", "nodes", "view_lines", "checkpoints"} {
 			if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
 				return fmt.Errorf("store: reset %s: %w", table, err)
 			}
+		}
+		if _, err := tx.Exec(`DELETE FROM kv WHERE key = ?`, CVKey); err != nil {
+			return fmt.Errorf("store: reset compaction view: %w", err)
 		}
 		return nil
 	})
@@ -284,14 +365,3 @@ func (s *DB) ViewLines() ([]ViewLineText, error) {
 // MainSessionID is the anchor session row's id: billing and todos ride it
 // once the chat is the memory.
 const MainSessionID = "main"
-
-// AnchorSession reports whether the store holds the anchor row the migration
-// inserts.
-func (s *DB) AnchorSession() (bool, error) {
-	var one int
-	err := s.db.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, MainSessionID).Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	return err == nil, err
-}

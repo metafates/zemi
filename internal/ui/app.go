@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
@@ -64,6 +65,21 @@ type App struct {
 	// composerW is the width the composer last drew its rows at, so the up
 	// and down moves wrap at what the user sees; 0 before the first frame.
 	composerW int
+
+	// wrapKey is the draft, cursor and width wrapComposer last wrapped, held
+	// so a frame's measure and draw share one wrap and a flood of keys that
+	// edit nothing re-measures without one.
+	wrapKey struct {
+		text      string
+		cursor, w int
+		row, col  int
+		rows      [][]rune
+		soft      []bool
+	}
+
+	// published is the draft the host last heard, so a key that changed
+	// nothing republishes neither.
+	published composerSnap
 
 	histLoaded bool // the stored messages already seeded the composer history
 
@@ -520,6 +536,10 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		text := sanitize.String(msg.text)
+		if utf8.RuneCountInString(text) > maxDraftChars {
+			a.draftCapToast()
+			return nil
+		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 		a.composer.text = text
 		a.composer.moveEnd()
@@ -548,7 +568,10 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			return cmd
 		}
 		prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
-		a.composer.paste(s)
+		if !a.composer.paste(s) {
+			a.draftCapToast()
+			return nil
+		}
 		a.composer.snapshot(prev, false)
 		a.publishComposer()
 		return a.updateCompletion()

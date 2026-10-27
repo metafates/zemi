@@ -114,8 +114,7 @@ func launch(o options) int {
 				}
 			}
 		})
-		// A bad flag (no session to resume, say) is a toast, not a boot
-		// failure: the TUI is still usable.
+		// A bad flag is a toast, not a boot failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
 			host.RecordError("flag", "", err.Error())
 			app.Notify(slog.LevelError, "Could not apply a flag", err.Error())
@@ -165,7 +164,8 @@ func launch(o options) int {
 	if host.DB != nil {
 		host.DB.Touch()
 	}
-	// before a relaunch too: the scrollback keeps how to resume this session
+	// before a relaunch too: the exec replaces the process, and the exit
+	// region would never print otherwise
 	fmt.Print(app.Farewell())
 	// and the boot failure, which the TUI showed on a screen that is gone now
 	if bootErr := app.BootError(); bootErr != nil {
@@ -179,8 +179,7 @@ func launch(o options) int {
 	return 0
 }
 
-// relaunch replaces this process with zemi -C dir, resuming session resume
-// unless it is "", flags left behind. Every
+// relaunch replaces this process with zemi -C dir. Every
 // project fact (trust, origins, stores) is bound at start, so a
 // switch is a restart, never a change in place; an exec keeps the PID, so the
 // shell's wait and the terminal's foreground group do not change. The one

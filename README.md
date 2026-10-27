@@ -4,7 +4,7 @@
 
 <img align="center" width="800" alt="zemi" src="https://github.com/user-attachments/assets/e408a167-6126-45b8-aced-64b6ae726328" />
 
-Zemi is a (coding) agent harness \[insert buzzword\] that...
+Zemi is a (coding) agent harness that...
 
 - one chat that never ends: the chat itself is the memory, summarized in the background
 - fast and native like [crush](https://github.com/charmbracelet/crush)
@@ -13,6 +13,14 @@ Zemi is a (coding) agent harness \[insert buzzword\] that...
 - has a nice TUI like [opencode](https://github.com/anomalyco/opencode)
 
 ...and can be whatever you want it to be.
+
+The memory is the chat: every project has one log that never ends and never
+resets. Zemi keeps the whole conversation on disk and sends the model a compact
+summary of it (the view), which it rebuilds in the background as the chat
+grows; the model can open any line of that summary to read the messages under
+it. Nothing is extracted into a separate memory store and nothing you said is
+ever dropped - `/reset` starts the chat over, and that is the only way to
+forget.
 
 > [!NOTE]
 > I use zemi daily exclusively and have better experience with it than with other harnesses.
@@ -48,7 +56,8 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 - Does more with less steps
 - Subagents, workflows, background jobs, lsp, mcp, and more.
 - Fully scriptable with Lua and knows how to modify itself
-- Remembers everything: one eternal chat per project, read back through zoom
+- Remembers everything: one eternal chat per project; `/memories` browses the
+  summary the model reads and zooms a line into the messages it covers
 - Compatible with Claude Code plugins
 
 ## API keys

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -319,16 +320,38 @@ func likePrefix(prefix string) string {
 
 // Usage is summed token counts and cost.
 type Usage struct {
-	Sessions           int
 	Prompt, Completion int64
 	Cost               float64
 }
 
-// UsageSince sums top-level sessions active at or after the unix-ms time
-// (subagent runs already count toward their parent).
+// AddUsageDay accrues one bill's tokens and cost onto its UTC day, the dated
+// sums /usage's buckets read. The anchor row holds the project's total; this
+// holds when it was spent.
+func (s *DB) AddUsageDay(prompt, completion int64, cost float64) error {
+	day := time.Now().UTC().Format(time.DateOnly)
+	_, err := s.db.Exec(`INSERT INTO usage_days (day, prompt_tokens, completion_tokens, cost)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(day) DO UPDATE SET
+			prompt_tokens = prompt_tokens + excluded.prompt_tokens,
+			completion_tokens = completion_tokens + excluded.completion_tokens,
+			cost = cost + excluded.cost`,
+		day, prompt, completion, cost)
+	if err != nil {
+		return fmt.Errorf("store: add usage day: %w", err)
+	}
+	return nil
+}
+
+// UsageSince sums the dated usage rows at or after the unix-ms time: the
+// anchor row's accounting by day, subagent runs included through it (a run's
+// bill rides the anchor with its parent's).
 func (s *DB) UsageSince(ms int64) (Usage, error) {
 	var u Usage
-	err := s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
-		FROM sessions WHERE `+topLevelSessions+` AND updated_at >= ?`, ms).Scan(&u.Sessions, &u.Prompt, &u.Completion, &u.Cost)
+	day := ""
+	if ms > 0 {
+		day = time.UnixMilli(ms).UTC().Format(time.DateOnly)
+	}
+	err := s.db.QueryRow(`SELECT COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
+		FROM usage_days WHERE ? = '' OR day >= ?`, day, day).Scan(&u.Prompt, &u.Completion, &u.Cost)
 	return u, err
 }

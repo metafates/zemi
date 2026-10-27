@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/store"
@@ -122,6 +123,57 @@ func TestMemoriesLeafJump(t *testing.T) {
 	}
 	if chat.focus != 5 {
 		t.Fatalf("enter left the chat at focus %d, want the leaf's message", chat.focus)
+	}
+}
+
+// TestMemoriesPreviewBody: the v-preview of a leaf shows the logged rows,
+// each head carrying the row's date, and never the gone-sentence the body's
+// own content rules out.
+func TestMemoriesPreviewBody(t *testing.T) {
+	t.Parallel()
+	app, host := seedMemoriesApp(t, 100, 24)
+	if err := host.MemoriesCommand("view 0 1"); err != nil {
+		t.Fatal(err)
+	}
+	pump(t, app)
+	st := &app.overlays[len(app.overlays)-1]
+	if st.o.ID != "memories range 0 1" {
+		t.Fatalf("the preview = %s", st.o.ID)
+	}
+	if st.o.Empty != "" {
+		t.Fatalf("a preview with rows carried Empty %q", st.o.Empty)
+	}
+	if !strings.Contains(st.o.Body, "user 20") || !strings.Contains(st.o.Body, ": row") {
+		t.Fatalf("the preview body = %q", st.o.Body)
+	}
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "row row") {
+		t.Fatalf("the preview drew:\n%s", frame)
+	}
+	if strings.Contains(frame, "gone from this store") {
+		t.Fatalf("the gone-sentence drew under real content:\n%s", frame)
+	}
+}
+
+// TestMemoriesLeafZoomSaysSo: l on a leaf zooms nothing and says so, instead
+// of doing nothing silently.
+func TestMemoriesLeafZoomSaysSo(t *testing.T) {
+	t.Parallel()
+	app, host := seedMemoriesApp(t, 100, 24)
+	if err := host.MemoriesCommand(""); err != nil {
+		t.Fatal(err)
+	}
+	pump(t, app)
+	ov := &app.overlays[len(app.overlays)-1]
+	ov.selected = 2 // the built leaf 4+1
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	pump(t, app)
+	if toast := lastToast(app); !strings.Contains(toast, "is a leaf") {
+		t.Fatalf("l on a leaf toasted %q", toast)
+	}
+	if len(app.overlays) != 1 {
+		t.Fatalf("%d overlays after the leaf zoom", len(app.overlays))
 	}
 }
 

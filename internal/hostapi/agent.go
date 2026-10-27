@@ -82,8 +82,8 @@ type agentHost struct {
 	// outcomes is what each running call's tool reported beyond its text,
 	// keyed by call id and read once the call ends
 	outcomes map[string]tools.Outcome
-	// rows is the facts of each ended call, kept until the message that drew
-	// it is stored, so a resumed session rebuilds the same rows
+	// rows is what each running call's tool reported beyond its text, keyed
+	// by call id and stored with the message that drew it
 	rows map[string]rowMeta
 
 	// targetsMu guards targets, the slots zemi.model.add registered. It is a
@@ -139,8 +139,8 @@ type agentHost struct {
 	promptParts  []promptPart
 	// pin is the main agent's fixed prefix (DESIGN §6.3), sent verbatim
 	// until its key moves or a drop point clears it; pinDrops counts drops,
-	// and pinMu holds one build at a time, since a resume's build and a
-	// send's would both run the assemble handlers.
+	// and pinMu holds one build at a time, since two builds would both run
+	// the assemble handlers
 	pin      promptPin
 	pinDrops int
 	pinMu    sync.Mutex
@@ -443,10 +443,9 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 }
 
 // SystemPrompt is the pinned system prompt and context message the last send
-// carried, "" before the first one and briefly after a resume, whose pin
-// builds in the background. /usage measures it; this is the text, so an
-// assemble handler or an instruction file the budget cut can be
-// read instead of guessed at. It is never rebuilt here: assembling it runs Lua
+// carried, "" before the first one. /usage measures it; this is the text, so
+// an assemble handler or an instruction file the budget cut can be read
+// instead of guessed at. It is never rebuilt here: assembling it runs Lua
 // handlers on the interpreter, which a Lua caller would deadlock on.
 func (h *Host) SystemPrompt() string {
 	ag := h.agents
@@ -586,8 +585,8 @@ func (h *Host) SendHeld(prompt string) error {
 
 // heldRow reports whether the transcript still holds the held prompt's
 // message where it landed: the turn that finally sends the same text keeps
-// that row instead of adding a second one. A /new or a resume mid-boot
-// replaced the transcript, and the turn's rows follow what stands there now.
+// that row instead of adding a second one. A reset mid-boot replaced the
+// transcript, and the turn's rows follow what stands there now.
 func (h *Host) heldRow(held *heldPrompt) bool {
 	shown, _, _ := userRowsFor(held.text)
 	h.tMu.RLock()
@@ -831,10 +830,7 @@ func (h *Host) handOff(scope *turnScope) {
 }
 
 // runTurns sends text and every follow-up the queue produces, each turn a
-// fresh call that opens on the view: nothing carries between turns, so the
-// old pre-turn compaction and handoff gate have nothing to work on.
-// runTurns sends text and every follow-up the queue produces, each turn a
-// fresh call that opens on the view.
+// fresh call that opens on the view: nothing carries between turns.
 func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 	defer h.endTurnAfterPanic()
 	for scope != nil {
@@ -932,8 +928,8 @@ func (h *Host) startTurn(text string, held *heldPrompt) {
 
 // appendUserRows shows one message as the model reads it: what was typed,
 // then the notice row of each background report behind agent.AttachMarker,
-// the same cut a resumed transcript makes. A held prompt's row went up at
-// boot (heldRow) and is kept while the transcript still holds it there.
+// the same cut the transcript's log rebuild makes. A held prompt's row went
+// up at boot (heldRow) and is kept while the transcript still holds it there.
 func (h *Host) appendUserRows(text string, held *heldPrompt) {
 	shown, heads, _ := userRowsFor(text)
 	if shown != "" && !(held != nil && h.heldRow(held)) {
@@ -1558,8 +1554,8 @@ func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Durati
 	}
 	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
 	if rows := h.takeCallRows(msg); len(rows) > 0 {
-		// the calls this message drew, so a resumed session rebuilds their
-		// rows as they were
+		// the calls this message drew, stored beside it for the run's
+		// transcript rows
 		if meta, err := json.Marshal(rows, json.Deterministic(true)); err == nil {
 			row.RowMeta = string(meta)
 		}
@@ -1704,8 +1700,8 @@ func (h *Host) callName(id string) string {
 // call gets its own "tool" message row so tool_calls.message_id stays a
 // real FK). The output is not kept: the history row already holds it. A
 // file tool's diff is, keyed by call id: it is computed against the file
-// as it was, so a resumed session could never rebuild it (historyFrom); so
-// is an agent call's run and summary line.
+// as it was, and the run's zoom reads it whole; so is an agent call's run
+// and summary line.
 func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	if h.DB == nil || sid == "" {
 		return
@@ -2498,8 +2494,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	// prompt() is the pinned system prompt and context message the last send
-	// carried, "" before the first one and while a resume's pin builds; it is
-	// never rebuilt here (see SystemPrompt).
+	// carried, "" before the first one; it is never rebuilt here (see
+	// SystemPrompt).
 	tb.RawSetString("prompt", L.NewFunction(func(L *glua.LState) int {
 		L.Push(glua.LString(h.SystemPrompt()))
 		return 1

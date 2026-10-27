@@ -286,7 +286,10 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		a.submitComposer()
 		return nil
 	case "shift+enter", "alt+enter", "ctrl+enter":
-		c.insert("\n")
+		if !c.insertFits("\n") {
+			a.draftCapToast()
+			return nil
+		}
 		return a.updateCompletion()
 	case "up":
 		if c.empty() && a.restoreQueue() {
@@ -348,10 +351,26 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			if t == "" {
 				return nil
 			}
-			c.insert(t)
+			if !c.insertFits(t) {
+				a.draftCapToast()
+				return nil // nothing changed: no completion walk, no repaint
+			}
 		}
 	}
 	return a.updateCompletion()
+}
+
+// draftCapToast refuses text past maxDraftChars, with the way out the send
+// boundary's refusal names too. One showing toast is enough: a paste flood
+// refused per keystroke must not pay a repaint a key.
+func (a *App) draftCapToast() {
+	for _, t := range a.toasts {
+		if t.level == slog.LevelWarn && t.title == "Draft too long" {
+			return
+		}
+	}
+	a.pushToast(slog.LevelWarn, "Draft too long",
+		fmt.Sprintf("the composer holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
 }
 
 // leaveAgentView is esc on a shown run: it restores the menu the view was

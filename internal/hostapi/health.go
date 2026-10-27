@@ -261,11 +261,14 @@ func NotifyArgv(text string) []string {
 func (h *Host) builderRow() HealthRow {
 	unbuilt := h.chat.tree.health.unbuilt.Load()
 	failed := h.chat.tree.health.failed.Load()
+	parked := h.chat.tree.health.parked.Load()
 	queued := h.chat.tree.health.queued.Load()
-	detail := fmt.Sprintf("%d lines unbuilt, %d queued", unbuilt, queued)
+	detail := fmt.Sprintf("%d lines still placeholders, %d builds queued", unbuilt, queued)
 	switch {
+	case parked > 0:
+		return HealthRow{Level: HealthError, Detail: fmt.Sprintf("%d builds parked after repeated failures, %s; they retry when new messages land (see /errors)", parked, detail)}
 	case failed > 0:
-		return HealthRow{Level: HealthError, Detail: fmt.Sprintf("%d builds failed, %s; they retry at the next message (see /errors)", failed, detail)}
+		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; they retry on their backoff (see /errors)", failed, detail)}
 	case unbuilt > 4*leafWaitLines:
 		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
 	}
@@ -340,7 +343,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	if len(unknown) > 0 {
 		add(HealthWarn, "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry")
 	} else if id != "" {
-		add(HealthOK, "context", "window known; the view bounds the chat, subagents trim by it")
+		add(HealthOK, "context", "window known; the summary view keeps the chat's prompt bounded, subagents trim their history by it")
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {

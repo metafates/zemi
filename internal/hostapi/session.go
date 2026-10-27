@@ -113,6 +113,12 @@ func (h *Host) stampLogSeqs() {
 	w := min(h.stampRow, len(tr))
 	consumed := 0
 	for _, row := range rows {
+		if row.Kind != kindUser && row.Kind != kindAgent && row.Kind != kindTool {
+			// a result, report or note draws no row of its own: the cursor
+			// passes it, nothing pairs with it
+			consumed++
+			continue
+		}
 		for w < len(tr) && !stampable(tr[w]) {
 			w++ // a notice, a thought or an error row: the log row it follows pairs past it
 		}

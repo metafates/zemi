@@ -341,7 +341,7 @@ func fmtCost(usd float64) string {
 
 // OpenUsage shows how full the context is, what the fixed prompt is made of,
 // and token use and cost: the live session, then today, the last 7 days and
-// all time across this project's sessions.
+// all time of this project's chat, dated by the day each bill landed.
 func (h *Host) OpenUsage() error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -410,8 +410,8 @@ func (h *Host) OpenUsage() error {
 		u     store.Usage
 	}
 	windows := []window{{"this session", store.Usage{Prompt: s.SessionIn, Completion: s.SessionOut, Cost: s.SessionCost}}}
-	y, m, d := time.Now().Date()
-	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	y, m, d := time.Now().UTC().Date()
+	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	for _, w := range []struct {
 		label string
 		since time.Time
@@ -437,7 +437,7 @@ func (h *Host) OpenUsage() error {
 	if s.CacheBilled > 0 {
 		cached = fmt.Sprintf("%.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
 	}
-	head := fmt.Sprintf("%18s%9s%10s", "in", "out", "sessions") // over the rows' columns, past the 6 cells of the title
+	head := fmt.Sprintf("%18s%9s", "in", "out") // over the rows' columns, past the 6 cells of the title
 	if priced {
 		head += "      cost"
 	}
@@ -446,11 +446,7 @@ func (h *Host) OpenUsage() error {
 	}
 	section("Tokens", text(ChromeHint, head))
 	for i, w := range windows {
-		count := ""
-		if w.u.Sessions > 0 {
-			count = strconv.Itoa(w.u.Sessions)
-		}
-		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion))), text(ChromeHint, fmt.Sprintf("%10s", count))}
+		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion)))}
 		if priced {
 			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmtCost(w.u.Cost))))
 		}

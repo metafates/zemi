@@ -624,8 +624,25 @@ func TestBgTurnFolds(t *testing.T) {
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "agent", Label: "Review rail-fold branch", Status: "bg", Run: "rr1"})
 	appendReply(host, "the review is running", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
-	if !slices.Contains(rows, "· 1 agent run") || slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "Review rail-fold branch") }) {
+	// the fold row is the digest alone: the count, then the run's about
+	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(strings.TrimSpace(r), "· 1 agent run") })
+	if fold < 0 || !strings.Contains(rows[fold], "Review rail-fold branch") {
 		t.Fatalf("the background turn does not fold:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// TestDigestSaysWhatRan: the fold row names the first call's about after the
+// counts, so "1 command" alone never hides what ran.
+func TestDigestSaysWhatRan(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 140, 30)
+	host.AppendMessage("user", "run it")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet ./...", Label: "vet the tree", Status: "ok"})
+	appendReply(host, "clean", hostapi.TurnStat{})
+	rows := chatRows(t, app, 138)
+	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(strings.TrimSpace(r), "· 1 command") }); got < 0 ||
+		!strings.Contains(rows[got], "vet the tree") {
+		t.Fatalf("the digest row = %v", rows)
 	}
 }
 

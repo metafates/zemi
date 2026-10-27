@@ -278,8 +278,9 @@ func messagesTurns(p pickTr) []msgTurn {
 
 // messagesList is /messages: every turn's rows in order under a header that
 // names the turn, so one list reads the whole conversation, with the pages a
-// page-up loaded ahead of them. The row the reader was at, when given,
-// selects the element holding it.
+// page-up loaded ahead of them and the logged rows this window never drew
+// after them. The row the reader was at, when given, selects the element
+// holding it.
 func (h *Host) messagesList(p pickTr, at int) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
@@ -320,8 +321,44 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 			}
 		}
 	}
+	o.Items = append(o.Items, h.otherWindowRows()...)
 	o.More = h.messagesOlder
 	return o
+}
+
+// otherWindowRows reads the log rows this window never drew: another
+// window's turns land in the shared log above the seqs this transcript
+// stamped, and /rewind and /memories show them, so the picker does too. They
+// name no transcript row, the way a loaded page's rows do. The stamping runs
+// first, so the rows this window drew but has not named yet stay out. NOTE:
+// capped at one page; a longer gap waits for this window to draw its way to
+// them (cross-window convergence is lazy).
+func (h *Host) otherWindowRows() []OverlayItem {
+	if h.DB == nil {
+		return nil
+	}
+	h.stampLogSeqs()
+	h.tMu.RLock()
+	tr := h.session.Transcript
+	h.tMu.RUnlock()
+	top := int64(-1)
+	for _, m := range tr { // the window's rows carry their log seq once stamped
+		if m.Seq > top {
+			top = m.Seq
+		}
+	}
+	rows, err := h.DB.LogFrom(top+1, chatPageRows)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	var items []OverlayItem
+	for _, m := range logRows(rows) {
+		if item := olderRow(m); item.Text != "" {
+			item.Section = "From another window"
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // chatPageRows is how many log rows one page-up of the picker loads.
@@ -433,10 +470,15 @@ func (h *Host) rewindKey(keys []OverlayKey) []OverlayKey {
 }
 
 // rewindTo runs the rewind command on a row's stored message, the way
-// /rewind <id> does.
+// /rewind <id> does. A refusal (a turn running, a run still going) leaves the
+// chat standing, so the picker comes back with it instead of closing under
+// the toast.
 func (h *Host) rewindTo(id string) {
 	if err := h.RunCommand(context.Background(), "rewind", id, false); err != nil {
 		h.Notify(slog.LevelWarn, "Could not rewind", err.Error())
+		if err := h.OpenMessages(); err != nil {
+			h.Log.Debug("messages picker not reopened", "origin", "rewind", "error", err)
+		}
 	}
 }
 

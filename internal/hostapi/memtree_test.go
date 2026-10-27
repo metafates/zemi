@@ -4,42 +4,57 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/bits"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
+// errBuildFails is what the always-failing builder stub answers.
+var errBuildFails = errors.New("compaction failed")
+
 // treeModel is the builder's stub: every compaction is answered with the next
 // scripted reply and the calls' conversations are kept for assertions. A gate
-// with no tokens holds each call until its context cancels.
+// holds every call from gateAfter on until its channel closes, and fail
+// fails them all.
 type treeModel struct {
-	mu      sync.Mutex
-	replies []string
-	convo   [][]fantasy.Message
-	calls   int
-	gate    chan struct{}
+	mu        sync.Mutex
+	replies   []string
+	convo     [][]fantasy.Message
+	times     []time.Time
+	calls     int
+	gate      chan struct{}
+	gateAfter int
+	fail      atomic.Bool
 }
 
 func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	m.mu.Lock()
 	i, gate := m.calls, m.gate
 	m.calls++
+	m.times = append(m.times, time.Now())
 	m.convo = append(m.convo, slices.Clone(call.Prompt))
 	m.mu.Unlock()
-	if gate != nil {
+	if gate != nil && i >= m.gateAfter {
 		select {
 		case <-gate:
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+	if m.fail.Load() {
+		return nil, errBuildFails
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -573,20 +588,47 @@ func TestBurstGate(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	b := newMemTree(context.Background(), h)
 	t.Cleanup(b.Close)
-	start := func() <-chan struct{} {
+	// release pairs the test's own slot once, so a failing assert leaks no
+	// WaitGroup count into Close
+	paired := 0
+	release := func(first bool) {
+		if paired == 0 {
+			return
+		}
+		paired--
+		b.calls.Done()
+		b.endCall(first)
+	}
+	// waiter takes a non-first slot and waits it out in its own goroutine,
+	// its pairing and endCall in one place
+	waiter := func() <-chan struct{} {
+		f, wait, ok := b.takeSlot()
+		if !ok {
+			t.Fatal("takeSlot refused with the gate open")
+		}
+		if f {
+			b.calls.Done()
+			b.endCall(true)
+			t.Fatal("a non-first slot came back first")
+		}
 		done := make(chan struct{})
 		go func() {
-			_, _ = b.takeCall()
-			close(done)
+			defer close(done)
+			defer b.calls.Done()
+			defer b.endCall(false)
+			_ = b.waitBurst(wait)
 		}()
 		return done
 	}
-	first, err := b.takeCall()
-	if err != nil || !first {
-		t.Fatalf("first call = %v, %v", first, err)
+
+	first, _, ok := b.takeSlot()
+	paired = 1
+	if !ok || !first {
+		t.Fatal("the first slot is not the burst's first call")
 	}
+	defer release(true)
 	// the second call waits: the first is still writing the cache entry
-	second := start()
+	second := waiter()
 	select {
 	case <-second:
 		t.Fatal("the second call did not wait for the first response")
@@ -599,41 +641,287 @@ func TestBurstGate(t *testing.T) {
 		t.Fatal("the second call stayed wedged behind an open burst")
 	}
 	// behind an open burst a third call runs at once
-	third := start()
+	third := waiter()
 	select {
 	case <-third:
 	case <-time.After(5 * time.Second):
 		t.Fatal("a call wedged behind an already open burst")
 	}
-	b.endCall(true)
-	<-second
-	b.endCall(false)
-	<-third
-	b.endCall(false)
 
 	// a first call that ends without responding opens its burst too: no
 	// caller waits for a response that never comes
-	again, err := b.takeCall()
-	if err != nil || !again {
-		t.Fatalf("first call = %v, %v", again, err)
+	release(true)
+	again, _, ok := b.takeSlot()
+	paired = 1
+	if !ok || !again {
+		t.Fatal("the slot after the burst closed is not a first call")
 	}
-	held := start()
+	held := waiter()
 	select {
 	case <-held:
 		t.Fatal("the call did not wait for the burst")
 	case <-time.After(250 * time.Millisecond):
 	}
-	b.endCall(true)
+	release(true)
 	select {
 	case <-held:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the call stayed wedged behind a burst whose first call ended")
 	}
-	b.endCall(false)
 }
 
-// TestRewindCutRebuild: a tail cut under a live builder leaves the queues
-// and the view self-consistent after RebuildQueues.
+// TestRewindFencesTheBuilder: a rewind's quiesce holds the gate - the build
+// in flight when it starts lands before the cut, none dispatch after it -
+// and the fresh message that reuses a cut seq gets its own node, not a stale
+// summary of the old one.
+func TestRewindFencesTheBuilder(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.gate = make(chan struct{})
+	m.gateAfter = 1 // the first build runs through, the second holds
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	// the second message's build starts and holds in flight
+	if _, err := cl.User(strings.Repeat("y", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() < 2 {
+			return errors.New("the second build has not started")
+		}
+		return nil
+	})
+	rewound := make(chan error, 1)
+	go func() {
+		_, err := h.RewindTo(1)
+		rewound <- err
+	}()
+	// the quiesce waits behind the in-flight build; release it only then
+	waitFor(t, func() error {
+		cl.tree.callMu.Lock()
+		defer cl.tree.callMu.Unlock()
+		if !cl.tree.held || cl.tree.flight == 0 {
+			return errors.New("the rewind has not quiesced behind the in-flight build")
+		}
+		return nil
+	})
+	close(m.gate)
+	select {
+	case err := <-rewound:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the rewind did not finish behind a gated build")
+	}
+	// a fresh message reuses seq 1: its node is its own words, and no stale
+	// summary of the old one may land over it
+	if _, err := cl.User("fresh words", ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		n, err := h.DB.NodeAt(0, 1)
+		if errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		if n.Text != "fresh words" {
+			return fmt.Errorf("node(0,1) = %q, want the fresh message's own text", n.Text)
+		}
+		return nil
+	})
+}
+
+// TestBuildStreak: a failing node's backoff doubles per try up to the cap,
+// the streak parks it after parkAfter failures until fresh rows revive it
+// for one try, and readiness follows the clock.
+func TestBuildStreak(t *testing.T) {
+	now := time.Unix(0, 0)
+	var s buildStreak
+	if s.ready(now, false) {
+		t.Fatal("a streak with no failures is ready")
+	}
+	for i, want := range []time.Duration{
+		time.Second, 2 * time.Second, 4 * time.Second,
+		8 * time.Second, 16 * time.Second, 32 * time.Second,
+	} {
+		if parked := s.fail(now); parked {
+			t.Fatalf("try %d parked, want a %s backoff", i+1, want)
+		}
+		if got := s.next.Sub(now); got != want {
+			t.Fatalf("try %d backs off %s, want %s", i+1, got, want)
+		}
+		now = now.Add(want)
+	}
+	if !s.ready(now, false) {
+		t.Fatal("the backoff ran out but the node is not ready")
+	}
+	if !s.fail(now) {
+		t.Fatal("the seventh failure did not park the node")
+	}
+	if s.ready(now, false) {
+		t.Fatal("a parked node ready without fresh rows")
+	}
+	if !s.ready(now, true) {
+		t.Fatal("a parked node not revived by fresh rows")
+	}
+	if capped := retryBackoff(20); capped != retryCap {
+		t.Fatalf("backoff %s past the cap, want %s", capped, retryCap)
+	}
+}
+
+// TestBuilderBackoff: a failing build retries on its backoff instead of a
+// storm, and a success over fresh rows builds the node.
+func TestBuilderBackoff(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.fail.Store(true)
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() == 0 {
+			return errors.New("no build ran")
+		}
+		return nil
+	})
+	// the retries space out: the second try waits out the base backoff, and
+	// the storm's dozens of tries in the same window never happen
+	waitFor(t, func() error {
+		if m.callCount() < 3 {
+			return errors.New("the backoff retries have not run")
+		}
+		return nil
+	})
+	m.mu.Lock()
+	first, second, third := m.times[0], m.times[1], m.times[2]
+	m.mu.Unlock()
+	if got := second.Sub(first); got < retryBase {
+		t.Fatalf("the second try ran %s after the first, want the backoff floor", got)
+	}
+	if got := third.Sub(second); got < 2*retryBase {
+		t.Fatalf("the third try ran %s after the second, want the doubled backoff", got)
+	}
+	if n := m.callCount(); n > 2*parkAfter {
+		t.Fatalf("%d calls for one failing node, want the backoff's bounded few", n)
+	}
+	// a success over fresh rows: the failed node's streak requeues at once
+	m.fail.Store(false)
+	if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 0); err != nil {
+			return err
+		}
+		_, err := h.DB.NodeAt(0, 1)
+		return err
+	})
+}
+
+// TestOverflowRetrySendsAMergedView: a context-too-large refusal merges the
+// view synchronously, so the retry sends the merged view instead of the
+// bytes that were refused.
+func TestOverflowRetrySendsAMergedView(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "done")
+	m.overflow.Store(1) // the turn's first request is refused, the retry is not
+	h.SetUIHooks(&fakeUI{})
+	// two hundred long messages: verbatim leaves, but every pair is over the
+	// join's budget, so their merges are model calls and shrink the view.
+	// Under the ceiling, so only the overflow guard's batch merges them.
+	for range 200 {
+		if _, err := h.chat.User(strings.Repeat("w", 400), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		_, err := h.DB.NodeAt(1, 99) // every level-1 pair built
+		return err
+	})
+	prompts := sendTurns(t, h, m, "do it")
+	if len(prompts) < 2 {
+		t.Fatalf("%d requests recorded, want the refused one and the retry", len(prompts))
+	}
+	before, after := viewBytes(t, prompts[0]), viewBytes(t, prompts[1])
+	if after >= before {
+		t.Fatalf("the retry's view is %d bytes, not smaller than the refused %d", after, before)
+	}
+}
+
+// viewBytes sizes a request's view message: the bytes its parts carry.
+func viewBytes(t *testing.T, prompt []fantasy.Message) int {
+	t.Helper()
+	msg := viewPart(t, prompt)
+	n := 0
+	for _, p := range msg.Content {
+		tp, ok := p.(fantasy.TextPart)
+		if !ok {
+			t.Fatal("the view message carries a non-text part")
+		}
+		n += len(tp.Text)
+	}
+	return n
+}
+
+// TestBuilderSurvivesACorruptView: one unreadable compaction-view row costs
+// the row, not the builder - it resets, and summarization goes on.
+func TestBuilderSurvivesACorruptView(t *testing.T) {
+	t.Parallel()
+	state, project := t.TempDir(), t.TempDir()
+	pre, err := store.Open(store.ProjectDBPath(state, project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pre.SetKV(store.CVKey, "not the compaction view"); err != nil {
+		t.Fatal(err)
+	}
+	pre.Close()
+
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{
+		StateHome: state, DataHome: t.TempDir(), ProjectDir: project,
+	})
+	t.Cleanup(h.Close)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	reflectStub(t, h, "ok")
+	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		n, err := h.DB.NodeAt(0, 0)
+		if err != nil {
+			return err
+		}
+		if n.Text == placeholder {
+			return errors.New("the node did not build")
+		}
+		return nil
+	})
+	// the corrupt row is gone, not kept for every rebuild to trip on
+	if _, err := h.DB.GetKV(store.CVKey); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the compaction view row = %v, want it reset", err)
+	}
+}
+
+// TestBuilderRowParked: /health's builder row says a parked build outright.
+func TestBuilderRowParked(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.chat.tree.health.parked.Store(2)
+	row := h.builderRow()
+	if row.Level != HealthError || !strings.Contains(row.Detail, "2 builds parked") {
+		t.Fatalf("builder row = %+v, want the parked builds named", row)
+	}
+}
+
 func TestRewindCutRebuild(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))

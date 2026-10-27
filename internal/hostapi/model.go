@@ -352,6 +352,11 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	ag.mu.Unlock()
 	if h.DB != nil {
 		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, u.CacheReadTokens, billedInput(u), cost)
+		// the day buckets date the anchor row's accounting; a run's own bill
+		// is its parent's already counted, never a second one
+		if sid == store.MainSessionID {
+			_ = h.DB.AddUsageDay(billedInput(u), u.OutputTokens, cost)
+		}
 	}
 }
 

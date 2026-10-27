@@ -282,8 +282,9 @@ M.PROSE = 80
 function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) or "thought" end
 
 --- What rows[first..last] of a turn fold into, the chat's digest row:
---- "6 files, 8 commands · thought 8s", a run holding thinking alone as
---- "thought 8s"; "" when it holds neither, so its rail stays.
+--- "1 command · run the tests", what it did then what the model said about
+--- the first call, or "6 files, 8 commands · thought 8s"; "" when it holds
+--- neither, so its rail stays.
 ---@param rows zemi.TranscriptRow[]
 ---@param first integer
 ---@param last integer
@@ -302,7 +303,11 @@ function M.digest(rows, first, last)
 	end
 	---@type string[]
 	local parts = {}
-	if #calls > 0 then parts[#parts + 1] = M.counts(calls) end
+	if #calls > 0 then
+		parts[#parts + 1] = M.counts(calls)
+		local about = calls[1].label or ""
+		if about ~= "" then parts[#parts + 1] = about end
+	end
 	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end
 	return table.concat(parts, " · ")
 end

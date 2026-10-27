@@ -131,6 +131,84 @@ func TestMessagesList(t *testing.T) {
 	}
 }
 
+// TestStampingPairsResultRows: a tool result's log row draws no row of its
+// own, so the pairing passes it instead of spending the next row's slot on
+// it - which stalled every turn after the first tool call and left its rows
+// unnamed, the rewind keys on them dead.
+func TestStampingPairsResultRows(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	turn := func(text string) {
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: text})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName("read"), Text: "a.go", Label: "read a", Status: CallOK})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "all done " + text})
+		for _, row := range []struct {
+			kind, text, meta string
+		}{
+			{kindUser, text, ""},
+			{kindTool, `{"path":"a.go"}`, `{"tool":"read"}`},
+			{kindEcho, "the file body", `{"tool":"read","ok":true}`},
+			{kindAgent, "all done " + text, ""},
+		} {
+			if _, err := h.DB.AppendLog(row.kind, row.text, row.meta, "", ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		h.stampLogSeqs()
+	}
+	turn("one")
+	turn("two")
+	var got []int64
+	for _, m := range h.Session().Transcript {
+		got = append(got, m.Seq)
+	}
+	if want := []int64{0, 1, 3, 4, 5, 7}; !slices.Equal(got, want) {
+		t.Fatalf("stamped seqs = %v, want %v", got, want)
+	}
+	// the picker's prompt rows name them, so r rewinds to each
+	o := h.messagesList(h.pickerTranscript(), 0)
+	if o.Items[0].ID != "0" || o.Items[3].ID != "4" {
+		t.Fatalf("prompt ids = %q %q, want \"0\" and \"4\"", o.Items[0].ID, o.Items[3].ID)
+	}
+}
+
+// TestMessagesCrossWindow: the turns another window logged appear in the
+// picker, the way /rewind and /memories show them, under their own section
+// and named by their log seq; the rows this window drew but has not stamped
+// yet stay out.
+func TestMessagesCrossWindow(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.AppendMessage("user", "mine")
+	if _, err := h.DB.AppendLog(kindUser, "mine", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.stampLogSeqs()
+	// another window's turn: logged, never drawn here
+	if _, err := h.DB.AppendLog(kindUser, "their prompt", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.AppendLog(kindAgent, "their reply", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	o := h.messagesList(h.pickerTranscript(), 0)
+	var rows []string
+	for _, it := range o.Items {
+		rows = append(rows, it.Section+"|"+it.Text+"|"+it.ID)
+	}
+	want := []string{
+		"Turn 1|mine|0", // the window's row
+		"From another window|their prompt|1",
+		"From another window|their reply|", // a reply names no rewind; its run reads it whole
+	}
+	if !slices.Equal(rows, want) {
+		t.Fatalf("rows = %q, want %q", rows, want)
+	}
+	if o.Items[2].Run != "messages view #2" {
+		t.Fatalf("the logged reply's run = %q, want its seq view", o.Items[2].Run)
+	}
+}
+
 // TestMessagesView: reading a row whole shows a reply as its markdown and a
 // prompt as the text it is.
 func TestMessagesView(t *testing.T) {

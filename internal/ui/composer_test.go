@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -86,6 +87,40 @@ func TestComposerUndo(t *testing.T) {
 	app.composerKey("ctrl+z", tea.KeyPressMsg{})
 	if app.composer.text != "alpha beta" {
 		t.Fatalf("ctrl+z after ctrl+c: %q", app.composer.text)
+	}
+}
+
+// TestDraftCap: typing or pasting past maxDraftChars refuses with a toast
+// and leaves the draft at the cap, while a large paste still folds to a
+// token, which expand unfolds at submit.
+func TestDraftCap(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	chunk := strings.Repeat("a", 996)
+	for range 30 {
+		app.composerKey("x", tea.KeyPressMsg{Text: chunk})
+	}
+	if got := utf8.RuneCountInString(app.composer.text); got > maxDraftChars || got <= maxDraftChars-len(chunk) {
+		t.Fatalf("the draft holds %d runes, want the cap %d minus one refused chunk", got, maxDraftChars)
+	}
+	if toast := lastToast(app); !strings.Contains(toast, "20k") {
+		t.Fatalf("the cap toasted %q", toast)
+	}
+	// the refused keys change nothing; the draft stays editable
+	full := utf8.RuneCountInString(app.composer.text)
+	app.composerKey("backspace", tea.KeyPressMsg{})
+	if got := utf8.RuneCountInString(app.composer.text); got != full-1 {
+		t.Fatalf("backspace left %d runes, want %d", got, full-1)
+	}
+	// a paste over the token threshold still folds: its text waits in the
+	// token, the draft stays short
+	app.composer.text, app.composer.cursor = "", 0
+	big := strings.Repeat("b", 5000)
+	app.Update(tea.PasteMsg{Content: big})
+	if app.composer.text == "" || strings.Contains(app.composer.text, "bbbb") {
+		t.Fatalf("the big paste did not fold to a token: %d chars", len(app.composer.text))
+	}
+	if got := app.composer.expand(app.composer.text); got != big {
+		t.Fatalf("the token expanded to %d chars, want the paste whole", len(got))
 	}
 }
 

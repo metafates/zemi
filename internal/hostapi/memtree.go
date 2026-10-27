@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -40,6 +41,12 @@ const (
 	// kept; buildSlots is the model calls one builder runs at once.
 	buildTryMax = 5
 	buildSlots  = 8
+	// A failed build retries on a doubling backoff up to retryCap, and a
+	// streak past parkAfter parks the node until fresh rows or a reset
+	// revive it: a permanently failing build must not re-fire in a storm.
+	retryBase = time.Second
+	retryCap  = time.Minute
+	parkAfter = 6
 	// leafWaitLines: a leaf builds once fewer than this many lines before it
 	// are still unbuilt, so the placeholder tail stays about this long.
 	leafWaitLines = 8
@@ -182,11 +189,12 @@ type memTree struct {
 	results chan buildResult
 
 	callMu     sync.Mutex
-	flight     int           // model calls in flight
-	leafFlight int           // leaf calls in flight: the unbuilt lines a leaf waits behind
-	held       bool          // dispatch paused (a rewind quiesces); guarded by callMu
-	burst      chan struct{} // closed when the burst's first response starts
-	force      chan struct{} // size 1: merge one batch now
+	flight     int                // model calls in flight
+	leafFlight int                // leaf calls in flight: the unbuilt lines a leaf waits behind
+	held       bool               // dispatch paused (a rewind quiesces); guarded by callMu
+	burst      chan struct{}      // closed when the burst's first response starts
+	force      chan chan struct{} // the overflow guard's one batch, acked when it ran
+	retryTimer *time.Timer        // wakes the builder at the earliest retry's backoff
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -194,12 +202,13 @@ type memTree struct {
 	built      map[nodeID]int // built nodes and their line sizes
 	view       []viewLine     // the view, oldest first
 	viewBytes  int
-	leaves     []int64  // pending leaves, in message order
-	leafRetry  []int64  // failed leaves, retried at the next append
-	merges     []nodeID // pending merges, as the parents that would land
-	mergeRetry []nodeID
-	draining   bool       // a batch left the view above the floor
-	cv         []viewLine // the compaction view, the second sawtooth
+	leaves     []int64                 // pending leaves, in message order
+	leafRetry  []int64                 // failed leaves, back per their streak
+	merges     []nodeID                // pending merges, as the parents that would land
+	mergeRetry []nodeID                // failed merges, back per their streak
+	streaks    map[nodeID]*buildStreak // each failed node's failure streak
+	draining   bool                    // a batch left the view above the floor
+	cv         []viewLine              // the compaction view, the second sawtooth
 	cvBytes    int
 
 	// health is what /health reads of the queues; the worker rewrites it
@@ -207,10 +216,49 @@ type memTree struct {
 	health builderHealth
 }
 
-// builderHealth is the builder's queue depth, unbuilt lines and retries,
-// what /health's builder row says.
+// builderHealth is the builder's queue depth, unbuilt lines and failed or
+// parked builds, what /health's builder row says.
 type builderHealth struct {
-	unbuilt, failed, queued atomic.Int64
+	unbuilt, failed, queued, parked atomic.Int64
+}
+
+// buildStreak is one node's consecutive build failures: a capped exponential
+// backoff between tries, parking when the streak passes parkAfter until new
+// log rows or a reset revive it.
+type buildStreak struct {
+	fails  int
+	next   time.Time
+	parked bool
+}
+
+// fail records one failure and reschedules the try; it says whether the
+// streak just parked.
+func (s *buildStreak) fail(now time.Time) bool {
+	s.fails++
+	if s.parked {
+		return false
+	}
+	if s.fails > parkAfter {
+		s.parked = true
+		return true
+	}
+	s.next = now.Add(retryBackoff(s.fails))
+	return false
+}
+
+// ready says whether a failed node may try again: one whose backoff ran
+// out, or any of them over fresh log rows - a parked node included, for one
+// try per arrival.
+func (s *buildStreak) ready(now time.Time, fresh bool) bool {
+	if s.parked {
+		return fresh
+	}
+	return s.fails > 0 && (fresh || !now.Before(s.next))
+}
+
+// retryBackoff doubles the base wait per consecutive failure, capped.
+func retryBackoff(fails int) time.Duration {
+	return min(retryBase<<(fails-1), retryCap)
 }
 
 // newMemTree starts the builder worker on ctx; the caller's Close ends it.
@@ -223,9 +271,10 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		done:    make(chan struct{}),
 		wake:    make(chan struct{}, 1),
 		rebld:   make(chan struct{}, 1),
-		force:   make(chan struct{}, 1),
+		force:   make(chan chan struct{}, 1),
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
+		streaks: map[nodeID]*buildStreak{},
 	}
 	h.GoSafe("memtree", b.run)
 	return b
@@ -249,31 +298,44 @@ func (b *memTree) RebuildQueues() {
 	}
 }
 
-// MergeOnce merges one batch now, whatever the view's size: the overflow
-// guard's retry rides it when the provider refused the context as too large.
+// MergeOnce merges one batch now, whatever the view's size, and returns
+// once it ran: the overflow guard's retry rides it when the provider
+// refused the context as too large, and must send the merged view, not the
+// bytes that were refused.
 func (b *memTree) MergeOnce() {
+	ack := make(chan struct{})
 	select {
-	case b.force <- struct{}{}:
+	case b.force <- ack:
+	case <-b.ctx.Done():
+		return
+	}
+	select {
+	case <-ack:
 	case <-b.ctx.Done():
 	}
 }
 
-// quiesce stops dispatching and waits for the in-flight builds to land, so
-// a rewind's cut runs under no build. resume releases it.
+// quiesce stops dispatch and holds the fence: no build dispatches after it,
+// and every build dispatched before it has landed, so a rewind's cut runs
+// under no build. resume releases it.
 func (b *memTree) quiesce() {
 	b.callMu.Lock()
 	b.held = true
-	flight := b.flight
 	b.callMu.Unlock()
-	if flight == 0 {
-		return
-	}
 	done := make(chan struct{})
-	go func() { b.calls.Wait(); close(done) }()
+	b.h.GoSafe("memtree quiesce", func() {
+		b.calls.Wait()
+		close(done)
+	})
 	select {
 	case <-done:
 	case <-b.ctx.Done():
+		return // closing: the process is going down with the builds
 	}
+	// the zero result walks the fence: results are received in the order
+	// they were sent, so once the worker takes it, every build dispatched
+	// before the gate has applied
+	b.send(buildResult{})
 }
 
 func (b *memTree) resume() {
@@ -293,16 +355,27 @@ func (b *memTree) Close() {
 
 func (b *memTree) run() {
 	defer close(b.done)
-	if err := b.rebuild(); err != nil {
-		b.h.Log.Error("memtree boot failed", "origin", "agent", "error", err)
-		return
+	for b.ctx.Err() == nil {
+		if err := b.rebuild(); err == nil {
+			break
+		} else {
+			// the store hiccuped at boot: the rebuild retries on the next
+			// wake with its state still empty, so no half-built round runs
+			b.h.Log.Warn("memtree boot failed", "origin", "agent", "error", err)
+			select {
+			case <-b.ctx.Done():
+				return
+			case <-b.wake:
+			case <-b.rebld:
+			}
+		}
 	}
 	for {
 		if err := b.syncNew(); err != nil {
 			b.h.Log.Warn("memtree sync failed", "origin", "agent", "error", err)
 		}
 		b.dispatch()
-		b.batch()
+		b.batch(false)
 		select {
 		case <-b.ctx.Done():
 			return
@@ -311,13 +384,34 @@ func (b *memTree) run() {
 			if err := b.rebuild(); err != nil {
 				b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
 			}
-		case <-b.force:
-			b.batch()
+		case ack := <-b.force:
+			b.batch(true)
+			close(ack)
 		case r := <-b.results:
 			b.apply(r)
 		}
 		b.reportHealth()
+		b.armRetry()
 	}
+}
+
+// armRetry wakes the builder when the earliest failed build's backoff runs
+// out, so a quiet log still retries; a parked node has no next wake.
+func (b *memTree) armRetry() {
+	var next time.Time
+	for _, s := range b.streaks {
+		if !s.parked && (next.IsZero() || s.next.Before(next)) {
+			next = s.next
+		}
+	}
+	if b.retryTimer != nil {
+		b.retryTimer.Stop()
+		b.retryTimer = nil
+	}
+	if next.IsZero() {
+		return
+	}
+	b.retryTimer = time.AfterFunc(max(time.Until(next), 0), b.Wake)
 }
 
 // reportHealth rewrites what /health reads of the queues (worker only).
@@ -328,8 +422,15 @@ func (b *memTree) reportHealth() {
 			unbuilt++
 		}
 	}
+	parked := 0
+	for _, s := range b.streaks {
+		if s.parked {
+			parked++
+		}
+	}
 	b.health.unbuilt.Store(int64(unbuilt))
 	b.health.failed.Store(int64(len(b.leafRetry) + len(b.mergeRetry)))
+	b.health.parked.Store(int64(parked))
 	b.health.queued.Store(int64(len(b.leaves) + len(b.merges)))
 }
 
@@ -375,6 +476,7 @@ func (b *memTree) rebuild() error {
 	slices.SortFunc(b.merges, func(a, c nodeID) int {
 		return cmpDue(b.msgs, a.last(), a.span()/2, c.last(), c.span()/2)
 	})
+	b.streaks = map[nodeID]*buildStreak{}
 	b.leafRetry, b.mergeRetry = nil, nil
 	b.draining = b.viewBytes > viewCeiling
 	return b.loadCV()
@@ -411,22 +513,16 @@ func (b *memTree) resyncView() error {
 }
 
 // syncNew learns the appends that landed since the last round: their view
-// lines, their leaves, the template-built ones' sizes. A failed build
-// rejoins its queue here, at the next append.
+// lines, their leaves, the template-built ones' sizes. Failed builds rejoin
+// their queues here, per their streak.
 func (b *memTree) syncNew() error {
-	if len(b.leafRetry) > 0 { // a failed build rejoins its queue at the next append
-		b.leaves = append(b.leafRetry, b.leaves...)
-		b.leafRetry = nil
-	}
-	if len(b.mergeRetry) > 0 {
-		b.merges = append(b.mergeRetry, b.merges...)
-		b.mergeRetry = nil
-	}
+	fresh := false
 	for {
 		rows, err := b.h.DB.LogFrom(b.seen+1, syncBatch)
 		if err != nil {
 			return err
 		}
+		fresh = fresh || len(rows) > 0
 		for _, e := range rows {
 			b.seen = e.Seq
 			b.msgs = e.Seq + 1
@@ -450,9 +546,43 @@ func (b *memTree) syncNew() error {
 			b.addLine(line)
 		}
 		if len(rows) < syncBatch {
+			b.requeue(fresh)
 			return nil
 		}
 	}
+}
+
+// requeue moves failed builds back into their queues: one whose backoff has
+// run out, all of them when fresh rows landed - a parked node included, for
+// one try per arrival - and drops nodes the log no longer holds.
+func (b *memTree) requeue(fresh bool) {
+	now := time.Now()
+	keep := b.leafRetry[:0]
+	for _, seq := range b.leafRetry {
+		if seq >= b.msgs { // the row is gone (rewound)
+			delete(b.streaks, nodeID{0, seq})
+			continue
+		}
+		if s := b.streaks[nodeID{0, seq}]; s != nil && !s.ready(now, fresh) {
+			keep = append(keep, seq)
+			continue
+		}
+		b.leaves = append(b.leaves, seq)
+	}
+	b.leafRetry = keep
+	keepM := b.mergeRetry[:0]
+	for _, parent := range b.mergeRetry {
+		if (parent.i+1)*(1<<parent.l) > b.msgs { // a half is gone (rewound)
+			delete(b.streaks, parent)
+			continue
+		}
+		if s := b.streaks[parent]; s != nil && !s.ready(now, fresh) {
+			keepM = append(keepM, parent)
+			continue
+		}
+		b.merges = append(b.merges, parent)
+	}
+	b.mergeRetry = keepM
 }
 
 // addLine appends one line to the view and the compaction view: a new
@@ -465,8 +595,11 @@ func (b *memTree) addLine(line viewLine) {
 }
 
 // dispatch fills the build slots: leaves first, then merges whose halves are
-// both built.
+// both built. A quiesce holds it: no call dispatches into a rewind's cut.
 func (b *memTree) dispatch() {
+	if b.heldNow() {
+		return
+	}
 	for b.slots() < buildSlots {
 		if b.dispatchLeaf() {
 			continue
@@ -476,6 +609,14 @@ func (b *memTree) dispatch() {
 		}
 		return
 	}
+}
+
+// heldNow reads the quiesce gate; takeSlot checks it again under the same
+// lock, so a gate set after the check cannot lose the call it decided.
+func (b *memTree) heldNow() bool {
+	b.callMu.Lock()
+	defer b.callMu.Unlock()
+	return b.held
 }
 
 func (b *memTree) slots() int {
@@ -497,15 +638,16 @@ func (b *memTree) dispatchLeaf() bool {
 		return false
 	}
 	seq := b.leaves[0]
-	b.leaves = b.leaves[1:]
 	e, err := b.h.DB.LogAt(seq)
 	if errors.Is(err, store.ErrNotFound) {
+		b.leaves = b.leaves[1:]
+		delete(b.streaks, nodeID{0, seq})
 		return true // the row is gone (rewound): nothing to summarize
 	}
 	if err != nil {
-		b.leafRetry = append(b.leafRetry, seq)
-		return false
+		return false // a transient store error: the queue waits for the next round
 	}
+	b.leaves = b.leaves[1:]
 	if len(e.Text) <= nodeBytes {
 		// a short message is its own node verbatim, no model call
 		b.insertBuilt(nodeID{0, seq}, e.Text)
@@ -515,11 +657,15 @@ func (b *memTree) dispatchLeaf() bool {
 	// the prompt reads the compaction view, worker-owned state: build it
 	// here, before the call goroutine exists
 	prompt := b.leafPrompt(seq, e.Kind, e.Text)
-	b.calls.Add(1)
+	first, wait, ok := b.takeSlot()
+	if !ok { // quiesced: the resume's rebuild requeues the leaf
+		b.endLeaf()
+		return false
+	}
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)})
+		text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)}, first, wait)
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -540,15 +686,17 @@ func (b *memTree) endLeaf() {
 func (b *memTree) dispatchMerge() bool {
 	for len(b.merges) > 0 {
 		parent := b.merges[0]
-		b.merges = b.merges[1:]
-		a, err := b.h.DB.NodeAt(parent.l-1, parent.i*2)
-		if err != nil {
+		a, errA := b.h.DB.NodeAt(parent.l-1, parent.i*2)
+		c, errC := b.h.DB.NodeAt(parent.l-1, parent.i*2+1)
+		if errA != nil || errC != nil {
+			if !errors.Is(errA, store.ErrNotFound) && !errors.Is(errC, store.ErrNotFound) {
+				return false // a transient store error: the queue waits for the next round
+			}
+			b.merges = b.merges[1:]
+			delete(b.streaks, parent)
 			continue // a half is gone (rewound): the pair is dead
 		}
-		c, err := b.h.DB.NodeAt(parent.l-1, parent.i*2+1)
-		if err != nil {
-			continue
-		}
+		b.merges = b.merges[1:]
 		// the children's newline join is the parent when it fits: no call
 		if join := a.Text + "\n" + c.Text; len(join) <= nodeBytes {
 			b.insertBuilt(parent, join)
@@ -557,10 +705,13 @@ func (b *memTree) dispatchMerge() bool {
 		// the join's prompt reads the compaction view, worker-owned state:
 		// build it here, before the call goroutine exists
 		prompt := b.mergePrompt(a, c)
-		b.calls.Add(1)
+		first, wait, ok := b.takeSlot()
+		if !ok { // quiesced: the resume's rebuild requeues the pair
+			return false
+		}
 		b.h.GoSafe("memtree merge", func() {
 			defer b.calls.Done()
-			text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)})
+			text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)}, first, wait)
 			b.send(buildResult{parent: parent, text: text, err: err})
 		})
 		return true
@@ -576,12 +727,30 @@ func (b *memTree) send(r buildResult) {
 	}
 }
 
-// apply installs a finished build. A failure retries at the next append; the
-// view self-heals.
+// apply installs a finished build. A failure starts its node's streak: the
+// retry waits out a backoff, fresh rows hurry it, and a streak past
+// parkAfter parks the node until then. The view self-heals.
 func (b *memTree) apply(r buildResult) {
+	if r == (buildResult{}) {
+		return // the quiesce fence's zero result
+	}
+	id := nodeID{0, r.seq}
+	if !r.leaf {
+		id = r.parent
+	}
 	if r.err != nil {
 		if b.ctx.Err() == nil { // a Close's failures are not build failures
-			b.h.Log.Warn("memtree build failed", "origin", "agent", "error", r.err)
+			s := b.streaks[id]
+			if s == nil {
+				s = &buildStreak{}
+				b.streaks[id] = s
+			}
+			if s.fail(time.Now()) {
+				b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" parked: "+r.err.Error())
+				b.h.Log.Warn("memtree build parked", "origin", "agent", "node", id.id(), "error", r.err)
+			} else {
+				b.h.Log.Warn("memtree build failed", "origin", "agent", "node", id.id(), "error", r.err)
+			}
 		}
 		if r.leaf {
 			b.leafRetry = append(b.leafRetry, r.seq)
@@ -590,6 +759,7 @@ func (b *memTree) apply(r buildResult) {
 		}
 		return
 	}
+	delete(b.streaks, id)
 	if r.leaf {
 		b.insertBuilt(nodeID{0, r.seq}, r.text)
 		return
@@ -658,15 +828,16 @@ func (b *memTree) setLineSize(id nodeID, size int) {
 // batch merges the view when it is due: past the ceiling one batch merges
 // the most due pairs down to the floor; a batch that could not reach the
 // floor keeps merging what new parents allow at each round. The compaction
-// view re-merges when the chat's view does.
-func (b *memTree) batch() {
+// view re-merges when the chat's view does. force merges regardless of the
+// ceiling, what the overflow guard's retry needs.
+func (b *memTree) batch(force bool) {
 	if b.viewBytes > viewCeiling {
 		b.draining = true
 	}
 	if b.viewBytes <= viewFloor {
 		b.draining = false
 	}
-	if !b.draining {
+	if !b.draining && !force {
 		return
 	}
 	_, plan := mergeDown(slices.Clone(b.view), b.msgs, b.sizeOf, func(v []viewLine) bool {
@@ -700,22 +871,23 @@ func (b *memTree) cvBatch(force bool) {
 	b.saveCV()
 }
 
-// cvKey is the kv row the compaction view persists in.
-const cvKey = "chatlog.cv"
-
 func (b *memTree) saveCV() {
 	pairs := make([][]int64, 0, len(b.cv))
 	for _, ln := range b.cv {
 		pairs = append(pairs, []int64{ln.id.l, ln.id.i})
 	}
 	raw, err := json.Marshal(pairs, json.Deterministic(true))
-	if err == nil {
-		_ = b.h.DB.SetKV(cvKey, string(raw))
+	if err != nil {
+		b.h.Log.Warn("memtree compaction view not saved", "origin", "agent", "error", err)
+		return
+	}
+	if err := b.h.DB.SetKV(store.CVKey, string(raw)); err != nil {
+		b.h.Log.Warn("memtree compaction view not saved", "origin", "agent", "error", err)
 	}
 }
 
 func (b *memTree) loadCV() error {
-	raw, err := b.h.DB.GetKV(cvKey)
+	raw, err := b.h.DB.GetKV(store.CVKey)
 	if errors.Is(err, store.ErrNotFound) {
 		b.cv, b.cvBytes = nil, 0
 		return nil
@@ -725,12 +897,24 @@ func (b *memTree) loadCV() error {
 	}
 	var pairs [][]int64
 	if err := json.Unmarshal([]byte(raw), &pairs); err != nil {
-		return fmt.Errorf("chatlog: compaction view: %w", err)
+		// a value nothing can read is not kept: the next saveCV writes a
+		// fresh one, and the view starts over instead of stopping every
+		// build's context at a phantom line
+		b.h.Log.Warn("memtree compaction view unreadable", "origin", "agent", "error", err)
+		if _, err := b.h.DB.DelKV(store.CVKey); err != nil {
+			b.h.Log.Warn("memtree compaction view not reset", "origin", "agent", "error", err)
+		}
+		b.cv, b.cvBytes = nil, 0
+		return nil
 	}
 	b.cv, b.cvBytes = b.cv[:0], 0
+	dropped := 0
 	for _, p := range pairs {
-		if len(p) != 2 {
-			return fmt.Errorf("chatlog: compaction view: %v is not an [l, i] pair", p)
+		if len(p) != 2 || p[0] < 0 || p[1] < 0 || (p[1]+1)*(1<<p[0]) > b.msgs {
+			// a line past the log's end is a cut's leftover: its node can
+			// never build, so the view drops it rather than stop at it
+			dropped++
+			continue
 		}
 		id := nodeID{p[0], p[1]}
 		size := len(placeholder)
@@ -739,6 +923,9 @@ func (b *memTree) loadCV() error {
 		}
 		b.cv = append(b.cv, viewLine{id, size})
 		b.cvBytes += size
+	}
+	if dropped > 0 {
+		b.h.Log.Warn("memtree compaction view dropped lines", "origin", "agent", "lines", dropped)
 	}
 	return nil
 }
@@ -805,18 +992,20 @@ func assistantMessage(text string) fantasy.Message {
 // build runs one compaction: up to buildTryMax tries in one conversation, the
 // shortest fitting line kept. retry is nil on purpose: the retry path stomps
 // the shared h.agents.retryAt a turn is counting down, and a builder burst
-// would stomp it constantly.
-func (b *memTree) build(convo []fantasy.Message) (string, error) {
+// would stomp it constantly. first and wait come from the slot takeCall
+// dispatch already made synchronously.
+func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{}) (string, error) {
+	defer b.endCall(first)
 	id := b.h.modelRef("compact")
 	model, err := b.h.resolveTurnModel(id)
 	if err != nil {
 		return "", err
 	}
-	first, err := b.takeCall()
-	if err != nil {
-		return "", err
+	if !first {
+		if err := b.waitBurst(wait); err != nil {
+			return "", err
+		}
 	}
-	defer b.endCall(first)
 	if first {
 		model = burstModel{LanguageModel: model, started: sync.OnceFunc(b.openBurst)}
 	}
@@ -853,29 +1042,36 @@ func (b *memTree) build(convo []fantasy.Message) (string, error) {
 	return best, nil
 }
 
-// takeCall admits one model call to the shared slots and, when it is not the
-// burst's first, waits for that first call's response to start: two calls
-// writing one cache entry pay for it twice (the spec's prefix-write wait).
-func (b *memTree) takeCall() (first bool, err error) {
+// takeSlot admits one build to the shared slots synchronously, so dispatch
+// and the quiesce fence count the call from the moment dispatch decides it,
+// and reports the burst a non-first call waits behind.
+func (b *memTree) takeSlot() (first bool, wait chan struct{}, ok bool) {
 	b.callMu.Lock()
+	defer b.callMu.Unlock()
+	if b.held { // quiesced for a rewind: no call dispatches into the cut
+		return false, nil, false
+	}
+	b.calls.Add(1) // the fence counts the call from here, before the spawn
 	b.flight++
 	if b.flight == 1 {
 		b.burst = make(chan struct{})
 		first = true
 	}
-	wait := b.burst
-	b.callMu.Unlock()
-	if first || wait == nil { // the burst already opened
-		return first, nil
+	return first, b.burst, true
+}
+
+// waitBurst holds a non-first call until the burst's first response started:
+// two calls writing one cache entry pay for it twice (the spec's
+// prefix-write wait).
+func (b *memTree) waitBurst(wait chan struct{}) error {
+	if wait == nil { // the burst already opened
+		return nil
 	}
 	select {
 	case <-wait:
-		return false, nil
+		return nil
 	case <-b.ctx.Done():
-		b.callMu.Lock()
-		b.flight--
-		b.callMu.Unlock()
-		return false, b.ctx.Err()
+		return b.ctx.Err()
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -33,6 +34,12 @@ type composerState struct {
 	undo   []composerSnap // states before edits, for ctrl+z
 	typing bool           // the last key typed a word character
 }
+
+// maxDraftChars caps the draft's literal text: every keystroke rewraps and
+// recomposes the whole draft, so a huge one outruns the key loop and input
+// stops echoing, and the send boundary refuses the message anyway. Bigger
+// text rides a paste token, which expand unfolds at submit.
+const maxDraftChars = 20_000
 
 type composerSnap struct {
 	text   string
@@ -68,13 +75,23 @@ func (c *composerState) insert(s string) { c.replace(c.cursor, s) }
 // pasteToken matches a paste token ending at the cursor.
 var pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
 
+// insertFits inserts s at the cursor unless it would push the draft past
+// maxDraftChars; ok false leaves the draft alone.
+func (c *composerState) insertFits(s string) bool {
+	if utf8.RuneCountInString(c.text)+utf8.RuneCountInString(s) > maxDraftChars {
+		return false
+	}
+	c.insert(s)
+	return true
+}
+
 // paste inserts s, folding a large paste (over 10 lines or 1000 chars)
 // into a "[Pasted text #N +L lines]" token that expand restores on submit.
-func (c *composerState) paste(s string) {
+// ok false when the draft cap refused the text.
+func (c *composerState) paste(s string) bool {
 	lines := strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
 	if lines <= 10 && len(s) <= 1000 {
-		c.insert(s)
-		return
+		return c.insertFits(s)
 	}
 	if c.pastes == nil {
 		c.pastes = map[string]string{}
@@ -88,6 +105,7 @@ func (c *composerState) paste(s string) {
 	token := fmt.Sprintf("[Pasted text #%d %s]", c.pasteN, size)
 	c.pastes[token] = s
 	c.insert(token)
+	return true
 }
 
 // prunePastes drops the text of tokens nothing can name any more: the
@@ -539,6 +557,9 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 // onto the next rather than ending at a newline.
 func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune, soft []bool) {
 	w = max(w, 1)
+	if k := &a.wrapKey; k.text == a.composer.text && k.cursor == a.composer.cursor && k.w == w {
+		return k.row, k.col, k.rows, k.soft
+	}
 	r := []rune(a.composer.text)
 	for i, x := range r {
 		if x == '\t' { // a tab has no cell width; one cell keeps runes and cells aligned
@@ -581,6 +602,13 @@ func (a *App) wrapComposer(w int) (cursorRow, cursorCol int, rows [][]rune, soft
 		rows = append(rows, r[sp.s:sp.e])
 		soft = append(soft, n < len(spans)-1 && spans[n+1].s == sp.e)
 	}
+	a.wrapKey = struct {
+		text      string
+		cursor, w int
+		row, col  int
+		rows      [][]rune
+		soft      []bool
+	}{a.composer.text, a.composer.cursor, w, cursorRow, cursorCol, rows, soft}
 	return cursorRow, cursorCol, rows, soft
 }
 

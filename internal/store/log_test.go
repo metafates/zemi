@@ -147,11 +147,12 @@ func TestDeleteLogFrom(t *testing.T) {
 	}
 }
 
-// TestAnchorSession: the migration plants the billing and todos anchor.
-func TestAnchorSession(t *testing.T) {
+// TestMainAnchorRow: the migration plants the billing and todos anchor.
+func TestMainAnchorRow(t *testing.T) {
 	db := openTest(t)
-	if ok, err := db.AnchorSession(); err != nil || !ok {
-		t.Fatalf("anchor = %v, %v", ok, err)
+	var n int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = ?`, MainSessionID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("anchor rows = %d, %v, want the migration's one row", n, err)
 	}
 	if s, err := db.GetSession(MainSessionID); err != nil || s.ID != "main" {
 		t.Fatalf("anchor row = %+v, %v", s, err)

@@ -187,7 +187,8 @@ repository's one chat. The schema is goose migrations embedded from
 zemis never run one twice; a change is a new numbered file there, never an edit of an
 applied one. A store made before goose only gains its version table: the baseline is all
 `CREATE ... IF NOT EXISTS`. The chat's tables (`log`, `nodes`, `view_lines`) are 0006; 0007
-drops the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §7).
+seeds the old memory table's live project facts into the log as note messages, then drops
+the old memory tables and rebuilds `checkpoints` keyed by the log seq (DESIGN §7).
 
 ## Turns, the chat and the builder (internal/hostapi: agent.go, chatlog.go, memtree.go, session.go, rewind.go)
 
@@ -237,16 +238,20 @@ drops the old memory tables and rebuilds `checkpoints` keyed by the log seq (DES
   leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
   Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with the
-  shortest fitting line kept; a failed build retries at the next append. The view is the
+  shortest fitting line kept; a failed build retries on a doubling backoff and parks after
+  six failures in a row until new rows land (`buildStreak`). The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
-  kv. `/health`'s `chat builder` row reads the queue depths (`builderHealth`).
+  kv, pruned past every rewind's cut. A rewind quiesces the builder - a fence: nothing
+  dispatches into the cut and every build before it has landed. `/health`'s `chat builder`
+  row reads the queue depths and the parked builds (`builderHealth`).
 - **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
   view as one user message of 4-line parts, `chatlog.go viewMessage`) before every send, so
   nothing carries between turns but the view; `keepSigned` degenerates to a no-op
-  cross-turn. A context-too-large refusal runs one view merge batch (`MergeOnce`) and
-  retries once; a refused output cap is dropped, and image parts a model refuses become a
-  note, both remembered for the process (`capRejected`, `imagesRejected`).
+  cross-turn. A context-too-large refusal runs one view merge batch (`MergeOnce`, which
+  returns once it ran) and retries once; a refused output cap is dropped, and image parts a
+  model refuses become a note, both remembered for the process (`capRejected`,
+  `imagesRejected`).
 - **A turn's work survives the turn.** A run's runner wires its own `Persist`
   (`storeMessage`), so a cancelled or crashed run keeps what it did in its child session's
   rows; the next send runs
@@ -316,12 +321,13 @@ drops the old memory tables and rebuilds `checkpoints` keyed by the log seq (DES
   pre-turn content (keyed by the log seq of the turn's user message, first write wins) before a
   write tool touches it. `RewindTo` restores files first and only then cuts, so a failed
   restore leaves the chat intact; the cut holds `cutMu` and the builder quiesced, then
-  `DeleteLogFrom` deletes the log rows from seq on, every node and view line touching them
-  and the checkpoints from seq on, `patchView` re-covers the survivors with leaf lines, the
+  `DeleteLogFrom` runs in one transaction: the log rows from seq on, every node and view
+  line touching them, the checkpoints from seq on, leaf lines re-covering the survivors
+  (`patchCut`) and the compaction view's gone lines. The
   todo list is rebuilt from the log's `todos` rows before the cut, the goal is rewound with
   its kv row, and the prompt text goes back to the composer. `/reset` (`ResetChat`) is the
   same claim, quiesce and `cutMu` around `ResetLog`, which wipes the log, the nodes, the view
-  lines and the checkpoints whole and then vacuums and truncates the WAL so the text leaves
+  lines, the checkpoints and the compaction view whole and then vacuums and truncates the WAL so the text leaves
   the file; the todo list clears, every goal drops, and the transcript swaps to the empty
   log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`. A shell call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside

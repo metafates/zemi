@@ -11,6 +11,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math/bits"
 	"slices"
@@ -269,7 +270,11 @@ func renderLine(l, i int64, text string) string {
 // while the log is empty.
 func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
 	lines, err := c.h.DB.ViewLines()
-	if err != nil || len(lines) == 0 {
+	if err != nil {
+		c.h.Log.Warn("view not read", "origin", "agent", "error", err)
+		return fantasy.Message{}, false
+	}
+	if len(lines) == 0 {
 		return fantasy.Message{}, false
 	}
 	texts := make([]string, 0, (len(lines)+viewLinesPerPart-1)/viewLinesPerPart)
@@ -354,7 +359,8 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 	if err != nil {
 		return fantasy.ToolResponse{}, err
 	}
-	if in.ID < 0 || in.ID+in.N > count {
+	// in.ID > count-in.N, not in.ID+in.N > count: the sum can overflow
+	if in.ID < 0 || in.N > count || in.ID > count-in.N {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("no line %d+%d in a chat of %d messages", in.ID, in.N, count)), nil
 	}
 	if in.N > 1 {
@@ -366,6 +372,10 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 		}, "\n")), nil
 	}
 	row, err := h.DB.LogAt(in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		// the row was rewound between the count and here
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("no line %d+%d in a chat of %d messages", in.ID, in.N, count)), nil
+	}
 	if err != nil {
 		return fantasy.ToolResponse{}, err
 	}
@@ -525,8 +535,11 @@ func (t *dateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantas
 		return fantasy.NewTextErrorResponse("no chat log in this boot"), nil
 	}
 	row, err := t.h.DB.LogAt(in.ID)
-	if err != nil {
+	if errors.Is(err, store.ErrNotFound) {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("no message %d", in.ID)), nil
+	}
+	if err != nil {
+		return fantasy.ToolResponse{}, err
 	}
 	return fantasy.NewTextResponse(row.CreatedAt), nil
 }
@@ -536,7 +549,13 @@ func (t *dateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantas
 func (h *Host) chatCommands() []*Command {
 	return []*Command{{
 		Name: "note", NArgs: NArgsSome, Desc: "add a note to the chat's memory",
-		GoFn: func(h *Host, args string, confirm bool) error { return h.Note(args) },
+		GoFn: func(h *Host, args string, confirm bool) error {
+			if err := h.Note(args); err != nil {
+				return err
+			}
+			h.Notify(slog.LevelInfo, "Note added", "it joins the chat's memory")
+			return nil
+		},
 	}, {
 		Name: "reset", NArgs: NArgsOptional, Desc: "wipe this chat's log and summary tree and start it over",
 		GoFn: func(h *Host, args string, confirm bool) error {
