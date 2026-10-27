@@ -1,18 +1,14 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/metafates/zemi/internal/perm"
 )
@@ -95,10 +91,9 @@ func TestWriteSessionGone(t *testing.T) {
 	})
 }
 
-// TestMigrationKeepsData: a store an older zemi stamped with user_version and
-// no goose table opens, keeps its rows and gets the baseline migration, which
-// a second open does not run again.
-func TestMigrationKeepsData(t *testing.T) {
+// TestMigrationFresh: a fresh store opens, the one migration stamps its
+// version, and a second open runs nothing again.
+func TestMigrationFresh(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
 	if err != nil {
@@ -108,36 +103,9 @@ func TestMigrationKeepsData(t *testing.T) {
 	if err := db.CreateSession(sid, "", "a session", ""); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
-
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// a store from an older zemi: no goose table, and none of the columns a
-	// later migration added, under the names it used.
-	for _, q := range []string{
-		`DROP TABLE goose_db_version`,
-		`ALTER TABLE messages DROP COLUMN row_meta`,
-		`ALTER TABLE sessions RENAME COLUMN agent TO profile`,
-		`PRAGMA user_version = 8`,
-	} {
-		if _, err := raw.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw.Close()
-
-	db, err = Open(path)
-	if err != nil {
-		t.Fatalf("a pre-goose store must open: %v", err)
-	}
-	if n, err := db.SessionCount(); err != nil || n != 1 {
-		t.Fatalf("sessions = %d, %v", n, err)
-	}
 	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version == 0 {
-		t.Fatalf("goose version = %d, %v; want the migrations to have run", version, err)
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != migrationCount() {
+		t.Fatalf("goose version = %d, %v; want %d", version, err, migrationCount())
 	}
 	db.Close()
 
@@ -153,94 +121,6 @@ func TestMigrationKeepsData(t *testing.T) {
 	}
 	if n, err := db.SessionCount(); err != nil || n != 1 {
 		t.Fatalf("sessions = %d, %v", n, err)
-	}
-}
-
-// TestMigrationSeedsNotes: a store the refactor's 0006 built, holding the
-// old memory table's rows, upgrades with its live project facts in the log
-// as note messages - superseded rows and other scopes go with the table.
-func TestMigrationSeedsNotes(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := fs.Sub(migrations, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, err := goose.NewProvider(goose.DialectSQLite3, raw, files, goose.WithLogger(goose.NopLogger()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.UpTo(context.Background(), 6); err != nil {
-		t.Fatal(err)
-	}
-	// the shape the frozen table's write path left: a log row the refactor's
-	// 0006 already wrote, live and superseded project rows, and a
-	// user-partition row the project DB never holds
-	if _, err := raw.Exec(`INSERT INTO log (seq, kind, text, created_at)
-		VALUES (0, 'user', 'before the upgrade', '2026-01-01T00:00:00Z')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec(`INSERT INTO view_lines (ord, l, i) VALUES (0, 0, 0)`); err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range []struct {
-		id, scope, text, origin string
-		superseded              string
-		updated                 int64
-	}{
-		{"gate01aaa", "project", "the deploy gate lives in ci/pipeline", "learned", "", 30},
-		{"old001aaa", "project", "gate is at ci/old", "learned", "gate01aaa", 20},
-		{"user01aaa", "user", "prefers rust over go for tools", "user", "", 10},
-	} {
-		if _, err := raw.Exec(`INSERT INTO memory
-			(id, scope, text, quote, provenance_session_id, created_at, updated_at, superseded_by, origin)
-			VALUES (?, ?, ?, '', NULL, ?, ?, NULLIF(?, ''), ?)`,
-			m.id, m.scope, m.text, m.updated, m.updated, m.superseded, m.origin); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw.Close()
-
-	db, err := Open(path)
-	if err != nil {
-		t.Fatalf("the store must open: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	rows, err := db.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var kinds, texts []string
-	for _, r := range rows {
-		if r.Seq >= 1 && r.Kind != "note" {
-			t.Fatalf("log row %d is %s, want the seeded notes only", r.Seq, r.Kind)
-		}
-		if _, err := time.Parse(time.RFC3339Nano, r.CreatedAt); err != nil {
-			t.Fatalf("note %d stamped %q: %v", r.Seq, r.CreatedAt, err)
-		}
-		kinds = append(kinds, r.Kind)
-		texts = append(texts, r.Text)
-	}
-	// the seed appends after the log the store already held, dense
-	if !slices.Equal(kinds, []string{"user", "note"}) {
-		t.Fatalf("log kinds = %v, want the old row then the seeded notes", kinds)
-	}
-	if !slices.Equal(texts, []string{"before the upgrade", "the deploy gate lives in ci/pipeline"}) {
-		t.Fatalf("seeded notes = %v, want the live project row only", texts)
-	}
-	if !strings.Contains(rows[1].MetaJSON, `"origin":"learned"`) {
-		t.Fatalf("note meta %q, want the memory's origin", rows[1].MetaJSON)
-	}
-	// the seeded notes carry view lines, so the view covers the whole log
-	lines, err := db.LoadView()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 2 || lines[0].L != 0 || lines[1].I != 1 {
-		t.Fatalf("view lines = %+v, want one per row", lines)
 	}
 }
 
@@ -301,7 +181,7 @@ func TestOpenReadUnmigrated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec(`UPDATE goose_db_version SET version_id = 1`); err != nil {
+	if _, err := raw.Exec(`UPDATE goose_db_version SET version_id = 0`); err != nil {
 		t.Fatal(err)
 	}
 	raw.Close()
@@ -313,9 +193,9 @@ func TestOpenReadUnmigrated(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := raw.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 1 {
+	if err := raw.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != 0 {
 		raw.Close()
-		t.Fatalf("a refused read migrated to %d, %v; want it untouched at 1", version, err)
+		t.Fatalf("a refused read migrated to %d, %v; want it untouched at 0", version, err)
 	}
 	raw.Close()
 }

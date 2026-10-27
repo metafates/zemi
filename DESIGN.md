@@ -1505,9 +1505,7 @@ UI extensibility contract:
 
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
   `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
-  and Go solves and paints every frame (§8), plus an overlay stack. No layout draws the
-  `exit` region: its widgets print once to the shell after zemi quits, foreground colors
-  only (the shipped `exit` widget prints the chat's first prompt and the cost). The shipped chat and statusline are default Lua registrations
+  and Go solves and paints every frame (§8), plus an overlay stack. The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/tui/` (one module per part), replaceable by id. The module is
   `zemi.tui`, since `require("zemi.ui")` returns the frozen host namespace, whose `theme`
   and `layout` members would also shadow `theme.lua` and `layout.lua`. The composer is
@@ -1742,7 +1740,7 @@ view_lines(ord, l, i)                                    -- the persisted view, 
 sessions(id, parent_id, title, agent, created_at, updated_at,
          prompt_tokens, completion_tokens, cache_read_tokens,
          cache_billed_tokens, cost, last_in, run_status) -- the "main" billing and todos anchor (the
-                                                         -- migration inserts it), one row per
+                                                         -- migration plants it), one row per
                                                          -- subagent run; run_status: how the run
                                                          -- ended; last_in: the context its latest
                                                          -- step used
@@ -1784,13 +1782,8 @@ one transaction each, applied on open under a `zemi.db.lock` file lock so
 two zemis never run one twice. A change is a new numbered file: it reaches
 every store at its next open, with no version stamp and no reset to do.
 The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
-goose only gets the version table and keeps its rows. Migration 0006 adds
-the log's three tables; 0007 drops the brain-era tables (`proposals`,
-`memory`, `memory_ops`) and rebuilds `checkpoints` keyed by the log seq;
-0009 drops `checkpoints` whole, with the rewind it served (the chat never
-ends, and `/reset` is the only wipe). Old main-chat
-transcripts stay in `messages` SQL-reachable and are not imported; the
-migration seeds nothing of them into the log.
+goose only gets the version table and keeps its rows; the one migration
+builds the tables above and plants the `main` anchor row.
 
 An append commits in one transaction: the log row, its view line and, for
 the kinds a template can line (a tool call, a tool result), the message's
@@ -2771,7 +2764,7 @@ internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the t
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              path resolution, the pad, glob and subjects
 internal/ui/                program, regions, widgets, themes, palette, overlays,
-                            composer, mouse, and the exit region the shell reads
+                            composer, mouse, and hit testing
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler
                             quotes), and the secret-shape scrubber for recipe writes
 internal/skill/             SKILL.md discovery and parsing

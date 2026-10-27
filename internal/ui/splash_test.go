@@ -1,19 +1,15 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -272,93 +268,5 @@ func TestSplashWidePath(t *testing.T) {
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, name) {
 		t.Fatalf("the path's name is cut away:\n%s", frame)
-	}
-}
-
-// TestFarewellWraps: an exit widget that asks to wrap prints wrapped at the
-// terminal's width, as the run view draws the region, not one over-long row.
-func TestFarewellWraps(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 40, 20)
-	runLua(t, app, `zemi.ui.widget.add({ id = "exit.wide", region = "exit", wrap = true, render = function()
-  return { { { text = string.rep("word ", 20) } } }
-end })`)
-	rows := strings.Split(strings.TrimRight(app.Farewell(), "\n"), "\n")
-	if len(rows) < 2 {
-		t.Fatalf("a wrapping exit widget printed %d row(s):\n%s", len(rows), strings.Join(rows, "\n"))
-	}
-	for _, r := range rows {
-		if w := ansi.StringWidth(r); w > 40 {
-			t.Fatalf("a row is %d cells wide, want 40 at most: %q", w, r)
-		}
-	}
-}
-
-func TestFarewell(t *testing.T) {
-	for _, c := range []struct {
-		name      string
-		width     int
-		profile   colorprofile.Profile
-		title     string
-		cost      float64
-		send      bool
-		booting   bool
-		mark      bool // a named session's title leads with its marker emoji
-		want, not []string
-	}{
-		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, false, nil, []string{"zemi"}},
-		// a quit during the trust prompt: that boot step never returns
-		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, false, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n", "cost     $0.42"}, []string{"\x1b"}},
-		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, true, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n"}, []string{"┗━━ ┗━━ ╹╹╹ ╹"}},
-		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, false, []string{"zemi"}, []string{"fix the build", "more", "cost"}},
-		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, false, []string{"ab"}, []string{"\x1b]52"}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			app, host := bootAgentApp(t, c.width, 30)
-			app.colors = c.profile
-			if c.send {
-				// the tally the exit widget reads; the test host has no turn
-				host.SeedStream(hostapi.StreamSnapshot{SessionCost: c.cost})
-				host.AppendMessage("user", c.title)
-				host.AppendMessage("assistant", "fix the build\nmore")
-			}
-			if c.booting {
-				block, reached := make(chan struct{}), make(chan struct{})
-				t.Cleanup(func() { close(block) })
-				go func() {
-					// Background: the cleanup releases this goroutine, and
-					// t.Context is cancelled before cleanups run
-					_ = host.RT.Boot(context.Background(), []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui"), {
-						Name: "trust", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
-							close(reached)
-							<-block
-							return nil
-						},
-					}})
-				}()
-				<-reached
-			}
-			done := make(chan string, 1)
-			go func() { done <- app.Farewell() }()
-			var out string
-			select {
-			case out = <-done:
-			case <-time.After(3 * time.Second):
-				t.Fatal("Farewell held the exit for 3s")
-			}
-			for _, w := range c.want {
-				if !strings.Contains(out, w) {
-					t.Errorf("missing %q:\n%s", w, out)
-				}
-			}
-			for _, n := range c.not {
-				if strings.Contains(out, n) {
-					t.Errorf("has %q:\n%q", n, out)
-				}
-			}
-		})
 	}
 }

@@ -197,10 +197,8 @@ function debug.traceback(msg) end
 ---| "warn"
 ---| "error"
 
---- The regions the default layout draws, plus "exit", which no layout draws: its
---- widgets print once to the shell after zemi quits, foreground colors only. A layout
---- may draw any other name.
----@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|"exit"|string
+--- The regions the default layout draws; a layout may draw any other name.
+---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.

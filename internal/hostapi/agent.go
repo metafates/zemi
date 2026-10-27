@@ -1907,7 +1907,7 @@ func (h *Host) recap(ctx context.Context) {
 }
 
 // AgentSessionID is the id every main-chat surface names: the anchor row the
-// log migration plants, which billing and todos ride.
+// migration plants, which billing and todos ride.
 func (h *Host) AgentSessionID() string { return store.MainSessionID }
 
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes

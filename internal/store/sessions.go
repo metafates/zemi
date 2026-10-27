@@ -80,7 +80,7 @@ func (s *DB) GetSession(id string) (*Session, error) {
 }
 
 // topLevelSessions is the WHERE the run lists read through: the anchor row
-// the log migration plants is not a conversation.
+// the migration plants is not a conversation.
 const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
 
 // ListSessions returns top-level sessions (subagent runs excluded) ordered

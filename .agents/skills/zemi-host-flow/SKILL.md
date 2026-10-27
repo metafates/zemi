@@ -186,10 +186,9 @@ repository's one chat. The schema is goose migrations embedded from
 `internal/store/migrations` and applied on open, under a `zemi.db.lock` file lock so two
 zemis never run one twice; a change is a new numbered file there, never an edit of an
 applied one. A store made before goose only gains its version table: the baseline is all
-`CREATE ... IF NOT EXISTS`. The chat's tables (`log`, `nodes`, `view_lines`) are 0006; 0007
-seeds the old memory table's live project facts into the log as note messages, then drops
-the old memory tables and re-keys `checkpoints` on the log seq (DESIGN §7). Migration 0009
-drops the checkpoints table whole: rewind is gone.
+`CREATE ... IF NOT EXISTS`. The one migration builds today's tables (`sessions`,
+`messages`, `todos`, `tool_calls`, `skills`, `kv`, `log`, `nodes`, `view_lines`,
+`usage_days`) and plants the `main` anchor session row billing and todos ride (DESIGN §7).
 
 ## Turns, the chat and the builder (internal/hostapi: agent.go, chatlog.go, memtree.go, session.go, reset.go)
 

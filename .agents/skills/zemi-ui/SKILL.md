@@ -18,11 +18,9 @@ fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and
 go, the toasts drawn last (`App.compose`, after the final join and fade) so nothing a box
 places can cover or dim one. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
-painted segments, never the tree. No layout draws the `exit` region: `App.Farewell` renders
-it once after `p.Run` returns cleanly (nothing while a boot step waits, which no dispatcher
-would answer) and main prints it to the shell. Its text
-lands outside zemi's chrome, beside nothing to act on: the chat's first prompt and the
-cost (what the shipped `exit` widget draws). A `composer` node with `frame` draws the square frame around the composer
+painted segments, never the tree. A widget whose region no layout node draws is warned
+about in `/health`: its `render` runs for nothing, so a region name the layout does not
+know is a bug in the widget or the layout. A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
 (`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left end holds the
 snail of `tui/snail.lua` a cell off the corner, its eyes showing the state, how a turn ended included

@@ -403,7 +403,10 @@ func (b *memTree) run() {
 		if err := b.syncNew(); err != nil {
 			b.h.Log.Warn("memtree sync failed", "origin", "agent", "error", err)
 			if errors.Is(err, errWiped) {
-				b.rebuild() // another window wiped the chat: start over from its log
+				// another window wiped the chat: start over from its log
+				if err := b.rebuild(); err != nil {
+					b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
+				}
 			}
 		}
 		b.dispatch()

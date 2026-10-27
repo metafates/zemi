@@ -163,9 +163,6 @@ func launch(o options) int {
 	if host.DB != nil {
 		host.DB.Touch()
 	}
-	// before a relaunch too: the exec replaces the process, and the exit
-	// region would never print otherwise
-	fmt.Print(app.Farewell())
 	// and the boot failure, which the TUI showed on a screen that is gone now
 	if bootErr := app.BootError(); bootErr != nil {
 		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())

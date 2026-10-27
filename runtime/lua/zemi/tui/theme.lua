@@ -58,7 +58,6 @@ local groups = {
 	PromptCommand = { link = "Title" },
 	Queued = { link = "Dim" },
 	SplashKey = { link = "Accent" },
-	ExitTitle = { fg = "fg", bold = true },
 	ScrollbarTrack = { link = "Rule" },
 	ScrollbarThumb = { link = "Accent" },
 	-- a scrolled region's pinned header (a prompt over its turn): chrome, so

@@ -88,7 +88,7 @@ func TestDB(t *testing.T) {
 		{"a write fails", []string{"db", "insert into kv values ('x','{}',0)"}, 1, "", "readonly", ""},
 		{"no store names the path", []string{"-C", empty, "db", "select 1"}, 1, "", "no store at " + perm.TildePath(emptyStore), ""},
 		{"an unmigrated store is refused", []string{"-C", stale, "db", "select 1"}, 1, "", "zemi health", ""},
-		// the log migration plants the anchor session row in every store
+		// the migration plants the anchor session row in every store
 		{"global reads the global store", []string{"db", "--global", "select count(*) from sessions"}, 0, "count(*)\n1\n", "", ""},
 		{"the text table caps at 500", []string{"db", "with recursive t(n) as (select 1 union all select n+1 from t where n < 501) select n from t"}, 0, "499\n500\n", "showing the first 500 rows", "501"},
 		{"a cut cell names its cut", []string{"db", "with recursive t(n) as (select 1 union all select n+1 from t where n < 101) select group_concat('x', '') from t"}, 0, "+78 chars; --json for the whole)", "", ""},

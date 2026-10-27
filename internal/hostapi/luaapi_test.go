@@ -309,9 +309,8 @@ func TestHighlightOverride(t *testing.T) {
 	}
 }
 
-// TestWidgets: any origin removes a widget, del reports whether there was one,
-// and the exit region is open to every origin. A priority between two others
-// stays between.
+// TestWidgets: a project origin adds and removes its widget, del reports
+// whether there was one. A priority between two others stays between.
 func TestWidgets(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
@@ -320,8 +319,8 @@ func TestWidgets(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.del("w")`, "p.lua", lua.OriginProject); err != nil || h.Widgets.Get("w") != nil {
 		t.Fatalf("project code removed a user widget: %v", err)
 	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.add({ id = "x", region = "exit", render = function() return {} end })`, "p.lua", lua.OriginProject); err != nil || h.Widgets.Get("x") == nil {
-		t.Fatalf("project code added an exit widget: %v", err)
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.add({ id = "x", region = "statusline.left", render = function() return {} end })`, "p.lua", lua.OriginProject); err != nil || h.Widgets.Get("x") == nil {
+		t.Fatalf("project code added a widget: %v", err)
 	}
 	runUser(t, r, `assert(zemi.ui.widget.del("x") == true and zemi.ui.widget.del("x") == false)`)
 }
